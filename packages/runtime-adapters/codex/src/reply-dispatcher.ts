@@ -110,6 +110,7 @@ function shouldMarkAutoRecoveringError(errorText: string): boolean {
     normalized.includes("invalid request: invalid type: null") ||
     normalized.includes("expected a string") ||
     normalized.includes("codex rpc timeout: turn/start") ||
+    normalized.includes("turn/completed timed out") ||
     normalized.includes("no rollout found") ||
     normalized.includes("admin reset: rotation") ||
     normalized.includes("codex disconnected mid-turn")

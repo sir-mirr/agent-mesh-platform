@@ -28,6 +28,15 @@ const TYPING_KEEPALIVE_MS = 9000;
 const ATTACHMENT_TURN_START_TIMEOUT_MS = parsePositiveInt(
   process.env.CODEX_ATTACHMENT_TURN_START_TIMEOUT_MS,
 ) ?? 90_000;
+const TURN_COMPLETION_TIMEOUT_MS = parsePositiveInt(
+  process.env.CODEX_TURN_COMPLETION_TIMEOUT_MS,
+) ?? 90_000;
+const ATTACHMENT_TURN_COMPLETION_TIMEOUT_MS = parsePositiveInt(
+  process.env.CODEX_ATTACHMENT_TURN_COMPLETION_TIMEOUT_MS,
+) ?? 180_000;
+const TURN_WATCHDOG_RESTART_THRESHOLD = parsePositiveInt(
+  process.env.CODEX_TURN_WATCHDOG_RESTART_THRESHOLD,
+) ?? 2;
 
 let _srDb: Database | null = null;
 
@@ -130,6 +139,10 @@ export class ThreadManager {
   private pendingStreamSideEffects: Promise<void> = Promise.resolve();
   private queue: TurnQueue | null = null;
   private rotation: RotationPolicy;
+  private turnCompletionWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnCompletionWatchdogTurnId: string | null = null;
+  private ignoredCodexTurnIds = new Set<string>();
+  private consecutiveWatchdogTimeouts = 0;
 
   constructor(private readonly opts: ThreadManagerOptions) {
     if (opts.initialThreadId) this.threadId = opts.initialThreadId;
@@ -197,12 +210,15 @@ export class ThreadManager {
       this.turnCompletion.reject(new Error("codex disconnected mid-turn"));
       this.turnCompletion = null;
     }
+    this.clearTurnCompletionWatchdog("reset-for-reconnect");
     this.stopTypingKeepAlive("?", "reset-for-reconnect");
     this.streamBuffers.clear();
     this.pendingDiscordFiles = [];
     this.activeEnvelope = null;
     this.currentTurnId = null;
     this.agentMessages.clear();
+    this.ignoredCodexTurnIds.clear();
+    this.consecutiveWatchdogTimeouts = 0;
     this.state = "idle";
     this.queue?.resumeDispatch("reset-for-reconnect");
     this.queue?.clearActive();
@@ -225,6 +241,7 @@ export class ThreadManager {
       this.turnCompletion.reject(new Error(`admin reset: ${reason}`));
       this.turnCompletion = null;
     }
+    this.clearTurnCompletionWatchdog(`admin-reset:${reason}`);
     this.stopTypingKeepAlive(this.activeEnvelope?.turnId ?? "?", "admin-reset");
     this.streamBuffers.clear();
     this.pendingDiscordFiles = [];
@@ -309,6 +326,7 @@ export class ThreadManager {
         `turn/start ok turn=${env.turnId} codexTurnId=${this.currentTurnId ?? "-"} ` +
           `attachments=${env.sourceMeta.hasAttachments ? "yes" : "no"}`,
       );
+      this.armTurnCompletionWatchdog(env);
       await completion;
     } catch (error: any) {
       const retryable = error instanceof RetryableTurnDispatchError
@@ -317,7 +335,9 @@ export class ThreadManager {
       if (retryable) {
         if (
           retryable.reason === "turn-start-timeout" ||
-          retryable.reason === "stale-thread-rollout"
+          retryable.reason === "stale-thread-rollout" ||
+          retryable.reason === "turn-completed-timeout" ||
+          retryable.reason === "turn-completed-watchdog-operator-hint"
         ) {
           this.threadId = null;
           this.currentTurnId = null;
@@ -344,6 +364,7 @@ export class ThreadManager {
         }
       }
     } finally {
+      this.clearTurnCompletionWatchdog("runEnvelope-finally");
       this.stopTypingKeepAlive(env.turnId, "runEnvelope-finally");
       this.streamBuffers.clear();
       this.pendingDiscordFiles = [];
@@ -383,7 +404,12 @@ export class ThreadManager {
       }
       case "turn/started": {
         const newTurnId: string | undefined = params?.turn?.id ?? params?.turnId;
+        if (newTurnId && this.ignoredCodexTurnIds.has(newTurnId)) {
+          log(`ignoring stale turn/started codexTurnId=${newTurnId}`);
+          return;
+        }
         this.currentTurnId = newTurnId ?? null;
+        this.turnCompletionWatchdogTurnId = this.currentTurnId;
         break;
       }
       case "item/agentMessage/delta":
@@ -394,6 +420,21 @@ export class ThreadManager {
         break;
       case "turn/failed":
         this.stopTypingKeepAlive(this.activeEnvelope?.turnId ?? "?", "turn/failed");
+        {
+          const failedTurnId: string | undefined = params?.turn?.id ?? params?.turnId;
+          if (failedTurnId && this.ignoredCodexTurnIds.has(failedTurnId)) {
+            this.ignoredCodexTurnIds.delete(failedTurnId);
+            this.agentMessages.delete(failedTurnId);
+            this.clearTurnCompletionWatchdog("stale-turn-failed");
+            if (this.currentTurnId === failedTurnId) {
+              this.currentTurnId = null;
+            }
+            log(`ignoring stale turn/failed codexTurnId=${failedTurnId}`);
+            return;
+          }
+        }
+        this.clearTurnCompletionWatchdog("turn-failed");
+        this.consecutiveWatchdogTimeouts = 0;
         if (this.turnCompletion) {
           this.turnCompletion.reject(new Error(params?.error?.message ?? "turn/failed"));
           this.turnCompletion = null;
@@ -433,6 +474,7 @@ export class ThreadManager {
     const itemId: string | undefined = params?.itemId;
     const delta: string = params?.delta ?? "";
     if (!turnId || !itemId) return;
+    if (this.ignoredCodexTurnIds.has(turnId)) return;
     let perTurn = this.agentMessages.get(turnId);
     if (!perTurn) {
       perTurn = new Map();
@@ -642,6 +684,15 @@ export class ThreadManager {
 
   private async handleTurnCompleted(params: any): Promise<void> {
     const codexTurnId: string | undefined = params?.turn?.id ?? params?.turnId;
+    if (codexTurnId && this.ignoredCodexTurnIds.has(codexTurnId)) {
+      this.ignoredCodexTurnIds.delete(codexTurnId);
+      this.agentMessages.delete(codexTurnId);
+      this.clearTurnCompletionWatchdog("stale-turn-completed");
+      log(`ignoring stale turn/completed codexTurnId=${codexTurnId}`);
+      return;
+    }
+    this.clearTurnCompletionWatchdog("turn-completed");
+    this.consecutiveWatchdogTimeouts = 0;
     this.stopTypingKeepAlive(this.activeEnvelope?.turnId ?? "?", "turn/completed");
 
     const perTurn = codexTurnId ? this.agentMessages.get(codexTurnId) : undefined;
@@ -975,6 +1026,102 @@ export class ThreadManager {
     }
     const strip = /\[\[DISCORD-ATTACH\]\]\s*([\s\S]*?)\s*\[\[\/DISCORD-ATTACH\]\]/g;
     return text.replace(strip, "").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  private armTurnCompletionWatchdog(env: TurnEnvelope): void {
+    this.clearTurnCompletionWatchdog("re-arm");
+    const timeoutMs = env.sourceMeta.hasAttachments
+      ? ATTACHMENT_TURN_COMPLETION_TIMEOUT_MS
+      : TURN_COMPLETION_TIMEOUT_MS;
+    this.turnCompletionWatchdogTurnId = this.currentTurnId;
+    this.turnCompletionWatchdogTimer = setTimeout(() => {
+      if (!this.turnCompletion || this.activeEnvelope?.turnId !== env.turnId) {
+        return;
+      }
+      const codexTurnId = this.currentTurnId ?? this.turnCompletionWatchdogTurnId;
+      if (codexTurnId) {
+        this.ignoredCodexTurnIds.add(codexTurnId);
+      }
+      this.consecutiveWatchdogTimeouts += 1;
+      const streak = this.consecutiveWatchdogTimeouts;
+      const requiresOperator = streak >= TURN_WATCHDOG_RESTART_THRESHOLD;
+      const serviceUnit = this.appServerServiceUnitHint();
+      log(
+        `turn watchdog fired turn=${env.turnId} codexTurnId=${codexTurnId ?? "-"} ` +
+          `timeoutMs=${timeoutMs} streak=${streak} operatorHint=${requiresOperator ? "yes" : "no"}`,
+      );
+      this.threadId = null;
+      this.currentTurnId = null;
+      this.emitWatchdogWarning(env, { timeoutMs, streak, requiresOperator, serviceUnit });
+      const completion = this.turnCompletion;
+      this.turnCompletion = null;
+      this.clearTurnCompletionWatchdog("watchdog-fired");
+      completion?.reject(
+        new RetryableTurnDispatchError(
+          requiresOperator
+            ? "turn-completed-watchdog-operator-hint"
+            : "turn-completed-timeout",
+          requiresOperator
+            ? `[dispatch-watchdog] turn/completed timed out; retrying automatically, operator should inspect ${serviceUnit}`
+            : "[dispatch-watchdog] turn/completed timed out; retrying automatically",
+        ),
+      );
+    }, timeoutMs);
+  }
+
+  private clearTurnCompletionWatchdog(reason: string): void {
+    if (!this.turnCompletionWatchdogTimer) {
+      this.turnCompletionWatchdogTurnId = null;
+      return;
+    }
+    clearTimeout(this.turnCompletionWatchdogTimer);
+    this.turnCompletionWatchdogTimer = null;
+    this.turnCompletionWatchdogTurnId = null;
+    if (
+      reason !== "turn-completed" &&
+      reason !== "turn-failed" &&
+      reason !== "re-arm"
+    ) {
+      log(`turn watchdog cleared reason=${reason}`);
+    }
+  }
+
+  private emitWatchdogWarning(
+    env: TurnEnvelope,
+    opts: { timeoutMs: number; streak: number; requiresOperator: boolean; serviceUnit: string },
+  ): void {
+    if (env.replyRoute.kind !== "none") {
+      const seconds = Math.round(opts.timeoutMs / 1000);
+      const message = opts.requiresOperator
+        ? `⚠️ [runtime-codex watchdog] Processing stalled for ${seconds}s.\n` +
+          `(turnId=${env.turnId}, retrying automatically, operator may need to restart ${opts.serviceUnit})`
+        : `⚠️ [runtime-codex watchdog] Processing stalled for ${seconds}s.\n` +
+          `(turnId=${env.turnId}, retrying automatically)`;
+      void this.opts.router
+        .route(env.replyRoute, message, {
+          turnId: env.turnId,
+          primarySource: env.sourceMeta.primarySource,
+        })
+        .catch((error) => {
+          log(`watchdog warning route failed: ${error}`);
+        });
+    }
+    if (opts.requiresOperator) {
+      const text =
+        `🚨 [runtime-codex watchdog] ${this.opts.fromIdentity} turn stuck가 ${opts.streak}회 연속 감지됐습니다.\n` +
+        `turnId=${env.turnId}\n` +
+        `service=${opts.serviceUnit}\n` +
+        `권고: codex-app-server 상태 확인 또는 restart 검토`;
+      void this.opts.router.sendMeshAdhoc("arumi", text).catch((error) => {
+        log(`watchdog operator hint send failed: ${error}`);
+      });
+    }
+  }
+
+  private appServerServiceUnitHint(): string {
+    return this.opts.fromIdentity === "kongming"
+      ? "codex-app-server.service"
+      : `codex-app-server@${this.opts.fromIdentity}`;
   }
 
   private stripDiscordTypingSentinels(text: string, _env: TurnEnvelope): string {
