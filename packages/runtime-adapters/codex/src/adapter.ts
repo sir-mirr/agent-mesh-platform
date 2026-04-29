@@ -48,8 +48,12 @@ function saveState(path: string, state: PersistState): void {
 }
 
 export interface CodexRuntimeAdapterOptions {
-  actionProxy: ActionProxy;
   config?: CodexAdapterConfig;
+  actionProxy?: ActionProxy;
+  createActionProxy?: (context: {
+    config: CodexAdapterConfig;
+    hub: HubClient;
+  }) => ActionProxy;
 }
 
 export class CodexRuntimeAdapter {
@@ -70,8 +74,29 @@ export class CodexRuntimeAdapter {
       ...(persisted.threadId ? { threadId: persisted.threadId } : {}),
     };
 
+    this.hub = new HubClient({
+      url: this.config.hubUrl,
+      identity: this.config.adapterIdentity,
+      description: `Codex runtime adapter for ${this.config.targetAgent}`,
+      proxyFor: this.config.proxyFor,
+      onMessage: (message) => {
+        if (message.to !== this.config.targetAgent) return;
+        void this.manager.onMeshMessage(message);
+      },
+    });
+
+    const actionProxy =
+      options.actionProxy ??
+      options.createActionProxy?.({
+        config: this.config,
+        hub: this.hub,
+      });
+    if (!actionProxy) {
+      throw new Error("CodexRuntimeAdapter requires actionProxy or createActionProxy");
+    }
+
     this.dispatcher = new ReplyDispatcher({
-      actionProxy: options.actionProxy,
+      actionProxy,
       fromIdentity: this.config.targetAgent,
     });
 
@@ -119,17 +144,6 @@ export class CodexRuntimeAdapter {
 
     this.queue = new TurnQueue({ manager: this.manager });
     this.manager.attachQueue(this.queue);
-
-    this.hub = new HubClient({
-      url: this.config.hubUrl,
-      identity: this.config.adapterIdentity,
-      description: `Codex runtime adapter for ${this.config.targetAgent}`,
-      proxyFor: this.config.proxyFor,
-      onMessage: (message) => {
-        if (message.to !== this.config.targetAgent) return;
-        void this.manager.onMeshMessage(message);
-      },
-    });
   }
 
   start(): void {

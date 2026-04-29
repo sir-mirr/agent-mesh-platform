@@ -1,5 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 
+import type { ChannelSource } from "@agent-mesh/core";
+
+export interface CodexAdapterChannelTarget {
+  baseUrl: string;
+  token: string | null;
+}
+
 export interface CodexAdapterConfig {
   hubUrl: string;
   codexUrl: string;
@@ -14,6 +21,9 @@ export interface CodexAdapterConfig {
   rotationEnabled: boolean;
   rotationTurnThreshold: number;
   handoffDir: string;
+  httpPort: number;
+  httpToken: string | null;
+  channelTargets: Partial<Record<ChannelSource, CodexAdapterChannelTarget>>;
 }
 
 function defaultInstructionsPath(): string {
@@ -34,6 +44,19 @@ function parseBool(raw: string | undefined, defaultValue: boolean): boolean {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return defaultValue;
+}
+
+function parsePort(raw: string | undefined, fallback: number): number {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+    return fallback;
+  }
+  return value;
+}
+
+function normalizeOptionalString(raw: string | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  return trimmed ? trimmed : null;
 }
 
 export function loadCodexAdapterConfig(): CodexAdapterConfig {
@@ -85,6 +108,13 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     codexAuthToken = process.env.CODEX_AUTH_TOKEN;
   }
 
+  const discordDriverUrl =
+    normalizeOptionalString(process.env.CHANNEL_DISCORD_URL) ??
+    normalizeOptionalString(process.env.DISCORD_DRIVER_URL);
+  const discordDriverToken =
+    normalizeOptionalString(process.env.CHANNEL_DISCORD_TOKEN) ??
+    normalizeOptionalString(process.env.DISCORD_DRIVER_TOKEN);
+
   return {
     hubUrl,
     codexUrl,
@@ -102,5 +132,22 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     handoffDir:
       process.env.KONGMING_HANDOFF_DIR ??
       "/home/ubuntu/ai/workspaces/kongming/handoffs",
+    httpPort: parsePort(
+      process.env.CODEX_ADAPTER_HTTP_PORT ?? process.env.BRIDGE_HTTP_PORT,
+      4600,
+    ),
+    httpToken:
+      normalizeOptionalString(process.env.CODEX_ADAPTER_HTTP_TOKEN) ??
+      normalizeOptionalString(process.env.BRIDGE_HTTP_TOKEN),
+    channelTargets: {
+      ...(discordDriverUrl
+        ? {
+            discord: {
+              baseUrl: discordDriverUrl,
+              token: discordDriverToken,
+            },
+          }
+        : {}),
+    },
   };
 }

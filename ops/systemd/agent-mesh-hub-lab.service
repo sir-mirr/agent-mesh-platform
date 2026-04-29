@@ -1,0 +1,20 @@
+[Unit]
+Description=Agent Mesh Hub Server (Lab)
+After=network-online.target agent-mesh-http-lab.service
+Wants=network-online.target
+ConditionPathExists=/srv/agent-mesh-lab/legacy/agent-mesh/hub-server.ts
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/srv/agent-mesh-lab/legacy/agent-mesh
+Environment=BUN_INSTALL=/home/ubuntu/.bun
+Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
+EnvironmentFile=-/srv/agent-mesh-lab/env/shared/hub.env
+ExecStart=/bin/sh -lc 'exec /home/ubuntu/.bun/bin/bun "$AGENT_MESH_LEGACY_HOME/hub-server.ts"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

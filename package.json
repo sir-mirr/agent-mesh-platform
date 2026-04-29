@@ -10,6 +10,8 @@
     "packages/runtime-adapters/*"
   ],
   "scripts": {
+    "start:channel-discord": "bun packages/channel-drivers/discord/src/main.ts",
+    "start:runtime-codex": "bun packages/runtime-adapters/codex/src/main.ts",
     "typecheck": "bun --bun tsc -b tsconfig.base.json --pretty false",
     "typecheck:core": "bun --bun tsc -p packages/agent-mesh-core/tsconfig.json --pretty false",
     "typecheck:discord": "bun --bun tsc -p packages/channel-drivers/discord/tsconfig.json --pretty false",

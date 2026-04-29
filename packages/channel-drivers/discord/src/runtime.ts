@@ -69,7 +69,11 @@ async function createDefaultForwarder(
     },
     body: JSON.stringify({
       source: payload.source,
+      inputText: payload.rawEnvelope,
       envelope: payload.rawEnvelope,
+      chatId: payload.replyRoute.channelId,
+      replyToMessageId: payload.replyRoute.replyToMessageId,
+      authorId: payload.replyRoute.authorId,
       replyRoute: {
         kind: payload.replyRoute.kind,
         channelId: payload.replyRoute.channelId,

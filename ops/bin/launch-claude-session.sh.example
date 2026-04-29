@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IDENTITY="${1:?usage: launch-claude-session.sh <identity>}"
+ENV_DIR="${2:-/srv/agent-mesh-lab/env/${IDENTITY}}"
+
+echo "[claude-session] placeholder launcher for ${IDENTITY}"
+echo "[claude-session] load env from ${ENV_DIR}/adapter.env and ${ENV_DIR}/discord.env"
+echo "[claude-session] start the Claude lane so it exposes /ingress/channel on the configured port"
