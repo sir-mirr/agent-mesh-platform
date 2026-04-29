@@ -91,17 +91,19 @@ export class ReplyDispatcher {
     auditCtx: { turnId: string; primarySource: string },
   ): Promise<void> {
     if (route.kind === "none") return;
-    if (route.kind === "channel" && shouldSuppressChannelError(errorText)) {
+    if (route.kind === "channel") {
+      const visibleText = formatVisibleChannelError("[runtime-codex error]", errorText, auditCtx.turnId);
       log(
-        `suppressed channel error outbound turn=${auditCtx.turnId} source=${auditCtx.primarySource} err=${errorText}`,
+        `channel error outbound turn=${auditCtx.turnId} source=${auditCtx.primarySource} err=${errorText}`,
       );
+      await this.route(route, visibleText, auditCtx);
       return;
     }
     await this.route(route, `[runtime-codex error] ${errorText}`, auditCtx);
   }
 }
 
-function shouldSuppressChannelError(errorText: string): boolean {
+function shouldMarkAutoRecoveringError(errorText: string): boolean {
   const normalized = errorText.toLowerCase();
   return (
     normalized.includes("[dispatch-prep]") ||
@@ -112,6 +114,13 @@ function shouldSuppressChannelError(errorText: string): boolean {
     normalized.includes("admin reset: rotation") ||
     normalized.includes("codex disconnected mid-turn")
   );
+}
+
+function formatVisibleChannelError(prefix: string, errorText: string, turnId: string): string {
+  if (shouldMarkAutoRecoveringError(errorText)) {
+    return `⚠️ ${prefix} ${errorText}\n(turnId=${turnId}, recovering automatically)`;
+  }
+  return `⚠️ ${prefix} ${errorText}\n(turnId=${turnId})`;
 }
 
 function log(...args: unknown[]) {
