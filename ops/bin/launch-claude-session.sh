@@ -55,10 +55,14 @@ if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
   exit 1
 fi
 
-CLAUDE_CMD="cd '${WORKSPACE}' && export PATH=\"/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\" && claude --continue --dangerously-skip-permissions --dangerously-load-development-channels server:agent-mesh ${CLAUDE_OPTS_EXTRA:-}"
+CLAUDE_EXTRA_OPTS="${CLAUDE_OPTS_EXTRA:-}"
+CLAUDE_CMD="cd '${WORKSPACE}' && export PATH=\"/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\" && claude --dangerously-skip-permissions --dangerously-load-development-channels ${CLAUDE_EXTRA_OPTS} server:agent-mesh"
 tmux new-session -d -s "${SESSION_NAME}" "${CLAUDE_CMD}"
 
 echo "[claude-session] launched tmux session ${SESSION_NAME}"
 echo "[claude-session] workspace: ${WORKSPACE}"
+if [[ -n "${CLAUDE_EXTRA_OPTS}" ]]; then
+  echo "[claude-session] extra opts: ${CLAUDE_EXTRA_OPTS}"
+fi
 echo "[claude-session] next: tmux capture-pane -t ${SESSION_NAME} -p | tail -30"
 echo "[claude-session] first load may require Enter on the development-channel approval prompt"

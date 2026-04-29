@@ -22,6 +22,7 @@ This directory holds the 4th-round bring-up artifacts for the LXC lab.
 - Claude lanes remain session-managed for now.
   - Keep `channel-discord@<identity>.service`
   - Use `bin/launch-claude-session.sh` for the tmux session
+  - Fresh launches should keep `CLAUDE_OPTS_EXTRA=` empty; use `CLAUDE_OPTS_EXTRA=--continue` only for an intentional resume
   - The Discord driver uses hub-forward mode to send inbound Discord envelopes to the Claude lane identity
 
 ## Shared services
