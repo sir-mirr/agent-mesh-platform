@@ -109,37 +109,62 @@ async function isReplyToBotMessage(
 async function createDefaultForwarder(
   config: DiscordDriverConfig,
   payload: DiscordInboundPayload,
+  logger: DiscordLogFn,
 ): Promise<void> {
   if (!config.ingressForwardUrl || !config.ingressForwardToken) {
     throw new Error("no onInbound handler and no forwarding URL/token configured");
   }
-  const response = await fetch(config.ingressForwardUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${config.ingressForwardToken}`,
-    },
-    body: JSON.stringify({
-      source: payload.source,
-      inputText: payload.rawEnvelope,
-      envelope: payload.rawEnvelope,
-      chatId: payload.replyRoute.channelId,
-      replyToMessageId: payload.replyRoute.replyToMessageId,
+  const requestBody = JSON.stringify({
+    source: payload.source,
+    inputText: payload.rawEnvelope,
+    envelope: payload.rawEnvelope,
+    chatId: payload.replyRoute.channelId,
+    replyToMessageId: payload.replyRoute.replyToMessageId,
+    authorId: payload.replyRoute.authorId,
+    replyRoute: {
+      kind: payload.replyRoute.kind,
+      channelId: payload.replyRoute.channelId,
+      replyToMsgId: payload.replyRoute.replyToMessageId,
       authorId: payload.replyRoute.authorId,
-      replyRoute: {
-        kind: payload.replyRoute.kind,
-        channelId: payload.replyRoute.channelId,
-        replyToMsgId: payload.replyRoute.replyToMessageId,
-        authorId: payload.replyRoute.authorId,
-      },
-      attachments: payload.attachments,
-      rejectedAttachments: payload.rejectedAttachments,
-    }),
+    },
+    attachments: payload.attachments,
+    rejectedAttachments: payload.rejectedAttachments,
   });
+  logger(
+    `inbound forward route=ingress url=${config.ingressForwardUrl} ` +
+      `author=${payload.replyRoute.authorId} chat=${payload.replyRoute.channelId} ` +
+      `replyTo=${payload.replyRoute.replyToMessageId} bodyBytes=${requestBody.length}`,
+  );
+  let response: Response;
+  try {
+    response = await fetch(config.ingressForwardUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${config.ingressForwardToken}`,
+      },
+      body: requestBody,
+    });
+  } catch (error) {
+    logger(
+      `inbound forward route=ingress network-failed author=${payload.replyRoute.authorId} ` +
+        `chat=${payload.replyRoute.channelId} err=${error}`,
+    );
+    throw error;
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    logger(
+      `inbound forward route=ingress rejected status=${response.status} ` +
+        `author=${payload.replyRoute.authorId} chat=${payload.replyRoute.channelId} ` +
+        `detail=${detail.slice(0, 200)}`,
+    );
     throw new Error(`forward failed status=${response.status} detail=${detail.slice(0, 200)}`);
   }
+  logger(
+    `inbound forward route=ingress accepted status=${response.status} ` +
+      `author=${payload.replyRoute.authorId} chat=${payload.replyRoute.channelId}`,
+  );
 }
 
 async function handleInboundDiscordMessage(
@@ -152,7 +177,17 @@ async function handleInboundDiscordMessage(
   crossBotReplyLimiter: CrossBotReplyLimiter | null,
   forward: (payload: DiscordInboundPayload) => Promise<void>,
 ): Promise<void> {
-  if (client.user && message.author.id === client.user.id) return;
+  if (client.user && message.author.id === client.user.id) {
+    logger(
+      `inbound drop reason=self-author id=${message.id} channel=${message.channelId} author=${message.author.id}`,
+    );
+    return;
+  }
+  logger(
+    `inbound received id=${message.id} channel=${message.channelId} guild=${message.guildId ?? "dm"} ` +
+      `author=${message.author.id} bot=${message.author.bot} contentBytes=${message.content.length} ` +
+      `attachments=${message.attachments.size}`,
+  );
   // NOTE: legacy gateway dropped all other bots to prevent loops, but cross-bot
   // test scenarios (e.g., 4-bot lab in single channel) require bot-authored
   // messages to be delivered through normal access.json gates. Loop protection
@@ -161,7 +196,11 @@ async function handleInboundDiscordMessage(
 
   const isDm = message.guildId == null;
   if (isDm) {
-    if (!access.isDmAllowed(message.author.id)) return;
+    const dmAllowed = access.isDmAllowed(message.author.id);
+    logger(
+      `inbound dm-decision id=${message.id} author=${message.author.id} allowed=${dmAllowed}`,
+    );
+    if (!dmAllowed) return;
   } else {
     const repliedToBot = await isReplyToBotMessage(message, client.user?.id, recentSent);
     const groupKey =
@@ -169,14 +208,22 @@ async function handleInboundDiscordMessage(
       (message.channel as { isThread: () => boolean }).isThread()
         ? ((message.channel as { parentId?: string | null }).parentId ?? message.channelId)
         : message.channelId;
-    const matched = access.shouldForwardGuildMessage(groupKey, message.content ?? "", {
+    const mentionOpts = {
       authorId: message.author.id,
       authorIsBot: message.author.bot,
       repliedToBot,
       ...(client.user?.id ? { botId: client.user.id } : {}),
       userMentions: [...message.mentions.users.keys()],
-    });
-    if (!matched) return;
+    };
+    const decision = access.explainGuildForwardDecision(groupKey, message.content ?? "", mentionOpts);
+    logger(
+      `inbound guild-decision id=${message.id} group=${groupKey} matched=${decision.matched} ` +
+        `groupExists=${decision.groupExists} allowFrom=${decision.authorAllowFrom} ` +
+        `requireMention=${decision.requireMention} mentionMatched=${decision.mentionMatched} ` +
+        `crossBotAllow=${decision.crossBotAllowFrom} repliedToBot=${repliedToBot} ` +
+        `mentions=${message.mentions.users.size}`,
+    );
+    if (!decision.matched) return;
     if (crossBotReplyLimiter) {
       const threadKey = `${message.guildId ?? "dm"}:${message.channelId}`;
       if (message.author.bot) {
@@ -221,7 +268,12 @@ async function handleInboundDiscordMessage(
     attachments: downloaded,
     rejectedAttachments: rejected,
   };
+  logger(
+    `inbound payload-built id=${message.id} author=${message.author.id} bot=${message.author.bot} ` +
+      `downloaded=${downloaded.length} rejected=${rejected.length}`,
+  );
   await forward(payload);
+  logger(`inbound forward-complete id=${message.id} author=${message.author.id}`);
 }
 
 export async function startDiscordDriver(
@@ -268,14 +320,29 @@ export async function startDiscordDriver(
         logger,
       });
 
+  logger(
+    `driver config identity=${config.driverIdentity} access=${config.accessJsonPath} ` +
+      `forwardMode=${hubForward ? "hub-forward" : config.ingressForwardUrl ? "ingress" : "none"} ` +
+      `ingressUrl=${config.ingressForwardUrl ?? "-"} ingressToken=${config.ingressForwardToken ? "set" : "unset"} ` +
+      `hubForwardTarget=${config.hubForward?.targetAgent ?? "-"}`,
+  );
+
   const forward =
     options.onInbound ??
     (async (payload: DiscordInboundPayload) => {
       if (hubForward) {
+        logger(
+          `inbound forward route=hub-forward author=${payload.replyRoute.authorId} ` +
+            `chat=${payload.replyRoute.channelId} target=${config.hubForward?.targetAgent ?? "-"}`,
+        );
         await hubForward.forwardInbound(payload);
+        logger(
+          `inbound forward route=hub-forward accepted author=${payload.replyRoute.authorId} ` +
+            `chat=${payload.replyRoute.channelId}`,
+        );
         return;
       }
-      await createDefaultForwarder(config, payload);
+      await createDefaultForwarder(config, payload, logger);
     });
 
   client.once("ready", () => {

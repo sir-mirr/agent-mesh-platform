@@ -89,6 +89,9 @@ export function startCodexAdapterHttpServer(
                 : undefined;
 
           if (!source || !inputText || !chatId) {
+            options.logger?.(
+              `ingress/channel rejected invalid body source=${String(body.source)} chatId=${String(body.chatId ?? body.channelId ?? body.replyRoute?.channelId)} authorId=${String(body.authorId ?? body.replyRoute?.authorId)}`,
+            );
             return jsonResponse(400, { error: "invalid_ingress_body" });
           }
 
@@ -99,6 +102,10 @@ export function startCodexAdapterHttpServer(
             ...(replyToMessageId ? { replyToMessageId } : {}),
             ...(authorId ? { authorId } : {}),
           });
+          options.logger?.(
+            `ingress/channel accepted source=${source} chatId=${chatId} authorId=${authorId ?? "-"} ` +
+              `replyTo=${replyToMessageId ?? "-"} textBytes=${inputText.length}`,
+          );
           return jsonResponse(202, { ok: true });
         }
       } catch (error) {

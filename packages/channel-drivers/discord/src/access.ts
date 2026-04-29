@@ -140,17 +140,38 @@ export class AccessStore {
     content: string,
     opts: DiscordMentionMatchOptions,
   ): boolean {
+    return this.explainGuildForwardDecision(channelId, content, opts).matched;
+  }
+
+  explainGuildForwardDecision(
+    channelId: string,
+    content: string,
+    opts: DiscordMentionMatchOptions,
+  ): {
+    matched: boolean;
+    groupExists: boolean;
+    authorAllowFrom: boolean;
+    requireMention: boolean;
+    mentionMatched: boolean;
+    crossBotAllowFrom: boolean;
+  } {
     const group = this.data.groups[channelId];
-    if (
+    const crossBotAllowFrom = !!(
       opts.authorIsBot &&
       this.data.crossBotTestMode?.enabled &&
       this.data.crossBotTestMode.allowFrom?.includes(opts.authorId ?? "")
-    ) {
-      return true;
-    }
-    if (group?.allowFrom?.includes(opts.authorId ?? "")) return true;
-    if (group?.requireMention === false) return true;
-    return this.matchesMentionText(content, opts);
+    );
+    const authorAllowFrom = !!group?.allowFrom?.includes(opts.authorId ?? "");
+    const requireMention = group?.requireMention !== false;
+    const mentionMatched = this.matchesMentionText(content, opts);
+    return {
+      matched: crossBotAllowFrom || authorAllowFrom || !requireMention || mentionMatched,
+      groupExists: !!group,
+      authorAllowFrom,
+      requireMention,
+      mentionMatched,
+      crossBotAllowFrom,
+    };
   }
 
   isChannelAllowed(target: DiscordChannelAccessTarget): boolean {
