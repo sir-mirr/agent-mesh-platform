@@ -32,6 +32,17 @@ Shared lab services now start from the monorepo:
 - `packages/shared/http/src/main.ts`
 - `packages/shared/self-reminder/src/main.ts`
 
+`agent-mesh-hub-lab.service` now bootstraps baseline service identities through
+`POST /api/agents` after the hub listens. This keeps task #72 registration SSOT
+intact and avoids direct `hub.db` SQL drift.
+
+Bootstrap discovery rules:
+
+- `http-server` (or `http-server-dev` when `NODE_ENV=development`)
+- `SELF_REMINDER_IDENTITY` from `env/shared/self-reminder.env`
+- every `CODEX_ADAPTER_IDENTITY` found under `env/*/adapter.env`
+- every `HUB_FORWARD_IDENTITY` paired with `HUB_FORWARD_TARGET_AGENT` in `env/*/discord.env`
+
 The old `/srv/agent-mesh-lab/legacy/agent-mesh` copy can remain as rollback stock, but the active units should no longer point at it.
 
 ## First-start order
@@ -40,6 +51,7 @@ The old `/srv/agent-mesh-lab/legacy/agent-mesh` copy can remain as rollback stoc
 2. Install `systemd/*.service` into `/etc/systemd/system/`.
 3. Run `systemctl daemon-reload`.
 4. Start shared services first.
+   The hub will idempotently pre-register baseline service identities during startup.
 5. Start `channel-discord@test-codex1`, `channel-discord@test-codex2`.
 6. Start `codex-app-server@test-codex1`, `codex-app-server@test-codex2`.
 7. Start `agent-mesh-codex-adapter@test-codex1`, `agent-mesh-codex-adapter@test-codex2`.

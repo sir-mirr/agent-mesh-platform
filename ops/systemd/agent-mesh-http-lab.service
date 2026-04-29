@@ -1,6 +1,7 @@
 [Unit]
 Description=Agent Mesh HTTP API Server (Lab)
-After=network-online.target
+After=network-online.target agent-mesh-hub-lab.service
+Requires=agent-mesh-hub-lab.service
 Wants=network-online.target
 ConditionPathExists=/srv/agent-mesh-platform/packages/shared/http/src/main.ts
 
