@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Core contracts and services for the Agent-Mesh channel fabric.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
   }

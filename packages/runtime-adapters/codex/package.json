@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Codex runtime adapter for the Agent-Mesh channel fabric.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
   }

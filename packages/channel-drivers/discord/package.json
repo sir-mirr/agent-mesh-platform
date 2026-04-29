@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Discord channel driver for the Agent-Mesh channel fabric.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
   }
