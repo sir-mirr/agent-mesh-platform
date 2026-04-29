@@ -100,7 +100,11 @@ async function handleInboundDiscordMessage(
   forward: (payload: DiscordInboundPayload) => Promise<void>,
 ): Promise<void> {
   if (client.user && message.author.id === client.user.id) return;
-  if (message.author.bot) return;
+  // NOTE: legacy gateway dropped all other bots to prevent loops, but cross-bot
+  // test scenarios (e.g., 4-bot lab in single channel) require bot-authored
+  // messages to be delivered through normal access.json gates. Loop protection
+  // moves to access.json allowFrom or bot-specific role policy.
+  // (was: if (message.author.bot) return;)
 
   const isDm = message.guildId == null;
   if (isDm) {
