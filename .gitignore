@@ -8,3 +8,4 @@ secrets/
 *.sqlite
 tmp/
 .DS_Store
+*.tsbuildinfo
