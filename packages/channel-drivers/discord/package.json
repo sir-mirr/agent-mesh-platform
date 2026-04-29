@@ -7,6 +7,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@agent-mesh/core": "workspace:*",
+    "discord.js": "^14.16.3"
+  },
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
   }
