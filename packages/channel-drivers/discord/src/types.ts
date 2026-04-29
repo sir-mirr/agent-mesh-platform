@@ -22,6 +22,12 @@ export interface DiscordGroupPolicy {
   requireMention?: boolean;
 }
 
+export interface DiscordCrossBotTestMode {
+  enabled?: boolean;
+  allowFrom?: string[];
+  maxRepliesPerThread?: number;
+}
+
 export interface DiscordAccessFile {
   dmPolicy: DiscordDmPolicy;
   allowFrom: string[];
@@ -31,6 +37,7 @@ export interface DiscordAccessFile {
   replyToMode?: DiscordReplyToMode;
   textChunkLimit?: number;
   chunkMode?: DiscordChunkMode;
+  crossBotTestMode?: DiscordCrossBotTestMode;
   pending?: Record<string, unknown> | unknown[];
 }
 
@@ -61,6 +68,7 @@ export interface DiscordMentionMatchOptions {
   botId?: string;
   userMentions?: string[];
   authorId?: string;
+  authorIsBot?: boolean;
   repliedToBot?: boolean;
 }
 

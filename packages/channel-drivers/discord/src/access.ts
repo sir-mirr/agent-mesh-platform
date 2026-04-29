@@ -4,25 +4,62 @@ import type {
   DiscordAccessFile,
   DiscordChannelAccessTarget,
   DiscordChunkMode,
+  DiscordCrossBotTestMode,
   DiscordGroupPolicy,
   DiscordMentionMatchOptions,
   DiscordReplyToMode,
 } from "./types";
 
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function normalizePositiveInt(value: unknown): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
 function normalizeGroupPolicy(value: unknown): DiscordGroupPolicy {
   if (!value || typeof value !== "object") return {};
   const raw = value as Record<string, unknown>;
-  const allowSource = Array.isArray(raw.allowFrom)
-    ? raw.allowFrom
-    : Array.isArray(raw.allow)
-      ? raw.allow
-      : [];
-  const allowFrom = allowSource.map(String);
+  const allowFrom = normalizeStringList(
+    Array.isArray(raw.allowFrom)
+      ? raw.allowFrom
+      : Array.isArray(raw.allow)
+        ? raw.allow
+        : [],
+  );
   return {
     ...(allowFrom.length > 0 ? { allowFrom } : {}),
     ...(typeof raw.requireMention === "boolean"
       ? { requireMention: raw.requireMention }
       : {}),
+  };
+}
+
+function normalizeCrossBotTestMode(value: unknown): DiscordCrossBotTestMode | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const allowFrom = normalizeStringList(
+    Array.isArray(raw.allowFrom)
+      ? raw.allowFrom
+      : Array.isArray(raw.allow)
+        ? raw.allow
+        : [],
+  );
+  const maxRepliesPerThread = normalizePositiveInt(raw.maxRepliesPerThread);
+  if (
+    typeof raw.enabled !== "boolean" &&
+    allowFrom.length === 0 &&
+    maxRepliesPerThread === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(typeof raw.enabled === "boolean" ? { enabled: raw.enabled } : {}),
+    ...(allowFrom.length > 0 ? { allowFrom } : {}),
+    ...(maxRepliesPerThread !== undefined ? { maxRepliesPerThread } : {}),
   };
 }
 
@@ -51,9 +88,10 @@ export class AccessStore {
         normalizeGroupPolicy(value),
       ]),
     );
+    const crossBotTestMode = normalizeCrossBotTestMode(parsed.crossBotTestMode);
     this.data = {
       dmPolicy: parsed.dmPolicy ?? "pairing",
-      allowFrom: Array.isArray(parsed.allowFrom) ? parsed.allowFrom.map(String) : [],
+      allowFrom: normalizeStringList(parsed.allowFrom),
       groups,
       ...(Array.isArray(parsed.mentionPatterns)
         ? { mentionPatterns: parsed.mentionPatterns.map(String) }
@@ -64,6 +102,7 @@ export class AccessStore {
         ? { textChunkLimit: parsed.textChunkLimit }
         : {}),
       ...(parsed.chunkMode ? { chunkMode: parsed.chunkMode } : {}),
+      ...(crossBotTestMode ? { crossBotTestMode } : {}),
       ...(parsed.pending ? { pending: parsed.pending } : {}),
     };
   }
@@ -102,6 +141,13 @@ export class AccessStore {
     opts: DiscordMentionMatchOptions,
   ): boolean {
     const group = this.data.groups[channelId];
+    if (
+      opts.authorIsBot &&
+      this.data.crossBotTestMode?.enabled &&
+      this.data.crossBotTestMode.allowFrom?.includes(opts.authorId ?? "")
+    ) {
+      return true;
+    }
     if (group?.allowFrom?.includes(opts.authorId ?? "")) return true;
     if (group?.requireMention === false) return true;
     return this.matchesMentionText(content, opts);
@@ -134,6 +180,10 @@ export class AccessStore {
   get textChunkLimit(): number {
     const raw = this.data.textChunkLimit ?? 2000;
     return Math.max(1, Math.min(raw, 2000));
+  }
+
+  get crossBotTestMode(): DiscordCrossBotTestMode | null {
+    return this.data.crossBotTestMode?.enabled ? this.data.crossBotTestMode : null;
   }
 
   get mentionPatternsView(): readonly string[] {

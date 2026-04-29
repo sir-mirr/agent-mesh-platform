@@ -81,8 +81,9 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     "kongming";
 
   const instructionsPath =
-    process.env.KONGMING_INSTRUCTIONS_PATH ??
+    process.env.RUNTIME_INSTRUCTIONS_PATH ??
     process.env.CODEX_INSTRUCTIONS_PATH ??
+    process.env.KONGMING_INSTRUCTIONS_PATH ??
     defaultInstructionsPath();
   let instructionsText = "";
   try {
@@ -126,10 +127,17 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     statePath,
     codexAuthToken,
     codexCwd: process.env.CODEX_CWD ?? process.cwd(),
-    rotationEnabled: parseBool(process.env.KONGMING_ROTATION_ENABLED, true),
+    rotationEnabled: parseBool(
+      process.env.RUNTIME_ROTATION_ENABLED ?? process.env.KONGMING_ROTATION_ENABLED,
+      true,
+    ),
     rotationTurnThreshold:
-      parsePositiveInt(process.env.KONGMING_ROTATION_TURN_THRESHOLD) ?? 25,
+      parsePositiveInt(
+        process.env.RUNTIME_ROTATION_TURN_THRESHOLD ??
+          process.env.KONGMING_ROTATION_TURN_THRESHOLD,
+      ) ?? 25,
     handoffDir:
+      process.env.RUNTIME_HANDOFF_DIR ??
       process.env.KONGMING_HANDOFF_DIR ??
       "/home/ubuntu/ai/workspaces/kongming/handoffs",
     httpPort: parsePort(

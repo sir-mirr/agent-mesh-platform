@@ -39,6 +39,57 @@ export interface DiscordDriverRuntime {
   stop(): Promise<void>;
 }
 
+const CROSS_BOT_TEST_COUNTER_TTL_MS = 15 * 60 * 1000;
+
+class CrossBotReplyLimiter {
+  private readonly counters = new Map<string, { count: number; updatedAt: number }>();
+
+  constructor(
+    private readonly maxRepliesPerThread: number,
+    private readonly ttlMs = CROSS_BOT_TEST_COUNTER_TTL_MS,
+  ) {}
+
+  reset(threadKey: string): void {
+    this.counters.delete(threadKey);
+  }
+
+  noteBotReply(threadKey: string): { allowed: boolean; count: number; limit: number } {
+    const now = Date.now();
+    this.evictExpired(now);
+    const current = this.counters.get(threadKey);
+    const count = current?.count ?? 0;
+    if (count >= this.maxRepliesPerThread) {
+      this.counters.set(threadKey, {
+        count,
+        updatedAt: now,
+      });
+      return {
+        allowed: false,
+        count,
+        limit: this.maxRepliesPerThread,
+      };
+    }
+    const nextCount = count + 1;
+    this.counters.set(threadKey, {
+      count: nextCount,
+      updatedAt: now,
+    });
+    return {
+      allowed: true,
+      count: nextCount,
+      limit: this.maxRepliesPerThread,
+    };
+  }
+
+  private evictExpired(now: number): void {
+    for (const [threadKey, state] of this.counters.entries()) {
+      if (now - state.updatedAt > this.ttlMs) {
+        this.counters.delete(threadKey);
+      }
+    }
+  }
+}
+
 async function isReplyToBotMessage(
   message: Message,
   botUserId: string | undefined,
@@ -98,6 +149,7 @@ async function handleInboundDiscordMessage(
   config: DiscordDriverConfig,
   logger: DiscordLogFn,
   recentSent: RecentSentMessageTracker,
+  crossBotReplyLimiter: CrossBotReplyLimiter | null,
   forward: (payload: DiscordInboundPayload) => Promise<void>,
 ): Promise<void> {
   if (client.user && message.author.id === client.user.id) return;
@@ -119,11 +171,27 @@ async function handleInboundDiscordMessage(
         : message.channelId;
     const matched = access.shouldForwardGuildMessage(groupKey, message.content ?? "", {
       authorId: message.author.id,
+      authorIsBot: message.author.bot,
       repliedToBot,
       ...(client.user?.id ? { botId: client.user.id } : {}),
       userMentions: [...message.mentions.users.keys()],
     });
     if (!matched) return;
+    if (crossBotReplyLimiter) {
+      const threadKey = `${message.guildId ?? "dm"}:${message.channelId}`;
+      if (message.author.bot) {
+        const limiterState = crossBotReplyLimiter.noteBotReply(threadKey);
+        if (!limiterState.allowed) {
+          logger(
+            `cross-bot test drop: channel=${message.channelId} author=${message.author.id} ` +
+              `count=${limiterState.count} limit=${limiterState.limit}`,
+          );
+          return;
+        }
+      } else {
+        crossBotReplyLimiter.reset(threadKey);
+      }
+    }
   }
 
   const typingChannel = message.channel as { sendTyping?: () => Promise<void> };
@@ -187,6 +255,9 @@ export async function startDiscordDriver(
     config,
     recentSent,
   });
+  const crossBotReplyLimiter = access.crossBotTestMode
+    ? new CrossBotReplyLimiter(Math.max(1, access.crossBotTestMode.maxRepliesPerThread ?? 3))
+    : null;
   const hubForward = options.onInbound || !config.hubForward
     ? null
     : await startDiscordHubForwardBridge({
@@ -221,6 +292,7 @@ export async function startDiscordDriver(
         config,
         logger,
         recentSent,
+        crossBotReplyLimiter,
         forward,
       );
     } catch (error) {
