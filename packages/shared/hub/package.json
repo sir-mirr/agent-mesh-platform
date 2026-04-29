@@ -1,0 +1,13 @@
+{
+  "name": "@agent-mesh/shared-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Agent-Mesh hub service entrypoint.",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

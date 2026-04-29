@@ -20,13 +20,19 @@
     "paths": {
       "@agent-mesh/core": ["packages/agent-mesh-core/src/index.ts"],
       "@agent-mesh/channel-discord": ["packages/channel-drivers/discord/src/index.ts"],
-      "@agent-mesh/runtime-codex": ["packages/runtime-adapters/codex/src/index.ts"]
+      "@agent-mesh/runtime-codex": ["packages/runtime-adapters/codex/src/index.ts"],
+      "@agent-mesh/shared-hub": ["packages/shared/hub/src/main.ts"],
+      "@agent-mesh/shared-http": ["packages/shared/http/src/main.ts"],
+      "@agent-mesh/shared-self-reminder": ["packages/shared/self-reminder/src/main.ts"]
     }
   },
   "files": [],
   "references": [
     { "path": "./packages/agent-mesh-core/tsconfig.json" },
     { "path": "./packages/channel-drivers/discord/tsconfig.json" },
-    { "path": "./packages/runtime-adapters/codex/tsconfig.json" }
+    { "path": "./packages/runtime-adapters/codex/tsconfig.json" },
+    { "path": "./packages/shared/hub/tsconfig.json" },
+    { "path": "./packages/shared/http/tsconfig.json" },
+    { "path": "./packages/shared/self-reminder/tsconfig.json" }
   ]
 }

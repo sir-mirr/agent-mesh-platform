@@ -26,11 +26,13 @@ This directory holds the 4th-round bring-up artifacts for the LXC lab.
 
 ## Shared services
 
-Shared lab services still point to a legacy `agent-mesh` runtime copy at:
+Shared lab services now start from the monorepo:
 
-`/srv/agent-mesh-lab/legacy/agent-mesh`
+- `packages/shared/hub/src/main.ts`
+- `packages/shared/http/src/main.ts`
+- `packages/shared/self-reminder/src/main.ts`
 
-This keeps 4th round focused on lane wiring. Shared core import can happen later.
+The old `/srv/agent-mesh-lab/legacy/agent-mesh` copy can remain as rollback stock, but the active units should no longer point at it.
 
 ## First-start order
 

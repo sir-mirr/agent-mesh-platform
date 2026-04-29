@@ -1,0 +1,17 @@
+{
+  "name": "@agent-mesh/shared-http",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Agent-Mesh HTTP service entrypoint.",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "web-push": "^3.6.7"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

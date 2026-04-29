@@ -2,17 +2,17 @@
 Description=Agent Mesh HTTP API Server (Lab)
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/srv/agent-mesh-lab/legacy/agent-mesh/http-server.ts
+ConditionPathExists=/srv/agent-mesh-platform/packages/shared/http/src/main.ts
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/srv/agent-mesh-lab/legacy/agent-mesh
+WorkingDirectory=/srv/agent-mesh-platform
 Environment=BUN_INSTALL=/home/ubuntu/.bun
 Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/http.env
-ExecStart=/bin/sh -lc 'exec /home/ubuntu/.bun/bin/bun "$AGENT_MESH_LEGACY_HOME/http-server.ts"'
+ExecStart=/home/ubuntu/.bun/bin/bun packages/shared/http/src/main.ts
 Restart=always
 RestartSec=3
 
