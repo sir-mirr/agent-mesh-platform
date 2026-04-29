@@ -43,6 +43,11 @@ export interface DiscordDriverConfig {
   ingressForwardToken?: string;
   httpPort: number;
   httpToken: string | null;
+  hubForward?: {
+    hubUrl: string;
+    hubIdentity: string;
+    targetAgent: string;
+  };
 }
 
 export interface DiscordChannelAccessTarget {

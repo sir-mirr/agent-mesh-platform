@@ -15,6 +15,11 @@ function sanitizeIdentity(raw: string): string {
   return cleaned || "discord-driver";
 }
 
+function normalizeOptionalString(raw: string | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  return trimmed ? trimmed : null;
+}
+
 export function loadDiscordDriverConfig(): DiscordDriverConfig {
   const driverIdentity = sanitizeIdentity(
     (
@@ -45,6 +50,14 @@ export function loadDiscordDriverConfig(): DiscordDriverConfig {
     process.env.BRIDGE_INGRESS_TOKEN ??
     ""
   ).trim();
+  const hubForwardTargetAgent = normalizeOptionalString(process.env.HUB_FORWARD_TARGET_AGENT);
+  const hubUrl =
+    normalizeOptionalString(process.env.HUB_URL) ??
+    normalizeOptionalString(process.env.AGENT_MESH_HUB_URL) ??
+    "ws://127.0.0.1:3100/ws";
+  const hubIdentity = sanitizeIdentity(
+    normalizeOptionalString(process.env.HUB_FORWARD_IDENTITY) ?? `${driverIdentity}-discord`,
+  );
 
   return {
     driverIdentity,
@@ -60,5 +73,14 @@ export function loadDiscordDriverConfig(): DiscordDriverConfig {
     httpToken:
       (process.env.DISCORD_DRIVER_HTTP_TOKEN ?? process.env.GATEWAY_TOKEN ?? "").trim() ||
       null,
+    ...(hubForwardTargetAgent
+      ? {
+          hubForward: {
+            hubUrl,
+            hubIdentity,
+            targetAgent: hubForwardTargetAgent,
+          },
+        }
+      : {}),
   };
 }

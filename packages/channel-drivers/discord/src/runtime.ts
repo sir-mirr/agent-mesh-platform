@@ -12,6 +12,7 @@ import { assertProxyRegistration, type OwnershipPolicy } from "@agent-mesh/core"
 import { AccessStore } from "./access";
 import { downloadDiscordAttachments } from "./attachments";
 import { loadDiscordDriverConfig } from "./config";
+import { startDiscordHubForwardBridge } from "./hub-forward";
 import { startDiscordDriverHttpServer } from "./http";
 import { RecentSentMessageTracker } from "./recent-sent";
 import { createDiscordToolService } from "./tools";
@@ -186,10 +187,25 @@ export async function startDiscordDriver(
     config,
     recentSent,
   });
+  const hubForward = options.onInbound || !config.hubForward
+    ? null
+    : await startDiscordHubForwardBridge({
+        config: config as DiscordDriverConfig & {
+          hubForward: NonNullable<DiscordDriverConfig["hubForward"]>;
+        },
+        tools,
+        logger,
+      });
 
   const forward =
     options.onInbound ??
-    (async (payload: DiscordInboundPayload) => createDefaultForwarder(config, payload));
+    (async (payload: DiscordInboundPayload) => {
+      if (hubForward) {
+        await hubForward.forwardInbound(payload);
+        return;
+      }
+      await createDefaultForwarder(config, payload);
+    });
 
   client.once("ready", () => {
     logger(`discord ready: ${client.user?.tag ?? "unknown"} id=${client.user?.id ?? "?"}`);
@@ -229,6 +245,7 @@ export async function startDiscordDriver(
     tools,
     async stop() {
       httpServer?.stop();
+      hubForward?.stop();
       client.destroy();
     },
   };

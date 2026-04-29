@@ -21,7 +21,8 @@ This directory holds the 4th-round bring-up artifacts for the LXC lab.
   - `channel-discord@<identity>.service`
 - Claude lanes remain session-managed for now.
   - Keep `channel-discord@<identity>.service`
-  - Use `bin/launch-claude-session.sh.example` as the launcher starting point
+  - Use `bin/launch-claude-session.sh` for the tmux session
+  - The Discord driver uses hub-forward mode to send inbound Discord envelopes to the Claude lane identity
 
 ## Shared services
 
@@ -40,5 +41,15 @@ This keeps 4th round focused on lane wiring. Shared core import can happen later
 5. Start `channel-discord@test-codex1`, `channel-discord@test-codex2`.
 6. Start `codex-app-server@test-codex1`, `codex-app-server@test-codex2`.
 7. Start `agent-mesh-codex-adapter@test-codex1`, `agent-mesh-codex-adapter@test-codex2`.
+8. Start `channel-discord@test-claude1`, `channel-discord@test-claude2`.
+9. Launch `test-claude1`, `test-claude2` with `bin/launch-claude-session.sh`.
 
 Before the first `enable --now`, take the `pre-first-start` snapshot.
+
+## Claude lane caveat
+
+The current 6A path keeps Claude on legacy `server:agent-mesh`.
+
+- inbound Discord reaches Claude through hub-forwarded messages
+- outbound Claude replies go back to the driver identity over agent-mesh reply
+- richer channel tools (`react`, `fetch_messages`, attachment tools) remain a follow-up
