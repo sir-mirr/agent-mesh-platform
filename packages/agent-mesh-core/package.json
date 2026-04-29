@@ -1,0 +1,10 @@
+{
+  "name": "@agent-mesh/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Core contracts and services for the Agent-Mesh channel fabric.",
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

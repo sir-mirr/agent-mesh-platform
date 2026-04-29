@@ -1,0 +1,10 @@
+node_modules/
+*.log
+*.bak.*
+.env
+.env.*
+secrets/
+*.db
+*.sqlite
+tmp/
+.DS_Store

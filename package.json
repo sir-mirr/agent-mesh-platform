@@ -1,0 +1,23 @@
+{
+  "name": "agent-mesh-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private monorepo skeleton for the Agent-Mesh channel fabric architecture.",
+  "type": "module",
+  "workspaces": [
+    "packages/agent-mesh-core",
+    "packages/channel-drivers/*",
+    "packages/runtime-adapters/*"
+  ],
+  "scripts": {
+    "typecheck": "bun --bun tsc -b tsconfig.base.json --pretty false",
+    "typecheck:core": "bun --bun tsc -p packages/agent-mesh-core/tsconfig.json --pretty false",
+    "typecheck:discord": "bun --bun tsc -p packages/channel-drivers/discord/tsconfig.json --pretty false",
+    "typecheck:codex": "bun --bun tsc -p packages/runtime-adapters/codex/tsconfig.json --pretty false"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.13",
+    "@types/node": "^22.15.21",
+    "typescript": "^5.5.0"
+  }
+}
