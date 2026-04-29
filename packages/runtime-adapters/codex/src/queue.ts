@@ -28,6 +28,8 @@ export class TurnQueue {
   private active: TurnEnvelope | null = null;
   private running = false;
   private processing = false;
+  private dispatchPaused = false;
+  private pauseReason: string | null = null;
   private wakeup: (() => void) | null = null;
 
   constructor(private readonly opts: QueueOptions) {}
@@ -106,6 +108,26 @@ export class TurnQueue {
     this.notify();
   }
 
+  pauseDispatch(reason: string): void {
+    if (this.dispatchPaused) {
+      this.pauseReason = reason;
+      return;
+    }
+    this.dispatchPaused = true;
+    this.pauseReason = reason;
+    log(`dispatch paused reason=${reason}`);
+    this.notify();
+  }
+
+  resumeDispatch(reason: string): void {
+    if (!this.dispatchPaused) return;
+    const previous = this.pauseReason ?? "(unknown)";
+    this.dispatchPaused = false;
+    this.pauseReason = null;
+    log(`dispatch resumed reason=${reason} previous=${previous}`);
+    this.notify();
+  }
+
   requeueFront(env: TurnEnvelope, reason: string): "requeued" | "dropped" {
     const previous = env.sourceMeta.readyRetryCount ?? 0;
     const next = previous + 1;
@@ -150,6 +172,13 @@ export class TurnQueue {
 
   private async loop(): Promise<void> {
     while (this.running) {
+      if (this.dispatchPaused) {
+        await new Promise<void>((resolve) => {
+          this.wakeup = resolve;
+        });
+        continue;
+      }
+
       if (!this.active && this.pendingCount() > 0 && !this.processing) {
         if (!this.opts.manager.codexIsReady()) {
           await new Promise<void>((resolve) => {

@@ -56,6 +56,16 @@ function requiredMatchGroup(match: RegExpMatchArray, index: number): string {
   return value;
 }
 
+class RetryableTurnDispatchError extends Error {
+  constructor(
+    readonly reason: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RetryableTurnDispatchError";
+  }
+}
+
 type State = "idle" | "running";
 
 export interface ThreadManagerOptions {
@@ -116,11 +126,24 @@ export class ThreadManager {
   }
 
   async ensureThread(): Promise<string> {
-    if (this.threadId) {
+    const existingThreadId = this.threadId;
+    if (existingThreadId) {
       try {
-        await this.opts.codex.threadResume(this.threadId);
-        return this.threadId;
+        await this.opts.codex.threadResume(existingThreadId);
+        if (this.threadId === existingThreadId) {
+          return existingThreadId;
+        }
+        if (typeof this.threadId === "string" && this.threadId) {
+          return this.threadId;
+        }
+        throw new RetryableTurnDispatchError(
+          "rotation-thread-resume-race",
+          "[dispatch-prep] thread changed while resuming; retrying after queue replay",
+        );
       } catch (error) {
+        if (error instanceof RetryableTurnDispatchError) {
+          throw error;
+        }
         log(`thread/resume failed (${error}), starting new thread`);
         this.threadId = null;
       }
@@ -132,6 +155,12 @@ export class ThreadManager {
     this.threadId = result.threadId;
     this.rotation.resetOnThreadChange();
     this.opts.onThreadIdChange?.(this.threadId);
+    if (typeof this.threadId !== "string" || !this.threadId) {
+      throw new RetryableTurnDispatchError(
+        "missing-thread-id-after-start",
+        "[dispatch-prep] thread/start returned no usable thread id",
+      );
+    }
     return this.threadId;
   }
 
@@ -147,6 +176,7 @@ export class ThreadManager {
     this.currentTurnId = null;
     this.agentMessages.clear();
     this.state = "idle";
+    this.queue?.resumeDispatch("reset-for-reconnect");
     this.queue?.clearActive();
   }
 
@@ -220,19 +250,33 @@ export class ThreadManager {
 
     try {
       const threadId = await this.ensureThread();
+      if (typeof threadId !== "string" || !threadId) {
+        throw new RetryableTurnDispatchError(
+          "missing-thread-id-before-turn-start",
+          "[dispatch-prep] thread id unavailable before turn/start",
+        );
+      }
+      const codexInput = asCodexInput(env.inputItems);
       const completion = new Promise<void>((resolve, reject) => {
         this.turnCompletion = { resolve, reject };
       });
 
       const result = await this.opts.codex.turnStart({
         threadId,
-        input: asCodexInput(env.inputItems),
+        input: codexInput,
         cwd: this.opts.cwd,
       });
       const codexTurnId = (result as any)?.turn?.id ?? (result as any)?.turnId;
       if (codexTurnId) this.currentTurnId = codexTurnId;
       await completion;
     } catch (error: any) {
+      if (error instanceof RetryableTurnDispatchError) {
+        const outcome = this.queue?.requeueFront(env, error.reason) ?? "dropped";
+        log(
+          `retryable dispatch error turn=${env.turnId} reason=${error.reason} outcome=${outcome} err=${error.message}`,
+        );
+        return;
+      }
       if (env.replyRoute.kind === "none") {
         log(
           `kind=none turn failure suppressed turn=${env.turnId} err=${String(error?.message ?? error)}`,
@@ -601,6 +645,10 @@ export class ThreadManager {
     const turnIdForLog = env?.turnId ?? "?";
     const handoffBody = outgoing;
 
+    if (isRotationEnv && rotationStage === "r1-handoff-request") {
+      this.queue?.pauseDispatch("rotation-r1-completed");
+    }
+
     if (this.turnCompletion) {
       this.turnCompletion.resolve();
       this.turnCompletion = null;
@@ -643,6 +691,7 @@ export class ThreadManager {
     } catch (error) {
       log(`rotation startFreshThread failed: ${error}`);
       this.rotation.markRotationEnd();
+      this.queue?.resumeDispatch("rotation-start-fresh-thread-failed");
       return;
     }
 
@@ -653,9 +702,11 @@ export class ThreadManager {
     }
     try {
       this.queue.enqueueFront(r3);
+      this.queue.resumeDispatch("rotation-r3-enqueued");
     } catch (error) {
       log(`rotation R3 enqueueFront threw (turn=${turnIdForLog}): ${error}`);
       this.rotation.markRotationEnd();
+      this.queue.resumeDispatch("rotation-r3-enqueue-failed");
     }
   }
 
@@ -884,11 +935,25 @@ export class ThreadManager {
 function asCodexInput(
   items: CodexInputItem[],
 ): Array<{ type: "text"; text: string; text_elements: unknown[] }> {
-  return items.map((item) => ({
-    type: "text",
-    text: item.text,
-    text_elements: [],
-  }));
+  return items.map((item, index) => {
+    if (!item || item.type !== "text") {
+      throw new RetryableTurnDispatchError(
+        "invalid-input-item-type",
+        `[dispatch-prep] invalid input item at index ${index}`,
+      );
+    }
+    if (typeof item.text !== "string") {
+      throw new RetryableTurnDispatchError(
+        "invalid-input-item-text",
+        `[dispatch-prep] input item ${index} text must be string`,
+      );
+    }
+    return {
+      type: "text",
+      text: item.text,
+      text_elements: [],
+    };
+  });
 }
 
 function log(...args: unknown[]) {

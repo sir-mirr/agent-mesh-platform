@@ -91,6 +91,27 @@ export class ReplyDispatcher {
     auditCtx: { turnId: string; primarySource: string },
   ): Promise<void> {
     if (route.kind === "none") return;
+    if (route.kind === "channel" && shouldSuppressChannelError(errorText)) {
+      log(
+        `suppressed channel error outbound turn=${auditCtx.turnId} source=${auditCtx.primarySource} err=${errorText}`,
+      );
+      return;
+    }
     await this.route(route, `[runtime-codex error] ${errorText}`, auditCtx);
   }
+}
+
+function shouldSuppressChannelError(errorText: string): boolean {
+  const normalized = errorText.toLowerCase();
+  return (
+    normalized.includes("[dispatch-prep]") ||
+    normalized.includes("invalid request: invalid type: null") ||
+    normalized.includes("expected a string") ||
+    normalized.includes("admin reset: rotation") ||
+    normalized.includes("codex disconnected mid-turn")
+  );
+}
+
+function log(...args: unknown[]) {
+  console.log("[runtime-codex] [router]", ...args);
 }
