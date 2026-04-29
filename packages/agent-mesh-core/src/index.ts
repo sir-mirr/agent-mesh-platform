@@ -1,3 +1,4 @@
+export * from "./action-proxy";
 export * from "./capabilities";
 export * from "./envelope";
 export * from "./history";

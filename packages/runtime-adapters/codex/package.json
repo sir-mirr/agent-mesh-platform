@@ -7,6 +7,10 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@agent-mesh/core": "workspace:*",
+    "ws": "^8.18.0"
+  },
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
   }
