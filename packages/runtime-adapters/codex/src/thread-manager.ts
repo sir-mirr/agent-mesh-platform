@@ -25,6 +25,9 @@ const MESH_SEND_RE = /\[\[MESH-SEND\]\]\s*([\s\S]*?)\s*\[\[\/MESH-SEND\]\]/g;
 const DISCORD_SEND_RE = /\[\[DISCORD-SEND\]\]\s*([\s\S]*?)\s*\[\[\/DISCORD-SEND\]\]/g;
 const DISCORD_ATTACH_RE = /\[\[DISCORD-ATTACH\]\]\s*([\s\S]*?)\s*\[\[\/DISCORD-ATTACH\]\]/g;
 const TYPING_KEEPALIVE_MS = 9000;
+const ATTACHMENT_TURN_START_TIMEOUT_MS = parsePositiveInt(
+  process.env.CODEX_ATTACHMENT_TURN_START_TIMEOUT_MS,
+) ?? 90_000;
 
 let _srDb: Database | null = null;
 
@@ -48,6 +51,13 @@ function parseRelativeSchedule(spec: any): string | null {
   return `+${Number(match[1])} ${unit}`;
 }
 
+function parsePositiveInt(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) return null;
+  return value;
+}
+
 function requiredMatchGroup(match: RegExpMatchArray, index: number): string {
   const value = match[index];
   if (value === undefined) {
@@ -64,6 +74,24 @@ class RetryableTurnDispatchError extends Error {
     super(message);
     this.name = "RetryableTurnDispatchError";
   }
+}
+
+function classifyRetryableCodexError(error: unknown): RetryableTurnDispatchError | null {
+  const message = String((error as { message?: unknown })?.message ?? error);
+  const normalized = message.toLowerCase();
+  if (normalized.includes("codex rpc timeout: turn/start")) {
+    return new RetryableTurnDispatchError(
+      "turn-start-timeout",
+      "[dispatch-prep] turn/start timed out; retrying after queue replay",
+    );
+  }
+  if (normalized.includes("no rollout found")) {
+    return new RetryableTurnDispatchError(
+      "stale-thread-rollout",
+      "[dispatch-prep] stale rollout state detected; retrying after queue replay",
+    );
+  }
+  return null;
 }
 
 type State = "idle" | "running";
@@ -257,6 +285,14 @@ export class ThreadManager {
         );
       }
       const codexInput = asCodexInput(env.inputItems);
+      const turnStartTimeoutMs = env.sourceMeta.hasAttachments
+        ? ATTACHMENT_TURN_START_TIMEOUT_MS
+        : undefined;
+      log(
+        `turn/start dispatch turn=${env.turnId} thread=${threadId} ` +
+          `items=${env.inputItems.length} attachments=${env.sourceMeta.hasAttachments ? "yes" : "no"} ` +
+          `timeoutMs=${turnStartTimeoutMs ?? 30_000}`,
+      );
       const completion = new Promise<void>((resolve, reject) => {
         this.turnCompletion = { resolve, reject };
       });
@@ -265,15 +301,31 @@ export class ThreadManager {
         threadId,
         input: codexInput,
         cwd: this.opts.cwd,
+        ...(turnStartTimeoutMs ? { timeoutMs: turnStartTimeoutMs } : {}),
       });
       const codexTurnId = (result as any)?.turn?.id ?? (result as any)?.turnId;
       if (codexTurnId) this.currentTurnId = codexTurnId;
+      log(
+        `turn/start ok turn=${env.turnId} codexTurnId=${this.currentTurnId ?? "-"} ` +
+          `attachments=${env.sourceMeta.hasAttachments ? "yes" : "no"}`,
+      );
       await completion;
     } catch (error: any) {
-      if (error instanceof RetryableTurnDispatchError) {
-        const outcome = this.queue?.requeueFront(env, error.reason) ?? "dropped";
+      const retryable = error instanceof RetryableTurnDispatchError
+        ? error
+        : classifyRetryableCodexError(error);
+      if (retryable) {
+        if (
+          retryable.reason === "turn-start-timeout" ||
+          retryable.reason === "stale-thread-rollout"
+        ) {
+          this.threadId = null;
+          this.currentTurnId = null;
+        }
+        const outcome = this.queue?.requeueFront(env, retryable.reason) ?? "dropped";
         log(
-          `retryable dispatch error turn=${env.turnId} reason=${error.reason} outcome=${outcome} err=${error.message}`,
+          `retryable dispatch error turn=${env.turnId} reason=${retryable.reason} ` +
+            `outcome=${outcome} err=${retryable.message}`,
         );
         return;
       }

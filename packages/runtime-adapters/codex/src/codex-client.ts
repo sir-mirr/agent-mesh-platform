@@ -220,6 +220,7 @@ export class CodexClient {
     threadId: string;
     input: unknown[];
     cwd: string;
+    timeoutMs?: number;
   }): Promise<{ turnId: string }> {
     const approvalPolicy = (process.env.CODEX_APPROVAL_POLICY ?? "never").trim();
     return this.rpc("turn/start", {
@@ -227,7 +228,7 @@ export class CodexClient {
       input: opts.input,
       cwd: opts.cwd,
       approvalPolicy,
-    });
+    }, opts.timeoutMs);
   }
 
   turnSteer(opts: {

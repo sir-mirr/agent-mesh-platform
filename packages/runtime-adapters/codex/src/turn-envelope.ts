@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   formatChannelEnvelope,
+  parseChannelEnvelope,
   type ChannelSource,
   type ReplyRoute,
 } from "@agent-mesh/core";
@@ -18,9 +19,12 @@ export type PrimarySource = "agent-mesh" | "channel" | "self-reminder";
 export interface SourceMeta {
   primarySource: PrimarySource;
   channelSource?: ChannelSource;
+  channelMessageId?: string;
   enqueuedAt: string;
   steerAppends: number;
   readyRetryCount?: number;
+  hasAttachments?: boolean;
+  forceSeparateTurn?: boolean;
   isRotation?: boolean;
   rotationStage?: "r1-handoff-request" | "r3-hint-injection";
 }
@@ -81,6 +85,10 @@ export function fromChannelPayload(opts: {
   replyToMessageId?: string;
   authorId?: string;
 }): TurnEnvelope {
+  const parsedEnvelope = parseChannelEnvelope(opts.inputText);
+  const channelMessageId = parsedEnvelope?.messageId;
+  const hasAttachments = (parsedEnvelope?.attachmentCount ?? 0) > 0;
+
   return {
     turnId: newTurnId(),
     inputItems: [{ type: "text", text: opts.inputText }],
@@ -96,6 +104,8 @@ export function fromChannelPayload(opts: {
       channelSource: opts.source,
       enqueuedAt: new Date().toISOString(),
       steerAppends: 0,
+      ...(channelMessageId ? { channelMessageId } : {}),
+      ...(hasAttachments ? { hasAttachments: true, forceSeparateTurn: true } : {}),
     },
   };
 }

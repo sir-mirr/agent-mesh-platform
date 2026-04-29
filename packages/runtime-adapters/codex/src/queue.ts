@@ -46,22 +46,32 @@ export class TurnQueue {
   }
 
   async enqueue(env: TurnEnvelope): Promise<"queued" | "steered"> {
+    const active = this.active;
+    const sameRouteAsActive =
+      active &&
+      sameReplyRoute(active.replyRoute, env.replyRoute, {
+        activeEnqueuedAt: active.sourceMeta.enqueuedAt,
+      });
+
     if (
-      this.active &&
-      sameReplyRoute(this.active.replyRoute, env.replyRoute, {
-        activeEnqueuedAt: this.active.sourceMeta.enqueuedAt,
-      })
+      sameRouteAsActive &&
+      !active.sourceMeta.forceSeparateTurn &&
+      !env.sourceMeta.forceSeparateTurn
     ) {
-      const buffer = (this.active.steerBuffer ??= []);
+      const buffer = (active.steerBuffer ??= []);
       for (const item of env.inputItems) buffer.push(item);
-      this.active.sourceMeta.steerAppends += env.inputItems.length;
-      if (this.active.replyRoute.kind === "channel") {
-        this.active.sourceMeta.enqueuedAt = new Date().toISOString();
+      active.sourceMeta.steerAppends += env.inputItems.length;
+      if (active.replyRoute.kind === "channel") {
+        active.sourceMeta.enqueuedAt = new Date().toISOString();
       }
+      log(
+        `steer merge active=${active.turnId} source=${env.sourceMeta.primarySource} ` +
+          `items=${env.inputItems.length}`,
+      );
       try {
         await this.opts.manager.steerActive(env.inputItems);
       } catch (error) {
-        log(`steer merge failed for active=${this.active.turnId}: ${error}`);
+        log(`steer merge failed for active=${active.turnId}: ${error}`);
         this.pushToLane(env);
         this.notify();
         return "queued";
@@ -69,7 +79,19 @@ export class TurnQueue {
       return "steered";
     }
 
-    this.pushToLane(env);
+    if (sameRouteAsActive && (active?.sourceMeta.forceSeparateTurn || env.sourceMeta.forceSeparateTurn)) {
+      log(
+        `skip steer merge active=${active?.turnId ?? "-"} turn=${env.turnId} ` +
+          `reason=force-separate-turn attachmentsActive=${active?.sourceMeta.hasAttachments ? "yes" : "no"} ` +
+          `attachmentsNew=${env.sourceMeta.hasAttachments ? "yes" : "no"}`,
+      );
+    }
+
+    const lane = this.pushToLane(env);
+    log(
+      `queued turn=${env.turnId} lane=${lane} source=${env.sourceMeta.primarySource} ` +
+        `attachments=${env.sourceMeta.hasAttachments ? "yes" : "no"} pending=${this.pendingCount()}`,
+    );
     this.notify();
     return "queued";
   }
@@ -195,6 +217,10 @@ export class TurnQueue {
         }
         this.active = next;
         this.processing = true;
+        log(
+          `dispatch turn=${next.turnId} source=${next.sourceMeta.primarySource} ` +
+            `attachments=${next.sourceMeta.hasAttachments ? "yes" : "no"}`,
+        );
         try {
           await this.opts.manager.runEnvelope(next);
         } catch (error) {

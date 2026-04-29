@@ -107,6 +107,8 @@ function shouldSuppressChannelError(errorText: string): boolean {
     normalized.includes("[dispatch-prep]") ||
     normalized.includes("invalid request: invalid type: null") ||
     normalized.includes("expected a string") ||
+    normalized.includes("codex rpc timeout: turn/start") ||
+    normalized.includes("no rollout found") ||
     normalized.includes("admin reset: rotation") ||
     normalized.includes("codex disconnected mid-turn")
   );
