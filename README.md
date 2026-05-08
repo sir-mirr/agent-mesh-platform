@@ -1,80 +1,301 @@
-# Agent-Mesh Platform
+# agent-mesh
 
-Private monorepo skeleton for the reset architecture:
+A multi-agent communication mesh: a self-contained backbone for routing
+JSON-RPC messages, REST/SSE traffic, scheduled reminders, and external
+runtime/channel adapters between heterogeneous AI agents.
 
-- `agent-mesh` is the channel fabric
-- channel integrations live under channel drivers
-- model-specific integration lives under runtime adapters
+> Status: Proof of Concept. APIs and on-disk layout may change before 1.0.
 
-This skeleton is intentionally private-first. It is designed to be copied into
-the lab LXC and then filled in during the first migration pass.
+agent-mesh decouples *what runs the agent* (a runtime such as the Codex CLI,
+Anthropic's Claude Code, GPT, Gemini, etc.) from *how the agent reaches users*
+(a channel such as Discord, Telegram, Slack, or a Web UI). Both sides plug
+into a single shared backbone via well-defined contracts.
 
-## Layout
+---
 
-```text
-packages/
-  agent-mesh-core/
-  channel-drivers/
-    discord/
-  runtime-adapters/
-    codex/
-docs/
-.github/
+## At a glance
+
+```
+                 ┌──────────────────────────────────────────┐
+                 │              Baseline (shared)           │
+                 │                                          │
+   external ───► │  agent-mesh-http   agent-mesh-hub        │
+   clients       │  :3000  REST/SSE   :3100  JSON-RPC WS    │
+                 │  OAuth, PWA        SQLite hub.db         │
+                 │                                          │
+                 │            agent-mesh-self-reminder      │
+                 │            cron / once / in              │
+                 └──────────────────────────────────────────┘
+                                  ▲
+                                  │  hub WS  /  HTTP REST
+                  ┌───────────────┼───────────────┐
+                  │               │               │
+            ┌─────┴────┐   ┌──────┴─────┐   ┌─────┴─────┐
+            │ lane A   │   │ lane B     │   │ lane C    │
+            │ codex    │   │ claude     │   │ ...       │
+            │ +discord │   │ +discord   │   │           │
+            └──────────┘   └────────────┘   └───────────┘
+                  Add-ons  =  runtime-adapter + channel-driver
 ```
 
-## Package Roles
+Run the **Baseline** alone and you have a working mesh that accepts
+registrations, routes messages, schedules reminders, and exposes a REST/SSE
+API — even with zero agents connected. **Add-ons** (lanes) plug external
+runtimes and channels onto that backbone.
 
-### `@agent-mesh/core`
+---
 
-Owns the shared contract:
+## Baseline vs Add-on (core principle)
 
-- normalized channel envelope
-- action proxy contract
-- capability matrix
-- normalized history strategy
-- ownership validation for `proxy_for` and `from`
+agent-mesh enforces a strict separation between two kinds of components.
 
-### `@agent-mesh/channel-discord`
+### Baseline — the shared runtime (3 services)
 
-Owns Discord-specific behavior:
+The backbone. Always-on, runtime-agnostic, channel-agnostic. Agent count
+can be zero and these three still run cleanly.
 
-- bot client lifecycle
-- inbound envelope conversion
-- outbound `reply`, `react`, `edit_message`
-- attachment fetch / policy / gating
-- live Discord history fallback
+| Service                     | Port | Role                                                       |
+|-----------------------------|------|------------------------------------------------------------|
+| `agent-mesh-hub`            | 3100 | JSON-RPC 2.0 over WebSocket broker; SQLite `hub.db`        |
+| `agent-mesh-http`           | 3000 | Hono REST API + SSE + GitHub OAuth + admin + Web Push/PWA  |
+| `agent-mesh-self-reminder`  | —    | Scheduler (cron / once / in), at-least-once delivery       |
 
-### `@agent-mesh/runtime-codex`
+The hub's `ExecStartPost` runs `ops/bin/bootstrap-hub-service-identities.sh`,
+which idempotently UPSERTs six built-in service identities so the mesh has a
+known initial agent set on first boot.
 
-Owns Codex runtime integration:
+### Add-on — a *lane* (runtime-adapter + channel-driver)
 
-- Codex app-server client
-- thread / turn lifecycle
-- envelope to turn-input conversion
-- adapter-side routing and handoff logic
+A lane is a systemd-templated instance (`@<lane>`) that joins one external
+runtime to one external channel. Each lane gets its own env, secrets, state,
+and attachments directory. N lanes are supported via systemd template
+instantiation; ports follow a fixed offset rule.
 
-## Dependency Rule
+| Lane element                       | Source                                |
+|------------------------------------|---------------------------------------|
+| `packages/runtime-adapters/<rt>`   | Adapter for an external runtime       |
+| `packages/channel-drivers/<ch>`    | Driver for an external channel        |
 
-```text
-@agent-mesh/channel-discord -> @agent-mesh/core
-@agent-mesh/runtime-codex -> @agent-mesh/core
+Currently shipped: `runtime-adapters/codex` and `channel-drivers/discord`.
+Future runtimes (claude, gpt, gemini, ...) and channels (telegram, slack, ...)
+implement the same contracts (see `SPEC.md`).
+
+---
+
+## Quick start (Baseline only)
+
+Prerequisites:
+
+- Linux host with systemd
+- [Bun](https://bun.sh) runtime
+- SQLite 3
+- A GitHub OAuth app (for the HTTP admin login)
+
+```bash
+# 1. Clone
+git clone https://github.com/sir-mirr/ai-agent-mesh.git
+cd ai-agent-mesh
+
+# 2. Install
+bun install
+
+# 3. Provision env files (see SPEC.md "env layout")
+# Required: env/shared/{common,hub,http,self-reminder}.env
+#           secrets/shared.env  (GITHUB_CLIENT_SECRET, JWT_SECRET, VAPID_*)
+
+# 4. Install the three baseline systemd units (templates in ops/systemd/)
+sudo cp ops/systemd/agent-mesh-{hub,http,self-reminder}.service \
+        /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now \
+    agent-mesh-hub agent-mesh-http agent-mesh-self-reminder
+
+# 5. Verify
+curl -fsS http://localhost:3000/api/v1/health
 ```
 
-Direct dependency between channel drivers and runtime adapters is intentionally
-forbidden.
+At this point the mesh is live with zero agents. The HTTP server serves the
+admin/PWA at `:3000`; the hub accepts JSON-RPC 2.0 WebSocket connections at
+`ws://localhost:3100`.
 
-## Status
+---
 
-This directory is a scaffold, not the final migrated repo.
+## Add a lane
 
-- workspace definitions are present
-- project references are wired
-- package stubs are present
-- real source files, build scripts, and dependencies land in migration step 1-4
+A *lane name* is a short identifier (e.g. `prod-codex1`, `test-claude1`) used
+as the systemd template instance and as the agent identity on the hub.
 
-## Next Steps
+### Codex lane (3 units per lane)
 
-1. create `src/` trees inside the three packages
-2. move `plugins/agent-mesh` concerns into `@agent-mesh/core`
-3. absorb `discord-patched` and `kongming-discord-gateway` into `@agent-mesh/channel-discord`
-4. rename and shrink `agent-mesh-codex-bridge` into `@agent-mesh/runtime-codex`
+Wires Anthropic-style tool use through the Codex CLI's app-server, an HTTP
+adapter, and a Discord driver.
+
+```
+codex-app-server@<lane>     :4500+i   Codex CLI app-server (WS)
+codex-adapter@<lane>        :4600+i   runtime-adapters/codex (HTTP, hub WS client)
+channel-discord@<lane>      :4610+i   channel-drivers/discord (HTTP)
+```
+
+```bash
+# Per-lane env + secrets
+mkdir -p env/<lane> state/codex/<lane> attachments/<lane>
+$EDITOR env/<lane>/{adapter,discord,app-server}.env
+$EDITOR secrets/<lane>.env   # DISCORD_BOT_TOKEN,
+                             # CODEX_ADAPTER_HTTP_TOKEN,
+                             # CHANNEL_DISCORD_HTTP_TOKEN
+
+# Enable the three template instances
+sudo systemctl enable --now \
+    codex-app-server@<lane> \
+    codex-adapter@<lane> \
+    channel-discord@<lane>
+```
+
+Driver ↔ adapter HTTP traffic is mutually authenticated using
+`CHANNEL_DISCORD_HTTP_TOKEN` and `CODEX_ADAPTER_HTTP_TOKEN`. The adapter
+registers with the hub using `identity = <lane>`.
+
+### Claude lane (1 unit + external Claude Code)
+
+For lanes powered by Anthropic's Claude Code CLI, the runtime is an external
+process and joins the hub directly via an MCP plugin. Only the channel-driver
+is hosted in-tree.
+
+```
+channel-discord@<lane>   :4610+i   channel-drivers/discord (HTTP)
+                                   forwards directly to hub as <lane>
+```
+
+```bash
+mkdir -p env/<lane>
+$EDITOR env/<lane>/discord.env       # HUB_FORWARD_IDENTITY=<lane>
+$EDITOR secrets/<lane>.env           # DISCORD_BOT_TOKEN
+
+sudo systemctl enable --now channel-discord@<lane>
+```
+
+Then point an external Claude Code instance's agent-mesh MCP plugin at
+`ws://<host>:3100` with `identity=<lane>`.
+
+---
+
+## Architecture overview
+
+- **Hub** (`packages/shared/hub`) — JSON-RPC 2.0 broker on a single WebSocket
+  endpoint. Maintains the agent registry in SQLite. All inter-agent traffic
+  is an envelope (see `agent-mesh-core/envelope.ts`) routed by identity.
+- **HTTP** (`packages/shared/http`) — Hono server. Provides REST, SSE for
+  per-agent event streams, `/auth/github` (GitHub OAuth → JWT HS256), an
+  admin panel for pending-pair approval, Web Push (VAPID), and a PWA
+  bundle.
+- **Self-reminder** (`packages/shared/self-reminder`) — Independent scheduler
+  daemon. Connects to the hub as `identity=self-reminder`, accepts schedule
+  requests over the mesh, persists them, and re-injects payloads at fire
+  time with at-least-once semantics.
+- **agent-mesh-core** (`packages/agent-mesh-core`) — Pure types and
+  utilities: `envelope`, `action-proxy`, `capabilities`, `history`,
+  `ownership`, `registry`, `tool-contract`, `hub` client base.
+- **Lanes** — Each lane is one runtime-adapter instance plus zero or more
+  channel-driver instances, joined by an HTTP control plane and a shared
+  hub WS connection.
+
+---
+
+## Tech stack
+
+- **Runtime**: Bun
+- **Web framework**: Hono
+- **Storage**: SQLite via `bun:sqlite`
+- **Inter-agent transport**: JSON-RPC 2.0 over WebSocket
+- **Streaming**: Server-Sent Events (SSE)
+- **Auth**: GitHub OAuth + JWT (HS256)
+- **Notifications**: Web Push (VAPID)
+- **Process supervision**: systemd (templated units)
+
+---
+
+## API at a glance
+
+### Hub JSON-RPC (`ws://<host>:3100`)
+
+| Method                 | Purpose                                              |
+|------------------------|------------------------------------------------------|
+| `mesh.register`        | Register an identity (optionally `proxy_for[]`)      |
+| `mesh.send`            | Send an envelope to another identity                 |
+| `mesh.list_agents`     | Enumerate registered agents and online status        |
+| `mesh.fetch_messages`  | Pull stored history for a peer                       |
+
+### HTTP REST (`http://<host>:3000`)
+
+| Path                                | Description                          |
+|-------------------------------------|--------------------------------------|
+| `GET  /api/v1/health`               | Liveness / version                   |
+| `GET  /api/v1/agents`               | List agents                          |
+| `POST /api/v1/messages`             | Send an envelope                     |
+| `GET  /api/v1/messages/:agent`      | Per-peer history                     |
+| `GET  /api/v1/messages/search`      | Full-text search                     |
+| `GET  /api/v1/events/:agentId`      | SSE event stream                     |
+| `POST /api/v1/upload`               | Upload an attachment                 |
+| `GET  /api/v1/files`                | List uploads                         |
+| `*    /api/v1/admin/*`              | `pending` / `approve` / `deny`       |
+| `POST /api/v1/push/subscribe`       | Web Push subscription                |
+| `GET  /auth/github`, `/auth/me`     | GitHub OAuth + JWT session           |
+
+Full request/response shapes and auth requirements are in `SPEC.md`.
+
+---
+
+## Repository layout
+
+```
+.
+├── README.md                      # this file
+├── SPEC.md                        # normative contracts
+├── MIGRATION.md                   # legacy → normalized migration notes
+├── instructions/                  # operator runbooks
+├── ops/
+│   └── bin/
+│       └── bootstrap-hub-service-identities.sh
+├── packages/
+│   ├── agent-mesh-core/           # pure types, no I/O
+│   │   └── src/
+│   │       ├── envelope.ts
+│   │       ├── action-proxy.ts
+│   │       ├── capabilities.ts
+│   │       ├── history.ts
+│   │       ├── hub.ts
+│   │       ├── ownership.ts
+│   │       ├── registry.ts
+│   │       └── tool-contract.ts
+│   ├── shared/
+│   │   ├── hub/                   # JSON-RPC 2.0 broker (port 3100)
+│   │   ├── http/                  # REST + SSE + OAuth + PWA (port 3000)
+│   │   └── self-reminder/         # scheduler daemon
+│   ├── channel-drivers/
+│   │   └── discord/src/
+│   └── runtime-adapters/
+│       └── codex/src/
+├── package.json
+├── bun.lock
+└── tsconfig.base.json
+```
+
+Instance data — env files, secrets, state, attachments, handoffs, channels —
+lives **outside** the code repository and is not versioned here. See
+`SPEC.md` § "Instance data layout".
+
+---
+
+## Development
+
+TBD. Contributions, issue templates, and CI will be added in a later phase.
+For now, see `SPEC.md` for the contracts you must implement when authoring a
+new runtime-adapter or channel-driver.
+
+## Contributing
+
+TBD.
+
+## License
+
+TBD (currently `Private`). To be set before public release.
