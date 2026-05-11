@@ -478,7 +478,7 @@ Implementations SHOULD declare the SPEC version they target in their
 
 ---
 
-## 15. Cross-VM deployment (internal-mesh v0.1)
+## 14. Cross-VM deployment (internal-mesh v0.1)
 
 This section normalizes the **internal-mesh v0.1** deployment profile,
 in which the baseline runs on one *core VM* and each lane runs on its
@@ -603,7 +603,7 @@ local paths**, with the core VM owning shared/uploads as described in
 
 ---
 
-## 14. Out of scope
+## 15. Out of scope
 
 The following are explicitly **not** part of this specification and may
 exist or be removed independently of compliance:
