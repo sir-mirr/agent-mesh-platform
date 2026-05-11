@@ -833,26 +833,39 @@ bootstrap script therefore MUST NOT open `hub.db` directly; it
 provisions identities by calling the hub's `POST /api/v1/agents`
 endpoint (§ 9.4, § 10.1) over loopback, and it MUST:
 
-1. Discover service identities from the lab `env/` tree (default
-   `${AGENT_MESH_ENV_ROOT}` → `/srv/agent-mesh-lab/env`) by reading
-   environment files:
+1. Discover service identities from the lab `env/` tree. The env root
+   is resolved by the following fallback chain (highest precedence
+   first), matching the reference implementation in
+   `ops/bin/bootstrap-hub-service-identities.sh`:
+   `${AGENT_MESH_ENV_ROOT}` →
+   `${AGENT_MESH_LAB_HOME:-/srv/agent-mesh-lab}/env`. The
+   `AGENT_MESH_LAB_HOME` secondary is operator-facing real
+   (`ops/env/shared/common.env.example` ships it as
+   `/srv/agent-mesh-lab`) and MUST NOT be removed without a parallel
+   script update. Within the resolved env root the script reads:
    - `shared/http.env` → `http-server` (or `http-server-dev` when
      `NODE_ENV=development`), description "Agent Mesh Web UI".
    - `shared/self-reminder.env` → `${SELF_REMINDER_IDENTITY:-self-reminder}`,
      description "SelfReminder service (PoC1)".
    - For every `*/adapter.env`: the `CODEX_ADAPTER_IDENTITY` value,
-     description `Codex runtime adapter for <lane>`.
+     description `Codex runtime adapter for <lane>` where `<lane>` is
+     resolved as `${CODEX_TARGET_AGENT}` (when present) and otherwise
+     falls back to the parent directory's basename.
    - For every `*/discord.env`: the `HUB_FORWARD_IDENTITY` value (when
      paired with `HUB_FORWARD_TARGET_AGENT`), description
      `Discord hub-forward for <target>`.
    The set is dynamic — there is no fixed "built-in six" list, and
    identities such as `admin` or `bootstrap` are not provisioned by
    this script.
-2. For each discovered identity, `curl -fsS -X POST` to
-   `${AGENT_MESH_HUB_API_URL}` (default derived from
-   `${AGENT_MESH_HUB_URL:-ws://127.0.0.1:3100/ws}` → `.../api/v1/agents`)
-   with body `{"identity":"…","type":"service","description":"…"}`,
-   retrying up to `${HUB_BOOTSTRAP_MAX_RETRIES:-30}` times at
+2. For each discovered identity, `curl -fsS -X POST` to the hub API
+   URL. The URL is resolved by the following fallback chain (highest
+   precedence first):
+   `${AGENT_MESH_HUB_API_URL}` →
+   derived from `${AGENT_MESH_HUB_URL}` →
+   derived from `${HUB_URL:-ws://127.0.0.1:3100/ws}`
+   (last two re-shape the WS URL to `.../api/v1/agents`). The body is
+   `{"identity":"…","type":"service","description":"…"}`, retrying up
+   to `${HUB_BOOTSTRAP_MAX_RETRIES:-30}` times at
    `${HUB_BOOTSTRAP_RETRY_SLEEP_SEC:-1}` second intervals while the
    hub is still warming up.
 3. Be **idempotent** — repeated invocations MUST NOT duplicate rows
@@ -1035,7 +1048,8 @@ MAY use either.
 
 > **Notation.** Throughout this section, `${AGENT_MESH_HUB_PORT}` is
 > the hub WebSocket / HTTP listen port (default `3100`, declared in
-> § 8.1) and `${AGENT_MESH_HTTP_PORT}` is the user-facing http-server
+> § 3.1 and cross-referenced from the hub control-plane header at
+> § 9.2) and `${AGENT_MESH_HTTP_PORT}` is the user-facing http-server
 > port (default `3000`, declared in § 9.1). Earlier revisions used the
 > shorthand `<HUB_PORT>` / `<HTTP_PORT>` placeholders; the canonical
 > env names are kept here to remove ambiguity between the two services
@@ -1091,9 +1105,10 @@ See § 10 "Bootstrap contract" for the on-core invariants.
 ### 14.4. Deployment unit
 
 - Each lane VM MUST run its lane processes under systemd. The
-  RECOMMENDED form is a template unit such as
-  `agent-mesh-lane@<lane-id>.service`, instantiated once per lane
-  identity hosted on that VM.
+  RECOMMENDED form is a per-lane aggregator template
+  `agent-mesh-lane@<lane-id>.target` (see § 14.8 for the full
+  systemd contract), instantiated once per lane identity hosted on
+  that VM.
 - A lane VM SHOULD remain a single-lane host. A lane VM MAY host
   additional lanes only if their port ranges do not collide.
 - Container runtimes (Docker, Podman, etc.) are NOT REQUIRED.
@@ -1116,13 +1131,14 @@ following fixed base ports for its single hosted lane:
 If a lane VM does host multiple lanes, the § 12 offset rule applies
 unchanged.
 
-The lane VM's systemd unit MUST provide at least the following env:
-
-| Variable           | Required | Meaning                                       |
-|--------------------|----------|-----------------------------------------------|
-| `HUB_URL`          | MUST     | `ws://<core-vm>:${AGENT_MESH_HUB_PORT}/ws`    |
-| `LANE_IDENTITY`    | MUST     | Identity string registered with the hub       |
-| `RUNTIME_ENDPOINT` | SHOULD   | Local URL of the runtime (e.g. `http://localhost:4500`) |
+The lane VM's systemd unit MUST provide at least the lane systemd
+env contract defined in § 14.8 (which is the SSOT for the lane env
+table). The minimum keys are `HUB_URL` (MUST), `LANE_IDENTITY`
+(MUST), `RUNTIME_KIND` (MUST), `RUNTIME_ENDPOINT` (SHOULD), and
+`CHANNEL_KIND` (MUST); see § 14.8 for the full table including
+meanings and example values. The reference `runtime-adapter@.service`
+unit reads `${RUNTIME_KIND:?...}` and fails to start if it is unset,
+so the MUST grade is enforced by the unit itself, not just by spec.
 
 Lane secrets (`DISCORD_BOT_TOKEN`, intra-lane HTTP tokens, etc.)
 remain as defined in § 4.4 and § 11, but live on the lane VM filesystem.
