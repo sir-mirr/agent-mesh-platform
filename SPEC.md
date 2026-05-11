@@ -462,16 +462,38 @@ PM gateway, or remote lane VMs.
   "identity":    "<canonical identity>",
   "type":        "<canonical type>",
   "description": "<canonical description or null>",
-  "created_at":  "<ISO-8601 timestamp>",   // = agents.last_seen after UPSERT
+  "created_at":  "<ISO-8601 timestamp>",   // strict YYYY-MM-DDTHH:MM:SSZ (UTC)
   "action":      "inserted" | "updated"
 }
 ```
 
-The `created_at` field reflects `agents.last_seen` at the moment of the
-UPSERT. Because the current `agents` schema has no dedicated creation
-column, `created_at` on an `"updated"` response equals the touch time of
-this call, not the original insertion. Callers that need durable creation
-provenance SHOULD record it externally (e.g. provisioning log).
+The `created_at` field reflects `agents.created_at` — the timestamp at
+which the identity row was first INSERTed into `hub.db:agents`. The
+field is **immutable post-insert**: an `"updated"` response returns the
+*original* creation time, not the touch time of the current UPSERT.
+
+Format MUST be strict ISO-8601 with a `T` date/time separator and a
+trailing `Z`, i.e. `YYYY-MM-DDTHH:MM:SSZ`, always in UTC. The hub
+produces this via SQLite
+`strftime('%Y-%m-%dT%H:%M:%SZ', created_at)`.
+
+**v0.1 compatibility.** Hub builds before this clause stored no dedicated
+creation column and returned `agents.last_seen` in the `created_at`
+field. Operators upgrading from v0.1:
+
+- The hub binary contains an idempotent in-process migration that ADDs
+  the column at boot and backfills it from `last_seen` (falling back to
+  `now()` when `last_seen` is `NULL`).
+- The equivalent SQL is shipped as
+  `ops/migrations/0001_agents_add_created_at.sql` for operators who
+  prefer to migrate ahead of a binary upgrade.
+- Both paths yield approximate (`last_seen`-derived) `created_at` for
+  pre-existing rows. Rows inserted by post-migration hub builds carry
+  the true creation timestamp.
+
+Callers that need durable creation provenance for the v0.1 fallback
+window SHOULD continue to record it externally (e.g. provisioning log);
+the migrated values are best-effort, not authoritative.
 
 **Authentication.** v0.1 deployments MAY leave this endpoint
 unauthenticated when the hub binds to a trust-bounded interface (Tailscale

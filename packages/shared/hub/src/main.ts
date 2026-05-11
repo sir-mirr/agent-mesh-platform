@@ -56,18 +56,30 @@ db.exec(`
     identity    TEXT PRIMARY KEY,
     description TEXT,
     last_seen   DATETIME,
-    type        TEXT
+    type        TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
-// Idempotent migration for legacy hub.db files that were created before the
-// `type` column was introduced (real prod was ALTER'd manually, fresh
-// installs and isolated test DBs need this guard). PRAGMA returns rows
-// describing every column; if `type` is missing we add it.
+// Idempotent migration for legacy hub.db files. PRAGMA returns rows
+// describing every column; we add any columns that are missing.
+//   - `type`       : introduced after initial schema (task #72 era).
+//   - `created_at` : introduced for ISO-8601 provenance (see SPEC §10.1).
+//                    Backfilled from `last_seen` to give existing rows a
+//                    plausible best-effort value; operators that want a
+//                    cleaner state apply `ops/migrations/0001_*.sql`.
 {
   const cols = db.prepare(`PRAGMA table_info(agents)`).all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "type")) {
     db.exec(`ALTER TABLE agents ADD COLUMN type TEXT`);
+  }
+  if (!cols.some((c) => c.name === "created_at")) {
+    // SQLite forbids non-constant defaults on ALTER TABLE ADD COLUMN, so we
+    // add the column nullable then backfill in a single UPDATE.
+    db.exec(`ALTER TABLE agents ADD COLUMN created_at DATETIME`);
+    db.exec(
+      `UPDATE agents SET created_at = COALESCE(last_seen, datetime('now')) WHERE created_at IS NULL`
+    );
   }
 }
 
@@ -85,11 +97,12 @@ db.exec(`
 
 // Prepared statements
 const stmtUpsertAgent = db.prepare(`
-  INSERT INTO agents (identity, description, last_seen)
-  VALUES (?, ?, datetime('now'))
+  INSERT INTO agents (identity, description, last_seen, created_at)
+  VALUES (?, ?, datetime('now'), datetime('now'))
   ON CONFLICT(identity) DO UPDATE SET
     description = COALESCE(excluded.description, agents.description),
     last_seen   = datetime('now')
+    -- created_at intentionally NOT updated (immutable post-insert; SPEC §10.1)
 `);
 
 const stmtUpdateLastSeen = db.prepare(`
@@ -115,15 +128,22 @@ const stmtAgentExists = db.prepare(`
 `);
 
 const stmtUpsertAgentTyped = db.prepare(`
-  INSERT INTO agents (identity, type, description, last_seen)
-  VALUES (?, ?, ?, datetime('now'))
+  INSERT INTO agents (identity, type, description, last_seen, created_at)
+  VALUES (?, ?, ?, datetime('now'), datetime('now'))
   ON CONFLICT(identity) DO UPDATE SET
     type        = excluded.type,
     description = excluded.description
+    -- created_at intentionally NOT updated (immutable post-insert; SPEC §10.1)
 `);
 
 const stmtSelectAgent = db.prepare(`
-  SELECT identity, type, description, last_seen FROM agents WHERE identity = ?
+  SELECT
+    identity,
+    type,
+    description,
+    last_seen,
+    strftime('%Y-%m-%dT%H:%M:%SZ', created_at) AS created_at_iso
+  FROM agents WHERE identity = ?
 `);
 
 // ── REST: DELETE /api/agents/{identity} (teardown identity) ────────────────
@@ -886,7 +906,13 @@ async function handlePostAgentsV1(req: Request): Promise<Response> {
   }
 
   const row = stmtSelectAgent.get(identity) as
-    | { identity: string; type: string | null; description: string | null; last_seen: string | null }
+    | {
+        identity: string;
+        type: string | null;
+        description: string | null;
+        last_seen: string | null;
+        created_at_iso: string | null;
+      }
     | undefined;
 
   const status = existed ? 200 : 201;
@@ -897,7 +923,9 @@ async function handlePostAgentsV1(req: Request): Promise<Response> {
     identity: row?.identity ?? identity,
     type: row?.type ?? type,
     description: row?.description ?? description,
-    created_at: row?.last_seen ?? null,
+    // SPEC §10.1: strict ISO-8601 'T' / 'Z' representation of agents.created_at.
+    // Immutable post-insert — UPSERT (UPDATE branch) does not touch created_at.
+    created_at: row?.created_at_iso ?? null,
     action,
   });
 }
