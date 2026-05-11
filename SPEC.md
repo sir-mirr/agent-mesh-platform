@@ -399,6 +399,19 @@ result: {
 }
 ```
 
+Any param beyond `identity` and `proxy_for` is **ignored** by the hub.
+In particular, `type` and `description` (if present, e.g. carried over
+by older clients that grew them onto `mesh.register` before § 8.1a
+explicitly demoted them) MUST NOT cause an error, MUST NOT update
+`agents.type` or `agents.description`, and MUST NOT block the
+connection. The hub deliberately silently drops these fields rather
+than failing on unknown params, so a client that emits the older
+`mesh.register`-shaped payload against `mesh.connect` still connects
+cleanly. `type` and `description` are persisted only by
+`POST /api/v1/agents` (§ 10.1) — `mesh.connect` is a pure
+runtime-connect signal, not a provisioning call. The same rule applies
+to the `mesh.register` alias of § 8.1a.
+
 Errors:
 
 - `-32602` INVALID_PARAMS — `params.identity` missing or non-string.
