@@ -651,6 +651,49 @@ remain as defined in § 4.4 and § 11, but live on the lane VM filesystem.
 
 See § 6.1 (channel-driver attachment handling) for the in-lane shape.
 
+### 15.7a. Lane systemd contract
+
+This subsection normalizes the systemd shape a lane VM MUST expose to
+operators. The reference implementation lives under
+`ops/systemd/agent-mesh-{lane@,lane-codex-app-server@,runtime-adapter@,channel-driver-discord@}.{service,target}`
+and is documented operationally in `docs/lane-deployment.md`.
+
+- A lane VM MUST expose a per-lane aggregator unit
+  `agent-mesh-lane@<lane-id>.target`. Enabling that target MUST bring
+  the lane's runtime-adapter and channel-driver(s) up; stopping it
+  MUST stop them. Individual component units MUST declare
+  `PartOf=agent-mesh-lane@<lane-id>.target`.
+- Component units MUST be systemd **template** units keyed by
+  `<lane-id>` (`@%i`). A lane VM MUST NOT hard-code a lane-id into a
+  non-template unit.
+- Each lane MUST read its environment from
+  `/etc/agent-mesh/lane/<lane-id>.env`. Secrets (bot tokens,
+  intra-lane HTTP tokens) MUST live in a sibling
+  `/etc/agent-mesh/lane/<lane-id>.secret` file with mode `0600` and
+  MUST be loaded via a second `EnvironmentFile=` directive. Secrets
+  MUST NOT be embedded in the `.env` file or in unit files committed
+  to the source tree.
+- The following env keys are part of the lane systemd contract:
+
+  | Key | Required | Meaning |
+  |-----|----------|---------|
+  | `HUB_URL` | MUST | `ws://<core-vm>:<HUB_PORT>/ws` |
+  | `LANE_IDENTITY` | MUST | Identity registered via `POST /api/v1/agents` |
+  | `RUNTIME_KIND` | MUST | `codex` \| `claude` — selects adapter binary |
+  | `RUNTIME_ENDPOINT` | SHOULD | Local runtime URL (e.g. `http://localhost:4500`) |
+  | `CHANNEL_KIND` | MUST | Channel driver flavour (e.g. `discord`) |
+
+  Lane-flavour-specific keys (`CODEX_*`, `DISCORD_*`, etc.) remain as
+  defined elsewhere in this spec and in the example templates under
+  `ops/env/lane/`.
+- Per-lane mutable state (handoffs, attachment caches, adapter state
+  files) SHOULD live under `/var/lib/agent-mesh/lane/<lane-id>/`,
+  owned by the service user. Lane VMs MUST NOT write state into the
+  source tree under `/srv/agent-mesh-platform/`.
+- Provisioning of unit files onto a lane VM is OPTIONAL but the
+  reference path is `ops/bin/install-lane.sh`, which MUST be idempotent
+  and MUST NOT `enable` or `start` any unit on its own.
+
 ### 15.8. Compatibility
 
 A deployment conformant to `internal-mesh v0.1` MUST also satisfy all

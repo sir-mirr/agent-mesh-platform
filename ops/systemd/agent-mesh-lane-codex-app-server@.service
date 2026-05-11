@@ -1,0 +1,27 @@
+[Unit]
+Description=Agent Mesh Lane — Codex app-server (%i)
+# Lane VM profile (internal-mesh v0.1). Reads ENV from
+#   /etc/agent-mesh/lane/<lane-id>.env
+#   /etc/agent-mesh/lane/<lane-id>.secret  (mode 0600)
+# Only started when RUNTIME_KIND=codex (operator selection — leave
+# disabled when RUNTIME_KIND=claude).
+After=network-online.target
+Wants=network-online.target
+PartOf=agent-mesh-lane@%i.target
+ConditionPathExists=/srv/agent-mesh-platform/package.json
+ConditionPathExists=/etc/agent-mesh/lane/%i.env
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/srv/agent-mesh-platform
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v24.14.1/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/agent-mesh/lane/%i.env
+EnvironmentFile=-/etc/agent-mesh/lane/%i.secret
+ExecStart=/bin/sh -lc 'exec codex app-server --listen "$CODEX_APP_SERVER_LISTEN_URL"'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=agent-mesh-lane@%i.target
