@@ -296,7 +296,7 @@ driver.stop(): Promise<void>
 
 | Module             | Role                                                       |
 |--------------------|------------------------------------------------------------|
-| `envelope.ts`      | Canonical envelope shape: `{ id, from, to, kind, payload, meta, ts }` |
+| `envelope.ts`      | `ChannelEnvelope` — canonical channel-source envelope (see § 7.1) |
 | `action-proxy.ts`  | Tool/action call routing across runtime ↔ mesh boundaries  |
 | `capabilities.ts`  | Per-identity capability declarations                       |
 | `history.ts`       | History query/segment helpers                              |
@@ -308,6 +308,42 @@ driver.stop(): Promise<void>
 These types are normative — adapters and drivers MUST consume them
 verbatim rather than defining parallel shapes.
 
+### 7.1. `ChannelEnvelope`
+
+`ChannelEnvelope` is the canonical channel-side envelope shape produced
+by `channel-driver`s when they normalize a native channel event into a
+mesh-routable payload. It carries the *origin metadata* of a channel
+message (source, chat id, message id, sender) plus the human-readable
+`text` body.
+
+```
+ChannelEnvelope = {
+  source:           "agent-mesh" | "discord" | "telegram"   // required
+  chatId:           string                                   // required
+  messageId:        string                                   // required
+  text:             string                                   // required
+  user?:            string                                   // display name
+  userId?:          string                                   // stable id
+  ts?:              string                                   // ISO-8601
+  replyTo?:         string                                   // peer message id
+  attachmentCount?: number
+  attachments?:     string                                   // serialized list
+}
+```
+
+A `ChannelEnvelope` is **not** the wire payload of `mesh.send` itself
+(see § 8.2). When a channel-driver forwards an inbound event to the
+hub, it serializes the envelope into a `<channel …>…</channel>` tagged
+string via `formatChannelEnvelope()` and sends that string as the flat
+`content` field of `mesh.send`. The receiver MAY parse the wrapper back
+into a `ChannelEnvelope` with `parseChannelEnvelope()`. Hub-internal
+messages (agent ↔ agent without a channel origin) MAY skip the
+`<channel …>` wrapper and use plain text content.
+
+The legacy `{ id, from, to, kind, payload, meta, ts }` shape mentioned
+in pre-v0.1 drafts is **not** implemented and is reserved for a future
+breaking redesign (§ 13).
+
 ---
 
 ## 8. Hub JSON-RPC method signatures
@@ -315,62 +351,145 @@ verbatim rather than defining parallel shapes.
 All methods are over JSON-RPC 2.0 on a WebSocket. Errors follow the
 JSON-RPC 2.0 error object form.
 
-### 8.1. `mesh.register`
+Identity registration (insertion of `(identity, type, description)`
+rows into `hub.db:agents`) is **not** done over JSON-RPC; it is done
+out of band via `POST /api/v1/agents` (see § 10.1). The JSON-RPC
+methods below operate on *already-registered* identities.
+
+### 8.1. `mesh.connect`
+
+Marks a pre-registered identity as online on this WebSocket. This is
+the SSOT runtime-connect signal — `mesh.register` (§ 8.1a) is a
+deprecated alias retained for backward compatibility with older agent
+clients.
 
 ```
 params: {
-  identity:    string         // kebab-case
-  type:        "ai-claude" | "ai-codex" | "service" | string
-  description?: string
-  proxy_for?:  string[]       // identities this connection also handles
+  identity:    string         // kebab-case; MUST be pre-registered
+  proxy_for?:  string[]       // additional identities this socket handles
 }
 result: {
-  identity:   string
-  registered: boolean
-  created:    boolean         // true if newly inserted
+  ok:       true
+  identity: string            // canonical identity
 }
 ```
+
+Errors:
+
+- `-32602` INVALID_PARAMS — `params.identity` missing or non-string.
+- `-32010` DUPLICATE_IDENTITY — another connection holds this identity
+  and connected less than the deduplication window ago. `data` carries
+  `{ code: "DUPLICATE_IDENTITY", elapsed_ms, window_ms }`.
+- `-32011` IDENTITY_NOT_REGISTERED — the identity has no row in
+  `hub.db:agents`. `data` carries `{ code: "IDENTITY_NOT_REGISTERED",
+  identity }`. The hub closes the WebSocket with code `1008` shortly
+  after returning this error.
+
+On success the hub touches `agents.last_seen`, wires the socket into
+the online map, and delivers any pending messages addressed to the
+identity (and to each `proxy_for` entry).
+
+### 8.1a. `mesh.register` (deprecated alias)
+
+`mesh.register` is a deprecated alias for `mesh.connect`. It accepts
+the same params and returns the same result. The hub logs a one-line
+deprecation warning per call (`DEPRECATED: mesh.register called by
+<identity>; migrate clients to mesh.connect`). Older client builds
+emit `mesh.register` on boot; new clients SHOULD emit `mesh.connect`.
+
+The `type` and `description` params, if present on a `mesh.register`
+call, are ignored — the hub does not write to `agents` from this
+codepath. Use `POST /api/v1/agents` (§ 10.1) to set or update those
+fields.
 
 ### 8.2. `mesh.send`
 
+Routes a message envelope (in flat-content form) to another identity.
+
 ```
 params: {
-  to:       string            // identity
-  envelope: Envelope          // see envelope.ts
+  to:        string           // recipient identity
+  content:   string           // message body (often a formatted
+                              // ChannelEnvelope string; see § 7.1)
+  reply_to?: string | null    // peer message id this replies to
+  from?:     string           // optional sender override; defaults
+                              // to the socket's registered identity
+                              // (used by proxy senders such as the
+                              // HTTP server forwarding on a user's behalf)
 }
 result: {
-  message_id: string
-  queued:     boolean         // true if recipient offline
+  id:     string              // hub-assigned message id ("msg_<16hex>")
+  status: "delivered" | "pending"
 }
 ```
+
+`status` is `"delivered"` when the recipient socket was online and the
+hub successfully pushed a `mesh.message` notification (§ 8.9) to it;
+`"pending"` otherwise (the envelope is persisted to `messages` and
+will be delivered on the recipient's next connect via
+`mesh.fetch_messages`/auto-deliver).
+
+Errors:
+
+- `-32602` INVALID_PARAMS — `params.to` missing/non-string or
+  `params.content` missing.
+- `-32600` INVALID_REQUEST — sender socket is not connected
+  (`mesh.connect` / `mesh.register` was never called on this WS).
 
 ### 8.3. `mesh.list_agents`
 
+Returns the full agent registry.
+
 ```
-params: { status?: "online" | "offline" | "all" }
+params: {}                    // no params at v0.1; status filter is
+                              // not implemented — results always
+                              // include all rows
 result: {
   agents: Array<{
-    identity:    string
-    type:        string
-    description: string
+    id:          string       // identity (kebab-case)
+    type:        string | null
+    description: string | null
     online:      boolean
-    last_seen:   string       // ISO-8601
+    last_seen:   string | null  // ISO-8601 when present
   }>
 }
 ```
 
+Note: the per-agent key is `id` (carrying the identity string), not
+`identity`. Clients MUST read `agents[].id`.
+
 ### 8.4. `mesh.fetch_messages`
+
+Returns recent persisted messages between the caller's identity and
+the named peer.
 
 ```
 params: {
   agent_id: string            // peer identity
-  limit?:   number            // default 50
-  before?:  string            // message_id cursor
+  limit?:   number            // default 20, max 200
 }
 result: {
-  messages: Envelope[]
+  messages: Array<{
+    id:       string          // hub-assigned message id
+    from:     string          // sender identity
+    to:       string          // recipient identity
+    content:  string          // flat content string (see § 8.2)
+    reply_to: string | null
+    status:   "delivered" | "pending"
+    ts:       string          // ISO-8601
+  }>
 }
 ```
+
+The message shape matches the inbound flat form pushed by `mesh.send`,
+not a `ChannelEnvelope` object. Older drafts of this spec listed a
+`before: <message_id_cursor>` param for backwards pagination; it is
+**not implemented at v0.1** and MUST NOT be sent by callers.
+
+Errors:
+
+- `-32602` INVALID_PARAMS — `params.agent_id` missing or non-string.
+- `-32600` INVALID_REQUEST — caller socket is not connected.
 
 ---
 
