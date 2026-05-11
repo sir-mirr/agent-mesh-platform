@@ -223,7 +223,7 @@ mkdir -p env/<lane> state/codex/<lane> attachments/<lane>
 $EDITOR env/<lane>/{adapter,discord,app-server}.env
 $EDITOR secrets/<lane>.env   # DISCORD_BOT_TOKEN,
                              # CODEX_ADAPTER_HTTP_TOKEN,
-                             # CHANNEL_DISCORD_HTTP_TOKEN
+                             # CHANNEL_DISCORD_TOKEN
 
 # Enable the three template instances
 sudo systemctl enable --now \
@@ -233,7 +233,8 @@ sudo systemctl enable --now \
 ```
 
 Driver ↔ adapter HTTP traffic is mutually authenticated using
-`CHANNEL_DISCORD_HTTP_TOKEN` and `CODEX_ADAPTER_HTTP_TOKEN`. The adapter
+`CHANNEL_DISCORD_TOKEN` and `CODEX_ADAPTER_HTTP_TOKEN` via the
+`Authorization: Bearer <token>` header (RFC 6750). The adapter
 registers with the hub using `identity = <lane>`.
 
 ### Claude lane (1 unit + external Claude Code)

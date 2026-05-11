@@ -201,7 +201,7 @@ env/
 secrets/
   <lane>.env     DISCORD_BOT_TOKEN,
                  CODEX_ADAPTER_HTTP_TOKEN,
-                 CHANNEL_DISCORD_HTTP_TOKEN
+                 CHANNEL_DISCORD_TOKEN
 state/
   shared/uploads/
   codex/<lane>/  thread state, conversation files
@@ -216,12 +216,13 @@ A lane MUST NOT read or write into another lane's directory.
 ### 4.5. HTTP control plane (intra-lane)
 
 For lanes where driver and adapter are both in-tree (e.g. Codex lane),
-the two MUST authenticate every HTTP request with a shared secret.
+the two MUST authenticate every HTTP request with a shared secret using
+the `Authorization: Bearer <token>` header per RFC 6750.
 
 | Direction         | Header                            | Source env                       |
 |-------------------|-----------------------------------|----------------------------------|
-| driver → adapter  | `X-Adapter-Token`                 | `CODEX_ADAPTER_HTTP_TOKEN`       |
-| adapter → driver  | `X-Channel-Token`                 | `CHANNEL_DISCORD_HTTP_TOKEN`     |
+| driver → adapter  | `Authorization: Bearer <token>`   | `CODEX_ADAPTER_HTTP_TOKEN`       |
+| adapter → driver  | `Authorization: Bearer <token>`   | `CHANNEL_DISCORD_TOKEN`          |
 
 Tokens MUST be unique per lane.
 
@@ -1002,7 +1003,7 @@ or reused across boundaries.
 | `VAPID_PRIVATE_KEY`            | `secrets/shared.env`    | Web Push                        |
 | `DISCORD_BOT_TOKEN`            | `secrets/<lane>.env`    | Discord channel auth            |
 | `CODEX_ADAPTER_HTTP_TOKEN`     | `secrets/<lane>.env`    | driver → adapter HTTP           |
-| `CHANNEL_DISCORD_HTTP_TOKEN`   | `secrets/<lane>.env`    | adapter → driver HTTP           |
+| `CHANNEL_DISCORD_TOKEN`        | `secrets/<lane>.env`    | adapter → driver HTTP           |
 
 Identity strings (e.g. `prod-codex1`) are **public** and appear in logs
 and envelopes; they MUST NOT carry secret material.
