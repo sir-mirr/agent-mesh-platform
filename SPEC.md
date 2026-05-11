@@ -678,32 +678,133 @@ notification is sent until the recipient reconnects).
 
 ## 9. HTTP REST contract
 
-Base prefix: `/api/v1`. Auth column meanings:
+The HTTP REST surface is split across **two distinct listeners** on the
+core VM. Routes documented in this section are served by
+`agent-mesh-http` unless otherwise noted; the hub control-plane routes
+in § 9.4 are served by `agent-mesh-hub` on a different port.
 
-- *None* — public liveness only.
+Base prefix for `agent-mesh-http`: `/api/v1` (plus a small number of
+unversioned legacy routes like `/auth/*`). Auth column meanings:
+
+- *None* — public route (no JWT required).
 - *JWT* — requires the OAuth-issued session cookie (HS256 JWT).
-- *Token* — service-to-service token in `Authorization: Bearer ...`.
+- *JWT\** — JWT plus the `admin` role claim.
+- *Token* — service-to-service token in `Authorization: Bearer …`.
 
-| Method | Path                          | Auth   | Success |
-|--------|-------------------------------|--------|---------|
-| GET    | `/health`                     | None   | `200`   |
-| GET    | `/agents`                     | JWT    | `200`   |
-| POST   | `/messages`                   | JWT    | `201`   |
-| GET    | `/messages/:agent`            | JWT    | `200`   |
-| GET    | `/messages/search`            | JWT    | `200`   |
-| GET    | `/events/:agentId` (SSE)      | JWT    | `200`   |
-| POST   | `/upload`                     | JWT    | `201`   |
-| GET    | `/files`                      | JWT    | `200`   |
-| GET    | `/admin/pending`              | JWT*   | `200`   |
-| POST   | `/admin/approve`              | JWT*   | `200`   |
-| POST   | `/admin/deny`                 | JWT*   | `200`   |
-| POST   | `/push/subscribe`             | JWT    | `201`   |
-| GET    | `/auth/github`                | None   | `302`   |
-| GET    | `/auth/me`                    | JWT    | `200`   |
+### 9.1. `agent-mesh-http` user-facing routes (`AGENT_MESH_HTTP_PORT`, default `3000`)
 
-`JWT*` = additionally requires the `admin` claim. Unauthenticated access
-to any non-public route MUST return `401`. Unauthorized access (valid
-JWT but missing scope) MUST return `403`.
+| Method | Path                              | Auth   | Success | Notes |
+|--------|-----------------------------------|--------|---------|-------|
+| GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. |
+| GET    | `/api/v1/agents`                  | JWT    | `200`   | Projection of hub agent registry. |
+| POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
+| GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
+| GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
+| GET    | `/api/v1/events/:agentId` (SSE)   | JWT    | `200`   | Server-sent events for a single inbox. |
+| POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
+| GET    | `/api/v1/files`                   | JWT    | `200`   | List uploaded files. |
+| GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
+| GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
+| POST   | `/api/v1/admin/approve`           | JWT\*  | `200`   | Approve a pending user. |
+| POST   | `/api/v1/admin/deny`              | JWT\*  | `200`   | Deny a pending user. |
+| GET    | `/api/v1/admin/chat-audits`       | JWT\*  | `200`   | Cursor-paginated message audit log. |
+| GET    | `/api/v1/admin/chat-audits/stream`| JWT\*  | `200`   | SSE stream of new audited messages. |
+| GET    | `/api/v1/admin/chat-audits/agents`| JWT\*  | `200`   | Distinct agent identities in audit log. |
+| POST   | `/api/v1/ingest/ai-usage`         | Token  | `200`   | AI-usage snapshot ingest (`AI_USAGE_INGEST_TOKEN`). |
+| GET    | `/api/v1/admin/ai-usage`          | JWT\*  | `200`   | Latest AI-usage snapshot. |
+| GET    | `/api/v1/admin/ai-usage/stream`   | JWT\*  | `200`   | SSE stream of AI-usage updates. |
+| GET    | `/api/v1/push/vapid-key`          | None   | `200`   | VAPID public key (PWA registration). |
+| POST   | `/api/v1/push/subscribe`          | JWT    | `200`   | Register a Web Push subscription. |
+| POST   | `/api/v1/push/unsubscribe`        | JWT    | `200`   | Drop a Web Push subscription. |
+| GET    | `/auth/github`                    | None   | `302`   | Begin GitHub OAuth flow. |
+| GET    | `/auth/github/callback`           | None   | `302`   | OAuth callback; sets `mesh_token` cookie. |
+| POST   | `/auth/local`                     | None   | `302`   | Local username/password login; sets cookie. |
+| GET    | `/auth/me`                        | JWT    | `200`   | Current user info. |
+
+‡ `/api/v1/attachments/:id` is unauthenticated at internal-mesh v0.1
+(SPEC § 15.3 — assumes trust-bounded network). Future profiles MAY
+require a bearer token; clients SHOULD tolerate `401`.
+
+Unauthenticated access to any non-public route MUST return `401`.
+Unauthorized access (valid JWT but missing scope, e.g. JWT without the
+`admin` role for a `JWT*` route) MUST return `403`.
+
+### 9.2. Control-plane routes on `agent-mesh-hub` (`AGENT_MESH_HUB_PORT`, default `3100`)
+
+The hub listener serves both WebSocket upgrades (the JSON-RPC surface
+of § 8) **and** a small REST control plane for identity provisioning
+and teardown. These routes live on the hub port, NOT on
+`agent-mesh-http`.
+
+| Method | Path                              | Auth   | Success | Notes |
+|--------|-----------------------------------|--------|---------|-------|
+| GET    | `/health`                         | None   | `200`   | Hub liveness + `online_agents` count. |
+| POST   | `/api/agents`                     | None † | `200`   | Legacy provisioning alias; response shape MAY differ from `/api/v1/agents` — see § 10.1. |
+| POST   | `/api/v1/agents`                  | None † | `200`\|`201` | Canonical identity provisioning (§ 10.1). |
+| DELETE | `/api/agents/{identity}`          | None † | `200`   | Teardown identity + its messages atomically — see § 9.3. |
+
+† At v0.1, hub REST routes are unauthenticated on the assumption the
+hub binds to a trust-bounded interface (Tailscale or LXC-internal
+bridge). Public-internet deployments MUST gate these routes behind a
+bearer token or equivalent before exposing them (§ 10.1).
+
+### 9.3. `DELETE /api/agents/{identity}` response shape
+
+The hub MUST treat `DELETE /api/agents/{identity}` as the destructive
+counterpart of `POST /api/v1/agents`. Together they let the hub own the
+full identity lifecycle (create ↔ delete) without callers needing direct
+SQL access to `hub.db`.
+
+**Identity validation.** `{identity}` MUST match
+`^[a-z][a-z0-9-]*$`. Anything else MUST return `400` with body
+`{ "ok": false, "error": "invalid identity format …" }`.
+
+**Behavior.** The hub MUST, in a single SQL transaction, delete:
+
+1. The row in `agents` whose `identity` matches the path parameter.
+2. Every row in `messages` whose `from` or `to` equals that identity.
+
+If either step fails, the transaction MUST `ROLLBACK` and the hub MUST
+return `500` with `{ "ok": false, "error": "db error: <reason>" }`.
+
+**Response body** (`200 OK`):
+
+```
+{
+  "ok":               true,
+  "identity":         "<echoed identity>",
+  "action":           "deleted" | "not-found",
+  "agents_removed":   <integer, 0 or 1>,
+  "messages_removed": <integer ≥ 0>
+}
+```
+
+`"action": "not-found"` (with `agents_removed: 0`) is the response for
+a DELETE against an identity that does not exist in `hub.db:agents`.
+Callers (e.g. `destroy-shadow-agent.sh`, the `agent-manage` skill)
+SHOULD treat `200 + not-found` as idempotent success rather than as
+an error.
+
+### 9.4. Host split summary
+
+When wiring an out-of-tree client (lane VM, admin tooling, ops
+scripts), callers MUST direct each request to the correct listener.
+The table below is the SSOT.
+
+| Route family                              | Listener         | Default port |
+|-------------------------------------------|------------------|--------------|
+| `GET /api/v1/health`, `/api/v1/*` user-facing | `agent-mesh-http` | `3000` |
+| `/api/v1/attachments/:id`                 | `agent-mesh-http` | `3000` |
+| `/auth/*`                                 | `agent-mesh-http` | `3000` |
+| `GET /health` (hub liveness)              | `agent-mesh-hub`  | `3100` |
+| `POST /api/agents`                        | `agent-mesh-hub`  | `3100` |
+| `POST /api/v1/agents`                     | `agent-mesh-hub`  | `3100` |
+| `DELETE /api/agents/{identity}`           | `agent-mesh-hub`  | `3100` |
+| WebSocket upgrades (JSON-RPC of § 8)      | `agent-mesh-hub`  | `3100` |
+
+A client that issues `POST /api/v1/agents` against
+`agent-mesh-http:3000` will receive `404 Not Found` and vice versa for
+attachment downloads against the hub port.
 
 ---
 
@@ -808,6 +909,28 @@ tunnel, or any other mechanism); the API is the only sanctioned path.
 alias `POST /api/agents` for legacy callers (PM gateway scripts predating
 this spec section). The alias MUST validate identically; its response
 shape MAY differ. New callers MUST prefer the versioned path.
+
+The current legacy response shape on the reference hub is:
+
+```
+{
+  "ok":       true,
+  "identity": "<canonical identity>",
+  "type":     "<canonical type>",
+  "action":   "inserted" | "updated"
+}
+```
+
+Compared to the canonical `/api/v1/agents` response, the legacy alias
+omits `description` and `created_at` and always returns HTTP `200`
+(never `201`). Callers that need the description or creation timestamp
+MUST use `POST /api/v1/agents`.
+
+**Identity teardown.** The destructive counterpart to this endpoint is
+`DELETE /api/agents/{identity}` on the same hub listener — see § 9.3
+for the response shape (`agents_removed`, `messages_removed` counts).
+The hub does not expose a versioned `DELETE /api/v1/agents/{identity}`
+at v0.1; the unversioned form is the only normative shape.
 
 ---
 
