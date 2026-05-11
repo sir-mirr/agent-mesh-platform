@@ -255,8 +255,9 @@ hub exposes `DELETE /api/agents/{identity}` on the hub listener
 (`AGENT_MESH_HUB_PORT`, default `3100`) as the destructive teardown
 endpoint. It atomically deletes the identity row and all message rows
 referencing the identity in either `from_agent` or `to_agent`,
-returning `200` with `{ ok, identity, deleted: { agents, messages } }`
-on success. Operators invoke it manually after disabling the lane
-target above. Note the legacy unversioned path — a versioned
-`/api/v1/agents/{identity}` alias is intentionally *not* exposed
-(see SPEC § 10.1).
+returning `200` with
+`{ ok, identity, action: "deleted" | "not-found", agents_removed, messages_removed }`
+on success (see SPEC § 9.3 for the normative shape). Operators invoke
+it manually after disabling the lane target above. Note the legacy
+unversioned path — a versioned `/api/v1/agents/{identity}` alias is
+intentionally *not* exposed (see SPEC § 10.1).

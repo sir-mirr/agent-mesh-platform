@@ -156,15 +156,15 @@ The two halves talk only over the internal network.
   channel-driver(s).
 - **Transport** — plain `ws://` on the internal network. TLS / `wss://`
   is not required at v0.1.
-- **Auth** — identity-only. The lane's `mesh.register` identity string
+- **Auth** — identity-only. The lane's `mesh.connect` identity string
   is the credential; there is no separate per-lane bearer token for hub
   access.
 - **Bootstrap (MUST)** — lane VMs MUST NOT write to `hub.db` directly
   (no remote `sqlite3 INSERT`). Identity provisioning goes through the
   core hub's `POST /api/v1/agents` endpoint, after which the lane VM may
-  connect and `mesh.register` with the provisioned identity.
+  connect and `mesh.connect` with the provisioned identity.
 - **Deploy** — systemd template units like
-  `agent-mesh-lane@<lane-id>.service` on each lane VM. Docker is not
+  `agent-mesh-lane@<lane-id>.target` on each lane VM. Docker is not
   required. The lane VM only needs `bun` and a synced copy of the repo
   (e.g. `git clone` or `rsync`).
 - **Ports** — once lanes live on separate VMs, the `i`-offset rule
@@ -308,7 +308,8 @@ Then point an external Claude Code instance's agent-mesh MCP plugin at
 
 | Method                 | Purpose                                              |
 |------------------------|------------------------------------------------------|
-| `mesh.register`        | Register an identity (optionally `proxy_for[]`)      |
+| `mesh.connect`         | Connect identity (optionally `proxy_for[]`) — SSOT   |
+| `mesh.register`        | Deprecated alias of `mesh.connect` (see SPEC §8.1a)  |
 | `mesh.send`            | Send an envelope to another identity                 |
 | `mesh.list_agents`     | Enumerate registered agents and online status        |
 | `mesh.fetch_messages`  | Pull stored history for a peer                       |

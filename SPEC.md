@@ -165,6 +165,12 @@ its hub identity.
 | Codex lane  | `codex-app-server@<lane>` + `codex-adapter@<lane>` + `channel-discord@<lane>` |
 | Claude lane | `channel-discord@<lane>` (+ external Claude Code MCP client)     |
 
+> **Note (v0.2).** A `runtime-adapter-claude` package exists in-tree as a
+> v0.1 skeleton (`packages/runtime-adapters/claude/`) and is selected by
+> `RUNTIME_KIND=claude` per § 14.8. Full activation — forwarding
+> envelopes to the external Claude Code MCP — lands in v0.2; until then
+> the Claude lane runs without an in-tree runtime-adapter as shown above.
+
 Future lanes MAY use any combination of one runtime-adapter and one or
 more channel-drivers.
 
