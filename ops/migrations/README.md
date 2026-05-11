@@ -39,12 +39,48 @@ the operator MUST set `AGENT_MESH_STATE_DIR` to match.)
 
 Take a backup first (use the same directory the hub binary opens —
 `${AGENT_MESH_STATE_DIR}/hub.db`, default
-`/srv/agent-mesh-lab/state/shared/hub.db`):
+`/srv/agent-mesh-lab/state/shared/hub.db`).
+
+**Important — WAL mode.** The hub binary opens `hub.db` with
+`PRAGMA journal_mode = WAL` enabled (see
+`packages/shared/hub/src/main.ts:51`). A naive `cp hub.db ...` while
+the hub is running is **not safe** — it can capture an inconsistent
+snapshot because committed pages may still live in the sidecar
+`hub.db-wal` file (and connection state in `hub.db-shm`) and have not
+yet been checkpointed back into the main file. Use one of the two
+patterns below.
+
+**Recommended (hub running) — `sqlite3 .backup`.** This is the
+SQLite-native online backup API and is safe while the hub is open
+on the DB:
 
 ```
-cp /srv/agent-mesh-lab/state/shared/hub.db \
-   /srv/agent-mesh-lab/state/shared/hub.db.bak.$(date +%Y%m%d-%H%M%S)
+sqlite3 /srv/agent-mesh-lab/state/shared/hub.db \
+  ".backup '/srv/agent-mesh-lab/state/shared/hub.db.bak.$(date +%Y%m%d-%H%M%S)'"
 ```
+
+The resulting `.bak` file is a single consistent DB image — it does
+not need a sidecar `-wal` / `-shm`.
+
+**Alternative (hub stopped) — three-file `cp`.** If the operator is
+willing to stop the hub for the backup window, copy all three WAL
+files together so the snapshot is self-consistent (note that the
+`-wal` and `-shm` sidecars may not exist if the hub has cleanly shut
+down and checkpointed — the `2>/dev/null || true` guards that case):
+
+```
+sudo systemctl stop agent-mesh-hub
+for ext in "" "-wal" "-shm"; do
+  cp /srv/agent-mesh-lab/state/shared/hub.db${ext} \
+     /srv/agent-mesh-lab/state/shared/hub.db.bak.$(date +%Y%m%d-%H%M%S)${ext} \
+     2>/dev/null || true
+done
+sudo systemctl start agent-mesh-hub
+```
+
+Do **not** use a plain `cp hub.db hub.db.bak` while the hub is
+running — that is the unsafe pattern documented here only so it can
+be recognised and avoided.
 
 ## Index
 
