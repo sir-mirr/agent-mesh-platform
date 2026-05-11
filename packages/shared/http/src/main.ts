@@ -33,7 +33,7 @@ try {
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie } from 'hono/cookie'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync,
 } from 'fs'
@@ -4762,19 +4762,38 @@ app.post('/api/v1/upload', async (c) => {
     return c.json({ error: 'File too large (max 10MB)' }, 413)
   }
 
-  const ts = Date.now()
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const filename = `${ts}-${safeName}`
-  const filePath = join(UPLOAD_DIR, filename)
-
   const buffer = await file.arrayBuffer()
-  writeFileSync(filePath, Buffer.from(buffer))
+  const bytes = Buffer.from(buffer)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+
+  // Opaque content-addressed id (SPEC §15.2). Preserve original extension for
+  // best-effort MIME inference on the GET side.
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const extMatch = safeName.match(/(\.[a-zA-Z0-9]{1,16})$/)
+  const ext = extMatch ? extMatch[1]!.toLowerCase() : ''
+  const id = ext ? `${sha256}${ext}` : sha256
+  const filePath = join(UPLOAD_DIR, id)
+
+  if (!existsSync(filePath)) {
+    writeFileSync(filePath, bytes)
+  }
+
+  const mime = getMimeType(filePath)
+  const uploaded_at = new Date().toISOString()
 
   return c.json({
     ok: true,
+    // New SPEC §15.2 attachment metadata shape (also serves as upload response)
+    id,
+    name: file.name,
+    mime,
+    size: file.size,
+    sha256,
+    download_url: `/api/v1/attachments/${id}`,
+    uploaded_at,
+    // Backward-compat fields (deprecated — single-host legacy clients only)
     file_path: filePath,
     filename: file.name,
-    size: file.size,
   })
 })
 
@@ -4782,10 +4801,21 @@ app.post('/api/v1/upload', async (c) => {
 // Lane VMs fetch attachments by id from the core VM's primary store.
 // v0.1 internal-mesh: unauthenticated, assumed to live on a trusted
 // internal network. Future profiles MAY require a bearer token.
+// Accept opaque sha256 hex ids (v0.1 contract), optionally with a short
+// extension suffix (`<sha256>.<ext>`), or legacy `<ts>-<safe-name>` ids for
+// pre-hash uploads (backward compat).
+const SHA256_ID_RE = /^[0-9a-f]{64}(?:\.[a-zA-Z0-9]{1,16})?$/
+const LEGACY_ID_RE = /^[0-9]+-[a-zA-Z0-9._-]+$/
+
 app.get('/api/v1/attachments/:id', async (c) => {
   const id = c.req.param('id')
   if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
     return c.json({ error: 'Invalid attachment id' }, 400)
+  }
+  // Primary gate: id MUST match sha256 format or legacy format. Anything else
+  // is rejected before touching the filesystem.
+  if (!SHA256_ID_RE.test(id) && !LEGACY_ID_RE.test(id)) {
+    return c.json({ error: 'Invalid attachment id format' }, 400)
   }
 
   const filePath = join(UPLOAD_DIR, id)
@@ -4799,14 +4829,25 @@ app.get('/api/v1/attachments/:id', async (c) => {
     return c.json({ error: 'Not a file' }, 400)
   }
 
-  const content = readFileSync(filePath)
   const contentType = getMimeType(filePath)
-  // Original filename is encoded as "<ts>-<safe-name>"; strip the ts prefix
-  // for display purposes when possible.
-  const dashIdx = id.indexOf('-')
-  const filename = dashIdx > 0 ? id.slice(dashIdx + 1) : id
+  // Best-effort display filename. For sha256 ids we lost the original name on
+  // disk; legacy `<ts>-<name>` ids preserved it. Use sha256 itself otherwise.
+  let filename = id
+  if (LEGACY_ID_RE.test(id)) {
+    const dashIdx = id.indexOf('-')
+    filename = dashIdx > 0 ? id.slice(dashIdx + 1) : id
+  }
 
-  return new Response(content, {
+  // Stream via Bun.file when available (avoids loading full body into RAM).
+  // Falls back to readFileSync for non-bun runtimes.
+  const file = (globalThis as any).Bun?.file
+    ? (globalThis as any).Bun.file(filePath)
+    : null
+  const body: BodyInit = file
+    ? (file.stream() as ReadableStream)
+    : (new Uint8Array(readFileSync(filePath)) as unknown as BodyInit)
+
+  return new Response(body, {
     headers: {
       'Content-Type': contentType,
       'Content-Disposition': `inline; filename="${filename}"`,

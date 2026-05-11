@@ -5,6 +5,7 @@ export * from "./chunk";
 export * from "./config";
 export * from "./envelope";
 export * from "./hub-forward";
+export * from "./lane-attachments";
 export * from "./http";
 export * from "./recent-sent";
 export * from "./runtime";

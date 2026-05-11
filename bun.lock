@@ -21,7 +21,16 @@
       "version": "0.1.0",
       "dependencies": {
         "@agent-mesh/core": "workspace:*",
+        "@agent-mesh/shared-attachments": "workspace:*",
         "discord.js": "^14.16.3",
+      },
+    },
+    "packages/runtime-adapters/claude": {
+      "name": "@agent-mesh/runtime-adapter-claude",
+      "version": "0.1.0",
+      "dependencies": {
+        "@agent-mesh/core": "workspace:*",
+        "ws": "^8.18.0",
       },
     },
     "packages/runtime-adapters/codex": {
@@ -29,8 +38,13 @@
       "version": "0.1.0",
       "dependencies": {
         "@agent-mesh/core": "workspace:*",
+        "@agent-mesh/shared-attachments": "workspace:*",
         "ws": "^8.18.0",
       },
+    },
+    "packages/shared/attachments": {
+      "name": "@agent-mesh/shared-attachments",
+      "version": "0.1.0",
     },
     "packages/shared/http": {
       "name": "@agent-mesh/shared-http",
@@ -58,7 +72,11 @@
 
     "@agent-mesh/core": ["@agent-mesh/core@workspace:packages/agent-mesh-core"],
 
+    "@agent-mesh/runtime-adapter-claude": ["@agent-mesh/runtime-adapter-claude@workspace:packages/runtime-adapters/claude"],
+
     "@agent-mesh/runtime-codex": ["@agent-mesh/runtime-codex@workspace:packages/runtime-adapters/codex"],
+
+    "@agent-mesh/shared-attachments": ["@agent-mesh/shared-attachments@workspace:packages/shared/attachments"],
 
     "@agent-mesh/shared-http": ["@agent-mesh/shared-http@workspace:packages/shared/http"],
 

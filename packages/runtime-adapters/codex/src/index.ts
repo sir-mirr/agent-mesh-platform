@@ -2,6 +2,7 @@ export * from "./adapter";
 export * from "./codex-client";
 export * from "./config";
 export * from "./hub-client";
+export * from "./lane-attachments";
 export * from "./http-action-proxy";
 export * from "./http-server";
 export * from "./mesh-types";

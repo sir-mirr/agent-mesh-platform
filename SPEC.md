@@ -755,7 +755,7 @@ element is a JSON object with the following fields:
 
 | Field          | Type    | Required | Notes |
 |----------------|---------|----------|-------|
-| `id`           | string  | MUST     | Opaque attachment id; stable for the lifetime of the file. v0.1: filename produced by `POST /api/v1/upload` (`<ts>-<safe-name>`). |
+| `id`           | string  | MUST     | Opaque attachment id; stable for the lifetime of the file. **v0.1 (current)**: lowercase sha256 hex digest of the file bytes, optionally suffixed with the original extension (`<sha256>` or `<sha256>.<ext>`). The id is purely opaque to receivers — they MUST treat it as a string token. **Legacy** (pre-hash uploads): the `<ts>-<safe-name>` form produced by older `POST /api/v1/upload` revisions; the download endpoint continues to accept this form for backward compatibility. New uploads MUST produce the sha256 form. |
 | `filename`     | string  | MUST     | Original client-supplied filename, for display only. |
 | `mime`         | string  | SHOULD   | Best-effort MIME type. Receivers MUST tolerate absence and fall back to `application/octet-stream`. |
 | `size`         | integer | SHOULD   | Byte length. Receivers MUST tolerate absence. |
@@ -765,6 +765,15 @@ element is a JSON object with the following fields:
 Receivers MUST ignore unknown fields. The legacy single-host
 `file_path` field MAY also be present for backwards compatibility
 but MUST NOT be treated as authoritative in cross-VM deployments.
+
+**Upload response shape.** `POST /api/v1/upload` (§ 9) MUST return a JSON
+body that *is itself a valid attachment metadata object* per the table
+above (so clients can attach the response directly to a hub message).
+Specifically the response MUST contain `id`, `name`, `mime`, `size`,
+`sha256`, `download_url`, and `uploaded_at` (ISO-8601 UTC). The
+deprecated `file_path` and `filename` fields MAY accompany the response
+for legacy single-host clients; new clients MUST consume `id` /
+`download_url` only.
 
 ### 15.3. Download endpoint contract
 
@@ -822,6 +831,16 @@ channel-driver process. The reference implementation lives under
 `ops/bin/lane-attachments-evict.sh` with a systemd template at
 `ops/systemd/agent-mesh-lane-attachments-evict@.service` and
 matching `.timer`.
+
+**Fetcher helper (normative reference).** A reference fetcher helper
+implementing steps 1–5 above lives under
+`packages/shared/attachments/` (`@agent-mesh/shared-attachments`) and
+is exposed to lane packages as `fetchAttachment(meta, cacheDir, opts)`.
+Runtime adapters and channel drivers SHOULD reuse this helper rather
+than re-implementing the atomic-rename + sha256-verify pattern. The
+helper streams the response body to a tempfile (`.<id>.<rand>.tmp`)
+and renames into `<cacheDir>/<id>` only after sha256 verification
+succeeds.
 
 ### 15.5. Offline and failure behaviour
 

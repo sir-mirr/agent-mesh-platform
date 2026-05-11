@@ -6,6 +6,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "../../agent-mesh-core/src/**/*.ts"
+    "../../agent-mesh-core/src/**/*.ts",
+    "../../shared/attachments/src/**/*.ts"
   ]
 }

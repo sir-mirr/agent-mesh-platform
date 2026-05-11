@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@agent-mesh/core": "workspace:*",
+    "@agent-mesh/shared-attachments": "workspace:*",
     "ws": "^8.18.0"
   },
   "scripts": {
