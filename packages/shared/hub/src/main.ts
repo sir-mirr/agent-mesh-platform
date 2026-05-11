@@ -848,9 +848,9 @@ async function handlePostAgents(req: Request): Promise<Response> {
 //     distinguish "just provisioned" from "already existed" via HTTP status
 //     alone (SPEC §9 convention: POST that creates returns 201).
 //   • Response body carries the canonical row: { identity, type, description,
-//     created_at } where created_at is the agents.last_seen value after the
-//     UPSERT (the agents table has no dedicated created_at column; last_seen
-//     after a fresh INSERT is effectively the creation timestamp).
+//     created_at } where created_at is the agents.created_at column value
+//     (DATETIME DEFAULT CURRENT_TIMESTAMP, immutable post-insert per SPEC §10.1;
+//     stmtSelectAgent strftime-formats it to strict ISO-8601 YYYY-MM-DDTHH:MM:SSZ).
 //
 // Validation, auth posture, and DB effects are identical to /api/agents — we
 // share the same VALID_AGENT_TYPES / IDENTITY_RE / MAX_DESCRIPTION_LEN rules
