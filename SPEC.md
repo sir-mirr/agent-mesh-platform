@@ -1027,6 +1027,26 @@ one verifier env that MUST hold the identical value on a given lane.
 Identity strings (e.g. `prod-codex1`) are **public** and appear in logs
 and envelopes; they MUST NOT carry secret material.
 
+### 11.1. Deprecated env aliases (backwards compatibility)
+
+The reference implementation accepts a small set of legacy environment
+variable names as aliases for the canonical tokens above. They exist
+purely so pre-v0.1 deployments keep starting; **new deployments MUST
+NOT set these alias names** — use the canonical token only. The hub
+and adapters resolve the canonical name first and fall back to the
+alias only if the canonical is unset.
+
+| Deprecated alias            | Canonical token              | Source location                                                | Status note                                          |
+|-----------------------------|------------------------------|----------------------------------------------------------------|------------------------------------------------------|
+| `BRIDGE_INGRESS_TOKEN`      | `CHANNEL_INGRESS_TOKEN`      | `packages/channel-drivers/discord/src/config.ts:50`            | accepted for BC; do not use in new deployments       |
+| `GATEWAY_TOKEN`             | `DISCORD_DRIVER_HTTP_TOKEN`  | `packages/channel-drivers/discord/src/config.ts:74`            | accepted for BC; do not use in new deployments       |
+| `DISCORD_DRIVER_TOKEN`      | `CHANNEL_DISCORD_TOKEN`      | `packages/runtime-adapters/codex/src/config.ts:117`            | accepted for BC; do not use in new deployments       |
+| `BRIDGE_HTTP_TOKEN`         | `CODEX_ADAPTER_HTTP_TOKEN`   | `packages/runtime-adapters/codex/src/config.ts:149`            | accepted for BC; do not use in new deployments       |
+
+Future major releases MAY drop the alias fallback. Operators auditing a
+deployment SHOULD `grep` for these aliases in `secrets/*.env` and
+rename to the canonical name on the next deploy cycle.
+
 ---
 
 ## 12. Port offset rule (extending to N lanes)
