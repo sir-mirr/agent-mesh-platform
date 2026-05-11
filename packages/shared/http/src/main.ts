@@ -4778,6 +4778,43 @@ app.post('/api/v1/upload', async (c) => {
   })
 })
 
+// --- Attachment pull-on-demand (SPEC § 15) ---
+// Lane VMs fetch attachments by id from the core VM's primary store.
+// v0.1 internal-mesh: unauthenticated, assumed to live on a trusted
+// internal network. Future profiles MAY require a bearer token.
+app.get('/api/v1/attachments/:id', async (c) => {
+  const id = c.req.param('id')
+  if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
+    return c.json({ error: 'Invalid attachment id' }, 400)
+  }
+
+  const filePath = join(UPLOAD_DIR, id)
+  if (!existsSync(filePath)) {
+    return c.json({ error: 'Attachment not found' }, 404)
+  }
+
+  const { statSync } = require('fs') as typeof import('fs')
+  const stat = statSync(filePath)
+  if (!stat.isFile()) {
+    return c.json({ error: 'Not a file' }, 400)
+  }
+
+  const content = readFileSync(filePath)
+  const contentType = getMimeType(filePath)
+  // Original filename is encoded as "<ts>-<safe-name>"; strip the ts prefix
+  // for display purposes when possible.
+  const dashIdx = id.indexOf('-')
+  const filename = dashIdx > 0 ? id.slice(dashIdx + 1) : id
+
+  return new Response(content, {
+    headers: {
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${filename}"`,
+      'Content-Length': String(stat.size),
+    },
+  })
+})
+
 // --- PWA support ---
 
 app.get('/sw.js', (c) => {

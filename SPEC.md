@@ -705,7 +705,118 @@ local paths**, with the core VM owning shared/uploads as described in
 
 ---
 
-## 15. Out of scope
+## 15. Attachments pull-on-demand contract
+
+This section normalizes how message attachments are stored, advertised,
+and retrieved across the baseline and (especially) the `internal-mesh
+v0.1` cross-VM deployment of § 14. The contract applies uniformly to
+single-host and multi-VM topologies; differences are explicitly
+called out.
+
+### 15.1. Storage authority
+
+- The **core VM's `agent-mesh-http` service MUST be the sole primary
+  storage authority** for attachment bytes. All attachments uploaded
+  via `POST /api/v1/upload` (§ 9) are written to and retained on the
+  core VM only.
+- Lane VMs MUST NOT be treated as primary storage. A lane VM MUST
+  NOT replicate attachment bytes from the core VM in advance of use
+  (no eager replication).
+- The on-disk layout under the core VM is an implementation detail
+  but SHOULD live under `<STATE_DIR>/uploads/`.
+
+### 15.2. Message attachment metadata schema
+
+When a message carries one or more attachments, the message body
+sent over the hub (§ 8) MUST embed an `attachments` array. Each
+element is a JSON object with the following fields:
+
+| Field          | Type    | Required | Notes |
+|----------------|---------|----------|-------|
+| `id`           | string  | MUST     | Opaque attachment id; stable for the lifetime of the file. v0.1: filename produced by `POST /api/v1/upload` (`<ts>-<safe-name>`). |
+| `filename`     | string  | MUST     | Original client-supplied filename, for display only. |
+| `mime`         | string  | SHOULD   | Best-effort MIME type. Receivers MUST tolerate absence and fall back to `application/octet-stream`. |
+| `size`         | integer | SHOULD   | Byte length. Receivers MUST tolerate absence. |
+| `sha256`       | string  | SHOULD   | Lowercase hex digest of the file bytes. When present, fetchers SHOULD verify (§ 15.4). |
+| `download_url` | string  | MUST     | Absolute URL on the core VM's http server resolving to `GET /api/v1/attachments/<id>`. |
+
+Receivers MUST ignore unknown fields. The legacy single-host
+`file_path` field MAY also be present for backwards compatibility
+but MUST NOT be treated as authoritative in cross-VM deployments.
+
+### 15.3. Download endpoint contract
+
+The core VM's `agent-mesh-http` service MUST expose:
+
+- `GET /api/v1/attachments/:id`
+  - Path parameter `id` matches the `id` field of § 15.2.
+  - Response on hit: `200 OK` streaming the file bytes with
+    `Content-Type` set to the stored MIME type (falling back to
+    `application/octet-stream`), `Content-Length` set, and
+    `Content-Disposition: inline; filename="<filename>"`.
+  - Response on miss: `404 Not Found` with a JSON error body.
+  - The endpoint MUST reject ids containing path separators or
+    `..` segments (`400 Bad Request`).
+- Authentication: v0.1 internal-mesh assumes the endpoint is
+  reachable only across the trusted internal network. The endpoint
+  MAY be unauthenticated in this profile. Future profiles MAY
+  require a mesh bearer token; clients SHOULD therefore tolerate a
+  `401 Unauthorized` response and surface it as a non-retryable
+  fetch failure.
+
+### 15.4. Lane cache contract
+
+A lane VM that needs to materialize an attachment (e.g. to inject it
+into a runtime's context, render it in a channel driver, or persist
+it to a handoff bundle) MUST resolve it via pull-on-demand:
+
+1. Inspect the message `attachments[]` metadata.
+2. Check the local cache under
+   `/var/lib/agent-mesh/lane/<lane-id>/attachments-cache/`. The
+   cache file name SHOULD be the attachment `id`.
+3. On cache miss, issue `GET <download_url>` against the core VM,
+   stream the response to a tempfile in the cache directory, then
+   atomically rename into place.
+4. If the metadata contains `sha256`, the lane SHOULD verify the
+   downloaded bytes and discard the cache entry on mismatch.
+5. Return the local cache path to the caller.
+
+Cache eviction:
+
+- Operators MUST run an out-of-process eviction job (cron or
+  systemd timer) over each lane's cache directory.
+- The default policy is **TTL of 7 days** (based on file mtime).
+  Operators MAY additionally cap total cache size at **1 GiB**
+  and evict least-recently-modified entries first when the cap is
+  exceeded.
+- Both knobs MAY be overridden per lane via environment variables
+  on the eviction unit.
+- Eviction MUST be idempotent and safe to run concurrently with
+  lane processes (no in-flight downloads invalidated by mtime
+  alone).
+
+Eviction logic MUST NOT be embedded inside the runtime-adapter or
+channel-driver process. The reference implementation lives under
+`ops/bin/lane-attachments-evict.sh` with a systemd template at
+`ops/systemd/agent-mesh-lane-attachments-evict@.service` and
+matching `.timer`.
+
+### 15.5. Offline and failure behaviour
+
+- A lane VM that cannot reach the core VM (network partition, core
+  service down, `404`/`401`/`5xx`) MUST NOT block delivery of the
+  message body text. The message MUST be delivered to the
+  runtime/channel with attachment payloads omitted; a structured
+  warning SHOULD be surfaced in the lane's logs and, where
+  applicable, channel-side error observability (per the project's
+  observability rules).
+- Lanes MUST NOT re-upload an attachment on the lane VM side to
+  "rehydrate" the core VM. The core VM remains the sole authority
+  for the original bytes.
+
+---
+
+## 16. Out of scope
 
 The following are explicitly **not** part of this specification and may
 exist or be removed independently of compliance:

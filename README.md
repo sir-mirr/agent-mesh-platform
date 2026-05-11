@@ -179,16 +179,20 @@ The two halves talk only over the internal network.
 - **Discovery** — a lane VM only needs to know the hub URL. Peer
   locations are obtained from `mesh.list_agents`. All inter-agent
   traffic still flows through the hub (no P2P).
-- **Attachments** — the hub remains the **primary store**. The HTTP
-  server's `/api/v1/upload` writes to the core VM's local disk. Lane
-  VMs fetch attachments **pull-on-demand** when they are actually
-  needed and cache locally under TTL or LRU. Eager replication is
-  prohibited.
+- **Attachments** — the core VM is the **sole primary store**. The
+  HTTP server's `POST /api/v1/upload` writes bytes to the core VM's
+  local disk; messages carry only attachment metadata (id, mime,
+  size, sha256, download_url). Lane VMs **pull attachments on demand**
+  from the core VM's `GET /api/v1/attachments/:id` when they are
+  actually needed, and cache them locally under
+  `/var/lib/agent-mesh/lane/<lane-id>/attachments-cache/`. Eviction is
+  done by an out-of-process job (default: TTL 7d, optional 1 GiB size
+  cap). Eager replication is prohibited. Lane disk footprint stays
+  small and proportional to recent use.
 
-For the normative rules, see `SPEC.md` § 15 "Cross-VM deployment
-(internal-mesh v0.1)". Bootstrap provisioning and attachment handling
-cross-reference § 10 "Bootstrap contract" and § 6.1 (attachment
-handling) respectively.
+For the normative rules, see `SPEC.md` § 14 "Cross-VM deployment
+(internal-mesh v0.1)" and § 15 "Attachments pull-on-demand contract".
+Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 
 ---
 

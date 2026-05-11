@@ -1,0 +1,14 @@
+[Unit]
+Description=Hourly eviction of agent-mesh lane attachments cache (lane=%i)
+Documentation=https://github.com/yongwang-mesh/agent-mesh-platform SPEC.md#15.4
+
+[Timer]
+# Run hourly with a random delay to avoid thundering herd across lane VMs.
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=10min
+Unit=agent-mesh-lane-attachments-evict@%i.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
