@@ -325,7 +325,7 @@ Then point an external Claude Code instance's agent-mesh MCP plugin at
 | `GET  /api/v1/messages/search`      | Full-text search                     |
 | `GET  /api/v1/events/:agentId`      | SSE event stream                     |
 | `POST /api/v1/upload`               | Upload an attachment                 |
-| `GET  /api/v1/files`                | List uploads                         |
+| `GET  /api/v1/files`                | Serve a single file by `?path=` query |
 | `*    /api/v1/admin/*`              | `pending` / `approve` / `deny`       |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |
 | `GET  /auth/github`, `/auth/me`     | GitHub OAuth + JWT session           |

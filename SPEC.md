@@ -84,7 +84,7 @@ The hub MUST:
 - Treat unknown identities on `mesh.send` as a recoverable error
   (envelope is queued for later delivery).
 - Emit notifications to subscribed clients when their inbox receives a
-  new envelope (`mesh.message` / `mesh.delivered`, see § 8.9).
+  new envelope (`mesh.message` / `mesh.delivered`, see § 8.8).
 - Send a WebSocket-level `ping` frame to every connected agent every
   **30 seconds**. Agents MUST respond with a `pong` frame (the
   WebSocket runtime handles this transparently in most clients).
@@ -225,12 +225,19 @@ For lanes where driver and adapter are both in-tree (e.g. Codex lane),
 the two MUST authenticate every HTTP request with a shared secret using
 the `Authorization: Bearer <token>` header per RFC 6750.
 
-| Direction         | Header                            | Source env                       |
-|-------------------|-----------------------------------|----------------------------------|
-| driver → adapter  | `Authorization: Bearer <token>`   | `CODEX_ADAPTER_HTTP_TOKEN`       |
-| adapter → driver  | `Authorization: Bearer <token>`   | `CHANNEL_DISCORD_TOKEN`          |
+Each direction uses **two env names** referencing the same secret value
+— a *sender env* on the originating side (used to set the `Bearer`
+value) and a *verifier env* on the receiving side (used to compare the
+incoming header). Both env entries on a single lane MUST hold the
+identical secret value; deploy tooling MUST keep them in sync.
 
-Tokens MUST be unique per lane.
+| Direction         | Header                            | Sender env (originator side) | Verifier env (receiver side)   |
+|-------------------|-----------------------------------|------------------------------|--------------------------------|
+| driver → adapter  | `Authorization: Bearer <token>`   | `CHANNEL_INGRESS_TOKEN`      | `CODEX_ADAPTER_HTTP_TOKEN`     |
+| adapter → driver  | `Authorization: Bearer <token>`   | `CHANNEL_DISCORD_TOKEN`      | `DISCORD_DRIVER_HTTP_TOKEN`    |
+
+Tokens MUST be unique per lane, and each lane's two intra-lane secrets
+(driver→adapter and adapter→driver) MUST be distinct from each other.
 
 ---
 
@@ -471,7 +478,7 @@ result: {
 ```
 
 `status` is `"delivered"` when the recipient socket was online and the
-hub successfully pushed a `mesh.message` notification (§ 8.9) to it;
+hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
 `"pending"` otherwise (the envelope is persisted to `messages` and
 will be delivered on the recipient's next connect via
 `mesh.fetch_messages`/auto-deliver).
@@ -646,13 +653,13 @@ Errors:
 
 - `-32600` INVALID_REQUEST — caller socket is not connected.
 
-### 8.9. Server-pushed notifications
+### 8.8. Server-pushed notifications
 
 In addition to client-initiated requests above, the hub emits two
 JSON-RPC 2.0 notifications (no `id` field; clients MUST NOT respond
 with a JSON-RPC response).
 
-#### 8.9.1. `mesh.message`
+#### 8.8.1. `mesh.message`
 
 Pushed to a recipient socket when the hub routes an inbound
 `mesh.send` to it, **and** when a previously-pending message is
@@ -676,7 +683,7 @@ SHOULD handle this method; unknown-method behaviour at the JSON-RPC
 layer (the spec does not require a response since it is a
 notification) MUST NOT close the connection.
 
-#### 8.9.2. `mesh.delivered`
+#### 8.8.2. `mesh.delivered`
 
 Pushed to a sender socket when the hub routes a `mesh.send` from that
 sender to an online recipient — i.e. whenever the same `mesh.send`
@@ -1002,14 +1009,20 @@ at v0.1; the unversioned form is the only normative shape.
 The deployment uses several distinct secrets. They MUST NOT be merged
 or reused across boundaries.
 
-| Token                          | Where lives             | Purpose                         |
-|--------------------------------|-------------------------|---------------------------------|
-| `GITHUB_CLIENT_SECRET`         | `secrets/shared.env`    | OAuth login                     |
-| `JWT_SECRET`                   | `secrets/shared.env`    | HTTP session JWT signing        |
-| `VAPID_PRIVATE_KEY`            | `secrets/shared.env`    | Web Push                        |
-| `DISCORD_BOT_TOKEN`            | `secrets/<lane>.env`    | Discord channel auth            |
-| `CODEX_ADAPTER_HTTP_TOKEN`     | `secrets/<lane>.env`    | driver → adapter HTTP           |
-| `CHANNEL_DISCORD_TOKEN`        | `secrets/<lane>.env`    | adapter → driver HTTP           |
+| Token                          | Where lives             | Purpose                                                |
+|--------------------------------|-------------------------|--------------------------------------------------------|
+| `GITHUB_CLIENT_SECRET`         | `secrets/shared.env`    | OAuth login                                            |
+| `JWT_SECRET`                   | `secrets/shared.env`    | HTTP session JWT signing                               |
+| `VAPID_PRIVATE_KEY`            | `secrets/shared.env`    | Web Push                                               |
+| `DISCORD_BOT_TOKEN`            | `secrets/<lane>.env`    | Discord channel auth                                   |
+| `CHANNEL_INGRESS_TOKEN`        | `secrets/<lane>.env`    | driver → adapter HTTP — sender side (Bearer value)     |
+| `CODEX_ADAPTER_HTTP_TOKEN`     | `secrets/<lane>.env`    | driver → adapter HTTP — verifier side (adapter)        |
+| `CHANNEL_DISCORD_TOKEN`        | `secrets/<lane>.env`    | adapter → driver HTTP — sender side (Bearer value)     |
+| `DISCORD_DRIVER_HTTP_TOKEN`    | `secrets/<lane>.env`    | adapter → driver HTTP — verifier side (driver)         |
+
+The four lane-scoped HTTP tokens form **two paired secrets** for the
+intra-lane control plane (§ 4.5): each direction has one sender env and
+one verifier env that MUST hold the identical value on a given lane.
 
 Identity strings (e.g. `prod-codex1`) are **public** and appear in logs
 and envelopes; they MUST NOT carry secret material.
