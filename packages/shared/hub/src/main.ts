@@ -122,6 +122,10 @@ const stmtUpsertAgentTyped = db.prepare(`
     description = excluded.description
 `);
 
+const stmtSelectAgent = db.prepare(`
+  SELECT identity, type, description, last_seen FROM agents WHERE identity = ?
+`);
+
 // ── REST: DELETE /api/agents/{identity} (teardown identity) ────────────────
 const stmtDeleteAgent = db.prepare(`
   DELETE FROM agents WHERE identity = ?
@@ -805,6 +809,100 @@ async function handlePostAgents(req: Request): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// REST: POST /api/v1/agents — versioned provisioning endpoint
+// ---------------------------------------------------------------------------
+//
+// SPEC §9 ("Base prefix: /api/v1") + §10 ("identity provisioning for remote
+// lanes goes through POST /api/v1/agents on the core hub") normatively pin
+// the versioned path. The unversioned /api/agents endpoint remains as a
+// backwards-compatible alias for older callers (本体 PM gateway scripts,
+// destroy-shadow-agent.sh) and behaves identically aside from response shape.
+//
+// Differences vs /api/agents:
+//   • Returns 201 on first insert, 200 on UPSERT-update — lets callers
+//     distinguish "just provisioned" from "already existed" via HTTP status
+//     alone (SPEC §9 convention: POST that creates returns 201).
+//   • Response body carries the canonical row: { identity, type, description,
+//     created_at } where created_at is the agents.last_seen value after the
+//     UPSERT (the agents table has no dedicated created_at column; last_seen
+//     after a fresh INSERT is effectively the creation timestamp).
+//
+// Validation, auth posture, and DB effects are identical to /api/agents — we
+// share the same VALID_AGENT_TYPES / IDENTITY_RE / MAX_DESCRIPTION_LEN rules
+// and the same stmtUpsertAgentTyped statement. Schema is unchanged.
+
+async function handlePostAgentsV1(req: Request): Promise<Response> {
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonResponse(400, { ok: false, error: "invalid JSON body" });
+  }
+  if (!body || typeof body !== "object") {
+    return jsonResponse(400, { ok: false, error: "body must be a JSON object" });
+  }
+
+  const identity = body.identity;
+  const type = body.type;
+  const description = body.description ?? null;
+
+  if (!identity || typeof identity !== "string") {
+    return jsonResponse(400, { ok: false, error: "identity is required (string)" });
+  }
+  if (!IDENTITY_RE.test(identity)) {
+    return jsonResponse(400, {
+      ok: false,
+      error: "identity must be kebab-case (^[a-z][a-z0-9-]*$)",
+    });
+  }
+  if (!type || typeof type !== "string") {
+    return jsonResponse(400, { ok: false, error: "type is required (string)" });
+  }
+  if (!VALID_AGENT_TYPES.has(type)) {
+    return jsonResponse(400, {
+      ok: false,
+      error: `type must be one of: ${[...VALID_AGENT_TYPES].join(", ")}`,
+    });
+  }
+  if (description !== null) {
+    if (typeof description !== "string") {
+      return jsonResponse(400, { ok: false, error: "description must be a string" });
+    }
+    if (description.length > MAX_DESCRIPTION_LEN) {
+      return jsonResponse(400, {
+        ok: false,
+        error: `description exceeds ${MAX_DESCRIPTION_LEN} chars`,
+      });
+    }
+  }
+
+  const existed = !!stmtAgentExists.get(identity);
+  try {
+    stmtUpsertAgentTyped.run(identity, type, description);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`POST /api/v1/agents db error for ${identity}: ${msg}`);
+    return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
+  }
+
+  const row = stmtSelectAgent.get(identity) as
+    | { identity: string; type: string | null; description: string | null; last_seen: string | null }
+    | undefined;
+
+  const status = existed ? 200 : 201;
+  const action = existed ? "updated" : "inserted";
+  log(`POST /api/v1/agents: ${action} ${identity} (type=${type}) -> ${status}`);
+  return jsonResponse(status, {
+    ok: true,
+    identity: row?.identity ?? identity,
+    type: row?.type ?? type,
+    description: row?.description ?? description,
+    created_at: row?.last_seen ?? null,
+    action,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // REST: DELETE /api/agents/{identity} — teardown identity from hub.db
 // ---------------------------------------------------------------------------
 //
@@ -889,6 +987,16 @@ const server = Bun.serve({
     if (url.pathname === "/api/agents") {
       if (req.method === "POST") {
         return handlePostAgents(req);
+      }
+      return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
+    }
+
+    // REST: SPEC §9/§10 versioned provisioning endpoint
+    // /api/v1/agents is the canonical identity-provisioning route for
+    // cross-VM lane bootstrap. /api/agents remains as a legacy alias.
+    if (url.pathname === "/api/v1/agents") {
+      if (req.method === "POST") {
+        return handlePostAgentsV1(req);
       }
       return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
     }

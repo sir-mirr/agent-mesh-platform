@@ -44,7 +44,9 @@ derive_hub_api_url() {
   esac
   raw_url="${raw_url%/ws}"
   raw_url="${raw_url%/}"
-  printf '%s/api/agents' "$raw_url"
+  # SPEC §10 — identity provisioning MUST use the versioned endpoint
+  # POST /api/v1/agents. The unversioned /api/agents is a legacy alias.
+  printf '%s/api/v1/agents' "$raw_url"
 }
 
 read_env_var() {

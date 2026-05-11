@@ -426,6 +426,65 @@ In a cross-VM deployment (§ 15), lane VMs MUST NOT bypass this script
 and MUST NOT write to `hub.db` over the network; identity provisioning
 for remote lanes goes through `POST /api/v1/agents` on the core hub.
 
+### 10.1. Identity provisioning API (`POST /api/v1/agents`)
+
+The core hub MUST expose `POST /api/v1/agents` on the same HTTP listener
+that serves WebSocket upgrades (`AGENT_MESH_HUB_PORT`, default `3100`).
+This endpoint is the single normative entry point for inserting or
+updating rows in `hub.db:agents` from any caller — local bootstrap, the
+PM gateway, or remote lane VMs.
+
+**Request** (`Content-Type: application/json`):
+
+```
+{
+  "identity":    "<kebab-case string>",   // required, ^[a-z][a-z0-9-]*$
+  "type":        "ai-claude" | "ai-codex" | "service",  // required
+  "description": "<string, ≤ 256 chars>"  // optional, may be null
+}
+```
+
+**Behavior** — the hub MUST:
+
+1. Validate `identity` against `^[a-z][a-z0-9-]*$`; reject with `400` otherwise.
+2. Validate `type` against the enum above; reject with `400` otherwise.
+3. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
+4. Return `201 Created` when the row did not previously exist, `200 OK`
+   when the row already existed and was updated.
+5. Return `500` only on a genuine DB error; transient errors MAY be retried
+   by callers using exponential or fixed backoff.
+
+**Response body** (both `200` and `201`):
+
+```
+{
+  "ok":          true,
+  "identity":    "<canonical identity>",
+  "type":        "<canonical type>",
+  "description": "<canonical description or null>",
+  "created_at":  "<ISO-8601 timestamp>",   // = agents.last_seen after UPSERT
+  "action":      "inserted" | "updated"
+}
+```
+
+The `created_at` field reflects `agents.last_seen` at the moment of the
+UPSERT. Because the current `agents` schema has no dedicated creation
+column, `created_at` on an `"updated"` response equals the touch time of
+this call, not the original insertion. Callers that need durable creation
+provenance SHOULD record it externally (e.g. provisioning log).
+
+**Authentication.** v0.1 deployments MAY leave this endpoint
+unauthenticated when the hub binds to a trust-bounded interface (Tailscale
+or LXC-internal bridge). Public-internet deployments MUST gate the route
+behind a bearer token or equivalent before exposing it. Callers MUST NOT
+write directly to `hub.db` (whether by `sqlite3` shell, SQL over an SSH
+tunnel, or any other mechanism); the API is the only sanctioned path.
+
+**Backwards compatibility.** The hub MAY also expose the unversioned
+alias `POST /api/agents` for legacy callers (PM gateway scripts predating
+this spec section). The alias MUST validate identically; its response
+shape MAY differ. New callers MUST prefer the versioned path.
+
 ---
 
 ## 11. Token & identity separation
