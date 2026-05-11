@@ -206,6 +206,11 @@ as the systemd template instance and as the agent identity on the hub.
 Wires Anthropic-style tool use through the Codex CLI's app-server, an HTTP
 adapter, and a Discord driver.
 
+**Prereq (lane VM):** install the codex CLI globally —
+`sudo npm install -g @openai/codex` (pin to a hub-compatible version;
+the lab runs ≥ 0.125.0). Without it, `codex-app-server@<lane>` enters a
+restart loop. See `docs/lane-deployment.md` § 1.1.
+
 ```
 codex-app-server@<lane>     :4500+i   Codex CLI app-server (WS)
 codex-adapter@<lane>        :4600+i   runtime-adapters/codex (HTTP, hub WS client)
@@ -236,6 +241,12 @@ registers with the hub using `identity = <lane>`.
 For lanes powered by Anthropic's Claude Code CLI, the runtime is an external
 process and joins the hub directly via an MCP plugin. Only the channel-driver
 is hosted in-tree.
+
+**Prereq (lane VM, when relocating an authenticated session):** mirror
+both `~/.claude/` and `~/.claude.json` (note: the `.json` file in
+`$HOME` is separate from the directory) onto the lane VM with mode
+`0600`, owner `ubuntu:ubuntu`. Mirroring only the directory leaves the
+CLI in onboarding mode. See `docs/lane-deployment.md` § 1.2.
 
 ```
 channel-discord@<lane>   :4610+i   channel-drivers/discord (HTTP)

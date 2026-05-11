@@ -26,6 +26,39 @@ are out of scope for this guide.
 Containers (Docker / Podman) are **not** used — units run directly
 under systemd.
 
+### 1.1. Codex runtime prerequisite
+
+Codex lane VMs MUST have the codex CLI installed and on `PATH` for
+the `ubuntu` user before enabling `codex-app-server@<id>.service` (or
+the lane-portable equivalent):
+
+```bash
+sudo npm install -g @openai/codex
+codex --version    # MUST return ≥ 0.125.0
+```
+
+Operators SHOULD pin to a version compatible with the core VM's hub
+(the `agent-mesh-lab` reference deployment runs `@openai/codex@0.125.0`).
+Without the CLI on PATH, the codex app-server unit enters a restart
+loop with `/bin/sh: codex: not found` in the journal.
+
+### 1.2. Claude lane credentials migration (when relocating from another host)
+
+Claude CLI authentication state lives in **two** locations on the
+source host, and both MUST be mirrored to the lane VM with identical
+paths, owner `ubuntu:ubuntu`, and mode `0600`:
+
+```
+/home/ubuntu/.claude/                 (directory — sessions, MCP cfg, etc.)
+/home/ubuntu/.claude/.credentials.json (0600)
+/home/ubuntu/.claude.json             (0600 — onboarding metadata, ~28 KB)
+```
+
+Mirroring only `~/.claude/` leaves the CLI in onboarding mode (theme /
+login prompts) on first launch, which silently parks the tmux session
+and prevents the lane from coming online. Both files MUST be copied
+together for an authenticated session to relocate cleanly.
+
 ---
 
 ## 2. Sync the source tree
@@ -162,6 +195,34 @@ adapter starting.
 | Channel-driver 401 from adapter | `*_TOKEN` mismatch between `.env` and `.secret` | Regenerate, ensure adapter+driver share the same token values |
 | Two lane VMs claim the same identity | Misprovisioning | Stop one; only one process MAY hold an identity online at a time |
 | Permission denied reading `.secret` | File not `0600` or wrong owner | `chmod 0600` + `chown root:root` |
+
+---
+
+## 8a. Migrating an existing lab deployment to lane VMs
+
+The lab-monolithic units shipped under `ops/systemd/` for the
+`agent-mesh-lab` reference deployment —
+`agent-mesh-codex-adapter@.service`, `codex-app-server@.service`,
+`channel-discord@.service` — carry `Requires=agent-mesh-hub-lab.service`
+(and a self-reminder dependency) on the assumption that hub, adapter,
+and channel-driver are co-located on a single VM.
+
+When **transplanting** those lab unit files onto a lane VM:
+
+- The `Requires=agent-mesh-hub-lab.service` line MUST be removed
+  (the hub does not run on lane VMs); otherwise systemd refuses to
+  start the unit.
+- The corresponding `After=agent-mesh-hub-lab.service` ordering
+  directive SHOULD also be removed for cleanliness.
+- The `agent-mesh-self-reminder-lab.service` dependency, if present,
+  MUST be similarly stripped.
+
+Operators SHOULD instead prefer the lane-portable templates introduced
+in commit `004f21d` and documented above
+(`agent-mesh-runtime-adapter@`, `agent-mesh-channel-driver-discord@`,
+`agent-mesh-lane-codex-app-server@`, `agent-mesh-lane@.target`). These
+units carry no hub-lab dependency and are the supported shape for
+new lane VMs.
 
 ---
 

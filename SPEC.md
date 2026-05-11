@@ -715,6 +715,30 @@ and is documented operationally in `docs/lane-deployment.md`.
 - Provisioning of unit files onto a lane VM is OPTIONAL but the
   reference path is `ops/bin/install-lane.sh`, which MUST be idempotent
   and MUST NOT `enable` or `start` any unit on its own.
+- **Codex runtime prereq.** Codex lane VMs MUST install the codex CLI
+  globally (`sudo npm install -g @openai/codex`, version selected to be
+  compatible with the core VM's hub) and have it on `PATH` for the
+  service user before enabling `codex-app-server@<lane-id>.service` (or
+  the lane-portable equivalent). Without the binary present the unit
+  enters a restart loop and the lane never reaches `online:true`.
+- **Claude lane credential mirror.** When relocating an authenticated
+  Claude CLI session onto a Claude-runtime lane VM, operators MUST
+  mirror both `~/.claude/` (directory, including
+  `~/.claude/.credentials.json`) **and** `~/.claude.json` (file in
+  `$HOME`) from the source environment to the lane VM, at identical
+  paths with owner `ubuntu:ubuntu` and mode `0600`. Mirroring only
+  `~/.claude/` leaves the CLI in onboarding mode and prevents the lane
+  from coming online.
+- **Lab-monolithic unit transplant caveat.** The lab-monolithic units
+  shipped under `ops/systemd/` for the `agent-mesh-lab` reference
+  deployment (`agent-mesh-codex-adapter@`, `codex-app-server@`,
+  `channel-discord@`) reference `Requires=agent-mesh-hub-lab.service`
+  (and `agent-mesh-self-reminder-lab.service`). When these units are
+  transplanted onto a lane VM, the hub-lab dependency MUST be removed,
+  since hub and self-reminder services do not run on lane VMs.
+  Operators SHOULD instead use the lane-portable templates under
+  `ops/systemd/agent-mesh-lane-*` and `ops/systemd/agent-mesh-{runtime-adapter,channel-driver-discord}@`
+  introduced in commit `004f21d`, which carry no hub-lab coupling.
 
 ### 15.8. Compatibility
 
