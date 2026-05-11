@@ -61,8 +61,11 @@ can be zero and these three still run cleanly.
 | `agent-mesh-self-reminder`  | —    | Scheduler (cron / once / in), at-least-once delivery       |
 
 The hub's `ExecStartPost` runs `ops/bin/bootstrap-hub-service-identities.sh`,
-which idempotently UPSERTs six built-in service identities so the mesh has a
-known initial agent set on first boot.
+which idempotently UPSERTs the service identities it discovers from the env
+layout (4 sources: `shared/http.env`, `shared/self-reminder.env`,
+`*/adapter.env`, `*/discord.env`) so the mesh has a known initial agent set
+on first boot. The set is dynamic — see `SPEC.md` § 10 for the normative
+discovery contract.
 
 ### Add-on — a *lane* (runtime-adapter + channel-driver)
 
