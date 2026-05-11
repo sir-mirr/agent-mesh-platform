@@ -118,7 +118,7 @@ cat <<EONOTE
 
 Next steps (NOT performed by this script):
   1. On the core VM, provision the lane identity:
-       curl -X POST http://<core-vm>:<HTTP_PORT>/api/v1/agents \\
+       curl -X POST http://<core-vm>:<HUB_PORT>/api/v1/agents \\
             -H 'content-type: application/json' \\
             -d '{"identity":"<lane-id>","type":"ai-codex","description":"..."}'
   2. Edit /etc/agent-mesh/lane/<lane-id>.env  and  <lane-id>.secret
