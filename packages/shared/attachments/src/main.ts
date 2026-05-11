@@ -18,9 +18,21 @@ import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync, unlinkSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
-/** SPEC § 15.2 attachment metadata schema (subset used by the fetcher). */
+/** SPEC § 15.2 attachment metadata schema (subset used by the fetcher).
+ *
+ * SPEC § 15.2 declares `name` as the authoritative display filename
+ * (MUST). The pre-rename `filename` alias is retained for backward
+ * compatibility with legacy single-host producers; new consumers MUST
+ * read `name` and MAY fall back to `filename` only when `name` is
+ * absent. Both are typed as optional here because the fetcher only
+ * consumes `id` / `download_url` / `sha256` — display-name resolution
+ * is a consumer concern.
+ */
 export interface AttachmentMeta {
   id: string;
+  /** Original client-supplied filename (SPEC § 15.2 `name`, MUST). */
+  name?: string;
+  /** @deprecated Legacy alias of `name`. Producers SHOULD emit both for BC; new consumers SHOULD prefer `name`. */
   filename?: string;
   mime?: string;
   size?: number;
