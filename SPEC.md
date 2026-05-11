@@ -242,8 +242,10 @@ Reference implementation: `packages/runtime-adapters/codex/src/`
 A runtime-adapter implementation MUST:
 
 1. **Hub registration** — connect to the hub as a JSON-RPC 2.0 WS client
-   and call `mesh.register` with `identity = <lane>`. It MAY pass
-   `proxy_for[]` to claim ownership of derivative identities.
+   and call `mesh.connect` with `identity = <lane>` (the legacy
+   `mesh.register` alias of § 8.1a is accepted but DEPRECATED — new
+   adapters MUST emit `mesh.connect`). It MAY pass `proxy_for[]` to
+   claim ownership of derivative identities.
 2. **Envelope ingest** — accept incoming envelopes from the hub and
    translate them into runtime-native turns/messages.
 3. **Envelope emit** — translate runtime output into envelopes and
@@ -1079,9 +1081,10 @@ is permitted only via the single-host rules of § 4).
 - Plain `ws://` is sufficient at this version. TLS / `wss://`
   termination MAY be added by an operator but is NOT REQUIRED.
 - Hub auth at v0.1 is **identity-only**: the lane VM authenticates by
-  calling `mesh.register` with its provisioned identity string. There
-  is no separate per-lane hub bearer token at v0.1. Operators SHOULD
-  restrict hub port exposure to the internal network only.
+  calling `mesh.connect` with its provisioned identity string (the
+  legacy `mesh.register` alias of § 8.1a is accepted but DEPRECATED).
+  There is no separate per-lane hub bearer token at v0.1. Operators
+  SHOULD restrict hub port exposure to the internal network only.
 
 ### 14.3. Bootstrap and identity provisioning (normative)
 
@@ -1097,8 +1100,10 @@ is permitted only via the single-host rules of § 4).
   This is the single gateway for adding new identities in a cross-VM
   deployment. See § 10.1 for the request/response contract.
 - After provisioning, the lane VM MAY connect to the hub and call
-  `mesh.register` with the same identity string. The hub MUST treat
-  this as a re-registration and MUST NOT create a duplicate row.
+  `mesh.connect` with the same identity string (the legacy
+  `mesh.register` alias of § 8.1a is accepted but DEPRECATED). The
+  hub MUST treat this as a re-registration and MUST NOT create a
+  duplicate row.
 
 See § 10 "Bootstrap contract" for the on-core invariants.
 
