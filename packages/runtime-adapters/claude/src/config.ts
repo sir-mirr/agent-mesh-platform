@@ -1,0 +1,69 @@
+export interface ClaudeAdapterConfig {
+  hubUrl: string;
+  laneIdentity: string;
+  hubForwardIdentity: string;
+  claudeMcpEndpoint: string | null;
+  description: string | null;
+  proxyFor: string[];
+  reconnectDelayMs: number;
+  heartbeatIntervalMs: number;
+}
+
+function normalizeOptionalString(raw: string | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  return trimmed ? trimmed : null;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) return fallback;
+  return value;
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `[runtime-claude] missing required env: ${name}`,
+    );
+  }
+  return value;
+}
+
+export function loadClaudeAdapterConfig(): ClaudeAdapterConfig {
+  const hubUrl = requireEnv("HUB_URL");
+  const laneIdentity = requireEnv("LANE_IDENTITY");
+  // HUB_FORWARD_IDENTITY — claude lane specific. The external Claude Code MCP
+  // will use this identity when forwarding mesh.send calls back to the hub.
+  // Falls back to LANE_IDENTITY if unset (single-identity lane).
+  const hubForwardIdentity =
+    normalizeOptionalString(process.env.HUB_FORWARD_IDENTITY) ?? laneIdentity;
+  const claudeMcpEndpoint = normalizeOptionalString(
+    process.env.CLAUDE_MCP_ENDPOINT,
+  );
+  const description =
+    normalizeOptionalString(process.env.LANE_DESCRIPTION) ??
+    "Claude runtime adapter (skeleton)";
+  const proxyFor = (process.env.LANE_PROXY_FOR ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return {
+    hubUrl,
+    laneIdentity,
+    hubForwardIdentity,
+    claudeMcpEndpoint,
+    description,
+    proxyFor,
+    reconnectDelayMs: parsePositiveInt(
+      process.env.HUB_RECONNECT_DELAY_MS,
+      5_000,
+    ),
+    heartbeatIntervalMs: parsePositiveInt(
+      process.env.HUB_HEARTBEAT_INTERVAL_MS,
+      30_000,
+    ),
+  };
+}

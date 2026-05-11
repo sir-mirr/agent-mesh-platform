@@ -1,0 +1,17 @@
+{
+  "name": "@agent-mesh/runtime-adapter-claude",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude runtime adapter for the Agent-Mesh channel fabric (forwards to external Claude Code MCP).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@agent-mesh/core": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}
