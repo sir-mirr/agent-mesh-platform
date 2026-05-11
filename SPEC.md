@@ -716,7 +716,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
 | GET    | `/api/v1/events/:agentId` (SSE)   | JWT    | `200`   | Server-sent events for a single inbox. |
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
-| GET    | `/api/v1/files`                   | JWT    | `200`   | List uploaded files. |
+| GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
 | GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
 | POST   | `/api/v1/admin/approve`           | JWT\*  | `200`   | Approve a pending user. |
@@ -825,19 +825,46 @@ attachment downloads against the hub port.
 ## 10. Bootstrap contract
 
 `ops/bin/bootstrap-hub-service-identities.sh` is invoked by the hub unit
-as `ExecStartPost`. It MUST:
+as `ExecStartPost`. By the time it runs, the hub process has already
+opened `hub.db` and applied schema migrations (`CREATE TABLE IF NOT
+EXISTS agents`, plus idempotent `ALTER TABLE` shims for legacy
+databases) at startup — see `packages/shared/hub/src/main.ts`. The
+bootstrap script therefore MUST NOT open `hub.db` directly; it
+provisions identities by calling the hub's `POST /api/v1/agents`
+endpoint (§ 9.4, § 10.1) over loopback, and it MUST:
 
-1. Open `hub.db` (creating it if missing) and ensure schema is current.
-2. UPSERT the six built-in service identities (e.g. `self-reminder`,
-   `http`, `admin`, `bootstrap`, plus reserved slots) with appropriate
-   `type` and `description`.
-3. Be **idempotent** — repeated invocations MUST NOT duplicate rows or
-   alter user-modified fields beyond the seeded baseline.
+1. Discover service identities from the lab `env/` tree (default
+   `${AGENT_MESH_ENV_ROOT}` → `/srv/agent-mesh-lab/env`) by reading
+   environment files:
+   - `shared/http.env` → `http-server` (or `http-server-dev` when
+     `NODE_ENV=development`), description "Agent Mesh Web UI".
+   - `shared/self-reminder.env` → `${SELF_REMINDER_IDENTITY:-self-reminder}`,
+     description "SelfReminder service (PoC1)".
+   - For every `*/adapter.env`: the `CODEX_ADAPTER_IDENTITY` value,
+     description `Codex runtime adapter for <lane>`.
+   - For every `*/discord.env`: the `HUB_FORWARD_IDENTITY` value (when
+     paired with `HUB_FORWARD_TARGET_AGENT`), description
+     `Discord hub-forward for <target>`.
+   The set is dynamic — there is no fixed "built-in six" list, and
+   identities such as `admin` or `bootstrap` are not provisioned by
+   this script.
+2. For each discovered identity, `curl -fsS -X POST` to
+   `${AGENT_MESH_HUB_API_URL}` (default derived from
+   `${AGENT_MESH_HUB_URL:-ws://127.0.0.1:3100/ws}` → `.../api/v1/agents`)
+   with body `{"identity":"…","type":"service","description":"…"}`,
+   retrying up to `${HUB_BOOTSTRAP_MAX_RETRIES:-30}` times at
+   `${HUB_BOOTSTRAP_RETRY_SLEEP_SEC:-1}` second intervals while the
+   hub is still warming up.
+3. Be **idempotent** — repeated invocations MUST NOT duplicate rows
+   (the hub UPSERT at § 10.1 absorbs that) or alter user-modified
+   fields beyond the seeded baseline.
 4. Exit `0` on success; non-zero exit MUST fail the hub unit start so
-   the operator notices.
+   the operator notices. Setting `HUB_BOOTSTRAP_DRY_RUN=true` MUST log
+   intended registrations without issuing any POST.
 
 The script MUST NOT delete identities, MUST NOT touch the `messages`
-table, and MUST NOT depend on any lane being present.
+table, and MUST NOT depend on any lane being present — the discovered
+set MAY be empty (the script then logs and exits `0`).
 
 In a cross-VM deployment (§ 14), lane VMs MUST NOT bypass this script
 and MUST NOT write to `hub.db` over the network; identity provisioning
@@ -1180,11 +1207,23 @@ and is documented operationally in `docs/lane-deployment.md`.
   from coming online.
 - **Lab-monolithic unit transplant caveat.** The lab-monolithic units
   shipped under `ops/systemd/` for the `agent-mesh-lab` reference
-  deployment (`agent-mesh-codex-adapter@`, `codex-app-server@`,
-  `channel-discord@`) reference `Requires=agent-mesh-hub-lab.service`
-  (and `agent-mesh-self-reminder-lab.service`). When these units are
-  transplanted onto a lane VM, the hub-lab dependency MUST be removed,
-  since hub and self-reminder services do not run on lane VMs.
+  deployment do not couple to the hub uniformly. Specifically:
+  - `agent-mesh-codex-adapter@.service` carries
+    `Requires=agent-mesh-hub-lab.service codex-app-server@%i.service channel-discord@%i.service`
+    and `After=… agent-mesh-hub-lab.service agent-mesh-self-reminder-lab.service …`
+    — it is the only unit that hard-binds to hub-lab and
+    self-reminder-lab via `Requires=` / `After=`.
+  - `channel-discord@.service` carries `After=agent-mesh-hub-lab.service`
+    only (no `Requires=` on hub-lab); systemd orders it after hub-lab
+    when hub-lab is enabled, but will not refuse to start the unit
+    when hub-lab is absent.
+  - `codex-app-server@.service` carries no hub-lab coupling at all
+    (`After=network-online.target` only).
+  When these units are transplanted onto a lane VM, the hub-lab and
+  self-reminder-lab dependencies on `agent-mesh-codex-adapter@` MUST be
+  removed (the corresponding `After=` for `channel-discord@` SHOULD be
+  removed for cleanliness), since hub and self-reminder services do not
+  run on lane VMs.
   Operators SHOULD instead use the lane-portable templates under
   `ops/systemd/agent-mesh-lane-*` and `ops/systemd/agent-mesh-{runtime-adapter,channel-driver-discord}@`
   introduced in commit `004f21d`, which carry no hub-lab coupling.

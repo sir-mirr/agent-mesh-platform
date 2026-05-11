@@ -211,19 +211,26 @@ adapter starting.
 The lab-monolithic units shipped under `ops/systemd/` for the
 `agent-mesh-lab` reference deployment —
 `agent-mesh-codex-adapter@.service`, `codex-app-server@.service`,
-`channel-discord@.service` — carry `Requires=agent-mesh-hub-lab.service`
-(and a self-reminder dependency) on the assumption that hub, adapter,
-and channel-driver are co-located on a single VM.
+`channel-discord@.service` — couple to hub-lab unevenly:
+
+- `agent-mesh-codex-adapter@.service` is the only unit that hard-binds
+  to hub-lab via `Requires=agent-mesh-hub-lab.service codex-app-server@%i.service channel-discord@%i.service`,
+  plus `After=… agent-mesh-hub-lab.service agent-mesh-self-reminder-lab.service …`.
+- `channel-discord@.service` carries `After=agent-mesh-hub-lab.service`
+  only (no `Requires=`); systemd orders it after hub-lab but tolerates
+  hub-lab being absent.
+- `codex-app-server@.service` has no hub-lab coupling at all
+  (`After=network-online.target` only).
 
 When **transplanting** those lab unit files onto a lane VM:
 
-- The `Requires=agent-mesh-hub-lab.service` line MUST be removed
-  (the hub does not run on lane VMs); otherwise systemd refuses to
-  start the unit.
-- The corresponding `After=agent-mesh-hub-lab.service` ordering
-  directive SHOULD also be removed for cleanliness.
-- The `agent-mesh-self-reminder-lab.service` dependency, if present,
-  MUST be similarly stripped.
+- On `agent-mesh-codex-adapter@.service` the
+  `Requires=agent-mesh-hub-lab.service` token MUST be removed (the
+  hub does not run on lane VMs); otherwise systemd refuses to start
+  the unit. The `agent-mesh-self-reminder-lab.service` token in
+  `After=` MUST also be stripped.
+- On `channel-discord@.service` the `After=agent-mesh-hub-lab.service`
+  ordering directive SHOULD be removed for cleanliness.
 
 Operators SHOULD instead prefer the lane-portable templates introduced
 in commit `004f21d` and documented above
@@ -243,5 +250,13 @@ sudo rm -rf /var/lib/agent-mesh/lane/my-lane-1
 ```
 
 Identity row deletion on the core VM is a separate, deliberate
-operation (see SPEC § 14.3 — DELETE is out of scope for the
-provisioning API at v0.1).
+operation. Since β-10 P5 settled it (see SPEC §§ 9.3, 10.1, 14.3) the
+hub exposes `DELETE /api/agents/{identity}` on the hub listener
+(`AGENT_MESH_HUB_PORT`, default `3100`) as the destructive teardown
+endpoint. It atomically deletes the identity row and all message rows
+referencing the identity in either `from_agent` or `to_agent`,
+returning `200` with `{ ok, identity, deleted: { agents, messages } }`
+on success. Operators invoke it manually after disabling the lane
+target above. Note the legacy unversioned path — a versioned
+`/api/v1/agents/{identity}` alias is intentionally *not* exposed
+(see SPEC § 10.1).
