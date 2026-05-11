@@ -84,14 +84,21 @@ The hub MUST:
 - Treat unknown identities on `mesh.send` as a recoverable error
   (envelope is queued for later delivery).
 - Emit notifications to subscribed clients when their inbox receives a
-  new envelope.
+  new envelope (`mesh.message` / `mesh.delivered`, see § 8.9).
+- Send a WebSocket-level `ping` frame to every connected agent every
+  **30 seconds**. Agents MUST respond with a `pong` frame (the
+  WebSocket runtime handles this transparently in most clients).
+  Failure of the `ping` send marks the connection offline and removes
+  it from the online map; `agents.last_seen` is touched before the
+  socket is dropped.
 
 The hub MUST NOT:
 
 - Modify envelope payloads.
 - Approve, register, or destructively mutate identities outside the
-  bootstrap script (registration is via `mesh.register` or
-  `POST /api/v1/agents`).
+  bootstrap script (registration is via `POST /api/v1/agents`, see
+  § 10.1; the deprecated `mesh.register` alias does **not** insert
+  rows).
 
 ### 3.2. `agent-mesh-http` (`packages/shared/http`)
 
@@ -490,6 +497,57 @@ Errors:
 
 - `-32602` INVALID_PARAMS — `params.agent_id` missing or non-string.
 - `-32600` INVALID_REQUEST — caller socket is not connected.
+
+### 8.9. Server-pushed notifications
+
+In addition to client-initiated requests above, the hub emits two
+JSON-RPC 2.0 notifications (no `id` field; clients MUST NOT respond
+with a JSON-RPC response).
+
+#### 8.9.1. `mesh.message`
+
+Pushed to a recipient socket when the hub routes an inbound
+`mesh.send` to it, **and** when a previously-pending message is
+delivered on reconnect.
+
+```
+method: "mesh.message"
+params: {
+  id:       string            // hub-assigned message id
+  from:     string            // sender identity
+  to:       string            // recipient identity (this socket's identity
+                              // or one of its proxy_for entries)
+  content:  string            // flat content string (see § 8.2)
+  reply_to: string | null
+  ts:       string            // ISO-8601
+}
+```
+
+The hub MUST emit `mesh.message` once per successful delivery. Clients
+SHOULD handle this method; unknown-method behaviour at the JSON-RPC
+layer (the spec does not require a response since it is a
+notification) MUST NOT close the connection.
+
+#### 8.9.2. `mesh.delivered`
+
+Pushed to a sender socket when the hub routes a `mesh.send` from that
+sender to an online recipient — i.e. whenever the same `mesh.send`
+call's result returns `status: "delivered"` (§ 8.2). Intended as a
+v0.1 typing/delivery indicator; clients MAY ignore it.
+
+```
+method: "mesh.delivered"
+params: {
+  id:   string                // hub-assigned message id
+  from: string                // sender identity
+  to:   string                // recipient identity
+  ts:   string                // ISO-8601
+}
+```
+
+The hub MUST NOT emit `mesh.delivered` when the recipient is offline
+(in that case `mesh.send.result.status` is `"pending"` and no
+notification is sent until the recipient reconnects).
 
 ---
 
