@@ -28,17 +28,22 @@ For the lab LXC (`agent-mesh-lab`):
 
 ```
 lxc exec agent-mesh-lab -- sudo -u ubuntu bash -c \
-  "sqlite3 /var/lib/agent-mesh-hub/hub.db < /srv/agent-mesh-platform/ops/migrations/0001_agents_add_created_at.sql"
+  "sqlite3 /srv/agent-mesh-lab/state/shared/hub.db < /srv/agent-mesh-platform/ops/migrations/0001_agents_add_created_at.sql"
 ```
 
-(Adjust the DB path to match `AGENT_MESH_HUB_STATE_DIR` in the lane env
-file. For the default systemd unit the state dir is
-`/var/lib/agent-mesh-hub`.)
+(Adjust the DB path to match `AGENT_MESH_STATE_DIR` in the hub
+service env file — the binary at `packages/shared/hub/src/main.ts`
+reads that variable, defaulting to `/srv/agent-mesh-lab/state/shared`.
+For deployments that use the legacy `/var/lib/agent-mesh-hub` location
+the operator MUST set `AGENT_MESH_STATE_DIR` to match.)
 
-Take a backup first:
+Take a backup first (use the same directory the hub binary opens —
+`${AGENT_MESH_STATE_DIR}/hub.db`, default
+`/srv/agent-mesh-lab/state/shared/hub.db`):
 
 ```
-cp /var/lib/agent-mesh-hub/hub.db /var/lib/agent-mesh-hub/hub.db.bak.$(date +%Y%m%d-%H%M%S)
+cp /srv/agent-mesh-lab/state/shared/hub.db \
+   /srv/agent-mesh-lab/state/shared/hub.db.bak.$(date +%Y%m%d-%H%M%S)
 ```
 
 ## Index

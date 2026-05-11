@@ -710,7 +710,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | Method | Path                              | Auth   | Success | Notes |
 |--------|-----------------------------------|--------|---------|-------|
 | GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. |
-| GET    | `/api/v1/agents`                  | JWT    | `200`   | Projection of hub agent registry. |
+| GET    | `/api/v1/agents`                  | JWT    | `200`   | List entries from the http-server `registry.json` (a separate file store under `${AGENT_MESH_STATE_DIR}/registry.json`, *not* the hub `agents` table — see § 10). |
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
@@ -1033,6 +1033,15 @@ own *lane VM*. It is a production-style alternative to the default
 single-host topology and does not replace it; a conformant deployment
 MAY use either.
 
+> **Notation.** Throughout this section, `${AGENT_MESH_HUB_PORT}` is
+> the hub WebSocket / HTTP listen port (default `3100`, declared in
+> § 8.1) and `${AGENT_MESH_HTTP_PORT}` is the user-facing http-server
+> port (default `3000`, declared in § 9.1). Earlier revisions used the
+> shorthand `<HUB_PORT>` / `<HTTP_PORT>` placeholders; the canonical
+> env names are kept here to remove ambiguity between the two services
+> (see also CR-NEW-1 / β-12 P8 — the `install-lane.sh` post-install
+> note initially conflated them).
+
 ### 14.1. Topology
 
 A `internal-mesh v0.1` deployment MUST consist of:
@@ -1052,7 +1061,7 @@ is permitted only via the single-host rules of § 4).
 ### 14.2. Transport and auth
 
 - The hub WebSocket endpoint MUST be reachable from each lane VM at
-  `ws://<core-vm-host>:<HUB_PORT>/ws` over the internal network.
+  `ws://<core-vm-host>:${AGENT_MESH_HUB_PORT}/ws` over the internal network.
 - Plain `ws://` is sufficient at this version. TLS / `wss://`
   termination MAY be added by an operator but is NOT REQUIRED.
 - Hub auth at v0.1 is **identity-only**: the lane VM authenticates by
@@ -1111,7 +1120,7 @@ The lane VM's systemd unit MUST provide at least the following env:
 
 | Variable           | Required | Meaning                                       |
 |--------------------|----------|-----------------------------------------------|
-| `HUB_URL`          | MUST     | `ws://<core-vm>:<HUB_PORT>/ws`                |
+| `HUB_URL`          | MUST     | `ws://<core-vm>:${AGENT_MESH_HUB_PORT}/ws`    |
 | `LANE_IDENTITY`    | MUST     | Identity string registered with the hub       |
 | `RUNTIME_ENDPOINT` | SHOULD   | Local URL of the runtime (e.g. `http://localhost:4500`) |
 
@@ -1175,7 +1184,7 @@ and is documented operationally in `docs/lane-deployment.md`.
 
   | Key | Required | Meaning |
   |-----|----------|---------|
-  | `HUB_URL` | MUST | `ws://<core-vm>:<HUB_PORT>/ws` |
+  | `HUB_URL` | MUST | `ws://<core-vm>:${AGENT_MESH_HUB_PORT}/ws` |
   | `LANE_IDENTITY` | MUST | Identity registered via `POST /api/v1/agents` |
   | `RUNTIME_KIND` | MUST | `codex` \| `claude` — selects adapter binary |
   | `RUNTIME_ENDPOINT` | SHOULD | Local runtime URL (e.g. `http://localhost:4500`) |
