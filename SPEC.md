@@ -70,7 +70,7 @@ agent-mesh is split into two strictly separated layers.
 | Property        | Requirement                                                 |
 |-----------------|-------------------------------------------------------------|
 | Transport       | WebSocket, JSON-RPC 2.0                                     |
-| Default port    | `3100` (configurable via `HUB_PORT`)                        |
+| Default port    | `3100` (configurable via `AGENT_MESH_HUB_PORT`)             |
 | Storage         | SQLite database `hub.db` (single file)                      |
 | Identity model  | One agent ↔ one identity string (kebab-case recommended)    |
 | Bootstrap hook  | `ExecStartPost` MUST run `ops/bin/bootstrap-hub-service-identities.sh` |
@@ -105,7 +105,7 @@ The hub MUST NOT:
 | Property        | Requirement                                                 |
 |-----------------|-------------------------------------------------------------|
 | Framework       | Hono                                                        |
-| Default port    | `3000` (configurable via `HTTP_PORT`)                       |
+| Default port    | `3000` (configurable via `AGENT_MESH_HTTP_PORT`)            |
 | Auth            | GitHub OAuth → JWT (HS256), session cookie                  |
 | Push            | Web Push, VAPID keys via env                                |
 | PWA             | Static bundle served from the same origin                   |
@@ -127,11 +127,28 @@ A scheduler daemon that connects to the hub as `identity=self-reminder`.
 Delivery semantics: **at-least-once**. Consumers MUST be idempotent or
 deduplicate via `idempotency_key`.
 
-Required RPCs (delivered to identity `self-reminder` over the hub):
+The names below are the **caller-facing helper / MCP tool surface** that
+agent runtimes (Codex MCP server, Claude Code agent-mesh plugin, etc.)
+expose to their operator. They are not the hub wire methods. Each helper
+maps to a single JSON-RPC method on the hub:
+
+| Helper / MCP tool name (caller surface) | Hub wire method (§ 8)     |
+|-----------------------------------------|---------------------------|
+| `schedule_self_reminder`                | `mesh.schedule_reminder`  |
+| `cancel_reminder`                       | `mesh.cancel_reminder`    |
+| `list_my_reminders`                     | `mesh.list_reminders`     |
+
+Required helpers (delivered to identity `self-reminder` over the hub via
+the wire methods above):
 
 - `schedule_self_reminder(payload, schedule, idempotency_key?, context?, task_id?)`
 - `cancel_reminder(reminder_id)` — owner-only
 - `list_my_reminders(status?)`
+
+Clients that talk to the hub directly (bypassing an MCP helper layer)
+MUST emit the wire method names from § 8.5 / § 8.6 / § 8.7. Sending a
+helper name (e.g. `"method": "schedule_self_reminder"`) over the hub
+WebSocket will return `-32601` METHOD_NOT_FOUND.
 
 ---
 
@@ -496,6 +513,114 @@ not a `ChannelEnvelope` object. Older drafts of this spec listed a
 Errors:
 
 - `-32602` INVALID_PARAMS — `params.agent_id` missing or non-string.
+- `-32600` INVALID_REQUEST — caller socket is not connected.
+
+### 8.5. `mesh.schedule_reminder`
+
+Schedules a single reminder row in the `self-reminder` daemon's database.
+This is the hub-level wire method invoked by the `schedule_self_reminder`
+helper / MCP tool described in § 3.3.
+
+```
+params: {
+  id:              string         // reminder id (caller-generated, e.g. "rem_<16hex>")
+  type:            "once" | "cron" | "interval"
+  schedule_spec:   string         // type-specific schedule expression
+  payload:         string         // message body the daemon will mesh.send back
+  next_fire_at:    string         // ISO-8601 of the first fire time (UTC)
+  context?:        string         // opaque caller context, echoed at fire time
+  idempotency_key?: string        // dedup key; UNIQUE among caller's `active` rows
+}
+result: {
+  ok:               true
+  id:               string        // echoed reminder id
+  type:             string        // echoed type
+  next_fire_at:     string        // echoed next fire time
+}
+```
+
+If a row with the same `idempotency_key` already exists in status
+`active` for the caller, the hub returns `{ ok: false, error: "dedup",
+idempotency_key }` rather than inserting a duplicate. Callers SHOULD
+treat that as success (the prior schedule is still pending).
+
+Errors:
+
+- `-32602` INVALID_PARAMS — required field missing
+  (`id` / `type` / `schedule_spec` / `payload` / `next_fire_at`).
+- `-32600` INVALID_REQUEST — caller socket is not connected.
+- `-32000` server error — propagated SQLite error (the `data` field
+  carries the underlying message).
+
+The reminder row is owned by `agent_id = <caller identity>`. Other
+identities cannot read, cancel, or list it.
+
+### 8.6. `mesh.cancel_reminder`
+
+Cancels a single reminder owned by the calling identity. This is the
+hub-level wire method invoked by the `cancel_reminder` helper / MCP
+tool described in § 3.3.
+
+```
+params: {
+  id: string                      // reminder id to cancel
+}
+result: {
+  changes: number                 // number of rows transitioned to "cancelled"
+                                  // (0 if the id was not owned, already in a
+                                  // terminal state, or did not exist)
+}
+```
+
+The hub transitions rows from `active` or `paused` to `cancelled`. Rows
+already in `fired`, `cancelled`, `exhausted`, or `dead` are left
+unchanged and the call returns `changes: 0`. Cancellation is
+**owner-scoped**: a caller MUST NOT cancel reminders owned by another
+identity, enforced by `WHERE agent_id = <caller identity>` in the
+update statement.
+
+Errors:
+
+- `-32602` INVALID_PARAMS — `params.id` missing.
+- `-32600` INVALID_REQUEST — caller socket is not connected.
+
+### 8.7. `mesh.list_reminders`
+
+Lists reminders owned by the calling identity. This is the hub-level
+wire method invoked by the `list_my_reminders` helper / MCP tool
+described in § 3.3.
+
+```
+params: {
+  status?: "active" | "paused" | "fired" | "cancelled"
+                                  // | "exhausted" | "dead" | "all"
+                                  // default: "active"
+  limit?:  number                 // 1..200, default 50
+}
+result: {
+  rows: Array<{
+    id:              string
+    type:            "once" | "cron" | "interval"
+    status:          string
+    schedule_spec:   string
+    payload:         string
+    context:         string | null
+    next_fire_at:    string | null
+    fire_count:      number
+    last_fired_at:   string | null
+    idempotency_key: string | null
+    created_at:      string
+  }>
+}
+```
+
+When `status = "all"`, rows in any status owned by the caller are
+returned (most-recent first). Listing is **owner-scoped**: a caller's
+identity is bound to the result set by `WHERE agent_id = <caller
+identity>` in the underlying SELECT.
+
+Errors:
+
 - `-32600` INVALID_REQUEST — caller socket is not connected.
 
 ### 8.9. Server-pushed notifications
