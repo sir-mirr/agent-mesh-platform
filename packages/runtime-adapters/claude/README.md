@@ -13,7 +13,7 @@ proxies envelopes.
 ## Responsibilities (v0.1 skeleton)
 
 - Maintain a hub WebSocket connection as `LANE_IDENTITY`
-- `mesh.register` with optional `proxy_for`
+- `mesh.connect` with optional `proxy_for` (the legacy `mesh.register` alias of SPEC § 8.1a is accepted but DEPRECATED — see SPEC § 5.1)
 - Heartbeat / auto-reconnect
 - Receive `mesh.message` envelopes and log them
 - (v0.2 TODO) Forward envelopes to the external Claude Code MCP, which then
