@@ -250,13 +250,14 @@ const INVALID_PARAMS = -32602;
  * `mesh.register` alias. Handles:
  *  - params validation
  *  - duplicate-identity rapid-register guard (task #65)
- *  - pre-registration check (task #72 — POST /api/agents is the registration SSOT)
+ *  - pre-registration check (task #72 — `POST /api/v1/agents` is the registration SSOT; `/api/agents` is a legacy alias)
  *  - online map bookkeeping (onlineAgents / wsIdentities / proxyMap / wsProxies)
  *  - last_seen touch
  *  - pending message delivery
  *
  * NOTE: No DB UPSERT here. Registration (INSERT of identity/type/description)
- * is owned by `POST /api/agents`. This handler only records the fact that the
+ * is owned by `POST /api/v1/agents` (canonical; `/api/agents` is a legacy
+ * alias — see SPEC §10.1). This handler only records the fact that the
  * agent is currently connected (via last_seen touch) and wires the online maps.
  *
  * @param via   "connect" | "register"  —  used for log prefix / deprecation tag
@@ -297,18 +298,20 @@ function performConnect(
     );
   }
 
-  // ── Pre-registration check (task #72 — POST /api/agents is the SSOT) ───
-  // With the POST /api/agents endpoint shipped, every identity must exist in
-  // the agents table before it can connect via WebSocket. This stops the
-  // old "mesh.register auto-creates a typeless row" pattern that left new
-  // identities with type=NULL → UI showing "Unknown" forever. A clear error
-  // lets the operator (or the agent-manage skill) know to POST first. We
-  // also close the WebSocket (1008 policy violation) shortly after emitting
-  // the error so the misconfigured client can't keep the socket open.
+  // ── Pre-registration check (task #72 — POST /api/v1/agents is the SSOT) ─
+  // With the provisioning endpoint shipped, every identity must exist in
+  // the agents table before it can connect via WebSocket. Canonical route
+  // is POST /api/v1/agents (SPEC §10.1); the unversioned /api/agents is a
+  // legacy alias. This stops the old "mesh.register auto-creates a typeless
+  // row" pattern that left new identities with type=NULL → UI showing
+  // "Unknown" forever. A clear error lets the operator (or the agent-manage
+  // skill) know to POST first. We also close the WebSocket (1008 policy
+  // violation) shortly after emitting the error so the misconfigured client
+  // can't keep the socket open.
   const exists = !!stmtAgentExists.get(identity);
   if (!exists) {
     log(
-      `${via}-rejected: ${identity} (not pre-registered; POST /api/agents required — ` +
+      `${via}-rejected: ${identity} (not pre-registered; POST /api/v1/agents required — ` +
       `task #72 SSOT policy)`
     );
     setTimeout(() => {
@@ -326,7 +329,8 @@ function performConnect(
 
   lastRegisterAt.set(identity, now);
 
-  // Touch last_seen (NOT a full UPSERT — registration happens via POST /api/agents).
+  // Touch last_seen (NOT a full UPSERT — registration happens via the
+  // canonical POST /api/v1/agents endpoint; /api/agents is a legacy alias).
   stmtUpdateLastSeen.run(identity);
 
   // Track online state
@@ -380,9 +384,10 @@ function performConnect(
  * mesh.connect — SSOT v2 runtime-connect signal (task #72).
  *
  * Marks a pre-registered identity as online. Registration SSOT is
- * `POST /api/agents`; this method only wires the WebSocket into the online
- * maps. Returns error -32011 IDENTITY_NOT_REGISTERED if the identity has
- * not been pre-registered.
+ * `POST /api/v1/agents` (SPEC §10.1; `/api/agents` is a legacy alias);
+ * this method only wires the WebSocket into the online maps. Returns
+ * error -32011 IDENTITY_NOT_REGISTERED if the identity has not been
+ * pre-registered.
  */
 function handleConnect(
   ws: any,
@@ -408,7 +413,7 @@ function handleRegister(
   const identity = typeof params.identity === "string" ? params.identity : "?";
   log(
     `DEPRECATED: mesh.register called by ${identity}; migrate clients to mesh.connect ` +
-    `(task #72 — registration SSOT is POST /api/agents)`
+    `(task #72 — registration SSOT is POST /api/v1/agents; /api/agents is a legacy alias)`
   );
   return performConnect(ws, params, id, "register");
 }

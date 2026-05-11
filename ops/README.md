@@ -34,8 +34,10 @@ Shared lab services now start from the monorepo:
 - `packages/shared/self-reminder/src/main.ts`
 
 `agent-mesh-hub-lab.service` now bootstraps baseline service identities through
-`POST /api/agents` after the hub listens. This keeps task #72 registration SSOT
-intact and avoids direct `hub.db` SQL drift.
+the canonical `POST /api/v1/agents` endpoint (SPEC §10.1) after the hub listens.
+This keeps task #72 registration SSOT intact and avoids direct `hub.db` SQL
+drift. The unversioned `POST /api/agents` route remains as a legacy alias for
+pre-v0.1 callers (see SPEC §10.1 backwards-compat clause).
 
 Bootstrap discovery rules:
 
