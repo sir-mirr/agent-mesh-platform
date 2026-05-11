@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Private monorepo skeleton for the Agent-Mesh channel fabric architecture.",
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/agent-mesh-core",
