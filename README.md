@@ -96,8 +96,8 @@ Prerequisites:
 
 ```bash
 # 1. Clone
-git clone https://github.com/sir-mirr/ai-agent-mesh.git
-cd ai-agent-mesh
+git clone https://github.com/sir-mirr/agent-mesh-platform.git
+cd agent-mesh-platform
 
 # 2. Install
 bun install
