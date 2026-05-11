@@ -80,11 +80,19 @@ affected lane target afterward.
 
 ## 3. Provision the lane identity on the core VM
 
-> Run this step **on the core VM**, not on the lane VM. Lane VMs MUST
-> NOT write to `hub.db` directly (SPEC § 14.3).
+> Run this step from anywhere with reachability to the core VM's hub
+> listener — typically the core VM itself or an operator workstation
+> on the internal network. Lane VMs MUST NOT write to `hub.db`
+> directly (SPEC § 14.3); the lane VM SHOULD therefore not run this
+> provisioning step against its own filesystem.
+
+The provisioning endpoint is served by the **core hub** on
+`AGENT_MESH_HUB_PORT` (default `3100`), not the HTTP server — this is
+the same listener that accepts WebSocket upgrades. See SPEC § 10.1 for
+the full request/response contract.
 
 ```bash
-curl -X POST "http://<core-vm>:<HTTP_PORT>/api/v1/agents" \
+curl -X POST "http://<core-vm>:<HUB_PORT>/api/v1/agents" \
      -H 'content-type: application/json' \
      -d '{
            "identity": "my-lane-1",
