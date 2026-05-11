@@ -297,7 +297,8 @@ A channel-driver implementation MUST:
 4. **Attachment handling** — persist attachments under
    `attachments/<lane>/<msg_id>/` and reference them in the envelope.
    In a cross-VM deployment (§ 14), the **core VM** is the primary
-   attachment store and lane VMs fetch on demand; see § 14.6.
+   attachment store and lane VMs fetch on demand; see § 14.7 for the
+   cross-VM summary and § 15 for the full attachments contract.
 5. **Chunking** — split outbound channel messages that exceed the
    channel's per-message limit (`chunk.ts` model).
 6. **Recent-sent dedupe** — suppress duplicate outbound deliveries
@@ -1086,6 +1087,12 @@ remain as defined in § 4.4 and § 11, but live on the lane VM filesystem.
 
 ### 14.7. Attachments (pull-on-demand)
 
+This subsection states the cross-VM-specific summary of the attachment
+contract. The **normative attachments chapter is § 15** (metadata
+schema, download endpoint, lane cache, eviction, offline behaviour).
+Anything in § 14.7 that conflicts with § 15 MUST be read as in error;
+§ 15 is the SSOT.
+
 - The **core VM** is the **primary attachment store**.
   `/api/v1/upload` writes attachments to the core VM's local
   filesystem (the canonical `state/shared/uploads/` location).
@@ -1099,6 +1106,8 @@ remain as defined in § 4.4 and § 11, but live on the lane VM filesystem.
   the attachment reference.
 
 See § 6.1 (channel-driver attachment handling) for the in-lane shape.
+See § 15 for the full attachments chapter (metadata schema § 15.2,
+download endpoint § 15.3, lane cache § 15.4, offline behaviour § 15.5).
 
 ### 14.8. Lane systemd contract
 
@@ -1207,15 +1216,18 @@ element is a JSON object with the following fields:
 | Field          | Type    | Required | Notes |
 |----------------|---------|----------|-------|
 | `id`           | string  | MUST     | Opaque attachment id; stable for the lifetime of the file. **v0.1 (current)**: lowercase sha256 hex digest of the file bytes, optionally suffixed with the original extension (`<sha256>` or `<sha256>.<ext>`). The id is purely opaque to receivers — they MUST treat it as a string token. **Legacy** (pre-hash uploads): the `<ts>-<safe-name>` form produced by older `POST /api/v1/upload` revisions; the download endpoint continues to accept this form for backward compatibility. New uploads MUST produce the sha256 form. |
-| `filename`     | string  | MUST     | Original client-supplied filename, for display only. |
+| `name`         | string  | MUST     | Original client-supplied filename, for display only. |
 | `mime`         | string  | SHOULD   | Best-effort MIME type. Receivers MUST tolerate absence and fall back to `application/octet-stream`. |
 | `size`         | integer | SHOULD   | Byte length. Receivers MUST tolerate absence. |
 | `sha256`       | string  | SHOULD   | Lowercase hex digest of the file bytes. When present, fetchers SHOULD verify (§ 15.4). |
 | `download_url` | string  | MUST     | Absolute URL on the core VM's http server resolving to `GET /api/v1/attachments/<id>`. |
 
-Receivers MUST ignore unknown fields. The legacy single-host
-`file_path` field MAY also be present for backwards compatibility
-but MUST NOT be treated as authoritative in cross-VM deployments.
+Receivers MUST ignore unknown fields. The legacy single-host `file_path`
+field, and the deprecated `filename` alias of `name`, MAY also be
+present for backwards compatibility but MUST NOT be treated as
+authoritative in cross-VM deployments. New producers MUST emit `name`;
+new consumers MUST read `name` and MAY fall back to `filename` only
+when `name` is missing.
 
 **Upload response shape.** `POST /api/v1/upload` (§ 9) MUST return a JSON
 body that *is itself a valid attachment metadata object* per the table
@@ -1224,7 +1236,7 @@ Specifically the response MUST contain `id`, `name`, `mime`, `size`,
 `sha256`, `download_url`, and `uploaded_at` (ISO-8601 UTC). The
 deprecated `file_path` and `filename` fields MAY accompany the response
 for legacy single-host clients; new clients MUST consume `id` /
-`download_url` only.
+`download_url` / `name` only.
 
 ### 15.3. Download endpoint contract
 
