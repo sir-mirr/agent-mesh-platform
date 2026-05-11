@@ -120,6 +120,78 @@ admin/PWA at `:3000`; the hub accepts JSON-RPC 2.0 WebSocket connections at
 
 ---
 
+## Deployment topology — internal-mesh v0.1
+
+A single-host deployment (everything on one VM) is the default and easiest
+path. For production-style isolation, agent-mesh also supports a
+**cross-VM topology** called `internal-mesh v0.1`, in which the baseline
+is centralized on one *core VM* and each lane runs on its own *lane VM*.
+The two halves talk only over the internal network.
+
+```
+        ┌────────────── core VM ───────────────┐
+        │ agent-mesh-hub      :3100  (WS)      │
+        │ agent-mesh-http     :3000  (REST/SSE)│
+        │ agent-mesh-self-reminder             │
+        │ hub.db, uploads/ (attachments)       │
+        └────────────┬─────────────────────────┘
+                     │ ws://<core-vm>:3100/ws
+                     │ identity-only auth
+       ┌─────────────┼─────────────┐
+       │             │             │
+   ┌───┴───┐     ┌───┴───┐     ┌───┴───┐
+   │ lane  │     │ lane  │     │ lane  │   (one VM per lane)
+   │  VM A │     │  VM B │     │  VM C │
+   │codex- │     │codex- │     │ ...   │
+   │app/   │     │app/   │     │       │
+   │adapter│     │adapter│     │       │
+   │/disc. │     │/disc. │     │       │
+   └───────┘     └───────┘     └───────┘
+```
+
+### Properties
+
+- **Topology** — 1 core VM (hub + http + self-reminder + shared services)
+  plus N lane VMs. Each lane VM hosts one runtime-adapter and its
+  channel-driver(s).
+- **Transport** — plain `ws://` on the internal network. TLS / `wss://`
+  is not required at v0.1.
+- **Auth** — identity-only. The lane's `mesh.register` identity string
+  is the credential; there is no separate per-lane bearer token for hub
+  access.
+- **Bootstrap (MUST)** — lane VMs MUST NOT write to `hub.db` directly
+  (no remote `sqlite3 INSERT`). Identity provisioning goes through the
+  core hub's `POST /api/v1/agents` endpoint, after which the lane VM may
+  connect and `mesh.register` with the provisioned identity.
+- **Deploy** — systemd template units like
+  `agent-mesh-lane@<lane-id>.service` on each lane VM. Docker is not
+  required. The lane VM only needs `bun` and a synced copy of the repo
+  (e.g. `git clone` or `rsync`).
+- **Ports** — once lanes live on separate VMs, the `i`-offset rule
+  (§ 12 of `SPEC.md`) becomes optional: a lane VM may use the fixed
+  base ports `4500` (codex-app-server), `4600` (adapter), `4610`
+  (channel-driver) since there is no co-tenant. Only the hub URL is
+  externalized via `HUB_URL`.
+- **Lane env (systemd unit)** — at minimum:
+  `HUB_URL=ws://<core-vm>:3100/ws`,
+  `LANE_IDENTITY=<agent-name>`,
+  `RUNTIME_ENDPOINT=http://localhost:4500` (and the usual lane secrets).
+- **Discovery** — a lane VM only needs to know the hub URL. Peer
+  locations are obtained from `mesh.list_agents`. All inter-agent
+  traffic still flows through the hub (no P2P).
+- **Attachments** — the hub remains the **primary store**. The HTTP
+  server's `/api/v1/upload` writes to the core VM's local disk. Lane
+  VMs fetch attachments **pull-on-demand** when they are actually
+  needed and cache locally under TTL or LRU. Eager replication is
+  prohibited.
+
+For the normative rules, see `SPEC.md` § 15 "Cross-VM deployment
+(internal-mesh v0.1)". Bootstrap provisioning and attachment handling
+cross-reference § 10 "Bootstrap contract" and § 6.1 (attachment
+handling) respectively.
+
+---
+
 ## Add a lane
 
 A *lane name* is a short identifier (e.g. `prod-codex1`, `test-claude1`) used

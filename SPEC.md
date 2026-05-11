@@ -272,6 +272,8 @@ A channel-driver implementation MUST:
      `HUB_FORWARD_IDENTITY=<lane>` and `mesh.send` directly.
 4. **Attachment handling** — persist attachments under
    `attachments/<lane>/<msg_id>/` and reference them in the envelope.
+   In a cross-VM deployment (§ 15), the **core VM** is the primary
+   attachment store and lane VMs fetch on demand; see § 15.6.
 5. **Chunking** — split outbound channel messages that exceed the
    channel's per-message limit (`chunk.ts` model).
 6. **Recent-sent dedupe** — suppress duplicate outbound deliveries
@@ -420,6 +422,10 @@ as `ExecStartPost`. It MUST:
 The script MUST NOT delete identities, MUST NOT touch the `messages`
 table, and MUST NOT depend on any lane being present.
 
+In a cross-VM deployment (§ 15), lane VMs MUST NOT bypass this script
+and MUST NOT write to `hub.db` over the network; identity provisioning
+for remote lanes goes through `POST /api/v1/agents` on the core hub.
+
 ---
 
 ## 11. Token & identity separation
@@ -469,6 +475,131 @@ This specification follows semantic versioning at document level.
 
 Implementations SHOULD declare the SPEC version they target in their
 `package.json` under a `agentMeshSpec` field.
+
+---
+
+## 15. Cross-VM deployment (internal-mesh v0.1)
+
+This section normalizes the **internal-mesh v0.1** deployment profile,
+in which the baseline runs on one *core VM* and each lane runs on its
+own *lane VM*. It is a production-style alternative to the default
+single-host topology and does not replace it; a conformant deployment
+MAY use either.
+
+### 15.1. Topology
+
+A `internal-mesh v0.1` deployment MUST consist of:
+
+1. Exactly one **core VM** running the full baseline:
+   `agent-mesh-hub`, `agent-mesh-http`, `agent-mesh-self-reminder`,
+   plus any other shared services (uploads store, admin PWA, etc.).
+2. Zero or more **lane VMs**, each running exactly one
+   runtime-adapter and its associated channel-driver(s) for a single
+   lane identity.
+
+A lane VM MUST NOT host a second hub, a second http server, or another
+lane's processes. The core VM MUST NOT host lane processes for lanes
+that are deployed remotely (mixing a co-located lane with remote lanes
+is permitted only via the single-host rules of § 4).
+
+### 15.2. Transport and auth
+
+- The hub WebSocket endpoint MUST be reachable from each lane VM at
+  `ws://<core-vm-host>:<HUB_PORT>/ws` over the internal network.
+- Plain `ws://` is sufficient at this version. TLS / `wss://`
+  termination MAY be added by an operator but is NOT REQUIRED.
+- Hub auth at v0.1 is **identity-only**: the lane VM authenticates by
+  calling `mesh.register` with its provisioned identity string. There
+  is no separate per-lane hub bearer token at v0.1. Operators SHOULD
+  restrict hub port exposure to the internal network only.
+
+### 15.3. Bootstrap and identity provisioning (normative)
+
+- Each lane identity used by a lane VM MUST be pre-provisioned on the
+  core hub before the lane VM connects.
+- Lane VMs MUST NOT open `hub.db` directly (local or remote) and MUST
+  NOT issue `INSERT` or `UPSERT` against the `agents` table by any
+  means other than the documented HTTP API.
+- Provisioning MUST be performed by calling
+  `POST /api/v1/agents` on the core HTTP server with the agreed
+  identity, type, and description payload. This is the single
+  gateway for adding new identities in a cross-VM deployment.
+- After provisioning, the lane VM MAY connect to the hub and call
+  `mesh.register` with the same identity string. The hub MUST treat
+  this as a re-registration and MUST NOT create a duplicate row.
+
+See § 10 "Bootstrap contract" for the on-core invariants.
+
+### 15.4. Deployment unit
+
+- Each lane VM MUST run its lane processes under systemd. The
+  RECOMMENDED form is a template unit such as
+  `agent-mesh-lane@<lane-id>.service`, instantiated once per lane
+  identity hosted on that VM.
+- A lane VM SHOULD remain a single-lane host. A lane VM MAY host
+  additional lanes only if their port ranges do not collide.
+- Container runtimes (Docker, Podman, etc.) are NOT REQUIRED.
+- A lane VM MUST have `bun` installed and a synced copy of the
+  agent-mesh source tree (via `git clone`, `rsync`, or equivalent)
+  before its units are started.
+
+### 15.5. Port and env conventions
+
+When a lane has a dedicated VM, the per-lane `i`-offset rule from § 12
+becomes optional because there is no co-tenant. A lane VM MAY use the
+following fixed base ports for its single hosted lane:
+
+| Component                 | Base port |
+|---------------------------|-----------|
+| `codex-app-server`        | `4500`    |
+| `runtime-adapter`         | `4600`    |
+| `channel-driver` (first)  | `4610`    |
+
+If a lane VM does host multiple lanes, the § 12 offset rule applies
+unchanged.
+
+The lane VM's systemd unit MUST provide at least the following env:
+
+| Variable           | Required | Meaning                                       |
+|--------------------|----------|-----------------------------------------------|
+| `HUB_URL`          | MUST     | `ws://<core-vm>:<HUB_PORT>/ws`                |
+| `LANE_IDENTITY`    | MUST     | Identity string registered with the hub       |
+| `RUNTIME_ENDPOINT` | SHOULD   | Local URL of the runtime (e.g. `http://localhost:4500`) |
+
+Lane secrets (`DISCORD_BOT_TOKEN`, intra-lane HTTP tokens, etc.)
+remain as defined in § 4.4 and § 11, but live on the lane VM filesystem.
+
+### 15.6. Discovery and traffic
+
+- A lane VM MUST learn the location of other agents only via
+  `mesh.list_agents` on the hub. It MUST NOT hard-code peer endpoints.
+- All inter-agent envelopes MUST traverse the hub. Direct lane-VM ↔
+  lane-VM (P2P) traffic is prohibited at v0.1.
+
+### 15.7. Attachments (pull-on-demand)
+
+- The **core VM** is the **primary attachment store**.
+  `/api/v1/upload` writes attachments to the core VM's local
+  filesystem (the canonical `state/shared/uploads/` location).
+- Lane VMs MUST fetch attachments **on demand** when they actually need
+  the bytes (e.g. to deliver to a runtime or channel). Eager
+  pre-replication of the attachment store is prohibited.
+- Lane VMs MAY cache fetched attachments locally. Caches MUST be bounded
+  by a TTL or LRU policy and MUST NOT be treated as authoritative.
+- If a lane VM cannot reach the core attachment URL, it MUST surface a
+  retrievable error in the envelope flow rather than silently dropping
+  the attachment reference.
+
+See § 6.1 (channel-driver attachment handling) for the in-lane shape.
+
+### 15.8. Compatibility
+
+A deployment conformant to `internal-mesh v0.1` MUST also satisfy all
+applicable baseline (§ 3), add-on (§ 4), and wire (§ 8, § 9) rules.
+Where a § 4 rule references co-located paths (e.g. shared `env/` or
+`attachments/`), the cross-VM deployment interprets them as **per-VM
+local paths**, with the core VM owning shared/uploads as described in
+§ 15.7.
 
 ---
 
