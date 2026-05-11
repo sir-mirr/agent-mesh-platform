@@ -378,16 +378,15 @@ lives **outside** the code repository and is not versioned here. See
 
 ---
 
-## Development
-
-TBD. Contributions, issue templates, and CI will be added in a later phase.
-For now, see `SPEC.md` for the contracts you must implement when authoring a
-new runtime-adapter or channel-driver.
-
 ## Contributing
 
-TBD.
+PRs are welcome at any time — this is a young PoC and we'd love help shaping
+it. Bug fixes, doc clarifications, new runtime-adapters, new channel-drivers,
+or just questions are all fair game. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for a quick orientation (clone, `bun install`, `bun run typecheck`) and a few
+light conventions. No CLA, no strict gatekeeping — just keep PRs focused and
+have fun.
 
 ## License
 
-TBD (currently `Private`). To be set before public release.
+Licensed under the [MIT License](LICENSE). © 2026 Sir-Mirr.
