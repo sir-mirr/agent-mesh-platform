@@ -2,7 +2,6 @@ export interface ClaudeAdapterConfig {
   hubUrl: string;
   laneIdentity: string;
   hubForwardIdentity: string;
-  claudeMcpEndpoint: string | null;
   description: string | null;
   proxyFor: string[];
   reconnectDelayMs: number;
@@ -38,9 +37,6 @@ export function loadClaudeAdapterConfig(): ClaudeAdapterConfig {
   // config. The v0.2 MCP channel sends replies as LANE_IDENTITY by default.
   const hubForwardIdentity =
     normalizeOptionalString(process.env.HUB_FORWARD_IDENTITY) ?? laneIdentity;
-  const claudeMcpEndpoint = normalizeOptionalString(
-    process.env.CLAUDE_MCP_ENDPOINT,
-  );
   const description =
     normalizeOptionalString(process.env.LANE_DESCRIPTION) ??
     "Claude Code MCP channel server for Agent-Mesh";
@@ -53,7 +49,6 @@ export function loadClaudeAdapterConfig(): ClaudeAdapterConfig {
     hubUrl,
     laneIdentity,
     hubForwardIdentity,
-    claudeMcpEndpoint,
     description,
     proxyFor,
     reconnectDelayMs: parsePositiveInt(
