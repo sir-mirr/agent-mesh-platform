@@ -20,6 +20,12 @@ describe("autoApprovalResponse", () => {
     })).toBeNull();
   });
 
+  test("accepts MCP tool-call elicitation", () => {
+    expect(autoApprovalResponse("mcpServer/elicitation/request", {
+      mode: "form", serverName: "synapse", requestedSchema: {},
+    })).toEqual({ action: "accept", content: {}, _meta: null });
+  });
+
   test("uses the correct modern and legacy approval decisions", () => {
     expect(autoApprovalResponse("item/commandExecution/requestApproval", {})).toEqual({ decision: "accept" });
     expect(autoApprovalResponse("item/fileChange/requestApproval", {})).toEqual({ decision: "accept" });

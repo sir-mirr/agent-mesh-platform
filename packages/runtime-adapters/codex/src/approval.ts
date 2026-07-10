@@ -8,7 +8,11 @@
 export function autoApprovalResponse(method: string, params: unknown): Record<string, unknown> | null {
   switch (method) {
     case "item/tool/requestUserInput":
+      // General tool input; Codex 0.144.1 MCP approvals use elicitation below.
       return acceptToolRequestUserInput(params);
+    case "mcpServer/elicitation/request":
+      // Codex 0.144.1 surfaces MCP tool-call approval as an elicitation request.
+      return { action: "accept", content: {}, _meta: null };
     case "item/commandExecution/requestApproval":
     case "item/fileChange/requestApproval":
       return { decision: "accept" };
