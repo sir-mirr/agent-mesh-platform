@@ -27,17 +27,9 @@
     },
     "packages/runtime-adapters/claude": {
       "name": "@agent-mesh/runtime-adapter-claude",
-      "version": "0.1.0",
-      "dependencies": {
-        "@agent-mesh/core": "workspace:*",
-        "ws": "^8.18.0",
-      },
-    },
-    "packages/runtime-adapters/claude-finja": {
-      "name": "@agent-mesh/runtime-adapter-claude-finja",
       "version": "0.2.0",
       "bin": {
-        "agent-mesh-claude-finja": "./src/main.ts",
+        "agent-mesh-claude": "./src/main.ts",
       },
       "dependencies": {
         "@agent-mesh/core": "workspace:*",
@@ -85,8 +77,6 @@
     "@agent-mesh/core": ["@agent-mesh/core@workspace:packages/agent-mesh-core"],
 
     "@agent-mesh/runtime-adapter-claude": ["@agent-mesh/runtime-adapter-claude@workspace:packages/runtime-adapters/claude"],
-
-    "@agent-mesh/runtime-adapter-claude-finja": ["@agent-mesh/runtime-adapter-claude-finja@workspace:packages/runtime-adapters/claude-finja"],
 
     "@agent-mesh/runtime-codex": ["@agent-mesh/runtime-codex@workspace:packages/runtime-adapters/codex"],
 

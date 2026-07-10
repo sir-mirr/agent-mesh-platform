@@ -2,7 +2,6 @@ export interface ClaudeAdapterConfig {
   hubUrl: string;
   laneIdentity: string;
   hubForwardIdentity: string;
-  claudeMcpEndpoint: string | null;
   description: string | null;
   proxyFor: string[];
   reconnectDelayMs: number;
@@ -34,17 +33,13 @@ function requireEnv(name: string): string {
 export function loadClaudeAdapterConfig(): ClaudeAdapterConfig {
   const hubUrl = requireEnv("HUB_URL");
   const laneIdentity = requireEnv("LANE_IDENTITY");
-  // HUB_FORWARD_IDENTITY — claude lane specific. The external Claude Code MCP
-  // will use this identity when forwarding mesh.send calls back to the hub.
-  // Falls back to LANE_IDENTITY if unset (single-identity lane).
+  // HUB_FORWARD_IDENTITY is retained for compatibility with the v0.1 adapter
+  // config. The v0.2 MCP channel sends replies as LANE_IDENTITY by default.
   const hubForwardIdentity =
     normalizeOptionalString(process.env.HUB_FORWARD_IDENTITY) ?? laneIdentity;
-  const claudeMcpEndpoint = normalizeOptionalString(
-    process.env.CLAUDE_MCP_ENDPOINT,
-  );
   const description =
     normalizeOptionalString(process.env.LANE_DESCRIPTION) ??
-    "Claude runtime adapter (skeleton)";
+    "Claude Code MCP channel server for Agent-Mesh";
   const proxyFor = (process.env.LANE_PROXY_FOR ?? "")
     .split(",")
     .map((value) => value.trim())
@@ -54,7 +49,6 @@ export function loadClaudeAdapterConfig(): ClaudeAdapterConfig {
     hubUrl,
     laneIdentity,
     hubForwardIdentity,
-    claudeMcpEndpoint,
     description,
     proxyFor,
     reconnectDelayMs: parsePositiveInt(

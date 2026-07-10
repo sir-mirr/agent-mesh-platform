@@ -1,59 +1,88 @@
 # @agent-mesh/runtime-adapter-claude
 
-Skeleton runtime adapter for the **Claude lane** of the Agent-Mesh channel
-fabric.
+Claude Code MCP channel server for the Agent-Mesh fabric.
 
-Unlike the Codex lane — which embeds the LLM client in-process as a three-unit
-chain (`codex-app-server` + `runtime-adapter` + `channel-driver`) — the Claude
-lane is a **single adapter unit** that brokers between the hub and an
-**external Claude Code MCP server**. The actual LLM session lives in Claude
-Code itself; this adapter just owns the lane identity on the hub side and
-proxies envelopes.
+This adapter is loaded inside a Claude Code session as a development channel
+(`server:agent-mesh`). It connects to the Agent-Mesh hub as `LANE_IDENTITY`,
+turns inbound hub `mesh.message` notifications into Claude Code channel turns,
+and exposes tools that let the session reply back through the hub.
 
-## Responsibilities (v0.1 skeleton)
+The channel contract mirrors the working Claude Code Discord channel pattern:
+declare the `claude/channel` capability, then deliver inbound messages with
+`notifications/claude/channel`.
 
-- Maintain a hub WebSocket connection as `LANE_IDENTITY`
-- `mesh.connect` with optional `proxy_for` (the legacy `mesh.register` alias of SPEC § 8.1a is accepted but DEPRECATED — see SPEC § 5.1)
-- Heartbeat / auto-reconnect
-- Receive `mesh.message` envelopes and log them
-- (v0.2 TODO) Forward envelopes to the external Claude Code MCP, which then
-  replies back to the hub itself using `HUB_FORWARD_IDENTITY`
+## What it does (v0.2)
+
+- Connects to the hub over WebSocket as `LANE_IDENTITY` with `mesh.connect`.
+- Runs as an MCP **stdio** server declaring the `claude/channel` capability.
+- **Inbound**: hub `mesh.message` -> `notifications/claude/channel`, waking the
+  Claude Code session with a new turn.
+- **Outbound**: the session's `reply` tool -> hub `mesh.send` to the destination
+  mesh identity.
+- Exposes `reply`, `fetch_messages`, and `list_agents` tools to the session.
+- Writes logs to **stderr** so stdout remains reserved for MCP stdio.
 
 ## Environment
 
 | Variable | Required | Description |
 |---|---|---|
-| `HUB_URL` | yes | Hub WS endpoint, e.g. `ws://arumhub:3100/ws` |
-| `LANE_IDENTITY` | yes | Identity this adapter registers with on the hub |
-| `HUB_FORWARD_IDENTITY` | no (default = `LANE_IDENTITY`) | Identity that the external Claude Code MCP uses when forwarding messages back to the hub. Lets multi-lane / shadow Claude setups distinguish adapter-origin vs Claude-origin traffic. |
-| `CLAUDE_MCP_ENDPOINT` | no (v0.1) | External Claude Code MCP location (`ws://...` or stdio socket path). Logged for visibility; not yet dialled. |
-| `LANE_DESCRIPTION` | no | Optional description shown on hub registration |
+| `HUB_URL` | yes | Hub WS endpoint, e.g. `ws://127.0.0.1:3100/ws` |
+| `LANE_IDENTITY` | yes | Identity this channel connects with on the hub; it must be pre-provisioned via `POST /api/v1/agents` |
+| `LANE_DESCRIPTION` | no | Description shown on hub registration |
 | `LANE_PROXY_FOR` | no | Comma-separated `proxy_for` identities |
-| `HUB_RECONNECT_DELAY_MS` | no (default 5000) | Reconnect backoff |
-| `HUB_HEARTBEAT_INTERVAL_MS` | no (default 30000) | Heartbeat log interval |
+| `HUB_RECONNECT_DELAY_MS` | no (default `5000`) | Reconnect backoff |
+| `HUB_HEARTBEAT_INTERVAL_MS` | no (default `30000`) | Retained for compatibility with existing lane env files |
+| `HUB_FORWARD_IDENTITY` | no | Retained for compatibility; v0.2 replies use `LANE_IDENTITY` |
 
-## Activation
+## Run
 
-The lane is selected by the generic systemd template:
+Run from the repository root:
 
-```
-systemctl start agent-mesh-runtime-adapter@<lane>.service
-```
-
-With `RUNTIME_KIND=claude` in the lane's `EnvironmentFile`, the template
-invokes:
-
-```
+```bash
+HUB_URL=ws://127.0.0.1:3100/ws \
+LANE_IDENTITY=claude-agent \
+LANE_DESCRIPTION="Claude Agent-Mesh channel" \
 bun packages/runtime-adapters/claude/src/main.ts
 ```
 
-## TODO (v0.2 — full activation)
+## Claude Code `.mcp.json`
 
-- Dial `CLAUDE_MCP_ENDPOINT` (WebSocket or stdio) and maintain a session
-- Translate inbound `MeshMessage` → Claude Code MCP request envelope
-- Reply path: external Claude Code MCP forwards via hub directly using
-  `HUB_FORWARD_IDENTITY` — adapter does **not** intermediate the reply
-- Adapter-origin system messages (transport errors, MCP offline notices) via
-  `hub.send()` using `LANE_IDENTITY` as `from`
-- Optional HTTP control surface (mirror of codex `http-server.ts`) once the
-  channel-driver attach pattern is finalised for Claude
+Use a development channel named `agent-mesh`:
+
+```json
+{
+  "mcpServers": {
+    "agent-mesh": {
+      "command": "bun",
+      "args": [
+        "/path/to/agent-mesh-platform/packages/runtime-adapters/claude/src/main.ts"
+      ],
+      "env": {
+        "HUB_URL": "ws://127.0.0.1:3100/ws",
+        "LANE_IDENTITY": "claude-agent",
+        "LANE_DESCRIPTION": "Claude Agent-Mesh channel"
+      }
+    }
+  }
+}
+```
+
+Launch Claude Code with:
+
+```bash
+claude --dangerously-load-development-channels server:agent-mesh
+```
+
+Expected verification path:
+
+1. `/mcp` shows `agent-mesh` connected with 3 tools.
+2. A hub `mesh.message` addressed to `LANE_IDENTITY` wakes the Claude Code
+   session through `notifications/claude/channel`.
+3. The session replies with the `reply` tool.
+4. The adapter sends the reply via `mesh.send`.
+
+## Typecheck
+
+```bash
+bun --bun tsc -p packages/runtime-adapters/claude/tsconfig.json --pretty false
+```

@@ -1,4 +1,8 @@
-import type { MeshMessage } from "./mesh-types";
+import type {
+  MeshAgent,
+  MeshMessage,
+  MeshMessageHistoryEntry,
+} from "./mesh-types";
 
 export type HubMessageHandler = (message: MeshMessage) => void;
 
@@ -172,8 +176,30 @@ export class HubClient {
   }): Promise<unknown> {
     return this.rpc("mesh.send", opts);
   }
+
+  async listAgents(): Promise<MeshAgent[]> {
+    const result = await this.rpc<{ agents?: MeshAgent[] }>(
+      "mesh.list_agents",
+      {},
+    );
+    return result.agents ?? [];
+  }
+
+  async fetchMessages(opts: {
+    agentId: string;
+    limit?: number;
+  }): Promise<MeshMessageHistoryEntry[]> {
+    const result = await this.rpc<{ messages?: MeshMessageHistoryEntry[] }>(
+      "mesh.fetch_messages",
+      {
+        agent_id: opts.agentId,
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      },
+    );
+    return result.messages ?? [];
+  }
 }
 
 function log(...args: unknown[]) {
-  console.log("[runtime-claude] [hub]", ...args);
+  console.error("[runtime-claude] [hub]", ...args);
 }
