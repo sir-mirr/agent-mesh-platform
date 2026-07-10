@@ -1,5 +1,7 @@
 import WS, { type RawData } from "ws";
 
+import { autoApprovalResponse } from "./approval";
+
 export type CodexNotificationHandler = (method: string, params: unknown) => void;
 
 export interface CodexClientOptions {
@@ -106,6 +108,12 @@ export class CodexClient {
 
       if (typeof data.method === "string" && data.id !== undefined) {
         try {
+          const result = autoApprovalResponse(data.method, data.params ?? {});
+          if (result !== null) {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", id: data.id, result }));
+            log(`auto-approved app-server request method=${data.method}`);
+            return;
+          }
           ws.send(
             JSON.stringify({
               jsonrpc: "2.0",
