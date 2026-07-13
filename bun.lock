@@ -34,6 +34,7 @@
       "dependencies": {
         "@agent-mesh/core": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.0.0",
+        "cron-parser": "^5.5.0",
         "ws": "^8.18.0",
       },
     },

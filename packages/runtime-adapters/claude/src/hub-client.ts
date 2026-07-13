@@ -15,6 +15,20 @@ export interface HubClientOptions {
   reconnectDelayMs?: number;
 }
 
+export interface ReminderRow {
+  id: string;
+  type: "once" | "cron" | "interval";
+  status: string;
+  schedule_spec: string;
+  payload: string;
+  context: string | null;
+  next_fire_at: string | null;
+  fire_count: number;
+  last_fired_at: string | null;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
 export class HubClient {
   private ws: WebSocket | null = null;
   private nextId = 100;
@@ -197,6 +211,46 @@ export class HubClient {
       },
     );
     return result.messages ?? [];
+  }
+
+  scheduleReminder(opts: {
+    id: string;
+    type: "once" | "cron";
+    scheduleSpec: string;
+    payload: string;
+    nextFireAt: string;
+    context?: string;
+    idempotencyKey?: string;
+  }): Promise<{ ok: boolean; id: string; type: string; next_fire_at: string }> {
+    return this.rpc("mesh.schedule_reminder", {
+      id: opts.id,
+      type: opts.type,
+      schedule_spec: opts.scheduleSpec,
+      payload: opts.payload,
+      next_fire_at: opts.nextFireAt,
+      ...(opts.context === undefined ? {} : { context: opts.context }),
+      ...(opts.idempotencyKey === undefined
+        ? {}
+        : { idempotency_key: opts.idempotencyKey }),
+    });
+  }
+
+  cancelReminder(id: string): Promise<{ changes: number }> {
+    return this.rpc("mesh.cancel_reminder", { id });
+  }
+
+  async listReminders(opts: {
+    status?: string;
+    limit?: number;
+  }): Promise<ReminderRow[]> {
+    const result = await this.rpc<{ rows?: ReminderRow[] }>(
+      "mesh.list_reminders",
+      {
+        ...(opts.status === undefined ? {} : { status: opts.status }),
+        ...(opts.limit === undefined ? {} : { limit: opts.limit }),
+      },
+    );
+    return result.rows ?? [];
   }
 }
 
