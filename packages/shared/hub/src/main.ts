@@ -8,6 +8,8 @@
 import { Database } from "bun:sqlite";
 import { randomUUID } from "crypto";
 
+import { ConnectionOwnership } from "./connection-ownership";
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -192,16 +194,8 @@ const proxyMap = new Map<string, any>();
 /** ws → Set of proxied identities (for cleanup on close) */
 const wsProxies = new WeakMap<object, Set<string>>();
 
-/**
- * identity → last register timestamp (ms epoch).
- * Used to detect suspicious rapid re-registration (privili 2026-04-19 class
- * incident: same identity registering multiple times within seconds, indicating
- * a misconfigured launcher script env-leaking AGENT_MESH_IDENTITY to multiple
- * plugin children → all racing to register as the same identity).
- */
-const lastRegisterAt = new Map<string, number>();
-/** Minimum elapsed ms between re-registrations of the same identity. */
-const REGISTER_DEDUP_WINDOW_MS = 2000;
+/** First established socket owns an identity until its own close event. */
+const connectionOwnership = new ConnectionOwnership<object>();
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -249,7 +243,7 @@ const INVALID_PARAMS = -32602;
  * Core connect logic shared by `mesh.connect` (SSOT v2) and the legacy
  * `mesh.register` alias. Handles:
  *  - params validation
- *  - duplicate-identity rapid-register guard (task #65)
+ *  - duplicate-identity ownership guard (first established owner wins)
  *  - pre-registration check (task #72 — `POST /api/v1/agents` is the registration SSOT; `/api/agents` is a legacy alias)
  *  - online map bookkeeping (onlineAgents / wsIdentities / proxyMap / wsProxies)
  *  - last_seen touch
@@ -271,31 +265,6 @@ function performConnect(
   const identity = params.identity;
   if (!identity || typeof identity !== "string") {
     return rpcError(id, INVALID_PARAMS, "params.identity is required");
-  }
-
-  // ── Duplicate-identity rapid-register guard (task #65) ─────────────────
-  // If the same identity connects again within REGISTER_DEDUP_WINDOW_MS,
-  // reject the new connection instead of replacing the existing one. This
-  // prevents the privili 2026-04-19 class incident: a launcher script that
-  // accidentally inline-exports AGENT_MESH_IDENTITY into all plugin children
-  // (discord/telegram/agent-mesh) → each child connects → each kicks the
-  // previous → 5s reconnect loop forever. The first connector wins and any
-  // racing siblings get a clear error so they (or their parent supervisor)
-  // can detect the misconfiguration.
-  const lastAt = lastRegisterAt.get(identity);
-  const now = Date.now();
-  if (lastAt && now - lastAt < REGISTER_DEDUP_WINDOW_MS && onlineAgents.has(identity)) {
-    log(
-      `${via}-rejected: ${identity} (rapid re-${via}; last=${now - lastAt}ms ago, ` +
-      `window=${REGISTER_DEDUP_WINDOW_MS}ms — likely duplicate-identity launcher misconfig)`
-    );
-    return rpcError(
-      id,
-      -32010,
-      `duplicate identity "${identity}": another connection ${via === "connect" ? "connected" : "registered"} ${now - lastAt}ms ago. ` +
-      `Check launcher script for AGENT_MESH_IDENTITY leaking to multiple plugin children.`,
-      { code: "DUPLICATE_IDENTITY", elapsed_ms: now - lastAt, window_ms: REGISTER_DEDUP_WINDOW_MS }
-    );
   }
 
   // ── Pre-registration check (task #72 — POST /api/v1/agents is the SSOT) ─
@@ -327,29 +296,39 @@ function performConnect(
     );
   }
 
-  lastRegisterAt.set(identity, now);
+  // ── Connection ownership (P0 self-reminder stall remediation) ──────────
+  // A live owner is never evicted by a contender, whether the collision is
+  // immediate or much later. Metadata is server-generated connection sequence
+  // only: it is sufficient to correlate a race without exposing source IP,
+  // payload, context, or credentials.
+  const ownership = connectionOwnership.claim(identity, ws);
+  if (!ownership.ok) {
+    log(
+      `${via}-rejected duplicate identity=${identity} ` +
+      `incumbent_generation=${ownership.incumbentGeneration} contender_generation=${ownership.contenderGeneration}`
+    );
+    setTimeout(() => {
+      try { ws.close(1008, "duplicate identity owner active"); } catch {}
+    }, 10);
+    return rpcError(
+      id,
+      -32010,
+      `duplicate identity "${identity}": an established owner remains connected`,
+      {
+        code: "DUPLICATE_IDENTITY",
+        ownership: "incumbent_retained",
+        incumbent_connection_generation: ownership.incumbentGeneration,
+        contender_connection_generation: ownership.contenderGeneration,
+        source_metadata: "server_connection_sequence",
+      }
+    );
+  }
 
   // Touch last_seen (NOT a full UPSERT — registration happens via the
   // canonical POST /api/v1/agents endpoint; /api/agents is a legacy alias).
   stmtUpdateLastSeen.run(identity);
 
-  // Track online state
-  const prevWs = onlineAgents.get(identity);
-  if (prevWs && prevWs !== ws) {
-    // Clean up old proxy entries for the previous ws
-    const oldProxies = wsProxies.get(prevWs);
-    if (oldProxies) {
-      for (const pid of oldProxies) {
-        if (proxyMap.get(pid) === prevWs) proxyMap.delete(pid);
-      }
-      wsProxies.delete(prevWs);
-    }
-    // Remove old ws from identity map before closing to prevent close handler race
-    wsIdentities.delete(prevWs);
-    try {
-      prevWs.close(1000, "replaced by new connection");
-    } catch {}
-  }
+  // Track online state. `claim` above guarantees there is no different owner.
   onlineAgents.set(identity, ws);
   wsIdentities.set(ws, identity);
 
@@ -741,7 +720,10 @@ const heartbeatInterval = setInterval(() => {
       ws.ping();
     } catch {
       log(`heartbeat failed for ${identity}, removing`);
-      onlineAgents.delete(identity);
+      if (connectionOwnership.owner(identity) === ws) {
+        connectionOwnership.release(ws);
+        onlineAgents.delete(identity);
+      }
       stmtUpdateLastSeen.run(identity);
     }
   }
@@ -1068,9 +1050,10 @@ const server = Bun.serve({
     close(ws, code, reason) {
       const identity = wsIdentities.get(ws);
       if (identity) {
-        // Only remove from onlineAgents if this ws is still the current one
-        // (prevents race condition when a new connection replaces an old one)
-        if (onlineAgents.get(identity) === ws) {
+        // Release only when this socket is still owner. A stale close must not
+        // remove a newer owner that won after an incumbent-close race.
+        const released = connectionOwnership.release(ws);
+        if (released?.wasOwner && onlineAgents.get(identity) === ws) {
           onlineAgents.delete(identity);
         }
         // Clean up proxy entries for this ws
