@@ -1,4 +1,9 @@
-import type { MeshMessage } from "./mesh-types";
+import type {
+  MeshAgent,
+  MeshMessage,
+  MeshMessageHistoryEntry,
+  ReminderRow,
+} from "./mesh-types";
 
 export type HubMessageHandler = (message: MeshMessage) => void;
 
@@ -160,8 +165,62 @@ export class HubClient {
   }): Promise<unknown> {
     return this.rpc("mesh.send", opts);
   }
+
+  async listAgents(): Promise<MeshAgent[]> {
+    const result = await this.rpc<{ agents?: MeshAgent[] }>("mesh.list_agents", {});
+    return result.agents ?? [];
+  }
+
+  async fetchMessages(opts: {
+    agentId: string;
+    limit?: number;
+  }): Promise<MeshMessageHistoryEntry[]> {
+    const result = await this.rpc<{ messages?: MeshMessageHistoryEntry[] }>(
+      "mesh.fetch_messages",
+      {
+        agent_id: opts.agentId,
+        ...(opts.limit === undefined ? {} : { limit: opts.limit }),
+      },
+    );
+    return result.messages ?? [];
+  }
+
+  scheduleReminder(opts: {
+    id: string;
+    type: "once" | "cron";
+    scheduleSpec: string;
+    payload: string;
+    nextFireAt: string;
+    context?: string;
+    idempotencyKey?: string;
+  }): Promise<{ ok: boolean; id: string; type: string; next_fire_at: string }> {
+    return this.rpc("mesh.schedule_reminder", {
+      id: opts.id,
+      type: opts.type,
+      schedule_spec: opts.scheduleSpec,
+      payload: opts.payload,
+      next_fire_at: opts.nextFireAt,
+      ...(opts.context === undefined ? {} : { context: opts.context }),
+      ...(opts.idempotencyKey === undefined ? {} : { idempotency_key: opts.idempotencyKey }),
+    });
+  }
+
+  cancelReminder(id: string): Promise<{ changes: number }> {
+    return this.rpc("mesh.cancel_reminder", { id });
+  }
+
+  async listReminders(opts: {
+    status?: string;
+    limit?: number;
+  }): Promise<ReminderRow[]> {
+    const result = await this.rpc<{ rows?: ReminderRow[] }>("mesh.list_reminders", {
+      ...(opts.status === undefined ? {} : { status: opts.status }),
+      ...(opts.limit === undefined ? {} : { limit: opts.limit }),
+    });
+    return result.rows ?? [];
+  }
 }
 
 function log(...args: unknown[]) {
-  console.log("[runtime-codex] [hub]", ...args);
+  console.error("[runtime-codex] [hub]", ...args);
 }

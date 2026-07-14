@@ -41,9 +41,14 @@
     "packages/runtime-adapters/codex": {
       "name": "@agent-mesh/runtime-codex",
       "version": "0.1.0",
+      "bin": {
+        "agent-mesh-codex-tools": "./src/mesh-tools-server.ts",
+      },
       "dependencies": {
         "@agent-mesh/core": "workspace:*",
         "@agent-mesh/shared-attachments": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.0.0",
+        "cron-parser": "^5.5.0",
         "ws": "^8.18.0",
       },
     },
