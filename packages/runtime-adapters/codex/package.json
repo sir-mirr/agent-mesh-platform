@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "description": "Codex runtime adapter for the Agent-Mesh channel fabric.",
+  "bin": {
+    "agent-mesh-codex-tools": "./src/mesh-tools-server.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
     "@agent-mesh/core": "workspace:*",
     "@agent-mesh/shared-attachments": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "cron-parser": "^5.5.0",
     "ws": "^8.18.0"
   },
   "scripts": {
