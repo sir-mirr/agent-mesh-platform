@@ -4,6 +4,7 @@ export * from "./config";
 export * from "./hub-client";
 export * from "./lane-attachments";
 export * from "./http-action-proxy";
+export * from "./http-mesh-tools-proxy";
 export * from "./http-server";
 export * from "./mesh-types";
 export * from "./mesh-tools";

@@ -8,7 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { loadCodexAdapterConfig } from "./config";
-import { HubClient } from "./hub-client";
+import { HttpMeshToolsHub } from "./http-mesh-tools-proxy";
 import {
   MESH_TOOL_DEFINITIONS,
   dispatchMeshTool,
@@ -48,21 +48,14 @@ export function createCodexMeshToolsServer(options: {
 
 async function main(): Promise<void> {
   const config = loadCodexAdapterConfig();
-  const hub = new HubClient({
-    url: config.hubUrl,
-    identity: config.adapterIdentity,
-    description: `Codex mesh tools for ${config.targetAgent}`,
-    proxyFor: config.proxyFor,
-    onMessage: () => {},
+  const hub = new HttpMeshToolsHub({
+    baseUrl: `http://127.0.0.1:${config.httpPort}`,
+    token: config.httpToken,
   });
   const mcp = createCodexMeshToolsServer({ hub, laneIdentity: config.targetAgent });
 
-  const shutdown = () => hub.stop();
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
   await mcp.connect(new StdioServerTransport());
-  hub.start();
-  log(`started target=${config.targetAgent}`);
+  log(`started target=${config.targetAgent} adapter_http=127.0.0.1:${config.httpPort}`);
 }
 
 if (import.meta.main) {

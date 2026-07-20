@@ -3,6 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import type { ReminderRow } from "./mesh-types";
+import { HttpMeshToolsHub } from "./http-mesh-tools-proxy";
+import { handleMeshToolAction } from "./http-server";
 import { createCodexMeshToolsServer } from "./mesh-tools-server";
 import {
   MESH_TOOL_DEFINITIONS,
@@ -61,6 +63,79 @@ function fakeHub(): { hub: MeshToolsHub; calls: string[]; reminders: ReminderRow
 }
 
 describe("Codex Agent-Mesh MCP tools", () => {
+  test("uses the adapter action proxy without opening another hub WebSocket", async () => {
+    let requestedUrl: string | null = null;
+    let requestedHeaders: HeadersInit | undefined;
+    let requestedBody: BodyInit | null | undefined;
+    const originalWebSocket = globalThis.WebSocket;
+    let websocketOpened = false;
+    globalThis.WebSocket = class {
+      constructor() {
+        websocketOpened = true;
+        throw new Error("a mesh tools process must not open a hub WebSocket");
+      }
+    } as unknown as typeof WebSocket;
+    const hub = new HttpMeshToolsHub({
+      baseUrl: "http://127.0.0.1:4602",
+      token: "same-existing-token",
+      fetchImpl: async (url, init) => {
+        requestedUrl = String(url);
+        requestedHeaders = init?.headers;
+        requestedBody = init?.body;
+        return new Response(JSON.stringify({ result: { agents: [] } }), { status: 200 });
+      },
+    });
+
+    try {
+      await expect(hub.listAgents()).resolves.toEqual([]);
+      expect(websocketOpened).toBe(false);
+      expect(requestedUrl as string | null).toBe("http://127.0.0.1:4602/actions/mesh");
+      expect(requestedHeaders as HeadersInit | undefined).toEqual({
+        "content-type": "application/json",
+        authorization: "Bearer same-existing-token",
+      });
+      expect(requestedBody as BodyInit | null | undefined).toBe(JSON.stringify({ action: "list_agents" }));
+    } finally {
+      globalThis.WebSocket = originalWebSocket;
+    }
+  });
+
+  test("forwards only the adapter-owned identity and preserves proxy errors", async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const adapter = {
+      config: { targetAgent: "synapse-pm" },
+      hub: {
+        async send(request: Record<string, unknown>) {
+          sent.push(request);
+          return { id: "msg_42", status: "delivered" };
+        },
+      },
+    };
+    await expect(handleMeshToolAction(adapter as never, {
+      action: "send",
+      to: "finja",
+      content: "active send",
+      // An untrusted client cannot override this with a different identity.
+      from: "admin",
+      reply_to: "msg_inbound",
+    })).resolves.toEqual({ id: "msg_42", status: "delivered" });
+    expect(sent).toEqual([{
+      to: "finja",
+      from: "synapse-pm",
+      content: "active send",
+      reply_to: "msg_inbound",
+    }]);
+
+    const unavailable = new HttpMeshToolsHub({
+      baseUrl: "http://127.0.0.1:4602",
+      token: null,
+      fetchImpl: async () => new Response(JSON.stringify({ error: "adapter_request_failed", detail: "hub not connected" }), { status: 502 }),
+    });
+    await expect(unavailable.listAgents()).rejects.toThrow(
+      "adapter action proxy failed: hub not connected",
+    );
+  });
+
   test("advertises the complete Claude-compatible tool set", () => {
     expect(MESH_TOOL_DEFINITIONS.map((tool) => tool.name)).toEqual([...MESH_TOOL_NAMES]);
     expect(MESH_TOOL_NAMES).toEqual([
