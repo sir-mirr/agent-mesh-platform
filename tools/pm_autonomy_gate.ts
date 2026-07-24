@@ -57,11 +57,13 @@ async function main(): Promise<void> {
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as unknown;
   assertManifest(manifest);
   await requireTrackedClean();
+  const sourceRevision = await revision();
   const profiles = [
     { profile: "unit", ...(await run([process.execPath, "test", "packages/runtime-adapters/synapse-pm-autonomy/src"])) },
     { profile: "contract", ...(await run([process.execPath, "--bun", "./node_modules/typescript/bin/tsc", "-p", "packages/runtime-adapters/synapse-pm-autonomy/tsconfig.json", "--pretty", "false"])) },
   ];
-  const sourceRevision = await revision();
+  await requireTrackedClean();
+  if (await revision() !== sourceRevision) throw new Error("source revision changed while gate was running");
   const artifact = {
     schema: "synapse/verified-done/v1",
     task_id: TASK_ID,
