@@ -1,0 +1,17 @@
+{
+  "task_id": "synapse-pm-autonomy-daemon-001",
+  "autonomy": {
+    "lane": "A",
+    "owner": "synapse-pm",
+    "approval_ref": "team-lead-20260724-separate-pm-daemon",
+    "existing_capabilities": []
+  },
+  "verification": {
+    "target_ref": "main",
+    "required_profiles": ["unit", "contract"],
+    "canary_required": false
+  },
+  "rollback": {
+    "profile": "source_only"
+  }
+}

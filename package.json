@@ -17,6 +17,7 @@
     "start:shared-hub": "bun packages/shared/hub/src/main.ts",
     "start:shared-http": "bun packages/shared/http/src/main.ts",
     "start:shared-self-reminder": "bun packages/shared/self-reminder/src/main.ts",
+    "verify:synapse-pm-autonomy": "bun tools/pm_autonomy_gate.ts",
     "typecheck": "bun --bun tsc -b tsconfig.base.json --pretty false",
     "typecheck:core": "bun --bun tsc -p packages/agent-mesh-core/tsconfig.json --pretty false",
     "typecheck:discord": "bun --bun tsc -p packages/channel-drivers/discord/tsconfig.json --pretty false",

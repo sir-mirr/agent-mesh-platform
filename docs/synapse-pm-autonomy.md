@@ -51,6 +51,16 @@ no progress, nudge at 30, and escalation at 45.  Heartbeats do not reset the
 progress clock.  Notifications are best-effort outbound messages to PM; they
 never change a task's verified status.
 
+## Source-only build gate
+
+The daemon's own A-lane build is verified by the closed command
+`bun run verify:synapse-pm-autonomy`.  Its fixed profiles are the daemon
+focused Bun test suite and the package TypeScript typecheck.  It writes a
+machine `synapse/verified-done/v1` artifact under
+`.synapse/artifacts/synapse-pm-autonomy-daemon-001/<source-revision>.json`
+only when both profiles exit successfully.  It has no profile, command,
+artifact-path, `--force`, or manual-PASS argument.
+
 ## Threat-model checklist
 
 | Threat | Bound / test |
