@@ -6,3 +6,4 @@ export * from "./watchdog";
 export * from "./outbound-mesh";
 export * from "./pm-task-flow";
 export * from "./local-client";
+export * from "./config";

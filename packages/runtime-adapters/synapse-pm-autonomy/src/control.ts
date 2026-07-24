@@ -14,6 +14,7 @@ type Request =
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RUNTIME_DIR = "/run/synapse-pm-autonomy";
 const CREATE_INPUT_KEYS = ["taskId", "manifestSha256", "manifestRef", "lane", "owner", "phase", "nextAction"];
+const MAX_CONTROL_BYTES = 16_384;
 
 function exactKeys(value: Record<string, unknown>, expected: string[]): boolean {
   const keys = Object.keys(value).sort();
@@ -21,7 +22,7 @@ function exactKeys(value: Record<string, unknown>, expected: string[]): boolean 
   return keys.length === sortedExpected.length && keys.every((key, index) => key === sortedExpected[index]);
 }
 
-function runtimeSocketPath(value: string): string {
+export function runtimeSocketPath(value: string): string {
   const normalized = resolve(value);
   if (dirname(normalized) !== RUNTIME_DIR || !normalized.endsWith(".sock")) throw new Error("socket path is outside the daemon runtime directory");
   return normalized;
@@ -79,10 +80,11 @@ export async function startLocalControlServer(socketPath: string, control: Local
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       buffer += chunk;
+      if (buffer.length > MAX_CONTROL_BYTES) { socket.destroy(); return; }
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
-        if (!line || line.length > 16_384) { socket.destroy(); return; }
+        if (!line || line.length > MAX_CONTROL_BYTES) { socket.destroy(); return; }
         let value: unknown;
         try { value = JSON.parse(line); } catch { socket.write(JSON.stringify({ ok: false, error: { code: "CONTROL_REJECTED" } }) + "\n"); continue; }
         void control.handle(value).then((response) => socket.write(JSON.stringify(response) + "\n"));

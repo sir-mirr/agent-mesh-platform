@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
 import { SynapsePmTaskController, type GateRunner } from "./controller";
-import { LocalControlPlane } from "./control";
+import { LocalControlPlane, runtimeSocketPath } from "./control";
 import { SynapsePmAutonomyStore } from "./store";
 
 const SHA = "c".repeat(64);
@@ -12,6 +12,13 @@ const runner: GateRunner = { run: async () => ({
 }) };
 
 describe("LocalControlPlane", () => {
+  test("canonicalizes the runtime socket and rejects traversal or nested paths", () => {
+    expect(runtimeSocketPath("/run/synapse-pm-autonomy/control.sock")).toBe("/run/synapse-pm-autonomy/control.sock");
+    expect(() => runtimeSocketPath("/run/synapse-pm-autonomy/../escaped.sock")).toThrow("outside");
+    expect(() => runtimeSocketPath("/run/synapse-pm-autonomy/nested/control.sock")).toThrow("outside");
+    expect(() => runtimeSocketPath("/run/synapse-pm-autonomy-lookalike/control.sock")).toThrow("outside");
+  });
+
   test("never exposes a caller-supplied pass operation and rejects completion before gate", async () => {
     const control = new LocalControlPlane(new SynapsePmTaskController(new SynapsePmAutonomyStore(new Database(":memory:")), runner));
     const created = await control.handle({ id: "request-001", op: "create", input: {
