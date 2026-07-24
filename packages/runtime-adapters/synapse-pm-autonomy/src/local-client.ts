@@ -1,5 +1,6 @@
 import { createConnection } from "node:net";
 import { randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
 
 import type { LocalAutonomyClient } from "./pm-task-flow";
 import type { TaskRecord } from "./store";
@@ -9,7 +10,9 @@ const SOCKET_PREFIX = "/run/synapse-pm-autonomy/";
 /** Closed Unix-socket client used only by the PM dispatcher wrapper. */
 export class UnixAutonomyClient implements LocalAutonomyClient {
   constructor(private readonly socketPath: string) {
-    if (!socketPath.startsWith(SOCKET_PREFIX) || !socketPath.endsWith(".sock")) throw new Error("socket path is outside the daemon runtime directory");
+    const normalized = resolve(socketPath);
+    if (dirname(normalized) !== SOCKET_PREFIX.slice(0, -1) || !normalized.endsWith(".sock")) throw new Error("socket path is outside the daemon runtime directory");
+    this.socketPath = normalized;
   }
 
   request(operation: "create" | "progress" | "gate" | "complete", payload: Record<string, unknown>): Promise<TaskRecord> {

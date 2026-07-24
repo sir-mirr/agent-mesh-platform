@@ -11,9 +11,10 @@ mesh inbound command.
   `create`, `progress`, `gate`, and `complete` over
   `/run/synapse-pm-autonomy/control.sock`.
 - The socket lives in a runtime directory owned by the PM service identity and
-  is mode `0600`; deployment must run the daemon and PM dispatcher under the
-  same dedicated OS identity.  No network listener or shared database control
-  path exists.
+  is mode `0600`; its resolved parent must be exactly
+  `/run/synapse-pm-autonomy`.  Deployment must run the daemon and PM dispatcher
+  under the same dedicated OS identity.  No network listener or shared database
+  control path exists.
 - A caller cannot submit a PASS, artifact reference, shell command, profile,
   or force flag.  `complete` returns `COMPLETION_REJECTED` unless the daemon
   itself ran the fixed KMS gate runner and stored a matching verified artifact.
@@ -39,6 +40,9 @@ SYNAPSE_PM_AUTONOMY_KMS_PYTHON=/home/zkrypto/ai/finja/works/kms/.venv/bin/python
 Mesh identity provisioning and systemd installation are deliberately deferred
 to the deployment approval.  This code does not create an identity, install a
 unit, start a daemon, modify self-reminder, or migrate a live database.
+The daemon rejects a database path unless it has the dedicated
+`synapse-pm-autonomy/autonomy.db` location shape, preventing an accidental
+attachment to `self-reminder.db`.
 
 ## Runtime behaviour
 

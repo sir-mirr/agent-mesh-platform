@@ -21,6 +21,9 @@ describe("LocalControlPlane", () => {
     expect(created.ok).toBe(true);
     expect((await control.handle({ id: "request-002", op: "complete", task_id: "control-task-001" })).error).toEqual({ code: "COMPLETION_REJECTED" });
     expect((await control.handle({ id: "request-003", op: "recordGatePass", task_id: "control-task-001" })).error).toEqual({ code: "CONTROL_REJECTED" });
+    expect((await control.handle({ id: "request-003a", op: "create", input: {
+      taskId: "forged-extra", manifestSha256: SHA, manifestRef: ".synapse/autonomy/forged-extra.json", lane: "A", owner: "synapse-pm", phase: "implementation", nextAction: "run_tests", force: true,
+    } })).error).toEqual({ code: "CONTROL_REJECTED" });
     expect((await control.handle({ id: "request-004", op: "gate", task_id: "control-task-001" })).ok).toBe(true);
     expect((await control.handle({ id: "request-005", op: "complete", task_id: "control-task-001" })).ok).toBe(true);
   });

@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { basename, dirname, resolve } from "node:path";
 
 import { SynapsePmTaskController } from "./controller";
 import { LocalControlPlane, startLocalControlServer } from "./control";
@@ -19,8 +20,12 @@ const kmsRoot = required("SYNAPSE_PM_AUTONOMY_KMS_ROOT");
 const kmsPython = required("SYNAPSE_PM_AUTONOMY_KMS_PYTHON");
 const hubUrl = required("SYNAPSE_PM_AUTONOMY_HUB_URL");
 if (process.env.SYNAPSE_PM_AUTONOMY_IDENTITY && process.env.SYNAPSE_PM_AUTONOMY_IDENTITY !== "synapse-pm-autonomy") throw new Error("SYNAPSE_PM_AUTONOMY_IDENTITY must be synapse-pm-autonomy");
+const normalizedDbPath = resolve(dbPath);
+if (basename(normalizedDbPath) !== "autonomy.db" || basename(dirname(normalizedDbPath)) !== "synapse-pm-autonomy") {
+  throw new Error("SYNAPSE_PM_AUTONOMY_DB must be the dedicated synapse-pm-autonomy/autonomy.db store");
+}
 
-const db = new Database(dbPath, { create: true });
+const db = new Database(normalizedDbPath, { create: true });
 db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
 const store = new SynapsePmAutonomyStore(db);
 const controller = new SynapsePmTaskController(store, new FixedKmsGateRunner({ kmsRoot, python: kmsPython }));
