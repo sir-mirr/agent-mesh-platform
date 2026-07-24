@@ -41,8 +41,8 @@ Mesh identity provisioning and systemd installation are deliberately deferred
 to the deployment approval.  This code does not create an identity, install a
 unit, start a daemon, modify self-reminder, or migrate a live database.
 The daemon rejects a database path unless it has the dedicated
-`synapse-pm-autonomy/autonomy.db` location shape, preventing an accidental
-attachment to `self-reminder.db`.
+`synapse-pm-autonomy/autonomy.db` location shape and a real, non-symlink
+parent/DB entry, preventing an accidental attachment to `self-reminder.db`.
 
 ## Runtime behaviour
 
