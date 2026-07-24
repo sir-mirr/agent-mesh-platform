@@ -4,8 +4,8 @@
  * It accepts no profile, command, success override, artifact path, or force
  * argument. Runtime deployment remains a separately approved C-lane action.
  */
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, open, readFile, realpath, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -43,8 +43,13 @@ async function requireTrackedClean(): Promise<void> {
 function assertManifest(raw: unknown): asserts raw is Manifest {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid manifest");
   const value = raw as Manifest;
+  if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(["autonomy", "rollback", "task_id", "verification"])) throw new Error("invalid manifest fields");
+  if (!value.autonomy || JSON.stringify(Object.keys(value.autonomy).sort()) !== JSON.stringify(["approval_ref", "existing_capabilities", "lane", "owner"])) throw new Error("invalid autonomy manifest fields");
+  if (!value.verification || JSON.stringify(Object.keys(value.verification).sort()) !== JSON.stringify(["canary_required", "required_profiles", "target_ref"])) throw new Error("invalid verification manifest fields");
+  if (!value.rollback || JSON.stringify(Object.keys(value.rollback).sort()) !== JSON.stringify(["profile"])) throw new Error("invalid rollback manifest fields");
   if (
     value.task_id !== TASK_ID || value.autonomy?.lane !== "A" || value.autonomy?.owner !== "synapse-pm"
+    || value.autonomy?.approval_ref !== "team-lead-20260724-separate-pm-daemon" || JSON.stringify(value.autonomy?.existing_capabilities) !== "[]"
     || value.verification?.target_ref !== "main" || value.verification?.canary_required !== false
     || JSON.stringify(value.verification?.required_profiles) !== JSON.stringify(["unit", "contract"])
     || value.rollback?.profile !== "source_only"
@@ -78,10 +83,13 @@ async function main(): Promise<void> {
     verified_at: new Date().toISOString(),
     profiles,
   };
-  await mkdir(ARTIFACT_ROOT, { recursive: true });
+  await mkdir(ARTIFACT_ROOT, { recursive: true, mode: 0o700 });
+  if (await realpath(ARTIFACT_ROOT) !== ARTIFACT_ROOT) throw new Error("artifact root must not be a symlink");
   const destination = resolve(ARTIFACT_ROOT, `${sourceRevision}.json`);
-  const temporary = `${destination}.tmp`;
-  await writeFile(temporary, JSON.stringify(artifact, null, 2) + "\n", { mode: 0o600 });
+  const temporary = resolve(ARTIFACT_ROOT, `.${sourceRevision}.${randomUUID()}.tmp`);
+  const handle = await open(temporary, "wx", 0o600);
+  try { await handle.writeFile(JSON.stringify(artifact, null, 2) + "\n"); }
+  finally { await handle.close(); }
   await rename(temporary, destination);
   process.stdout.write(JSON.stringify({ status: "verified_done", artifact: destination }) + "\n");
 }
