@@ -13,6 +13,7 @@ const TASK_ID = "synapse-pm-autonomy-daemon-001";
 const MANIFEST = resolve(ROOT, ".synapse/autonomy/synapse-pm-autonomy-daemon-001.json");
 const ARTIFACT_ROOT = resolve(ROOT, ".synapse/artifacts", TASK_ID);
 const GIT_ENV = Object.fromEntries(Object.entries(process.env).filter(([name]) => !["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"].includes(name))) as Record<string, string>;
+const GIT_BIN = "/usr/bin/git";
 
 interface Manifest {
   task_id: string;
@@ -28,7 +29,7 @@ async function run(argv: string[]): Promise<{ status: "PASS"; checks: Array<{ na
 }
 
 async function revision(): Promise<string> {
-  const child = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: ROOT, env: GIT_ENV, stdout: "pipe", stderr: "ignore" });
+  const child = Bun.spawn([GIT_BIN, "rev-parse", "HEAD"], { cwd: ROOT, env: GIT_ENV, stdout: "pipe", stderr: "ignore" });
   const value = (await new Response(child.stdout).text()).trim();
   if (await child.exited !== 0 || !/^[a-f0-9]{40}$/.test(value)) throw new Error("unable to identify source revision");
   return value;
@@ -36,7 +37,7 @@ async function revision(): Promise<string> {
 
 async function requireTrackedClean(): Promise<void> {
   for (const args of [["diff", "--quiet"], ["diff", "--cached", "--quiet"]]) {
-    const child = Bun.spawn(["git", ...args], { cwd: ROOT, env: GIT_ENV, stdout: "ignore", stderr: "ignore" });
+    const child = Bun.spawn([GIT_BIN, ...args], { cwd: ROOT, env: GIT_ENV, stdout: "ignore", stderr: "ignore" });
     if (await child.exited !== 0) throw new Error("source tree has tracked changes");
   }
 }
