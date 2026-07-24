@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { AutonomyStore, FixedArgvGateRunner } from "./autonomy";
 import { BoundaryError, assertPeerUid, assertSafeFileUnderRoot, assertSocketPath } from "./policy";
 
-export const MAX_CONTROL_BYTES = 4096;
+/** Raw transport bound, enforced before UTF-8 decoding or newline parsing. */
+export const MAX_CONTROL_BYTES = 16_384;
 type Operation = "create" | "progress" | "gate" | "complete";
 export type ControlRequest = { op: Operation; input: Record<string, unknown> };
 
@@ -42,16 +43,21 @@ export function parseControlRequest(line: string): ControlRequest {
 }
 
 export class ControlLineDecoder {
-  private buffered = "";
-  push(chunk: string): string[] {
-    if (Buffer.byteLength(this.buffered) + Buffer.byteLength(chunk) > MAX_CONTROL_BYTES) {
-      this.buffered = "";
+  private buffered = Buffer.alloc(0);
+  push(chunk: Buffer): string[] {
+    if (this.buffered.length + chunk.length > MAX_CONTROL_BYTES) {
+      this.buffered = Buffer.alloc(0);
       throw new BoundaryError("CONTROL_INPUT_TOO_LARGE", "control input exceeds the fixed bound");
     }
-    this.buffered += chunk;
-    const lines = this.buffered.split("\n");
-    this.buffered = lines.pop() ?? "";
-    return lines.filter((line) => line.length > 0);
+    this.buffered = Buffer.concat([this.buffered, chunk]);
+    const lines: string[] = [];
+    let newline: number;
+    while ((newline = this.buffered.indexOf(0x0a)) !== -1) {
+      const line = this.buffered.subarray(0, newline);
+      this.buffered = this.buffered.subarray(newline + 1);
+      if (line.length > 0) lines.push(line.toString("utf8"));
+    }
+    return lines;
   }
 }
 
@@ -81,7 +87,7 @@ export function startAutonomyDaemon(options: DaemonOptions) {
     const decoder = new ControlLineDecoder();
     socket.on("data", (chunk: Buffer) => {
       let lines: string[];
-      try { lines = decoder.push(chunk.toString("utf8")); } catch (error) { socket.destroy(error as Error); return; }
+      try { lines = decoder.push(chunk); } catch (error) { socket.destroy(error as Error); return; }
       for (const line of lines) void dispatch(line, options).then((value) => socket.end(response(value))).catch((error: unknown) => socket.end(response({ error: (error as BoundaryError).code ?? "CONTROL_REJECTED" })));
     });
   });

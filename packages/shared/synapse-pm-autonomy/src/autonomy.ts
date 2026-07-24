@@ -147,14 +147,26 @@ export function openAutonomyStore(stateRoot: string, clock: () => Date = () => n
   return new AutonomyStore(new Database(dbPath, { create: true }), clock);
 }
 
-/** Fixed argv gate runner. Control requests cannot supply a profile, shell, artifact, or executable. */
+/**
+ * This executable and its arguments are source-controlled production policy.
+ * The control protocol has no field that can alter the executable, profile,
+ * shell, artifact path, PASS value, or force setting.
+ */
+export const FIXED_KMS_GATE_EXECUTABLE = "/usr/local/libexec/synapse-pm-kms-gate";
+export const FIXED_KMS_GATE_ARGS = ["verify", "--profile", "kms-gate"] as const;
+
+/** Fixed argv KMS runner. It deliberately has no executable callback injection. */
 export class FixedArgvGateRunner {
-  constructor(private readonly manifestsRoot: string, private readonly artifactsRoot: string, private readonly fixedArgv: readonly string[], private readonly execute: (argv: readonly string[]) => Promise<void>) {
-    if (!fixedArgv.length || fixedArgv.some((arg) => !arg || arg.includes("\0"))) throw new BoundaryError("GATE_REJECTED", "gate argv must be fixed non-empty arguments");
-  }
+  constructor(private readonly manifestsRoot: string, private readonly artifactsRoot: string) {}
   async run(task: TaskRecord): Promise<VerifiedArtifact> {
     const manifest = assertSafeFileUnderRoot(this.manifestsRoot, task.manifest_ref);
-    await this.execute([...this.fixedArgv, "--manifest", manifest]);
+    const result = Bun.spawn({
+      cmd: [FIXED_KMS_GATE_EXECUTABLE, ...FIXED_KMS_GATE_ARGS, "--manifest", manifest, "--artifact-root", this.artifactsRoot],
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    if (await result.exited !== 0) throw new BoundaryError("GATE_REJECTED", "fixed KMS gate did not verify the task");
     const artifact = assertSafeFileUnderRoot(this.artifactsRoot, `${task.task_id}.json`);
     const parsed = parseVerifiedArtifact(readFileSync(artifact, "utf8"));
     if (parsed.task_id !== task.task_id || parsed.manifest_sha256 !== task.manifest_sha256) {

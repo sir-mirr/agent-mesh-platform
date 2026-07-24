@@ -12,6 +12,7 @@
   },
   "scripts": {
     "test": "bun test src/*.test.ts",
-    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false",
+    "source-verified-done": "bun src/source-gate.ts"
   }
 }

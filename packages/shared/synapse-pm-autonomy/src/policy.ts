@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 export const SOCKET_PARENT = "/run/synapse-pm-autonomy";
@@ -70,6 +70,17 @@ export function assertAutonomyDatabasePath(stateRoot: string, dbPath: string): s
   }
   requireExistingParentsNotSymlinks(expected);
   return expected;
+}
+
+/** Create or reopen a state directory only after both lexical and physical checks. */
+export function ensurePhysicalDirectory(directory: string): string {
+  const absolute = path.resolve(directory);
+  requireExistingParentsNotSymlinks(absolute);
+  mkdirSync(absolute, { recursive: true, mode: 0o700 });
+  requireExistingParentsNotSymlinks(absolute);
+  const physical = realpathSync(absolute);
+  if (physical !== absolute) throw new BoundaryError("SYMLINK_REJECTED", "state directory must not resolve through a symlink");
+  return physical;
 }
 
 export function assertPeerUid(peerUid: number | null, daemonUid: number): void {

@@ -1,12 +1,15 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { AUTONOMY_IDENTITY, AutonomyStore, FixedArgvGateRunner, PM_TARGET, parseVerifiedArtifact } from "./autonomy";
 import { ControlLineDecoder, MAX_CONTROL_BYTES, parseControlRequest } from "./daemon";
+import { composeAutonomyDaemon } from "./main";
 import { BoundaryError, SOCKET_PARENT, assertAutonomyDatabasePath, assertPeerUid, assertSafeFileUnderRoot, assertSocketPath } from "./policy";
+import { produceSourceVerifiedDoneForFixture } from "./source-gate";
 
 const cleanup: string[] = [];
 afterEach(() => { for (const entry of cleanup.splice(0)) rmSync(entry, { recursive: true, force: true }); });
@@ -25,6 +28,10 @@ function expectBoundary(run: () => unknown, code: string): void {
     return;
   }
   throw new Error(`expected boundary rejection: ${code}`);
+}
+function git(repository: string, args: string[]): void {
+  const result = spawnSync("/usr/bin/git", args, { cwd: repository, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
 }
 async function expectAsyncBoundary(run: () => Promise<unknown>, code: string): Promise<void> {
   try { await run(); } catch (error) {
@@ -57,9 +64,16 @@ describe("PM autonomy fail-closed boundaries", () => {
     }
   });
 
-  test("oversize newline-free control input is rejected before buffering grows", () => {
+  test("raw byte transport accepts 16,384 bytes and rejects 16,385 before UTF-8 parsing", () => {
     const decoder = new ControlLineDecoder();
-    expectBoundary(() => decoder.push("x".repeat(MAX_CONTROL_BYTES + 1)), "CONTROL_INPUT_TOO_LARGE");
+    const prefix = JSON.stringify({ op: "create", input: { task_id: "task-one", manifest_ref: "manifests/task.json", phase: "build", next_action: "" } });
+    const padded = prefix.slice(0, -3) + "x".repeat(MAX_CONTROL_BYTES - Buffer.byteLength(prefix) - 1) + "\"}}\n";
+    expect(Buffer.byteLength(padded)).toBe(MAX_CONTROL_BYTES);
+    const lines = decoder.push(Buffer.from(padded));
+    expect(parseControlRequest(lines[0]!)).toMatchObject({ op: "create" });
+    expectBoundary(() => decoder.push(Buffer.alloc(MAX_CONTROL_BYTES + 1, 0x61)), "CONTROL_INPUT_TOO_LARGE");
+    const unicode = new ControlLineDecoder();
+    expectBoundary(() => unicode.push(Buffer.from("🙂".repeat(Math.ceil((MAX_CONTROL_BYTES + 1) / 4)))), "CONTROL_INPUT_TOO_LARGE");
   });
 
   test("manifest and artifact symlink escapes are rejected before read", async () => {
@@ -70,7 +84,7 @@ describe("PM autonomy fail-closed boundaries", () => {
     symlinkSync(path.join(outside, "payload"), path.join(artifacts, "task-one.json"));
     expectBoundary(() => assertSafeFileUnderRoot(root, "manifests/task.json"), "SYMLINK_REJECTED");
     const taskStore = store(); create(taskStore);
-    const runner = new FixedArgvGateRunner(root, artifacts, ["/usr/bin/kms-gate"], async () => { throw new Error("must not execute"); });
+    const runner = new FixedArgvGateRunner(root, artifacts);
     await expectAsyncBoundary(() => runner.run(taskStore.get("task-one")!), "SYMLINK_REJECTED");
   });
 
@@ -82,6 +96,10 @@ describe("PM autonomy fail-closed boundaries", () => {
     expect(existsSync(reminder)).toBeFalse();
     const real = path.join(root, "real"); const symlinkState = path.join(root, "linked-state"); mkdirSync(path.join(real, "synapse-pm-autonomy"), { recursive: true }); symlinkSync(real, symlinkState, "dir");
     expectBoundary(() => assertAutonomyDatabasePath(symlinkState, path.join(symlinkState, "synapse-pm-autonomy", "autonomy.db")), "SYMLINK_REJECTED");
+    const sentinel = path.join(root, "self-reminder-shaped-target"); writeFileSync(sentinel, "leave-this-unchanged");
+    symlinkSync(sentinel, path.join(dedicated, "autonomy.db"));
+    expectBoundary(() => assertAutonomyDatabasePath(stateRoot, path.join(dedicated, "autonomy.db")), "SYMLINK_REJECTED");
+    expect(readFileSync(sentinel, "utf8")).toBe("leave-this-unchanged");
   });
 
   test("completion is rejected without a task-bound verified artifact and leaves task active", () => {
@@ -112,5 +130,31 @@ describe("PM autonomy fail-closed boundaries", () => {
     const artifact = parseVerifiedArtifact(JSON.stringify({ schema: "synapse-pm-autonomy/gate-artifact/v1", task_id: "task-one", manifest_sha256: "a".repeat(64), status: "verified", profile: "kms-gate" }));
     taskStore.recordVerifiedGate("task-one", artifact);
     expect(taskStore.complete("task-one")).toMatchObject({ status: "completed" });
+  });
+
+  test("daemon composition creates only dedicated local components from injected temporary paths", () => {
+    const root = fixtureRoot(); const manifests = path.join(root, "manifests"); const artifacts = path.join(root, "artifacts"); mkdirSync(manifests); mkdirSync(artifacts);
+    const daemon = composeAutonomyDaemon({ stateRoot: path.join(root, "state"), manifestsRoot: manifests, artifactsRoot: artifacts, socketPath: `${SOCKET_PARENT}/fixture.sock`, daemonUid: process.getuid?.() ?? 0 });
+    expect(daemon.store.get("missing")).toBeNull();
+    expect(daemon.gateRunner).toBeInstanceOf(FixedArgvGateRunner);
+    expect(daemon.notifier.constructor.name).toBe("FixedPmNotifier");
+    expect(typeof daemon.start).toBe("function");
+  });
+
+  test("closed source gate ignores a fake git injected through PATH and emits a mode-0600 artifact", () => {
+    const root = fixtureRoot(); const repository = path.join(root, "repo"); mkdirSync(repository);
+    const source = path.join(repository, "source.txt"); const manifest = path.join(repository, "source-manifest.json"); const artifacts = path.join(root, "state", "source-artifacts"); const fakeBin = path.join(root, "fake-bin");
+    writeFileSync(source, "trusted source\n");
+    writeFileSync(manifest, JSON.stringify({ schema: "synapse-pm-autonomy/source-manifest/v1", source_files: ["source.txt"] }) + "\n");
+    git(repository, ["init"]); git(repository, ["config", "user.email", "fixture@example.invalid"]); git(repository, ["config", "user.name", "fixture"]); git(repository, ["add", "source.txt", "source-manifest.json"]); git(repository, ["commit", "-m", "fixture"]);
+    const revision = spawnSync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" }).stdout.trim();
+    mkdirSync(fakeBin); writeFileSync(path.join(fakeBin, "git"), "#!/bin/sh\necho deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n"); chmodSync(path.join(fakeBin, "git"), 0o755);
+    const previousPath = process.env.PATH; process.env.PATH = fakeBin;
+    try {
+      const result = produceSourceVerifiedDoneForFixture({ repositoryRoot: repository, sourceManifestPath: manifest, artifactRoot: artifacts });
+      expect(result.artifact.source_revision).toBe(revision);
+      expect(existsSync(result.artifactPath)).toBeTrue();
+      expect(statSync(result.artifactPath).mode & 0o777).toBe(0o600);
+    } finally { process.env.PATH = previousPath; }
   });
 });
