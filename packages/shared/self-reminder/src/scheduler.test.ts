@@ -24,6 +24,11 @@ function addDue(db: Database, at: string): void {
   db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('r1', 'finja', 'once', '{}', 'private reminder body', '{"task_id":"t1"}', 'active', ?, 'finja')`).run(at);
 }
 
+function addCron(db: Database, id: string, cron: string, at: string): void {
+  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES (?, 'finja', 'cron', ?, 'fixture reminder body', '{}', 'active', ?, 'finja')`)
+    .run(id, JSON.stringify({ cron, tz: "Asia/Seoul" }), at);
+}
+
 describe("ReminderScheduler health and overdue policy", () => {
   test("records due scans/stall state and sends one deduplicated recovery alert to both routes", async () => {
     const db = testDb();
@@ -68,5 +73,30 @@ describe("ReminderScheduler health and overdue policy", () => {
     expect(db.prepare(`SELECT status, next_fire_at, fire_count FROM reminders WHERE id = 'r1'`).get()).toEqual({ status: "active", next_fire_at: "2026-07-14 00:00:00", fire_count: 0 });
     expect(db.prepare(`SELECT count(*) AS count FROM scheduler_events WHERE event_type = 'overdue_hold'`).get()).toEqual({ count: 1 });
     expect(db.prepare(`SELECT count(*) AS count FROM audit_log`).get()).toEqual({ count: 0 });
+  });
+
+  test("keeps named operating schedules deliverable when the autonomy watchdog is present", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-22T10:00:00.000Z"); // Wednesday 19:00 KST
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+    const at = "2026-07-22 10:00:00";
+    addCron(db, "eod-1900-kst", "0 19 * * 1-5", at);
+    addCron(db, "weekly-1600-kst", "0 16 * * 3", at);
+    addCron(db, "weekly-1700-kst", "0 17 * * 3", at);
+    addCron(db, "daily-scrum-1000-kst", "0 10 * * 1-5", at);
+
+    const delivered: string[] = [];
+    await scheduler.tick(true, async (reminder) => {
+      delivered.push(reminder.id);
+      return { status: "delivered" };
+    }, async () => undefined);
+
+    expect(delivered).toEqual(["eod-1900-kst", "weekly-1600-kst", "weekly-1700-kst", "daily-scrum-1000-kst"]);
+    expect(db.prepare(`SELECT id, status, fire_count, next_fire_at FROM reminders ORDER BY id`).all()).toEqual([
+      { id: "daily-scrum-1000-kst", status: "active", fire_count: 1, next_fire_at: "2026-07-23 01:00:00" },
+      { id: "eod-1900-kst", status: "active", fire_count: 1, next_fire_at: "2026-07-23 10:00:00" },
+      { id: "weekly-1600-kst", status: "active", fire_count: 1, next_fire_at: "2026-07-29 07:00:00" },
+      { id: "weekly-1700-kst", status: "active", fire_count: 1, next_fire_at: "2026-07-29 08:00:00" },
+    ]);
   });
 });
