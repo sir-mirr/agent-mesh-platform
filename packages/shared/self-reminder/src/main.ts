@@ -76,7 +76,9 @@ setInterval(() => {
       .catch((error) => {
         log("reminder_delivery_rpc_failed", { reminder_id: reminder.id, error_category: hubErrorCategory(error) });
         throw error;
-      })
+      }),
+  (recipient, content) =>
+    lifecycle.request("mesh.send", { from: IDENTITY, to: recipient, content })
   );
 }, POLL_MS);
 

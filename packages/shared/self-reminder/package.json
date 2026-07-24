@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Shared Agent-Mesh self-reminder service entrypoint.",
   "exports": {
-    ".": "./src/main.ts"
+    ".": "./src/main.ts",
+    "./autonomy": "./src/autonomy.ts",
+    "./scheduler": "./src/scheduler.ts"
   },
   "dependencies": {
     "cron-parser": "^5.5.0",
