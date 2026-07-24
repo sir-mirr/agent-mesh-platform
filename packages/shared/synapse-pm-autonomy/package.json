@@ -1,0 +1,17 @@
+{
+  "name": "@agent-mesh/synapse-pm-autonomy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PM-only local autonomy daemon; intentionally separate from self-reminder.",
+  "exports": {
+    ".": "./src/main.ts",
+    "./daemon": "./src/daemon.ts",
+    "./client": "./src/client.ts",
+    "./policy": "./src/policy.ts"
+  },
+  "scripts": {
+    "test": "bun test src/*.test.ts",
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

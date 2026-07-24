@@ -24,6 +24,7 @@
       "@agent-mesh/shared-hub": ["packages/shared/hub/src/main.ts"],
       "@agent-mesh/shared-http": ["packages/shared/http/src/main.ts"],
       "@agent-mesh/shared-self-reminder": ["packages/shared/self-reminder/src/main.ts"],
+      "@agent-mesh/synapse-pm-autonomy": ["packages/shared/synapse-pm-autonomy/src/main.ts"],
       "@agent-mesh/shared-attachments": ["packages/shared/attachments/src/main.ts"]
     }
   },
@@ -35,6 +36,7 @@
     { "path": "./packages/shared/hub/tsconfig.json" },
     { "path": "./packages/shared/http/tsconfig.json" },
     { "path": "./packages/shared/self-reminder/tsconfig.json" },
+    { "path": "./packages/shared/synapse-pm-autonomy/tsconfig.json" },
     { "path": "./packages/shared/attachments/tsconfig.json" }
   ]
 }
