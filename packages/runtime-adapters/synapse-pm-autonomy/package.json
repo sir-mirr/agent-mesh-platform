@@ -1,0 +1,17 @@
+{
+  "name": "@agent-mesh/synapse-pm-autonomy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Synapse PM-only autonomous task lifecycle daemon.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

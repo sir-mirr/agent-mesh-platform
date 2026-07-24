@@ -21,6 +21,7 @@
     "typecheck:core": "bun --bun tsc -p packages/agent-mesh-core/tsconfig.json --pretty false",
     "typecheck:discord": "bun --bun tsc -p packages/channel-drivers/discord/tsconfig.json --pretty false",
     "typecheck:codex": "bun --bun tsc -p packages/runtime-adapters/codex/tsconfig.json --pretty false",
+    "typecheck:synapse-pm-autonomy": "bun --bun tsc -p packages/runtime-adapters/synapse-pm-autonomy/tsconfig.json --pretty false",
     "typecheck:shared-hub": "bun --bun tsc -p packages/shared/hub/tsconfig.json --pretty false",
     "typecheck:shared-http": "bun --bun tsc -p packages/shared/http/tsconfig.json --pretty false",
     "typecheck:shared-self-reminder": "bun --bun tsc -p packages/shared/self-reminder/tsconfig.json --pretty false",
