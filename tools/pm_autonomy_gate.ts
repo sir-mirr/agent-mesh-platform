@@ -33,6 +33,13 @@ async function revision(): Promise<string> {
   return value;
 }
 
+async function requireTrackedClean(): Promise<void> {
+  for (const args of [["diff", "--quiet"], ["diff", "--cached", "--quiet"]]) {
+    const child = Bun.spawn(["git", ...args], { cwd: ROOT, stdout: "ignore", stderr: "ignore" });
+    if (await child.exited !== 0) throw new Error("source tree has tracked changes");
+  }
+}
+
 function assertManifest(raw: unknown): asserts raw is Manifest {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid manifest");
   const value = raw as Manifest;
@@ -49,6 +56,7 @@ async function main(): Promise<void> {
   const manifestBytes = await readFile(MANIFEST);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as unknown;
   assertManifest(manifest);
+  await requireTrackedClean();
   const profiles = [
     { profile: "unit", ...(await run([process.execPath, "test", "packages/runtime-adapters/synapse-pm-autonomy/src"])) },
     { profile: "contract", ...(await run([process.execPath, "--bun", "./node_modules/typescript/bin/tsc", "-p", "packages/runtime-adapters/synapse-pm-autonomy/tsconfig.json", "--pretty", "false"])) },
