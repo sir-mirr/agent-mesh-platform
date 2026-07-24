@@ -1,5 +1,5 @@
 import { resolve, relative, sep } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 
 import type { GateArtifact, GateRunner } from "./controller";
 
@@ -25,8 +25,9 @@ export class FixedKmsGateRunner implements GateRunner {
   }
 
   async run(manifestRef: string): Promise<{ artifact: GateArtifact; rawArtifact: Uint8Array }> {
-    const manifest = resolve(this.options.kmsRoot, manifestRef);
-    if (!inside(this.manifestRoot, manifest) || !manifest.endsWith(".json")) throw new Error("manifest ref escaped allowlist");
+    const manifestRoot = await realpath(this.manifestRoot);
+    const manifest = await realpath(resolve(this.options.kmsRoot, manifestRef));
+    if (!inside(manifestRoot, manifest) || !manifest.endsWith(".json")) throw new Error("manifest ref escaped allowlist");
     const process = Bun.spawn([
       this.options.python,
       "ops/autonomy_gate.py",
@@ -38,8 +39,9 @@ export class FixedKmsGateRunner implements GateRunner {
     let output: GateOutput;
     try { output = JSON.parse(stdout) as GateOutput; } catch { throw new Error("gate runner emitted invalid output"); }
     if (output.status !== "verified_done" || typeof output.artifact !== "string") throw new Error("gate runner did not verify task");
-    const artifactPath = resolve(this.options.kmsRoot, output.artifact);
-    if (!inside(this.artifactRoot, artifactPath) || !artifactPath.endsWith(".json")) throw new Error("gate artifact escaped allowlist");
+    const artifactRoot = await realpath(this.artifactRoot);
+    const artifactPath = await realpath(resolve(this.options.kmsRoot, output.artifact));
+    if (!inside(artifactRoot, artifactPath) || !artifactPath.endsWith(".json")) throw new Error("gate artifact escaped allowlist");
     const rawArtifact = await readFile(artifactPath);
     let artifact: GateArtifact;
     try { artifact = JSON.parse(new TextDecoder().decode(rawArtifact)) as GateArtifact; } catch { throw new Error("gate artifact is invalid JSON"); }
