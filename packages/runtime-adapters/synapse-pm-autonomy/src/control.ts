@@ -76,17 +76,17 @@ export async function startLocalControlServer(socketPath: string, control: Local
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const server = createServer((socket: Socket) => {
-    let buffer = "";
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk: string) => {
-      buffer += chunk;
+    let buffer = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
       if (buffer.length > MAX_CONTROL_BYTES) { socket.destroy(); return; }
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line || line.length > MAX_CONTROL_BYTES) { socket.destroy(); return; }
+      let newline: number;
+      while ((newline = buffer.indexOf(0x0a)) >= 0) {
+        const line = buffer.subarray(0, newline);
+        buffer = buffer.subarray(newline + 1);
+        if (line.length === 0 || line.length > MAX_CONTROL_BYTES) { socket.destroy(); return; }
         let value: unknown;
-        try { value = JSON.parse(line); } catch { socket.write(JSON.stringify({ ok: false, error: { code: "CONTROL_REJECTED" } }) + "\n"); continue; }
+        try { value = JSON.parse(line.toString("utf8")); } catch { socket.write(JSON.stringify({ ok: false, error: { code: "CONTROL_REJECTED" } }) + "\n"); continue; }
         void control.handle(value).then((response) => socket.write(JSON.stringify(response) + "\n"));
       }
     });

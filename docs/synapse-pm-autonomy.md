@@ -40,9 +40,9 @@ SYNAPSE_PM_AUTONOMY_KMS_PYTHON=/home/zkrypto/ai/finja/works/kms/.venv/bin/python
 Mesh identity provisioning and systemd installation are deliberately deferred
 to the deployment approval.  This code does not create an identity, install a
 unit, start a daemon, modify self-reminder, or migrate a live database.
-The daemon rejects a database path unless it has the dedicated
-`synapse-pm-autonomy/autonomy.db` location shape and a real, non-symlink
-parent/DB entry, preventing an accidental attachment to `self-reminder.db`.
+The daemon accepts only the exact deployment-owned path
+`/var/lib/synapse-pm-autonomy/autonomy.db`, with a real, non-symlink parent/DB
+entry, preventing an accidental attachment to `self-reminder.db`.
 
 ## Runtime behaviour
 
