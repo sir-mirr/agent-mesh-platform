@@ -45,6 +45,7 @@ function assertManifest(raw: unknown): asserts raw is Manifest {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.length !== 2) throw new Error("pm autonomy gate accepts no arguments");
   const manifestBytes = await readFile(MANIFEST);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as unknown;
   assertManifest(manifest);
