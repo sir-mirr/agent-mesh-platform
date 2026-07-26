@@ -1,11 +1,13 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { once } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { AUTONOMY_IDENTITY, AutonomyStore, PM_TARGET } from "./autonomy";
-import { composeAutonomyDaemon, startAutonomyRuntime } from "./main";
+import { sendAutonomyControl } from "./client";
+import { WATCHDOG_INTERVAL_MS, composeAutonomyDaemon, startAutonomyRuntime, type WatchdogScheduler } from "./main";
 import { OutboundPmNotifier, readOutboundNotifierConfig } from "./notifier";
 import { BoundaryError } from "./policy";
 
@@ -50,6 +52,35 @@ function fixtureRoot(): string {
   const root = mkdtempSync(path.join(tmpdir(), "pm-autonomy-notifier-"));
   fixtureRoots.push(root);
   return root;
+}
+
+class ManualScheduler implements WatchdogScheduler {
+  private nextHandle = 1;
+  private readonly callbacks = new Map<number, () => Promise<void>>();
+  readonly intervals: number[] = [];
+
+  setInterval(callback: () => Promise<void>, intervalMs: number): number {
+    this.intervals.push(intervalMs);
+    const handle = this.nextHandle++;
+    this.callbacks.set(handle, callback);
+    return handle;
+  }
+
+  clearInterval(handle: unknown): void { if (typeof handle === "number") this.callbacks.delete(handle); }
+  get activeCount(): number { return this.callbacks.size; }
+  async fireAll(): Promise<void> { await Promise.all([...this.callbacks.values()].map((callback) => callback())); }
+  async fireConcurrently(): Promise<void> {
+    const callback = this.callbacks.values().next().value as (() => Promise<void>) | undefined;
+    if (!callback) return;
+    await Promise.all([callback(), callback()]);
+  }
+}
+
+function fixtureSocketValidator(socketPath: string): (candidate: string) => string {
+  return (candidate) => {
+    if (candidate !== socketPath || !candidate.endsWith(".sock")) throw new Error("fixture socket rejected");
+    return candidate;
+  };
 }
 
 function expectBoundary(run: () => unknown, code: string): void {
@@ -146,5 +177,34 @@ describe("Synapse PM autonomy outbound notifier", () => {
     expect(hub.frames.map((frame) => frame.method)).toEqual(["mesh.connect", "mesh.send"]);
     expect(runtime.store.eventCount("task-one")).toBe(2);
     expect(runtime.store.get("task-one")?.last_heartbeat_at).toBe(current.toISOString());
+  });
+
+  test("recurs through a post-start local UDS task once, then closes without a timer or later send", async () => {
+    const root = fixtureRoot(); const manifests = path.join(root, "manifests"); const artifacts = path.join(root, "artifacts"); const socketPath = path.join(root, "control.sock");
+    mkdirSync(manifests); mkdirSync(artifacts); writeFileSync(path.join(manifests, "task.json"), "{\"fixture\":true}\n");
+    const scheduler = new ManualScheduler(); const validator = fixtureSocketValidator(socketPath); const hub = createLocalHub();
+    let current = new Date("2026-07-26T00:00:00.000Z");
+    const runtime = composeAutonomyDaemon({
+      stateRoot: path.join(root, "state"), manifestsRoot: manifests, artifactsRoot: artifacts, socketPath, daemonUid: 1000,
+      clock: () => current, peerUid: () => 1000, socketPathValidator: validator, scheduler,
+      environment: { SYNAPSE_PM_AUTONOMY_HUB_URL: hub.url, SYNAPSE_PM_AUTONOMY_IDENTITY: AUTONOMY_IDENTITY },
+    });
+    const server = await startAutonomyRuntime(runtime);
+    if (!server.listening) await once(server, "listening");
+    expect(scheduler.intervals).toEqual([WATCHDOG_INTERVAL_MS]);
+    expect(scheduler.activeCount).toBe(1);
+    expect(await startAutonomyRuntime(runtime)).toBe(server);
+    expect(scheduler.activeCount).toBe(1);
+    const created = await sendAutonomyControl(socketPath, { op: "create", input: { task_id: "task-one", manifest_ref: "task.json", phase: "build", next_action: "test" } }, validator);
+    expect(created).toMatchObject({ task_id: "task-one", status: "active" });
+    current = new Date("2026-07-26T00:15:01.000Z");
+    await scheduler.fireConcurrently();
+    expect(hub.frames.map((frame) => frame.method)).toEqual(["mesh.connect", "mesh.send"]);
+    expect(runtime.store.eventCount("task-one")).toBe(2);
+    expect(runtime.store.get("task-one")?.last_heartbeat_at).toBe(current.toISOString());
+    const closed = once(server, "close"); server.close(); await closed;
+    expect(scheduler.activeCount).toBe(0);
+    await scheduler.fireAll();
+    expect(hub.frames.map((frame) => frame.method)).toEqual(["mesh.connect", "mesh.send"]);
   });
 });

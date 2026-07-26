@@ -68,6 +68,8 @@ export interface DaemonOptions {
   manifestsRoot: string;
   gateRunner: FixedArgvGateRunner;
   peerUid?: (socket: Socket) => number | null;
+  /** Fixture-only injection; production leaves this unset for assertSocketPath. */
+  socketPathValidator?: (socketPath: string) => string;
 }
 
 function osPeerUid(socket: Socket): number | null {
@@ -80,7 +82,7 @@ function osPeerUid(socket: Socket): number | null {
 function response(value: unknown): string { return JSON.stringify(value) + "\n"; }
 
 export function startAutonomyDaemon(options: DaemonOptions) {
-  const socketPath = assertSocketPath(options.socketPath);
+  const socketPath = (options.socketPathValidator ?? assertSocketPath)(options.socketPath);
   const peerUid = options.peerUid ?? osPeerUid;
   const server = createServer((socket) => {
     try { assertPeerUid(peerUid(socket), options.daemonUid); } catch (error) { socket.end(response({ error: (error as BoundaryError).code })); return; }
