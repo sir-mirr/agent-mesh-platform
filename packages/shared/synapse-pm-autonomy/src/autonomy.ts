@@ -117,18 +117,21 @@ export class AutonomyStore {
       else if (age >= 30 * 60_000) kind = "nudge";
       else if (age >= 15 * 60_000 && heartbeatAge >= 15 * 60_000) kind = "heartbeat";
       if (!kind || this.hasEvent(task.task_id, kind)) continue;
+      await notifier.send({ from: AUTONOMY_IDENTITY, to: PM_TARGET, content: `AUTONOMY ${kind.toUpperCase()} task=${task.task_id}` });
+      // Outbound delivery is the commit boundary: a failed/noisy peer must not
+      // consume a watchdog event or change task timestamps.
       if (kind === "heartbeat") {
         const ts = nowIso(this.clock);
         this.db.prepare("UPDATE autonomy_tasks SET last_heartbeat_at = ?, updated_at = ? WHERE task_id = ?").run(ts, ts, task.task_id);
       }
       this.event(task.task_id, kind, { progress_age_ms: age });
-      await notifier.send({ from: AUTONOMY_IDENTITY, to: PM_TARGET, content: `AUTONOMY ${kind.toUpperCase()} task=${task.task_id}` });
       result[kind]++;
     }
     return result;
   }
 
   get(taskId: string): TaskRecord | null { assertSafeId(taskId, "task_id"); return this.db.prepare("SELECT * FROM autonomy_tasks WHERE task_id = ?").get(taskId) as TaskRecord | null; }
+  eventCount(taskId: string): number { assertSafeId(taskId, "task_id"); return (this.db.prepare("SELECT COUNT(*) AS count FROM autonomy_events WHERE task_id = ?").get(taskId) as { count: number }).count; }
 
   private require(taskId: string): TaskRecord { const task = this.get(taskId); if (!task) throw new BoundaryError("CONTROL_REJECTED", "task does not exist"); return task; }
   private requireActive(taskId: string): TaskRecord { const task = this.require(taskId); if (task.status !== "active") throw new BoundaryError("CONTROL_REJECTED", "task is not active"); return task; }

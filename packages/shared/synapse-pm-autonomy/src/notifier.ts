@@ -9,7 +9,7 @@ export interface OutboundNotifierConfig {
   identity: typeof AUTONOMY_IDENTITY;
 }
 
-type RuntimeEnvironment = Record<typeof AUTONOMY_HUB_URL_ENV | typeof AUTONOMY_IDENTITY_ENV, string | undefined>;
+export type RuntimeEnvironment = Record<typeof AUTONOMY_HUB_URL_ENV | typeof AUTONOMY_IDENTITY_ENV, string | undefined>;
 
 /** Read exactly the two non-secret autonomy runtime values. */
 export function readOutboundNotifierConfig(environment: RuntimeEnvironment): OutboundNotifierConfig {
@@ -19,7 +19,7 @@ export function readOutboundNotifierConfig(environment: RuntimeEnvironment): Out
   if (typeof hubUrl !== "string" || !hubUrl) throw new BoundaryError("OUTBOUND_REJECTED", "autonomy hub URL is required");
   let parsed: URL;
   try { parsed = new URL(hubUrl); } catch { throw new BoundaryError("OUTBOUND_REJECTED", "autonomy hub URL is invalid"); }
-  if ((parsed.protocol !== "ws:" && parsed.protocol !== "wss:") || parsed.username || parsed.password || parsed.hash) {
+  if ((parsed.protocol !== "ws:" && parsed.protocol !== "wss:") || parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new BoundaryError("OUTBOUND_REJECTED", "autonomy hub URL must be a credential-free ws/wss endpoint");
   }
   return { hubUrl: parsed.toString(), identity: AUTONOMY_IDENTITY };
