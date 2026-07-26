@@ -1,16 +1,20 @@
 import { FixedArgvGateRunner, type OutboundNotifier, openAutonomyStore } from "./autonomy";
 import { startAutonomyDaemon } from "./daemon";
+import { OutboundPmNotifier, readOutboundNotifierConfig } from "./notifier";
 import { SOCKET_PARENT } from "./policy";
 
 const PRODUCTION_STATE_ROOT = "/var/lib/synapse-pm-autonomy";
 const PRODUCTION_MANIFESTS_ROOT = "/var/lib/synapse-pm-autonomy/manifests";
 const PRODUCTION_ARTIFACTS_ROOT = "/var/lib/synapse-pm-autonomy/artifacts";
 
-/** A fixed PM-directed local notifier; mesh delivery remains outside this A-lane package. */
+/** Fixed-route outbound mesh notifier. It does not receive or act on mesh events. */
 export class FixedPmNotifier implements OutboundNotifier {
   async send(message: { from: "synapse-pm-autonomy"; to: "synapse-pm"; content: string }): Promise<void> {
-    if (message.from !== "synapse-pm-autonomy" || message.to !== "synapse-pm") throw new Error("fixed PM notifier rejected a non-PM route");
-    process.stderr.write(`${JSON.stringify(message)}\n`);
+    const config = readOutboundNotifierConfig({
+      SYNAPSE_PM_AUTONOMY_HUB_URL: process.env.SYNAPSE_PM_AUTONOMY_HUB_URL,
+      SYNAPSE_PM_AUTONOMY_IDENTITY: process.env.SYNAPSE_PM_AUTONOMY_IDENTITY,
+    });
+    await new OutboundPmNotifier(config).send(message);
   }
 }
 
@@ -65,3 +69,4 @@ export * from "./client";
 export * from "./daemon";
 export * from "./policy";
 export * from "./source-gate";
+export * from "./notifier";

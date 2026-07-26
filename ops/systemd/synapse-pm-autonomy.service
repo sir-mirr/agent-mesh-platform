@@ -1,0 +1,25 @@
+# Source contract only. Finja owns OS user/directory/unit installation and start.
+[Unit]
+Description=Synapse PM autonomy outbound daemon (source contract)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=synapse-pm-autonomy
+Group=synapse-pm-autonomy
+WorkingDirectory=/opt/agent-mesh-platform
+EnvironmentFile=/etc/synapse-pm-autonomy/autonomy.env
+ExecStart=/usr/bin/bun /opt/agent-mesh-platform/packages/shared/synapse-pm-autonomy/src/main.ts
+RuntimeDirectory=synapse-pm-autonomy
+RuntimeDirectoryMode=0750
+StateDirectory=synapse-pm-autonomy
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+Restart=no
+
+# No self-reminder dependency. No unit installation/start is authorized here.

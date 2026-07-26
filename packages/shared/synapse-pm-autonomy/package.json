@@ -8,7 +8,8 @@
     ".": "./src/main.ts",
     "./daemon": "./src/daemon.ts",
     "./client": "./src/client.ts",
-    "./policy": "./src/policy.ts"
+    "./policy": "./src/policy.ts",
+    "./notifier": "./src/notifier.ts"
   },
   "scripts": {
     "test": "bun test src/*.test.ts",
