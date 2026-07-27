@@ -147,6 +147,7 @@ if (import.meta.main) startProductionAutonomyDaemon();
 export * from "./autonomy";
 export * from "./client";
 export * from "./daemon";
+export * from "./deployment-contract";
 export * from "./policy";
 export * from "./source-gate";
 export * from "./notifier";

@@ -8,6 +8,7 @@
     ".": "./src/main.ts",
     "./daemon": "./src/daemon.ts",
     "./client": "./src/client.ts",
+    "./deployment-contract": "./src/deployment-contract.ts",
     "./policy": "./src/policy.ts",
     "./notifier": "./src/notifier.ts"
   },

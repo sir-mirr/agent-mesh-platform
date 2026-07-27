@@ -31,3 +31,36 @@ Finja C-lane action must create the dedicated `synapse-pm-autonomy` OS
 user/group and the unit/state/runtime directories. The unit's environment file
 contains only the two non-secret values above, uses direct no-shell `ExecStart`,
 sets `UMask=0077`, and has `Restart=no`.
+
+## Root-managed deployment preflight (Finja C-lane only)
+
+This is a source-only contract. It does not authorize this repository change to
+write `/opt`, install Bun, copy an environment file, install/start/reload a
+unit, or provision an identity. Only Finja's separately approved C-lane may
+perform those OS actions, and it must preserve `ProtectHome=true`.
+
+Before any such action, Finja performs this ordered, read-only preflight:
+
+1. Verify `/usr/bin/bun` exists as a root-owned, non-symlink regular file and
+   has executable mode for `synapse-pm-autonomy`. No `~/.bun`, `/home`, PATH
+   lookup, or shell wrapper is allowed.
+2. Verify `/opt`, `/opt/agent-mesh-platform`, and each parent of the fixed
+   source entrypoint are root-owned, non-symlink directories with traversal
+   mode for the dedicated service user. Verify the entrypoint is root-owned,
+   non-symlink, regular, and readable by that user.
+3. Verify the deployed root-owned tree is the exact reviewed source revision;
+   the fixed entrypoint is
+   `/opt/agent-mesh-platform/packages/shared/synapse-pm-autonomy/src/main.ts`.
+4. Verify the uninstalled source unit retains its direct no-shell
+   `/usr/bin/bun` `ExecStart`, fixed `/opt/agent-mesh-platform`
+   `WorkingDirectory`, dedicated user/group, non-secret EnvironmentFile,
+   RuntimeDirectory/StateDirectory, `UMask=0077`, `ProtectHome=true`, and
+   `Restart=no`.
+5. Do not copy actual environment values, credentials, or host command output
+   into source. Unit installation/start remains excluded here; later Finja
+   gate-binary installation, identity provisioning, and canary are separate
+   approvals.
+
+`deployment-contract.ts` is the read-only fail-closed verifier for these fixed
+paths. Its fixtures cover changed Bun/working-directory unit text and missing,
+symlinked, non-root-owned, or inaccessible deployment prerequisites.
