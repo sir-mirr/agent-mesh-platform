@@ -4,6 +4,7 @@
     "packages/shared/synapse-pm-autonomy/src/autonomy.ts",
     "packages/shared/synapse-pm-autonomy/src/client.ts",
     "packages/shared/synapse-pm-autonomy/src/daemon.ts",
+    "packages/shared/synapse-pm-autonomy/src/deployment-contract.ts",
     "packages/shared/synapse-pm-autonomy/src/main.ts",
     "packages/shared/synapse-pm-autonomy/src/policy.ts",
     "packages/shared/synapse-pm-autonomy/src/source-gate.ts"

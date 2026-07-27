@@ -48,8 +48,13 @@ Before any such action, Finja performs this ordered, read-only preflight:
    source entrypoint are root-owned, non-symlink directories with traversal
    mode for the dedicated service user. Verify the entrypoint is root-owned,
    non-symlink, regular, and readable by that user.
-3. Verify the deployed root-owned tree is the exact reviewed source revision;
-   the fixed entrypoint is
+3. **Stop before installation** unless a generated
+   `synapse-pm-autonomy/source-verified-done/v1` artifact has exactly
+   `status: verified_done`, a 40-hex `source_revision`, 64-hex source-manifest
+   and checked-file hashes, no extra keys, and is a non-symlink regular file
+   with mode `0600`. Read the deployed `/opt/agent-mesh-platform` Git HEAD and
+   stop unless it exactly equals that artifact's `source_revision`; a generic
+   “reviewed revision” phrase is insufficient. The fixed entrypoint is
    `/opt/agent-mesh-platform/packages/shared/synapse-pm-autonomy/src/main.ts`.
 4. Verify the uninstalled source unit retains its direct no-shell
    `/usr/bin/bun` `ExecStart`, fixed `/opt/agent-mesh-platform`
@@ -62,5 +67,7 @@ Before any such action, Finja performs this ordered, read-only preflight:
    approvals.
 
 `deployment-contract.ts` is the read-only fail-closed verifier for these fixed
-paths. Its fixtures cover changed Bun/working-directory unit text and missing,
-symlinked, non-root-owned, or inaccessible deployment prerequisites.
+paths and immutable release binding. Its fixtures cover structurally spoofed or
+duplicate unit directives, changed Bun/working-directory text, missing,
+symlinked, non-root-owned, or inaccessible deployment prerequisites, malformed
+or private-artifact violations, and deployed-revision mismatch.
