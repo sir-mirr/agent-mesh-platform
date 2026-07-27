@@ -46,6 +46,32 @@ export function assertSocketPath(socketPath: string): string {
   return normalized;
 }
 
+/**
+ * The UDS namespace is the local-control boundary when the pinned runtime has
+ * no supported accepted-socket peer-credential API. Check it immediately
+ * before bind: systemd creates this exact service-owned 0700 directory.
+ */
+export function assertServiceOwnedSocketParent(socketPath: string, daemonUid: number): string {
+  if (typeof socketPath !== "string" || socketPath.includes("\0") || !Number.isInteger(daemonUid)) {
+    throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent or service uid is invalid");
+  }
+  const parent = path.dirname(path.resolve(socketPath));
+  let node: ReturnType<typeof lstatSync>;
+  try { node = lstatSync(parent); }
+  catch { throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent must already exist"); }
+  if (node.isSymbolicLink()) throw new BoundaryError("SYMLINK_REJECTED", "socket parent must not be a symlink");
+  if (!node.isDirectory()) throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent must be a directory");
+  if (node.uid !== daemonUid) throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent must be owned by the service uid");
+  if ((node.mode & 0o7777) !== 0o700) {
+    throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent must have exact mode 0700");
+  }
+  let physical: string;
+  try { physical = realpathSync(parent); }
+  catch { throw new BoundaryError("RUNTIME_DIRECTORY_REJECTED", "socket parent must resolve physically"); }
+  if (physical !== parent) throw new BoundaryError("SYMLINK_REJECTED", "socket parent must not resolve through a symlink");
+  return physical;
+}
+
 /** Reject lexical escapes, then lstat and realpath before an allowlisted read. */
 export function assertSafeFileUnderRoot(root: string, reference: string): string {
   if (typeof reference !== "string" || !reference || path.isAbsolute(reference) || reference.includes("\0")) {
@@ -81,10 +107,4 @@ export function ensurePhysicalDirectory(directory: string): string {
   const physical = realpathSync(absolute);
   if (physical !== absolute) throw new BoundaryError("SYMLINK_REJECTED", "state directory must not resolve through a symlink");
   return physical;
-}
-
-export function assertPeerUid(peerUid: number | null, daemonUid: number): void {
-  if (!Number.isInteger(peerUid) || peerUid !== daemonUid) {
-    throw new BoundaryError("PEER_REJECTED", "local peer uid does not match the daemon identity");
-  }
 }

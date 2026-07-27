@@ -22,15 +22,22 @@ the client connection fail-safe.
 ## Fixed local resources
 
 - Control socket: `/run/synapse-pm-autonomy/control.sock`
+- Control parent: systemd-created `/run/synapse-pm-autonomy`, owned by the
+  dedicated service user and exact mode `0700`
 - Dedicated state database: `/var/lib/synapse-pm-autonomy/autonomy.db`
 - `self-reminder.db`, self-reminder imports, and self-reminder state are
   absolutely prohibited for this package.
 
 `ops/systemd/synapse-pm-autonomy.service` is uninstalled source only. A future
 Finja C-lane action must create the dedicated `synapse-pm-autonomy` OS
-user/group and the unit/state/runtime directories. The unit's environment file
-contains only the two non-secret values above, uses direct no-shell `ExecStart`,
-sets `UMask=0077`, and has `Restart=no`.
+user/group and the unit/state/runtime directories. `RuntimeDirectory` creates
+the dedicated control parent with mode `0700`; before every bind the daemon
+rejects it unless it is an existing physical non-symlink directory, owned by
+its running UID, with that exact mode. Bun 1.3.13 exposes no supported public
+accepted-UDS peer-credential API, so peer credentials are not claimed as a
+security property. The unit's environment file contains only the two
+non-secret values above, uses direct no-shell `ExecStart`, sets `UMask=0077`,
+and has `Restart=no`.
 
 ## Root-managed deployment preflight (Finja C-lane only)
 
@@ -59,8 +66,8 @@ Before any such action, Finja performs this ordered, read-only preflight:
 4. Verify the uninstalled source unit retains its direct no-shell
    `/usr/bin/bun` `ExecStart`, fixed `/opt/agent-mesh-platform`
    `WorkingDirectory`, dedicated user/group, non-secret EnvironmentFile,
-   RuntimeDirectory/StateDirectory, `UMask=0077`, `ProtectHome=true`, and
-   `Restart=no`.
+   `RuntimeDirectory=synapse-pm-autonomy` with `RuntimeDirectoryMode=0700`,
+   `StateDirectory`, `UMask=0077`, `ProtectHome=true`, and `Restart=no`.
 5. Do not copy actual environment values, credentials, or host command output
    into source. Unit installation/start remains excluded here; later Finja
    gate-binary installation, identity provisioning, and canary are separate

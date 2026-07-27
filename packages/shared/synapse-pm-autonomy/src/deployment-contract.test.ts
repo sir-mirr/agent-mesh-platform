@@ -39,6 +39,7 @@ describe("Synapse PM autonomy root-managed deployment contract", () => {
       unit + "\nExecStart=/usr/bin/bun /opt/agent-mesh-platform/packages/shared/synapse-pm-autonomy/src/main.ts\n",
       unit + "\nWorkingDirectory=/srv/agent-mesh-platform\n",
       unit.replace("ProtectHome=true", "ProtectHome=false"),
+      unit.replace("RuntimeDirectoryMode=0700", "RuntimeDirectoryMode=0750"),
       unit + "\nEnvironment=PATH=/tmp\n",
       unit + "\nEnvironment=SELF_REMINDER_DB=/tmp/self-reminder.db\n",
       unit + "\n[Install]\nWantedBy=multi-user.target\n",

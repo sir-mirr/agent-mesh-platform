@@ -1,14 +1,16 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
+import { once } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { AUTONOMY_IDENTITY, AutonomyStore, FixedArgvGateRunner, PM_TARGET, parseVerifiedArtifact } from "./autonomy";
-import { ControlLineDecoder, MAX_CONTROL_BYTES, parseControlRequest } from "./daemon";
+import { sendAutonomyControl } from "./client";
+import { ControlLineDecoder, MAX_CONTROL_BYTES, parseControlRequest, startAutonomyDaemon } from "./daemon";
 import { composeAutonomyDaemon } from "./main";
-import { BoundaryError, SOCKET_PARENT, assertAutonomyDatabasePath, assertPeerUid, assertSafeFileUnderRoot, assertSocketPath } from "./policy";
+import { BoundaryError, SOCKET_PARENT, assertAutonomyDatabasePath, assertSafeFileUnderRoot, assertSocketPath } from "./policy";
 import { produceSourceVerifiedDoneForFixture } from "./source-gate";
 
 const cleanup: string[] = [];
@@ -41,6 +43,17 @@ async function expectAsyncBoundary(run: () => Promise<unknown>, code: string): P
   }
   throw new Error(`expected async boundary rejection: ${code}`);
 }
+function currentUid(): number {
+  const uid = process.getuid?.();
+  if (typeof uid !== "number" || !Number.isInteger(uid)) throw new Error("fixture requires a POSIX uid");
+  return uid;
+}
+function fixtureSocketValidator(socketPath: string): (candidate: string) => string {
+  return (candidate) => {
+    if (candidate !== socketPath || !candidate.endsWith(".sock")) throw new Error("fixture socket rejected");
+    return candidate;
+  };
+}
 
 describe("PM autonomy fail-closed boundaries", () => {
   test("socket path accepts only the flat exact runtime parent", () => {
@@ -48,11 +61,6 @@ describe("PM autonomy fail-closed boundaries", () => {
     for (const bad of [`${SOCKET_PARENT}/../other.sock`, "/run/synapse-pm-autonomy-evil/control.sock", `${SOCKET_PARENT}/nested/control.sock`]) {
       expectBoundary(() => assertSocketPath(bad), "SOCKET_PATH_REJECTED");
     }
-  });
-
-  test("different uid peer cannot control the daemon", () => {
-    expectBoundary(() => assertPeerUid(1001, 1000), "PEER_REJECTED");
-    expectBoundary(() => assertPeerUid(null, 1000), "PEER_REJECTED");
   });
 
   test("control schema rejects unknown and nested bypass fields", () => {
@@ -139,6 +147,39 @@ describe("PM autonomy fail-closed boundaries", () => {
     expect(daemon.gateRunner).toBeInstanceOf(FixedArgvGateRunner);
     expect(daemon.notifier.constructor.name).toBe("FixedPmNotifier");
     expect(typeof daemon.start).toBe("function");
+  });
+
+  test("actual UDS production resolver requires a physical service-owned 0700 parent without peer UID injection", async () => {
+    const root = fixtureRoot(); const manifests = path.join(root, "manifests"); const artifacts = path.join(root, "artifacts"); const parent = path.join(root, "runtime");
+    mkdirSync(manifests); mkdirSync(artifacts); mkdirSync(parent, { mode: 0o700 }); chmodSync(parent, 0o700);
+    writeFileSync(path.join(manifests, "task.json"), "{\"fixture\":true}\n");
+    const uid = currentUid(); const socketPath = path.join(parent, "control.sock"); const validator = fixtureSocketValidator(socketPath);
+    const start = (candidate = socketPath, daemonUid = uid) => startAutonomyDaemon({
+      socketPath: candidate, daemonUid, store: store(), manifestsRoot: manifests, gateRunner: new FixedArgvGateRunner(manifests, artifacts), socketPathValidator: fixtureSocketValidator(candidate),
+    });
+
+    const server = start();
+    if (!server.listening) await once(server, "listening");
+    expect(await sendAutonomyControl(socketPath, { op: "create", input: { task_id: "task-one", manifest_ref: "task.json", phase: "build", next_action: "test" } }, validator)).toMatchObject({ task_id: "task-one", status: "active" });
+    const closed = once(server, "close"); server.close(); await closed;
+    expect(existsSync(socketPath)).toBeFalse();
+
+    for (const [name, prepare, daemonUid, code] of [
+      ["group-loose", (directory: string) => { mkdirSync(directory, { mode: 0o700 }); chmodSync(directory, 0o750); }, uid, "RUNTIME_DIRECTORY_REJECTED"],
+      ["other-loose", (directory: string) => { mkdirSync(directory, { mode: 0o700 }); chmodSync(directory, 0o701); }, uid, "RUNTIME_DIRECTORY_REJECTED"],
+      ["wrong-owner", (directory: string) => { mkdirSync(directory, { mode: 0o700 }); chmodSync(directory, 0o700); }, uid + 1, "RUNTIME_DIRECTORY_REJECTED"],
+      ["not-directory", (directory: string) => { writeFileSync(directory, "not a directory"); }, uid, "RUNTIME_DIRECTORY_REJECTED"],
+    ] as const) {
+      const candidateParent = path.join(root, name); prepare(candidateParent);
+      const candidateSocket = path.join(candidateParent, "control.sock");
+      expectBoundary(() => start(candidateSocket, daemonUid), code);
+      expect(existsSync(candidateSocket)).toBeFalse();
+    }
+    const realParent = path.join(root, "real-runtime"); const symlinkParent = path.join(root, "symlink-runtime");
+    mkdirSync(realParent, { mode: 0o700 }); chmodSync(realParent, 0o700); symlinkSync(realParent, symlinkParent, "dir");
+    const symlinkSocket = path.join(symlinkParent, "control.sock");
+    expectBoundary(() => start(symlinkSocket), "SYMLINK_REJECTED");
+    expect(existsSync(symlinkSocket)).toBeFalse();
   });
 
   test("closed source gate ignores a fake git injected through PATH and emits a mode-0600 artifact", () => {

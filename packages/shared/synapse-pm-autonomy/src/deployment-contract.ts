@@ -75,7 +75,7 @@ const EXPECTED_UNIT: Record<string, Record<string, string>> = {
     EnvironmentFile: "/etc/synapse-pm-autonomy/autonomy.env",
     ExecStart: AUTONOMY_UNIT_EXEC_START,
     RuntimeDirectory: "synapse-pm-autonomy",
-    RuntimeDirectoryMode: "0750",
+    RuntimeDirectoryMode: "0700",
     StateDirectory: "synapse-pm-autonomy",
     StateDirectoryMode: "0700",
     UMask: "0077",

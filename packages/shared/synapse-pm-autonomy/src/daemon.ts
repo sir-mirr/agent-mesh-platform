@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { createServer, type Socket } from "node:net";
+import { createServer } from "node:net";
 import { readFileSync } from "node:fs";
 
 import { AutonomyStore, FixedArgvGateRunner } from "./autonomy";
-import { BoundaryError, assertPeerUid, assertSafeFileUnderRoot, assertSocketPath } from "./policy";
+import { BoundaryError, assertSafeFileUnderRoot, assertServiceOwnedSocketParent, assertSocketPath } from "./policy";
 
 /** Raw transport bound, enforced before UTF-8 decoding or newline parsing. */
 export const MAX_CONTROL_BYTES = 16_384;
@@ -67,25 +67,16 @@ export interface DaemonOptions {
   store: AutonomyStore;
   manifestsRoot: string;
   gateRunner: FixedArgvGateRunner;
-  peerUid?: (socket: Socket) => number | null;
   /** Fixture-only injection; production leaves this unset for assertSocketPath. */
   socketPathValidator?: (socketPath: string) => string;
-}
-
-function osPeerUid(socket: Socket): number | null {
-  const getter = (socket as unknown as { getPeerCredentials?: () => { uid?: unknown } }).getPeerCredentials;
-  if (!getter) return null; // Platforms without OS peer credentials fail closed.
-  const credentials = getter.call(socket);
-  return typeof credentials.uid === "number" ? credentials.uid : null;
 }
 
 function response(value: unknown): string { return JSON.stringify(value) + "\n"; }
 
 export function startAutonomyDaemon(options: DaemonOptions) {
   const socketPath = (options.socketPathValidator ?? assertSocketPath)(options.socketPath);
-  const peerUid = options.peerUid ?? osPeerUid;
+  assertServiceOwnedSocketParent(socketPath, options.daemonUid);
   const server = createServer((socket) => {
-    try { assertPeerUid(peerUid(socket), options.daemonUid); } catch (error) { socket.end(response({ error: (error as BoundaryError).code })); return; }
     const decoder = new ControlLineDecoder();
     socket.on("data", (chunk: Buffer) => {
       let lines: string[];

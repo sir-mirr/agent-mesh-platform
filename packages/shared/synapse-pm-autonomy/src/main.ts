@@ -1,5 +1,4 @@
 import { FixedArgvGateRunner, type OutboundNotifier, openAutonomyStore } from "./autonomy";
-import type { Socket } from "node:net";
 import { startAutonomyDaemon } from "./daemon";
 import { AUTONOMY_HUB_URL_ENV, AUTONOMY_IDENTITY_ENV, OutboundPmNotifier, readOutboundNotifierConfig, type RuntimeEnvironment } from "./notifier";
 import { SOCKET_PARENT } from "./policy";
@@ -37,8 +36,6 @@ export interface AutonomyDaemonCompositionOptions {
   environment?: RuntimeEnvironment;
   /** Fixture-only path validator; production always uses the exact /run policy. */
   socketPathValidator?: (socketPath: string) => string;
-  /** Fixture-only peer source; production always uses OS UDS credentials. */
-  peerUid?: (socket: Socket) => number | null;
   scheduler?: WatchdogScheduler;
 }
 
@@ -94,7 +91,6 @@ export function composeAutonomyDaemon(options: AutonomyDaemonCompositionOptions)
       manifestsRoot: options.manifestsRoot,
       gateRunner,
       ...(options.socketPathValidator ? { socketPathValidator: options.socketPathValidator } : {}),
-      ...(options.peerUid ? { peerUid: options.peerUid } : {}),
     }),
   };
 }
@@ -127,7 +123,7 @@ export async function startAutonomyRuntime<Server>(runtime: AutonomyRuntime<Serv
   catch (error) { runtimeStarts.delete(runtime); throw error; }
 }
 
-/** Production entrypoint: local UDS only, real OS peer credentials, no service management. */
+/** Production entrypoint: local UDS in a verified service-owned runtime directory only. */
 export async function startProductionAutonomyDaemon() {
   const daemonUid = process.getuid?.();
   if (typeof daemonUid !== "number" || !Number.isInteger(daemonUid)) throw new Error("OS uid is required for the local autonomy daemon");

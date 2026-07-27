@@ -185,8 +185,8 @@ describe("Synapse PM autonomy outbound notifier", () => {
     const scheduler = new ManualScheduler(); const validator = fixtureSocketValidator(socketPath); const hub = createLocalHub();
     let current = new Date("2026-07-26T00:00:00.000Z");
     const runtime = composeAutonomyDaemon({
-      stateRoot: path.join(root, "state"), manifestsRoot: manifests, artifactsRoot: artifacts, socketPath, daemonUid: 1000,
-      clock: () => current, peerUid: () => 1000, socketPathValidator: validator, scheduler,
+      stateRoot: path.join(root, "state"), manifestsRoot: manifests, artifactsRoot: artifacts, socketPath,
+      daemonUid: process.getuid?.() ?? 0, clock: () => current, socketPathValidator: validator, scheduler,
       environment: { SYNAPSE_PM_AUTONOMY_HUB_URL: hub.url, SYNAPSE_PM_AUTONOMY_IDENTITY: AUTONOMY_IDENTITY },
     });
     const server = await startAutonomyRuntime(runtime);
