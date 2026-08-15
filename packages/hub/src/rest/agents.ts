@@ -1,29 +1,34 @@
 /**
- * Identity provisioning over HTTP (SPEC § 9.2, § 10.1).
+ * Identity provisioning and teardown over HTTP (SPEC § 9.2, § 9.3, § 10.1).
  *
  * These routes live on the hub listener, not the http server, because the hub
- * owns `agents`. They replaced the pattern of an operator INSERTing into
- * `hub.db` with `sqlite3` directly — which is also why pre-registration
+ * owns `agents`. They replaced the pattern of an operator INSERTing into the
+ * database with `sqlite3` directly — which is also why pre-registration
  * exists: `mesh.register` only ever wrote `(identity, description)`, so new
  * identities arrived with `type = NULL` and the UI showed them as "Unknown"
  * until someone fixed it by hand.
  *
  * Authentication: none, on the assumption the hub binds to a trust-bounded
- * interface. That assumption is recorded as an open question rather than a
- * conclusion — see docs/open-questions.md and SPEC § 10.1.
+ * interface. That is recorded as an open question rather than a conclusion —
+ * see docs/open-questions.md and SPEC § 10.1.
  */
 
+import { randomUUID } from "node:crypto";
+
+import { agentsSchema } from "@agent-mesh/store";
+
 import {
-  db,
+  agentsDb,
   stmtAgentExists,
-  stmtDeleteAgent,
-  stmtDeleteMessagesOfAgent,
+  stmtInsertKeyEvent,
+  stmtKeysOfAgent,
+  stmtRevokeKeysOfAgent,
   stmtSelectAgent,
+  stmtSoftDeleteAgent,
   stmtUpsertAgentTyped,
 } from "../db";
 import { log } from "../log";
 
-const VALID_AGENT_TYPES = new Set(["ai-claude", "ai-codex", "service"]);
 const IDENTITY_RE = /^[a-z][a-z0-9-]*$/;
 const MAX_DESCRIPTION_LEN = 256;
 
@@ -70,12 +75,27 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
   if (!type || typeof type !== "string") {
     return jsonResponse(400, { ok: false, error: "type is required (string)" });
   }
-  if (!VALID_AGENT_TYPES.has(type)) {
+
+  // The registry, not a hardcoded set (SPEC § 10.3). A deployment adds a row
+  // and a new runtime is accepted with no change here.
+  if (!agentsSchema.getType(agentsDb, type)) {
+    const known = agentsSchema.listTypes(agentsDb).map((t) => t.type);
     return jsonResponse(400, {
       ok: false,
-      error: `type must be one of: ${[...VALID_AGENT_TYPES].join(", ")}`,
+      error: `type must be one of: ${known.join(", ")}`,
     });
   }
+
+  // A soft-deleted identity is not re-registrable (SPEC § 9.3). Reusing the
+  // string would let this registration inherit the previous holder's history.
+  const existing = stmtSelectAgent.get(identity) as { deleted_at: string | null } | undefined;
+  if (existing?.deleted_at) {
+    return jsonResponse(409, {
+      ok: false,
+      error: `identity '${identity}' was deleted and cannot be re-registered`,
+    });
+  }
+
   if (description !== null) {
     if (typeof description !== "string") {
       return jsonResponse(400, { ok: false, error: "description must be a string" });
@@ -164,15 +184,17 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
 }
 
 /**
- * `DELETE /api/agents/{identity}` (SPEC § 9.3).
+ * `DELETE /api/agents/{identity}` (SPEC § 9.3) — a **soft** delete.
  *
- * Removes the agent row and every message it sent or received, in one
- * transaction. The counts come back so a caller can confirm the teardown
- * happened rather than inferring it from a `200`.
+ * Sets `deleted_at`, revokes the identity's keys, and leaves `messages`
+ * untouched. Hard deletion is incompatible with two other rules: discarding a
+ * key makes every past signature permanently unverifiable, and freeing the
+ * identity string lets a later registration inherit the previous holder's
+ * message and audit history.
  *
- * SPEC 0.2 turns this into a soft delete: discarding a key makes every past
- * signature unverifiable, and freeing an identity string lets a later
- * registration inherit the previous holder's history.
+ * Because nothing outside `agents.db` is touched, this is a single-file
+ * transaction — SQLite does not guarantee atomic commit across attached
+ * databases in WAL mode.
  */
 export function handleDeleteAgent(identity: string): Response {
   if (!IDENTITY_RE.test(identity)) {
@@ -182,33 +204,56 @@ export function handleDeleteAgent(identity: string): Response {
     });
   }
 
-  let agentsRemoved = 0;
-  let messagesRemoved = 0;
+  const existing = stmtSelectAgent.get(identity) as
+    | { identity: string; deleted_at: string | null }
+    | undefined;
+
+  if (!existing) {
+    log(`DELETE /api/agents/${identity}: not-found`);
+    return jsonResponse(200, { ok: true, identity, action: "not-found" });
+  }
+  if (existing.deleted_at) {
+    log(`DELETE /api/agents/${identity}: already-deleted`);
+    return jsonResponse(200, {
+      ok: true,
+      identity,
+      action: "already-deleted",
+      deleted_at: existing.deleted_at,
+    });
+  }
+
   try {
-    db.exec("BEGIN");
-    const agentsRes = stmtDeleteAgent.run(identity) as { changes: number };
-    const messagesRes = stmtDeleteMessagesOfAgent.run(identity, identity) as { changes: number };
-    db.exec("COMMIT");
-    agentsRemoved = agentsRes.changes ?? 0;
-    messagesRemoved = messagesRes.changes ?? 0;
+    agentsDb.exec("BEGIN");
+    stmtSoftDeleteAgent.run(identity);
+    // Record every key that is about to change state before changing it, so
+    // the history explains the transition rather than merely showing the
+    // result.
+    const keys = stmtKeysOfAgent.all(identity) as Array<{ fingerprint: string }>;
+    stmtRevokeKeysOfAgent.run(identity);
+    for (const { fingerprint } of keys) {
+      stmtInsertKeyEvent.run(
+        randomUUID(),
+        identity,
+        fingerprint,
+        "revoked",
+        "teardown",
+        "hub",
+      );
+    }
+    agentsDb.exec("COMMIT");
   } catch (err) {
-    try { db.exec("ROLLBACK"); } catch {}
+    try { agentsDb.exec("ROLLBACK"); } catch {}
     const msg = err instanceof Error ? err.message : String(err);
     log(`DELETE /api/agents/${identity} db error: ${msg}`);
     return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
   }
 
-  // "not-found" is still a 200: callers treat teardown as idempotent (SPEC § 9.3).
-  const action = agentsRemoved > 0 ? "deleted" : "not-found";
-  log(
-    `DELETE /api/agents/${identity}: ${action} ` +
-    `(agents_removed=${agentsRemoved}, messages_removed=${messagesRemoved})`,
-  );
+  const row = stmtSelectAgent.get(identity) as { deleted_at: string | null } | undefined;
+  log(`DELETE /api/agents/${identity}: soft-deleted`);
   return jsonResponse(200, {
     ok: true,
     identity,
-    action,
-    agents_removed: agentsRemoved,
-    messages_removed: messagesRemoved,
+    action: "soft-deleted",
+    deleted_at: row?.deleted_at ?? null,
   });
 }

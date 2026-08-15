@@ -65,7 +65,8 @@ Everything is SQLite under `AGENT_MESH_STATE_DIR` on the core VM.
 
 | File | Contents | hub | http | self-reminder |
 |------|----------|-----|------|---------------|
-| `hub.db` | `agents`, `messages` | rw | ro | — |
+| `agents.db` | `agents`, `agent_types`, `agent_keys`, `agent_key_events` | rw | — (rw at step 2) | — |
+| `hub.db` | `messages` | rw | ro | — |
 | `agent-mesh.db` | users, policies, approvals, push subs, `agent_registry` | — | rw | — |
 | `self-reminder.db` | reminders, scheduler state | rw | — | rw |
 | `uploads/` | attachment bytes | — | w | — |
@@ -103,12 +104,11 @@ The related distinction: an **identity** is permanent and unique on the mesh; a
 **name** is display text, may repeat, and may change. Only identity carries the
 uniqueness rules.
 
-### What 0.2 changes
+### What 0.2 still changes
 
-`agents.db` splits out of `hub.db`, carrying `agents`, `agent_keys`,
-`agent_key_events`, `agent_types` and `upload_nonces`, and http gains
-read-write access to it so an operator can approve a key. `audit.db` appears
-alongside, written by the hub and read by http.
+`agents.db` is split out. `upload_nonces` joins it at step 4, and http gains
+read-write access at step 2 so an operator can approve a key. `audit.db`
+appears alongside at step 7, written by the hub and read by http.
 
 The reason for three files rather than one is retention. Identity is small and
 permanent; messages are operational and short-lived; audit is kept
@@ -116,8 +116,8 @@ indefinitely. One file means one backup policy, one `VACUUM`, and — the part
 that matters — audit growth filling the disk takes message routing down with
 it. Separate files can go on separate volumes.
 
-The schemas are already separate modules in `store`, so that change is a second
-handle at the call site rather than an untangling.
+The schemas were already separate modules in `store`, which is why splitting
+the files was a second handle at the call site rather than an untangling.
 
 ---
 
@@ -197,6 +197,10 @@ At 0.2 that override becomes constrained: `from` must be the connected identity
 or an entitled `proxy_for` entry. Today it is accepted unchecked, which is
 listed among the open questions rather than defended.
 
+A message to an identity that does not exist is queued — it may be provisioned
+later (SPEC § 3.1). A message to one that has been **torn down** is refused,
+because it never will be.
+
 **Channel traffic** does not pass through the hub. A channel-driver forwards to
 its lane's runtime-adapter directly, which keeps the hub out of the real-time
 path; the adapter records it asynchronously from a durable outbox. That is the
@@ -212,7 +216,9 @@ Honestly: there is none to speak of.
   reach `:3100` can connect as any provisioned identity that is currently
   offline.
 - `POST /api/v1/agents` and `DELETE /api/agents/{identity}` are
-  unauthenticated. The second deletes an identity and all its messages.
+  unauthenticated. The second is now a soft delete, so it no longer destroys
+  message history, but an unauthenticated caller can still take any identity
+  offline permanently.
 - `proxy_for` is unchecked; a socket may claim to proxy anyone.
 - `mesh.send`'s `from` is unchecked.
 

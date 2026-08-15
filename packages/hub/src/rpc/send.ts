@@ -4,7 +4,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
+import { stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { onlineAgents, proxyMap, wsIdentities } from "../presence";
@@ -26,6 +26,13 @@ export function handleSend(
   }
   if (content === undefined || content === null) {
     return rpcError(id, INVALID_PARAMS, "params.content is required");
+  }
+
+  // Queueing for an unknown recipient is intended (SPEC § 3.1) — it may be
+  // provisioned later. A torn-down one never will be, so the message would sit
+  // pending forever with nobody noticing.
+  if (stmtAgentDeleted.get(to)) {
+    return rpcError(id, INVALID_PARAMS, `recipient '${to}' has been deleted`);
   }
 
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 16)}`;

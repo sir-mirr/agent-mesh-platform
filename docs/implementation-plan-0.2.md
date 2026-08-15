@@ -1,7 +1,10 @@
 # Implementation plan — SPEC 0.2
 
-SPEC 0.2 is a settled contract with almost nothing built. This is the order to
-build it in, what each step depends on, and how each one is known to work.
+SPEC 0.2 is a settled contract. This is the order to build it in, what each
+step depends on, and how each one is known to work.
+
+**Increment 1 (steps 1 and 5) is done.** `agents.db` carries identity, the type
+registry and the key tables; teardown is a soft delete. Steps 2 onward remain.
 
 Two things shape the whole plan.
 
@@ -41,10 +44,11 @@ signatures come before audit rather than beside it.
 
 ---
 
-## 1 — `agents.db`, `agent_types`, `agent_keys`
+## 1 — `agents.db`, `agent_types`, `agent_keys` ✅
 
 **SPEC** § 3.1, § 10.3
 **Depends on** nothing
+**Status** done
 
 Split identity out of `hub.db` into its own file and add the tables the rest of
 0.2 needs.
@@ -166,10 +170,11 @@ refused; and re-uploading an existing key returns deduplicated success.
 
 ---
 
-## 5 — Soft delete
+## 5 — Soft delete ✅
 
 **SPEC** § 9.3
 **Depends on** 1
+**Status** done
 
 - `DELETE /api/agents/{identity}` sets `deleted_at`, revokes the identity's
   keys, and **does not touch `messages`**.

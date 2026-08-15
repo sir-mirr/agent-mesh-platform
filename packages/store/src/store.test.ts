@@ -39,8 +39,71 @@ describe("agents schema", () => {
     const db = tempDb();
     agentsSchema.migrate(db);
     expect(columns(db, "agents")).toEqual([
-      "created_at", "description", "identity", "last_seen", "type",
+      "created_at", "deleted_at", "description", "identity", "last_seen", "type",
     ]);
+  });
+
+  test("adds deleted_at to a database written before soft delete existed", () => {
+    const db = tempDb();
+    db.exec(`CREATE TABLE agents (identity TEXT PRIMARY KEY, description TEXT, last_seen DATETIME)`);
+    agentsSchema.migrate(db);
+    expect(columns(db, "agents")).toContain("deleted_at");
+  });
+
+  test("seeds the type registry, marking AI runtimes as needing a key", () => {
+    const db = tempDb();
+    agentsSchema.migrate(db);
+    const types = agentsSchema.listTypes(db);
+    expect(types.map((t) => t.type).sort())
+      .toEqual(["ai-claude", "ai-codex", "ai-gemini", "service"]);
+    expect(agentsSchema.getType(db, "ai-gemini")?.requires_key).toBe(1);
+    // Baseline services predate keys; a deployment wanting them authenticated
+    // raises this flag rather than changing code.
+    expect(agentsSchema.getType(db, "service")?.requires_key).toBe(0);
+    expect(agentsSchema.getType(db, "nonesuch")).toBeNull();
+  });
+
+  test("seeding twice neither duplicates nor overwrites a local edit", () => {
+    const db = tempDb();
+    agentsSchema.migrate(db);
+    db.prepare(`UPDATE agent_types SET requires_key = 1 WHERE type = 'service'`).run();
+
+    agentsSchema.migrate(db);
+
+    expect(agentsSchema.listTypes(db)).toHaveLength(4);
+    // INSERT OR IGNORE: a deployment that tightened a seeded row keeps it.
+    expect(agentsSchema.getType(db, "service")?.requires_key).toBe(1);
+  });
+
+  test("permits at most one approved and one pending key per identity", () => {
+    const db = tempDb();
+    agentsSchema.migrate(db);
+    const insert = db.prepare(
+      `INSERT INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
+    );
+    insert.run("a", "agent", "k1", "approved");
+    expect(() => insert.run("b", "agent", "k2", "approved")).toThrow();
+    expect(() => insert.run("c", "agent", "k3", "pending")).not.toThrow();
+    expect(() => insert.run("d", "agent", "k4", "pending")).toThrow();
+    // Terminal states are unconstrained: an identity accumulates them over time.
+    expect(() => insert.run("e", "agent", "k5", "revoked")).not.toThrow();
+    expect(() => insert.run("f", "agent", "k6", "revoked")).not.toThrow();
+  });
+
+  test("approvedKey finds the approved one and ignores the rest", () => {
+    const db = tempDb();
+    agentsSchema.migrate(db);
+    const insert = db.prepare(
+      `INSERT INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
+    );
+    insert.run("old", "agent", "k-old", "revoked");
+    insert.run("new", "agent", "k-new", "approved");
+    insert.run("next", "agent", "k-next", "pending");
+
+    expect(agentsSchema.approvedKey(db, "agent")).toMatchObject({
+      fingerprint: "new", public_key: "k-new",
+    });
+    expect(agentsSchema.approvedKey(db, "unknown-agent")).toBeNull();
   });
 
   test("adds type and created_at to a database written before they existed", () => {

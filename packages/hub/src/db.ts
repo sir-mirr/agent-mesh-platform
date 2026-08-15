@@ -12,14 +12,13 @@
 import type { Database } from "bun:sqlite";
 import { agentsSchema, hubSchema, openStore } from "@agent-mesh/store";
 
-/**
- * `agents` and `messages` share `hub.db` at 0.1. SPEC 0.2 moves `agents` into
- * its own file, which is a second handle here rather than an untangling — the
- * schemas are already separate modules.
- */
+/** Message routing and history. */
 export const db = openStore("hub", { create: true });
 
-agentsSchema.migrate(db);
+/** Identity, keys and key history (SPEC § 3.1). */
+export const agentsDb = openStore("agents", { create: true });
+
+agentsSchema.migrate(agentsDb);
 hubSchema.migrate(db);
 
 /**
@@ -36,6 +35,7 @@ export function srDb(): Database {
 
 export function closeDatabases(): void {
   db.close();
+  agentsDb.close();
   _srDb?.close();
   _srDb = null;
 }
@@ -43,7 +43,7 @@ export function closeDatabases(): void {
 // --- agents -----------------------------------------------------------------
 
 /** `created_at` is deliberately not updated: it is immutable post-insert (SPEC § 10.1). */
-export const stmtUpsertAgent = db.prepare(`
+export const stmtUpsertAgent = agentsDb.prepare(`
   INSERT INTO agents (identity, description, last_seen, created_at)
   VALUES (?, ?, datetime('now'), datetime('now'))
   ON CONFLICT(identity) DO UPDATE SET
@@ -51,20 +51,23 @@ export const stmtUpsertAgent = db.prepare(`
     last_seen   = datetime('now')
 `);
 
-export const stmtUpdateLastSeen = db.prepare(`
+export const stmtUpdateLastSeen = agentsDb.prepare(`
   UPDATE agents SET last_seen = datetime('now') WHERE identity = ?
 `);
 
-export const stmtListAgents = db.prepare(`
-  SELECT identity, description, last_seen, type FROM agents ORDER BY identity
+/** Live identities only. A soft-deleted one must not appear (SPEC § 9.3). */
+export const stmtListAgents = agentsDb.prepare(`
+  SELECT identity, description, last_seen, type
+  FROM agents WHERE deleted_at IS NULL ORDER BY identity
 `);
 
-export const stmtAgentExists = db.prepare(`
-  SELECT 1 AS one FROM agents WHERE identity = ?
+/** Pre-registration check for `mesh.connect`. Soft-deleted counts as absent. */
+export const stmtAgentExists = agentsDb.prepare(`
+  SELECT 1 AS one FROM agents WHERE identity = ? AND deleted_at IS NULL
 `);
 
 /** Provisioning (SPEC § 10.1). Same immutability rule on `created_at`. */
-export const stmtUpsertAgentTyped = db.prepare(`
+export const stmtUpsertAgentTyped = agentsDb.prepare(`
   INSERT INTO agents (identity, type, description, last_seen, created_at)
   VALUES (?, ?, ?, datetime('now'), datetime('now'))
   ON CONFLICT(identity) DO UPDATE SET
@@ -73,22 +76,49 @@ export const stmtUpsertAgentTyped = db.prepare(`
 `);
 
 /** § 10.1 requires strict `YYYY-MM-DDTHH:MM:SSZ`, which SQLite formats for us. */
-export const stmtSelectAgent = db.prepare(`
+export const stmtSelectAgent = agentsDb.prepare(`
   SELECT
     identity,
     type,
     description,
     last_seen,
+    deleted_at,
     strftime('%Y-%m-%dT%H:%M:%SZ', created_at) AS created_at_iso
   FROM agents WHERE identity = ?
 `);
 
-export const stmtDeleteAgent = db.prepare(`
-  DELETE FROM agents WHERE identity = ?
+/**
+ * Teardown is a soft delete (SPEC § 9.3). `messages` is left alone: the rows
+ * outlive the identity, and once signatures exist, discarding a key would make
+ * every past signature unverifiable.
+ */
+export const stmtSoftDeleteAgent = agentsDb.prepare(`
+  UPDATE agents SET deleted_at = datetime('now')
+  WHERE identity = ? AND deleted_at IS NULL
 `);
 
-export const stmtDeleteMessagesOfAgent = db.prepare(`
-  DELETE FROM messages WHERE from_agent = ? OR to_agent = ?
+/** Revoking the identity's keys is part of the same transaction. */
+export const stmtRevokeKeysOfAgent = agentsDb.prepare(`
+  UPDATE agent_keys SET status = 'revoked', decided_at = datetime('now')
+  WHERE identity = ? AND status IN ('pending','approved')
+`);
+
+export const stmtInsertKeyEvent = agentsDb.prepare(`
+  INSERT INTO agent_key_events (id, identity, fingerprint, action, reason, actor)
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+
+/**
+ * Whether an identity has been torn down. An unknown identity is not the same
+ * thing: SPEC § 3.1 has unknown recipients queued, because one may be
+ * provisioned later. A soft-deleted one never will be.
+ */
+export const stmtAgentDeleted = agentsDb.prepare(`
+  SELECT deleted_at FROM agents WHERE identity = ? AND deleted_at IS NOT NULL
+`);
+
+export const stmtKeysOfAgent = agentsDb.prepare(`
+  SELECT fingerprint FROM agent_keys WHERE identity = ? AND status IN ('pending','approved')
 `);
 
 // --- messages ---------------------------------------------------------------

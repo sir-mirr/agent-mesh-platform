@@ -18,16 +18,16 @@ for a description of running code.
 
 | § | Change | Built |
 |---|--------|-------|
-| 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | no |
+| 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | **partly** — `agents.db` split; `audit.db` not yet |
 | 4.1 | A Claude lane includes a runtime-adapter | no |
 | 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
 | 8.1 | `mesh.connect` carries a signature and returns capabilities | no |
 | 8.2 | `from` is constrained by validated entitlement | no |
 | 8.9 | `mesh.audit.*` methods | no |
 | 9.1 | Audit blob upload and audit query routes | no |
-| 9.3 | Identity teardown is a soft delete | no |
+| 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | no |
-| 10.3 | Agent types come from a registry table, not a hardcoded enum | no |
+| 10.3 | Agent types come from a registry table, not a hardcoded enum | **yes** |
 | 15.2 | Blob keys retain the file extension | **yes** (0.1 behaviour, now normative) |
 
 Upgrading from 0.1 does **not** migrate existing data. Each store is treated
@@ -105,7 +105,8 @@ agent-mesh is split into two strictly separated layers.
 | Bootstrap hook  | `ExecStartPost` MUST run `ops/bin/bootstrap-hub-service-identities.sh` |
 
 **Storage (0.2).** Identity, routing and audit data MUST live in separate
-database files:
+database files. `agents.db` and `hub.db` are split; `audit.db` arrives with
+§ 8.9:
 
 | File | Contents | hub | http |
 |------|----------|-----|------|
@@ -130,7 +131,8 @@ places them on the same core VM. **The hub owns the DDL** for `agents.db`,
 schemas.
 
 0.1 used a single `hub.db` holding both `agents` and `messages`. Upgrades do
-not migrate it.
+not migrate it: a 0.2 hub creates an empty `agents.db` and leaves whatever
+`agents` table an old `hub.db` still carries untouched and unread.
 
 The hub MUST:
 
