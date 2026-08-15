@@ -12,7 +12,9 @@
 import { closeDatabases, stmtUpdateLastSeen } from "./db";
 import { log } from "./log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
-import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse } from "./rest/agents";
+import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
+  handleGetAgentKeys,
+} from "./rest/agents";
 import { dispatch } from "./rpc/dispatch";
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,19 @@ const server = Bun.serve({
         return handlePostAgentsV1(req);
       }
       return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
+    }
+
+    // REST: key record for one identity (SPEC § 10.2). Read-only: the hub
+    // never approves, because it cannot authenticate the caller doing it.
+    if (url.pathname.startsWith("/api/v1/agents/") && url.pathname.endsWith("/keys")) {
+      const identity = url.pathname.slice("/api/v1/agents/".length, -"/keys".length);
+      if (!identity || identity.includes("/")) {
+        return jsonResponse(404, { ok: false, error: "not found" });
+      }
+      if (req.method !== "GET") {
+        return jsonResponse(405, { ok: false, error: "method not allowed; use GET" });
+      }
+      return handleGetAgentKeys(decodeURIComponent(identity));
     }
 
     // REST: single-identity endpoint — /api/agents/{identity}

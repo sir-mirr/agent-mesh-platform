@@ -207,3 +207,21 @@ describe("open", () => {
       .toEqual({ content: "hello" });
   });
 });
+
+describe("open, without create", () => {
+  test("opens an existing file read-write", () => {
+    // http holds agents.db this way: the hub owns the DDL and creates the file,
+    // this side only writes decisions into it. Passing neither flag made
+    // bun:sqlite refuse the open, and no caller had exercised it before.
+    const dir = mkdtempSync(join(tmpdir(), "agent-mesh-store-"));
+    const path = join(dir, "existing.db");
+    const creator = openAt(path, { create: true });
+    agentsSchema.migrate(creator);
+    creator.close();
+
+    const writer = openAt(path);
+    expect(() =>
+      writer.prepare(`INSERT INTO agent_types (type, requires_key) VALUES ('probe', 0)`).run(),
+    ).not.toThrow();
+  });
+});

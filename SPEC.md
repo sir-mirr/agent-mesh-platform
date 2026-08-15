@@ -27,7 +27,7 @@ for a description of running code.
 | 8.9 | `mesh.audit.*` methods | no |
 | 9.1 | Audit blob upload and audit query routes | no |
 | 9.3 | Identity teardown is a soft delete | **yes** |
-| 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | no |
+| 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | **yes** |
 | 10.1 | Identity format loosened; kebab-case advisory, case-sensitive | **yes** |
 | 10.3 | Agent types come from a registry table, not a hardcoded enum | **yes** |
 | 10.3 | `human` is a seeded type, and a person holds a mesh identity | **yes** |

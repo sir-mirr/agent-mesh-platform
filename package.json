@@ -27,5 +27,8 @@
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.4.0"
   }
 }

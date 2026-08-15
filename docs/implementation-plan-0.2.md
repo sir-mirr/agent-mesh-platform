@@ -97,10 +97,11 @@ test should not assume it.
 
 ---
 
-## 2 — Key registration and approval
+## 2 — Key registration and approval ✅
 
 **SPEC** § 10.1, § 10.2
 **Depends on** 1
+**Status** done
 
 - `POST /api/v1/agents` accepts `public_key` and records it as `pending`.
 - Reject a `requires_key` type registered without a key.

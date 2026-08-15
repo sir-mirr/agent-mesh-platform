@@ -132,12 +132,17 @@ export function migrate(db: Database): void {
   // judge them by date. `reason` matters — a routine rotation says nothing
   // about earlier signatures, while a compromise casts doubt on the window
   // around it.
+  //
+  // `superseded` is not in SPEC § 10.2's list of transitions because it is not
+  // one an operator performs: it records a pending proposal displaced by a
+  // newer one from the same client. Calling that `denied` would have claimed an
+  // operator ruled on it, and would have made the key unproposable afterwards.
   db.exec(`
     CREATE TABLE IF NOT EXISTS agent_key_events (
       id          TEXT PRIMARY KEY,
       identity    TEXT NOT NULL,
       fingerprint TEXT NOT NULL,
-      action      TEXT NOT NULL CHECK (action IN ('proposed','approved','denied','revoked')),
+      action      TEXT NOT NULL CHECK (action IN ('proposed','approved','denied','revoked','superseded')),
       reason      TEXT,
       actor       TEXT,
       occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

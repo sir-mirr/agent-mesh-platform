@@ -41,6 +41,7 @@ import { join } from 'path'
 import { Database } from 'bun:sqlite'
 import { openStore, type MessageRow } from '@agent-mesh/store'
 import { provisionHuman, provisionAllHumans } from './provision'
+import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb } from './keys-admin'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -1038,6 +1039,66 @@ app.get('/api/v1/admin/pending', async (c) => {
   return c.json({ pending })
 })
 
+// --- Key approval (SPEC § 10.2) -------------------------------------------
+//
+// On this service rather than the hub because approval is the one step in the
+// key lifecycle that must know who is asking. The hub cannot authenticate a
+// caller, so an approval route there would let anyone reaching the port approve
+// their own key.
+
+/** Reject anything without a valid admin JWT. Returns the login, or the response. */
+async function requireAdmin(c: any): Promise<string | Response> {
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
+  return payload.github_login as string
+}
+
+app.get('/api/v1/admin/keys/pending', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const r = listPendingKeys()
+  return c.json(r.body, r.status as any)
+})
+
+app.get('/api/v1/admin/keys/:identity', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const r = keyHistory(c.req.param('identity'))
+  return c.json(r.body, r.status as any)
+})
+
+for (const decision of ['approve', 'deny', 'revoke'] as const) {
+  app.post(`/api/v1/admin/keys/${decision}`, async (c) => {
+    const actor = await requireAdmin(c)
+    if (typeof actor !== 'string') return actor
+
+    let body: Record<string, unknown>
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400)
+    }
+
+    // Addressed by fingerprint, never by identity. An operator who approves
+    // "whatever is pending for prod-codex1" approves whatever arrived last —
+    // including a proposal that landed between reading the screen and clicking.
+    // The fingerprint is also the string § 10.2 requires them to have compared
+    // against the one the holder logged, so naming it is the check.
+    const fingerprint = body.fingerprint
+    if (typeof fingerprint !== 'string' || !fingerprint) {
+      return c.json({ error: 'Missing or invalid "fingerprint" field' }, 400)
+    }
+    const reason = typeof body.reason === 'string' ? body.reason : null
+
+    const r = decideKey(decision, fingerprint, actor, reason)
+    if (r.status === 200) {
+      console.log(`[http-server] ${actor} ${decision}d key ${fingerprint}` + (reason ? ` (${reason})` : ''))
+    }
+    return c.json(r.body, r.status as any)
+  })
+}
+
 app.post('/api/v1/admin/approve', async (c) => {
   const payload = await extractJwt(c)
   if (!payload) {
@@ -1732,6 +1793,7 @@ console.log(`agent-mesh-http: listening on http://localhost:${server.port}`)
 function shutdown(): void {
   console.log('agent-mesh-http: shutting down')
   closeDb()
+  closeAgentsDb()
   server.stop()
   process.exit(0)
 }

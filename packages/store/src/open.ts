@@ -70,8 +70,13 @@ export function openStore(name: StoreName, opts: OpenOptions = {}): Database {
 
 /** Open an explicit path — for tests, and for the paths env vars still override. */
 export function openAt(path: string, opts: Omit<OpenOptions, "env"> = {}): Database {
+  // `readwrite` is stated rather than left implicit. Passing an options object
+  // with neither flag makes bun:sqlite reject the open outright — "flags must
+  // include SQLITE_OPEN_READONLY or SQLITE_OPEN_READWRITE" — and until http
+  // needed to open an existing `agents.db` for writing, no caller had used that
+  // combination, so the helper had a hole where its third case should be.
   const db = new Database(path, {
-    ...(opts.readonly ? { readonly: true } : {}),
+    ...(opts.readonly ? { readonly: true } : { readwrite: true }),
     ...(opts.create ? { create: true } : {}),
   });
   if (!opts.readonly) {

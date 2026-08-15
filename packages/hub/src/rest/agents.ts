@@ -15,7 +15,8 @@
 
 import { randomUUID } from "node:crypto";
 
-import { agentsSchema } from "@agent-mesh/store";
+import { PUBLIC_KEY_RE } from "@agent-mesh/contracts";
+import { agentsSchema, keys } from "@agent-mesh/store";
 
 import {
   agentsDb,
@@ -53,6 +54,7 @@ interface ProvisionRequest {
   identity: string;
   type: string;
   description: string | null;
+  publicKey: string | null;
 }
 
 /**
@@ -72,6 +74,7 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
 
   const { identity, type } = body;
   const description = body.description ?? null;
+  const publicKey = body.public_key ?? null;
 
   if (!identity || typeof identity !== "string") {
     return jsonResponse(400, { ok: false, error: "identity is required (string)" });
@@ -88,7 +91,8 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
 
   // The registry, not a hardcoded set (SPEC § 10.3). A deployment adds a row
   // and a new runtime is accepted with no change here.
-  if (!agentsSchema.getType(agentsDb, type)) {
+  const typeRow = agentsSchema.getType(agentsDb, type);
+  if (!typeRow) {
     const known = agentsSchema.listTypes(agentsDb).map((t) => t.type);
     return jsonResponse(400, {
       ok: false,
@@ -118,7 +122,51 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
     }
   }
 
-  return { identity, type, description };
+  if (publicKey !== null) {
+    if (typeof publicKey !== "string" || !PUBLIC_KEY_RE.test(publicKey)) {
+      return jsonResponse(400, {
+        ok: false,
+        error: "public_key must be a raw Ed25519 key, base64url, 43 characters",
+      });
+    }
+  }
+
+  // SPEC § 10.1. A `requires_key` type registered without one could otherwise
+  // connect unsigned forever: § 8.1 has no unsigned path for such a type, so the
+  // identity would exist and be permanently unusable. Refusing here is the only
+  // point at which that is a clear error rather than a puzzling `-32014` later.
+  //
+  // An identity that already holds a key may re-register without re-sending it;
+  // requiring it every time would mean a caller updating a description had to
+  // carry the key to do it.
+  if (typeRow.requires_key === 1 && publicKey === null && !keys.approvedKey(agentsDb, identity)) {
+    if (!keys.pendingKey(agentsDb, identity)) {
+      return jsonResponse(400, {
+        ok: false,
+        error: `type '${type}' requires a signing key; supply public_key`,
+      });
+    }
+  }
+
+  return { identity, type, description, publicKey };
+}
+
+/**
+ * Record the key, if one came with the request (SPEC § 10.2).
+ *
+ * Separate from the row upsert because it is separately idempotent: a client
+ * re-registering with the key it already holds must get its current status back
+ * with nothing changed, and must not have an approved key knocked back to
+ * pending by its own restart.
+ */
+function recordKey(route: string, r: ProvisionRequest): { fingerprint: string; status: string } | null {
+  if (!r.publicKey) return null;
+  const result = keys.proposeKey(agentsDb, r.identity, r.publicKey, "api");
+  log(
+    `${route}: key ${result.fingerprint} for ${r.identity} -> ${result.status}` +
+      (result.created ? " (new proposal)" : " (already on record)"),
+  );
+  return { fingerprint: result.fingerprint, status: result.status };
 }
 
 /** Returns whether the row already existed, or the `500` to send back. */
@@ -145,6 +193,7 @@ export async function handlePostAgents(req: Request): Promise<Response> {
   const existed = upsert("POST /api/agents", parsed);
   if (existed instanceof Response) return existed;
 
+  const key = recordKey("POST /api/agents", parsed);
   const action = existed ? "updated" : "inserted";
   log(`POST /api/agents: ${action} ${parsed.identity} (type=${parsed.type})`);
   return jsonResponse(200, {
@@ -152,6 +201,7 @@ export async function handlePostAgents(req: Request): Promise<Response> {
     identity: parsed.identity,
     type: parsed.type,
     action,
+    ...(key ? { key } : {}),
   });
 }
 
@@ -180,6 +230,7 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
       }
     | undefined;
 
+  const key = recordKey("POST /api/v1/agents", parsed);
   const status = existed ? 200 : 201;
   const action = existed ? "updated" : "inserted";
   log(`POST /api/v1/agents: ${action} ${parsed.identity} (type=${parsed.type}) -> ${status}`);
@@ -190,6 +241,11 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
     description: row?.description ?? parsed.description,
     created_at: row?.created_at_iso ?? null,
     action,
+    // Present only when the request carried a key. Its `status` is what the
+    // caller waits on: `pending` means an operator has not compared the
+    // fingerprint yet, and § 10.2 is explicit that approval without that
+    // comparison attests to nothing.
+    ...(key ? { key } : {}),
   });
 }
 
@@ -265,5 +321,53 @@ export function handleDeleteAgent(identity: string): Response {
     identity,
     action: "soft-deleted",
     deleted_at: row?.deleted_at ?? null,
+  });
+}
+
+/**
+ * `GET /api/v1/agents/{identity}/keys` — the key record for one identity.
+ *
+ * A client that proposed a key needs to know whether an operator has approved
+ * it yet. Without this it can only find out by connecting and reading the
+ * `key_status` on a `-32014`, which means learning the answer by being
+ * rejected — and, once § 8.1 lands, by having its socket closed.
+ *
+ * Unauthenticated, like everything else the hub serves. A public key is public,
+ * and a fingerprint is meant to be compared out loud: § 10.2 requires a lane to
+ * log its own at startup and the approval surface to display it. Withholding
+ * either would break the comparison the procedure depends on.
+ */
+export function handleGetAgentKeys(identity: string): Response {
+  if (!IDENTITY_RE.test(identity)) {
+    return jsonResponse(400, { ok: false, error: "invalid identity format" });
+  }
+
+  const agent = stmtSelectAgent.get(identity) as { deleted_at: string | null } | undefined;
+  if (!agent) {
+    return jsonResponse(404, { ok: false, error: `identity '${identity}' is not registered` });
+  }
+
+  const rows = keys.listKeys(agentsDb, identity);
+  return jsonResponse(200, {
+    ok: true,
+    identity,
+    deleted: !!agent.deleted_at,
+    // Why the identity cannot sign, or null when it can — the same value § 8.1
+    // puts in a `-32014`, so a client sees one answer from both surfaces.
+    key_status: keys.noKeyReason(agentsDb, identity),
+    keys: rows.map((k) => ({
+      fingerprint: k.fingerprint,
+      status: k.status,
+      proposed_at: k.proposed_at,
+      decided_at: k.decided_at,
+      decided_by: k.decided_by,
+    })),
+    events: keys.listKeyEvents(agentsDb, identity).map((e) => ({
+      action: e.action,
+      fingerprint: e.fingerprint,
+      reason: e.reason,
+      actor: e.actor,
+      occurred_at: e.occurred_at,
+    })),
   });
 }
