@@ -55,6 +55,26 @@ const heartbeat = new Heartbeat({
 
 const heartbeatInterval = setInterval(() => heartbeat.sweep(), HEARTBEAT_INTERVAL_MS);
 
+/**
+ * The `id` of a frame that failed somewhere the normal path could not report.
+ *
+ * Parsed defensively and separately from `dispatch`, because this runs after
+ * `dispatch` has already thrown — anything it derived is unavailable, and a
+ * second failure here would replace a useful error with a useless one.
+ *
+ * `null` when the frame is unparseable or carries no id, which is the correct
+ * JSON-RPC answer for a request that could not be identified.
+ */
+function requestId(raw: string | Buffer): string | number | null {
+  try {
+    const parsed = JSON.parse(typeof raw === "string" ? raw : raw.toString());
+    const id = parsed?.id;
+    return typeof id === "string" || typeof id === "number" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
@@ -184,7 +204,12 @@ const server = Bun.serve({
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log(`unhandled error dispatching a request: ${message}`);
-        response = rpcError(null, SERVER_ERROR, `internal error: ${message}`);
+        // **With the request's id**, recovered from the frame. Answering `null`
+        // is answering nobody: a JSON-RPC caller correlates on id, so a reply
+        // carrying none is discarded and the call waits out its own timeout —
+        // exactly the hung hub this guard exists to prevent, reached by a
+        // different route.
+        response = rpcError(requestId(msg), SERVER_ERROR, `internal error: ${message}`);
       }
       if (response) {
         ws.send(response);

@@ -19,7 +19,7 @@ import { deriveBlobKey } from "@agent-mesh/contracts";
 import { nonces } from "@agent-mesh/store";
 
 import { agentsDb, auditDb, stmtInsertAuditBlob, stmtInsertAuditEvent, stmtSelectAuditEvent } from "../db";
-import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcResult } from "../jsonrpc";
+import { INVALID_PARAMS, INVALID_REQUEST, SERVER_ERROR, rpcError, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { rawParams } from "../raw-params";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
@@ -221,9 +221,22 @@ export function handleAuditAppend(
   const payload = rawParams(raw) ?? "{}";
   const payloadDigest = createHash("sha256").update(payload, "utf8").digest("hex");
 
-  const existing = stmtSelectAuditEvent.get(eventId) as
-    | { payload_digest: string; stored_at: string }
-    | undefined;
+  // Guarded like the write below. This read reaches the same file, so a store
+  // that cannot be read fails here rather than at the transaction — and an
+  // unguarded throw leaves the dispatcher's last-resort handler to answer,
+  // which is a worse error than the one this returns.
+  let existing: { payload_digest: string; stored_at: string } | undefined;
+  try {
+    existing = stmtSelectAuditEvent.get(eventId) as
+      | { payload_digest: string; stored_at: string }
+      | undefined;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`audit duplicate check failed for ${eventId}: ${message}`);
+    return rpcError(id, SERVER_ERROR, `audit append failed: ${message}`, {
+      code: "AUDIT_APPEND_FAILED",
+    });
+  }
   if (existing) {
     // Identical bytes: the client did not hear the ACK and retried. Different
     // bytes under one id is a client defect that retrying cannot fix, so it is
@@ -317,10 +330,20 @@ export function handleAuditAppend(
         retry_after_ms: 250,
       });
     }
+    // **Not AUDIT_BUSY.** § 8.9.3 classes that transient, and a conformant
+    // client retries transient errors "with backoff and jitter and no maximum
+    // attempt count". Reporting every unrecognised failure that way is the
+    // infinite retry the same paragraph exists to prevent: a constraint
+    // violation, a schema mismatch or a bug in this handler will fail
+    // identically on every attempt, and the client would keep the event in its
+    // outbox forever while hammering a path that is already broken.
+    //
+    // Permanent instead, so the client drops it and records the failure
+    // locally — which puts it somewhere a person can see, rather than in a
+    // retry loop nobody is watching.
     log(`audit append failed for ${eventId}: ${message}`);
-    return rpcError(id, AUDIT_BUSY, `audit append failed: ${message}`, {
-      code: "AUDIT_BUSY",
-      retry_after_ms: 1000,
+    return rpcError(id, SERVER_ERROR, `audit append failed: ${message}`, {
+      code: "AUDIT_APPEND_FAILED",
     });
   }
 

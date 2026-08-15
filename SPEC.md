@@ -1209,12 +1209,21 @@ immutable and content-addressed.
 | `-32043` | `AUDIT_BUSY` — `data.retry_after_ms` | transient |
 | `-32044` | `AUDIT_STORAGE_EXHAUSTED` — no capacity; needs an operator (§ 15.6) | transient |
 | `-32602` | malformed params, caps exceeded | **permanent** |
+| `-32000` | `AUDIT_APPEND_FAILED` — the store refused the write for a reason the hub could not classify | **permanent** |
 
 Clients MUST distinguish the two classes. Transient errors are retried with
 backoff and jitter and no maximum attempt count. **Permanent errors MUST NOT
 be retried** — the event is dropped and the failure recorded locally, as § 13
 already requires for oversized attachments. Without this split an event that
 can never be accepted is retried forever.
+
+An unclassified store failure is **permanent**, not `AUDIT_BUSY`. A
+constraint violation, a schema mismatch or a defect in the handler fails
+identically on every attempt, so reporting it as transient produces
+exactly the unbounded retry this split exists to prevent — and leaves
+the event in an outbox nobody is watching instead of in a local failure
+record a person can read. `AUDIT_BUSY` is for contention the hub has
+positively identified as contention.
 
 A hub MAY always succeed rather than ever emitting `AUDIT_BUSY`. Clients MUST
 handle it regardless, from their first release: adding it later leaves every

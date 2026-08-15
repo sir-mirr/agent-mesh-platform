@@ -24,7 +24,7 @@ beforeAll(async () => {
   // One identity per test: an incumbent socket is never evicted by a contender
   // (§ 8.1), and rpc.close() returns before the hub has processed the close, so
   // reusing an identity across tests races itself.
-  for (const id of ["res-a", "res-b", "res-c", "res-d", "res-e", "res-peer"]) {
+  for (const id of ["res-a", "res-b", "res-c", "res-d", "res-e", "res-peer", "res-audit", "res-audit2"]) {
     await provision(mesh.hub, id, "service");
   }
 });
@@ -118,5 +118,119 @@ describe("a write that cannot land", () => {
     }
     a.close();
     b.close();
+  });
+});
+
+describe("§ 8.9.3 error classes", () => {
+  /**
+   * The split matters more than either class does. A client retries transient
+   * "with backoff and jitter and no maximum attempt count" and drops permanent
+   * — so a permanent failure reported as transient is an unbounded retry
+   * against a path that is already broken, and the event sits in an outbox
+   * nobody is watching instead of in a local failure record someone can read.
+   */
+  test("a store failure the hub cannot classify is permanent, not AUDIT_BUSY", async () => {
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "res-audit" });
+
+    const thaw = breakTable("audit.db", "audit_events");
+    try {
+      const res = await rpc.call("mesh.audit.append", {
+        schema_version: 1,
+        event_id: "01900000-0000-7000-8000-00000000ab01",
+        event_type: "channel.message.received",
+        occurred_at: new Date().toISOString(),
+        payload: { note: "the store is broken" },
+      });
+
+      expect(res.error).toBeTruthy();
+      // Anything in the transient class here would be retried forever: a
+      // missing table fails identically on every attempt.
+      expect(res.error.code).not.toBe(-32043);
+      expect(res.error.code).not.toBe(-32044);
+      expect(res.error.code).toBe(-32000);
+      expect(res.error.data?.code).toBe("AUDIT_APPEND_FAILED");
+      // No `retry_after_ms`: a permanent error has no useful one, and carrying
+      // it would invite exactly the retry the class forbids.
+      expect(res.error.data?.retry_after_ms).toBeUndefined();
+    } finally {
+      thaw();
+    }
+
+    // Recovered without a restart, and the same event now commits — the
+    // permanence is about this attempt's cause, not about the event.
+    const after = await rpc.call("mesh.audit.append", {
+      schema_version: 1,
+      event_id: "01900000-0000-7000-8000-00000000ab01",
+      event_type: "channel.message.received",
+      occurred_at: new Date().toISOString(),
+      payload: { note: "the store is broken" },
+    });
+    expect(after.error).toBeUndefined();
+    expect(after.result.committed).toBe(true);
+    rpc.close();
+  });
+
+  test("routing survives an audit store that cannot be written", async () => {
+    // Restated here beside the class test because they are the same failure
+    // seen from two sides: § 15.6 requires delivery to outlive audit, and
+    // § 8.9.3 requires the client to be told which kind of failure it was.
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "res-audit2" });
+
+    const thaw = breakTable("audit.db", "audit_events");
+    try {
+      const sent = await rpc.call("mesh.send", { to: "res-peer", content: "still routing" });
+      expect(sent.error).toBeUndefined();
+    } finally {
+      thaw();
+    }
+    rpc.close();
+  });
+});
+
+describe("the dispatcher's last-resort guard", () => {
+  test("answers with the request's id, so the caller is not left waiting", async () => {
+    // The guard exists because an exception out of the socket callback answers
+    // nothing and the caller cannot tell that from a hung hub. Answering with
+    // `id: null` reaches the same place by a different route: a JSON-RPC caller
+    // correlates on id, discards a reply carrying none, and waits out its own
+    // timeout. This was live — a `mesh.audit.append` against a broken store hung
+    // for five seconds and then failed as "no response".
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "res-c" });
+
+    const thaw = breakTable("audit.db", "audit_events");
+    try {
+      // `call` rejects on timeout, so reaching an assertion at all is most of
+      // the point.
+      const res = await rpc.call("mesh.audit.append", {
+        schema_version: 1,
+        event_id: "01900000-0000-7000-8000-00000000ac01",
+        event_type: "channel.message.received",
+        occurred_at: new Date().toISOString(),
+        payload: { note: "guarded" },
+      });
+      expect(res.error).toBeTruthy();
+      expect(res.id).not.toBeNull();
+    } finally {
+      thaw();
+    }
+    rpc.close();
+  });
+
+  test("a frame with no usable id still gets an answer rather than silence", async () => {
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "res-d" });
+
+    // A notification — no id — is the one case where `null` is correct, and the
+    // hub must not invent one.
+    rpc.raw(JSON.stringify({ jsonrpc: "2.0", method: "mesh.list_agents", params: {} }));
+
+    // Still answering afterwards is the requirement: a malformed frame must not
+    // take the socket down with it.
+    const after = await rpc.call("mesh.list_agents", {});
+    expect(after.error).toBeUndefined();
+    rpc.close();
   });
 });
