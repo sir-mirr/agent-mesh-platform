@@ -602,3 +602,74 @@ everything, a completed outbox entry has no reason to persist locally.
 name are undecided, and nothing is published. The fixtures listed there are the
 right list; they need somewhere to live before either side can test against
 them.
+
+---
+
+## 9. Round three — the contract repository exists
+
+The client team's third revision was written against `ba207b8`, so its § 16.4,
+§ 16.5 and § 16.6 were already answered by `52c11de`. It also settled the
+contract delivery question, which turned out better than the npm route this
+document had assumed.
+
+### 9.1 Delivery: a public repository and immutable tags
+
+<https://github.com/sir-mirr/agent-mesh-contracts>, consumed as
+`github:sir-mirr/agent-mesh-contracts#v0.3.0`.
+
+This is better than publishing to npm, and for a reason worth recording: it
+removes the scope-ownership question entirely. `@agent-mesh` on npm was never
+verified as claimable — a 404 says a package does not exist, not that a scope
+is free — and it would have needed a publishing account and a token in CI. A
+public repository needs none of that, and Bun resolves the tag to a commit and
+pins it in the lockfile, so immutability is preserved.
+
+**No build step.** `exports` points at TypeScript source. Both consumers run
+Bun with TypeScript 7, so there is nothing to compile, no `prepare` hook, and
+no `dist/` that can drift from the source it came from. Verified under both
+`bun` and `tsc --strict`. An implementation in another language reads
+`fixtures/` as data.
+
+### 9.2 What moved
+
+`agent-mesh-core` went with it. It was always the contract — envelope,
+tool-contract, capabilities, ownership, registry, history — and after the lane
+components left, nothing in this repository imported it. It was here to be
+published and nothing else.
+
+`shared/attachments` went to the lane repository instead: streaming, sha256
+verification and atomic rename are an implementation of § 15.4, not the
+contract. Its `AttachmentMeta` went to contracts first, because the shape is
+§ 15.2 and two declarations of it is how they drift.
+
+What remains here is exactly the baseline of § 3.
+
+This repository takes no dependency on contracts yet. The baseline does not
+consume those types today; it will when the § 8.1 signature and § 8.9 audit
+work is implemented, and a dependency ahead of its consumer is noise.
+
+### 9.3 The fixtures caught two errors before either side built anything
+
+Each signature fixture carries a hand-computed length beside its expected hex.
+Two were wrong when first written — a multi-byte length prefix counted as
+characters rather than bytes, and a domain string miscounted along with a
+missing `.pdf` in a blob key. The tests caught both.
+
+That is the argument for fixtures over prose in one paragraph. Length prefixes
+exist so field boundaries cannot be misread; the property is worth nothing if
+two implementations disagree about which bytes go in, and no amount of careful
+specification prose detects that.
+
+### 9.4 Still missing from the contract package
+
+Stated plainly because the client's § 14.3 asked for it and `v0.3.0` does not
+have it: **runtime validation schemas.** The package ships types and fixtures,
+not validators. Choosing a schema library is a real decision — JSON Schema
+travels better to other languages, a TypeScript-first library gives better
+ergonomics and matches "infer the types from the canonical schema" — and it
+belongs to whoever consumes it most.
+
+Also absent: Ed25519 signature fixtures over a fixed keypair (the preimages are
+covered, the signatures are not), nonce replay fixtures, a `mesh.connect`
+first-signature fixture, method and route constants, and a stored-shape fixture
+for hub-produced `mesh.*` events.
