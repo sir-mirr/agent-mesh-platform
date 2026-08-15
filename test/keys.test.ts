@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { keyFingerprint } from "@agent-mesh/contracts";
 
-import { loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -263,17 +263,28 @@ describe("approval is gated, and the hub cannot do it", () => {
   });
 });
 
-describe("nothing verifies yet, on purpose", () => {
-  test("an identity with a pending key still connects unsigned", async () => {
-    // Increment 2 is inert. Increment 3 is then a switch thrown on a mechanism
-    // already in place, rather than mechanism and enforcement arriving at once.
-    const k = newKey();
-    await register("inert-agent", "ai-codex", k.publicKey);
-    const { connectRpc } = await import("./harness");
-    const rpc = await connectRpc(mesh.hub);
-    const res = await rpc.call("mesh.connect", { identity: "inert-agent" });
-    rpc.close();
-    expect(res.result?.ok).toBe(true);
+describe("approval is what makes a key usable", () => {
+  test("a pending key gets you nowhere, by either route", async () => {
+    // Increment 2 shipped inert on purpose, so increment 3 was a switch thrown
+    // on a mechanism already in place. This asserts the switch is thrown — and
+    // that the two ways of arriving unauthenticated are told apart.
+    const kp = newKeyPair();
+    await register("inert-agent", "ai-codex", kp.publicKey);
+
+    // No signature at all: the type requires one, and that is the complaint.
+    const unsigned = await connectRpc(mesh.hub);
+    const a = await unsigned.call("mesh.connect", { identity: "inert-agent" });
+    unsigned.close();
+    expect(a.error).toMatchObject({ code: -32012 });
+    expect(a.error.message).toContain("requires a signature");
+
+    // A correct signature from the proposed key: the complaint is now that
+    // nobody has approved it. A client acts on that differently — it waits.
+    const signed = await connectRpc(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey });
+    const b = await signed.call("mesh.connect", { identity: "inert-agent" });
+    signed.close();
+    expect(b.error).toMatchObject({ code: -32014 });
+    expect(b.error.data.key_status).toBe("pending");
   });
 });
 

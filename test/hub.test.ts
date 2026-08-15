@@ -15,7 +15,7 @@ let mesh: Mesh;
 beforeAll(async () => {
   mesh = await startMesh({ withHttp: false });
   await provision(mesh.hub, "agent-a", "service", "first");
-  await provision(mesh.hub, "agent-b", "ai-codex");
+  await provision(mesh.hub, "agent-b", "service");
 });
 
 afterAll(() => mesh?.stop());

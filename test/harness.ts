@@ -15,7 +15,8 @@
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
+import { keyFingerprint, requestSignaturePreimage } from "@agent-mesh/contracts";
 import { join } from "node:path";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
@@ -155,6 +156,26 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
 
 /** Provision an identity, which every connecting agent must have (SPEC § 8.1). */
 /** A real Ed25519 public key, base64url — SPKI wraps the raw 32 bytes. */
+export interface KeyPair {
+  /** Raw Ed25519 public key, base64url — what `public_key` carries. */
+  publicKey: string;
+  /** node:crypto key object, for signing. */
+  privateKey: import("node:crypto").KeyObject;
+  fingerprint: string;
+}
+
+/**
+ * A real key pair. The fingerprint comes from contracts, not from a local
+ * computation — a test that derived it its own way would pass while disagreeing
+ * with the hub about what it is verifying.
+ */
+export function newKeyPair(): KeyPair {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const der = publicKey.export({ format: "der", type: "spki" }) as Buffer;
+  const raw = Buffer.from(der.subarray(der.length - 32)).toString("base64url");
+  return { publicKey: raw, privateKey, fingerprint: keyFingerprint(raw) };
+}
+
 export function newPublicKey(): string {
   const { publicKey } = generateKeyPairSync("ed25519");
   const der = publicKey.export({ format: "der", type: "spki" }) as Buffer;
@@ -209,15 +230,22 @@ export async function provisionProxy(
 }
 
 export interface RpcClient {
+  raw(text: string): void;
   /** Send a request and wait for the response with a matching id. */
-  call(method: string, params: unknown): Promise<any>;
+  call(method: string, params: unknown, sigOverride?: Record<string, unknown>): Promise<any>;
   /** Server-pushed notifications received so far (SPEC § 8.8). */
   notifications(): any[];
   close(): void;
 }
 
 /** Open a hub WebSocket and correlate responses by JSON-RPC id. */
-export async function connectRpc(hub: Service): Promise<RpcClient> {
+export interface Signer {
+  /** Fingerprint of the key, as `sig.kid`. */
+  kid: string;
+  privateKey: import("node:crypto").KeyObject;
+}
+
+export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClient> {
   const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/ws`);
   await new Promise<void>((resolve, reject) => {
     ws.onopen = () => resolve();
@@ -238,8 +266,48 @@ export async function connectRpc(hub: Service): Promise<RpcClient> {
     }
   };
 
+  /**
+   * Build the wire text, signing over the exact bytes that go out.
+   *
+   * `params` is serialised once and spliced into the envelope as text.
+   * Assembling the envelope with JSON.stringify would re-serialise it, and the
+   * preimage would then cover bytes the hub never received — the failure is
+   * intermittent, because it depends on what each serialiser happens to emit.
+   */
+  function frame(id: number, method: string, params: unknown, override?: Partial<Record<string, unknown>>): string {
+    const rawParams = JSON.stringify(params ?? {});
+    if (!signer) {
+      return `{"jsonrpc":"2.0","id":${id},"method":${JSON.stringify(method)},"params":${rawParams}}`;
+    }
+    const nonce = randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+    const sig = {
+      alg: "ed25519",
+      kid: signer.kid,
+      nonce,
+      iat,
+      value: Buffer.from(
+        edSign(
+          null,
+          Buffer.from(
+            requestSignaturePreimage({
+              method,
+              kid: signer.kid,
+              nonce,
+              iat,
+              rawParams: new TextEncoder().encode(rawParams),
+            }),
+          ),
+          signer.privateKey,
+        ),
+      ).toString("base64url"),
+      ...override,
+    };
+    return `{"jsonrpc":"2.0","id":${id},"method":${JSON.stringify(method)},"params":${rawParams},"sig":${JSON.stringify(sig)}}`;
+  }
+
   return {
-    call(method, params) {
+    call(method, params, override?: Record<string, unknown>) {
       const id = nextId++;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(
@@ -250,8 +318,12 @@ export async function connectRpc(hub: Service): Promise<RpcClient> {
           clearTimeout(timer);
           resolve(value);
         });
-        ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+        ws.send(frame(id, method, params, override));
       });
+    },
+    /** Send a hand-built frame — for asserting on tampering. */
+    raw(text: string) {
+      ws.send(text);
     },
     notifications: () => [...pushed],
     close: () => ws.close(),

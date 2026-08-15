@@ -6,6 +6,8 @@
  */
 
 import { INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, rpcError, type JsonRpcRequest } from "../jsonrpc";
+import { wsIdentities } from "../presence";
+import { verifyRequest, type SignatureEnvelope } from "../signature";
 import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
 import { handleFetchMessages } from "./messages";
@@ -13,9 +15,11 @@ import { handleCancelReminder, handleListReminders, handleScheduleReminder } fro
 import { handleSend } from "./send";
 
 export function dispatch(ws: any, raw: string | Buffer): string | null {
-  let req: JsonRpcRequest;
+  const text = typeof raw === "string" ? raw : raw.toString();
+
+  let req: JsonRpcRequest & { sig?: SignatureEnvelope };
   try {
-    req = JSON.parse(typeof raw === "string" ? raw : raw.toString());
+    req = JSON.parse(text);
   } catch {
     return rpcError(null, PARSE_ERROR, "Parse error");
   }
@@ -25,6 +29,27 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
   }
 
   const params = req.params ?? {};
+
+  // The identity the request speaks as. A connect names it in params — there is
+  // no socket identity yet — and everything else inherits it from the socket.
+  // Verification is against that identity's key, so a connect that lies about
+  // it fails against the wrong key rather than succeeding.
+  const speakingAs =
+    req.method === "mesh.connect" || req.method === "mesh.register"
+      ? typeof (params as any).identity === "string"
+        ? (params as any).identity
+        : null
+      : wsIdentities.get(ws) ?? null;
+
+  // No identity yet means nothing to verify against; the handler will reject it
+  // for its own reasons — a connect without `identity`, or a call before
+  // connecting. Checking here would replace those errors with a vaguer one.
+  if (speakingAs) {
+    const verdict = verifyRequest(speakingAs, req.method, req.sig, text);
+    if (!verdict.ok) {
+      return rpcError(req.id, verdict.code, verdict.message, verdict.data);
+    }
+  }
 
   switch (req.method) {
     case "mesh.connect":

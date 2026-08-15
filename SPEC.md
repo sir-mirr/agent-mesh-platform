@@ -21,7 +21,7 @@ for a description of running code.
 | 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | **partly** — `agents.db` split; `audit.db` not yet |
 | 4.1 | A Claude lane includes a runtime-adapter | no |
 | 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
-| 8.1 | `mesh.connect` carries a signature and returns capabilities | no |
+| 8.1 | `mesh.connect` carries a signature | **yes** — capabilities not yet |
 | 8.2 | `from` is constrained by validated entitlement | **yes** |
 | 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
 | 8.9 | `mesh.audit.*` methods | no |

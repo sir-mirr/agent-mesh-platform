@@ -127,10 +127,11 @@ which makes the entire procedure theatre.
 
 ---
 
-## 3 — Request signatures
+## 3 — Request signatures ✅
 
 **SPEC** § 8.1
 **Depends on** 2
+**Status** done
 
 This is the step the rest of the security work rests on, and the one where
 partial is worse than absent.
