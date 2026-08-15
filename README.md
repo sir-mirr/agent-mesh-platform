@@ -81,8 +81,7 @@ instantiation; ports follow a fixed offset rule.
 
 **Both are built in a separate repository.** This one holds the baseline they
 attach to, the contracts they implement (`SPEC.md` §§ 4–6), and the two
-packages they consume — `@agent-mesh/core` and
-`@agent-mesh/shared-attachments`.
+contract they consume, `@agent-mesh/contracts`.
 
 Every lane includes a runtime-adapter. A channel-driver forwards to it and
 does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
@@ -208,7 +207,7 @@ Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 Lane components — runtime-adapters and channel-drivers — are built and deployed
 from a separate repository. This one provides the baseline they attach to, the
 contract they implement (`SPEC.md` §§ 4–6), and the two packages they consume:
-`@agent-mesh/core` and `@agent-mesh/shared-attachments`.
+`@agent-mesh/contracts`.
 
 What a lane needs from here:
 
@@ -238,7 +237,7 @@ a hub identity of its own, and every lane includes a runtime-adapter
 
 - **Hub** (`packages/shared/hub`) — JSON-RPC 2.0 broker on a single WebSocket
   endpoint. Maintains the agent registry in SQLite. All inter-agent traffic
-  is an envelope (see `agent-mesh-core/envelope.ts`) routed by identity.
+  is an envelope (see `envelope.ts` in `@agent-mesh/contracts`) routed by identity.
 - **HTTP** (`packages/shared/http`) — Hono server. Provides REST, SSE for
   per-agent event streams, `/auth/github` (GitHub OAuth → JWT HS256), an
   admin panel for pending-pair approval, Web Push (VAPID), and a PWA
@@ -247,11 +246,10 @@ a hub identity of its own, and every lane includes a runtime-adapter
   daemon. Connects to the hub as `identity=self-reminder`, accepts schedule
   requests over the mesh, persists them, and re-injects payloads at fire
   time with at-least-once semantics.
-- **agent-mesh-core** (`packages/agent-mesh-core`) — Pure types and
-  utilities: `envelope`, `action-proxy`, `capabilities`, `history`,
-  `ownership`, `registry`, `tool-contract`, `hub` client base.
-- **shared/attachments** (`packages/shared/attachments`) — Pull-on-demand
-  attachment fetcher used by lane components (`SPEC.md` § 15.4).
+- **Contracts** ([`agent-mesh-contracts`](https://github.com/sir-mirr/agent-mesh-contracts))
+  — the types and fixtures both sides are checked against: `envelope`,
+  `signature`, `blob-key`, `audit`, `errors`, `attachment`, `ownership`,
+  `capabilities`, `tool-contract`. Not in this repository.
 - **Lanes** — One runtime-adapter plus zero or more channel-drivers, joined by
   an intra-lane HTTP control plane. The adapter holds the lane's single hub
   connection. Built and deployed from a separate repository.
@@ -320,29 +318,19 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 │   ├── migrations/                # forward-only SQL
 │   └── systemd/                   # the three baseline units
 ├── packages/
-│   ├── agent-mesh-core/           # pure types, no I/O — published contract
-│   │   └── src/
-│   │       ├── envelope.ts
-│   │       ├── action-proxy.ts
-│   │       ├── capabilities.ts
-│   │       ├── history.ts
-│   │       ├── hub.ts
-│   │       ├── ownership.ts
-│   │       ├── registry.ts
-│   │       └── tool-contract.ts
 │   └── shared/
 │       ├── hub/                   # JSON-RPC 2.0 broker (port 3100)
 │       ├── http/                  # REST + SSE + OAuth + PWA (port 3000)
-│       ├── self-reminder/         # scheduler daemon
-│       └── attachments/           # lane-side fetch helper — published contract
+│       └── self-reminder/         # scheduler daemon
 ├── package.json
 ├── bun.lock
 └── tsconfig.base.json
 ```
 
-**Lane components live in a separate repository.** `runtime-adapters/` and
-`channel-drivers/` were removed from this tree; what remains is the baseline
-plus the two packages a lane consumes as contracts.
+What remains is exactly the baseline of `SPEC.md` § 3. Lane components live in
+the lane repository, and the shared types in
+[`agent-mesh-contracts`](https://github.com/sir-mirr/agent-mesh-contracts),
+delivered as an immutable Git tag.
 
 Instance data — env files, secrets, state, attachments, handoffs, channels —
 lives **outside** the code repository and is not versioned here. See

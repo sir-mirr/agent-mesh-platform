@@ -326,10 +326,10 @@ A runtime-adapter implementation MUST:
    translate them into runtime-native turns/messages.
 3. **Envelope emit** — translate runtime output into envelopes and
    forward via `mesh.send`. Envelopes MUST conform to
-   `agent-mesh-core/envelope.ts`.
+   `envelope.ts` in `@agent-mesh/contracts`.
 4. **Action proxying** — when the runtime emits a tool/action call,
    route it through the action-proxy contract
-   (`agent-mesh-core/action-proxy.ts`).
+   (`action-proxy.ts` in `@agent-mesh/contracts`).
 5. **Thread lifecycle** — manage runtime-side threads/sessions including
    creation, rotation, and teardown. Rotation policy MUST be
    externalized (env or config), not hard-coded.
@@ -397,9 +397,16 @@ driver.stop(): Promise<void>
 
 ---
 
-## 7. `agent-mesh-core` core types
+## 7. Core types
 
-`packages/agent-mesh-core/src/` is a pure type/utility package. No I/O.
+The mesh types live in `@agent-mesh/contracts`
+(<https://github.com/sir-mirr/agent-mesh-contracts>), delivered as an immutable
+Git tag. They were previously `packages/agent-mesh-core/` in this repository;
+they are contract, not baseline, and after the lane components moved out
+nothing here consumed them.
+
+The package is pure types and policy helpers — no I/O — and carries the
+byte-level fixtures an implementation is checked against.
 
 | Module             | Role                                                       |
 |--------------------|------------------------------------------------------------|
@@ -661,7 +668,7 @@ any connected socket originate an envelope as any identity.
 
 `proxy_for` entitlement is likewise validated at `mesh.connect`: a socket may
 only claim identities it is entitled to proxy. The entitlement model is
-`agent-mesh-core/ownership.ts`.
+`ownership.ts` in `@agent-mesh/contracts`.
 
 Routing a message MUST also record an audit event (§ 8.9.4).
 
@@ -1980,8 +1987,9 @@ repository alongside the components whose cache they trim.
 
 **Fetcher helper (normative reference).** A reference fetcher helper
 implementing steps 1–5 above lives under
-`packages/shared/attachments/` (`@agent-mesh/shared-attachments`) and
-is exposed to lane packages as `fetchAttachment(meta, cacheDir, opts)`.
+the lane repository as `@agent-mesh/shared-attachments`, exposed to lane
+packages as `fetchAttachment(meta, cacheDir, opts)`. The metadata shape it
+consumes is `AttachmentMeta` in `@agent-mesh/contracts`.
 Runtime adapters and channel drivers SHOULD reuse this helper rather
 than re-implementing the atomic-rename + sha256-verify pattern. The
 helper streams the response body to a tempfile (`.<id>.<rand>.tmp`)

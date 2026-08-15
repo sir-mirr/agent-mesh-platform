@@ -38,8 +38,9 @@ one package.
 
 ## Good places to start
 
-- `packages/agent-mesh-core/` — the types every lane consumes. Small, pure,
-  and the place a wire-format change starts.
+- [`agent-mesh-contracts`](https://github.com/sir-mirr/agent-mesh-contracts) —
+  the types and fixtures every implementation is checked against. Small, pure,
+  and where a wire-format change lands after SPEC.
 - `docs/decisions/` and `docs/proposals/` — settled design and cross-team
   interface work, each written with the reasoning rather than just the outcome.
 - `SPEC.md` itself — read the section you're touching end-to-end before

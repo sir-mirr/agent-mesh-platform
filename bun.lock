@@ -12,14 +12,6 @@
         "typescript": "7.0.2",
       },
     },
-    "packages/agent-mesh-core": {
-      "name": "@agent-mesh/core",
-      "version": "0.1.0",
-    },
-    "packages/shared/attachments": {
-      "name": "@agent-mesh/shared-attachments",
-      "version": "0.1.0",
-    },
     "packages/shared/http": {
       "name": "@agent-mesh/shared-http",
       "version": "0.1.0",
@@ -42,10 +34,6 @@
     },
   },
   "packages": {
-    "@agent-mesh/core": ["@agent-mesh/core@workspace:packages/agent-mesh-core"],
-
-    "@agent-mesh/shared-attachments": ["@agent-mesh/shared-attachments@workspace:packages/shared/attachments"],
-
     "@agent-mesh/shared-http": ["@agent-mesh/shared-http@workspace:packages/shared/http"],
 
     "@agent-mesh/shared-hub": ["@agent-mesh/shared-hub@workspace:packages/shared/hub"],
