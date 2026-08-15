@@ -213,10 +213,11 @@ the reason it exists is that deleting a key makes past signatures unverifiable
 
 ---
 
-## 6 — Entitlement
+## 6 — Entitlement ✅
 
 **SPEC** § 8.2
-**Depends on** 3
+**Depends on** 3 (built ahead of it — see below)
+**Status** done
 
 - `proxy_for` validated at connect: a socket may only claim identities it is
   entitled to proxy.
@@ -225,10 +226,18 @@ the reason it exists is that deleting a key makes past signatures unverifiable
 - Use `ownership.ts` from `@agent-mesh/contracts`. It has modelled this since
   0.1 and was never wired to anything.
 
-**Open before starting:** where entitlement is stored. `agent_types` is the
-model to copy — data, not a hardcoded table — but the shape has not been
-decided, and http currently relies on the unchecked behaviour when it proxies
-web users. Settle both before writing code.
+**How the open question closed.** It was "where is entitlement stored", and the
+answer was that it mostly is not. Agents hold keys and sign for themselves, so
+`from` is already settled for them; the client team confirmed lanes never proxy.
+That leaves participants who by design hold no key, which `requires_key = 0`
+already names — so the subject half is a type lookup, not a grant table. Only
+the "who may proxy at all" half needed storing, and that is one column.
+
+Built before step 3 rather than after. The dependency was on there being a
+verified identity to attach entitlement to, but `sent_by` (recorded ahead of
+this plan) already gives the hub the connected identity, and every check here is
+against stored rows. Signatures make that identity *trustworthy*; they do not
+change what the rule reads.
 
 ---
 

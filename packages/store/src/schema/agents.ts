@@ -55,7 +55,8 @@ export function migrate(db: Database): void {
       last_seen   DATETIME,
       type        TEXT,
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-      deleted_at  DATETIME
+      deleted_at  DATETIME,
+      can_proxy   INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -83,6 +84,12 @@ export function migrate(db: Database): void {
   }
   if (!has("deleted_at")) {
     db.exec(`ALTER TABLE agents ADD COLUMN deleted_at DATETIME`);
+  }
+  if (!has("can_proxy")) {
+    // 0.2 entitlement (SPEC § 8.2). Default 0: an identity that has not been
+    // given this cannot speak for anyone, which is the safe direction for a
+    // column arriving under an existing deployment.
+    db.exec(`ALTER TABLE agents ADD COLUMN can_proxy INTEGER NOT NULL DEFAULT 0`);
   }
 
   db.exec(`
@@ -161,6 +168,15 @@ export interface AgentRow {
   type: string | null;
   created_at: string | null;
   deleted_at: string | null;
+  /**
+   * Whether this identity may speak for others (SPEC § 8.2).
+   *
+   * Held by the http server and, in principle, nothing else. It is a property
+   * of the identity rather than of its type because `service` covers both the
+   * web gateway and the scheduler, and only one of them has any business
+   * claiming to be someone else.
+   */
+  can_proxy: number;
 }
 
 export interface AgentTypeRow {

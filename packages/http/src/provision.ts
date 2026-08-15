@@ -53,6 +53,28 @@ export interface ProvisionOutcome {
  * because the hub was briefly unreachable would be the wrong trade. The
  * reconnect backfill retries.
  */
+/**
+ * Register this server's own identity, with the grant that lets it speak for
+ * people (SPEC § 8.2).
+ *
+ * It has to register itself because nothing else does: the identity was
+ * previously expected to be inserted by hand, so a fresh deployment had an http
+ * server that could not connect until someone noticed. And it has to carry
+ * `can_proxy`, because the entitlement check reads it from the row rather than
+ * trusting what the socket claims — the grant is the thing being checked, so it
+ * cannot come from the party being checked. That it is self-asserted here is a
+ * consequence of the hub being unauthenticated, recorded in docs/deferred.md
+ * rather than pretended away.
+ */
+export async function provisionSelf(identity: string): Promise<ProvisionOutcome> {
+  return post({
+    identity,
+    type: 'service',
+    description: 'Agent Mesh Web UI',
+    can_proxy: true,
+  })
+}
+
 export async function provisionHuman(identity: string): Promise<ProvisionOutcome> {
   // A person's identity is their GitHub login verbatim, which is also the
   // `github_login` this server sends as `from` (SPEC § 8.2). Nothing is
@@ -63,16 +85,16 @@ export async function provisionHuman(identity: string): Promise<ProvisionOutcome
     return { ok: false, reason: `"${identity}" is not a valid mesh identity (must match ${IDENTITY_RE})` }
   }
 
+  return post({ identity, type: 'human', description: 'Web user' })
+}
+
+async function post(body: Record<string, unknown>): Promise<ProvisionOutcome> {
   let res: Response
   try {
     res = await fetch(`${restBase()}/api/v1/agents`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        identity,
-        type: 'human',
-        description: 'Web user',
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     })
   } catch (err) {
@@ -83,8 +105,8 @@ export async function provisionHuman(identity: string): Promise<ProvisionOutcome
 
   let detail = `HTTP ${res.status}`
   try {
-    const body = await res.json() as { error?: string }
-    if (body?.error) detail = `${detail}: ${body.error}`
+    const parsed = await res.json() as { error?: string }
+    if (parsed?.error) detail = `${detail}: ${parsed.error}`
   } catch {}
   return { ok: false, reason: detail }
 }

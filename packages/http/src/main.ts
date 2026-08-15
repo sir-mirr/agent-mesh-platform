@@ -40,7 +40,7 @@ import {
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
 import { openStore, type MessageRow } from '@agent-mesh/store'
-import { provisionHuman, provisionAllHumans } from './provision'
+import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb } from './keys-admin'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
@@ -83,11 +83,26 @@ let hubConnected = false
 function connectToHub(): void {
   try {
     hubWs = new WebSocket(HUB_URL)
-    hubWs.onopen = () => {
+    hubWs.onopen = async () => {
       hubConnected = true
       console.log(`[http-server] connected to hub at ${HUB_URL}`)
-      // Get web users from registry to proxy for them
+
+      // Registration before mesh.connect, and in this order, because § 8.2 now
+      // checks both halves against stored rows rather than against what the
+      // socket claims. This identity must exist and carry `can_proxy`, and each
+      // person must exist as type `human`, or the hub drops the proxy claims
+      // and every message sent on their behalf is refused.
+      //
+      // Done on connect rather than at startup because the hub is provably
+      // reachable at this instant, and a reconnect is exactly when a retry is
+      // wanted for anything missed while it was down.
+      const self = await provisionSelf(HUB_IDENTITY)
+      if (!self.ok) {
+        console.warn(`[http-server] could not register own identity: ${self.reason}`)
+      }
       const webUsers = listApprovedWebUserIds()
+      await provisionAllHumans(webUsers)
+
       hubWs!.send(JSON.stringify({
         jsonrpc: '2.0', method: 'mesh.connect',
         params: { identity: HUB_IDENTITY, description: 'Agent Mesh Web UI', proxy_for: webUsers },
@@ -96,10 +111,6 @@ function connectToHub(): void {
       if (webUsers.length > 0) {
         console.log(`[http-server] proxying for: ${webUsers.join(', ')}`)
       }
-      // A person must hold a mesh identity to be a participant (SPEC § 10.3).
-      // Done here rather than at startup because the hub is provably reachable
-      // at this instant, and a reconnect is exactly when a retry is wanted.
-      provisionAllHumans(webUsers).catch(() => {})
     }
     hubWs.onmessage = (e) => {
       try {

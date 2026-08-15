@@ -4,10 +4,12 @@
 
 import { randomUUID } from "node:crypto";
 
-import { stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
-import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
+import { entitlement } from "@agent-mesh/store";
+
+import { agentsDb, stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
+import { INVALID_PARAMS, INVALID_REQUEST, NOT_ENTITLED, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
 import { log } from "../log";
-import { onlineAgents, proxyMap, wsIdentities } from "../presence";
+import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
 export function handleSend(
   ws: any,
@@ -51,6 +53,27 @@ export function handleSend(
   // either way, and it is the half that does not depend on entitlement existing.
   const effectiveSender = (params.from && typeof params.from === "string") ? params.from : senderIdentity;
   const proxied = effectiveSender !== senderIdentity;
+
+  // SPEC § 8.2. Two conditions, checked against the database rather than
+  // against what the socket claimed at connect: an operator who withdraws the
+  // grant, or tears the subject down, means it from that moment rather than
+  // from whenever this socket next reconnects. The declared `proxy_for` set is
+  // also required, so a socket cannot speak for someone it never announced.
+  if (proxied) {
+    const verdict = entitlement.mayProxy(agentsDb, senderIdentity, effectiveSender);
+    if (!verdict.ok) {
+      log(`refused: ${senderIdentity} claimed to be ${effectiveSender} (${verdict.reason})`);
+      return rpcError(id, NOT_ENTITLED, entitlement.refusalMessage(effectiveSender, verdict.reason!));
+    }
+    if (!wsProxies.get(ws)?.has(effectiveSender)) {
+      log(`refused: ${senderIdentity} did not declare ${effectiveSender} in proxy_for`);
+      return rpcError(
+        id,
+        NOT_ENTITLED,
+        `'${effectiveSender}' was not declared in this socket's proxy_for`,
+      );
+    }
+  }
   const route = proxied
     ? `${effectiveSender} (via ${senderIdentity}) → ${to}`
     : `${effectiveSender} → ${to}`;

@@ -25,6 +25,7 @@ import {
   stmtKeysOfAgent,
   stmtRevokeKeysOfAgent,
   stmtSelectAgent,
+  stmtSetCanProxy,
   stmtSoftDeleteAgent,
   stmtUpsertAgentTyped,
 } from "../db";
@@ -55,6 +56,7 @@ interface ProvisionRequest {
   type: string;
   description: string | null;
   publicKey: string | null;
+  canProxy: boolean | null;
 }
 
 /**
@@ -75,6 +77,7 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
   const { identity, type } = body;
   const description = body.description ?? null;
   const publicKey = body.public_key ?? null;
+  const canProxy = body.can_proxy === undefined ? null : body.can_proxy;
 
   if (!identity || typeof identity !== "string") {
     return jsonResponse(400, { ok: false, error: "identity is required (string)" });
@@ -148,7 +151,11 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
     }
   }
 
-  return { identity, type, description, publicKey };
+  if (canProxy !== null && typeof canProxy !== "boolean") {
+    return jsonResponse(400, { ok: false, error: "can_proxy must be a boolean" });
+  }
+
+  return { identity, type, description, publicKey, canProxy };
 }
 
 /**
@@ -174,6 +181,11 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
   const existed = !!stmtAgentExists.get(r.identity);
   try {
     stmtUpsertAgentTyped.run(r.identity, r.type, r.description);
+    // Omitted means unchanged, not false. A caller updating a description must
+    // not silently strip a grant it never mentioned (SPEC § 8.2).
+    if (r.canProxy !== null) {
+      stmtSetCanProxy.run(r.canProxy ? 1 : 0, r.identity);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`${route} db error for ${r.identity}: ${msg}`);

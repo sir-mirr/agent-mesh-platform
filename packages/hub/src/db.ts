@@ -117,6 +117,10 @@ export const stmtAgentDeleted = agentsDb.prepare(`
   SELECT deleted_at FROM agents WHERE identity = ? AND deleted_at IS NOT NULL
 `);
 
+export const stmtSetCanProxy = agentsDb.prepare(`
+  UPDATE agents SET can_proxy = ? WHERE identity = ?
+`);
+
 export const stmtKeysOfAgent = agentsDb.prepare(`
   SELECT fingerprint FROM agent_keys WHERE identity = ? AND status IN ('pending','approved')
 `);

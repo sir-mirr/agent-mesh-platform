@@ -11,7 +11,7 @@ import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, provision, provisionProxy, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -268,12 +268,14 @@ describe("transmitter recording", () => {
   });
 
   test("a proxied send keeps both identities apart", async () => {
-    await provision(mesh.hub, "proxy-socket", "service");
-    await provision(mesh.hub, "web-user", "service");
+    await provisionProxy(mesh.hub, "proxy-socket");
+    // A person: type `human`, so no key of their own and nobody to sign for
+    // them. That is the only case the override exists for (SPEC § 8.2).
+    await provision(mesh.hub, "web-user", "human");
     await provision(mesh.hub, "proxy-recipient", "service");
 
     const rpc = await connectRpc(mesh.hub);
-    await rpc.call("mesh.connect", { identity: "proxy-socket" });
+    await rpc.call("mesh.connect", { identity: "proxy-socket", proxy_for: ["web-user"] });
     const sent = await rpc.call("mesh.send", {
       to: "proxy-recipient", from: "web-user", content: "forwarded on their behalf",
     });
@@ -302,8 +304,8 @@ describe("transmitter recording", () => {
   });
 
   test("the recipient is told, live and on replay", async () => {
-    await provision(mesh.hub, "live-proxy", "service");
-    await provision(mesh.hub, "live-user", "service");
+    await provisionProxy(mesh.hub, "live-proxy");
+    await provision(mesh.hub, "live-user", "human");
     await provision(mesh.hub, "live-recipient", "service");
     await provision(mesh.hub, "queued-recipient", "service");
 
@@ -311,7 +313,7 @@ describe("transmitter recording", () => {
     await recipient.call("mesh.connect", { identity: "live-recipient" });
 
     const proxy = await connectRpc(mesh.hub);
-    await proxy.call("mesh.connect", { identity: "live-proxy" });
+    await proxy.call("mesh.connect", { identity: "live-proxy", proxy_for: ["live-user"] });
     await proxy.call("mesh.send", { to: "live-recipient", from: "live-user", content: "live" });
     // ...and one to a recipient that is offline, so it is replayed rather than pushed.
     await proxy.call("mesh.send", { to: "queued-recipient", from: "live-user", content: "queued" });
@@ -332,12 +334,12 @@ describe("transmitter recording", () => {
   });
 
   test("fetch_messages carries it", async () => {
-    await provision(mesh.hub, "hist-proxy", "service");
-    await provision(mesh.hub, "hist-user", "service");
+    await provisionProxy(mesh.hub, "hist-proxy");
+    await provision(mesh.hub, "hist-user", "human");
     await provision(mesh.hub, "hist-peer", "service");
 
     const proxy = await connectRpc(mesh.hub);
-    await proxy.call("mesh.connect", { identity: "hist-proxy" });
+    await proxy.call("mesh.connect", { identity: "hist-proxy", proxy_for: ["hist-user"] });
     await proxy.call("mesh.send", { to: "hist-peer", from: "hist-user", content: "for history" });
     proxy.close();
 

@@ -3,7 +3,9 @@
  * replay that follows a successful connect (SPEC § 8.1, § 8.1a).
  */
 
-import { stmtAgentExists, stmtPendingMessages, stmtUpdateLastSeen, stmtUpdateMessageStatus } from "../db";
+import { stmtAgentExists, stmtPendingMessages, stmtUpdateLastSeen, stmtUpdateMessageStatus,
+  agentsDb,
+} from "../db";
 import {
   DUPLICATE_IDENTITY,
   IDENTITY_NOT_REGISTERED,
@@ -12,6 +14,8 @@ import {
   rpcNotification,
   rpcResult,
 } from "../jsonrpc";
+import { entitlement } from "@agent-mesh/store";
+
 import { log } from "../log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
@@ -109,18 +113,36 @@ export function performConnect(
   onlineAgents.set(identity, ws);
   wsIdentities.set(ws, identity);
 
-  // Handle proxy_for — register proxied identities
+  // Handle proxy_for — a socket may only claim identities it is entitled to
+  // proxy (SPEC § 8.2). Entries it may not claim are dropped rather than
+  // failing the connect: the http server declares every approved person at
+  // once, and refusing the whole connection over one bad entry would take the
+  // entire web surface down. A dropped entry is not silent — it is logged, and
+  // `mesh.send` refuses it with -32013, which attributes the failure to the one
+  // person affected instead of to everyone.
   const proxyFor: string[] = Array.isArray(params.proxy_for) ? params.proxy_for : [];
   if (proxyFor.length > 0) {
     const proxiedSet = wsProxies.get(ws) ?? new Set<string>();
+    const granted: string[] = [];
+    const refused: string[] = [];
     for (const pid of proxyFor) {
-      if (typeof pid === "string" && pid.length > 0) {
-        proxyMap.set(pid, ws);
-        proxiedSet.add(pid);
+      if (typeof pid !== "string" || pid.length === 0) continue;
+      const verdict = entitlement.mayProxy(agentsDb, identity, pid);
+      if (!verdict.ok) {
+        refused.push(`${pid} (${verdict.reason})`);
+        continue;
       }
+      proxyMap.set(pid, ws);
+      proxiedSet.add(pid);
+      granted.push(pid);
     }
     wsProxies.set(ws, proxiedSet);
-    log(`${via === "connect" ? "connected" : "registered"} proxy: ${identity} → [${proxyFor.join(", ")}]`);
+    if (granted.length > 0) {
+      log(`${via === "connect" ? "connected" : "registered"} proxy: ${identity} → [${granted.join(", ")}]`);
+    }
+    if (refused.length > 0) {
+      log(`refused proxy claims by ${identity}: ${refused.join(", ")}`);
+    }
   }
 
   log(`${via === "connect" ? "connected" : "registered"}: ${identity}`);

@@ -22,7 +22,7 @@ for a description of running code.
 | 4.1 | A Claude lane includes a runtime-adapter | no |
 | 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
 | 8.1 | `mesh.connect` carries a signature and returns capabilities | no |
-| 8.2 | `from` is constrained by validated entitlement | no |
+| 8.2 | `from` is constrained by validated entitlement | **yes** |
 | 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
 | 8.9 | `mesh.audit.*` methods | no |
 | 9.1 | Audit blob upload and audit query routes | no |
@@ -686,9 +686,39 @@ identity or one of the `proxy_for` entries that identity is entitled to. The
 hub MUST reject anything else. At 0.1 `from` was accepted unchecked, which let
 any connected socket originate an envelope as any identity.
 
-`proxy_for` entitlement is likewise validated at `mesh.connect`: a socket may
-only claim identities it is entitled to proxy. The entitlement model is
-`ownership.ts` in `@agent-mesh/contracts`.
+**The entitlement rule.** A socket may speak for an identity when both hold:
+
+1. its own identity carries `can_proxy`, and
+2. the subject's type has `requires_key = 0` (§ 10.3).
+
+Condition 2 is the substantive one, and it is stated against the type registry
+rather than a grant table because that makes it true rather than merely
+configured: **an identity that can hold a key signs for itself**, so a proxy
+claim over it is either redundant or a lie. The override exists for participants
+who by design hold no key — people (§ 10.3) — and that is now a property of the
+type rather than a special case. It is also why a person must hold a registered
+identity: the hub cannot ask the type of a row that does not exist.
+
+Condition 1 exists because condition 2 alone would let any connected agent speak
+for any person; the scheduler is a `service` exactly as the web gateway is.
+`can_proxy` is a column on `agents`, not on `agent_types`, for that reason.
+
+Both are read **per request** against stored rows, not cached from what the
+socket declared at connect. An operator who withdraws a grant, or tears the
+subject down, means it from that moment rather than from whenever the socket
+next reconnects — the same reasoning § 8.1 applies to the signing key.
+
+`proxy_for` is likewise validated at `mesh.connect`. Entries the socket may not
+claim are **dropped rather than failing the connection**: the http server
+declares every approved person at once, and refusing the whole connect over one
+bad entry would take the entire web surface down. A dropped entry is logged, is
+not wired into the socket's routing, and its envelopes are refused with
+`-32013` — which attributes the failure to the one person affected instead of to
+everyone.
+
+A socket must also have *declared* an identity in `proxy_for` to send as it.
+Entitlement alone is not enough, so a socket cannot reach beyond what it
+announced.
 
 Routing a message MUST also record an audit event (§ 8.9.4).
 

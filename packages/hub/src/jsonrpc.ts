@@ -43,4 +43,6 @@ export const INVALID_PARAMS = -32602;
 /** Hub-specific codes. See SPEC § 8.1 and § 8.2. */
 export const DUPLICATE_IDENTITY = -32010;
 export const IDENTITY_NOT_REGISTERED = -32011;
+/** SPEC § 8.2 — `from` or a `proxy_for` entry the socket may not claim. */
+export const NOT_ENTITLED = -32013;
 export const SERVER_ERROR = -32000;

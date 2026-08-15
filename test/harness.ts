@@ -189,6 +189,25 @@ export async function provision(
   });
 }
 
+/**
+ * Register an identity that may speak for others (SPEC § 8.2).
+ *
+ * Separate from `provision` because the grant is deliberately not something a
+ * caller gets by default — an identity that has not been given it cannot claim
+ * anyone, which is the point of the column.
+ */
+export async function provisionProxy(
+  hub: Service,
+  identity: string,
+  type = "service",
+): Promise<Response> {
+  return fetch(`${hub.url}/api/v1/agents`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identity, type, can_proxy: true }),
+  });
+}
+
 export interface RpcClient {
   /** Send a request and wait for the response with a matching id. */
   call(method: string, params: unknown): Promise<any>;
