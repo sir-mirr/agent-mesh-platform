@@ -1,32 +1,55 @@
 /**
- * `mesh.receive` — drain what is waiting for the caller (SPEC § 8.5).
+ * `mesh.receive` — drain what is waiting for the caller (SPEC § 8.10.1).
  *
- * Delivery has always been push-only: the hub replays pending messages when an
- * identity connects (§ 8.1) and pushes new ones while it stays connected. That
- * assumes a participant which can hold a socket, and some cannot — an agent
- * driven by an application rather than a daemon is awake only while it is
- * answering, and has nowhere to be pushed to in between.
+ * Delivery had always been push-only: the hub replays pending messages when an
+ * identity connects and pushes new ones while it stays connected. That assumes
+ * a participant which can hold a socket, and some cannot — an agent driven by an
+ * application is awake only while answering, and has nowhere to be pushed to in
+ * between.
  *
- * So this is the pull half of the same queue. It is not a second store: the
- * pending rows an adapter would have been handed on connect are the rows this
- * returns. The same identity reached either way sees the same inbox.
+ * This is the pull half of the same queue, not a second store. The rows an
+ * adapter would be handed on connect are the rows this returns.
  *
- * **Reading marks delivered, in one transaction.** The alternative — read now,
- * acknowledge later — has a window in which arriving messages are cleared by an
- * acknowledgement that predates them, and a window that only opens under load
- * is the kind that is found in production. One round trip has no window.
+ * **At-least-once, acknowledged on the next call.** Three designs were
+ * available and two of them lose:
  *
- * The cost is that a caller which drops the response loses those messages. That
- * is the honest trade: a caller can persist what it received before acting on
- * it, which is a thing it can control, whereas it cannot control how long its
- * own turn takes.
+ * - A destructive read discards whatever the caller did not survive to persist.
+ *   A turn can end between the response arriving and anything being written.
+ * - A separate acknowledgement costs a round trip and opens a window: a message
+ *   arriving between read and ack is cleared by an ack that predates it.
+ * - Carrying the previous batch's ids on the *next* fetch has neither. One
+ *   call, one transaction, and anything unacknowledged comes back.
+ *
+ * The cost is duplicates, and that is the right way round: a duplicate is
+ * visible and cheap to handle against a stable id, a loss is neither.
  */
 
-import { db, stmtPendingMessages, stmtUpdateMessageStatus } from "../db";
+import { MAILBOX_CAPABILITY_DEFAULTS } from "@agent-mesh/contracts";
+
+import {
+  db,
+  stmtAckMessage,
+  stmtCountLeasable,
+  stmtLeasableMessages,
+  stmtLeaseMessage,
+} from "../db";
 import { INVALID_PARAMS, rpcError, rpcResult } from "../jsonrpc";
 
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+
+/**
+ * How long a handed-out batch stays invisible (SPEC § 8.10.1).
+ *
+ * The contract's value unless a deployment overrides it. The tension is a turn
+ * that dies mid-batch: too short and a working caller is handed messages it is
+ * still on, too long and a caller that crashed waits that long for anything to
+ * be re-offered. Both are survivable because ids are stable, so this is a
+ * comfort setting rather than a correctness one — which is exactly why it is
+ * adjustable rather than compiled in.
+ */
+const LEASE_SECONDS = Number(
+  process.env.AGENT_MESH_RECEIVE_LEASE_SECONDS ?? MAILBOX_CAPABILITY_DEFAULTS.receive_lease_seconds,
+);
 
 export function handleReceive(
   identity: string | null,
@@ -39,25 +62,31 @@ export function handleReceive(
 
   const limit = Math.min(
     Math.max(parseInt(params.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),
-    MAX_LIMIT,
+    MAILBOX_CAPABILITY_DEFAULTS.max_receive_batch,
   );
 
-  const rows = stmtPendingMessages.all(identity) as Array<{
-    id: string;
-    from_agent: string;
-    to_agent: string;
-    sent_by: string | null;
-    content: string;
-    reply_to: string | null;
-    ts: string;
-  }>;
+  const ackIds: string[] = Array.isArray(params.ack_ids)
+    ? params.ack_ids.filter((x: unknown) => typeof x === "string")
+    : [];
 
-  const page = rows.slice(0, limit);
+  let page: any[] = [];
+  let remaining = 0;
 
-  // Oldest first, and marked as one unit. A partial mark would leave the caller
-  // unable to tell which half it had been handed.
+  // One transaction. The acknowledgement of the last batch and the lease of the
+  // next are the same act, so there is no instant at which a caller has settled
+  // one and not yet claimed the other.
   const tx = db.transaction(() => {
-    for (const m of page) stmtUpdateMessageStatus.run("delivered", m.id);
+    // Scoped to the caller's own queue, and ids it does not hold are ignored
+    // rather than refused: a caller retrying an ambiguous receive re-sends the
+    // same acknowledgements, and failing that retry would strand the very batch
+    // it is trying to settle.
+    for (const messageId of ackIds) stmtAckMessage.run(messageId, identity);
+
+    page = stmtLeasableMessages.all(identity, limit) as any[];
+    for (const m of page) {
+      stmtLeaseMessage.run(m.id, LEASE_SECONDS);
+    }
+    remaining = (stmtCountLeasable.get(identity) as { n: number }).n;
   });
   tx();
 
@@ -71,8 +100,10 @@ export function handleReceive(
       reply_to: m.reply_to,
       ts: m.ts,
     })),
-    // So a caller draining a backlog knows to come straight back rather than
-    // waiting for its next scheduled check.
-    remaining: Math.max(0, rows.length - page.length),
+    // Counted after the lease, so it excludes what was just handed out.
+    remaining,
+    // So a caller knows how long it has before these are offered again, and can
+    // decide whether to acknowledge now or keep working.
+    lease_seconds: LEASE_SECONDS,
   });
 }

@@ -123,6 +123,24 @@ this a storage concern rather than a consistency defect — blobs are immutable
 and content-addressed — but there is no collector, and the grace period before
 one could safely run is undecided.
 
+### A socketless caller can be handed the same message twice
+
+Delivery over § 8.10 is at-least-once: a batch not acknowledged comes back after
+its lease lapses. Clients deduplicate on the stable `id`. This is a deliberate
+trade rather than a defect — a duplicate is visible and cheap, a loss is
+neither — but it does mean the mesh does not promise exactly-once to a caller
+that cannot hold a socket, and no amount of tuning the lease changes that.
+
+### The send dedup table is never pruned
+
+`send_idempotency` grows with every `client_message_id` a caller uses. The
+contract advertises a window after which a key may be forgotten, and nothing
+enforces it yet.
+
+**Why deferred.** Pruning is a scheduled job and the table is small; getting the
+window wrong in the other direction — forgetting a key a client is still
+retrying — turns a retry into a duplicate send.
+
 ### Nonce windows are per process
 
 Both of them. The request-nonce window (§ 8.1) is in memory, which is correct

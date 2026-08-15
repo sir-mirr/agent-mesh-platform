@@ -173,6 +173,50 @@ export const stmtFetchMessages = db.prepare(`
   LIMIT ?3
 `);
 
+/**
+ * What a socketless caller may be handed (SPEC § 8.10.1).
+ *
+ * Pending, and either never leased or leased to a caller whose lease has
+ * lapsed. A batch handed out and not acknowledged therefore comes back — the
+ * caller's turn may simply have ended before it could persist them.
+ */
+export const stmtLeasableMessages = db.prepare(`
+  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
+  FROM messages
+  WHERE to_agent = ?1 AND status = 'pending'
+    AND (leased_until IS NULL OR leased_until < datetime('now'))
+  ORDER BY ts ASC
+  LIMIT ?2
+`);
+
+export const stmtLeaseMessage = db.prepare(`
+  UPDATE messages SET leased_until = datetime('now', '+' || ?2 || ' seconds') WHERE id = ?1
+`);
+
+/** Acknowledge, but only what the caller actually holds. */
+export const stmtAckMessage = db.prepare(`
+  UPDATE messages SET status = 'delivered', leased_until = NULL
+  WHERE id = ?1 AND to_agent = ?2
+`);
+
+export const stmtCountLeasable = db.prepare(`
+  SELECT COUNT(*) AS n FROM messages
+  WHERE to_agent = ?1 AND status = 'pending'
+    AND (leased_until IS NULL OR leased_until < datetime('now'))
+`);
+
+// --- send idempotency (SPEC § 8.2) -------------------------------------------
+
+export const stmtSelectIdempotency = db.prepare(`
+  SELECT request_digest, message_id, status FROM send_idempotency
+  WHERE sent_by = ?1 AND client_message_id = ?2
+`);
+
+export const stmtInsertIdempotency = db.prepare(`
+  INSERT INTO send_idempotency (sent_by, client_message_id, request_digest, message_id, status)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
 /** Oldest first: pending messages are replayed in the order they arrived. */
 export const stmtPendingMessages = db.prepare(`
   SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts

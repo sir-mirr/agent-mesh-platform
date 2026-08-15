@@ -650,6 +650,7 @@ params: {
   content:   string           // message body (often a formatted
                               // ChannelEnvelope string; see § 7.1)
   reply_to?: string | null    // peer message id this replies to
+  client_message_id?: string  // idempotency key, unique per sending identity
   from?:     string           // optional sender override; defaults
                               // to the socket's registered identity
                               // (used by proxy senders such as the
@@ -660,6 +661,18 @@ result: {
   status: "delivered" | "pending"
 }
 ```
+
+**Idempotency (0.2).** When `client_message_id` is present the hub MUST
+remember it, scoped to the **sending identity**. A repeat carrying the same key
+and the same message returns the original `id` and `status` with
+`duplicate: true`; a repeat carrying the same key and a *different* message is
+`-32015` SEND_CONFLICT and is **permanent**.
+
+It exists because the hub can commit a message and then fail to deliver the
+response — a lost HTTP reply, an ambiguous disconnect. To the hub the resulting
+retry is indistinguishable from a new send. Only the caller knows which it is,
+so only the caller can supply the key, and a key that means two things means
+neither.
 
 `status` is `"delivered"` when the recipient socket was online and the
 hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
@@ -1197,30 +1210,49 @@ Returns messages queued for the caller and marks them delivered.
 
 ```
 params: {
-  limit?: number              // default 50, max 200
+  limit?:   number            // default 50, max per capabilities
+  ack_ids?: string[]          // ids from the previous batch
 }
 result: {
   messages: Array<{           // oldest first, as § 8.8.1 shapes them
     id, from, to, sent_by, content, reply_to, ts
   }>
-  remaining: number           // still queued beyond this page
+  remaining:     number       // still available beyond this batch
+  lease_seconds: number       // how long this batch stays claimed
 }
 ```
 
 Also available over a socket, where it serves a client that would rather pull
 than rely on the replay at connect.
 
-**Reading marks delivered, in one transaction.** A read-now-acknowledge-later
-protocol has a window in which a message arriving between the two is cleared by
-an acknowledgement that predates it. That window only opens under load, which
-makes it the kind that is found in production rather than in testing.
+**Delivery is at-least-once, acknowledged on the next call.** A batch is handed
+out under a lease and stays invisible until it is acknowledged or the lease
+lapses. `ack_ids` settles the previous batch as part of fetching the next, so
+one call does both.
 
-The cost is that a caller which loses the response loses those messages. This is
-the deliberate trade: a caller can persist what it received before acting on it,
-which it controls, whereas it cannot control how long its own turn takes.
+Three designs were available and two of them lose:
 
-`remaining` exists so a caller draining a backlog knows to come straight back
-rather than waiting for its next scheduled check.
+- A **destructive read** discards whatever the caller did not survive to
+  persist. A turn can end between the response arriving and anything being
+  written down.
+- A **separate acknowledgement** costs a round trip and opens a window: a
+  message arriving between read and ack is cleared by an ack that predates it.
+  That window only opens under load, which makes it the kind found in
+  production rather than in testing.
+- **Piggybacking the acknowledgement** has neither. One call, one transaction,
+  and anything unacknowledged comes back.
+
+The cost is duplicates. Clients MUST deduplicate on `id`, which is stable across
+redeliveries. This is the right way round: a duplicate is visible and cheap to
+handle, a loss is neither.
+
+Ids in `ack_ids` that the caller does not hold MUST be ignored rather than
+refused. A caller retrying an ambiguous receive re-sends the same
+acknowledgements, and failing that retry would strand the batch it is settling.
+
+`remaining` counts what is available *after* this batch is leased, so a caller
+draining a backlog knows to come straight back rather than waiting for its next
+scheduled check.
 
 ## 9. HTTP REST contract
 

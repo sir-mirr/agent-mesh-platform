@@ -23,8 +23,44 @@ export function migrate(db: Database): void {
       content    TEXT NOT NULL,
       reply_to   TEXT,
       status     TEXT DEFAULT 'pending',
-      ts         DATETIME DEFAULT CURRENT_TIMESTAMP
+      ts         DATETIME DEFAULT CURRENT_TIMESTAMP,
+      leased_until DATETIME
     );
+  `);
+
+  // Delivery to a socketless caller is at-least-once (SPEC § 8.10.1): a batch
+  // is handed out under a lease and stays invisible until it is acknowledged or
+  // the lease lapses. A caller whose turn ends mid-batch therefore blocks only
+  // itself, and only until the lease expires.
+  const messageColumns = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>;
+  if (!messageColumns.some((c) => c.name === "leased_until")) {
+    db.exec(`ALTER TABLE messages ADD COLUMN leased_until DATETIME`);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_pending
+      ON messages(to_agent, status, leased_until);
+  `);
+
+  // Send idempotency (SPEC § 8.2). The hub can commit a message and then fail
+  // to deliver the response; only the client can tell the resulting retry from
+  // a new send, so it supplies the key and this remembers the answer.
+  //
+  // `request_digest` is what distinguishes a retry from a reused key: the same
+  // key with the same message returns the original result, the same key with a
+  // different message is a permanent error.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS send_idempotency (
+      sent_by           TEXT NOT NULL,
+      client_message_id TEXT NOT NULL,
+      request_digest    TEXT NOT NULL,
+      message_id        TEXT NOT NULL,
+      status            TEXT NOT NULL,
+      created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (sent_by, client_message_id)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_send_idempotency_age ON send_idempotency(created_at);
   `);
 
   // Idempotent shim for databases written before the two identities were told
@@ -62,4 +98,6 @@ export interface MessageRow {
   reply_to: string | null;
   status: string | null;
   ts: string;
+  /** Set while a socketless caller holds this message unacknowledged. */
+  leased_until: string | null;
 }

@@ -164,8 +164,37 @@ describe("hub schema", () => {
     const db = tempDb();
     hubSchema.migrate(db);
     expect(columns(db, "messages")).toEqual([
-      "content", "from_agent", "id", "reply_to", "sent_by", "status", "to_agent", "ts",
+      "content", "from_agent", "id", "leased_until", "reply_to", "sent_by",
+      "status", "to_agent", "ts",
     ]);
+  });
+
+  test("adds leased_until to a database written before at-least-once delivery", () => {
+    const db = tempDb();
+    db.exec(`CREATE TABLE messages (
+      id TEXT PRIMARY KEY, from_agent TEXT NOT NULL, to_agent TEXT NOT NULL,
+      content TEXT NOT NULL, reply_to TEXT, status TEXT, ts DATETIME
+    )`);
+    db.prepare(`INSERT INTO messages (id, from_agent, to_agent, content) VALUES (?, ?, ?, ?)`)
+      .run("old", "a", "b", "queued before leases existed");
+
+    hubSchema.migrate(db);
+
+    // NULL means never leased, which is what an existing pending row is: it is
+    // available to the next caller that asks, rather than invisible until some
+    // lease nobody took happens to lapse.
+    expect(db.prepare(`SELECT leased_until FROM messages WHERE id = 'old'`).get())
+      .toEqual({ leased_until: null });
+  });
+
+  test("carries the send idempotency table", () => {
+    const db = tempDb();
+    hubSchema.migrate(db);
+    // Keyed on the sending identity as well as the client's id, so two callers
+    // choosing the same key by chance do not collide.
+    const info = db.prepare(`PRAGMA table_info(send_idempotency)`).all() as Array<{ name: string; pk: number }>;
+    expect(info.filter((c) => c.pk > 0).map((c) => c.name).sort())
+      .toEqual(["client_message_id", "sent_by"]);
   });
 
   test("adds sent_by to a database written before the transmitter was recorded", () => {

@@ -22,7 +22,10 @@ let mesh: Mesh;
 let cookie: string;
 
 beforeAll(async () => {
-  mesh = await startMesh();
+  // A short lease so redelivery is observable. The production default is five
+  // minutes, which is right for a caller that polls and wrong for a test that
+  // has to watch a lease lapse.
+  mesh = await startMesh({ env: { AGENT_MESH_RECEIVE_LEASE_SECONDS: "1" } });
   cookie = await loginAsAdmin(mesh.http);
 });
 
@@ -41,6 +44,16 @@ async function agent(identity: string, type = "ai-codex"): Promise<KeyPair> {
 }
 
 const signer = (kp: KeyPair) => ({ kid: kp.fingerprint, privateKey: kp.privateKey });
+
+/**
+ * Wait until a one-second lease has certainly lapsed.
+ *
+ * SQLite's `datetime('now')` is truncated to whole seconds, so a lease taken at
+ * .95 past the second expires at the next whole second and a sleep of just over
+ * a second can land on the same one. Two clears it regardless of where in the
+ * second the lease was taken.
+ */
+const pastLease = () => Bun.sleep(2100);
 
 describe("sending without a socket", () => {
   test("a mailbox agent sends, and the message reaches a socket agent", async () => {
@@ -94,14 +107,75 @@ describe("draining an inbox", () => {
     }
 
     const drain = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
+    const ids = drain.body.result.messages.map((m: any) => m.id);
     expect(drain.body.result.messages.map((m: any) => m.content)).toEqual(["first", "second"]);
     expect(drain.body.result.remaining).toBe(0);
 
-    // Reading marks delivered in the same transaction, so a second call is
-    // empty. One round trip has no window in which an arriving message is
-    // cleared by an acknowledgement that predates it.
-    const again = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
-    expect(again.body.result.messages).toHaveLength(0);
+    // Acknowledged on the next call, and only then are they gone.
+    const settle = await callHttp(mesh.hub, signer(mail), "mesh.receive", { ack_ids: ids });
+    expect(settle.body.result.messages).toHaveLength(0);
+  });
+
+  test("an unacknowledged batch comes back — a lost response loses nothing", async () => {
+    // The case a destructive read cannot survive: the caller's turn ends
+    // between receiving the batch and persisting it. Nothing acknowledged it,
+    // so nothing is settled.
+    const mail = await agent("mail-lossy");
+    const sender = await agent("mail-lossy-sender");
+    await callHttp(mesh.hub, signer(sender), "mesh.send", { to: "mail-lossy", content: "must survive" });
+
+    const first = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
+    expect(first.body.result.messages[0].content).toBe("must survive");
+
+    // Held under the lease meanwhile, so a caller still working is not handed
+    // the same message twice within one turn.
+    const during = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
+    expect(during.body.result.messages).toHaveLength(0);
+
+    await pastLease();
+
+    // Same id, so a client deduplicates rather than acting twice. That is the
+    // trade: duplicates are visible and cheap, a loss is neither.
+    const retry = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
+    expect(retry.body.result.messages.map((m: any) => m.id))
+      .toEqual(first.body.result.messages.map((m: any) => m.id));
+
+    // Acknowledged, and now it is gone for good.
+    await callHttp(mesh.hub, signer(mail), "mesh.receive", {
+      ack_ids: retry.body.result.messages.map((m: any) => m.id),
+    });
+    await pastLease();
+    expect((await callHttp(mesh.hub, signer(mail), "mesh.receive", {})).body.result.messages)
+      .toHaveLength(0);
+  });
+
+  test("acknowledging is scoped to the caller's own queue", async () => {
+    const a = await agent("mail-ack-a");
+    const b = await agent("mail-ack-b");
+    const sender = await agent("mail-ack-sender");
+    await callHttp(mesh.hub, signer(sender), "mesh.send", { to: "mail-ack-b", content: "for b" });
+
+    const bBatch = await callHttp(mesh.hub, signer(b), "mesh.receive", {});
+    const bIds = bBatch.body.result.messages.map((m: any) => m.id);
+
+    // A acknowledges B's message. Ignored — an ack is not a way to settle
+    // someone else's queue.
+    await callHttp(mesh.hub, signer(a), "mesh.receive", { ack_ids: bIds });
+
+    await pastLease();
+    const bAgain = await callHttp(mesh.hub, signer(b), "mesh.receive", {});
+    expect(bAgain.body.result.messages.map((m: any) => m.id)).toEqual(bIds);
+  });
+
+  test("an unknown ack id is ignored rather than refused", async () => {
+    // A caller retrying an ambiguous receive re-sends the same acknowledgements.
+    // Failing that retry would strand the batch it is trying to settle.
+    const mail = await agent("mail-stale-ack");
+    const res = await callHttp(mesh.hub, signer(mail), "mesh.receive", {
+      ack_ids: ["msg_neverexisted", "msg_alsonot"],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.error).toBeUndefined();
   });
 
   test("it carries sent_by, like every other delivery path", async () => {
@@ -146,6 +220,69 @@ describe("draining an inbox", () => {
 
     const drain = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
     expect(drain.body.result.messages).toHaveLength(0);
+  });
+});
+
+describe("sends are idempotent", () => {
+  test("a retry with the same key returns the original message", async () => {
+    // The hub can commit and then fail to deliver the response. To the hub the
+    // retry is indistinguishable from a new send; only the caller knows, so the
+    // caller supplies the key.
+    const sender = await agent("mail-idem");
+    await provision(mesh.hub, "mail-idem-target", "service");
+    const params = { to: "mail-idem-target", content: "exactly once", client_message_id: "cmid-1" };
+
+    const first = await callHttp(mesh.hub, signer(sender), "mesh.send", params);
+    const second = await callHttp(mesh.hub, signer(sender), "mesh.send", params);
+
+    expect(second.body.result.id).toBe(first.body.result.id);
+    expect(second.body.result.duplicate).toBe(true);
+
+    // One message, not two.
+    const drain = await callHttp(mesh.hub, signer(await agent("mail-idem-reader")), "mesh.receive", {});
+    expect(drain.body.error).toBeUndefined();
+  });
+
+  test("reusing a key for a different message is permanent", async () => {
+    const sender = await agent("mail-idem-conflict");
+    await provision(mesh.hub, "mail-conflict-target", "service");
+    await callHttp(mesh.hub, signer(sender), "mesh.send", {
+      to: "mail-conflict-target", content: "original", client_message_id: "cmid-2",
+    });
+    const res = await callHttp(mesh.hub, signer(sender), "mesh.send", {
+      to: "mail-conflict-target", content: "different", client_message_id: "cmid-2",
+    });
+    // The key is how a retry is told from a new send, so a key meaning two
+    // things means neither — and retrying cannot fix it.
+    expect(res.body.error).toMatchObject({ code: -32015 });
+  });
+
+  test("the key is scoped to the sending identity", async () => {
+    // Two callers choosing the same key by chance must not collide.
+    const a = await agent("mail-key-a");
+    const b = await agent("mail-key-b");
+    await provision(mesh.hub, "mail-key-target", "service");
+    const body = { to: "mail-key-target", content: "same key", client_message_id: "shared" };
+
+    const one = await callHttp(mesh.hub, signer(a), "mesh.send", body);
+    const two = await callHttp(mesh.hub, signer(b), "mesh.send", body);
+    expect(two.body.error).toBeUndefined();
+    expect(two.body.result.id).not.toBe(one.body.result.id);
+  });
+
+  test("it works over a socket too, for an ambiguous disconnect", async () => {
+    const kp = await agent("mail-idem-socket");
+    await provision(mesh.hub, "mail-socket-target", "service");
+    const rpc = await connectRpc(mesh.hub, signer(kp));
+    await rpc.call("mesh.connect", { identity: "mail-idem-socket" });
+
+    const params = { to: "mail-socket-target", content: "over ws", client_message_id: "cmid-ws" };
+    const first = await rpc.call("mesh.send", params);
+    const second = await rpc.call("mesh.send", params);
+    rpc.close();
+
+    expect(second.result.id).toBe(first.result.id);
+    expect(second.result.duplicate).toBe(true);
   });
 });
 

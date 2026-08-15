@@ -2,16 +2,32 @@
  * `mesh.send` — route an envelope to another identity (SPEC § 8.2).
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
+import { MAILBOX_ERROR } from "@agent-mesh/contracts";
 import { entitlement } from "@agent-mesh/store";
 
-import { agentsDb, stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
+import {
+  agentsDb,
+  db,
+  stmtAgentDeleted,
+  stmtInsertIdempotency,
+  stmtInsertMessage,
+  stmtSelectIdempotency,
+  stmtUpdateMessageStatus,
+} from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, NOT_ENTITLED, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
+
+const SEND_CONFLICT = MAILBOX_ERROR.SEND_CONFLICT;
+
+/** The sender as it will be recorded, for the idempotency digest. */
+function effectiveSenderPreview(params: Record<string, any>, fallback: string): string {
+  return params.from && typeof params.from === "string" ? params.from : fallback;
+}
 
 export function handleSend(
   ws: any,
@@ -39,6 +55,42 @@ export function handleSend(
   // pending forever with nobody noticing.
   if (stmtAgentDeleted.get(to)) {
     return rpcError(id, INVALID_PARAMS, `recipient '${to}' has been deleted`);
+  }
+
+  let idempotencyDigest: string | null = null;
+
+  // Idempotency (SPEC § 8.2). The hub can commit a message and then fail to
+  // deliver the response — a lost HTTP reply, an ambiguous disconnect — after
+  // which a retry is indistinguishable from a new send *to the hub*. Only the
+  // caller knows which it is, so only the caller can supply the key.
+  const clientMessageId = params.client_message_id;
+  if (clientMessageId !== undefined) {
+    if (typeof clientMessageId !== "string" || clientMessageId.length === 0 || clientMessageId.length > 128) {
+      return rpcError(id, INVALID_PARAMS, "client_message_id must be a non-empty string of at most 128 chars");
+    }
+    const digest = createHash("sha256")
+      .update(`${to}\u0000${effectiveSenderPreview(params, senderIdentity)}\u0000${String(content)}\u0000${params.reply_to ?? ""}`)
+      .digest("hex");
+    const prior = stmtSelectIdempotency.get(senderIdentity, clientMessageId) as
+      | { request_digest: string; message_id: string; status: string }
+      | undefined;
+    if (prior) {
+      if (prior.request_digest === digest) {
+        // The original answer, not a second message. The caller's retry is
+        // doing the right thing and must not be punished for it.
+        return rpcResult(id, { id: prior.message_id, status: prior.status, duplicate: true });
+      }
+      // Permanent. The key is how a retry is told from a new send, so a key
+      // that means two things means neither — and no amount of retrying fixes
+      // a caller that reused one.
+      return rpcError(
+        id,
+        SEND_CONFLICT,
+        `client_message_id '${clientMessageId}' was already used for a different message`,
+        { code: "SEND_CONFLICT", client_message_id: clientMessageId },
+      );
+    }
+    idempotencyDigest = digest;
   }
 
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
@@ -86,8 +138,16 @@ export function handleSend(
   const isOnline = !!recipientWs;
   const status = isOnline ? "delivered" : "pending";
 
-  // Persist message
-  stmtInsertMessage.run(msgId, effectiveSender, to, senderIdentity, String(content), replyTo, status);
+  // The message and its idempotency record commit together, so a crash between
+  // them cannot leave a key that names a message which does not exist, or a
+  // message a retry would duplicate.
+  const persist = db.transaction(() => {
+    stmtInsertMessage.run(msgId, effectiveSender, to, senderIdentity, String(content), replyTo, status);
+    if (idempotencyDigest !== null && typeof clientMessageId === "string") {
+      stmtInsertIdempotency.run(senderIdentity, clientMessageId, idempotencyDigest, msgId, status);
+    }
+  });
+  persist();
 
   // Deliver immediately if recipient is online
   if (recipientWs) {
