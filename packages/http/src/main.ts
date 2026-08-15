@@ -40,6 +40,7 @@ import {
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
 import { openStore, type MessageRow } from '@agent-mesh/store'
+import { provisionHuman, provisionAllHumans } from './provision'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -94,6 +95,10 @@ function connectToHub(): void {
       if (webUsers.length > 0) {
         console.log(`[http-server] proxying for: ${webUsers.join(', ')}`)
       }
+      // A person must hold a mesh identity to be a participant (SPEC § 10.3).
+      // Done here rather than at startup because the hub is provably reachable
+      // at this instant, and a reconnect is exactly when a retry is wanted.
+      provisionAllHumans(webUsers).catch(() => {})
     }
     hubWs.onmessage = (e) => {
       try {
@@ -1061,6 +1066,15 @@ app.post('/api/v1/admin/approve', async (c) => {
 
   // Add to registry with channel:"web", type:"user"
   upsertApprovedWebUser(githubLogin)
+
+  // ...and as a mesh identity, which is what makes them a participant rather
+  // than a name the hub routes without recognising. Best-effort: approval must
+  // not fail because the hub is briefly unreachable, and the reconnect backfill
+  // retries.
+  const provisioned = await provisionHuman(githubLogin)
+  if (!provisioned.ok) {
+    console.warn(`[http-server] approved ${githubLogin} but could not register the mesh identity: ${provisioned.reason}`)
+  }
 
   // Grant wildcard messaging policy
   const db = getDb()

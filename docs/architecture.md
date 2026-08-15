@@ -95,14 +95,33 @@ so it is not shared, and putting it there would suggest otherwise.
 
 ### Two agent lists, on purpose
 
-`hub.db:agents` is the mesh registry: identities that may connect, with their
-type and last-seen. `agent-mesh.db:agent_registry` is what the web UI lists,
-including web users with an approval flag. They overlap and are not the same
-question — SPEC § 9.1 says so explicitly.
+`agents.db:agents` is the mesh registry: identities that may participate, with
+their type and last-seen. `agent-mesh.db:agent_registry` is what the web UI
+lists, including web users with an approval flag. They overlap and are not the
+same question — SPEC § 9.1 says so explicitly.
+
+A person now appears in both, and the difference is what each answers. The
+registry here says who the web surface shows and whether their access was
+approved; the mesh registry says the identity exists and what type it is. A
+person is provisioned into it as `human` when an operator approves them, over
+the hub's own `POST /api/v1/agents` rather than by writing the file — the hub
+owns those rules and is where they are stated once.
+
+Before that they had no mesh identity at all. The hub routed their messages and
+stored their name in `messages.from_agent` with no record that the name belonged
+to anyone, and `proxy_for` was the only place their existence appeared.
 
 The related distinction: an **identity** is permanent and unique on the mesh; a
 **name** is display text, may repeat, and may change. Only identity carries the
 uniqueness rules.
+
+A person's identity is their GitHub login verbatim, which is also the
+`github_login` this server authorises them by. The two are deliberately not
+normalised into each other: SPEC § 10.1 requires kebab-case, GitHub permits
+uppercase, and lowercasing for the mesh would split the identity from the `from`
+the http server sends on their behalf. A login the rule rejects is approved as a
+web user and logged as not registrable — visible rather than silently
+half-working.
 
 ### What 0.2 still changes
 
@@ -161,6 +180,7 @@ that produced these files was a move.
 main.ts        routes, SSE fan-out, the audit poller, wiring
 db.ts          agent-mesh.db, and the registry.json import that predates it
 auth.ts        GitHub OAuth and JWT
+provision.ts   registering an approved person as a mesh identity
 ui/            theme · landing · chat · admin
 ```
 

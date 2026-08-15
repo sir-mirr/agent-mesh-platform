@@ -9,6 +9,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { join } from "node:path";
 
 import { loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
 
@@ -146,5 +148,82 @@ describe("hub connection", () => {
     // real deployment; here we just assert it got as far as trying.
     await Bun.sleep(300);
     expect(mesh.http.output()).toContain("hub");
+  });
+});
+
+/**
+ * SPEC § 10.3 — a person holds a mesh identity, like any other participant.
+ *
+ * Before this they existed only in `agent-mesh.db:agent_registry` and as a
+ * string in the `proxy_for` list. The hub routed their messages and stored
+ * their name in `messages.from_agent` without any record that the name
+ * belonged to anyone.
+ */
+describe("people are mesh participants", () => {
+  const httpDb = () => new Database(join(mesh.stateDir, "agent-mesh.db"));
+  const agentsDb = () => new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+
+  /** Pending rows are normally written by the OAuth callback. */
+  const requestAccess = (login: string) => {
+    const db = httpDb();
+    db.prepare(
+      `INSERT OR REPLACE INTO pending_approvals (github_login, github_id, status) VALUES (?, ?, 'pending')`,
+    ).run(login, Math.floor(Math.random() * 1e6));
+    db.close();
+  };
+
+  const approve = (login: string) =>
+    fetch(`${mesh.http.url}/api/v1/admin/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ github_login: login }),
+    });
+
+  const meshIdentity = (identity: string) => {
+    const db = agentsDb();
+    const row = db.prepare(
+      `SELECT identity, type FROM agents WHERE identity = ?`,
+    ).get(identity) as { identity: string; type: string | null } | undefined;
+    db.close();
+    return row ?? null;
+  };
+
+  test("human is a seeded type the hub accepts", async () => {
+    expect((await provision(mesh.hub, "typed-person", "human")).status).toBe(201);
+  });
+
+  test("approving a person registers them on the mesh as type human", async () => {
+    requestAccess("new-person");
+    expect((await approve("new-person")).status).toBe(200);
+
+    expect(meshIdentity("new-person")).toEqual({ identity: "new-person", type: "human" });
+
+    // And the http-side registry still has them, which is a different question
+    // (architecture.md § 2) — this one lists who the web UI shows.
+    const db = httpDb();
+    const registry = db.prepare(
+      `SELECT type, approved FROM agent_registry WHERE id = 'new-person'`,
+    ).get() as { type: string; approved: number };
+    db.close();
+    expect(registry).toEqual({ type: "user", approved: 1 });
+  });
+
+  test("approving twice changes nothing", async () => {
+    requestAccess("twice-person");
+    await approve("twice-person");
+    requestAccess("twice-person");
+    expect((await approve("twice-person")).status).toBe(200);
+    expect(meshIdentity("twice-person")).toEqual({ identity: "twice-person", type: "human" });
+  });
+
+  test("a login the identity rule rejects still gets approved, and says so", async () => {
+    // GitHub allows uppercase; the identity rule (SPEC § 10.1) does not.
+    // Lowercasing here would split the mesh identity from the github_login this
+    // server sends as `from`, so approval succeeds and the person is simply not
+    // a mesh participant yet.
+    requestAccess("MixedCase");
+    expect((await approve("MixedCase")).status).toBe(200);
+    expect(meshIdentity("MixedCase")).toBeNull();
+    expect(meshIdentity("mixedcase")).toBeNull();
   });
 });
