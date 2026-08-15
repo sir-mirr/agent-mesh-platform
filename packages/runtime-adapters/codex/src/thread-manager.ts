@@ -109,6 +109,9 @@ export interface ThreadManagerOptions {
   codex: CodexClient;
   router: ReplyDispatcher;
   fromIdentity: string;
+  /** Identity that receives out-of-band operator alerts (auth failures, stuck
+   *  turns). Deployment-specific — when unset the alerts are logged only. */
+  operatorIdentity?: string | null;
   cwd: string;
   developerInstructions: string;
   initialThreadId?: string | null;
@@ -150,7 +153,8 @@ export class ThreadManager {
       enabled: opts.rotation?.enabled ?? false,
       turnThreshold: opts.rotation?.turnThreshold ?? 25,
       handoffDir:
-        opts.rotation?.handoffDir ?? "/home/ubuntu/ai/workspaces/kongming/handoffs",
+        opts.rotation?.handoffDir ??
+        `/var/lib/agent-mesh/lane/${opts.fromIdentity}/handoffs`,
       persistTurnCount: (turnCount) => this.opts.onTurnCountChange?.(turnCount),
     });
     if (opts.initialTurnCount !== undefined && opts.initialTurnCount !== null) {
@@ -459,12 +463,17 @@ export class ThreadManager {
     if (now - this.lastUnauthorizedAlertAt < 5 * 60 * 1000) return;
     this.lastUnauthorizedAlertAt = now;
     const turnId = this.activeEnvelope?.turnId ?? "(no-turn)";
+    const operator = this.opts.operatorIdentity;
+    if (!operator) {
+      log(`codex unauthorized detected (turnId=${turnId}); no operatorIdentity configured, alert not routed`);
+      return;
+    }
     const text =
       `🚨 [runtime-codex] Codex unauthorized 감지 — \`codex login\` 재실행이 필요할 수 있습니다.\n` +
       `error: ${errMsg || "(no message)"}\n` +
       `codexErrorInfo: ${errInfo ?? "(none)"}\n` +
       `turnId: ${turnId}`;
-    void this.opts.router.sendMeshAdhoc("arumi", text).catch((error) => {
+    void this.opts.router.sendMeshAdhoc(operator, text).catch((error) => {
       log(`unauthorized alert send failed: ${error}`);
     });
   }
@@ -1107,21 +1116,27 @@ export class ThreadManager {
         });
     }
     if (opts.requiresOperator) {
+      const operator = this.opts.operatorIdentity;
+      if (!operator) {
+        log(
+          `turn stuck streak=${opts.streak} turnId=${env.turnId} service=${opts.serviceUnit}; ` +
+          `no operatorIdentity configured, hint not routed`
+        );
+        return;
+      }
       const text =
         `🚨 [runtime-codex watchdog] ${this.opts.fromIdentity} turn stuck가 ${opts.streak}회 연속 감지됐습니다.\n` +
         `turnId=${env.turnId}\n` +
         `service=${opts.serviceUnit}\n` +
         `권고: codex-app-server 상태 확인 또는 restart 검토`;
-      void this.opts.router.sendMeshAdhoc("arumi", text).catch((error) => {
+      void this.opts.router.sendMeshAdhoc(operator, text).catch((error) => {
         log(`watchdog operator hint send failed: ${error}`);
       });
     }
   }
 
   private appServerServiceUnitHint(): string {
-    return this.opts.fromIdentity === "kongming"
-      ? "codex-app-server.service"
-      : `codex-app-server@${this.opts.fromIdentity}`;
+    return `codex-app-server@${this.opts.fromIdentity}`;
   }
 
   private stripDiscordTypingSentinels(text: string, _env: TurnEnvelope): string {

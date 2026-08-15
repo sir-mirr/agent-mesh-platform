@@ -18,6 +18,11 @@ const IDENTITY = process.env.SELF_REMINDER_IDENTITY ?? "self-reminder";
 const POLL_MS = Number(process.env.SELF_REMINDER_POLL_MS ?? 1000);
 const OVERDUE_HOLD_MS = Number(process.env.SELF_REMINDER_OVERDUE_HOLD_MS ?? 5 * 60_000);
 const STALLED_AFTER_MS = Number(process.env.SELF_REMINDER_STALLED_AFTER_MS ?? 5 * 60_000);
+// Deployment-specific. Unset means recovery alerts are recorded but not sent.
+const RECOVERY_ALERT_RECIPIENTS = (process.env.SELF_REMINDER_RECOVERY_ALERT_RECIPIENTS ?? "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 function log(event: string, fields: Record<string, unknown> = {}): void {
   console.log(`[self-reminder ${new Date().toISOString()}] ${event}`, JSON.stringify(fields));
@@ -54,6 +59,7 @@ if (recovered.changes > 0) log("recovered_stuck_firing_rows", { count: recovered
 const scheduler = new ReminderScheduler(db, {
   overdueHoldMs: OVERDUE_HOLD_MS,
   stalledAfterMs: STALLED_AFTER_MS,
+  recoveryAlertRecipients: RECOVERY_ALERT_RECIPIENTS,
   log,
 });
 
@@ -79,4 +85,4 @@ setInterval(() => {
       }));
 }, POLL_MS);
 
-log("scheduler_started", { db_path: DB_PATH, poll_ms: POLL_MS, identity: IDENTITY, overdue_policy: "hold_pending_pm_decision" });
+log("scheduler_started", { db_path: DB_PATH, poll_ms: POLL_MS, identity: IDENTITY, overdue_policy: "hold_pending_operator_decision" });

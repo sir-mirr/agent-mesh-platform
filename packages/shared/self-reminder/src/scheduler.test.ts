@@ -21,11 +21,11 @@ function testDb(): Database {
 }
 
 function addDue(db: Database, at: string): void {
-  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('r1', 'finja', 'once', '{}', 'private reminder body', '{"task_id":"t1"}', 'active', ?, 'finja')`).run(at);
+  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('r1', 'agent-a', 'once', '{}', 'private reminder body', '{"task_id":"t1"}', 'active', ?, 'agent-a')`).run(at);
 }
 
 function addCron(db: Database, id: string, cron: string, at: string): void {
-  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES (?, 'finja', 'cron', ?, 'fixture reminder body', '{}', 'active', ?, 'finja')`)
+  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES (?, 'agent-a', 'cron', ?, 'fixture reminder body', '{}', 'active', ?, 'agent-a')`)
     .run(id, JSON.stringify({ cron, tz: "Asia/Seoul" }), at);
 }
 
@@ -39,6 +39,7 @@ describe("ReminderScheduler health and overdue policy", () => {
       overdueHoldMs: 60_000,
       stalledAfterMs: 60_000,
       stallLogIntervalMs: 60_000,
+      recoveryAlertRecipients: ["alert-route-1", "alert-route-2"],
     });
     scheduler.setConnectivity("unavailable", "duplicate_identity");
     now = new Date("2026-07-14T00:02:00.000Z");
@@ -55,8 +56,33 @@ describe("ReminderScheduler health and overdue policy", () => {
       return { status: "pending" };
     });
     await scheduler.onHubRegistered(async (recipient) => { recipients.push(recipient); return {}; });
-    expect(recipients).toEqual(["finja", "team-lead"]);
+    expect(recipients).toEqual(["alert-route-1", "alert-route-2"]);
     expect(scheduler.getHealthState("last_successful_hub_registration")).toBe(now.toISOString());
+  });
+
+  test("records the recovery event but routes no alert when no recipients are configured", async () => {
+    const db = testDb();
+    let now = new Date("2026-07-14T00:00:00.000Z");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+    scheduler.setConnectivity("unavailable", "duplicate_identity");
+    now = new Date("2026-07-14T00:02:00.000Z");
+
+    const recipients: string[] = [];
+    await scheduler.onHubRegistered(async (recipient) => { recipients.push(recipient); return {}; });
+
+    expect(recipients).toEqual([]);
+    expect(db.prepare(`SELECT count(*) AS count FROM scheduler_events WHERE event_type = 'scheduler_recovered'`).get()).toEqual({ count: 1 });
+    expect(scheduler.getHealthState("last_successful_hub_registration")).toBe(now.toISOString());
+  });
+
+  test("rejects an overdue decision whose approval reference lacks the configured prefix", () => {
+    const db = testDb();
+    const scheduler = new ReminderScheduler(db, { overdueApprovalPrefix: "OPS-OK:" });
+
+    expect(() => scheduler.recordOverdueDecision("r1", "2026-07-13 23:00:00", "replay", "nope"))
+      .toThrow('approval reference must start with "OPS-OK:"');
+    expect(() => scheduler.recordOverdueDecision("r1", "2026-07-13 23:00:00", "replay", "OPS-OK:ticket-42"))
+      .not.toThrow();
   });
 
   test("holds overdue reminders without firing, rescheduling, or changing reminder state", async () => {

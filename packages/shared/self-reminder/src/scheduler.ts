@@ -19,6 +19,11 @@ export interface SchedulerOptions {
   stalledAfterMs?: number;
   stallLogIntervalMs?: number;
   log?: (event: string, fields: Record<string, unknown>) => void;
+  /** Identities notified when the scheduler recovers from a hub outage.
+   *  Deployment-specific — the scheduler ships with no built-in recipients. */
+  recoveryAlertRecipients?: readonly string[];
+  /** Prefix an `approvalRef` must carry for `recordOverdueDecision` to accept it. */
+  overdueApprovalPrefix?: string;
 }
 
 function sqliteTime(date: Date): string {
@@ -62,13 +67,15 @@ function formatPayload(r: DueReminder, now: Date): string {
 }
 
 /** SQLite-backed scheduler state. It never replays overdue rows unless a future
- * caller explicitly records a PM-approved replay decision. */
+ * caller explicitly records an approved replay decision. */
 export class ReminderScheduler {
   private readonly now: () => Date;
   private readonly overdueHoldMs: number;
   private readonly stalledAfterMs: number;
   private readonly stallLogIntervalMs: number;
   private readonly log: (event: string, fields: Record<string, unknown>) => void;
+  private readonly recoveryAlertRecipients: readonly string[];
+  private readonly overdueApprovalPrefix: string;
   private ticking = false;
 
   constructor(private readonly db: Database, options: SchedulerOptions = {}) {
@@ -77,6 +84,8 @@ export class ReminderScheduler {
     this.stalledAfterMs = options.stalledAfterMs ?? 5 * 60_000;
     this.stallLogIntervalMs = options.stallLogIntervalMs ?? 5 * 60_000;
     this.log = options.log ?? (() => {});
+    this.recoveryAlertRecipients = options.recoveryAlertRecipients ?? [];
+    this.overdueApprovalPrefix = options.overdueApprovalPrefix ?? "APPROVED:";
     this.migrate();
   }
 
@@ -114,7 +123,11 @@ export class ReminderScheduler {
     // crash or route failure cannot cause duplicate recovery alerts on restart.
     this.putState("recovery_alert_outage", outageStarted, now);
     this.recordEvent("scheduler_recovered", { outage_started: outageStarted, due_active_count: dueCount, error_category: category }, now);
-    for (const recipient of ["finja", "team-lead"]) {
+    if (this.recoveryAlertRecipients.length === 0) {
+      this.log("scheduler_recovery_alert_skipped", { reason: "no_recipients_configured" });
+      return;
+    }
+    for (const recipient of this.recoveryAlertRecipients) {
       try {
         await sendAlert(recipient, alert);
       } catch {
@@ -170,9 +183,11 @@ export class ReminderScheduler {
     }
   }
 
-  /** Future PM-controlled path. No production call site invokes this method. */
+  /** Future operator-controlled path. No production call site invokes this method. */
   recordOverdueDecision(reminderId: string, scheduledAt: string, decision: "replay" | "skip", approvalRef: string): void {
-    if (!approvalRef.startsWith("PM-APPROVED:")) throw new Error("PM approval reference required");
+    if (!approvalRef.startsWith(this.overdueApprovalPrefix)) {
+      throw new Error(`approval reference must start with "${this.overdueApprovalPrefix}"`);
+    }
     this.db.prepare(`
       INSERT INTO overdue_decisions (reminder_id, scheduled_at, decision, approval_ref, decided_at)
       VALUES (?, ?, ?, ?, ?)
@@ -194,8 +209,8 @@ export class ReminderScheduler {
     const holdKey = `overdue_hold:${reminder.id}:${reminder.next_fire_at}`;
     if (!this.getState(holdKey)) {
       this.putState(holdKey, now.toISOString(), now);
-      this.recordEvent("overdue_hold", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_pm_decision" }, now);
-      this.log("overdue_reminder_held", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_pm_decision" });
+      this.recordEvent("overdue_hold", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_operator_decision" }, now);
+      this.log("overdue_reminder_held", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_operator_decision" });
     }
     return true;
   }

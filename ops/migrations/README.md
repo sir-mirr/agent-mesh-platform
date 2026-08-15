@@ -18,9 +18,10 @@ sequence.
   guard `ALTER TABLE ADD COLUMN` with a `PRAGMA table_info` probe in a
   wrapping script, or wrap the statement in a transaction the operator
   can safely retry on a partial failure.
-- Real lane / lab DBs are touched **only by the operator (PM gateway,
-  i.e. 본체 아름이 in production, plus the steward via SSH)**. The DBA
-  sub-agent track produces the SQL; application is a separate gate.
+- Real lane / lab DBs are touched **only by the deployment operator**
+  (provisioning tooling on the core VM, or a human with SSH access).
+  Authoring the SQL and applying it are separate gates: whoever writes a
+  migration does not apply it to a live database.
 
 ## Applying
 

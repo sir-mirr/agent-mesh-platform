@@ -733,17 +733,17 @@ const heartbeatInterval = setInterval(() => {
 // REST: POST /api/agents — pre-register identity with type
 // ---------------------------------------------------------------------------
 //
-// Replaces the legacy "本体 PM directly INSERTs via Python sqlite3" pattern.
-// The PM (or any internal caller on the Tailscale net) POSTs identity + type
-// + description, and the hub upserts. Why pre-register: mesh.register only
-// writes (identity, description) → new identities land with type=NULL → UI
-// shows "Unknown" until manual SQL fix-up. Pre-registration lets the adder
-// classify type up front.
+// Replaces the legacy "operator INSERTs into hub.db directly via sqlite3"
+// pattern. Any internal caller POSTs identity + type + description, and the
+// hub upserts. Why pre-register: mesh.register only writes
+// (identity, description) → new identities land with type=NULL → UI shows
+// "Unknown" until manual SQL fix-up. Pre-registration lets the adder classify
+// type up front.
 //
-// Authentication: none (1차 구현). The hub binds to the Tailscale interface
-// and assumes internal-only access, same trust boundary as ws://arumhub:3100/ws
-// and the existing un-authenticated mesh.register. If/when needed, gate on
-// env HUB_API_TOKEN compared against body.authToken.
+// Authentication: none (1차 구현). The hub binds to a trust-bounded interface
+// and assumes internal-only access, the same trust boundary as the hub
+// WebSocket endpoint and the existing un-authenticated mesh.register. If/when
+// needed, gate on env HUB_API_TOKEN compared against body.authToken.
 
 const VALID_AGENT_TYPES = new Set(["ai-claude", "ai-codex", "service"]);
 const IDENTITY_RE = /^[a-z][a-z0-9-]*$/;
@@ -822,8 +822,8 @@ async function handlePostAgents(req: Request): Promise<Response> {
 // SPEC §9 ("Base prefix: /api/v1") + §10 ("identity provisioning for remote
 // lanes goes through POST /api/v1/agents on the core hub") normatively pin
 // the versioned path. The unversioned /api/agents endpoint remains as a
-// backwards-compatible alias for older callers (本体 PM gateway scripts,
-// destroy-shadow-agent.sh) and behaves identically aside from response shape.
+// backwards-compatible alias for older callers (operator provisioning
+// scripts) and behaves identically aside from response shape.
 //
 // Differences vs /api/agents:
 //   • Returns 201 on first insert, 200 on UPSERT-update — lets callers

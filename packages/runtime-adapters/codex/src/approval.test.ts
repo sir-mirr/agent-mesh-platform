@@ -22,7 +22,7 @@ describe("autoApprovalResponse", () => {
 
   test("accepts MCP tool-call elicitation", () => {
     expect(autoApprovalResponse("mcpServer/elicitation/request", {
-      mode: "form", serverName: "synapse", requestedSchema: {},
+      mode: "form", serverName: "example-mcp", requestedSchema: {},
     })).toEqual({ action: "accept", content: {}, _meta: null });
   });
 

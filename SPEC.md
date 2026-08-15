@@ -904,8 +904,8 @@ for remote lanes goes through `POST /api/v1/agents` on the core hub.
 The core hub MUST expose `POST /api/v1/agents` on the same HTTP listener
 that serves WebSocket upgrades (`AGENT_MESH_HUB_PORT`, default `3100`).
 This endpoint is the single normative entry point for inserting or
-updating rows in `hub.db:agents` from any caller — local bootstrap, the
-PM gateway, or remote lane VMs.
+updating rows in `hub.db:agents` from any caller — local bootstrap,
+operator provisioning tooling, or remote lane VMs.
 
 **Request** (`Content-Type: application/json`):
 
@@ -976,8 +976,8 @@ write directly to `hub.db` (whether by `sqlite3` shell, SQL over an SSH
 tunnel, or any other mechanism); the API is the only sanctioned path.
 
 **Backwards compatibility.** The hub MAY also expose the unversioned
-alias `POST /api/agents` for legacy callers (PM gateway scripts predating
-this spec section). The alias MUST validate identically; its response
+alias `POST /api/agents` for legacy callers (operator provisioning scripts
+predating this spec section). The alias MUST validate identically; its response
 shape MAY differ. New callers MUST prefer the versioned path.
 
 The current legacy response shape on the reference hub is:

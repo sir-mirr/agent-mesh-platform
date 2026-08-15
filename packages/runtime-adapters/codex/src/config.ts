@@ -13,6 +13,8 @@ export interface CodexAdapterConfig {
   adapterIdentity: string;
   proxyFor: string[];
   targetAgent: string;
+  /** Identity notified about auth failures and stuck turns. Null disables routing. */
+  operatorIdentity: string | null;
   instructionsText: string;
   instructionsPath: string;
   statePath: string;
@@ -27,7 +29,7 @@ export interface CodexAdapterConfig {
 }
 
 function defaultInstructionsPath(): string {
-  return new URL("./kongming-instructions.txt", import.meta.url).pathname;
+  return new URL("./default-instructions.txt", import.meta.url).pathname;
 }
 
 function parsePositiveInt(raw: string | undefined): number | null {
@@ -60,7 +62,7 @@ function normalizeOptionalString(raw: string | undefined): string | null {
 }
 
 export function loadCodexAdapterConfig(): CodexAdapterConfig {
-  const hubUrl = process.env.HUB_URL ?? "ws://arumhub:3100/ws";
+  const hubUrl = process.env.HUB_URL ?? "ws://127.0.0.1:3100/ws";
   const codexUrl = process.env.CODEX_URL ?? "ws://127.0.0.1:4500";
   const adapterIdentity =
     process.env.CODEX_ADAPTER_IDENTITY ??
@@ -69,21 +71,21 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
   const proxyFor = (
     process.env.CODEX_PROXY_FOR ??
     process.env.BRIDGE_PROXY_FOR ??
-    "kongming"
+    ""
   )
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  // With no proxy configured the adapter speaks only as itself.
   const targetAgent =
     process.env.CODEX_TARGET_AGENT ??
     process.env.BRIDGE_TARGET_AGENT ??
     proxyFor[0] ??
-    "kongming";
+    adapterIdentity;
 
   const instructionsPath =
     process.env.RUNTIME_INSTRUCTIONS_PATH ??
     process.env.CODEX_INSTRUCTIONS_PATH ??
-    process.env.KONGMING_INSTRUCTIONS_PATH ??
     defaultInstructionsPath();
   let instructionsText = "";
   try {
@@ -92,10 +94,11 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     console.warn(`[runtime-codex] failed to load instructions from ${instructionsPath}:`, error);
   }
 
+  // SPEC § 14.8 — per-lane mutable state lives under /var/lib/agent-mesh/lane/<lane-id>/.
   const statePath =
     process.env.CODEX_ADAPTER_STATE_PATH ??
     process.env.BRIDGE_STATE_PATH ??
-    "/home/ubuntu/ai/channels/agent-mesh-codex-bridge/state.json";
+    `/var/lib/agent-mesh/lane/${targetAgent}/codex-state.json`;
 
   const tokenFile = process.env.CODEX_TOKEN_FILE ?? null;
   let codexAuthToken: string | null = null;
@@ -122,24 +125,18 @@ export function loadCodexAdapterConfig(): CodexAdapterConfig {
     adapterIdentity,
     proxyFor,
     targetAgent,
+    operatorIdentity: normalizeOptionalString(process.env.RUNTIME_OPERATOR_IDENTITY),
     instructionsText,
     instructionsPath,
     statePath,
     codexAuthToken,
     codexCwd: process.env.CODEX_CWD ?? process.cwd(),
-    rotationEnabled: parseBool(
-      process.env.RUNTIME_ROTATION_ENABLED ?? process.env.KONGMING_ROTATION_ENABLED,
-      true,
-    ),
+    rotationEnabled: parseBool(process.env.RUNTIME_ROTATION_ENABLED, true),
     rotationTurnThreshold:
-      parsePositiveInt(
-        process.env.RUNTIME_ROTATION_TURN_THRESHOLD ??
-          process.env.KONGMING_ROTATION_TURN_THRESHOLD,
-      ) ?? 25,
+      parsePositiveInt(process.env.RUNTIME_ROTATION_TURN_THRESHOLD) ?? 25,
     handoffDir:
       process.env.RUNTIME_HANDOFF_DIR ??
-      process.env.KONGMING_HANDOFF_DIR ??
-      "/home/ubuntu/ai/workspaces/kongming/handoffs",
+      `/var/lib/agent-mesh/lane/${targetAgent}/handoffs`,
     httpPort: parsePort(
       process.env.CODEX_ADAPTER_HTTP_PORT ?? process.env.BRIDGE_HTTP_PORT,
       4600,

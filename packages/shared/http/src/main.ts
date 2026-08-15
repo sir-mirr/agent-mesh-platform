@@ -51,6 +51,8 @@ const REGISTRY_FILE = join(STATE_DIR, 'registry.json')
 const HUB_DB_PATH = join(STATE_DIR, 'hub.db')
 const startTime = Date.now()
 const IS_DEV = process.env.NODE_ENV === 'development'
+// Mesh identity pinged when a new user needs approval. Deployment-specific.
+const ADMIN_NOTIFY_IDENTITY = process.env.AGENT_MESH_ADMIN_NOTIFY_IDENTITY?.trim() || null
 
 // --- Hub DB (read-only audit access) ---
 let _hubDb: Database | null = null
@@ -486,9 +488,14 @@ function isUserApproved(githubLogin: string, role: string): boolean {
 }
 
 function notifyApprovalRequest(githubLogin: string, _githubId: number): void {
-  // Send notification via hub
+  // Deployment-specific. Unset means approvals wait in /api/v1/admin/pending
+  // without an out-of-band ping.
+  if (!ADMIN_NOTIFY_IDENTITY) {
+    console.log(`agent-mesh-http: approval pending for ${githubLogin}; AGENT_MESH_ADMIN_NOTIFY_IDENTITY unset, no notification sent`)
+    return
+  }
   const msg = `새 사용자 승인 요청: ${githubLogin} (GitHub). /api/v1/admin/pending에서 확인하세요.`
-  sendViaHub('arumi', msg, 'system').catch(() => {
+  sendViaHub(ADMIN_NOTIFY_IDENTITY, msg, 'system').catch(() => {
     console.error('agent-mesh-http: failed to send approval notification via hub')
   })
 }

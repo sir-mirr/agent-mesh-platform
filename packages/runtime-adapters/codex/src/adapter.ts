@@ -123,6 +123,7 @@ export class CodexRuntimeAdapter {
       codex: this.codex,
       router: this.dispatcher,
       fromIdentity: this.config.targetAgent,
+      operatorIdentity: this.config.operatorIdentity,
       cwd: this.config.codexCwd,
       developerInstructions: this.config.instructionsText,
       initialThreadId: persisted.threadId ?? null,
