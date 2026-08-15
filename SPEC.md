@@ -151,9 +151,25 @@ The hub MUST:
 - Send a WebSocket-level `ping` frame to every connected agent every
   **30 seconds**. Agents MUST respond with a `pong` frame (the
   WebSocket runtime handles this transparently in most clients).
-  Failure of the `ping` send marks the connection offline and removes
-  it from the online map; `agents.last_seen` is touched before the
-  socket is dropped.
+
+  A connection that has been pinged and has sent **no frame of any
+  kind** — `pong`, request, or notification — by the following sweep
+  MUST be treated as unreachable: `agents.last_seen` is touched, the
+  socket is removed from the online map *and from any proxy routes it
+  holds* (§ 8.2), and it is then closed with code `1001`.
+
+  Absence of an answer is the signal, not failure of the `ping` send.
+  A half-open socket accepts writes indefinitely — the peer is gone,
+  no close frame arrived, and the send therefore succeeds; a hub that
+  waited for the send to fail would never drop anything. Two sweeps
+  are required before a connection can be judged, so an agent that
+  connects between sweeps gets a full interval of grace.
+
+  Any inbound frame counts as proof of life. Counting only `pong`
+  would make a busy connection whose `pong` is queued behind a large
+  request look unreachable, and dropping a connection that is actively
+  working is a worse failure than holding a dead one one interval
+  longer.
 
 The hub MUST NOT:
 

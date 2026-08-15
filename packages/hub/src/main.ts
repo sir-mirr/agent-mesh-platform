@@ -10,9 +10,10 @@
  */
 
 import { closeDatabases, stmtUpdateLastSeen } from "./db";
+import { Heartbeat } from "./heartbeat";
 import { SERVER_ERROR, rpcError } from "./jsonrpc";
 import { log } from "./log";
-import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
+import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
 } from "./rest/agents";
@@ -23,30 +24,31 @@ import { dispatch, dispatchHttp } from "./rpc/dispatch";
 // ---------------------------------------------------------------------------
 
 const HUB_PORT = parseInt(process.env.AGENT_MESH_HUB_PORT ?? "3100", 10);
-const HEARTBEAT_INTERVAL_MS = 30_000;
+
+// SPEC § 3.1 fixes the production value at 30 seconds. It is overridable
+// because a test of half-open detection has to wait out two sweeps, and a test
+// that waits a minute is one nobody runs.
+const HEARTBEAT_INTERVAL_MS = parseInt(
+  process.env.AGENT_MESH_HEARTBEAT_MS ?? "30000",
+  10,
+);
 
 // ---------------------------------------------------------------------------
 // Heartbeat
 // ---------------------------------------------------------------------------
 //
-// A failed ping is how a half-open socket is noticed: the peer is gone but the
-// close event never arrived. `last_seen` is touched before the entry is
-// dropped so the registry still records when it was last reachable.
+// Detection lives in `heartbeat.ts`, which holds the reasoning; this is the
+// wiring. Every path the peer can prove it is alive on has to feed `alive`, or
+// a working connection gets dropped after two quiet sweeps.
 
-const heartbeatInterval = setInterval(() => {
-  for (const [identity, ws] of onlineAgents) {
-    try {
-      ws.ping();
-    } catch {
-      log(`heartbeat failed for ${identity}, removing`);
-      if (connectionOwnership.owner(identity) === ws) {
-        connectionOwnership.release(ws);
-        onlineAgents.delete(identity);
-      }
-      stmtUpdateLastSeen.run(identity);
-    }
-  }
-}, HEARTBEAT_INTERVAL_MS);
+const heartbeat = new Heartbeat({
+  online: onlineAgents,
+  touchLastSeen: (identity) => stmtUpdateLastSeen.run(identity),
+  drop: (ws, identity) => dropConnection(ws, identity),
+  log,
+});
+
+const heartbeatInterval = setInterval(() => heartbeat.sweep(), HEARTBEAT_INTERVAL_MS);
 
 // ---------------------------------------------------------------------------
 // Server
@@ -151,7 +153,17 @@ const server = Bun.serve({
       log(`connection opened`);
     },
 
+    // A pong is the answer the heartbeat asked for (SPEC § 3.1). Bun does not
+    // surface it unless this handler exists, so without it every socket would
+    // look silent and the sweep would drop the whole mesh every two intervals.
+    pong(ws) {
+      heartbeat.alive(ws);
+    },
+
     message(ws, msg) {
+      // Any inbound frame is proof of life, not only a pong.
+      heartbeat.alive(ws);
+
       // The last guard. A handler that throws here would otherwise take the
       // exception out of the socket callback and answer nothing — the caller
       // waits for a reply that never comes, which is indistinguishable from a
@@ -171,6 +183,7 @@ const server = Bun.serve({
     },
 
     close(ws, code, reason) {
+      heartbeat.forget(ws);
       const identity = wsIdentities.get(ws);
       if (identity) {
         // Release only when this socket is still owner. A stale close must not
