@@ -159,6 +159,30 @@ export function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_agent_key_events_identity
       ON agent_key_events(identity, occurred_at);
   `);
+
+  // Upload grants (SPEC § 8.9.2, § 9.1). Here rather than in `audit.db`
+  // because the http server needs them to authorise a PUT, and it holds this
+  // file read-write already for key approval — an upload must not require it
+  // to open the audit store as well.
+  //
+  // Bound to (identity, blob_key, size), and deliberately **not single-use**.
+  // A replayed grant authorises the identical bytes under the identical key,
+  // which deduplicates to no effect; making it single-use would instead break
+  // the retry of an upload that failed midway, which is the common case.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS upload_nonces (
+      nonce      TEXT PRIMARY KEY,
+      identity   TEXT NOT NULL,
+      blob_key   TEXT NOT NULL,
+      size       INTEGER NOT NULL,
+      sha256     TEXT NOT NULL,
+      issued_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_upload_nonces_expiry ON upload_nonces(expires_at);
+  `);
 }
 
 export interface AgentRow {

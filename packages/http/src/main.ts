@@ -42,6 +42,7 @@ import { Database } from 'bun:sqlite'
 import { openStore, type MessageRow } from '@agent-mesh/store'
 import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb } from './keys-admin'
+import { putBlob, closeBlobDb } from './audit-blobs'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -1050,6 +1051,18 @@ app.get('/api/v1/admin/pending', async (c) => {
   return c.json({ pending })
 })
 
+// --- Audit blob upload (SPEC § 9.1) ---------------------------------------
+//
+// On this service rather than the hub because § 9.1 puts the blob routes here,
+// alongside the other attachment storage. Authorisation is the AgentMeshSig
+// header over a grant the hub issued, so the hub decides *what* may be
+// uploaded and this decides whether these bytes match.
+
+app.put('/api/v1/audit/blobs/:key', async (c) => {
+  const r = await putBlob(c.req.param('key'), c.req.raw)
+  return c.json(r.body, r.status as any)
+})
+
 // --- Key approval (SPEC § 10.2) -------------------------------------------
 //
 // On this service rather than the hub because approval is the one step in the
@@ -1805,6 +1818,7 @@ function shutdown(): void {
   console.log('agent-mesh-http: shutting down')
   closeDb()
   closeAgentsDb()
+  closeBlobDb()
   server.stop()
   process.exit(0)
 }

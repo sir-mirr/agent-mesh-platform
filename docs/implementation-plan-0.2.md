@@ -166,10 +166,11 @@ the signature authenticates a request.
 
 ---
 
-## 4 — Upload authorisation
+## 4 — Upload authorisation ✅
 
 **SPEC** § 8.9.2, § 9.1
 **Depends on** 2 (not 3 — this path has its own preimage)
+**Status** done
 
 - `upload_nonces` in `agents.db`: bound to `(identity, blob_key, size)`, TTL
   900 s.

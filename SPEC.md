@@ -25,7 +25,7 @@ for a description of running code.
 | 8.2 | `from` is constrained by validated entitlement | **yes** |
 | 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
 | 8.9 | `mesh.audit.*` methods | no |
-| 9.1 | Audit blob upload and audit query routes | no |
+| 9.1 | Audit blob upload | **yes** — audit query routes not yet |
 | 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | **yes** |
 | 10.1 | Identity format loosened; kebab-case advisory, case-sensitive | **yes** |

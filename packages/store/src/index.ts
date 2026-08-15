@@ -4,6 +4,7 @@ export * as hubSchema from "./schema/hub";
 export * as keys from "./keys";
 export * as entitlement from "./entitlement";
 export * as verify from "./verify";
+export * as nonces from "./nonces";
 export type {
   AgentKeyRow,
   AgentRow,

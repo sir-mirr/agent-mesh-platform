@@ -12,6 +12,7 @@ import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
 import { handleFetchMessages } from "./messages";
 import { handleCancelReminder, handleListReminders, handleScheduleReminder } from "./reminders";
+import { handlePrepareBlobs } from "./audit";
 import { handleSend } from "./send";
 
 export function dispatch(ws: any, raw: string | Buffer): string | null {
@@ -68,6 +69,8 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
       return handleCancelReminder(ws, params, req.id);
     case "mesh.list_reminders":
       return handleListReminders(ws, params, req.id);
+    case "mesh.audit.prepare_blobs":
+      return handlePrepareBlobs(ws, params, req.id);
     default:
       return rpcError(req.id, METHOD_NOT_FOUND, `Method not found: ${req.method}`);
   }
