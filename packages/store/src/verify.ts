@@ -112,8 +112,17 @@ export class NonceWindow {
 
   constructor(private readonly windowSeconds: number) {}
 
-  /** True when this nonce is fresh; records it. False means replay. */
-  check(identity: string, nonce: string, nowSeconds: number): boolean {
+  /**
+   * Record this nonce and report whether it was new. False means replay.
+   *
+   * **This writes.** It was called `check`, which reads as a question — and is
+   * how a caller comes to believe it can ask twice, the second ask always
+   * answering "replay" against its own first.
+   *
+   * The name matters more than usual because the write *is* the point: a
+   * replay window that did not record on inspection would not be a window.
+   */
+  claim(identity: string, nonce: string, nowSeconds: number): boolean {
     let forIdentity = this.seen.get(identity);
     if (!forIdentity) {
       forIdentity = new Map();

@@ -103,7 +103,14 @@ export function verifyRequest(
   // Freshness first, then replay. A stale request is rejected without its nonce
   // ever entering the window, so an attacker cannot fill the map with entries
   // that were never going to be accepted.
-  if (!nonces.check(identity, nonce, iat)) {
+  //
+  // **The nonce is spent here, before the signature is checked.** A request
+  // whose signature then fails has still consumed it, so a client retrying
+  // that request MUST use a fresh nonce (§ 8.1). The alternative — recording
+  // only on success — would let an attacker replay a captured envelope
+  // unboundedly against a hub whose key state had changed, because each
+  // attempt would fail verification and leave the nonce spendable.
+  if (!nonces.claim(identity, nonce, iat)) {
     return { ok: false, code: SIGNATURE_INVALID, message: "nonce already seen in this window" };
   }
 

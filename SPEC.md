@@ -656,6 +656,17 @@ own clock, and MUST reject a `nonce` already seen from that identity within the
 window. A nonce record may be discarded once its `iat` falls outside the
 window.
 
+**A nonce is spent on receipt, not on success.** The hub records it before
+verifying the signature, so a request whose signature fails has still
+consumed its nonce and a client retrying MUST use a fresh one. Recording
+only on success would leave a captured envelope replayable without limit
+— every attempt failing verification and every attempt leaving the nonce
+spendable again.
+
+Freshness is nevertheless checked *before* the nonce is recorded, so a
+request already outside the window never enters it. Otherwise anyone could
+fill the window with nonces that were never going to be accepted.
+
 **Key state is read per request, not cached.** The hub MUST verify against the
 identity's currently `approved` key each time. Caching a key for the life of a
 connection would make revocation (§ 10.2) not take effect until the connection

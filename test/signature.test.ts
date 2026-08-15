@@ -305,3 +305,105 @@ describe("key state is read per request", () => {
     expect(res.error.data.key_status).toBe("pending");
   });
 });
+
+describe("a nonce is spent on receipt, not on success (§ 8.1)", () => {
+  /**
+   * `NonceWindow.claim` was called `check`, which reads as a question. The
+   * property worth naming is not "replays are rejected" — that passes either
+   * way — but *when* the nonce stops being spendable. Recording only on
+   * successful verification would leave a captured envelope replayable without
+   * limit: every attempt fails, and every failure hands the nonce back.
+   */
+  test("a nonce burned by a failed signature cannot be reused by a good one", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "nonce-spent", "ai-claude", null, kp.publicKey);
+    await approve(kp.fingerprint);
+
+    const rpc = await connectRpc(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey });
+    // Verification only runs once the socket has an identity — before
+    // `mesh.connect` there is nothing to verify against, so neither frame would
+    // reach the replay window at all.
+    expect((await rpc.call("mesh.connect", { identity: "nonce-spent" })).error).toBeUndefined();
+    const nonce = randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+    const params = JSON.stringify({});
+    const preimage = requestSignaturePreimage({
+      method: "mesh.list_agents",
+      kid: kp.fingerprint,
+      nonce,
+      iat,
+      rawParams: new TextEncoder().encode(params),
+    });
+    const good = Buffer.from(edSign(null, Buffer.from(preimage), kp.privateKey)).toString("base64url");
+
+    const frame = (value: string) =>
+      `{"jsonrpc":"2.0","id":1,"method":"mesh.list_agents","params":${params},` +
+      `"sig":${JSON.stringify({ alg: "ed25519", kid: kp.fingerprint, nonce, iat, value })}}`;
+
+    // First attempt: this nonce, deliberately wrong signature.
+    const first = await new Promise<any>((resolve) => {
+      const socket = (rpc as any);
+      socket.raw(frame("AAAA"));
+      setTimeout(() => resolve(socket.notifications()), 300);
+    });
+    expect(first).toBeDefined();
+
+    // Second attempt: same nonce, correct signature. Must still be refused —
+    // the nonce was spent by the attempt that failed.
+    const res = await new Promise<any>((resolve) => {
+      const socket = (rpc as any);
+      const before = socket.notifications().length;
+      socket.raw(frame(good));
+      const timer = setInterval(() => {
+        const now = socket.notifications();
+        if (now.length > before) {
+          clearInterval(timer);
+          resolve(now[now.length - 1]);
+        }
+      }, 20);
+      setTimeout(() => { clearInterval(timer); resolve(null); }, 2000);
+    });
+    expect(res?.error?.message ?? "").toContain("nonce already seen");
+    rpc.close();
+  }, 20_000);
+
+  test("a stale request never enters the window", async () => {
+    // Freshness is checked first on purpose: otherwise anyone could fill the
+    // replay window with nonces that were never going to be accepted.
+    const kp = newKeyPair();
+    await provision(mesh.hub, "nonce-stale", "ai-claude", null, kp.publicKey);
+    await approve(kp.fingerprint);
+
+    const nonce = randomUUID();
+    const stale = Math.floor(Date.now() / 1000) - 600;
+    const fresh = Math.floor(Date.now() / 1000);
+    const signer = { kid: kp.fingerprint, privateKey: kp.privateKey };
+
+    const sign = (iat: number) => {
+      const params = JSON.stringify({});
+      const value = Buffer.from(edSign(null, Buffer.from(requestSignaturePreimage({
+        method: "mesh.list_agents", kid: kp.fingerprint, nonce, iat,
+        rawParams: new TextEncoder().encode(params),
+      })), kp.privateKey)).toString("base64url");
+      return `{"jsonrpc":"2.0","id":1,"method":"mesh.list_agents","params":${params},` +
+        `"sig":${JSON.stringify({ alg: "ed25519", kid: kp.fingerprint, nonce, iat, value })}}`;
+    };
+
+    const rpc = await connectRpc(mesh.hub, signer);
+    expect((await rpc.call("mesh.connect", { identity: "nonce-stale" })).error).toBeUndefined();
+    const collect = () => (rpc as any).notifications();
+
+    (rpc as any).raw(sign(stale));
+    await Bun.sleep(250);
+
+    // The same nonce with a fresh iat must now succeed: the stale attempt was
+    // turned away before the nonce was recorded.
+    const before = collect().length;
+    (rpc as any).raw(sign(fresh));
+    await Bun.sleep(400);
+    const answers = collect().slice(before);
+    const replayed = answers.some((a: any) => String(a?.error?.message ?? "").includes("nonce already seen"));
+    expect(replayed).toBe(false);
+    rpc.close();
+  }, 20_000);
+});
