@@ -1,0 +1,32 @@
+[Unit]
+Description=Agent Mesh orphan blob collection (Lab)
+Documentation=https://github.com/sir-mirr/agent-mesh-platform/blob/main/SPEC.md
+ConditionPathExists=/srv/agent-mesh-platform/scripts/collect-orphan-blobs.ts
+
+# No Requires= on the hub. SPEC § 15.6 requires collection to be safe to run
+# while the core and lane processes are live, and it reads audit.db read-only —
+# so it neither needs the hub up nor should be stopped when the hub goes down.
+# A sweep that only ran alongside a healthy hub would stop running exactly when
+# a crash loop was leaving uncommitted uploads behind.
+After=network-online.target
+
+[Service]
+# oneshot, not simple: the timer needs to know when the sweep has finished, and
+# a `simple` unit is "started" the moment it forks.
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/srv/agent-mesh-platform
+Environment=BUN_INSTALL=/home/ubuntu/.bun
+Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
+
+ExecStart=/home/ubuntu/.bun/bin/bun scripts/collect-orphan-blobs.ts
+
+# Deletion only. It never writes to audit.db, so it cannot be the reason an
+# append fails while it runs.
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

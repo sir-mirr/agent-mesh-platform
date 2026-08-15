@@ -1,0 +1,22 @@
+[Unit]
+Description=Collect orphan blobs daily (SPEC § 15.6)
+Documentation=https://github.com/sir-mirr/agent-mesh-platform/blob/main/SPEC.md
+
+[Timer]
+# Daily is deliberately slower than the 12-hour grace period the script
+# defaults to. The grace period is what separates an upload in progress from
+# one that died (§ 15.6), so sweeping more often than it does not collect
+# anything sooner — it just re-scans the same directory.
+OnCalendar=daily
+
+# Run after a boot that missed the schedule. An orphan is bytes nobody will
+# ever reference; skipping the sweep because the host was down means they stay
+# forever, which is the one outcome the sweep exists to prevent.
+Persistent=true
+
+# Spread the start across an hour. Several hosts sharing a storage volume and
+# all waking at midnight is a self-inflicted IO spike.
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target

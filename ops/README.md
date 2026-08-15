@@ -6,7 +6,7 @@ env and installer.
 
 ## Layout
 
-- `systemd/` — the three baseline units
+- `systemd/` — the three baseline units, plus the orphan-collection timer
 - `env/shared/` — env examples for hub, http and self-reminder
 - `bin/bootstrap-hub-service-identities.sh` — baseline identity provisioning
 - `migrations/` — forward-only SQL, operator-applied
@@ -18,6 +18,35 @@ packages/hub/src/main.ts             agent-mesh-hub-lab.service
 packages/http/src/main.ts            agent-mesh-http-lab.service
 packages/self-reminder/src/main.ts   agent-mesh-self-reminder-lab.service
 ```
+
+## Orphan collection
+
+```
+scripts/collect-orphan-blobs.ts      agent-mesh-collect-orphans-lab.timer
+                                     agent-mesh-collect-orphans-lab.service
+```
+
+SPEC § 15.6 requires collection to run **out of process**, so it is a timer
+rather than something the hub does on a schedule of its own. Enable the timer,
+not the service:
+
+```
+systemctl enable --now agent-mesh-collect-orphans-lab.timer
+```
+
+Audit retention is indefinite, so references are never released and the only
+collectable blob is one **no event ever referenced** — bytes uploaded whose
+`mesh.audit.append` never arrived.
+
+The grace period is the correctness condition, not a tuning knob. § 8.9 uploads
+bytes before the event that references them, so "no reference yet" is the
+normal state for as long as the client takes to append. Set it too short and
+the sweep deletes an upload the client is about to commit, which the client
+sees as `-32040` for bytes it knows it sent. Twelve hours by default; check
+with `--dry-run` before narrowing it.
+
+The timer deliberately runs less often than the grace period. Sweeping more
+frequently collects nothing sooner — it re-scans the same directory.
 
 `agent-mesh-hub-lab.service` bootstraps baseline service identities through the
 canonical `POST /api/v1/agents` endpoint (SPEC § 10.1) once the hub is
