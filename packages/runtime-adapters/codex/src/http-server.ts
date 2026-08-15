@@ -26,6 +26,85 @@ function parseChannelSource(raw: unknown): ChannelSource | null {
   return CHANNEL_SOURCE_VALUES.includes(raw as ChannelSource) ? (raw as ChannelSource) : null;
 }
 
+function optionalString(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw : undefined;
+}
+
+function optionalPositiveInt(raw: unknown): number | undefined {
+  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+}
+
+export async function handleMeshToolAction(
+  adapter: CodexRuntimeAdapter,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  // This is intentionally a closed action set, not a generic JSON-RPC tunnel.
+  // In particular, callers cannot select a different `from` identity; the
+  // established adapter connection and its existing hub authorization remain
+  // the only authority used for all operations.
+  switch (body.action) {
+    case "send": {
+      const to = optionalString(body.to);
+      const content = optionalString(body.content);
+      if (!to || !content) throw new Error("send requires non-empty to and content");
+      const replyTo = body.reply_to === null ? null : optionalString(body.reply_to) ?? null;
+      return adapter.hub.send({
+        to,
+        from: adapter.config.targetAgent,
+        content,
+        reply_to: replyTo,
+      });
+    }
+    case "list_agents":
+      return { agents: await adapter.hub.listAgents() };
+    case "fetch_messages": {
+      const agentId = optionalString(body.agent_id);
+      if (!agentId) throw new Error("fetch_messages requires non-empty agent_id");
+      const limit = optionalPositiveInt(body.limit);
+      return { messages: await adapter.hub.fetchMessages({
+        agentId,
+        ...(limit === undefined ? {} : { limit }),
+      }) };
+    }
+    case "schedule_reminder": {
+      const id = optionalString(body.id);
+      const type = body.type;
+      const scheduleSpec = optionalString(body.schedule_spec);
+      const payload = optionalString(body.payload);
+      const nextFireAt = optionalString(body.next_fire_at);
+      const context = optionalString(body.context);
+      const idempotencyKey = optionalString(body.idempotency_key);
+      if (!id || (type !== "once" && type !== "cron") || !scheduleSpec || !payload || !nextFireAt) {
+        throw new Error("schedule_reminder requires id, type, schedule_spec, payload, and next_fire_at");
+      }
+      return adapter.hub.scheduleReminder({
+        id,
+        type,
+        scheduleSpec,
+        payload,
+        nextFireAt,
+        ...(context === undefined ? {} : { context }),
+        ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+      });
+    }
+    case "cancel_reminder": {
+      const id = optionalString(body.id);
+      if (!id) throw new Error("cancel_reminder requires non-empty id");
+      return adapter.hub.cancelReminder(id);
+    }
+    case "list_reminders": {
+      const status = optionalString(body.status);
+      const limit = optionalPositiveInt(body.limit);
+      return { rows: await adapter.hub.listReminders({
+        ...(status === undefined ? {} : { status }),
+        ...(limit === undefined ? {} : { limit }),
+      }) };
+    }
+    default:
+      throw new Error("unsupported mesh action");
+  }
+}
+
 export function startCodexAdapterHttpServer(
   options: StartCodexAdapterHttpServerOptions,
 ): { stop(): void } {
@@ -107,6 +186,14 @@ export function startCodexAdapterHttpServer(
               `replyTo=${replyToMessageId ?? "-"} textBytes=${inputText.length}`,
           );
           return jsonResponse(202, { ok: true });
+        }
+        if (url.pathname === "/actions/mesh" && req.method === "POST") {
+          const body = (await req.json()) as unknown;
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return jsonResponse(400, { error: "invalid_mesh_action_body" });
+          }
+          const result = await handleMeshToolAction(options.adapter, body as Record<string, unknown>);
+          return jsonResponse(200, { result });
         }
       } catch (error) {
         options.logger?.(`adapter http error ${url.pathname}: ${error}`);
