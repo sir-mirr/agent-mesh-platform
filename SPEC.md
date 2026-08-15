@@ -726,7 +726,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | Method | Path                              | Auth   | Success | Notes |
 |--------|-----------------------------------|--------|---------|-------|
 | GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. |
-| GET    | `/api/v1/agents`                  | JWT    | `200`   | List entries from the http-server `registry.json` (a separate file store under `${AGENT_MESH_STATE_DIR}/registry.json`, *not* the hub `agents` table — see § 10). |
+| GET    | `/api/v1/agents`                  | JWT    | `200`   | List entries from the http-server's own `agent_registry` table in `${AGENT_MESH_STATE_DIR}/agent-mesh.db` — *not* the hub `agents` table in `hub.db` (see § 10). Superseded the `registry.json` file store; a pre-existing `registry.json` is imported once, on first boot after the upgrade, while the table is still empty. |
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |

@@ -39,7 +39,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, type DbMessage } from './db'
+import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
 
@@ -47,7 +47,6 @@ import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJ
 
 const STATE_DIR = process.env.AGENT_MESH_STATE_DIR ?? '/srv/agent-mesh-lab/state/shared'
 const PORT = parseInt(process.env.AGENT_MESH_HTTP_PORT ?? '3000', 10)
-const REGISTRY_FILE = join(STATE_DIR, 'registry.json')
 const HUB_DB_PATH = join(STATE_DIR, 'hub.db')
 const startTime = Date.now()
 const IS_DEV = process.env.NODE_ENV === 'development'
@@ -79,10 +78,7 @@ function connectToHub(): void {
       hubConnected = true
       console.log(`[http-server] connected to hub at ${HUB_URL}`)
       // Get web users from registry to proxy for them
-      const reg = loadRegistry()
-      const webUsers = Object.entries(reg.agents)
-        .filter(([_, e]) => e.type === 'user' && e.approved)
-        .map(([id]) => id)
+      const webUsers = listApprovedWebUserIds()
       hubWs!.send(JSON.stringify({
         jsonrpc: '2.0', method: 'mesh.connect',
         params: { identity: HUB_IDENTITY, description: 'Agent Mesh Web UI', proxy_for: webUsers },
@@ -438,47 +434,14 @@ const THEME = {
 // Ensure state directory exists
 mkdirSync(STATE_DIR, { recursive: true })
 
-// --- Registry helpers ---
-
-type AgentEntry = {
-  name: string
-  description?: string
-  channel?: string   // "native" | "web" | "discord"
-  type?: string      // "agent" | "user"
-  approved?: boolean
-}
-
-type Registry = {
-  agents: Record<string, AgentEntry>
-}
-
-function loadRegistry(): Registry {
-  try {
-    const raw = JSON.parse(readFileSync(REGISTRY_FILE, 'utf8')) as Registry
-    // Backward compatibility: fill in defaults for entries missing new fields
-    for (const [id, entry] of Object.entries(raw.agents)) {
-      if (entry.channel === undefined) entry.channel = 'native'
-      if (entry.type === undefined) entry.type = 'agent'
-      if (entry.approved === undefined) entry.approved = true
-    }
-    return raw
-  } catch {
-    return { agents: {} }
-  }
-}
-
-function saveRegistry(reg: Registry): void {
-  writeFileSync(REGISTRY_FILE, JSON.stringify(reg, null, 2) + '\n')
-}
+// --- Approval helpers ---
 
 function isUserApproved(githubLogin: string, role: string): boolean {
   // Admin is always approved
   if (role === 'admin') return true
 
   // Check registry
-  const reg = loadRegistry()
-  const entry = reg.agents[githubLogin]
-  if (entry && entry.approved === true) return true
+  if (isRegistryAgentApproved(githubLogin)) return true
 
   // Check pending_approvals table
   const pending = getPendingApproval(githubLogin)
@@ -2020,8 +1983,7 @@ app.get('/chat/:agentId', async (c) => {
   const agentId = c.req.param('agentId')
 
   // Validate agent exists in registry
-  const reg = loadRegistry()
-  if (!reg.agents[agentId]) {
+  if (!getRegistryAgent(agentId)) {
     return c.html(renderAgentNotFoundPage(), 404)
   }
 
@@ -2183,8 +2145,7 @@ async function extractJwt(c: any): Promise<JwtPayload | null> {
 // --- Health ---
 
 app.get('/api/v1/health', (c) => {
-  const reg = loadRegistry()
-  const agentCount = Object.keys(reg.agents).length
+  const agentCount = countRegistryAgents()
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
 
   return c.json({
@@ -2206,13 +2167,12 @@ app.get('/api/v1/agents', async (c) => {
     return c.json({ error: 'Account pending approval' }, 403)
   }
 
-  const reg = loadRegistry()
-  const agents = Object.entries(reg.agents).map(([id, entry]) => ({
-    id,
+  const agents = listRegistryAgents().map(entry => ({
+    id: entry.id,
     name: entry.name,
-    description: entry.description ?? null,
-    channel: entry.channel ?? 'native',
-    type: entry.type ?? 'agent',
+    description: entry.description,
+    channel: entry.channel,
+    type: entry.type,
   }))
 
   return c.json({ agents })
@@ -2268,11 +2228,10 @@ app.post('/api/v1/messages', async (c) => {
   }
 
   // Check target agent exists
-  const reg = loadRegistry()
-  if (!reg.agents[to]) {
+  if (!getRegistryAgent(to)) {
     return c.json({
       error: `Agent "${to}" not found in registry`,
-      known_agents: Object.keys(reg.agents),
+      known_agents: listRegistryAgentIds(),
     }, 404)
   }
 
@@ -2584,18 +2543,7 @@ app.post('/api/v1/admin/approve', async (c) => {
   }
 
   // Add to registry with channel:"web", type:"user"
-  const reg = loadRegistry()
-  if (!reg.agents[githubLogin]) {
-    reg.agents[githubLogin] = {
-      name: githubLogin,
-      channel: 'web',
-      type: 'user',
-      approved: true,
-    }
-  } else {
-    reg.agents[githubLogin].approved = true
-  }
-  saveRegistry(reg)
+  upsertApprovedWebUser(githubLogin)
 
   // Grant wildcard messaging policy
   const db = getDb()

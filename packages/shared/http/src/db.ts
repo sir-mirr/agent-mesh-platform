@@ -4,10 +4,12 @@
  */
 
 import { Database } from 'bun:sqlite'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 const STATE_DIR = process.env.AGENT_MESH_STATE_DIR ?? '/srv/agent-mesh-lab/state/shared'
 const DB_PATH = join(STATE_DIR, 'agent-mesh.db')
+const LEGACY_REGISTRY_FILE = join(STATE_DIR, 'registry.json')
 
 let _db: Database | null = null
 
@@ -94,7 +96,148 @@ export function getDb(): Database {
     )
   `)
 
+  ensureAgentRegistrySchema(_db)
+  importLegacyRegistry(_db)
+
   return _db
+}
+
+/**
+ * The http-server's own agent list. Distinct from the hub's `agents` table
+ * (hub.db), which this process only ever reads. Named `agent_registry` so the
+ * two are not confused at a call site.
+ */
+export function ensureAgentRegistrySchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_registry (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      channel TEXT NOT NULL DEFAULT 'native',
+      type TEXT NOT NULL DEFAULT 'agent',
+      approved INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_agent_registry_type_approved
+      ON agent_registry(type, approved)
+  `)
+}
+
+/**
+ * One-time import of the pre-DB `registry.json` file store.
+ *
+ * Runs only while the table is empty, so an operator editing the JSON after the
+ * import will not silently resurrect stale rows — the table is the source of
+ * truth from the first successful import onward. The file is left on disk
+ * rather than deleted; it costs nothing and is the only copy of the prior state
+ * if an import needs to be reviewed.
+ */
+export function importLegacyRegistry(db: Database, registryPath: string = LEGACY_REGISTRY_FILE): void {
+  const row = db.prepare('SELECT COUNT(*) as cnt FROM agent_registry').get() as { cnt: number }
+  if (row.cnt > 0) return
+  if (!existsSync(registryPath)) return
+
+  type LegacyEntry = {
+    name?: string
+    description?: string
+    channel?: string
+    type?: string
+    approved?: boolean
+  }
+
+  let agents: Record<string, LegacyEntry>
+  try {
+    const parsed = JSON.parse(readFileSync(registryPath, 'utf8')) as { agents?: Record<string, LegacyEntry> }
+    agents = parsed.agents ?? {}
+  } catch (error) {
+    console.error(`[db] could not read ${registryPath}, skipping registry import:`, error)
+    return
+  }
+
+  const entries = Object.entries(agents)
+  if (entries.length === 0) return
+
+  // Same defaults the old loadRegistry() applied on read.
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO agent_registry (id, name, description, channel, type, approved)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  const importAll = db.transaction((rows: Array<[string, LegacyEntry]>) => {
+    for (const [id, entry] of rows) {
+      insert.run(
+        id,
+        entry.name ?? id,
+        entry.description ?? null,
+        entry.channel ?? 'native',
+        entry.type ?? 'agent',
+        entry.approved === false ? 0 : 1,
+      )
+    }
+  })
+  importAll(entries)
+  console.log(`[db] imported ${entries.length} agent(s) from ${registryPath} into agent_registry`)
+}
+
+// --- Agent registry ---
+
+export type DbRegistryAgent = {
+  id: string
+  name: string
+  description: string | null
+  channel: string
+  type: string
+  approved: number
+  created_at: string
+  updated_at: string
+}
+
+export function listRegistryAgents(): DbRegistryAgent[] {
+  const db = getDb()
+  return db.prepare('SELECT * FROM agent_registry ORDER BY id ASC').all() as DbRegistryAgent[]
+}
+
+export function getRegistryAgent(id: string): DbRegistryAgent | null {
+  const db = getDb()
+  return (db.prepare('SELECT * FROM agent_registry WHERE id = ?').get(id) as DbRegistryAgent) ?? null
+}
+
+export function countRegistryAgents(): number {
+  const db = getDb()
+  const row = db.prepare('SELECT COUNT(*) as cnt FROM agent_registry').get() as { cnt: number }
+  return row.cnt
+}
+
+export function listRegistryAgentIds(): string[] {
+  const db = getDb()
+  const rows = db.prepare('SELECT id FROM agent_registry ORDER BY id ASC').all() as Array<{ id: string }>
+  return rows.map(r => r.id)
+}
+
+/** Approved web users the http-server declares as `proxy_for` on mesh.connect. */
+export function listApprovedWebUserIds(): string[] {
+  const db = getDb()
+  const rows = db.prepare(
+    "SELECT id FROM agent_registry WHERE type = 'user' AND approved = 1 ORDER BY id ASC",
+  ).all() as Array<{ id: string }>
+  return rows.map(r => r.id)
+}
+
+export function isRegistryAgentApproved(id: string): boolean {
+  const entry = getRegistryAgent(id)
+  return entry !== null && entry.approved === 1
+}
+
+/** Register an approved web user, or approve one that already exists. */
+export function upsertApprovedWebUser(githubLogin: string): void {
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO agent_registry (id, name, channel, type, approved)
+    VALUES (?, ?, 'web', 'user', 1)
+    ON CONFLICT(id) DO UPDATE SET approved = 1, updated_at = CURRENT_TIMESTAMP
+  `).run(githubLogin, githubLogin)
 }
 
 export type DbMessage = {
