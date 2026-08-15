@@ -1,33 +1,46 @@
 /**
- * A function named as a question must not answer by writing.
+ * A function's name must not disagree with whether it writes.
  *
  * `NonceWindow.check` recorded the nonce it was asked about. Nothing failed:
  * every caller used it correctly, every test passed, and the name quietly
  * promised a caller it could ask twice — the second ask answering "replay"
- * against its own first. It was found by an audit, which means it survived
- * until someone thought to look.
+ * against its own first. It survived until someone thought to look.
  *
- * The client repository had the same split — `next()` beside `claimNext()` —
- * and had it by habit rather than by rule: transitions there are all named
- * `mark*`, so a function that wrote quietly would have looked out of place.
- * That works until the person with the habit is replaced. This is the same
- * rule with the habit removed.
+ * Two rules, because they fail on different things.
  *
- * **It would not have caught `NonceWindow.check`, and that is worth stating.**
- * That method writes to a `Map` reached through a local alias
- * (`let forIdentity = this.seen.get(...)`, then `forIdentity.set(...)`), which
- * no name-and-body heuristic separates from a query building a local result.
- * Widening the rule to catch it flags every `list*` that pushes into an array.
+ * **A query name must not sit on a write.** `getFoo` that runs an `UPDATE`.
+ * This one holds regardless of what the allowlist below says, so growing that
+ * list cannot silence it.
  *
- * So this covers the tractable half: a query name sitting directly on a
- * durable write — SQL or the filesystem. Those are the ones that leave state
- * behind after the process exits, and they are the ones a reviewer is least
- * likely to notice, because the write is one call deep and reads like
- * bookkeeping. In-memory aliasing stays a review question.
+ * **A write must not have a name that says nothing.** `processRetry`,
+ * `syncState`, `applyChange`. The client proposed this direction and it is the
+ * better half: nobody names a mutation `get`, but `process*` arrives on its
+ * own, and the first rule never sees it.
  *
- * The rule was almost shipped claiming it caught the defect that prompted it.
- * Mutating `claim` back to `check` did not fail it — which is the only reason
- * the limitation is written down here rather than assumed away.
+ * ## What neither rule catches, verified by mutation rather than assumed
+ *
+ * Each was produced by editing the source, running, and recording the result.
+ *
+ *   claim → check                        NOT caught — `NonceWindow` mutates a
+ *                                        `Map` through a local alias, which no
+ *                                        name-and-body heuristic separates
+ *                                        from a query building a local result
+ *   issueGrant → getGrantForUpload       caught
+ *   teardownIdentity → readIdentityState caught
+ *   teardownIdentity → processIdentity   caught — the second rule; the first
+ *                                        never sees a neutral name
+ *   a write moved one call deeper        NOT caught — a wrapper with no
+ *                                        statement of its own is invisible
+ *
+ * The third gap is deliberate rather than pending. Following calls would
+ * require every *caller* of a writing function to have a writing name, and
+ * that is false: a dispatcher legitimately calls a handler that legitimately
+ * writes. So the rules cover the layer where the SQL and the filesystem
+ * actually appear, and the layers above stay a review question.
+ *
+ * This file was one commit from shipping with a comment claiming it caught the
+ * defect that prompted it. Running the mutation is the only reason that
+ * sentence is not still here.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -36,20 +49,46 @@ import { join } from "node:path";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
-/**
- * Prefixes that promise a caller the call is free of consequence.
- *
- * `issue`, `claim`, `ensure`, `record`, `mark` and the rest are absent on
- * purpose: they say a thing happens, which is the naming this test exists to
- * encourage. Anchored with `^` and followed by a word boundary or capital, so
- * `issueGrant` is not read as `is`.
- */
+/** Prefixes that promise the call is free of consequence. */
 const QUERY_PREFIX =
   /^(check|verify|validate|is[A-Z_]|has[A-Z_]|get[A-Z_]|list|find|peek|read|lookup|resolve|count|inspect|select|fetch|query|exists)/;
 
-const WRITES = /\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|writeFileSync|renameSync|unlinkSync|mkdirSync)\b/i;
+/**
+ * Verbs that say something happens.
+ *
+ * Every entry is a decision that this word tells a reader the call has an
+ * effect — not a way to quiet the list. The client found three of its four
+ * initial hits were gaps here rather than defects, which is the expected shape:
+ * the check cannot judge whether a name says "write", only that somebody did.
+ */
+const WRITE_VERB =
+  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|handle|on[A-Z])/i;
 
-interface Offender {
+/** Durable writes — state that outlives the process. */
+const WRITES =
+  /\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|writeFileSync|renameSync|unlinkSync)\b/i;
+
+/**
+ * A declaration, matched across the whole file so a multi-line signature is
+ * not missed.
+ *
+ * Two mistakes were made getting here, both caught by mutation rather than by
+ * reading. Matching any line that read as a call produced twenty hits,
+ * nineteen of them `VALUES (?, ?)` and `WHERE id = ?` inside template
+ * literals. Requiring the line to *end* with `{` fixed that and silently
+ * dropped every function whose parameters span lines — which in this codebase
+ * is most of them, so the rules matched almost nothing while still passing.
+ *
+ * Hence: the parameter list may contain newlines, and the body brace may be on
+ * a later line, but a `{` must follow the signature. SQL fragments have no
+ * such brace.
+ */
+const DECL =
+  /(?:^|\n)[ \t]*(?:export\s+)?(?:private\s+|public\s+)?(?:static\s+)?(?:async\s+)?(?:function\s+)?(#?[a-zA-Z_$][\w$]*)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*(?::\s*[^;{=]+)?\{/g;
+
+const NOT_A_FUNCTION = new Set(["if", "for", "while", "switch", "catch", "constructor"]);
+
+interface Finding {
   file: string;
   line: number;
   name: string;
@@ -66,7 +105,17 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** The body of a function, from its declaration to its closing brace. */
+/** Blank out template-literal lines so embedded SQL is not read as code. */
+function maskTemplates(lines: string[]): string[] {
+  const out: string[] = [];
+  let inside = false;
+  for (const line of lines) {
+    out.push(inside ? "" : line);
+    if (line.split("`").length % 2 === 0) inside = !inside;
+  }
+  return out;
+}
+
 function bodyOf(lines: string[], start: number): string {
   const body: string[] = [];
   let depth = 0;
@@ -81,66 +130,72 @@ function bodyOf(lines: string[], start: number): string {
   return body.join("\n");
 }
 
-function offenders(): Offender[] {
-  const found: Offender[] = [];
+function scan(disagrees: (name: string) => boolean): Finding[] {
+  const found: Finding[] = [];
   for (const file of sourceFiles(join(REPO_ROOT, "packages"))) {
-    const lines = readFileSync(file, "utf8").split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      // Exported functions and class methods alike.
-      const m = /^\s*(?:export\s+)?(?:async\s+)?(?:function\s+)?([a-zA-Z_$][\w$]*)\s*\(/.exec(lines[i]!);
-      if (!m) continue;
-      const name = m[1]!;
-      if (!QUERY_PREFIX.test(name)) continue;
-      // Skip control flow that happens to parse as a call.
-      if (["if", "for", "while", "switch", "catch", "return"].includes(name)) continue;
+    const raw = readFileSync(file, "utf8").split("\n");
+    const masked = maskTemplates(raw).join("\n");
 
-      const body = bodyOf(lines, i);
-      const wrote = WRITES.exec(body);
-      if (wrote) {
-        found.push({
-          file: file.slice(REPO_ROOT.length),
-          line: i + 1,
-          name,
-          wrote: wrote[0],
-        });
+    DECL.lastIndex = 0;
+    for (let m = DECL.exec(masked); m; m = DECL.exec(masked)) {
+      const name = m[1]!.replace(/^#/, "");
+      if (NOT_A_FUNCTION.has(name)) continue;
+
+      // Line of the declaration, so the body is read from the unmasked source.
+      const line = masked.slice(0, m.index).split("\n").length;
+      const wrote = WRITES.exec(bodyOf(raw, line - 1 + (m[0].startsWith("\n") ? 1 : 0)));
+      if (wrote && disagrees(name)) {
+        found.push({ file: file.slice(REPO_ROOT.length), line, name, wrote: wrote[0] });
       }
     }
   }
   return found;
 }
 
-describe("a query-named function does not write", () => {
-  test("nothing in packages/ asks a question by changing an answer", () => {
-    // Reported as a list rather than a count, so a failure names the function
-    // instead of saying one exists.
-    expect(offenders().map((o) => `${o.file}:${o.line} ${o.name} → ${o.wrote}`)).toEqual([]);
+const render = (f: Finding) => `${f.file}:${f.line} ${f.name} → ${f.wrote}`;
+
+describe("a name agrees with whether the function writes", () => {
+  test("no query-named function writes", () => {
+    expect(scan((name) => QUERY_PREFIX.test(name)).map(render)).toEqual([]);
   });
 
-  test("the check can actually see the violation it covers", () => {
+  test("no write hides behind a name that says nothing", () => {
+    // The broader direction, and the one that catches how new writes arrive.
+    expect(scan((name) => !WRITE_VERB.test(name)).map(render)).toEqual([]);
+  });
+
+  test("both rules can see the violations they cover", () => {
     // A rule nobody has watched fail is a rule nobody knows is running.
-    const lines = [
-      "  check(identity: string, nonce: string): boolean {",
-      "    db.prepare(`INSERT INTO seen (identity, nonce) VALUES (?, ?)`).run(identity, nonce);",
-      "    return true;",
-      "  }",
+    const writing = [
+      "function example(): boolean {",
+      "  db.prepare(`INSERT INTO seen (a) VALUES (?)`).run(1);",
+      "  return true;",
+      "}",
     ];
-    expect(QUERY_PREFIX.test("check")).toBe(true);
-    expect(WRITES.test(bodyOf(lines, 0))).toBe(true);
+    expect(WRITES.test(bodyOf(writing, 0))).toBe(true);
+    expect(QUERY_PREFIX.test("checkNonce")).toBe(true);
+    expect(WRITE_VERB.test("processRetry")).toBe(false);
+    expect(WRITE_VERB.test("syncState")).toBe(false);
 
-    // And the case it does not cover, stated so nobody assumes otherwise: the
-    // real `NonceWindow` mutated a Map through a local alias.
-    const aliased = [
-      "  check(identity: string, nonce: string): boolean {",
-      "    let forIdentity = this.seen.get(identity);",
-      "    forIdentity.set(nonce, 1);",
-      "    return true;",
-      "  }",
-    ];
-    expect(WRITES.test(bodyOf(aliased, 0))).toBe(false);
-
-    // And the names that say what they do are not caught by it.
-    for (const name of ["claim", "issueGrant", "recordEvent", "markDeadLetter", "ensureKey"]) {
-      expect(QUERY_PREFIX.test(name), `${name} is not a query name`).toBe(false);
+    // Names that say what they do pass both.
+    for (const name of ["claim", "issueGrant", "recordEvent", "markDeadLetter", "teardownIdentity"]) {
+      expect(QUERY_PREFIX.test(name), `${name} reads as a query`).toBe(false);
+      expect(WRITE_VERB.test(name), `${name} reads as a write`).toBe(true);
     }
+  });
+
+  test("the declaration form excludes SQL inside template literals", () => {
+    // Nineteen of the first twenty hits were `VALUES`, `WHERE` and `AND`
+    // matching as function declarations. The trailing `{` is the whole fix.
+    const probe = (text: string) => {
+      DECL.lastIndex = 0;
+      return DECL.test(text);
+    };
+    for (const fragment of ["  VALUES (?, ?)", "  WHERE identity = ?", "  AND status = 'x'"]) {
+      expect(probe(fragment), fragment).toBe(false);
+    }
+    expect(probe("export function realOne(db: Database): void {")).toBe(true);
+    // And a multi-line signature, which the first fix silently excluded.
+    expect(probe("export function realTwo(\n  db: Database,\n  id: string,\n): void {")).toBe(true);
   });
 });
