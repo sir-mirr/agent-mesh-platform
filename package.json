@@ -19,7 +19,8 @@
     "test": "bun test packages/",
     "typecheck:store": "bun --bun tsc -p packages/store/tsconfig.json --pretty false",
     "test:integration": "bun test test/",
-    "test:all": "bun test packages/ test/"
+    "test:all": "bun test packages/ test/",
+    "e2e:harness": "bun scripts/e2e-harness.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.1.13",
