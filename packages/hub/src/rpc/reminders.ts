@@ -9,6 +9,8 @@
  * caller cannot read, cancel or list another identity's reminders.
  */
 
+import { parseScheduleSpec } from "@agent-mesh/contracts";
+
 import { srDb } from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, SERVER_ERROR, rpcError, rpcResult } from "../jsonrpc";
 import { wsIdentities } from "../presence";
@@ -24,6 +26,15 @@ export function handleScheduleReminder(
   const { id: remId, type, schedule_spec, payload, context, idempotency_key, next_fire_at } = params;
   if (!remId || !type || !schedule_spec || !payload || !next_fire_at) {
     return rpcError(id, INVALID_PARAMS, "missing required: id/type/schedule_spec/payload/next_fire_at");
+  }
+
+  // Refused here rather than at fire time. A spec the daemon cannot read leaves
+  // a row that looks scheduled and never fires — and the caller finds out by
+  // the reminder not arriving, which is the one signal it cannot distinguish
+  // from the reminder having arrived and been missed.
+  const schedule = parseScheduleSpec(String(type), String(schedule_spec));
+  if (!schedule.ok) {
+    return rpcError(id, INVALID_PARAMS, `schedule_spec: ${schedule.reason}`);
   }
 
   try {

@@ -20,6 +20,8 @@ let alice: RpcClient;
 let bob: RpcClient;
 
 const soon = () => new Date(Date.now() + 3_600_000).toISOString();
+/** A § 3.3 `once` spec. A bare timestamp is not one, and § 8.5 now refuses it. */
+const onceSpec = (at = soon()) => JSON.stringify({ at });
 let seq = 0;
 const reminderId = () => `rem_${(seq++).toString(16).padStart(16, "0")}`;
 
@@ -43,7 +45,7 @@ const schedule = (rpc: RpcClient, over: Record<string, unknown> = {}) =>
   rpc.call("mesh.schedule_reminder", {
     id: reminderId(),
     type: "once",
-    schedule_spec: soon(),
+    schedule_spec: onceSpec(),
     payload: "remember this",
     next_fire_at: soon(),
     ...over,
@@ -54,7 +56,7 @@ describe("scheduling", () => {
     const id = reminderId();
     const at = soon();
     const res = await alice.call("mesh.schedule_reminder", {
-      id, type: "once", schedule_spec: at, payload: "p", next_fire_at: at,
+      id, type: "once", schedule_spec: onceSpec(at), payload: "p", next_fire_at: at,
     });
     expect(res.error).toBeUndefined();
     expect(res.result).toMatchObject({ ok: true, id, type: "once", next_fire_at: at });
@@ -63,13 +65,70 @@ describe("scheduling", () => {
   test("a missing required field is refused", async () => {
     for (const field of ["id", "type", "schedule_spec", "payload", "next_fire_at"]) {
       const params: Record<string, unknown> = {
-        id: reminderId(), type: "once", schedule_spec: soon(),
+        id: reminderId(), type: "once", schedule_spec: onceSpec(),
         payload: "p", next_fire_at: soon(),
       };
       delete params[field];
       const res = await alice.call("mesh.schedule_reminder", params);
       expect(res.error, `missing ${field}`).toMatchObject({ code: -32602 });
     }
+  });
+
+  test("a schedule the daemon could not read is refused rather than stored", async () => {
+    // Storing it produces a row that looks scheduled and never fires, and the
+    // caller learns of it by the reminder not arriving — which it cannot tell
+    // apart from having arrived and been missed.
+    const cases: Array<[string, unknown]> = [
+      ["unknown type", { type: "weekly", schedule_spec: JSON.stringify({ every: "7d" }) }],
+      ["interval with no every", { type: "interval", schedule_spec: "{}" }],
+      ["interval with a unit that is not fixed-length", { type: "interval", schedule_spec: JSON.stringify({ every: "1mo" }) }],
+      ["zero interval, which would fire in a loop", { type: "interval", schedule_spec: JSON.stringify({ every: "0s" }) }],
+      ["cron with no expression", { type: "cron", schedule_spec: JSON.stringify({ tz: "UTC" }) }],
+      ["once with neither in nor at", { type: "once", schedule_spec: "{}" }],
+      ["a bare timestamp, which is not a spec", { type: "once", schedule_spec: soon() }],
+      ["a spec that is not JSON", { type: "once", schedule_spec: "tomorrow" }],
+    ];
+    for (const [name, over] of cases) {
+      const res = await schedule(alice, over as Record<string, unknown>);
+      expect(res.error, name).toMatchObject({ code: -32602 });
+      expect(res.error.message, name).toContain("schedule_spec");
+    }
+  });
+
+  test("a refusal names the field without echoing the caller's value back", async () => {
+    const res = await schedule(alice, {
+      type: "interval",
+      schedule_spec: JSON.stringify({ every: "<script>alert(1)</script>" }),
+    });
+    expect(res.error).toMatchObject({ code: -32602 });
+    expect(res.error.message).not.toContain("script");
+  });
+
+  test("every § 3.3 form is accepted", async () => {
+    const forms: Array<[string, string]> = [
+      ["once", JSON.stringify({ in: "30s" })],
+      ["once", JSON.stringify({ at: soon() })],
+      ["interval", JSON.stringify({ every: "15m" })],
+      ["cron", JSON.stringify({ cron: "0 9 * * *", tz: "Asia/Seoul" })],
+      ["cron", JSON.stringify({ cron: "0 9 * * *" })],
+    ];
+    for (const [type, spec] of forms) {
+      const res = await schedule(alice, { type, schedule_spec: spec });
+      expect(res.error, `${type} ${spec}`).toBeUndefined();
+      expect(res.result.ok, `${type} ${spec}`).toBe(true);
+    }
+  });
+
+  test("a refused schedule stores nothing", async () => {
+    const id = reminderId();
+    const before = (await alice.call("mesh.list_reminders", { status: "all", limit: 200 })).result.rows.length;
+    const res = await alice.call("mesh.schedule_reminder", {
+      id, type: "interval", schedule_spec: "{}", payload: "p", next_fire_at: soon(),
+    });
+    expect(res.error).toMatchObject({ code: -32602 });
+    const after = (await alice.call("mesh.list_reminders", { status: "all", limit: 200 })).result.rows;
+    expect(after.length).toBe(before);
+    expect(after.some((r: any) => r.id === id)).toBe(false);
   });
 
   test("a repeated idempotency_key is reported, not duplicated", async () => {

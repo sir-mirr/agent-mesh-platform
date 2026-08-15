@@ -197,11 +197,47 @@ client.
 
 A scheduler daemon that connects to the hub as `identity=self-reminder`.
 
-| Schedule form   | Example                                  |
-|-----------------|------------------------------------------|
-| Relative once   | `{ "in": "30s" \| "5m" \| "2h" \| "1d" }` |
-| Absolute once   | `{ "at": "2026-04-18T09:00:00Z" }`        |
-| Repeating cron  | `{ "cron": "0 9 * * *", "tz": "Asia/Seoul" }` |
+| `type`     | Schedule form      | `schedule_spec`                               |
+|------------|--------------------|-----------------------------------------------|
+| `once`     | Relative           | `{ "in": "30s" \| "5m" \| "2h" \| "1d" }`      |
+| `once`     | Absolute           | `{ "at": "2026-04-18T09:00:00Z" }`             |
+| `interval` | Repeating, fixed gap | `{ "every": "15m" }`                        |
+| `cron`     | Repeating, calendar | `{ "cron": "0 9 * * *", "tz": "Asia/Seoul" }` |
+
+A duration is `<positive integer><s|m|h|d>`. Months and years are not
+admitted: their length depends on when you ask, so a reminder would
+drift by days depending on the month it was scheduled in. `cron`
+covers calendar-aligned repetition.
+
+An omitted `tz` means `UTC`, not the daemon's local zone.
+
+**Advancing a repeating reminder.** After a fire, the daemon computes
+the next slot from the slot the reminder was **due for**, not from the
+moment it actually fired. A fire that ran late must not move the
+schedule off its grid — advancing by `every` from a late fire moves it
+permanently, and every subsequent outage moves it again. The computed
+slot is always strictly in the future; a slot equal to the fire time is
+a row that is due the instant it is written.
+
+An outage therefore produces **one** catch-up fire and then resumes on
+grid — not one fire per missed slot.
+
+A `schedule_spec` the daemon cannot parse for its declared `type`
+marks the row `dead`. Retrying would fail identically on every scan.
+`mesh.schedule_reminder` refuses such a spec up front (§ 8.5), so this
+covers rows written before validation existed.
+
+**Overdue handling is per type.** A `once` reminder that is more than
+the deployment's overdue threshold past its slot is **held** and fires
+only on a recorded operator decision: the moment it was for has passed,
+there is no later slot to move it to, and delivering it late can be
+worse than not delivering it — which is a judgement a person makes.
+
+A repeating reminder is **never held**. Its next slot is computable, so
+there is nothing to decide, and the grid-aligned advance skips missed
+slots rather than replaying them — the backlog the hold exists to
+prevent cannot form. Holding them would strand them: the row stays
+`active`, fires nothing, and falls further behind on every scan.
 
 Delivery semantics: **at-least-once**. Consumers MUST be idempotent or
 deduplicate via `idempotency_key`.
@@ -854,10 +890,20 @@ If a row with the same `idempotency_key` already exists in status
 idempotency_key }` rather than inserting a duplicate. Callers SHOULD
 treat that as success (the prior schedule is still pending).
 
+`type` and `schedule_spec` MUST agree with § 3.3, and the hub MUST
+refuse a pair it cannot read rather than storing it. A stored row with
+an unreadable spec looks scheduled and never fires, and the caller
+learns of it by the reminder not arriving — the one signal it cannot
+tell apart from the reminder having arrived and been missed.
+
 Errors:
 
 - `-32602` INVALID_PARAMS — required field missing
-  (`id` / `type` / `schedule_spec` / `payload` / `next_fire_at`).
+  (`id` / `type` / `schedule_spec` / `payload` / `next_fire_at`), or
+  `type` is not one of `once` / `interval` / `cron`, or
+  `schedule_spec` is not a JSON object carrying the member that type
+  requires (§ 3.3). The message names the field, never the supplied
+  value.
 - `-32600` INVALID_REQUEST — caller socket is not connected.
 - `-32000` server error — propagated SQLite error (the `data` field
   carries the underlying message).

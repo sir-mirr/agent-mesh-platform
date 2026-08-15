@@ -126,3 +126,210 @@ describe("ReminderScheduler health and overdue policy", () => {
     ]);
   });
 });
+
+function addInterval(db: Database, id: string, every: string, at: string): void {
+  db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES (?, 'agent-a', 'interval', ?, 'fixture reminder body', '{}', 'active', ?, 'agent-a')`)
+    .run(id, JSON.stringify({ every }), at);
+}
+
+function rowOf(db: Database, id: string) {
+  return db.prepare(`SELECT status, next_fire_at, fire_count FROM reminders WHERE id = ?`).get(id) as
+    { status: string; next_fire_at: string | null; fire_count: number };
+}
+
+describe("interval reminders repeat", () => {
+  test("an interval reminder stays active and gets its next slot", async () => {
+    // The whole point of the type. It used to be advanced with `once`: fired
+    // exactly one time, then `status = 'fired'` and `next_fire_at = NULL`.
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    expect(rowOf(db, "i1")).toEqual({
+      status: "active",
+      next_fire_at: "2026-07-14 09:15:00",
+      fire_count: 1,
+    });
+  });
+
+  test("it keeps firing across many ticks rather than stopping after one", async () => {
+    const db = testDb();
+    let now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    let fires = 0;
+    for (let i = 0; i < 4; i++) {
+      await scheduler.tick(true, async () => {
+        fires++;
+        return { status: "delivered" };
+      });
+      now = new Date(now.getTime() + 15 * 60_000);
+    }
+
+    expect(fires).toBe(4);
+    expect(rowOf(db, "i1").fire_count).toBe(4);
+    expect(rowOf(db, "i1").next_fire_at).toBe("2026-07-14 10:00:00");
+  });
+
+  test("a late fire returns to the original grid, not to now + interval", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:07:23.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    // 09:15, not 09:22:23. Advancing from the late fire would move the schedule
+    // permanently, and every outage would move it again.
+    expect(rowOf(db, "i1").next_fire_at).toBe("2026-07-14 09:15:00");
+  });
+
+  test("an outage produces one catch-up fire, not one per missed slot", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T11:07:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    // The default hold is five minutes and this row is two hours late. A
+    // repeating reminder is no longer held for that: its next slot is
+    // computable, so there is nothing for an operator to decide.
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    expect(rowOf(db, "i1")).toEqual({
+      status: "active",
+      next_fire_at: "2026-07-14 11:15:00",
+      fire_count: 1,
+    });
+  });
+
+  test("the next slot is always in the future, so a fired row is never instantly due", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "30s", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    // Equal would be a fire loop: the row is due the instant it is written.
+    expect(rowOf(db, "i1").next_fire_at).toBe("2026-07-14 09:00:30");
+  });
+
+  test("a spec the daemon cannot read kills the row instead of stranding it", async () => {
+    // `firing` is invisible to the due scan, which selects `active` only. A
+    // type that matched no branch used to be left there — never fired again,
+    // never reported, and not listed as dead either.
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('bad', 'agent-a', 'weekly', '{"every":"7d"}', 'body', '{}', 'active', ?, 'agent-a')`)
+      .run("2026-07-14 09:00:00");
+    const events: Array<[string, Record<string, unknown>]> = [];
+    const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    expect(rowOf(db, "bad").status).toBe("dead");
+    expect(events.some(([e]) => e === "advance_failed")).toBe(true);
+  });
+
+  test("an interval whose spec lost its `every` dies rather than repeating blindly", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('i1', 'agent-a', 'interval', '{}', 'body', '{}', 'active', ?, 'agent-a')`)
+      .run("2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    expect(rowOf(db, "i1").status).toBe("dead");
+  });
+
+  test("a once reminder still completes rather than repeating", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addDue(db, "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    await scheduler.tick(true, async () => ({ status: "delivered" }));
+
+    expect(rowOf(db, "r1")).toEqual({ status: "fired", next_fire_at: null, fire_count: 1 });
+  });
+});
+
+describe("overdue handling distinguishes repeating from one-shot", () => {
+  test("a badly overdue interval reminder resumes on its own", async () => {
+    // `recordOverdueDecision` has no production call site, so a held repeating
+    // reminder was held forever — active, never firing, receding further behind
+    // on every scan.
+    const db = testDb();
+    const now = new Date("2026-07-20T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    let fired = 0;
+    await scheduler.tick(true, async () => {
+      fired++;
+      return { status: "delivered" };
+    });
+
+    expect(fired).toBe(1);
+    expect(rowOf(db, "i1").status).toBe("active");
+    expect(rowOf(db, "i1").next_fire_at).toBe("2026-07-20 09:15:00");
+  });
+
+  test("an overdue cron reminder resumes on its own too", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-20T09:00:00.000Z");
+    addCron(db, "c1", "0 9 * * *", "2026-07-14 00:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    let fired = 0;
+    await scheduler.tick(true, async () => {
+      fired++;
+      return { status: "delivered" };
+    });
+
+    expect(fired).toBe(1);
+    expect(rowOf(db, "c1").status).toBe("active");
+  });
+
+  test("a badly overdue once reminder is still held for a decision", async () => {
+    // Unchanged, and deliberately: the moment a one-shot was for has passed,
+    // there is no later slot to move it to, and delivering it late can be worse
+    // than not delivering it. That is a judgement, so a person makes it.
+    const db = testDb();
+    const now = new Date("2026-07-14T10:00:00.000Z");
+    addDue(db, "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    let fired = 0;
+    await scheduler.tick(true, async () => {
+      fired++;
+      return { status: "delivered" };
+    });
+
+    expect(fired).toBe(0);
+    expect(rowOf(db, "r1").status).toBe("active");
+    expect(db.prepare(`SELECT count(*) AS c FROM scheduler_events WHERE event_type = 'overdue_hold'`).get())
+      .toEqual({ c: 1 });
+  });
+
+  test("an approved replay still releases a held once reminder", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T10:00:00.000Z");
+    addDue(db, "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    scheduler.recordOverdueDecision("r1", "2026-07-14 09:00:00", "replay", "APPROVED:ticket-1");
+    let fired = 0;
+    await scheduler.tick(true, async () => {
+      fired++;
+      return { status: "delivered" };
+    });
+
+    expect(fired).toBe(1);
+    expect(rowOf(db, "r1").status).toBe("fired");
+  });
+});

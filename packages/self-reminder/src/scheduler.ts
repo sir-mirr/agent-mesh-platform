@@ -1,3 +1,4 @@
+import { nextIntervalFire, parseScheduleSpec } from "@agent-mesh/contracts";
 import { Database } from "bun:sqlite";
 import { CronExpressionParser } from "cron-parser";
 
@@ -200,7 +201,27 @@ export class ReminderScheduler {
     return this.getState(key);
   }
 
+  /**
+   * Whether an overdue reminder waits for an operator before firing.
+   *
+   * **Only a `once` reminder does.** A one-shot that is hours late may be worse
+   * to deliver than to drop — the moment it was for has passed — and there is
+   * no later slot to move it to, so a person has to decide.
+   *
+   * A repeating reminder has no such question. Its next slot is computable, one
+   * catch-up fire is what every scheduler does after an outage (§ 3.3 already
+   * requires consumers to be idempotent), and the grid-aligned advance means
+   * missed slots are skipped rather than replayed — the backlog the hold exists
+   * to prevent cannot form.
+   *
+   * Holding them was the more damaging behaviour: `recordOverdueDecision` has
+   * no production call site, so an interval reminder that fell five minutes
+   * behind once was held permanently, still `active`, with a `next_fire_at`
+   * receding further into the past on every scan and nothing that could release
+   * it short of editing the database.
+   */
   private shouldHoldOverdue(reminder: DueReminder, now: Date): boolean {
+    if (reminder.type !== "once") return false;
     const scheduled = asDate(reminder.next_fire_at);
     if (!scheduled || now.getTime() - scheduled.getTime() <= this.overdueHoldMs) return false;
     const decision = this.db.prepare(`SELECT decision FROM overdue_decisions WHERE reminder_id = ? AND scheduled_at = ?`).get(reminder.id, reminder.next_fire_at) as { decision?: string } | undefined;
@@ -230,23 +251,60 @@ export class ReminderScheduler {
     this.log("scheduler_stalled", { due_active_count: dueCount, error_category: category });
   }
 
+  /**
+   * Decide where a reminder goes after it has fired.
+   *
+   * Every branch has to leave the row in a terminal or a schedulable state. The
+   * previous version fell through for any type it did not recognise, and the
+   * due scan only selects `status = 'active'` — so an unrecognised type left
+   * the row stuck in `firing` forever, invisible to the scan and to the
+   * operator alike.
+   */
   private advanceOrComplete(reminder: DueReminder, now: Date): void {
     const nowSql = sqliteTime(now);
-    if (reminder.type === "once" || reminder.type === "interval") {
+    if (reminder.type === "once") {
       this.db.prepare(`UPDATE reminders SET status = 'fired', fire_count = fire_count + 1, last_fired_at = ?, updated_at = ?, next_fire_at = NULL WHERE id = ?`).run(nowSql, nowSql, reminder.id);
       return;
     }
-    if (reminder.type === "cron") {
-      try {
-        const spec = JSON.parse(reminder.schedule_spec) as { cron: string; tz?: string };
-        if (!spec.cron) throw new Error("cron field missing");
-        const next = CronExpressionParser.parse(spec.cron, { tz: spec.tz ?? "UTC", currentDate: now }).next().toDate();
-        this.db.prepare(`UPDATE reminders SET fire_count = fire_count + 1, last_fired_at = ?, updated_at = ?, status = 'active', next_fire_at = ? WHERE id = ?`).run(nowSql, nowSql, sqliteTime(next), reminder.id);
-      } catch {
-        this.db.prepare(`UPDATE reminders SET status = 'dead', updated_at = ? WHERE id = ?`).run(nowSql, reminder.id);
-        this.log("cron_advance_failed", { reminder_id: reminder.id, error_category: "invalid_schedule" });
-      }
+
+    let next: Date;
+    try {
+      next = this.nextFire(reminder, now);
+    } catch (err) {
+      // `dead`, not `active`: the spec cannot be parsed, so retrying would fail
+      // identically every scan and the row would churn the log forever.
+      this.db.prepare(`UPDATE reminders SET status = 'dead', updated_at = ? WHERE id = ?`).run(nowSql, reminder.id);
+      this.log("advance_failed", {
+        reminder_id: reminder.id,
+        reminder_type: reminder.type,
+        error_category: "invalid_schedule",
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return;
     }
+    this.db.prepare(`UPDATE reminders SET fire_count = fire_count + 1, last_fired_at = ?, updated_at = ?, status = 'active', next_fire_at = ? WHERE id = ?`).run(nowSql, nowSql, sqliteTime(next), reminder.id);
+  }
+
+  /** The next slot for a repeating reminder. Throws on a spec it cannot read. */
+  private nextFire(reminder: DueReminder, now: Date): Date {
+    const parsed = parseScheduleSpec(reminder.type, reminder.schedule_spec, now);
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    if (parsed.schedule.type === "interval") {
+      // Advanced from the slot it was due for, not from `now` — a fire that ran
+      // late must not walk the schedule off its grid for good.
+      const scheduled = asDate(reminder.next_fire_at) ?? now;
+      return nextIntervalFire(scheduled, parsed.schedule.everyMs, now);
+    }
+    if (parsed.schedule.type === "cron") {
+      return CronExpressionParser.parse(parsed.schedule.cron, {
+        tz: parsed.schedule.tz,
+        currentDate: now,
+      }).next().toDate();
+    }
+    // `once` is handled by the caller and never reaches here; anything else was
+    // refused by `parseScheduleSpec` above.
+    throw new Error(`type "${reminder.type}" does not repeat`);
   }
 
   private insertAudit(reminder: DueReminder, status: string, hubMsgId: string | null, error: string | null, now: Date): void {
