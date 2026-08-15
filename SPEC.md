@@ -1022,6 +1022,7 @@ immutable and content-addressed.
 | `-32040` | `AUDIT_MISSING_BLOBS` — `data.missing_sha256[]` | transient |
 | `-32041` | `AUDIT_EVENT_CONFLICT` — same `event_id`, different payload | **permanent** |
 | `-32043` | `AUDIT_BUSY` — `data.retry_after_ms` | transient |
+| `-32044` | `AUDIT_STORAGE_EXHAUSTED` — no capacity; needs an operator (§ 15.6) | transient |
 | `-32602` | malformed params, caps exceeded | **permanent** |
 
 Clients MUST distinguish the two classes. Transient errors are retried with
@@ -1933,34 +1934,50 @@ succeeds.
 
 ### 15.6. Retention and orphan collection (0.2)
 
-Nothing in this specification bounds how long the core VM keeps anything.
-Deployments MUST set a policy. Without one, growth is unbounded, and on a
-single-VM deployment a full disk stops message routing rather than only audit —
-which is why § 3.1 separates the files in the first place.
+**Audit retention is indefinite.** Audit events are never expired, and neither
+are the blobs they reference. This is a deliberate policy, not an unset value.
 
-The stores rotate independently:
+| Store | Retention |
+|-------|-----------|
+| `agents.db` | permanent — identity and key history are never rotated |
+| `audit.db` | **indefinite** |
+| `uploads/` | as long as any audit event references the blob — so, indefinite in practice |
+| `hub.db:messages` | operational only; a deployment SHOULD expire it |
 
-| Store | Nature |
-|-------|--------|
-| `agents.db` | small, permanent — identity and key history are never rotated |
-| `hub.db:messages` | operational; needs only to outlive delivery and `mesh.fetch_messages` |
-| `audit.db` | long-lived; the retention period is a policy decision, not a technical one |
-| `uploads/` | derived — a blob lives as long as something references it |
+`messages` is the one store that should rotate, and indefinite audit retention
+is what makes that safe: the audit copy is the permanent record, so `messages`
+only has to outlive delivery and `mesh.fetch_messages`. Keeping both forever
+stores every message body twice for no gain.
 
-**Orphan collection.** A blob is collectable only when **no** row in
-`audit_event_blobs` references it *and* its mtime is older than a grace period.
-Age alone is not sufficient: attachments are shared, so a blob may be old and
-still live.
+**Orphan collection.** With events kept forever, references are never released,
+so the only collectable blob is one **no event ever referenced** — bytes
+uploaded whose `mesh.audit.append` never arrived. That is the whole job.
 
-The grace period exists because a blob uploaded but not yet committed is a
-normal state, not an orphan — § 8.9 uploads bytes before the event that
-references them.
-
-Deleting audit events therefore releases blobs indirectly: references disappear
-first, and collection follows on the next sweep.
+A blob is collectable only when no row in `audit_event_blobs` references it
+*and* its mtime is older than a grace period. The grace period exists because a
+blob uploaded but not yet committed is a normal state, not an orphan — § 8.9
+uploads bytes before the event that references them.
 
 Collection MUST run out of process (cron or systemd timer), MUST be idempotent,
 and MUST be safe to run while lane and core processes are live.
+
+**Capacity is an operational contract, not a retention one.** Because nothing
+expires, the disk fills eventually; the question is what happens then, and the
+answer must not be "routing stops".
+
+- `audit.db` and `uploads/` SHOULD sit on a volume separate from `hub.db` and
+  `agents.db`. Splitting the files (§ 3.1) removes schema and lock coupling but
+  not shared free space; files on one volume fill together.
+- Deployments MUST set soft and hard thresholds with alerting well below
+  exhaustion, since recovery means adding capacity rather than deleting.
+- On exhaustion the hub MUST keep routing and MUST reject audit writes with
+  `-32044` AUDIT_STORAGE_EXHAUSTED, a **transient** error. Adapters hold the
+  events in their outboxes, and lanes fail closed on their own local limits if
+  the condition persists. Audit availability degrades before message delivery
+  does, never the reverse.
+
+`-32044` is deliberately distinct from `-32043` AUDIT_BUSY. Both tell a client
+to back off, but one clears on its own and the other needs an operator.
 
 ---
 

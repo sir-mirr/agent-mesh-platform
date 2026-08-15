@@ -555,17 +555,48 @@ sending them has them ignored.
 - **Per-lane jitter on drain**, on top of the negotiated in-flight caps.
 - **Unadvertised capabilities mean incompatible**, never assumed defaults.
 
-### 8.6 Still open
+### 8.6 Retention: indefinite
 
-**Retention (§ 16.5) is unanswered.** Every other § 17 item now has a value;
-this one is a policy decision and stays with the product. Until it is set,
-growth is unbounded.
+Audit events are **never expired**, and neither are the blobs they reference.
+That is now a decision rather than an unset value, and it closes § 16.5's first
+two items.
 
-The revision's added point is correct and worth recording: separating
-`audit.db` from `hub.db` protects routing from *schema* and *lock* coupling,
-not from a full disk. Files on one volume still fill together. A production
-profile needs separate volumes or a disk reservation, plus soft and hard
-thresholds with alerting.
+Three things follow.
+
+**`hub.db:messages` should rotate, and now safely can.** The audit copy is the
+permanent record, so the operational store only has to outlive delivery and
+`mesh.fetch_messages`. Keeping both indefinitely stores every message body
+twice for nothing. The period is still a deployment choice, but it is a small
+one now.
+
+**Orphan collection shrinks to almost nothing.** With events kept forever,
+references are never released, so the only collectable blob is one no event
+ever referenced — bytes uploaded whose `append` never arrived. Everything else
+in the sweep was there to reclaim space behind expiring events, and there are
+none.
+
+**Capacity becomes an operational contract rather than a retention one.** The
+disk fills eventually; the question is what happens then. SPEC § 15.6 now
+requires that routing survive it: on exhaustion the hub keeps routing and
+rejects audit writes with the new `-32044` AUDIT_STORAGE_EXHAUSTED, a
+**transient** error, so adapters hold events in their outboxes and lanes fail
+closed on their own local limits if it persists. Audit availability degrades
+before message delivery does, never the reverse.
+
+`-32044` is deliberately separate from `-32043` AUDIT_BUSY. Both say back off;
+one clears itself and the other needs an operator, and a client that cannot
+tell them apart will report the wrong thing.
+
+The revision's point about volumes is adopted: separating `audit.db` from
+`hub.db` removes schema and lock coupling but not shared free space. `audit.db`
+and `uploads/` belong on their own volume, with soft and hard thresholds
+alerting well before exhaustion — recovery here means adding capacity, not
+deleting.
+
+Client-local retention after ACK stays a client decision. With the hub keeping
+everything, a completed outbox entry has no reason to persist locally.
+
+### 8.7 Still open
 
 **The contract package (§ 16.4) has no home yet.** The npm scope and package
 name are undecided, and nothing is published. The fixtures listed there are the
