@@ -17,6 +17,7 @@ import {
 import { entitlement } from "@agent-mesh/store";
 
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
+import { recordDelivered } from "./audit";
 
 import { log } from "../log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
@@ -253,6 +254,9 @@ export function deliverPending(identity: string, ws: any) {
         })
       );
       stmtUpdateMessageStatus.run("delivered", msg.id);
+      // The audit record said `pending` and would have said so for ever
+      // (§ 8.9.4). A replay is a delivery and has to be recorded as one.
+      recordDelivered(msg);
     } catch (err) {
       log(`failed to deliver pending ${msg.id} to ${identity}:`, err);
       break; // stop if connection is broken

@@ -247,12 +247,13 @@ describe("hub-produced events (§ 8.9.4)", () => {
     const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "audited" });
     expect(sent.error).toBeUndefined();
 
+    // Two hub events per send now: that it was accepted, and where it went.
     const [row] = rows(
-      `SELECT * FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      `SELECT * FROM audit_events
+        WHERE correlation_id = ? AND recorded_by_kind = 'hub' AND event_type = 'mesh.message.pending'`,
       sent.result.id,
     );
     expect(row).toBeTruthy();
-    expect(row.event_type).toBe("mesh.message.pending");
     expect(row.identity).toBe(IDENTITY);
 
     // The point of § 8.9.4: the hub's observation carries the *sender's* own
@@ -270,10 +271,50 @@ describe("hub-produced events (§ 8.9.4)", () => {
     // was sent — audit retention and operational retention stay independent.
     const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "body carried" });
     const [row] = rows(
-      `SELECT payload FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      `SELECT payload FROM audit_events
+        WHERE correlation_id = ? AND recorded_by_kind = 'hub' AND event_type = 'mesh.message.sent'`,
       sent.result.id,
     );
     expect(JSON.parse(row.payload).message.content).toBe("body carried");
+  });
+
+  test("a send always records that it was accepted, whatever happens next", async () => {
+    // `sent` was in § 8.9.4's list and never emitted. It is the only record that
+    // survives when delivery never occurs — recording just the outcome left no
+    // evidence a send had been accepted at all.
+    const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "accepted" });
+    const types = rows(
+      `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      sent.result.id,
+    ).map((r: any) => r.event_type);
+    expect(types).toContain("mesh.message.sent");
+  });
+
+  test("a queued message records delivery when it finally lands", async () => {
+    // The trail said `pending` and would have said so for ever, however long
+    // ago the message arrived. An audit of delivery that cannot say whether
+    // something was delivered is not one.
+    await provision(mesh.hub, "late-peer", "service");
+    const sent = await rpc.call("mesh.send", { to: "late-peer", content: "queued then landed" });
+    expect(sent.result.status).toBe("pending");
+
+    const before = rows(
+      `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      sent.result.id,
+    ).map((r: any) => r.event_type);
+    expect(before).toContain("mesh.message.pending");
+    expect(before).not.toContain("mesh.message.delivered");
+
+    const late = await connectRpc(mesh.hub);
+    await late.call("mesh.connect", { identity: "late-peer" });
+    await Bun.sleep(200);
+    late.close();
+
+    const after = rows(
+      `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      sent.result.id,
+    ).map((r: any) => r.event_type);
+    expect(after).toContain("mesh.message.delivered");
   });
 
   test("delivered and pending are distinguished", async () => {
@@ -282,12 +323,15 @@ describe("hub-produced events (§ 8.9.4)", () => {
     const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "live" });
     listener.close();
 
-    const [row] = rows(
+    const types = rows(
       `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
       sent.result.id,
-    );
-    // The event states what happened, not what was attempted.
-    expect(row.event_type).toBe("mesh.message.delivered");
+    ).map((r: any) => r.event_type);
+    // The outcome event states what happened, not what was attempted — and
+    // sits alongside the `sent` record rather than replacing it.
+    expect(types).toContain("mesh.message.delivered");
+    expect(types).not.toContain("mesh.message.pending");
+    expect(types).toContain("mesh.message.sent");
   });
 });
 

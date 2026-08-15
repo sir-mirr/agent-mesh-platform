@@ -26,8 +26,10 @@
 
 import { MAILBOX_CAPABILITY_DEFAULTS } from "@agent-mesh/contracts";
 
+import { recordDelivered } from "./audit";
 import {
   db,
+  stmtMessageById,
   stmtAckMessage,
   stmtCountLeasable,
   stmtLeasableMessages,
@@ -80,7 +82,17 @@ export function handleReceive(
     // rather than refused: a caller retrying an ambiguous receive re-sends the
     // same acknowledgements, and failing that retry would strand the very batch
     // it is trying to settle.
-    for (const messageId of ackIds) stmtAckMessage.run(messageId, identity);
+    for (const messageId of ackIds) {
+      // Recorded on acknowledgement rather than on hand-out, because that is
+      // when it is true: a leased batch may be redelivered, and recording each
+      // attempt would put several `delivered` events behind one message
+      // (§ 8.9.4). `changes` is what says the caller actually held it.
+      const settled = stmtAckMessage.run(messageId, identity);
+      if (settled.changes > 0) {
+        const row = stmtMessageById.get(messageId) as any;
+        if (row) recordDelivered(row);
+      }
+    }
 
     page = stmtLeasableMessages.all(identity, limit) as any[];
     for (const m of page) {

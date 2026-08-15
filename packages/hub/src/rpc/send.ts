@@ -206,9 +206,12 @@ export function handleSend(
     log(`queued: ${route} (${msgId})`);
   }
 
-  // Recorded after the routing decision, so the event states what actually
-  // happened rather than what was attempted (SPEC § 8.9.4).
-  recordMeshEvent(status === "delivered" ? "mesh.message.delivered" : "mesh.message.pending", {
+  // Two events, and they answer different questions. `sent` is that the hub
+  // accepted and persisted the envelope — true whatever happens next, and the
+  // only record that survives if delivery never occurs. `delivered` or
+  // `pending` is where it went. § 8.9.4 lists all three, and recording only the
+  // outcome left no evidence that a send was ever accepted.
+  const meshEventFields = {
     messageId: msgId,
     from: effectiveSender,
     to,
@@ -217,7 +220,9 @@ export function handleSend(
     replyTo: replyTo,
     senderSig: sig,
     senderParams: raw ? rawParams(raw) ?? "{}" : "{}",
-  });
+  };
+  recordMeshEvent("mesh.message.sent", meshEventFields);
+  recordMeshEvent(status === "delivered" ? "mesh.message.delivered" : "mesh.message.pending", meshEventFields);
 
   return rpcResult(id, { id: msgId, status });
 }

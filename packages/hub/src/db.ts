@@ -208,6 +208,11 @@ export const stmtAckMessage = db.prepare(`
   WHERE id = ?1 AND to_agent = ?2
 `);
 
+export const stmtMessageById = db.prepare(`
+  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
+  FROM messages WHERE id = ?
+`);
+
 export const stmtCountLeasable = db.prepare(`
   SELECT COUNT(*) AS n FROM messages
   WHERE to_agent = ?1 AND status = 'pending'

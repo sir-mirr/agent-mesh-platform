@@ -13,6 +13,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { Database } from "bun:sqlite";
+import { join } from "node:path";
+
 import {
   callHttp, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh,
   type KeyPair, type Mesh,
@@ -147,6 +150,31 @@ describe("draining an inbox", () => {
     await pastLease();
     expect((await callHttp(mesh.hub, signer(mail), "mesh.receive", {})).body.result.messages)
       .toHaveLength(0);
+  });
+
+  test("acknowledgement is what records delivery, not hand-out", async () => {
+    // A leased batch may be redelivered, so recording on hand-out would put
+    // several `delivered` events behind one message (§ 8.9.4). The
+    // acknowledgement is the moment it is true.
+    const mail = await agent("mail-audited");
+    const sender = await agent("mail-audit-sender");
+    await callHttp(mesh.hub, signer(sender), "mesh.send", { to: "mail-audited", content: "x" });
+
+    const batch = await callHttp(mesh.hub, signer(mail), "mesh.receive", {});
+    const ids = batch.body.result.messages.map((m: any) => m.id);
+
+    const audit = () => {
+      const db = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+      const r = db.prepare(
+        `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
+      ).all(ids[0]) as Array<{ event_type: string }>;
+      db.close();
+      return r.map((x) => x.event_type);
+    };
+
+    expect(audit()).not.toContain("mesh.message.delivered");
+    await callHttp(mesh.hub, signer(mail), "mesh.receive", { ack_ids: ids });
+    expect(audit()).toContain("mesh.message.delivered");
   });
 
   test("acknowledging is scoped to the caller's own queue", async () => {

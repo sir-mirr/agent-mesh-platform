@@ -420,3 +420,36 @@ export function recordMeshEvent(
     log(`audit: could not record ${eventType} for ${fields.messageId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
+
+/**
+ * Record that a message queued earlier has now reached its recipient
+ * (SPEC § 8.9.4).
+ *
+ * Without this the record showed `mesh.message.pending` and nothing else, for
+ * ever — the audit trail said every queued message was still waiting, however
+ * long ago it arrived. The one question an audit of delivery exists to answer
+ * is whether something was delivered, and it could not answer it.
+ *
+ * No attestation: the sender signed the original `mesh.send`, and that
+ * signature is on the `sent` and `pending` events. This is the hub's own later
+ * observation, which the sender was not present for and cannot attest to.
+ */
+export function recordDelivered(row: {
+  id: string;
+  from_agent: string;
+  to_agent: string;
+  sent_by: string | null;
+  content: string;
+  reply_to: string | null;
+}): void {
+  recordMeshEvent("mesh.message.delivered", {
+    messageId: row.id,
+    from: row.from_agent,
+    to: row.to_agent,
+    sentBy: row.sent_by ?? row.from_agent,
+    content: row.content,
+    replyTo: row.reply_to,
+    senderSig: null,
+    senderParams: "{}",
+  });
+}
