@@ -181,3 +181,30 @@ describe("every code the hub emits is classified", () => {
     }
   });
 });
+
+describe("the services stay inside the reserved band", () => {
+  test("every code the hub emits is one this contract may allocate", async () => {
+    // The contract can only check its own tables. Whether a *service* invents a
+    // number outside the band is visible here and nowhere else — and inventing
+    // one does not fail, it silently overlaps whatever a neighbouring protocol
+    // put there (SPEC § 8).
+    const { isMeshErrorCode, JSON_RPC_PREDEFINED } = await import("@agent-mesh/contracts");
+
+    const proc = Bun.spawnSync([
+      "grep", "-rhoE", "--include=*.ts", "[-]32[0-9]{3}",
+      join(REPO_ROOT, "packages/hub/src"),
+      join(REPO_ROOT, "packages/http/src"),
+      join(REPO_ROOT, "packages/self-reminder/src"),
+    ]);
+    const emitted = new Set(
+      new TextDecoder().decode(proc.stdout).trim().split("\n").map(Number).filter(Boolean),
+    );
+    expect(emitted.size).toBeGreaterThan(8);
+
+    const predefined = new Set<number>(JSON_RPC_PREDEFINED);
+    const outside = [...emitted].filter(
+      (code) => !predefined.has(code) && !isMeshErrorCode(code),
+    );
+    expect(outside).toEqual([]);
+  });
+});

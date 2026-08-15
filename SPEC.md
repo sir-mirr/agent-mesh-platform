@@ -548,6 +548,27 @@ rows into `agents.db:agents`) is **not** done over JSON-RPC; it is done
 out of band via `POST /api/v1/agents` (see § 10.1). The JSON-RPC
 methods below operate on *already-registered* identities.
 
+**Error code allocation.** JSON-RPC 2.0 leaves `-32099 … -32000` for
+implementation-defined server errors. Agent Mesh reserves the **lower
+half — `-32049 … -32000`** — for the codes in this document, including
+retired ones (§ 13). The upper half, **`-32099 … -32050`**, is not
+allocated here and is available to protocols layered beside the mesh:
+a lane's driver-to-adapter control plane (§ 4.5), a deployment's own
+tooling, anything that is not this contract.
+
+The split exists because both halves of a lane speak JSON-RPC and the
+two vocabularies meet inside one process. Nothing rejects a code from
+the wrong side — an error object is an error object — so a collision
+does not fail, it *reclassifies*. `-32043` is `AUDIT_BUSY` here and
+therefore transient (§ 8.9.3); a neighbouring protocol that assigned
+`-32043` to a permanently malformed payload would have that payload
+retried without limit the first time the two paths were joined.
+
+Adding a code inside the reserved half is a minor version (§ 13).
+Codes in the upper half are never added by this document, so an
+implementation that stays there cannot be collided with by a mesh
+release.
+
 ### 8.1. `mesh.connect`
 
 Marks a pre-registered identity as online on this WebSocket. This is

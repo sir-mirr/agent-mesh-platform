@@ -33,7 +33,7 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.7.4",
+    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.7.5",
     "@agent-mesh/store": "workspace:*"
   }
 }
