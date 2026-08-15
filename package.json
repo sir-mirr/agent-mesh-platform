@@ -7,17 +7,14 @@
   "type": "module",
   "workspaces": [
     "packages/agent-mesh-core",
-    "packages/channel-drivers/*",
     "packages/shared/*"
   ],
   "scripts": {
-    "start:channel-discord": "bun packages/channel-drivers/discord/src/main.ts",
     "start:shared-hub": "bun packages/shared/hub/src/main.ts",
     "start:shared-http": "bun packages/shared/http/src/main.ts",
     "start:shared-self-reminder": "bun packages/shared/self-reminder/src/main.ts",
     "typecheck": "bun --bun tsc -b tsconfig.base.json --pretty false",
     "typecheck:core": "bun --bun tsc -p packages/agent-mesh-core/tsconfig.json --pretty false",
-    "typecheck:discord": "bun --bun tsc -p packages/channel-drivers/discord/tsconfig.json --pretty false",
     "typecheck:shared-hub": "bun --bun tsc -p packages/shared/hub/tsconfig.json --pretty false",
     "typecheck:shared-http": "bun --bun tsc -p packages/shared/http/tsconfig.json --pretty false",
     "typecheck:shared-self-reminder": "bun --bun tsc -p packages/shared/self-reminder/tsconfig.json --pretty false",

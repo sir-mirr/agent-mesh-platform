@@ -74,14 +74,18 @@ runtime to one external channel. Each lane gets its own env, secrets, state,
 and attachments directory. N lanes are supported via systemd template
 instantiation; ports follow a fixed offset rule.
 
-| Lane element                       | Source                                |
-|------------------------------------|---------------------------------------|
-| `packages/runtime-adapters/<rt>`   | Adapter for an external runtime       |
-| `packages/channel-drivers/<ch>`    | Driver for an external channel        |
+| Lane element      | Role                                  |
+|-------------------|---------------------------------------|
+| runtime-adapter   | Wraps an external runtime; owns the lane's hub connection |
+| channel-driver    | Wraps an external channel; forwards to the adapter        |
 
-Currently shipped: `runtime-adapters/codex` and `channel-drivers/discord`.
-Future runtimes (claude, gpt, gemini, ...) and channels (telegram, slack, ...)
-implement the same contracts (see `SPEC.md`).
+**Both are built in a separate repository.** This one holds the baseline they
+attach to, the contracts they implement (`SPEC.md` §§ 4–6), and the two
+packages they consume — `@agent-mesh/core` and
+`@agent-mesh/shared-attachments`.
+
+Every lane includes a runtime-adapter. A channel-driver forwards to it and
+does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
 
 ---
 
@@ -201,74 +205,34 @@ Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 
 ## Add a lane
 
-A *lane name* is a short identifier (e.g. `prod-codex1`, `test-claude1`) used
-as the systemd template instance and as the agent identity on the hub.
+Lane components — runtime-adapters and channel-drivers — are built and deployed
+from a separate repository. This one provides the baseline they attach to, the
+contract they implement (`SPEC.md` §§ 4–6), and the two packages they consume:
+`@agent-mesh/core` and `@agent-mesh/shared-attachments`.
 
-### Codex lane (3 units per lane)
+What a lane needs from here:
 
-Wires Anthropic-style tool use through the Codex CLI's app-server, an HTTP
-adapter, and a Discord driver.
-
-**Prereq (lane VM):** install the codex CLI globally —
-`sudo npm install -g @openai/codex` (pin to a hub-compatible version;
-the lab runs ≥ 0.125.0). Without it, `codex-app-server@<lane>` enters a
-restart loop. See `docs/lane-deployment.md` § 1.1.
-
-```
-codex-app-server@<lane>     :4500+i   Codex CLI app-server (WS)
-codex-adapter@<lane>        :4600+i   runtime-adapters/codex (HTTP, hub WS client)
-channel-discord@<lane>      :4610+i   channel-drivers/discord (HTTP)
-```
+1. **An identity, provisioned on the hub.** `POST /api/v1/agents` on the hub
+   listener (`:3100`) is the only sanctioned path — see `SPEC.md` § 10.1.
+   Cross-VM deployments already worked this way.
+2. **A public key, approved by an operator.** From 0.2 a lane signs every
+   request; the key is submitted with the identity and is unusable until
+   approved. `SPEC.md` § 10.2, and `docs/decisions/identity-and-authentication.md`
+   for why.
+3. **The hub URL.** `ws://<core-vm>:3100/ws`. Peers are discovered through
+   `mesh.list_agents`; nothing else is hard-coded.
 
 ```bash
-# Per-lane env + secrets
-mkdir -p env/<lane> state/codex/<lane> attachments/<lane>
-$EDITOR env/<lane>/{adapter,discord,app-server}.env
-$EDITOR secrets/<lane>.env   # DISCORD_BOT_TOKEN,
-                             # CODEX_ADAPTER_HTTP_TOKEN,
-                             # CHANNEL_DISCORD_TOKEN
-
-# Enable the three template instances
-sudo systemctl enable --now \
-    codex-app-server@<lane> \
-    codex-adapter@<lane> \
-    channel-discord@<lane>
+curl -X POST "http://<core-vm>:3100/api/v1/agents" \
+     -H 'content-type: application/json' \
+     -d '{ "identity": "my-lane-1", "type": "ai-codex",
+           "description": "Production lane 1",
+           "public_key": "<base64url, 43 chars>" }'
 ```
 
-Driver ↔ adapter HTTP traffic is mutually authenticated using
-`CHANNEL_DISCORD_TOKEN` and `CODEX_ADAPTER_HTTP_TOKEN` via the
-`Authorization: Bearer <token>` header (RFC 6750). The adapter
-registers with the hub using `identity = <lane>`.
-
-### Claude lane (1 unit + external Claude Code)
-
-For lanes powered by Anthropic's Claude Code CLI, the runtime is an external
-process and joins the hub directly via an MCP plugin. Only the channel-driver
-is hosted in-tree.
-
-**Prereq (lane VM, when relocating an authenticated session):** mirror
-both `~/.claude/` and `~/.claude.json` (note: the `.json` file in
-`$HOME` is separate from the directory) onto the lane VM with mode
-`0600`, owner `ubuntu:ubuntu`. Mirroring only the directory leaves the
-CLI in onboarding mode. See `docs/lane-deployment.md` § 1.2.
-
-```
-channel-discord@<lane>   :4610+i   channel-drivers/discord (HTTP)
-                                   forwards directly to hub as <lane>
-```
-
-```bash
-mkdir -p env/<lane>
-$EDITOR env/<lane>/discord.env       # HUB_FORWARD_IDENTITY=<lane>
-$EDITOR secrets/<lane>.env           # DISCORD_BOT_TOKEN
-
-sudo systemctl enable --now channel-discord@<lane>
-```
-
-Then point an external Claude Code instance's agent-mesh MCP plugin at
-`ws://<host>:3100` with `identity=<lane>`.
-
----
+Note that 0.2 removed hub-direct forwarding: a channel-driver no longer holds
+a hub identity of its own, and every lane includes a runtime-adapter
+(`SPEC.md` §§ 4.1, 6.1).
 
 ## Architecture overview
 
@@ -286,9 +250,11 @@ Then point an external Claude Code instance's agent-mesh MCP plugin at
 - **agent-mesh-core** (`packages/agent-mesh-core`) — Pure types and
   utilities: `envelope`, `action-proxy`, `capabilities`, `history`,
   `ownership`, `registry`, `tool-contract`, `hub` client base.
-- **Lanes** — Each lane is one runtime-adapter instance plus zero or more
-  channel-driver instances, joined by an HTTP control plane and a shared
-  hub WS connection.
+- **shared/attachments** (`packages/shared/attachments`) — Pull-on-demand
+  attachment fetcher used by lane components (`SPEC.md` § 15.4).
+- **Lanes** — One runtime-adapter plus zero or more channel-drivers, joined by
+  an intra-lane HTTP control plane. The adapter holds the lane's single hub
+  connection. Built and deployed from a separate repository.
 
 ---
 
@@ -344,12 +310,17 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 ├── README.md                      # this file
 ├── SPEC.md                        # normative contracts
 ├── MIGRATION.md                   # legacy → normalized migration notes
-├── instructions/                  # operator runbooks
+├── docs/
+│   ├── decisions/                 # settled design, with the reasoning
+│   ├── proposals/                 # cross-team interface work
+│   └── open-questions.md
 ├── ops/
-│   └── bin/
-│       └── bootstrap-hub-service-identities.sh
+│   ├── bin/bootstrap-hub-service-identities.sh
+│   ├── env/shared/                # baseline env examples
+│   ├── migrations/                # forward-only SQL
+│   └── systemd/                   # the three baseline units
 ├── packages/
-│   ├── agent-mesh-core/           # pure types, no I/O
+│   ├── agent-mesh-core/           # pure types, no I/O — published contract
 │   │   └── src/
 │   │       ├── envelope.ts
 │   │       ├── action-proxy.ts
@@ -359,18 +330,19 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 │   │       ├── ownership.ts
 │   │       ├── registry.ts
 │   │       └── tool-contract.ts
-│   ├── shared/
-│   │   ├── hub/                   # JSON-RPC 2.0 broker (port 3100)
-│   │   ├── http/                  # REST + SSE + OAuth + PWA (port 3000)
-│   │   └── self-reminder/         # scheduler daemon
-│   ├── channel-drivers/
-│   │   └── discord/src/
-│   └── runtime-adapters/
-│       └── codex/src/
+│   └── shared/
+│       ├── hub/                   # JSON-RPC 2.0 broker (port 3100)
+│       ├── http/                  # REST + SSE + OAuth + PWA (port 3000)
+│       ├── self-reminder/         # scheduler daemon
+│       └── attachments/           # lane-side fetch helper — published contract
 ├── package.json
 ├── bun.lock
 └── tsconfig.base.json
 ```
+
+**Lane components live in a separate repository.** `runtime-adapters/` and
+`channel-drivers/` were removed from this tree; what remains is the baseline
+plus the two packages a lane consumes as contracts.
 
 Instance data — env files, secrets, state, attachments, handoffs, channels —
 lives **outside** the code repository and is not versioned here. See
@@ -381,8 +353,7 @@ lives **outside** the code repository and is not versioned here. See
 ## Contributing
 
 PRs are welcome at any time — this is a young PoC and we'd love help shaping
-it. Bug fixes, doc clarifications, new runtime-adapters, new channel-drivers,
-or just questions are all fair game. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+it. Bug fixes, doc clarifications, or just questions are all fair game. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
 for a quick orientation (clone, `bun install`, `bun run typecheck`) and a few
 light conventions. No CLA, no strict gatekeeping — just keep PRs focused and
 have fun.

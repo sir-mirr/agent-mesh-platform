@@ -1,7 +1,7 @@
 # Contributing to agent-mesh-platform
 
 PRs are welcome at any time. This is still an early PoC, so contributions of
-any size — typo fixes, new runtime-adapters, new channel-drivers, sharper
+any size — typo fixes, sharper
 docs, even just "this confused me" issues — are genuinely helpful.
 
 No CLA, no strict gatekeeping. Be kind, keep PRs focused, and we'll work
@@ -38,10 +38,10 @@ one package.
 
 ## Good places to start
 
-- `packages/runtime-adapters/codex/` — reference implementation of the SPEC §5
-  runtime-adapter contract. A good template if you want to add a new runtime.
-- `packages/channel-drivers/discord/` — reference implementation of the SPEC
-  §4 channel-driver contract. A good template for a new channel.
+- `packages/agent-mesh-core/` — the types every lane consumes. Small, pure,
+  and the place a wire-format change starts.
+- `docs/decisions/` and `docs/proposals/` — settled design and cross-team
+  interface work, each written with the reasoning rather than just the outcome.
 - `SPEC.md` itself — read the section you're touching end-to-end before
   editing code. Drift between SPEC and code is the #1 thing reviewers will
   flag.

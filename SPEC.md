@@ -229,9 +229,9 @@ and the driver reached the hub directly (the hub-direct mode removed in
 § 6.1). That arrangement put the hub in the channel real-time path and left
 channel traffic with no adapter to record it — see § 8.9.
 
-The in-tree `packages/runtime-adapters/claude/` is a stdio MCP server and hub
-client with no HTTP ingress, so it does not yet satisfy § 5.1(6). A conformant
-Claude lane needs that ingress built.
+The Claude adapter that existed in this tree was a stdio MCP server and hub
+client with no HTTP ingress, so it did not satisfy § 5.1(6). A conformant
+Claude lane needs that ingress built, in the lane repository.
 
 Future lanes MAY use any combination of one runtime-adapter and one or
 more channel-drivers.
@@ -308,10 +308,9 @@ Tokens MUST be unique per lane, and each lane's two intra-lane secrets
 A runtime-adapter wraps an external runtime (Codex CLI, Claude Code,
 etc.) and exposes it to the mesh as a single hub identity.
 
-Reference implementation: `packages/runtime-adapters/codex/src/`
-(`adapter.ts`, `codex-client.ts`, `hub-client.ts`, `thread-manager.ts`,
-`turn-envelope.ts`, `reply-dispatcher.ts`, `rotation-policy.ts`,
-`queue.ts`, `http-server.ts`, `http-action-proxy.ts`).
+Reference implementations live in the lane repository. They were removed from
+this tree when lane components moved out; what stays here is the contract they
+satisfy.
 
 ### 5.1. Required behaviors
 
@@ -353,10 +352,9 @@ adapter.stop(): Promise<void>
 A channel-driver wraps an external channel (Discord, Telegram, ...) and
 maps channel events to mesh envelopes.
 
-Reference implementation: `packages/channel-drivers/discord/src/`
-(`main.ts`, `runtime.ts`, `envelope.ts`, `tools.ts`, `attachments.ts`,
-`access.ts`, `channels.ts`, `chunk.ts`, `recent-sent.ts`,
-`http.ts`, `config.ts`, `types.ts`).
+Reference implementations live in the lane repository. They were removed from
+this tree when lane components moved out; what stays here is the contract they
+satisfy.
 
 ### 6.1. Required behaviors
 
@@ -1494,12 +1492,12 @@ NOT set these alias names** — use the canonical token only. The hub
 and adapters resolve the canonical name first and fall back to the
 alias only if the canonical is unset.
 
-| Deprecated alias            | Canonical token              | Source location                                                | Status note                                          |
-|-----------------------------|------------------------------|----------------------------------------------------------------|------------------------------------------------------|
-| `BRIDGE_INGRESS_TOKEN`      | `CHANNEL_INGRESS_TOKEN`      | `packages/channel-drivers/discord/src/config.ts:50`            | accepted for BC; do not use in new deployments       |
-| `GATEWAY_TOKEN`             | `DISCORD_DRIVER_HTTP_TOKEN`  | `packages/channel-drivers/discord/src/config.ts:74`            | accepted for BC; do not use in new deployments       |
-| `DISCORD_DRIVER_TOKEN`      | `CHANNEL_DISCORD_TOKEN`      | `packages/runtime-adapters/codex/src/config.ts:117`            | accepted for BC; do not use in new deployments       |
-| `BRIDGE_HTTP_TOKEN`         | `CODEX_ADAPTER_HTTP_TOKEN`   | `packages/runtime-adapters/codex/src/config.ts:149`            | accepted for BC; do not use in new deployments       |
+| Deprecated alias            | Canonical token              | Side | Status note |
+|-----------------------------|------------------------------|------|-------------|
+| `BRIDGE_INGRESS_TOKEN`      | `CHANNEL_INGRESS_TOKEN`      | channel-driver  | accepted for BC; do not use in new deployments |
+| `GATEWAY_TOKEN`             | `DISCORD_DRIVER_HTTP_TOKEN`  | channel-driver  | accepted for BC; do not use in new deployments |
+| `DISCORD_DRIVER_TOKEN`      | `CHANNEL_DISCORD_TOKEN`      | runtime-adapter | accepted for BC; do not use in new deployments |
+| `BRIDGE_HTTP_TOKEN`         | `CODEX_ADAPTER_HTTP_TOKEN`   | runtime-adapter | accepted for BC; do not use in new deployments |
 
 Future major releases MAY drop the alias fallback. Operators auditing a
 deployment SHOULD `grep` for these aliases in `secrets/*.env` and
@@ -1570,8 +1568,7 @@ MAY use either.
 > port (default `3000`, declared in § 9.1). Earlier revisions used the
 > shorthand `<HUB_PORT>` / `<HTTP_PORT>` placeholders; the canonical
 > env names are kept here to remove ambiguity between the two services
-> (see also CR-NEW-1 / β-12 P8 — the `install-lane.sh` post-install
-> note initially conflated them).
+> (an earlier lane installer's post-install note conflated the two).
 
 ### 14.1. Topology
 
@@ -1697,9 +1694,9 @@ download endpoint § 15.3, lane cache § 15.4, offline behaviour § 15.5).
 ### 14.8. Lane systemd contract
 
 This subsection normalizes the systemd shape a lane VM MUST expose to
-operators. The reference implementation lives under
-`ops/systemd/agent-mesh-{lane@,lane-codex-app-server@,runtime-adapter@,channel-driver-discord@}.{service,target}`
-and is documented operationally in `docs/lane-deployment.md`.
+operators. The units and their installer live in the lane repository; they were
+removed from this tree with the packages they start. What follows is the shape
+they MUST satisfy.
 
 - A lane VM MUST expose a per-lane aggregator unit
   `agent-mesh-lane@<lane-id>.target`. Enabling that target MUST bring
@@ -1733,9 +1730,8 @@ and is documented operationally in `docs/lane-deployment.md`.
   files) SHOULD live under `/var/lib/agent-mesh/lane/<lane-id>/`,
   owned by the service user. Lane VMs MUST NOT write state into the
   source tree under `/srv/agent-mesh-platform/`.
-- Provisioning of unit files onto a lane VM is OPTIONAL but the
-  reference path is `ops/bin/install-lane.sh`, which MUST be idempotent
-  and MUST NOT `enable` or `start` any unit on its own.
+- A lane installer is OPTIONAL, but one MUST be idempotent and MUST NOT
+  `enable` or `start` any unit on its own.
 - **Codex runtime prereq.** Codex lane VMs MUST install the codex CLI
   globally (`sudo npm install -g @openai/codex`, version selected to be
   compatible with the core VM's hub) and have it on `PATH` for the
@@ -1750,28 +1746,16 @@ and is documented operationally in `docs/lane-deployment.md`.
   paths with owner `ubuntu:ubuntu` and mode `0600`. Mirroring only
   `~/.claude/` leaves the CLI in onboarding mode and prevents the lane
   from coming online.
-- **Lab-monolithic unit transplant caveat.** The lab-monolithic units
-  shipped under `ops/systemd/` for the `agent-mesh-lab` reference
-  deployment do not couple to the hub uniformly. Specifically:
-  - `agent-mesh-codex-adapter@.service` carries
-    `Requires=agent-mesh-hub-lab.service codex-app-server@%i.service channel-discord@%i.service`
-    and `After=… agent-mesh-hub-lab.service agent-mesh-self-reminder-lab.service …`
-    — it is the only unit that hard-binds to hub-lab and
-    self-reminder-lab via `Requires=` / `After=`.
-  - `channel-discord@.service` carries `After=agent-mesh-hub-lab.service`
-    only (no `Requires=` on hub-lab); systemd orders it after hub-lab
-    when hub-lab is enabled, but will not refuse to start the unit
-    when hub-lab is absent.
-  - `codex-app-server@.service` carries no hub-lab coupling at all
-    (`After=network-online.target` only).
-  When these units are transplanted onto a lane VM, the hub-lab and
-  self-reminder-lab dependencies on `agent-mesh-codex-adapter@` MUST be
-  removed (the corresponding `After=` for `channel-discord@` SHOULD be
-  removed for cleanliness), since hub and self-reminder services do not
-  run on lane VMs.
-  Operators SHOULD instead use the lane-portable templates under
-  `ops/systemd/agent-mesh-lane-*` and `ops/systemd/agent-mesh-{runtime-adapter,channel-driver-discord}@`
-  introduced in commit `004f21d`, which carry no hub-lab coupling.
+- **Lane units MUST NOT depend on baseline units.** A lane VM runs no hub, no
+  http server and no self-reminder, so a lane unit carrying `Requires=` or
+  `After=` on one of them either refuses to start or orders itself against
+  something that will never appear.
+
+  This is called out because the lab units this repository once shipped got it
+  wrong and unevenly: the codex adapter hard-bound to both hub and
+  self-reminder via `Requires=`/`After=`, the Discord driver carried an
+  `After=` on the hub alone, and the app-server carried nothing. Anyone porting
+  from that generation should check each unit rather than assume.
 
 ### 14.9. Compatibility
 
@@ -1904,10 +1888,8 @@ Cache eviction:
   alone).
 
 Eviction logic MUST NOT be embedded inside the runtime-adapter or
-channel-driver process. The reference implementation lives under
-`ops/bin/lane-attachments-evict.sh` with a systemd template at
-`ops/systemd/agent-mesh-lane-attachments-evict@.service` and
-matching `.timer`.
+channel-driver process. The eviction job and its timer live in the lane
+repository alongside the components whose cache they trim.
 
 **Fetcher helper (normative reference).** A reference fetcher helper
 implementing steps 1–5 above lives under

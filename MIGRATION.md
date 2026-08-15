@@ -1,5 +1,10 @@
 # Initial Migration Memo
 
+Historical record of the move into this monorepo. The paths below describe
+where code came from and where it landed at the time — `channel-drivers/` and
+`runtime-adapters/` have since moved out of this repository into the lane
+repository.
+
 This memo assumes the reset architecture is already agreed:
 
 - `agent-mesh` = channel fabric
