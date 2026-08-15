@@ -39,8 +39,22 @@ describe("agents schema", () => {
     const db = tempDb();
     agentsSchema.migrate(db);
     expect(columns(db, "agents")).toEqual([
-      "created_at", "deleted_at", "description", "identity", "last_seen", "type",
+      "can_proxy", "created_at", "deleted_at", "description", "identity", "last_seen", "type",
     ]);
+  });
+
+  test("adds can_proxy to a database written before entitlement existed, defaulting to none", () => {
+    const db = tempDb();
+    db.exec(`CREATE TABLE agents (identity TEXT PRIMARY KEY, description TEXT, last_seen DATETIME)`);
+    db.prepare(`INSERT INTO agents (identity) VALUES ('incumbent')`).run();
+
+    agentsSchema.migrate(db);
+
+    // 0 is the safe direction for a column arriving under an existing
+    // deployment: an identity nobody has granted this to cannot speak for
+    // anyone (SPEC § 8.2).
+    expect(db.prepare(`SELECT can_proxy FROM agents WHERE identity = 'incumbent'`).get())
+      .toEqual({ can_proxy: 0 });
   });
 
   test("adds deleted_at to a database written before soft delete existed", () => {
