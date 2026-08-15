@@ -192,3 +192,32 @@ describe("README errors section", () => {
     expect(call.split(",").length).toBe(2);
   });
 });
+
+describe("SPEC self-consistency", () => {
+  const SPEC = readFileSync(join(REPO_ROOT, "SPEC.md"), "utf8");
+
+  test("every § reference points at a section that exists", () => {
+    // A citation that resolves to nothing still reads as authority. This one
+    // found `§ 0`, which was not a wrong number but a rule the document never
+    // stated — the sentence rested on a premise no reader could check.
+    const defined = new Set(
+      [...SPEC.matchAll(/^#{2,4}\s+(\d+(?:\.\d+)*)[.a-z]?\s/gm)].map((m) => m[1]!),
+    );
+    expect(defined.size).toBeGreaterThan(50);
+
+    const referenced = new Set([...SPEC.matchAll(/§\s*(\d+(?:\.\d+)*)/g)].map((m) => m[1]!));
+    expect(referenced.size).toBeGreaterThan(30);
+
+    const dangling = [...referenced].filter((r) => !defined.has(r));
+    expect(dangling).toEqual([]);
+  });
+
+  test("it says which document a bare § reference means", () => {
+    // The client repository carries its own SPEC.md. Both sides spent a
+    // session citing "§ 9.2" and "§ 8.9.3" without either establishing which
+    // file, which is the same shape as every other defect found here: two
+    // things agreeing with themselves.
+    expect(SPEC).toContain("normative contract");
+    expect(SPEC.slice(0, 2000)).toMatch(/§ N\.N/);
+  });
+});

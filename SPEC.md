@@ -6,6 +6,16 @@ must satisfy.
 
 Status: Draft, version 0.2. Subject to change before 1.0.
 
+**This file is the normative contract.** A `§ N.N` reference anywhere in
+either repository — code comment, commit message, or agent correspondence
+— means a section of *this* document. Other repositories may carry notes
+under the same filename; those are implementation notes and bind nobody.
+
+The distinction is not pedantry. Two documents named `SPEC.md`, both cited
+by bare section number, let each side build against its own and pass its
+own tests while disagreeing about the contract — which is the failure
+this document exists to prevent, arriving through the document itself.
+
 The keywords MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as
 defined in RFC 2119 / RFC 8174.
 
@@ -670,9 +680,10 @@ a `requires_key` flag; every AI runtime type is seeded with it set.
 An earlier draft enforced signatures only where an approved key already
 existed, which read as backward compatibility but was an open door: a caller
 could register an identity without `public_key` and then connect unsigned,
-skipping the authentication the audit trail depends on. Since upgrades do not
-migrate data (§ 0), there was no 0.1 state to be compatible with. § 10.1 now
-also refuses to provision a `requires_key` type without a key.
+skipping the authentication the audit trail depends on. There was no deployed 0.1 population holding unsigned
+identities to grandfather, so the compatibility it bought was hypothetical
+while the door it left open was not. § 10.1 now also refuses to provision a
+`requires_key` type without a key.
 
 `-32014` carries `key_status` — `missing`, `pending`, `denied` or `revoked` —
 so a client can tell waiting for approval from having been shut off. The hub
