@@ -116,13 +116,6 @@ refuses audit writes with `-32044` rather than deleting to make room, so the
 failure mode is "audit stops" rather than "history quietly rewrites itself".
 Someone still has to notice.
 
-### Orphaned blobs are never collected
-
-A blob uploaded before an event that never arrives stays on disk. § 8.9.3 calls
-this a storage concern rather than a consistency defect — blobs are immutable
-and content-addressed — but there is no collector, and the grace period before
-one could safely run is undecided.
-
 ### A socketless caller can be handed the same message twice
 
 Delivery over § 8.10 is at-least-once: a batch not acknowledged comes back after

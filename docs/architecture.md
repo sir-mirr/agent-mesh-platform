@@ -277,8 +277,9 @@ file*, not that they are inline.
 ### scripts
 
 ```
-e2e-harness.ts  brings a real mesh up for the client's E2E runner
-mesh-mail.ts    the reference client for the socketless transport
+e2e-harness.ts           brings a real mesh up for the client's E2E runner
+mesh-mail.ts             the reference client for the socketless transport
+collect-orphan-blobs.ts  § 15.6 orphan collection, for a timer
 ```
 
 Both are documented surfaces rather than conveniences. The harness is the
@@ -444,7 +445,7 @@ accident.
 | `mesh.fetch_messages` has no cursor | SPEC § 8.4 dropped the `before` parameter as unimplemented. Long histories are not reachable past `limit`. |
 | Message content stored more than once | `hub.db` for routing, `agent-mesh.db` for the web UI. Predates this layout and has not been reconciled. |
 | Attachment download is unauthenticated | Ids are sha256 digests, so this is capability-style access. SPEC § 15.3 states it; whether it is sufficient is open. |
-| Audit rows are never pruned | Retention is indefinite by decision. On exhaustion the hub keeps routing and refuses audit writes with `-32044`; it does not delete to make room. |
+| Audit rows are never pruned | Retention is indefinite by decision. On exhaustion the hub keeps routing and refuses audit writes with `-32044`; it does not delete to make room. Only blobs no event ever referenced are collectable, which is what `scripts/collect-orphan-blobs.ts` does. |
 | One approved key per identity | Fits an installed agent on one machine. It is also why people are proxied rather than signing for themselves. |
 
 ---

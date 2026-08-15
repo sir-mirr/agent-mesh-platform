@@ -328,6 +328,102 @@ describe("size", () => {
   });
 });
 
+
+/**
+ * § 15.6 — orphan collection.
+ *
+ * The only collectable blob is one no event ever referenced, because audit
+ * retention is indefinite and references are never released. The grace period
+ * is a correctness condition rather than a tuning knob: § 8.9 uploads bytes
+ * before the event that references them, so "no reference" is the normal state
+ * for as long as the client takes to append.
+ */
+describe("orphan collection", () => {
+  const collect = async (extra: string[] = []) => {
+    const proc = Bun.spawn(
+      ["bun", "scripts/collect-orphan-blobs.ts", ...extra],
+      { cwd: process.cwd(), env: { ...process.env, AGENT_MESH_STATE_DIR: mesh.stateDir }, stdout: "pipe", stderr: "pipe" },
+    );
+    const out = await new Response(proc.stdout).text();
+    const err = await new Response(proc.stderr).text();
+    await proc.exited;
+    return { out, err, code: proc.exitCode };
+  };
+
+  test("leaves a referenced blob alone whatever its age", async () => {
+    const bytes = new TextEncoder().encode("referenced forever");
+    const digest = sha256(bytes);
+    const grant = await prepare(bytes, "keep.txt");
+    await putTo(grant.upload.url, bytes, {
+      authorization: authHeader(grant.upload.nonce, grant.blob_key, digest, bytes.length),
+    });
+    const appended = await rpc.call("mesh.audit.append", {
+      schema_version: 1, event_id: `evt_keep_${Math.random().toString(36).slice(2)}`,
+      event_type: "channel.message.received", occurred_at: new Date().toISOString(),
+      attachments: [{ sha256: digest, size: bytes.length, name: "keep.txt" }],
+    });
+    // Asserted, because a failed append would make the next assertion pass for
+    // the wrong reason — an unreferenced blob is collectable, correctly.
+    expect(appended.result?.attachments_verified).toBe(1);
+
+    // Grace 0, so age cannot be the reason it survives — only the reference.
+    const { code } = await collect(["--grace-hours", "0"]);
+    expect(code).toBe(0);
+    expect(existsSync(join(uploadsDir(), grant.blob_key))).toBe(true);
+  });
+
+  test("leaves an unreferenced blob inside the grace period", async () => {
+    // The normal state of an upload whose append has not arrived. Removing it
+    // would surface to the client as -32040 for bytes it knows it sent.
+    const bytes = new TextEncoder().encode("just uploaded");
+    const digest = sha256(bytes);
+    const grant = await prepare(bytes, "young.bin");
+    await putTo(grant.upload.url, bytes, {
+      authorization: authHeader(grant.upload.nonce, grant.blob_key, digest, bytes.length),
+    });
+
+    await collect();
+    expect(existsSync(join(uploadsDir(), grant.blob_key))).toBe(true);
+  });
+
+  test("removes an unreferenced blob past the grace period", async () => {
+    const bytes = new TextEncoder().encode("nobody committed me");
+    const digest = sha256(bytes);
+    const grant = await prepare(bytes, "orphan.bin");
+    await putTo(grant.upload.url, bytes, {
+      authorization: authHeader(grant.upload.nonce, grant.blob_key, digest, bytes.length),
+    });
+
+    const { out, code } = await collect(["--grace-hours", "0"]);
+    expect(code).toBe(0);
+    expect(existsSync(join(uploadsDir(), grant.blob_key))).toBe(false);
+    expect(out).toContain("removed");
+  });
+
+  test("--dry-run reports without removing", async () => {
+    const bytes = new TextEncoder().encode("dry run subject");
+    const digest = sha256(bytes);
+    const grant = await prepare(bytes, "dry.bin");
+    await putTo(grant.upload.url, bytes, {
+      authorization: authHeader(grant.upload.nonce, grant.blob_key, digest, bytes.length),
+    });
+
+    const { out } = await collect(["--dry-run", "--grace-hours", "0"]);
+    expect(out).toContain("would remove");
+    expect(existsSync(join(uploadsDir(), grant.blob_key))).toBe(true);
+  });
+
+  test("is idempotent — a second run finds nothing left", async () => {
+    // § 15.6 requires it, because this runs on a timer and a failed run is
+    // retried by the next one rather than by anything cleverer.
+    const first = await collect(["--grace-hours", "0"]);
+    const second = await collect(["--grace-hours", "0"]);
+    expect(first.code).toBe(0);
+    expect(second.code).toBe(0);
+    expect(second.out).toContain("removed 0");
+  });
+});
+
 /**
  * Last on purpose. This is the only case where the server answers while the
  * client is still sending, which leaves the HTTP connection out of step — a

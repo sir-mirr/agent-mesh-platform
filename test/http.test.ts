@@ -152,6 +152,58 @@ describe("hub connection", () => {
 });
 
 /**
+ * § 15.3 — the attachment download contract.
+ *
+ * Unauthenticated by design at this profile (§ 15.3): the id is a sha256
+ * digest, so knowing it is the authorisation. That makes the id validation the
+ * only thing standing between a caller and the filesystem, which is why the
+ * traversal cases are asserted rather than assumed.
+ */
+describe("attachment download", () => {
+  const upload = async (content: string, name: string) => {
+    const form = new FormData();
+    form.append("file", new Blob([content]), name);
+    const res = await fetch(`${mesh.http.url}/api/v1/upload`, {
+      method: "POST", headers: { cookie: adminCookie }, body: form,
+    });
+    return res.json();
+  };
+
+  test("serves the bytes with the headers § 15.3 requires", async () => {
+    const body = "attachment body";
+    const up = await upload(body, "note.txt");
+    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${up.id}`);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(body);
+    expect(res.headers.get("content-length")).toBe(String(body.length));
+    expect(res.headers.get("content-disposition")).toContain("inline");
+    expect(res.headers.get("content-type")).toBeTruthy();
+  });
+
+  test("a miss is 404 with a JSON body, not an empty response", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${"a".repeat(64)}`);
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBeTruthy();
+  });
+
+  test("ids with separators or .. are refused before the filesystem is touched", async () => {
+    // The id is the only gate here, so these are the cases that matter.
+    for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b", ".."]) {
+      const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`);
+      expect([400, 404], `id ${id}`).toContain(res.status);
+      // Whatever the status, it must not be a successful read.
+      expect(res.status).not.toBe(200);
+    }
+  });
+
+  test("an id that is neither a digest nor the legacy form is refused", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/attachments/not-a-real-id`);
+    expect(res.status).toBe(400);
+  });
+});
+
+/**
  * SPEC § 10.3 — a person holds a mesh identity, like any other participant.
  *
  * Before this they existed only in `agent-mesh.db:agent_registry` and as a
