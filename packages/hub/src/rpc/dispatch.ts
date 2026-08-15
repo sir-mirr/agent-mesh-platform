@@ -12,7 +12,7 @@ import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
 import { handleFetchMessages } from "./messages";
 import { handleCancelReminder, handleListReminders, handleScheduleReminder } from "./reminders";
-import { handlePrepareBlobs } from "./audit";
+import { handleAuditAppend, handlePrepareBlobs } from "./audit";
 import { handleSend } from "./send";
 
 export function dispatch(ws: any, raw: string | Buffer): string | null {
@@ -58,7 +58,7 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
     case "mesh.register":
       return handleRegister(ws, params, req.id);
     case "mesh.send":
-      return handleSend(ws, params, req.id);
+      return handleSend(ws, params, req.id, text, req.sig);
     case "mesh.list_agents":
       return handleListAgents(ws, params, req.id);
     case "mesh.fetch_messages":
@@ -71,6 +71,11 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
       return handleListReminders(ws, params, req.id);
     case "mesh.audit.prepare_blobs":
       return handlePrepareBlobs(ws, params, req.id);
+    case "mesh.audit.append":
+      // `text` and `req.sig` are passed through because the record's digest is
+      // over the received bytes and its attestation is the verified signature —
+      // neither can be rebuilt from the parsed object (SPEC § 8.9.3).
+      return handleAuditAppend(ws, params, req.id, text, req.sig);
     default:
       return rpcError(req.id, METHOD_NOT_FOUND, `Method not found: ${req.method}`);
   }

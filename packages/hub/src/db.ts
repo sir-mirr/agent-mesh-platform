@@ -10,7 +10,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { agentsSchema, hubSchema, openStore } from "@agent-mesh/store";
+import { agentsSchema, auditSchema, hubSchema, openStore } from "@agent-mesh/store";
 
 /** Message routing and history. */
 export const db = openStore("hub", { create: true });
@@ -18,8 +18,16 @@ export const db = openStore("hub", { create: true });
 /** Identity, keys and key history (SPEC § 3.1). */
 export const agentsDb = openStore("agents", { create: true });
 
+/**
+ * The audit record (SPEC § 8.9). A third file rather than a third set of tables
+ * because its retention is indefinite while the others are operational — on a
+ * separate volume, audit filling the disk stops audit rather than the mesh.
+ */
+export const auditDb = openStore("audit", { create: true });
+
 agentsSchema.migrate(agentsDb);
 hubSchema.migrate(db);
+auditSchema.migrate(auditDb);
 
 /**
  * The self-reminder daemon's store, opened lazily because the hub only touches
@@ -123,6 +131,25 @@ export const stmtSetCanProxy = agentsDb.prepare(`
 
 export const stmtKeysOfAgent = agentsDb.prepare(`
   SELECT fingerprint FROM agent_keys WHERE identity = ? AND status IN ('pending','approved')
+`);
+
+// --- audit (SPEC § 8.9) ------------------------------------------------------
+
+export const stmtInsertAuditEvent = auditDb.prepare(`
+  INSERT INTO audit_events (
+    event_id, schema_version, event_type, occurred_at, correlation_id,
+    causation_event_id, producer_id, identity, recorded_by_kind, recorded_by_id,
+    payload, payload_digest, attestation
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+export const stmtInsertAuditBlob = auditDb.prepare(`
+  INSERT INTO audit_event_blobs (event_id, blob_key, sha256, size, name)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+export const stmtSelectAuditEvent = auditDb.prepare(`
+  SELECT payload_digest, stored_at FROM audit_events WHERE event_id = ?
 `);
 
 // --- messages ---------------------------------------------------------------

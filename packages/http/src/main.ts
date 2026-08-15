@@ -43,6 +43,7 @@ import { openStore, type MessageRow } from '@agent-mesh/store'
 import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
+import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -1063,6 +1064,25 @@ app.put('/api/v1/audit/blobs/:key', async (c) => {
   return c.json(r.body, r.status as any)
 })
 
+// --- Audit query (SPEC § 9.1) ---------------------------------------------
+//
+// Admin JWT, separate from lane authentication: a lane's signing key authorises
+// it to *write* its own events, and says nothing about reading anyone else's.
+
+app.get('/api/v1/audit/events', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const r = listAuditEvents(c.req.query() as any)
+  return c.json(r.body, r.status as any)
+})
+
+app.get('/api/v1/audit/events/:event_id', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const r = getAuditEvent(c.req.param('event_id'))
+  return c.json(r.body, r.status as any)
+})
+
 // --- Key approval (SPEC § 10.2) -------------------------------------------
 //
 // On this service rather than the hub because approval is the one step in the
@@ -1819,6 +1839,7 @@ function shutdown(): void {
   closeDb()
   closeAgentsDb()
   closeBlobDb()
+  closeAuditDb()
   server.stop()
   process.exit(0)
 }

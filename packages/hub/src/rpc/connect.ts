@@ -16,6 +16,8 @@ import {
 } from "../jsonrpc";
 import { entitlement } from "@agent-mesh/store";
 
+import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit";
+
 import { log } from "../log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
@@ -155,7 +157,19 @@ export function performConnect(
     deliverPending(pid, ws);
   }
 
-  return rpcResult(id, { ok: true, identity });
+  // Advertised so a client can tell a hub that accepts audit from one that
+  // does not, and size a batch without guessing (SPEC § 8.9.1). Absent on a 0.1
+  // hub, which is how a client detects one.
+  return rpcResult(id, {
+    ok: true,
+    identity,
+    capabilities: {
+      audit: {
+        schema_version_max: MAX_SCHEMA_VERSION,
+        ...AUDIT_LIMITS,
+      },
+    },
+  });
 }
 
 /**

@@ -13,11 +13,15 @@
  * is discovered much later as storage that will not deduplicate.
  */
 
+import { createHash, randomUUID } from "node:crypto";
+
 import { deriveBlobKey } from "@agent-mesh/contracts";
 import { nonces } from "@agent-mesh/store";
 
-import { agentsDb } from "../db";
+import { agentsDb, auditDb, stmtInsertAuditBlob, stmtInsertAuditEvent, stmtSelectAuditEvent } from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcResult } from "../jsonrpc";
+import { log } from "../log";
+import { rawParams } from "../signature";
 import { wsIdentities } from "../presence";
 import { blobPath, blobStat } from "../blobs";
 
@@ -130,4 +134,280 @@ export function handlePrepareBlobs(
   return rpcResult(id, { blobs: result });
 }
 
+
+export const AUDIT_MISSING_BLOBS = -32040;
+export const AUDIT_EVENT_CONFLICT = -32041;
+/** Retired. § 8.9.3 forbids reuse: an old client would read one meaning as the other. */
+export const RETIRED_AUDIT_SEQUENCE_CONFLICT = -32042;
+export const AUDIT_BUSY = -32043;
+export const AUDIT_STORAGE_EXHAUSTED = -32044;
+
+/** The highest `schema_version` this hub knows how to validate. */
+export const MAX_SCHEMA_VERSION = 1;
+
+/**
+ * `mesh.audit.append` (SPEC § 8.9.3).
+ *
+ * Four members are **not** request fields — `identity`, `recorded_by`,
+ * `attestation` and `payload_digest`. They are the record's trust metadata, and
+ * a field the client supplies cannot attest to the client. Each is constructed
+ * here: the identity from the authenticated connection, `recorded_by` from
+ * which component is writing, the attestation from the verified signature, and
+ * the digest from the received bytes. A client that sends them has them
+ * ignored rather than honoured.
+ */
+export function handleAuditAppend(
+  ws: any,
+  params: Record<string, any>,
+  id: string | number | null | undefined,
+  raw: string,
+  sig: unknown,
+): string {
+  const identity = wsIdentities.get(ws);
+  if (!identity) {
+    return rpcError(id, INVALID_REQUEST, "Not connected. Call mesh.connect first.");
+  }
+
+  const { schema_version: schemaVersion, event_id: eventId, event_type: eventType, occurred_at: occurredAt } = params;
+
+  if (typeof schemaVersion !== "number" || !Number.isInteger(schemaVersion) || schemaVersion < 1) {
+    return rpcError(id, INVALID_PARAMS, "params.schema_version must be a positive integer");
+  }
+  // Rejected rather than stored, and no data is lost: the client's outbox
+  // retries and drains once the hub is upgraded. Storing an event it cannot
+  // validate would record "validated" as a falsehood — which is why hubs are
+  // upgraded before clients.
+  if (schemaVersion > MAX_SCHEMA_VERSION) {
+    return rpcError(
+      id,
+      INVALID_PARAMS,
+      `schema_version ${schemaVersion} is newer than this hub understands (max ${MAX_SCHEMA_VERSION})`,
+    );
+  }
+  if (!eventId || typeof eventId !== "string") {
+    return rpcError(id, INVALID_PARAMS, "params.event_id is required");
+  }
+  if (!eventType || typeof eventType !== "string") {
+    return rpcError(id, INVALID_PARAMS, "params.event_type is required");
+  }
+  if (!occurredAt || typeof occurredAt !== "string") {
+    return rpcError(id, INVALID_PARAMS, "params.occurred_at is required");
+  }
+  if (params.producer_id !== undefined) {
+    if (typeof params.producer_id !== "string" || params.producer_id.length > 64) {
+      return rpcError(id, INVALID_PARAMS, "params.producer_id must be a string of at most 64 chars");
+    }
+  }
+
+  const attachments = params.attachments ?? [];
+  if (!Array.isArray(attachments)) {
+    return rpcError(id, INVALID_PARAMS, "params.attachments must be an array");
+  }
+  if (attachments.length > AUDIT_LIMITS.max_attachments_per_event) {
+    return rpcError(id, INVALID_PARAMS, "too many attachments");
+  }
+
+  // Over the received bytes, by the same rule § 8.1 applies to signatures. A
+  // digest recomputed from the parsed object would differ from the client's for
+  // reasons that have nothing to do with the content.
+  const payload = rawParams(raw) ?? "{}";
+  const payloadDigest = createHash("sha256").update(payload, "utf8").digest("hex");
+
+  const existing = stmtSelectAuditEvent.get(eventId) as
+    | { payload_digest: string; stored_at: string }
+    | undefined;
+  if (existing) {
+    // Identical bytes: the client did not hear the ACK and retried. Different
+    // bytes under one id is a client defect that retrying cannot fix, so it is
+    // permanent rather than transient.
+    if (existing.payload_digest === payloadDigest) {
+      return rpcResult(id, {
+        ok: true,
+        committed: true,
+        duplicate: true,
+        event_id: eventId,
+        identity,
+        attachments_verified: attachments.length,
+        stored_at: existing.stored_at,
+      });
+    }
+    return rpcError(
+      id,
+      AUDIT_EVENT_CONFLICT,
+      `event_id '${eventId}' already exists with a different payload`,
+      { code: "AUDIT_EVENT_CONFLICT", event_id: eventId },
+    );
+  }
+
+  // Every blob must be on disk with the declared size before anything commits.
+  // A file of the right name and the wrong length is an interrupted upload, and
+  // accepting it would let the event reference truncated bytes as verified.
+  const refs: Array<{ blobKey: string; sha256: string; size: number; name: string | null }> = [];
+  const missing: string[] = [];
+  for (const entry of attachments) {
+    if (!entry || typeof entry !== "object") {
+      return rpcError(id, INVALID_PARAMS, "each attachment must be an object");
+    }
+    const { sha256, size, name } = entry as Record<string, unknown>;
+    if (typeof sha256 !== "string" || typeof size !== "number" || typeof name !== "string") {
+      return rpcError(id, INVALID_PARAMS, "attachment requires sha256, size and name");
+    }
+    const blobKey = deriveBlobKey(sha256, name);
+    const stat = blobStat(blobKey);
+    if (!stat || stat.size !== size) {
+      missing.push(sha256);
+      continue;
+    }
+    refs.push({ blobKey, sha256, size, name });
+  }
+
+  if (missing.length > 0) {
+    // Transient: the client uploads and retries. Nothing is committed, so a
+    // retry is not a partial repair.
+    return rpcError(id, AUDIT_MISSING_BLOBS, "referenced blobs are not present", {
+      code: "AUDIT_MISSING_BLOBS",
+      missing_sha256: missing,
+    });
+  }
+
+  const attestation = sig ? JSON.stringify({ covers: "mesh.audit.append.params", sig }) : null;
+
+  try {
+    const tx = auditDb.transaction(() => {
+      stmtInsertAuditEvent.run(
+        eventId,
+        schemaVersion,
+        eventType,
+        occurredAt,
+        params.correlation_id ?? null,
+        params.causation_event_id ?? null,
+        params.producer_id ?? null,
+        identity,
+        "adapter",
+        identity,
+        payload,
+        payloadDigest,
+        attestation,
+      );
+      for (const r of refs) {
+        stmtInsertAuditBlob.run(eventId, r.blobKey, r.sha256, r.size, r.name);
+      }
+    });
+    tx();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Transient, and it needs an operator (§ 15.6). The hub keeps routing —
+    // audit exhaustion must not take message delivery with it.
+    if (/disk|full|SQLITE_FULL|no space/i.test(message)) {
+      return rpcError(id, AUDIT_STORAGE_EXHAUSTED, "audit storage is exhausted", {
+        code: "AUDIT_STORAGE_EXHAUSTED",
+      });
+    }
+    if (/locked|busy/i.test(message)) {
+      return rpcError(id, AUDIT_BUSY, "audit store is busy", {
+        code: "AUDIT_BUSY",
+        retry_after_ms: 250,
+      });
+    }
+    log(`audit append failed for ${eventId}: ${message}`);
+    return rpcError(id, AUDIT_BUSY, `audit append failed: ${message}`, {
+      code: "AUDIT_BUSY",
+      retry_after_ms: 1000,
+    });
+  }
+
+  // ACK only after the transaction commits. Acknowledging earlier would tell a
+  // client its outbox entry is safe to drop before it is.
+  const stored = stmtSelectAuditEvent.get(eventId) as { stored_at: string };
+  return rpcResult(id, {
+    ok: true,
+    committed: true,
+    duplicate: false,
+    event_id: eventId,
+    identity,
+    attachments_verified: refs.length,
+    stored_at: stored.stored_at,
+  });
+}
+
 export { blobPath };
+
+/**
+ * Events the hub records about its own routing (SPEC § 8.9.4).
+ *
+ * This is what makes mesh audit stronger evidence than channel audit. A channel
+ * event is an adapter's report of its own activity; a mesh event is the hub's
+ * observation, carrying **the sender's own signature** as the attestation. That
+ * difference is a field — `recorded_by.kind` — rather than something inferred
+ * by prefix-matching `event_type`.
+ *
+ * The event carries the message body rather than referencing `messages`, so
+ * audit retention and operational retention stay independent: rotating the
+ * message table must not hollow out the record of what was sent.
+ *
+ * Never throws. Routing does not stop because the audit store is unwritable —
+ * § 15.6 requires the hub to keep delivering and reject audit writes instead,
+ * and a delivery that failed because a disk filled would be the worse outcome.
+ */
+export function recordMeshEvent(
+  eventType: "mesh.message.sent" | "mesh.message.delivered" | "mesh.message.pending",
+  fields: {
+    messageId: string;
+    from: string;
+    to: string;
+    sentBy: string;
+    content: string;
+    replyTo: string | null;
+    /** The sender's `mesh.send` signature, kept verbatim so it stays verifiable. */
+    senderSig: unknown;
+    /** The sender's `params` bytes, exactly as received. */
+    senderParams: string;
+  },
+): void {
+  const payload = JSON.stringify({
+    schema_version: 1,
+    event_id: `evt_${randomUUID()}`,
+    event_type: eventType,
+    occurred_at: new Date().toISOString(),
+    correlation_id: fields.messageId,
+    message: {
+      id: fields.messageId,
+      from: fields.from,
+      to: fields.to,
+      sent_by: fields.sentBy,
+      content: fields.content,
+      reply_to: fields.replyTo,
+    },
+  });
+  const parsed = JSON.parse(payload);
+
+  try {
+    auditDb.transaction(() => {
+      stmtInsertAuditEvent.run(
+        parsed.event_id,
+        1,
+        eventType,
+        parsed.occurred_at,
+        fields.messageId,
+        null,
+        null,
+        // The sending identity, not the transmitting socket. `sent_by` is in
+        // the body; this is who the event is *about*.
+        fields.from,
+        "hub",
+        null,
+        payload,
+        createHash("sha256").update(payload, "utf8").digest("hex"),
+        fields.senderSig
+          ? JSON.stringify({
+              covers: "mesh.send.params",
+              params: fields.senderParams,
+              sig: fields.senderSig,
+            })
+          : null,
+      );
+    })();
+  } catch (err) {
+    log(`audit: could not record ${eventType} for ${fields.messageId}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}

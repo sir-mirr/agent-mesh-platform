@@ -18,14 +18,14 @@ for a description of running code.
 
 | § | Change | Built |
 |---|--------|-------|
-| 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | **partly** — `agents.db` split; `audit.db` not yet |
+| 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | **yes** |
 | 4.1 | A Claude lane includes a runtime-adapter | no |
 | 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
-| 8.1 | `mesh.connect` carries a signature | **yes** — capabilities not yet |
+| 8.1 | `mesh.connect` carries a signature and returns capabilities | **yes** |
 | 8.2 | `from` is constrained by validated entitlement | **yes** |
 | 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
-| 8.9 | `mesh.audit.*` methods | no |
-| 9.1 | Audit blob upload | **yes** — audit query routes not yet |
+| 8.9 | `mesh.audit.*` methods | **yes** |
+| 9.1 | Audit blob upload and audit query routes | **yes** |
 | 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | **yes** |
 | 10.1 | Identity format loosened; kebab-case advisory, case-sensitive | **yes** |

@@ -3,6 +3,11 @@
 SPEC 0.2 is a settled contract. This is the order to build it in, what each
 step depends on, and how each one is known to work.
 
+**All eight steps are done.** What remains of 0.2 is § 4.1 and § 6.1, which are
+lane repository work — this repository's part was the SPEC change.
+
+The original note follows, kept because it records how the plan changed.
+
 **Increment 1 (steps 1 and 5) is done.** `agents.db` carries identity, the type
 registry and the key tables; teardown is a soft delete. Steps 2 onward remain —
 that is six of the eight, and all of the security half.
@@ -243,10 +248,11 @@ change what the rule reads.
 
 ---
 
-## 7 — Audit ingestion
+## 7 — Audit ingestion ✅
 
 **SPEC** § 8.9
 **Depends on** 3, and 4 for attachments
+**Status** done
 
 - `audit.db` with `audit_events` and `audit_event_blobs`. **One file**, because
   an event and its attachment references must commit in one transaction.
@@ -277,10 +283,11 @@ other.
 
 ---
 
-## 8 — Audit query API
+## 8 — Audit query API ✅
 
 **SPEC** § 9.1
 **Depends on** 7
+**Status** done
 
 - `GET /api/v1/audit/events/{event_id}` and the cursor-paginated list, filtered
   by identity, provider, correlation id and time range.

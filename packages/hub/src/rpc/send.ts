@@ -9,12 +9,16 @@ import { entitlement } from "@agent-mesh/store";
 import { agentsDb, stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus } from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, NOT_ENTITLED, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
 import { log } from "../log";
+import { recordMeshEvent } from "./audit";
+import { rawParams } from "../signature";
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
 export function handleSend(
   ws: any,
   params: Record<string, any>,
-  id: string | number | null | undefined
+  id: string | number | null | undefined,
+  raw?: string,
+  sig?: unknown,
 ): string {
   const senderIdentity = wsIdentities.get(ws);
   if (!senderIdentity) {
@@ -118,6 +122,19 @@ export function handleSend(
   } else {
     log(`queued: ${route} (${msgId})`);
   }
+
+  // Recorded after the routing decision, so the event states what actually
+  // happened rather than what was attempted (SPEC § 8.9.4).
+  recordMeshEvent(status === "delivered" ? "mesh.message.delivered" : "mesh.message.pending", {
+    messageId: msgId,
+    from: effectiveSender,
+    to,
+    sentBy: senderIdentity,
+    content: String(content),
+    replyTo: replyTo,
+    senderSig: sig,
+    senderParams: raw ? rawParams(raw) ?? "{}" : "{}",
+  });
 
   return rpcResult(id, { id: msgId, status });
 }
