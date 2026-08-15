@@ -3,7 +3,7 @@ Description=Agent Mesh Self-Reminder Server (Lab)
 After=network-online.target agent-mesh-hub-lab.service
 Requires=agent-mesh-hub-lab.service
 Wants=network-online.target
-ConditionPathExists=/srv/agent-mesh-platform/packages/shared/self-reminder/src/main.ts
+ConditionPathExists=/srv/agent-mesh-platform/packages/self-reminder/src/main.ts
 
 [Service]
 Type=simple
@@ -13,7 +13,7 @@ Environment=BUN_INSTALL=/home/ubuntu/.bun
 Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/self-reminder.env
-ExecStart=/home/ubuntu/.bun/bin/bun packages/shared/self-reminder/src/main.ts
+ExecStart=/home/ubuntu/.bun/bin/bun packages/self-reminder/src/main.ts
 Restart=always
 RestartSec=3
 

@@ -20,7 +20,7 @@ time. Nothing here should be treated as agreed.
 
 ## 5. Attachment download is unauthenticated
 
-`packages/shared/http/src/main.ts:4817` — `GET /api/v1/attachments/:id` serves
+`packages/http/src/main.ts:4817` — `GET /api/v1/attachments/:id` serves
 bytes to anyone who can reach the port. SPEC § 15.3 states this explicitly and
 tells clients to tolerate a future `401`.
 
@@ -61,13 +61,13 @@ conformant lane — stays here.
 
 Smaller items, same theme:
 
-- `packages/shared/http/src/auth.ts:11` — `JWT_SECRET` falls back to
+- `packages/http/src/auth.ts:11` — `JWT_SECRET` falls back to
   `'lab-fallback-secret-change-me'`. An unset secret should fail startup, not
   silently sign tokens with a published constant.
-- `packages/shared/http/src/main.ts:519` — `app.use('/*', cors())` allows every
+- `packages/http/src/main.ts:519` — `app.use('/*', cors())` allows every
   origin, marked "Phase 1". Combined with cookie-borne JWT sessions this
   deserves an allowlist.
-- Bearer comparisons are plain string equality (`packages/shared/http/src/main.ts`
+- Bearer comparisons are plain string equality (`packages/http/src/main.ts`
   ai-usage ingest, and the same shape in the lane components). Timing-safe
   comparison is cheap; the practical risk here is low.
 

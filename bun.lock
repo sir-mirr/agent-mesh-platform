@@ -12,20 +12,20 @@
         "typescript": "7.0.2",
       },
     },
-    "packages/shared/http": {
-      "name": "@agent-mesh/shared-http",
+    "packages/http": {
+      "name": "@agent-mesh/http",
       "version": "0.1.0",
       "dependencies": {
         "hono": "^4.0.0",
         "web-push": "^3.6.7",
       },
     },
-    "packages/shared/hub": {
-      "name": "@agent-mesh/shared-hub",
+    "packages/hub": {
+      "name": "@agent-mesh/hub",
       "version": "0.1.0",
     },
-    "packages/shared/self-reminder": {
-      "name": "@agent-mesh/shared-self-reminder",
+    "packages/self-reminder": {
+      "name": "@agent-mesh/self-reminder",
       "version": "0.1.0",
       "dependencies": {
         "cron-parser": "^5.5.0",
@@ -34,11 +34,11 @@
     },
   },
   "packages": {
-    "@agent-mesh/shared-http": ["@agent-mesh/shared-http@workspace:packages/shared/http"],
+    "@agent-mesh/http": ["@agent-mesh/http@workspace:packages/http"],
 
-    "@agent-mesh/shared-hub": ["@agent-mesh/shared-hub@workspace:packages/shared/hub"],
+    "@agent-mesh/hub": ["@agent-mesh/hub@workspace:packages/hub"],
 
-    "@agent-mesh/shared-self-reminder": ["@agent-mesh/shared-self-reminder@workspace:packages/shared/self-reminder"],
+    "@agent-mesh/self-reminder": ["@agent-mesh/self-reminder@workspace:packages/self-reminder"],
 
     "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 

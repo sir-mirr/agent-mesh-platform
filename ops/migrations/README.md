@@ -33,7 +33,7 @@ lxc exec agent-mesh-lab -- sudo -u ubuntu bash -c \
 ```
 
 (Adjust the DB path to match `AGENT_MESH_STATE_DIR` in the hub
-service env file — the binary at `packages/shared/hub/src/main.ts`
+service env file — the binary at `packages/hub/src/main.ts`
 reads that variable, defaulting to `/srv/agent-mesh-lab/state/shared`.
 For deployments that use the legacy `/var/lib/agent-mesh-hub` location
 the operator MUST set `AGENT_MESH_STATE_DIR` to match.)
@@ -44,7 +44,7 @@ Take a backup first (use the same directory the hub binary opens —
 
 **Important — WAL mode.** The hub binary opens `hub.db` with
 `PRAGMA journal_mode = WAL` enabled (see
-`packages/shared/hub/src/main.ts:51`). A naive `cp hub.db ...` while
+`packages/hub/src/main.ts:51`). A naive `cp hub.db ...` while
 the hub is running is **not safe** — it can capture an inconsistent
 snapshot because committed pages may still live in the sidecar
 `hub.db-wal` file (and connection state in `hub.db-shm`) and have not

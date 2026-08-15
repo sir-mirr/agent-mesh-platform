@@ -14,9 +14,9 @@ env and installer.
 ## Baseline services
 
 ```
-packages/shared/hub/src/main.ts             agent-mesh-hub-lab.service
-packages/shared/http/src/main.ts            agent-mesh-http-lab.service
-packages/shared/self-reminder/src/main.ts   agent-mesh-self-reminder-lab.service
+packages/hub/src/main.ts             agent-mesh-hub-lab.service
+packages/http/src/main.ts            agent-mesh-http-lab.service
+packages/self-reminder/src/main.ts   agent-mesh-self-reminder-lab.service
 ```
 
 `agent-mesh-hub-lab.service` bootstraps baseline service identities through the

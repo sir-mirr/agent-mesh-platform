@@ -2,7 +2,7 @@
 Description=Agent Mesh Hub Server (Lab)
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/srv/agent-mesh-platform/packages/shared/hub/src/main.ts
+ConditionPathExists=/srv/agent-mesh-platform/packages/hub/src/main.ts
 
 [Service]
 Type=simple
@@ -12,7 +12,7 @@ Environment=BUN_INSTALL=/home/ubuntu/.bun
 Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
 EnvironmentFile=-/srv/agent-mesh-lab/env/shared/hub.env
-ExecStart=/home/ubuntu/.bun/bin/bun packages/shared/hub/src/main.ts
+ExecStart=/home/ubuntu/.bun/bin/bun packages/hub/src/main.ts
 ExecStartPost=/srv/agent-mesh-platform/ops/bin/bootstrap-hub-service-identities.sh
 Restart=always
 RestartSec=3

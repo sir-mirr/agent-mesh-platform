@@ -1,5 +1,5 @@
 {
-  "name": "@agent-mesh/shared-hub",
+  "name": "@agent-mesh/hub",
   "version": "0.1.0",
   "private": true,
   "type": "module",

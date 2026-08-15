@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "strict": true,
     "noEmit": true,
     "composite": true,
@@ -15,17 +18,32 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "types": ["bun", "node"],
+    "types": [
+      "bun",
+      "node"
+    ],
     "paths": {
-      "@agent-mesh/shared-hub": ["./packages/shared/hub/src/main.ts"],
-      "@agent-mesh/shared-http": ["./packages/shared/http/src/main.ts"],
-      "@agent-mesh/shared-self-reminder": ["./packages/shared/self-reminder/src/main.ts"]
+      "@agent-mesh/hub": [
+        "./packages/hub/src/main.ts"
+      ],
+      "@agent-mesh/http": [
+        "./packages/http/src/main.ts"
+      ],
+      "@agent-mesh/self-reminder": [
+        "./packages/self-reminder/src/main.ts"
+      ]
     }
   },
   "files": [],
   "references": [
-    { "path": "./packages/shared/hub/tsconfig.json" },
-    { "path": "./packages/shared/http/tsconfig.json" },
-    { "path": "./packages/shared/self-reminder/tsconfig.json" }
+    {
+      "path": "./packages/hub/tsconfig.json"
+    },
+    {
+      "path": "./packages/http/tsconfig.json"
+    },
+    {
+      "path": "./packages/self-reminder/tsconfig.json"
+    }
   ]
 }

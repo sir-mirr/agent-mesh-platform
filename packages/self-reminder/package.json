@@ -1,5 +1,5 @@
 {
-  "name": "@agent-mesh/shared-self-reminder",
+  "name": "@agent-mesh/self-reminder",
   "version": "0.1.0",
   "private": true,
   "type": "module",

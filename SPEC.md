@@ -94,7 +94,7 @@ agent-mesh is split into two strictly separated layers.
 
 ## 3. Baseline contract
 
-### 3.1. `agent-mesh-hub` (`packages/shared/hub`)
+### 3.1. `agent-mesh-hub` (`packages/hub`)
 
 | Property        | Requirement                                                 |
 |-----------------|-------------------------------------------------------------|
@@ -157,7 +157,7 @@ The hub MUST NOT:
   § 10.1; the deprecated `mesh.register` alias does **not** insert
   rows).
 
-### 3.2. `agent-mesh-http` (`packages/shared/http`)
+### 3.2. `agent-mesh-http` (`packages/http`)
 
 | Property        | Requirement                                                 |
 |-----------------|-------------------------------------------------------------|
@@ -171,7 +171,7 @@ The HTTP server is the single browser- and human-facing surface. It
 proxies REST calls and SSE streams onto the hub via an internal hub
 client.
 
-### 3.3. `agent-mesh-self-reminder` (`packages/shared/self-reminder`)
+### 3.3. `agent-mesh-self-reminder` (`packages/self-reminder`)
 
 A scheduler daemon that connects to the hub as `identity=self-reminder`.
 
@@ -1293,7 +1293,7 @@ attachment downloads against the hub port.
 as `ExecStartPost`. By the time it runs, the hub process has already
 opened `hub.db` and applied schema migrations (`CREATE TABLE IF NOT
 EXISTS agents`, plus idempotent `ALTER TABLE` shims for legacy
-databases) at startup — see `packages/shared/hub/src/main.ts`. The
+databases) at startup — see `packages/hub/src/main.ts`. The
 bootstrap script therefore MUST NOT open `hub.db` directly; it
 provisions identities by calling the hub's `POST /api/v1/agents`
 endpoint (§ 9.4, § 10.1) over loopback, and it MUST:

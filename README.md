@@ -235,14 +235,14 @@ a hub identity of its own, and every lane includes a runtime-adapter
 
 ## Architecture overview
 
-- **Hub** (`packages/shared/hub`) — JSON-RPC 2.0 broker on a single WebSocket
+- **Hub** (`packages/hub`) — JSON-RPC 2.0 broker on a single WebSocket
   endpoint. Maintains the agent registry in SQLite. All inter-agent traffic
   is an envelope (see `envelope.ts` in `@agent-mesh/contracts`) routed by identity.
-- **HTTP** (`packages/shared/http`) — Hono server. Provides REST, SSE for
+- **HTTP** (`packages/http`) — Hono server. Provides REST, SSE for
   per-agent event streams, `/auth/github` (GitHub OAuth → JWT HS256), an
   admin panel for pending-pair approval, Web Push (VAPID), and a PWA
   bundle.
-- **Self-reminder** (`packages/shared/self-reminder`) — Independent scheduler
+- **Self-reminder** (`packages/self-reminder`) — Independent scheduler
   daemon. Connects to the hub as `identity=self-reminder`, accepts schedule
   requests over the mesh, persists them, and re-injects payloads at fire
   time with at-least-once semantics.
