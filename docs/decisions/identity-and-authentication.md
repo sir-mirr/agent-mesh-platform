@@ -10,28 +10,49 @@ authentication work stopped being deferrable.
 
 ---
 
+## 0. Migrating existing data is out of scope
+
+Nothing here carries old data forward. The changes are written as if the store
+starts empty: new columns, new files, new tables, no backfill and no
+compatibility shims for rows written by earlier builds. An operator upgrading
+an existing deployment starts fresh.
+
+(The one migration this repository does perform — `registry.json` into
+`agent_registry` — predates this decision and is already implemented.)
+
 ## 1. Storage layout
 
-Identity data moves out of `hub.db` into its own file.
+Identity and audit data each move out of `hub.db` into their own files.
 
 ```
 ${AGENT_MESH_STATE_DIR}/
-├── agents.db          identity + keys        hub: rw   http: rw
-├── hub.db             messages, audit_*      hub: rw   http: ro
+├── agents.db          identity, keys,        hub: rw   http: rw
+│                      key history
+├── hub.db             messages               hub: rw   http: ro
+├── audit.db           audit events and       hub: rw   http: ro
+│                      their attachment refs
 ├── agent-mesh.db      users, policies,       http only
 │                      agent_registry, push
 └── uploads/           attachment bytes       http: w   hub: r (stat only)
 ```
 
-Three reasons for the split:
+Four reasons for the split:
 
-- The audit feature adds four tables to `hub.db`. Identity is small and
-  permanent; messages and audit events are large and rotatable. Separate files
-  let them have separate backup, retention and `VACUUM` policies.
+- **Audit growth must not stop message routing.** Sharing one file means a
+  filling disk takes `messages` down with the audit tables — a recording
+  feature killing the communication feature. Separate files can be mounted on
+  separate volumes.
+- Retention differs per store. Identity is small and permanent; messages are
+  operational and short-lived; audit events are long-lived. Separate files let
+  each have its own backup, retention and `VACUUM` policy.
 - Neither service ends up writing into a database the other "owns". Both are
   equal participants in `agents.db`.
 - Nothing joins `agents` to `messages`. The only query spanning both was the
   identity teardown, and § 3 removes that.
+
+`audit_events` and `audit_event_blobs` stay together in `audit.db` because the
+audit contract requires an event and its attachment references to commit in one
+transaction. They do not need to sit with `messages` to do that.
 
 Both processes open `agents.db` read-write. SQLite handles this: both already
 set `journal_mode = WAL` and `busy_timeout = 5000`, writes serialise, and
@@ -88,6 +109,49 @@ dependency, keys are 43 characters as base64url, signatures are 64 bytes, and
 verification measured ~32 µs for a small message and ~39 µs for a 6 KB audit
 event — around 26–31k verifications per second on one core, which is orders of
 magnitude above the hub's traffic. Cost is not a consideration.
+
+### Key changes are themselves audited
+
+A leaked secret has to be revocable, and a revocation has to be a matter of
+record.
+
+```sql
+CREATE TABLE agent_key_events (
+  id          TEXT PRIMARY KEY,   -- time-ordered id
+  identity    TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  action      TEXT NOT NULL,      -- proposed | approved | denied | revoked
+  reason      TEXT,               -- compromise | rotation | teardown | ...
+  actor       TEXT,               -- approving admin login, 'hub', 'system'
+  occurred_at DATETIME NOT NULL
+);
+```
+
+Append-only, and deliberately **not** part of `audit_events`: it lives beside
+`agent_keys` in `agents.db` so a key change and its record commit together,
+its retention is permanent where message audit rotates, and the writer is http,
+which already holds the handle.
+
+**Revocation is a status change, never a delete.** Key rows survive so past
+signatures stay verifiable — the whole reason § 3 makes teardown a soft delete.
+What the history adds is the timeline needed to judge them:
+
+```
+2026-08-01  approved  fingerprint=abc…
+2026-08-15  revoked   reason=compromise
+```
+
+A verifier can then treat signatures before the revocation as sound and ones
+after it as suspect. That is what `reason` is for — a routine `rotation` says
+nothing about earlier signatures, while `compromise` casts doubt on the window
+around it.
+
+Revocation must not wait for a replacement to be approved. After it the
+identity can neither connect nor sign until a new key is approved, which is the
+correct fail-closed behaviour for a leak. Two paths: the operator revokes from
+the http admin surface, or the holder submits a self-revocation signed by the
+key being revoked — the fastest route when you still hold a key you know has
+leaked.
 
 ### Why a public key rather than a token
 
@@ -340,13 +404,16 @@ the lane repository's decision.
 ## 8. Staging
 
 ```
-now     agents.db, agent_keys with the approval procedure,
-        soft delete, upload nonce verification
+now     agents.db, agent_keys and agent_key_events with the approval
+        procedure, soft delete, upload nonce verification
 next    signature verification on mesh.connect, then per-message
         → proxy_for entitlement and the `from` override gain enforcement
 ```
 
 Nothing in the first stage is discarded by the second.
+
+The audit interface decisions that came out of the same review are in
+[`../proposals/audit-ingestion-response.md`](../proposals/audit-ingestion-response.md).
 
 ---
 
