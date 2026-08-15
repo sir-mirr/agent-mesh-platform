@@ -132,6 +132,11 @@ const shared = { AGENT_MESH_STATE_DIR: stateDir };
 const hub = spawnService("packages/hub/src/main.ts", {
   ...shared,
   AGENT_MESH_HUB_PORT: String(hubPort),
+  // The hub answers prepare_blobs with an absolute upload URL, and the route it
+  // names is served by the other process. It cannot work the address out — http
+  // connects to it, never the reverse — so the thing that chose both ports says
+  // so.
+  AGENT_MESH_BLOB_BASE_URL: `http://127.0.0.1:${httpPort}`,
 });
 
 let http: ReturnType<typeof spawnService> | null = null;

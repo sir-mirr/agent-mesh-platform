@@ -28,6 +28,24 @@ import { blobPath, blobStat } from "../blobs";
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
+/**
+ * Where blob uploads are served (SPEC § 9.1).
+ *
+ * **Absolute, and it has to be.** The blob route lives on `agent-mesh-http`
+ * while this method answers on the hub — two services on two ports. A relative
+ * URL is resolved by the client against whatever origin it happened to be
+ * talking to, which is this one, and the upload 404s against a service that
+ * does not serve that route. The client found exactly that.
+ *
+ * The hub cannot derive the address: it never connects to http, http connects
+ * to it. So a deployment states it, and the default is the port § 9.1 assigns.
+ */
+const BLOB_BASE_URL = (
+  process.env.AGENT_MESH_BLOB_BASE_URL ??
+  process.env.AGENT_MESH_HTTP_URL ??
+  "http://127.0.0.1:3000"
+).replace(/\/+$/, "");
+
 interface BlobRequest {
   sha256: string;
   size: number;
@@ -117,7 +135,7 @@ export function handlePrepareBlobs(
       status: "missing" as const,
       upload: {
         method: "PUT" as const,
-        url: `/api/v1/audit/blobs/${blobKey}`,
+        url: `${BLOB_BASE_URL}/api/v1/audit/blobs/${blobKey}`,
         nonce: grant.nonce,
         expires_at: grant.expires_at,
       },

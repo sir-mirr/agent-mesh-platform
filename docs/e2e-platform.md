@@ -41,9 +41,15 @@ directory. If either service dies on its own the harness exits non-zero rather
 than leaving a runner waiting on a port nobody is listening on.
 
 **Two ports, not one.** `api_http` is the hub's REST surface — provisioning,
-teardown, key status. `base_url` is the http server — the human surface, and
-where key approval lives. They are different services and the split is
-load-bearing (see below).
+teardown, key status. `base_url` is the http server — the human surface, key
+approval, and the audit blob upload. They are different services and the split
+is load-bearing (see below).
+
+This bites exactly once, on attachments: `mesh.audit.prepare_blobs` answers on
+the hub and returns an upload URL served by the http server. **Follow the `url`
+it gives you** rather than assembling one — it is absolute for this reason, and
+a client that resolved it against the hub would get a `404` from a service that
+does not serve the route.
 
 ---
 

@@ -106,9 +106,15 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
 
   const shared = { AGENT_MESH_STATE_DIR: stateDir, ...opts.env };
 
+  // Chosen before the hub starts, because the hub has to be told where blob
+  // uploads are served — it names an absolute URL on a route the other process
+  // owns, and cannot discover that address for itself.
+  const httpPort = withHttp ? await freePort() : 0;
+
   const hubProc = spawnService("packages/hub/src/main.ts", hubPort, {
     ...shared,
     AGENT_MESH_HUB_PORT: String(hubPort),
+    AGENT_MESH_BLOB_BASE_URL: `http://127.0.0.1:${httpPort}`,
   });
   const hub: Service = { ...hubProc, url: `http://127.0.0.1:${hubPort}` };
 
@@ -117,7 +123,6 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     await waitForHealth(`${hub.url}/health`);
 
     if (withHttp) {
-      const httpPort = await freePort();
       const httpProc = spawnService("packages/http/src/main.ts", httpPort, {
         ...shared,
         AGENT_MESH_HTTP_PORT: String(httpPort),

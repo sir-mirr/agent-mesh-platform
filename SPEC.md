@@ -1028,7 +1028,7 @@ result: {
     status:   "present" | "missing"
     upload?: {                  // present only when status = "missing"
       method:     "PUT"
-      url:        string        // § 9.1 blob route, already carrying blob_key
+      url:        string        // ABSOLUTE § 9.1 blob route, carrying blob_key
       nonce:      string
       expires_at: string        // ISO-8601
     }
@@ -1038,6 +1038,13 @@ result: {
 
 `name` is required because the storage key retains the file extension
 (§ 15.2); `sha256` alone does not determine it.
+
+**`url` MUST be absolute.** This method answers on the hub and the blob route is
+served by `agent-mesh-http` on a different port (§ 9.4). A relative URL is
+resolved by the client against the origin it is already talking to — the hub —
+where that route does not exist, so the upload fails with `404` against a
+correct client. The hub cannot derive the address, since http connects to it and
+never the reverse; a deployment supplies it.
 
 **The hub derives `blob_key` and returns it; clients MUST use the returned
 value rather than computing their own.** Two implementations of the same

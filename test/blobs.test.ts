@@ -86,6 +86,22 @@ function authHeader(
   return formatUploadAuthorization({ kid: key.fingerprint, nonce, signature });
 }
 
+/**
+ * Upload to the URL `prepare_blobs` returned, rather than to one this test
+ * assembled.
+ *
+ * Every earlier version built the URL from `mesh.http.url`, which is how a
+ * relative `url` in the response went unnoticed for a whole step: the tests
+ * knew where the route was and the client did not, so they agreed with the hub
+ * about everything except the one field the client actually follows.
+ */
+const putTo = (url: string, body: Uint8Array, headers: Record<string, string>) =>
+  fetch(url, {
+    method: "PUT",
+    body: body.slice().buffer as ArrayBuffer,
+    headers,
+  });
+
 const put = (blobKey: string, body: Uint8Array, headers: Record<string, string>) =>
   fetch(`${mesh.http.url}/api/v1/audit/blobs/${blobKey}`, {
     method: "PUT",
@@ -125,6 +141,31 @@ describe("prepare_blobs", () => {
     });
     expect(res.error).toMatchObject({ code: -32602 });
     expect(res.error.message).toContain("name is required");
+  });
+});
+
+describe("the upload URL", () => {
+  test("is absolute, and points at the service that serves the route", async () => {
+    // The hub answers this; the route is on the http server, on another port. A
+    // relative URL is resolved against whatever origin the client was talking
+    // to — the hub — and 404s there.
+    const bytes = new TextEncoder().encode("absolute url");
+    const grant = await prepare(bytes, "url.txt");
+    expect(grant.upload.url.startsWith("http")).toBe(true);
+    expect(new URL(grant.upload.url).port).toBe(String(new URL(mesh.http.url).port));
+    expect(new URL(grant.upload.url).port).not.toBe(String(new URL(mesh.hub.url).port));
+  });
+
+  test("following it verbatim works", async () => {
+    // What a client actually does, and what no test did until the client
+    // reported a 404 against a URL the hub had handed it.
+    const bytes = new TextEncoder().encode("followed verbatim");
+    const digest = sha256(bytes);
+    const grant = await prepare(bytes, "follow.bin");
+    const res = await putTo(grant.upload.url, bytes, {
+      authorization: authHeader(grant.upload.nonce, grant.blob_key, digest, bytes.length),
+    });
+    expect(res.status).toBe(201);
   });
 });
 
