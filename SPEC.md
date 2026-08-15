@@ -501,26 +501,72 @@ JSON-RPC has no header slot and `params` belongs to each method's own schema.
   } }
 ```
 
-The signed bytes are the **received bytes of `params`, verbatim** — no
+**Signing preimage.** The signature covers a domain-separated, length-prefixed
+encoding — **not** the `params` bytes alone. Signing only `params` would leave
+`method`, `nonce` and `iat` unauthenticated, so a captured signature could be
+replayed with a fresh nonce, or reused against a different method that accepts
+the same parameter shape.
+
+```
+LP(x)    = uint32be(byteLength(x)) ‖ x
+
+preimage = "agent-mesh/sig/v1" ‖ 0x00
+         ‖ LP(method)                    // UTF-8
+         ‖ LP(kid)                       // UTF-8
+         ‖ LP(nonce)                     // UTF-8
+         ‖ LP(decimal(iat))              // UTF-8, no leading zeros
+         ‖ LP(raw params bytes)          // exactly as received
+```
+
+Length prefixes make the field boundaries unambiguous, so no concatenation of
+one field's content can imitate another. The version string is domain
+separation: a signature minted for this protocol cannot be replayed into
+another that signs the same material.
+
+`params` enters the preimage as the **received bytes, verbatim** — no
 canonicalisation scheme. JSON has no canonical byte form, so a signature
 computed over a re-serialised object can differ from one computed over the
 bytes on the wire even when the content is identical. Clients MUST therefore
-retain the serialised form they sent and re-send it byte-for-byte on retry.
-`params` is the scope rather than the whole request because `id` changes
-between retries.
+retain the serialised form they sent and re-send those bytes byte-for-byte on
+retry. `id` is excluded because it changes between retries; `sig` is excluded
+because it carries the result.
 
-The hub verifies against the identity's approved key (§ 10.1), fetched once at
-`mesh.connect` and cached for the life of the connection. Replay is bounded by
-`nonce` and an `iat` freshness window.
+`payload_digest` (§ 8.9.3) is a **separate computation** over the raw `params`
+bytes alone. The two share that input and nothing else: the digest identifies
+an event for idempotency, the signature authenticates a request. Neither is
+derived from the other.
+
+**Freshness and replay.** The hub MUST reject `iat` outside ±120 seconds of its
+own clock, and MUST reject a `nonce` already seen from that identity within the
+window. A nonce record may be discarded once its `iat` falls outside the
+window.
+
+**Key state is read per request, not cached.** The hub MUST verify against the
+identity's currently `approved` key each time. Caching a key for the life of a
+connection would make revocation (§ 10.2) not take effect until the connection
+happened to close, which is precisely the case revocation exists for.
+
+The cost does not justify a cache: reading the key row from `agents.db` was
+measured at ~1.7 µs, against ~32 µs for the Ed25519 verification it feeds — and
+cheaper than the `PRAGMA data_version` check a cache-invalidation scheme would
+need on the same path. WAL readers do not block, and key writes are rare.
 
 Signature verification is enforced only for identities that have an approved
 key. An identity with none connects unsigned, as at 0.1.
+
+An identity whose key is `pending`, `denied` or `revoked` has no approved key.
+Its requests are rejected with `-32014`, and the hub MUST close any connection
+it already holds for that identity as soon as the state is observed — which,
+because state is read per request, is at its next request.
 
 Errors:
 
 - `-32012` SIGNATURE_INVALID — signature absent, malformed, outside the
   freshness window, a replayed nonce, or not verifiable against the
   identity's approved key.
+- `-32014` KEY_NOT_APPROVED — the identity has no `approved` key. `data`
+  carries `{ code: "KEY_NOT_APPROVED", identity, key_status }` so a client can
+  distinguish waiting for approval from having been revoked.
 
 Any param beyond `identity` and `proxy_for` is **ignored** by the hub.
 In particular, `type` and `description` (if present, e.g. carried over
@@ -883,11 +929,12 @@ params: {
 }
 result: {
   blobs: Array<{
-    sha256: string
-    status: "present" | "missing"
+    sha256:   string
+    blob_key: string            // authoritative storage key, derived by the hub
+    status:   "present" | "missing"
     upload?: {                  // present only when status = "missing"
       method:     "PUT"
-      url:        string        // § 9.1 blob route
+      url:        string        // § 9.1 blob route, already carrying blob_key
       nonce:      string
       expires_at: string        // ISO-8601
     }
@@ -896,14 +943,17 @@ result: {
 ```
 
 `name` is required because the storage key retains the file extension
-(§ 15.2); `sha256` alone does not determine it. Both sides MUST derive the key
-by the same rule: lowercase the extension and reject any that is not
-`[a-zA-Z0-9]{1,16}`.
+(§ 15.2); `sha256` alone does not determine it.
+
+**The hub derives `blob_key` and returns it; clients MUST use the returned
+value rather than computing their own.** Two implementations of the same
+normalisation rule are two chances to disagree, and a disagreement here splits
+one blob into two. The rule the hub applies is § 15.2.
 
 `blobs` MUST NOT exceed `max_attachments_per_event`, and the declared sizes
 MUST NOT total more than `max_attachments_bytes_per_event`.
 
-The nonce is bound to `(identity, sha256, size)` and carries an expiry. It is
+The nonce is bound to `(identity, blob_key, size)` and carries an expiry. It is
 not single-use: because the upload is content-addressed, replaying a grant can
 only re-upload identical bytes, which deduplicates to no effect.
 
@@ -917,18 +967,9 @@ params: {
   event_id:            string   // globally unique, time-ordered
   event_type:          string   // namespace string, not a closed enum
   occurred_at:         string   // ISO-8601
-  identity:            string   // subject — whose activity this describes
-  recorded_by:         { kind: "hub" | "adapter", identity: string }
   correlation_id?:     string
   causation_event_id?: string | null
   producer_id?:        string   // diagnostic label only; ≤ 64 chars
-  attestation?:        {
-    signed_by: string
-    kid:       string
-    alg:       "ed25519"
-    value:     string
-    covers:    "audit.params" | "mesh.send.params"
-  }
   …event-type-specific members
 }
 result: {
@@ -936,11 +977,19 @@ result: {
   committed:            true
   duplicate:            boolean
   event_id:             string
-  identity:             string
+  identity:             string   // as derived by the hub
   attachments_verified: number
   stored_at:            string
 }
 ```
+
+**`identity`, `recorded_by`, `attestation` and `payload_digest` are not request
+members.** They are the record's trust metadata, and a field the client
+supplies cannot attest to the client. The hub constructs each of them: the
+identity from the authenticated connection, `recorded_by` from which component
+is writing, the attestation from the verified request signature, and the digest
+from the received bytes. A client that sends them anyway MUST have them
+ignored, not honoured.
 
 The hub MUST:
 

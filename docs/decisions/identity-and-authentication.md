@@ -256,17 +256,36 @@ method's schema:
            "nonce": "...", "iat": 1755230000, "value": "<base64url>" } }
 ```
 
-The hub fetches the identity's approved key once at `mesh.connect` and caches
-it for the life of the connection. Verification never touches the database on
-the hot path.
+**Key state is read per request, not cached.** An earlier draft cached the
+approved key for the life of the connection. That made revocation ineffective
+against connections already open — the one case revocation exists for. The
+measurements say the cache was never worth it anyway: reading the key row costs
+~1.7 µs against ~32 µs for the Ed25519 verification it feeds, and is cheaper
+than the `PRAGMA data_version` probe a cache-invalidation scheme would need on
+the same path. WAL readers do not block, and key writes are rare.
 
-Replay is prevented by `nonce` plus an `iat` freshness window; audit events can
-lean on `(producer_id, sequence)`, which is already monotonic.
+Replay is prevented by `nonce` plus an `iat` freshness window (±120 s), with a
+seen-nonce set kept for the width of that window.
 
-### What exactly is signed: the raw bytes
+### What exactly is signed
 
-**The signed and digested bytes are the received bytes of `params`, verbatim.**
-No canonicalisation scheme.
+**The signature covers a domain-separated, length-prefixed encoding of
+`(protocol version, method, kid, nonce, iat, raw params bytes)`** — not the
+`params` bytes alone.
+
+An earlier draft signed only `params`, on the reasoning that one rule could
+serve both the signature and the idempotency digest. It cannot: signing only
+`params` leaves `method`, `nonce` and `iat` unauthenticated, so a captured
+signature can be replayed with a fresh nonce, or reused against a different
+method that accepts the same parameter shape. The client team caught this
+before implementation.
+
+The two computations share the raw `params` bytes and nothing else. The digest
+identifies an event for idempotency; the signature authenticates a request.
+SPEC § 8.1 carries the exact encoding.
+
+`params` still enters as the **received bytes, verbatim**. No canonicalisation
+scheme.
 
 JSON has no canonical byte form — key order, number formatting, unicode
 escaping and whitespace all vary — so a digest computed from a re-serialised
@@ -356,19 +375,25 @@ only an expiry rather than one-time-use bookkeeping.
 
 ---
 
-## 6. Sequence numbers: uniqueness only
+## 6. Audit events have no sequence number
 
-`(identity, producer_id, sequence)` must be unique. Gaps are accepted and not
-reported.
+An intermediate draft of this document kept a per-producer `sequence`, first
+requiring contiguity and then relaxing to uniqueness. Both are superseded:
+**`sequence` is gone entirely**, along with `AUDIT_SEQUENCE_CONFLICT`,
+`mesh.audit.checkpoint` and the `audit_producers` table.
 
-Strict contiguity was rejected. An input rejected locally — an attachment over
-the size cap, for instance — would leave a permanent gap that no later event
-could step over, stalling that producer's audit forever. It also serialises
-delivery: a slow attachment upload on one event would block every event behind
-it.
+Contiguity was rejected first. An input rejected locally — an attachment over
+the size cap, say — leaves a permanent gap that no later event can step over,
+stalling that producer's audit forever, and it serialises delivery so one slow
+attachment blocks everything behind it.
 
-`AUDIT_SEQUENCE_CONFLICT` narrows to mean **sequence number reused**, nothing
-else.
+Once gap detection was gone, nothing was left for the number to do. `event_id`
+already carries uniqueness, `causation_event_id` already carries causality, and
+ordering comes free from `event_id` being time-ordered. Recovery after a lost
+ACK is re-sending the same `event_id`, which the outbox can already do without
+asking the hub where it got to.
+
+`producer_id` survives as a diagnostic label with no role in correctness.
 
 The accepted cost: an adapter whose outbox is lost never reports the events it
 lost, and the hub cannot tell. **The audit trail is a record of what was

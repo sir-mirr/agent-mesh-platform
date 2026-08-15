@@ -440,3 +440,134 @@ scheduling the rest.
 | § 13 | whether a § 8 addition is a minor version |
 | § 15.1 | storage authority wording |
 | § 15.2 | blob key retains the extension |
+
+---
+
+## 8. Round two — answers to the client revision's § 16
+
+The client revision raised three items as blocking. **All three were real, and
+all three were defects in the documents above rather than disagreements.** They
+are fixed; SPEC 0.2 carries the corrected contract.
+
+### 8.1 Signature preimage — accepted, and the fix is theirs
+
+The objection: § 3.6 above signs the raw `params` bytes and nothing else, while
+claiming `sig.nonce` and `sig.iat` bound replay. Those fields sit outside the
+signature, so a captured signature can be replayed with a fresh nonce, or
+reused against a different method that accepts the same parameter shape.
+
+Correct, and the cause is identifiable: § 3.6 argued that one rule could serve
+both the idempotency digest and the signature. That reasoning holds for the
+digest — which only ever needs to identify an event — and fails for the
+signature, which has to authenticate a request. Sharing an input is not the
+same as sharing a computation.
+
+SPEC § 8.1 now specifies:
+
+```
+LP(x)    = uint32be(byteLength(x)) ‖ x
+
+preimage = "agent-mesh/sig/v1" ‖ 0x00
+         ‖ LP(method) ‖ LP(kid) ‖ LP(nonce) ‖ LP(decimal(iat))
+         ‖ LP(raw params bytes)
+```
+
+Length prefixes over CBOR: the boundaries are just as unambiguous, and it is
+implementable in any language without a dependency. `id` stays out because it
+changes between retries; `sig` stays out because it carries the result.
+
+`payload_digest` remains `SHA-256(raw params bytes)`, exactly as the revision
+describes. The two computations share that input and nothing else.
+
+Freshness is **±120 seconds**, with a seen-nonce set retained for the width of
+the window. Both belong in the fixtures.
+
+### 8.2 The `sequence` inconsistency — accepted
+
+`identity-and-authentication.md` was written before the decision to drop
+`sequence` and still carried it in two places: a replay clause referring to
+`(producer_id, sequence)`, and a whole section defining uniqueness semantics
+for it. § 3.1 above was the newer decision and the revision was right to follow
+it.
+
+Both are corrected. SPEC never adopted `sequence`, so it needed no change.
+
+### 8.3 Revoked-key cache invalidation — accepted, and the cache is gone
+
+The objection: keys are cached for the life of a connection, so a revoked key
+keeps working on any connection already open, which makes "immediate
+revocation" untrue.
+
+Correct. Rather than add an invalidation mechanism, **the cache is removed.**
+The hub reads the identity's current key state on every request.
+
+Measured on this tree:
+
+| | |
+|---|---|
+| read the key row from `agents.db` | ~1.7 µs |
+| `PRAGMA data_version` probe (what invalidation would cost) | ~2.2 µs |
+| Ed25519 verification of one request | ~32 µs |
+
+The cache was protecting against something cheaper than the check that would
+have kept it correct, and an order of magnitude below the verification it sits
+next to. WAL readers do not block and key writes are rare, so there is no
+contention argument for it either.
+
+Revocation is therefore effective at an identity's **next request**, with no
+notification path between the services and no invalidation bookkeeping. A
+request from an identity whose key is `pending`, `denied` or `revoked` is
+rejected with the new `-32014` KEY_NOT_APPROVED, which carries `key_status` so
+a client can tell waiting-for-approval from revoked. The hub closes any
+connection it holds for that identity on observing the state.
+
+Rotation follows the same rule: once the replacement is approved, the previous
+key stops verifying at the next request. Clients reconnect with the new key and
+MUST NOT fall back to the old one.
+
+### 8.4 Also fixed, unprompted
+
+The revision's § 9.1 states that `identity`, `recorded_by`, `attestation` and
+`payload_digest` are hub-constructed rather than client-supplied. That is
+right, and SPEC § 8.9.3 contradicted it — those fields appeared in the request
+schema while the surrounding prose said the hub derives them. The request
+schema no longer carries them, and the section says plainly that a client
+sending them has them ignored.
+
+### 8.5 Accepted from the revision without change
+
+- **`prepare_blobs` returns `blob_key`.** Better than deriving it on both
+  sides — two implementations of one normalisation rule are two chances to
+  disagree, and a disagreement splits one blob into two. The hub is
+  authoritative; clients use what it returns. The upload nonce binds to
+  `(identity, blob_key, size)` accordingly.
+- **`audit_event_blobs` keyed by `(event_id, ordinal)`.** Cleaner than
+  including the digest, and it preserves referencing the same blob twice in one
+  event.
+- **Permanent errors go to a local dead-letter, not to `/dev/null`.** "Drop"
+  in § 3.5 above meant "stop retrying", and the revision's reading is the
+  better one: quarantine the payload and its blobs, alert, and let a local
+  retention policy decide the rest. Discarding audit material to handle an
+  audit error is the wrong instinct.
+- **UUIDv7 with an `aud_` prefix**, monotonic within a millisecond where the
+  generator allows. Ordering is a query convenience and not a completeness or
+  causality claim — `causation_event_id` carries causality.
+- **Per-lane jitter on drain**, on top of the negotiated in-flight caps.
+- **Unadvertised capabilities mean incompatible**, never assumed defaults.
+
+### 8.6 Still open
+
+**Retention (§ 16.5) is unanswered.** Every other § 17 item now has a value;
+this one is a policy decision and stays with the product. Until it is set,
+growth is unbounded.
+
+The revision's added point is correct and worth recording: separating
+`audit.db` from `hub.db` protects routing from *schema* and *lock* coupling,
+not from a full disk. Files on one volume still fill together. A production
+profile needs separate volumes or a disk reservation, plus soft and hard
+thresholds with alerting.
+
+**The contract package (§ 16.4) has no home yet.** The npm scope and package
+name are undecided, and nothing is published. The fixtures listed there are the
+right list; they need somewhere to live before either side can test against
+them.
