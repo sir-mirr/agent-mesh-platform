@@ -32,6 +32,10 @@
         "ws": "^8.20.0",
       },
     },
+    "packages/store": {
+      "name": "@agent-mesh/store",
+      "version": "0.1.0",
+    },
   },
   "packages": {
     "@agent-mesh/http": ["@agent-mesh/http@workspace:packages/http"],
@@ -39,6 +43,8 @@
     "@agent-mesh/hub": ["@agent-mesh/hub@workspace:packages/hub"],
 
     "@agent-mesh/self-reminder": ["@agent-mesh/self-reminder@workspace:packages/self-reminder"],
+
+    "@agent-mesh/store": ["@agent-mesh/store@workspace:packages/store"],
 
     "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 

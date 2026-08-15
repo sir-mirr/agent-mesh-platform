@@ -1,0 +1,13 @@
+{
+  "name": "@agent-mesh/store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Schema and access layer for the databases the baseline services share.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

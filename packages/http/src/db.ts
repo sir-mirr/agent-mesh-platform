@@ -7,18 +7,22 @@ import { Database } from 'bun:sqlite'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
-const STATE_DIR = process.env.AGENT_MESH_STATE_DIR ?? '/srv/agent-mesh-lab/state/shared'
-const DB_PATH = join(STATE_DIR, 'agent-mesh.db')
-const LEGACY_REGISTRY_FILE = join(STATE_DIR, 'registry.json')
+import { openAt, stateDir } from '@agent-mesh/store'
+
+const DB_PATH = join(stateDir(), 'agent-mesh.db')
+const LEGACY_REGISTRY_FILE = join(stateDir(), 'registry.json')
 
 let _db: Database | null = null
 
+/**
+ * `agent-mesh.db` is this service's own store — users, policies, approvals,
+ * push subscriptions, the agent registry. Nothing else opens it, which is why
+ * it is not one of the shared stores in @agent-mesh/store.
+ */
 export function getDb(): Database {
   if (_db) return _db
 
-  _db = new Database(DB_PATH, { create: true })
-  _db.exec('PRAGMA journal_mode = WAL')
-  _db.exec('PRAGMA busy_timeout = 5000')
+  _db = openAt(DB_PATH, { create: true })
 
   _db.exec(`
     CREATE TABLE IF NOT EXISTS messages (

@@ -318,10 +318,10 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 │   ├── migrations/                # forward-only SQL
 │   └── systemd/                   # the three baseline units
 ├── packages/
-│   └── shared/
-│       ├── hub/                   # JSON-RPC 2.0 broker (port 3100)
-│       ├── http/                  # REST + SSE + OAuth + PWA (port 3000)
-│       └── self-reminder/         # scheduler daemon
+│   ├── store/                     # schema and access for the shared databases
+│   ├── hub/                       # JSON-RPC 2.0 broker (port 3100)
+│   ├── http/                      # REST + SSE + OAuth + PWA (port 3000)
+│   └── self-reminder/             # scheduler daemon
 ├── package.json
 ├── bun.lock
 └── tsconfig.base.json

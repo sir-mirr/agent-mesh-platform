@@ -39,6 +39,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
+import { openStore, type MessageRow } from '@agent-mesh/store'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
@@ -47,17 +48,20 @@ import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJ
 
 const STATE_DIR = process.env.AGENT_MESH_STATE_DIR ?? '/srv/agent-mesh-lab/state/shared'
 const PORT = parseInt(process.env.AGENT_MESH_HTTP_PORT ?? '3000', 10)
-const HUB_DB_PATH = join(STATE_DIR, 'hub.db')
 const startTime = Date.now()
 const IS_DEV = process.env.NODE_ENV === 'development'
 // Mesh identity pinged when a new user needs approval. Deployment-specific.
 const ADMIN_NOTIFY_IDENTITY = process.env.AGENT_MESH_ADMIN_NOTIFY_IDENTITY?.trim() || null
 
 // --- Hub DB (read-only audit access) ---
+//
+// The hub owns this file and its schema (SPEC § 3.1); this side only reads.
+// The row shape comes from @agent-mesh/store rather than being restated here,
+// which is what used to let the two drift apart silently.
 let _hubDb: Database | null = null
 function getHubDb(): Database {
   if (_hubDb) return _hubDb
-  _hubDb = new Database(HUB_DB_PATH, { readonly: true })
+  _hubDb = openStore('hub', { readonly: true })
   return _hubDb
 }
 
@@ -275,15 +279,8 @@ let lastSeenMessageTs: string | null = null
 let lastSeenMessageId: string | null = null
 let auditPollerInterval: Timer | null = null
 
-type MsgRow = {
-  id: string
-  from_agent: string
-  to_agent: string
-  content: string
-  reply_to: string | null
-  status: string | null
-  ts: string
-}
+// Shape of hub.db:messages. Declared by @agent-mesh/store, not restated here.
+type MsgRow = MessageRow
 
 function startAuditPoller(): void {
   if (auditPollerInterval) return

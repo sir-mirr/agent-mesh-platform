@@ -6,6 +6,8 @@
  */
 
 import { Database } from "bun:sqlite";
+
+import { agentsSchema, hubSchema, openStore } from "@agent-mesh/store";
 import { randomUUID } from "crypto";
 
 import { ConnectionOwnership } from "./connection-ownership";
@@ -49,53 +51,16 @@ function log(...args: unknown[]) {
 // Database
 // ---------------------------------------------------------------------------
 
-const db = new Database(`${STATE_DIR}/hub.db`, { create: true });
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA busy_timeout = 5000;");
+const db = openStore("hub", { create: true });
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS agents (
-    identity    TEXT PRIMARY KEY,
-    description TEXT,
-    last_seen   DATETIME,
-    type        TEXT,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
-// Idempotent migration for legacy hub.db files. PRAGMA returns rows
-// describing every column; we add any columns that are missing.
-//   - `type`       : introduced after initial schema (task #72 era).
-//   - `created_at` : introduced for ISO-8601 provenance (see SPEC §10.1).
-//                    Backfilled from `last_seen` to give existing rows a
-//                    plausible best-effort value; operators that want a
-//                    cleaner state apply `ops/migrations/0001_*.sql`.
-{
-  const cols = db.prepare(`PRAGMA table_info(agents)`).all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === "type")) {
-    db.exec(`ALTER TABLE agents ADD COLUMN type TEXT`);
-  }
-  if (!cols.some((c) => c.name === "created_at")) {
-    // SQLite forbids non-constant defaults on ALTER TABLE ADD COLUMN, so we
-    // add the column nullable then backfill in a single UPDATE.
-    db.exec(`ALTER TABLE agents ADD COLUMN created_at DATETIME`);
-    db.exec(
-      `UPDATE agents SET created_at = COALESCE(last_seen, datetime('now')) WHERE created_at IS NULL`
-    );
-  }
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id         TEXT PRIMARY KEY,
-    from_agent TEXT NOT NULL,
-    to_agent   TEXT NOT NULL,
-    content    TEXT NOT NULL,
-    reply_to   TEXT,
-    status     TEXT DEFAULT 'pending',
-    ts         DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+// The hub owns the DDL (SPEC § 3.1); other services open these expecting the
+// tables to be there.
+//
+// `agents` and `messages` share `hub.db` at 0.1. SPEC 0.2 moves `agents` into
+// its own file — the schemas are already separate modules so that change is a
+// second handle here, not a disentangling.
+agentsSchema.migrate(db);
+hubSchema.migrate(db);
 
 // Prepared statements
 const stmtUpsertAgent = db.prepare(`

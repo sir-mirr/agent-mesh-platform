@@ -31,11 +31,17 @@
       ],
       "@agent-mesh/self-reminder": [
         "./packages/self-reminder/src/main.ts"
+      ],
+      "@agent-mesh/store": [
+        "./packages/store/src/index.ts"
       ]
     }
   },
   "files": [],
   "references": [
+    {
+      "path": "./packages/store/tsconfig.json"
+    },
     {
       "path": "./packages/hub/tsconfig.json"
     },
