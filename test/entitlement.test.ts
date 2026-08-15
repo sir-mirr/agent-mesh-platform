@@ -14,6 +14,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { Database } from "bun:sqlite";
+import { join } from "node:path";
+
 import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
@@ -136,7 +139,7 @@ describe("proxy_for at connect", () => {
     rpc.close();
   });
 
-  test("a dropped claim does not route the subject's mail to that socket", async () => {
+  test("a dropped claim does not route the subject's live mail to that socket", async () => {
     // The claim is not honoured, so the hub must not have wired the identity
     // into this socket either — otherwise a refused proxy still intercepts.
     const { rpc } = await asSocket("gateway", ["runtime"]);
@@ -148,6 +151,39 @@ describe("proxy_for at connect", () => {
     expect(rpc.notifications().filter((n) => n.method === "mesh.message")).toHaveLength(0);
     sender.close();
     rpc.close();
+  });
+
+  test("a dropped claim does not receive the subject's QUEUED mail either", async () => {
+    // The case the test above misses, and the one that mattered: it connects
+    // the impostor *before* anything is queued, so it only ever exercised live
+    // routing. The replay at connect is a second path into the same socket, and
+    // it was looping over the declared claims rather than the granted ones.
+    //
+    // The consequence was not a leak alone. The replay marks rows delivered, so
+    // the rightful recipient never received them — interception that also
+    // destroys the evidence.
+    await provision(mesh.hub, "queued-subject", "ai-codex", null, newPublicKey());
+
+    const sender = await connectRpc(mesh.hub);
+    await sender.call("mesh.connect", { identity: "scheduler" });
+    await sender.call("mesh.send", { to: "queued-subject", content: "for its eyes only" });
+    sender.close();
+
+    // The impostor connects *after* the message is waiting.
+    const { rpc: impostor } = await asSocket("gateway", ["queued-subject"]);
+    await Bun.sleep(150);
+    expect(impostor.notifications().filter((n) => n.method === "mesh.message")).toHaveLength(0);
+    impostor.close();
+
+    // And it is still queued for whoever is entitled to it. Read from the store
+    // rather than by connecting as the subject: the leak destroyed evidence by
+    // marking rows delivered, so the assertion has to be about the row.
+    const hub = new Database(join(mesh.stateDir, "hub.db"), { readonly: true });
+    const row = hub.prepare(
+      `SELECT status FROM messages WHERE to_agent = ? AND content = ?`,
+    ).get("queued-subject", "for its eyes only") as { status: string };
+    hub.close();
+    expect(row.status).toBe("pending");
   });
 });
 

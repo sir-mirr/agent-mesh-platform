@@ -123,9 +123,9 @@ export function performConnect(
   // `mesh.send` refuses it with -32013, which attributes the failure to the one
   // person affected instead of to everyone.
   const proxyFor: string[] = Array.isArray(params.proxy_for) ? params.proxy_for : [];
+  const granted: string[] = [];
   if (proxyFor.length > 0) {
     const proxiedSet = wsProxies.get(ws) ?? new Set<string>();
-    const granted: string[] = [];
     const refused: string[] = [];
     for (const pid of proxyFor) {
       if (typeof pid !== "string" || pid.length === 0) continue;
@@ -152,8 +152,12 @@ export function performConnect(
   // Deliver pending messages
   deliverPending(identity, ws);
 
-  // Deliver pending messages for proxied identities
-  for (const pid of proxyFor) {
+  // **Granted, not declared.** Replaying for a refused claim would hand this
+  // socket another identity's queued mail and mark it delivered, so the
+  // rightful recipient would never receive it — interception dressed as
+  // routing. § 8.2 says a refused entry is not wired into the socket's
+  // routing, and the replay is routing.
+  for (const pid of granted) {
     deliverPending(pid, ws);
   }
 
