@@ -21,6 +21,16 @@ the mesh has two history surfaces with different capabilities.
 **Why deferred.** Adding a cursor is a wire change to a method clients already
 use, and the audit API covers the case anyone has actually asked for.
 
+### The web surface reads its own stores, not the hub
+
+`GET /api/v1/agents` and the message history come from `agent-mesh.db`, not from
+`mesh.list_agents` and `mesh.fetch_messages`. So the registry a browser sees and
+the one the hub routes by can disagree, and the UI shows history the hub has no
+record of.
+
+**Why deferred.** Reconciling them means deciding which service owns message
+history, which is the item below.
+
 ### Message content is stored twice
 
 `hub.db:messages` for routing, `agent-mesh.db:messages` for the web UI. They can

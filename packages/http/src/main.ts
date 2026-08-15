@@ -183,6 +183,26 @@ function sendViaHub(to: string, content: string, from: string, replyTo?: string)
   })
 }
 
+/**
+ * Re-declare `proxy_for` on the live socket.
+ *
+ * The list is fixed at connect (§ 8.1), so a person approved afterwards could
+ * not be spoken for until the http server happened to reconnect — every message
+ * they sent was refused by entitlement until then. `mesh.connect` on a socket
+ * that already owns the identity is accepted rather than treated as a duplicate,
+ * so re-declaring is the whole fix.
+ */
+export async function redeclareProxies(): Promise<void> {
+  if (!hubConnected || !hubWs) return
+  const webUsers = listApprovedWebUserIds()
+  await provisionAllHumans(webUsers)
+  hubWs.send(JSON.stringify({
+    jsonrpc: '2.0', method: 'mesh.connect',
+    params: { identity: HUB_IDENTITY, description: 'Agent Mesh Web UI', proxy_for: webUsers },
+    id: Date.now(),
+  }))
+}
+
 connectToHub()
 
 // --- In-memory SSE pub/sub ---
@@ -482,7 +502,13 @@ type Message = {
   content: string
   reply_to?: string
   file_path?: string
-  status: 'pending' | 'delivered' | 'read'
+  /**
+   * `failed` means the hub never accepted it — an unentitled sender, a
+   * torn-down recipient. Distinct from `pending`, which means the hub holds it
+   * for a recipient who is offline. The two used to look identical in the UI
+   * because the send path swallowed the refusal.
+   */
+  status: 'pending' | 'delivered' | 'read' | 'failed'
 }
 
 // --- Hono App ---
@@ -737,6 +763,16 @@ app.post('/api/v1/messages', async (c) => {
   const text = body.text as string | undefined
   const replyTo = body.reply_to as string | undefined
   const filePath = body.file_path as string | undefined
+  // § 15.2. The upload response is itself a valid metadata object, so a client
+  // attaches it unchanged. Until now nothing read this and the attachment was
+  // dropped before the message reached the wire — the pull-on-demand loop of
+  // § 15.4 had no producer at all, so a lane could never receive a
+  // `download_url` to fetch.
+  const attachments = Array.isArray(body.attachments)
+    ? (body.attachments as Array<Record<string, unknown>>).filter(
+        (a) => a && typeof a.id === 'string' && typeof a.download_url === 'string',
+      )
+    : []
 
   // Override "from" with authenticated user's github_login
   const from = payload.github_login
@@ -795,10 +831,27 @@ app.post('/api/v1/messages', async (c) => {
     ...(msg.file_path ? { file_path: msg.file_path } : {}),
   })
 
-  // Send via hub (best-effort — message is already persisted in SQLite)
-  await sendViaHub(to, text, from, replyTo).catch(() => null)
+  // With attachments the body is a JSON object carrying both, because § 15.2
+  // requires the `attachments` array to be *in* the message body and § 8.2's
+  // content is a flat string. A message without them stays a plain string, so
+  // nothing changes for the common case.
+  const wireContent = attachments.length > 0
+    ? JSON.stringify({ text, attachments })
+    : text
+
+  // Reported, not swallowed. It used to be `.catch(() => null)`, so a message
+  // the hub refused — an unentitled sender, a torn-down recipient — was still
+  // written locally and rendered in the UI as though it had been routed. The
+  // person saw a sent message that no one would ever receive.
+  const hubMessageId = await sendViaHub(to, wireContent, from, replyTo).catch(() => null)
+  if (!hubMessageId) {
+    console.warn(`[http-server] ${from} -> ${to}: the hub did not accept this message`)
+  }
 
   // Push to SSE clients so sender's UI updates immediately
+  // `pending` when the hub never took it, so the UI can tell "waiting for the
+  // recipient" from "never left this machine".
+  if (!hubMessageId) msg.status = 'failed'
   const sseMsg = { id: msg.id, from: msg.from, to: msg.to, ts: msg.ts, content: msg.content, reply_to: msg.reply_to ?? null, file_path: msg.file_path ?? null, status: msg.status }
   pushToSSE(msg.to, msg.from, 'message', sseMsg)
   pushToSSE(msg.from, msg.to, 'message', sseMsg)
@@ -1180,6 +1233,9 @@ app.post('/api/v1/admin/approve', async (c) => {
   if (!provisioned.ok) {
     console.warn(`[http-server] approved ${githubLogin} but could not register the mesh identity: ${provisioned.reason}`)
   }
+  // Without this the person could not be spoken for until this server next
+  // reconnected — approved in the UI and unable to send.
+  await redeclareProxies().catch(() => {})
 
   // Grant wildcard messaging policy
   const db = getDb()
@@ -1532,6 +1588,21 @@ app.get('/admin', async (c) => {
 
 // --- File Upload ---
 
+/**
+ * Where this server is reachable from other machines (SPEC § 15.2).
+ *
+ * `download_url` MUST be absolute: a lane VM resolves it against its own origin
+ * otherwise and gets a 404 on a route it does not serve. That is the identical
+ * failure the hub already had for blob uploads, found in integration rather
+ * than in either repository's tests, because each side agreed with itself.
+ *
+ * Defaults to loopback on the configured port, which is right for a single-host
+ * deployment and wrong for every other one — so a cross-VM deployment sets it.
+ */
+const PUBLIC_URL = (
+  process.env.AGENT_MESH_HTTP_PUBLIC_URL ?? `http://127.0.0.1:${PORT}`
+).replace(/\/+$/, '')
+
 const UPLOAD_DIR = join(STATE_DIR, 'uploads')
 mkdirSync(UPLOAD_DIR, { recursive: true })
 
@@ -1581,7 +1652,7 @@ app.post('/api/v1/upload', async (c) => {
     mime,
     size: file.size,
     sha256,
-    download_url: `/api/v1/attachments/${id}`,
+    download_url: `${PUBLIC_URL}/api/v1/attachments/${id}`,
     uploaded_at,
     // Backward-compat fields (deprecated — single-host legacy clients only)
     file_path: filePath,
@@ -1819,7 +1890,11 @@ console.log(`agent-mesh-http: starting on port ${PORT}`)
 console.log(`agent-mesh-http: STATE_DIR = ${STATE_DIR}`)
 
 // Seed default local admin user
+// Seeded users are web users, so they must exist before `proxy_for` is
+// declared. On a first boot the seed used to run long after the hub connect,
+// leaving the seeded admin unable to send until the next restart.
 await seedLocalUsers()
+await redeclareProxies().catch(() => {})
 
 // Start hub.db audit poller (1.5s interval) so Chat Audits SSE captures
 // all agent-mesh conversations, not just the sir-mirr proxy channel.

@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -159,6 +159,105 @@ describe("hub connection", () => {
  * only thing standing between a caller and the filesystem, which is why the
  * traversal cases are asserted rather than assumed.
  */
+describe("attachment metadata (§ 15.2)", () => {
+  /**
+   * The web surface only sends to agents its own registry lists — the two
+   * lists answer different questions (§ 9.1), and the hub knowing an identity
+   * does not mean the UI offers it. So a test recipient has to exist on both
+   * sides.
+   */
+  const addToWebRegistry = (id: string) => {
+    const db = new Database(join(mesh.stateDir, "agent-mesh.db"));
+    db.prepare(
+      `INSERT OR IGNORE INTO agent_registry (id, name, type, approved) VALUES (?, ?, 'agent', 1)`,
+    ).run(id, id);
+    db.close();
+  };
+
+  const upload = async (content: string, name: string) => {
+    const form = new FormData();
+    form.append("file", new Blob([content]), name);
+    const res = await fetch(`${mesh.http.url}/api/v1/upload`, {
+      method: "POST", headers: { cookie: adminCookie }, body: form,
+    });
+    return { status: res.status, body: await res.json() };
+  };
+
+  test("the upload response is itself a valid metadata object", async () => {
+    // § 15.2: so a client can attach the response to a message unchanged.
+    const { status, body } = await upload("metadata shape", "doc.txt");
+    expect(status).toBe(200);
+    for (const field of ["id", "name", "mime", "size", "sha256", "download_url", "uploaded_at"]) {
+      expect(body[field], `missing ${field}`).toBeTruthy();
+    }
+    expect(body.name).toBe("doc.txt");
+    expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(new Date(body.uploaded_at).toString()).not.toBe("Invalid Date");
+  });
+
+  test("download_url is absolute and resolves", async () => {
+    // A relative URL is resolved by a lane VM against its own origin, where the
+    // route does not exist. The hub had the identical defect for blob uploads
+    // and it was found in integration, not by either side's tests.
+    const { body } = await upload("absolute please", "abs.txt");
+    expect(body.download_url.startsWith("http")).toBe(true);
+    expect(body.download_url.endsWith(`/api/v1/attachments/${body.id}`)).toBe(true);
+
+    // Followed verbatim, which is what a receiver does.
+    const fetched = await fetch(body.download_url);
+    expect(fetched.status).toBe(200);
+    expect(await fetched.text()).toBe("absolute please");
+  });
+
+  test("a message carrying attachments puts them in the body", async () => {
+    // § 15.2 requires the array to be *in* the message body. Nothing built one
+    // before, so § 15.4's pull-on-demand loop had no producer — a lane could
+    // never receive a download_url to fetch.
+    const { body: meta } = await upload("attached bytes", "att.bin");
+    await provision(mesh.hub, "attach-recipient", "service");
+    addToWebRegistry("attach-recipient");
+
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "attach-recipient" });
+
+    const sent = await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ to: "attach-recipient", text: "see attached", attachments: [meta] }),
+    });
+    expect(sent.status).toBeLessThan(300);
+
+    await Bun.sleep(250);
+    const pushed = rpc.notifications().find((n) => n.method === "mesh.message");
+    rpc.close();
+
+    const parsed = JSON.parse(pushed.params.content);
+    expect(parsed.text).toBe("see attached");
+    expect(parsed.attachments).toHaveLength(1);
+    expect(parsed.attachments[0]).toMatchObject({ id: meta.id, name: "att.bin" });
+    expect(parsed.attachments[0].download_url.startsWith("http")).toBe(true);
+  });
+
+  test("a message without attachments stays a plain string", async () => {
+    // Nothing changes for the common case: § 8.2's content is a flat string and
+    // wrapping every message in JSON would break every existing consumer.
+    await provision(mesh.hub, "plain-recipient", "service");
+    addToWebRegistry("plain-recipient");
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "plain-recipient" });
+
+    await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ to: "plain-recipient", text: "no attachments here" }),
+    });
+    await Bun.sleep(250);
+    const pushed = rpc.notifications().find((n) => n.method === "mesh.message");
+    rpc.close();
+    expect(pushed.params.content).toBe("no attachments here");
+  });
+});
+
 describe("attachment download", () => {
   const upload = async (content: string, name: string) => {
     const form = new FormData();

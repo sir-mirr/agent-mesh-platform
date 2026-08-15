@@ -494,6 +494,18 @@ export async function seedLocalUsers(): Promise<void> {
     db.prepare('INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Admin', 'admin')
     console.log('[db] seeded default admin local user')
   }
+
+  // Every local user is also a web user, and therefore a mesh participant.
+  //
+  // They were not, and the effect was silent: only the GitHub approval flow
+  // called `upsertApprovedWebUser`, so a local user never appeared in the
+  // registry, was never in the http server's `proxy_for`, and every message
+  // they sent was refused by entitlement — a refusal the send path swallowed.
+  // Messages showed in the UI because they had already been written locally,
+  // and never reached the mesh.
+  for (const user of db.prepare('SELECT username FROM local_users').all() as Array<{ username: string }>) {
+    upsertApprovedWebUser(user.username)
+  }
 }
 
 export function closeDb(): void {
