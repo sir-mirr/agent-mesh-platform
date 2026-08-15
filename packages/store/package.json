@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "agentMeshSpec": "0.2",
   "description": "Schema and access layer for the databases the baseline services share.",
   "exports": {
     ".": "./src/index.ts"

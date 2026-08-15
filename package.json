@@ -5,6 +5,7 @@
   "description": "Private monorepo skeleton for the Agent-Mesh channel fabric architecture.",
   "license": "MIT",
   "type": "module",
+  "agentMeshSpec": "0.2",
   "workspaces": [
     "packages/*"
   ],

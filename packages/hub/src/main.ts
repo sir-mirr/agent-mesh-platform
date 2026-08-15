@@ -9,6 +9,8 @@
  * `presence.ts` and the statements in `db.ts`.
  */
 
+import manifest from "../package.json" with { type: "json" };
+
 import { closeDatabases, stmtUpdateLastSeen } from "./db";
 import { Heartbeat } from "./heartbeat";
 import { SERVER_ERROR, rpcError } from "./jsonrpc";
@@ -24,6 +26,9 @@ import { dispatch, dispatchHttp } from "./rpc/dispatch";
 // ---------------------------------------------------------------------------
 
 const HUB_PORT = parseInt(process.env.AGENT_MESH_HUB_PORT ?? "3100", 10);
+
+/** The SPEC version this build targets (§ 13), from the package's own manifest. */
+const AGENT_MESH_SPEC: string = (manifest as { agentMeshSpec?: string }).agentMeshSpec ?? "unknown";
 
 // SPEC § 3.1 fixes the production value at 30 seconds. It is overridable
 // because a test of half-open detection has to wait out two sweeps, and a test
@@ -72,6 +77,10 @@ const server = Bun.serve({
         JSON.stringify({
           service: "Agent Mesh Hub",
           version: "2.0.0",
+          // § 13. Read from the manifest rather than restated here: a constant
+          // in the source is a second declaration, and the two only have to
+          // disagree once for an operator to be told the wrong contract.
+          agent_mesh_spec: AGENT_MESH_SPEC,
           online_agents: agentCount,
         }),
         {

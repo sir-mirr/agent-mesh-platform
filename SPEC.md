@@ -1460,7 +1460,7 @@ and teardown. These routes live on the hub port, NOT on
 
 | Method | Path                              | Auth   | Success | Notes |
 |--------|-----------------------------------|--------|---------|-------|
-| GET    | `/health`                         | None   | `200`   | Hub liveness + `online_agents` count. |
+| GET    | `/health`                         | None   | `200`   | Hub liveness, `online_agents` count, and `agent_mesh_spec` (§ 13). |
 | POST   | `/api/agents`                     | None † | `200`   | Legacy provisioning alias; response shape MAY differ from `/api/v1/agents` — see § 10.1. |
 | POST   | `/api/v1/agents`                  | None † | `200`\|`201` | Canonical identity provisioning (§ 10.1). |
 | DELETE | `/api/agents/{identity}`          | None † | `200`   | Teardown identity + its messages atomically — see § 9.3. |
@@ -1955,7 +1955,13 @@ This specification follows semantic versioning at document level.
 - `2.0` — reserved for the next breaking redesign.
 
 Implementations SHOULD declare the SPEC version they target in their
-`package.json` under a `agentMeshSpec` field.
+`package.json` under a `agentMeshSpec` field, and a hub MUST report it
+as `agent_mesh_spec` on `GET /health`.
+
+The manifest field describes a source tree; `/health` describes the
+process that is answering. Only the second is checkable against a
+deployment, which is what matters when two hosts are running different
+builds.
 
 **Three version numbers exist and MUST NOT be conflated:**
 
