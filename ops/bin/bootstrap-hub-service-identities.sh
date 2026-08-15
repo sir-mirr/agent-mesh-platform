@@ -7,7 +7,11 @@ log() {
 
 is_truthy() {
   local value="${1-}"
-  case "${value,,}" in
+  # `tr` rather than `${value,,}`: that form is bash 4, and this script is
+  # `ExecStartPost` on the hub unit — on a host whose /bin/bash is 3.2 it would
+  # abort under `set -e` with `declare: -A: invalid option`, failing the hub
+  # start with a message about nothing an operator can act on.
+  case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
     1|true|yes|on)
       return 0
       ;;
@@ -61,14 +65,24 @@ read_env_var() {
   )
 }
 
-declare -A DESCRIPTION_BY_IDENTITY=()
-declare -a IDENTITY_ORDER=()
+# Two parallel indexed arrays rather than one associative array, for the same
+# bash-3.2 reason as above. The set is two entries long; the index scan costs
+# nothing and the script runs everywhere.
+IDENTITY_ORDER=()
+DESCRIPTIONS=()
 
 queue_identity() {
   local identity="${1:?identity required}"
   local description="${2-}"
-  [[ -n "${DESCRIPTION_BY_IDENTITY[$identity]+x}" ]] || IDENTITY_ORDER+=("$identity")
-  DESCRIPTION_BY_IDENTITY["$identity"]="$description"
+  local i
+  for (( i = 0; i < ${#IDENTITY_ORDER[@]}; i += 1 )); do
+    if [[ "${IDENTITY_ORDER[$i]}" == "$identity" ]]; then
+      DESCRIPTIONS[$i]="$description"
+      return 0
+    fi
+  done
+  IDENTITY_ORDER+=("$identity")
+  DESCRIPTIONS+=("$description")
 }
 
 discover_http_identity() {
@@ -134,9 +148,9 @@ main() {
   fi
 
   log "discovered ${#IDENTITY_ORDER[@]} service identities from ${ENV_ROOT}"
-  local identity
-  for identity in "${IDENTITY_ORDER[@]}"; do
-    post_identity "$identity" "${DESCRIPTION_BY_IDENTITY[$identity]}"
+  local i
+  for (( i = 0; i < ${#IDENTITY_ORDER[@]}; i += 1 )); do
+    post_identity "${IDENTITY_ORDER[$i]}" "${DESCRIPTIONS[$i]}"
   done
 }
 
