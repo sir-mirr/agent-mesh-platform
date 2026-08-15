@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { keyFingerprint } from "@agent-mesh/contracts";
 
-import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh , teardown} from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -362,7 +362,7 @@ describe("create_only", () => {
 
   test("a torn-down identity is refused with its own code", async () => {
     await registerOnce("lane-gone", newKey().publicKey);
-    await fetch(`${mesh.hub.url}/api/agents/lane-gone`, { method: "DELETE" });
+    await teardown(mesh.http, "lane-gone");
 
     const res = await registerOnce("lane-gone", newKey().publicKey);
     expect(res.status).toBe(409);

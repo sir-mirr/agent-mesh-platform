@@ -1445,6 +1445,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
+| DELETE | `/api/v1/admin/agents/{identity}` | JWT\*  | `200`   | Identity teardown — a soft delete (§ 9.3). |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
@@ -1562,25 +1563,45 @@ and teardown. These routes live on the hub port, NOT on
 | POST   | `/api/agents`                     | None † | `200`   | Legacy provisioning alias; response shape MAY differ from `/api/v1/agents` — see § 10.1. |
 | POST   | `/api/v1/agents`                  | None † | `200`\|`201` | Canonical identity provisioning (§ 10.1). |
 | GET    | `/api/v1/agents/{identity}/keys`  | None † | `200`   | Key record and current status for one identity (§ 10.2). Read-only: the hub never decides a key, because it cannot authenticate who is asking — approval is on `agent-mesh-http` (§ 10.2.1). |
-| DELETE | `/api/agents/{identity}`          | None † | `200`   | Teardown — a **soft delete**. It does not touch `messages`; see § 9.3. |
+| DELETE | `/api/agents/{identity}`          | —      | `403`   | **Refused here.** Teardown needs an authenticated caller and the hub has none — see § 9.3. |
 
 † At v0.1, hub REST routes are unauthenticated on the assumption the
 hub binds to a trust-bounded interface (Tailscale or LXC-internal
 bridge). Public-internet deployments MUST gate these routes behind a
 bearer token or equivalent before exposing them (§ 10.1).
 
-### 9.3. `DELETE /api/agents/{identity}` response shape
+### 9.3. Identity teardown
 
-The hub MUST treat `DELETE /api/agents/{identity}` as the destructive
-counterpart of `POST /api/v1/agents`. Together they let the hub own the
-full identity lifecycle (create ↔ delete) without callers needing direct
-SQL access to `hub.db`.
+Teardown is the destructive counterpart of `POST /api/v1/agents`, so
+that the two together own the identity lifecycle without any caller
+needing direct SQL access.
+
+**It is served by `agent-mesh-http` at
+`DELETE /api/v1/admin/agents/{identity}`, behind the admin JWT.** The
+hub MUST refuse `DELETE /api/agents/{identity}` with `403` and name the
+route that replaced it.
+
+The reason is the one § 10.2 gives for key approval: **the hub cannot
+authenticate a caller.** It holds no sessions and no tokens, so every
+route it serves is reachable by anything that can reach the port. That
+is acceptable for provisioning, which `create_only` makes safe to offer
+openly — a caller can create a name nobody holds and can take nothing.
+It is not acceptable here. One unauthenticated request revoked every key
+an identity had, and re-registration is blocked afterwards, so recovery
+meant editing the database by hand; the names to aim at could be listed
+from `mesh.list_agents` first.
+
+The admin's login is recorded as the `actor` on every resulting
+`agent_key_events` row. § 10.2 requires each key transition to name who
+caused it, and an unauthenticated teardown could only ever write the
+service's own name — recording that a revocation happened without
+recording who is answerable for it.
 
 **Identity validation.** `{identity}` MUST match `^[A-Za-z0-9][A-Za-z0-9-]*$`
 (§ 10.1). Anything else MUST return `400` with body
 `{ "ok": false, "error": "invalid identity format …" }`.
 
-**Behavior (0.2).** Teardown is a **soft delete**. The hub MUST, in a single
+**Behavior (0.2).** Teardown is a **soft delete**, performed in a single
 transaction on `agents.db`:
 
 1. Set `agents.deleted_at` on the matching row.

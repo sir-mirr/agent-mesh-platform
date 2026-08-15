@@ -388,6 +388,7 @@ already broken. A required argument cannot be silent, and it greps.
 | `PUT  /api/v1/audit/blobs/{key}`    | Streamed blob upload, signature-authorised (§ 9.1) |
 | `GET  /api/v1/audit/events`         | Cursor-paginated audit query         |
 | `GET  /api/v1/files`                | Serve a single file by `?path=` query |
+| `DELETE /api/v1/admin/agents/{identity}` | Identity teardown, soft delete (§ 9.3) |
 | `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
 | `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |
@@ -408,7 +409,7 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 | `GET    /health`                        | Liveness, online count, `agent_mesh_spec` (§ 13) |
 | `POST   /api/v1/agents`                 | Provision an identity (§ 10.1); `create_only` refuses to take over an existing one |
 | `GET    /api/v1/agents/{identity}/keys` | Key record and status (§ 10.2) |
-| `DELETE /api/agents/{id}`               | Soft-delete teardown (§ 9.3)   |
+| `DELETE /api/agents/{identity}`         | **Refused** — teardown needs an admin session (§ 9.3) |
 
 ---
 

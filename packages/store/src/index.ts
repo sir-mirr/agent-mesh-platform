@@ -7,6 +7,7 @@ export * as keys from "./keys";
 export * as entitlement from "./entitlement";
 export * as verify from "./verify";
 export * as nonces from "./nonces";
+export * as teardown from "./teardown";
 export type {
   AgentKeyRow,
   AgentRow,
@@ -17,4 +18,5 @@ export type { MessageRow } from "./schema/hub";
 export type { AuditEventRow, AuditEventBlobRow } from "./schema/audit";
 export type { ReminderRow, ReminderStatus } from "./schema/self-reminder";
 export type { KeyEventAction, NoKeyReason, ProposeResult } from "./keys";
+export type { TeardownAction, TeardownResult } from "./teardown";
 export { KeyTransitionError } from "./keys";

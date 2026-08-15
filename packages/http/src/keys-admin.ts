@@ -31,7 +31,14 @@ let _agentsDb: Database | null = null
  * ever writes decisions into it, so a missing file means the hub has not
  * started rather than that something needs creating here.
  */
-function agentsDb(): Database {
+/**
+ * The one read-write handle this process holds on `agents.db`.
+ *
+ * Exported because teardown (§ 9.3) needs it too. A second `openAt` would be a
+ * second WAL connection with its own pragmas, and the two would only have to
+ * disagree once.
+ */
+export function agentsDb(): Database {
   if (!_agentsDb) {
     _agentsDb = openAt(join(stateDir(), STORE_FILES.agents), { create: false })
   }

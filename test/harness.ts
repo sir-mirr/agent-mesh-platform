@@ -389,3 +389,17 @@ export async function loginAsAdmin(http: Service): Promise<string> {
   if (!cookie) throw new Error(`login returned no cookie (status ${res.status})`);
   return cookie.split(";")[0]!;
 }
+
+/** Tear down an identity the way an operator does — § 9.3, admin session. */
+export async function teardown(
+  http: Service,
+  identity: string,
+  cookie?: string,
+): Promise<{ status: number; body: any }> {
+  const session = cookie ?? (await loginAsAdmin(http));
+  const res = await fetch(`${http.url}/api/v1/admin/agents/${encodeURIComponent(identity)}`, {
+    method: "DELETE",
+    headers: { cookie: session },
+  });
+  return { status: res.status, body: await res.json() };
+}

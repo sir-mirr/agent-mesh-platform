@@ -8,15 +8,16 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, provision, provisionProxy, startMesh, type Mesh } from "./harness";
+import { connectRpc, provision, newPublicKey, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
 
 let mesh: Mesh;
 
 const del = (identity: string) =>
-  fetch(`${mesh.hub.url}/api/agents/${identity}`, { method: "DELETE" });
+  teardown(mesh.http, identity);
 
 /** Read `agents.db` directly to assert on what was actually stored. */
 function agentsDb(): Database {
@@ -24,7 +25,9 @@ function agentsDb(): Database {
 }
 
 beforeAll(async () => {
-  mesh = await startMesh({ withHttp: false });
+  // Teardown (§ 9.3) is served by the http server behind the admin JWT, so
+  // these need it up even though everything else here is hub-only.
+  mesh = await startMesh();
 });
 
 afterAll(() => mesh?.stop());
@@ -208,7 +211,7 @@ describe("soft delete", () => {
 
     const res = await del("doomed");
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ action: "soft-deleted" });
+    expect(res.body).toMatchObject({ action: "soft-deleted" });
 
     // The row survives — a key that is gone cannot verify a past signature.
     const row = agentsDb()
@@ -300,14 +303,14 @@ describe("soft delete", () => {
   test("teardown is idempotent and distinguishes never-existed from already-gone", async () => {
     await provision(mesh.hub, "twice-deleted", "service");
 
-    expect(await (await del("twice-deleted")).json()).toMatchObject({ action: "soft-deleted" });
-    expect(await (await del("twice-deleted")).json()).toMatchObject({ action: "already-deleted" });
-    expect(await (await del("never-existed")).json()).toMatchObject({ action: "not-found" });
+    expect((await del("twice-deleted")).body).toMatchObject({ action: "soft-deleted" });
+    expect((await del("twice-deleted")).body).toMatchObject({ action: "already-deleted" });
+    expect((await del("never-existed")).body).toMatchObject({ action: "not-found" });
   });
 
   test("no longer reports messages_removed, because it removes none", async () => {
     await provision(mesh.hub, "no-counts", "service");
-    const body = await (await del("no-counts")).json();
+    const body = (await del("no-counts")).body;
     expect(body).not.toHaveProperty("messages_removed");
     expect(body).not.toHaveProperty("agents_removed");
   });
@@ -425,5 +428,93 @@ describe("transmitter recording", () => {
     peer.close();
 
     expect(res.result.messages[0]).toMatchObject({ from: "hist-user", sent_by: "hist-proxy" });
+  });
+});
+
+describe("teardown requires an admin (§ 9.3)", () => {
+  /**
+   * The route moved because the hub cannot authenticate anyone. These assert
+   * the move actually bought something: before it, the whole attack was one
+   * unauthenticated `curl -X DELETE`, and the names to aim at were listable
+   * from `mesh.list_agents`.
+   */
+  const target = (id: string) => `${mesh.http.url}/api/v1/admin/agents/${id}`;
+
+  test("the hub refuses, and says where the operation went", async () => {
+    await provision(mesh.hub, "hub-refuses", "service");
+    const res = await fetch(`${mesh.hub.url}/api/agents/hub-refuses`, { method: "DELETE" });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.code).toBe("TEARDOWN_REQUIRES_ADMIN");
+    // A 404 would read as a typo and invite a retry against a path that will
+    // never exist.
+    expect(body.error).toContain("/api/v1/admin/agents/");
+
+    // And it did nothing.
+    const still = await fetch(`${mesh.hub.url}/api/v1/agents/hub-refuses/keys`);
+    expect(still.status).toBe(200);
+  });
+
+  test("no session is 401", async () => {
+    await provision(mesh.hub, "unauth-safe", "service");
+    expect((await fetch(target("unauth-safe"), { method: "DELETE" })).status).toBe(401);
+    expect((await fetch(`${mesh.hub.url}/api/v1/agents/unauth-safe/keys`)).status).toBe(200);
+  });
+
+  test("a valid non-admin session is 403", async () => {
+    await provision(mesh.hub, "viewer-safe", "service");
+    const now = Math.floor(Date.now() / 1000);
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const payload = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({
+      github_id: 7, github_login: "viewer", role: "user", iat: now, exp: now + 3600,
+    })}`;
+    const token = `${payload}.${createHmac("sha256", "integration-test-secret").update(payload).digest("base64url")}`;
+
+    const res = await fetch(target("viewer-safe"), {
+      method: "DELETE",
+      headers: { cookie: `mesh_token=${token}` },
+    });
+    expect(res.status).toBe(403);
+    expect((await fetch(`${mesh.hub.url}/api/v1/agents/viewer-safe/keys`)).status).toBe(200);
+  });
+
+  test("a forged admin claim is refused, not decoded", async () => {
+    // `role` is a claim inside the token. A server reading it without verifying
+    // the signature would hand teardown to anyone who can base64.
+    await provision(mesh.hub, "forged-safe", "service");
+    const forged = Buffer.from(
+      JSON.stringify({ github_id: 1, github_login: "x", role: "admin" }),
+    ).toString("base64url");
+    const res = await fetch(target("forged-safe"), {
+      method: "DELETE",
+      headers: { cookie: `mesh_token=eyJhbGciOiJIUzI1NiJ9.${forged}.not-a-signature` },
+    });
+    expect(res.status).toBe(401);
+    expect((await fetch(`${mesh.hub.url}/api/v1/agents/forged-safe/keys`)).status).toBe(200);
+  });
+
+  test("an admin session tears it down, and the key event names them", async () => {
+    // § 10.2 requires every key transition to say who caused it. The
+    // unauthenticated route could only ever write the service's own name.
+    const key = newPublicKey();
+    await provision(mesh.hub, "admin-torn", "ai-claude", null, key);
+    const res = await teardown(mesh.http, "admin-torn");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, action: "soft-deleted" });
+
+    const db = agentsDb();
+    expect(db.prepare(`SELECT status FROM agent_keys WHERE identity = 'admin-torn'`).get())
+      .toMatchObject({ status: "revoked" });
+    expect(
+      // Scoped to the revocation: the first row for this identity is the key
+      // proposal, which is written by the unauthenticated provisioning route
+      // and correctly carries no operator.
+      db.prepare(
+        `SELECT actor, reason FROM agent_key_events
+          WHERE identity = 'admin-torn' AND action = 'revoked'`,
+      ).get(),
+    ).toMatchObject({ actor: "admin", reason: "teardown" });
+    db.close();
   });
 });

@@ -39,9 +39,10 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, type MessageRow } from '@agent-mesh/store'
+import { IDENTITY_RE } from '@agent-mesh/contracts'
 import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
-import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb } from './keys-admin'
+import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
@@ -1195,6 +1196,49 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
     return c.json(r.body, r.status as any)
   })
 }
+
+/**
+ * `DELETE /api/v1/admin/agents/{identity}` (SPEC § 9.3).
+ *
+ * On this service and not the hub, for exactly the reason § 10.2 gives for key
+ * approval: the hub cannot authenticate a caller, so a destructive route there
+ * is reachable by anyone who can reach the port. Teardown is the most
+ * destructive route in the system — it revokes every key and § 9.3 forbids
+ * re-registering the name afterwards, so recovery means editing the database by
+ * hand.
+ *
+ * The admin's login is recorded as the actor on every key event. That is not
+ * bookkeeping: § 10.2 requires each transition to say who caused it, and the
+ * unauthenticated version could only ever write `"hub"`.
+ */
+app.delete('/api/v1/admin/agents/:identity', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+
+  const identity = c.req.param('identity')
+  if (!IDENTITY_RE.test(identity)) {
+    return c.json({ ok: false, error: 'invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)' }, 400)
+  }
+
+  let result
+  try {
+    result = teardown.teardownIdentity(agentsDb(), identity, actor)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[http-server] teardown of ${identity} failed: ${msg}`)
+    return c.json({ ok: false, error: `db error: ${msg}` }, 500)
+  }
+
+  if (result.action === 'soft-deleted') {
+    console.log(`[http-server] ${actor} tore down ${identity} (revoked ${result.revoked.length} key(s))`)
+  }
+  return c.json({
+    ok: true,
+    identity: result.identity,
+    action: result.action,
+    ...(result.deletedAt !== undefined ? { deleted_at: result.deletedAt } : {}),
+  })
+})
 
 app.post('/api/v1/admin/approve', async (c) => {
   const payload = await extractJwt(c)

@@ -298,77 +298,31 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
 }
 
 /**
- * `DELETE /api/agents/{identity}` (SPEC § 9.3) — a **soft** delete.
+ * `DELETE /api/agents/{identity}` — **refused here** (SPEC § 9.3).
  *
- * Sets `deleted_at`, revokes the identity's keys, and leaves `messages`
- * untouched. Hard deletion is incompatible with two other rules: discarding a
- * key makes every past signature permanently unverifiable, and freeing the
- * identity string lets a later registration inherit the previous holder's
- * message and audit history.
+ * Teardown moved to `agent-mesh-http`, behind the admin JWT, for the reason
+ * § 10.2 already gives for key approval: **the hub cannot authenticate a
+ * caller.** It has no sessions and no tokens, so any route it serves is
+ * reachable by anything that can reach the port.
  *
- * Because nothing outside `agents.db` is touched, this is a single-file
- * transaction — SQLite does not guarantee atomic commit across attached
- * databases in WAL mode.
+ * That was survivable for provisioning, which `create_only` makes safe to
+ * offer openly. It was not survivable for this one. A single unauthenticated
+ * request revoked every key of an identity, and § 9.3 forbids re-registering
+ * the name afterwards — so recovery meant editing the database by hand, and
+ * the names could be enumerated from `mesh.list_agents` first.
+ *
+ * The route is answered rather than dropped. A `404` reads as a typo and
+ * invites a retry against a path that will never exist; this says where the
+ * operation went.
  */
 export function handleDeleteAgent(identity: string): Response {
-  if (!IDENTITY_RE.test(identity)) {
-    return jsonResponse(400, {
-      ok: false,
-      error: "invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)",
-    });
-  }
-
-  const existing = stmtSelectAgent.get(identity) as
-    | { identity: string; deleted_at: string | null }
-    | undefined;
-
-  if (!existing) {
-    log(`DELETE /api/agents/${identity}: not-found`);
-    return jsonResponse(200, { ok: true, identity, action: "not-found" });
-  }
-  if (existing.deleted_at) {
-    log(`DELETE /api/agents/${identity}: already-deleted`);
-    return jsonResponse(200, {
-      ok: true,
-      identity,
-      action: "already-deleted",
-      deleted_at: existing.deleted_at,
-    });
-  }
-
-  try {
-    agentsDb.exec("BEGIN");
-    stmtSoftDeleteAgent.run(identity);
-    // Record every key that is about to change state before changing it, so
-    // the history explains the transition rather than merely showing the
-    // result.
-    const keys = stmtKeysOfAgent.all(identity) as Array<{ fingerprint: string }>;
-    stmtRevokeKeysOfAgent.run(identity);
-    for (const { fingerprint } of keys) {
-      stmtInsertKeyEvent.run(
-        randomUUID(),
-        identity,
-        fingerprint,
-        "revoked",
-        "teardown",
-        "hub",
-      );
-    }
-    agentsDb.exec("COMMIT");
-  } catch (err) {
-    try { agentsDb.exec("ROLLBACK"); } catch {}
-    const msg = err instanceof Error ? err.message : String(err);
-    log(`DELETE /api/agents/${identity} db error: ${msg}`);
-    return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
-  }
-
-  const row = stmtSelectAgent.get(identity) as { deleted_at: string | null } | undefined;
-  log(`DELETE /api/agents/${identity}: soft-deleted`);
-  return jsonResponse(200, {
-    ok: true,
-    identity,
-    action: "soft-deleted",
-    deleted_at: row?.deleted_at ?? null,
+  log(`DELETE /api/agents/${identity}: refused — teardown requires an admin session`);
+  return jsonResponse(403, {
+    ok: false,
+    error:
+      "teardown is not served by the hub — it cannot authenticate callers. " +
+      "Use DELETE /api/v1/admin/agents/{identity} on agent-mesh-http with an admin session (SPEC § 9.3).",
+    code: "TEARDOWN_REQUIRES_ADMIN",
   });
 }
 

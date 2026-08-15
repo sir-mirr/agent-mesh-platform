@@ -111,19 +111,6 @@ Recorded honestly. Several are stated positions rather than oversights — SPEC
 § 14.2 sets out the v0.1 trust posture — but a stated position is still a
 weakness, and the list is more useful than the distinction.
 
-### Teardown is unauthenticated, and nothing mitigates it
-
-`DELETE /api/agents/{identity}` takes no credential. Anything that reaches the
-hub's port can take any identity offline permanently, and a soft-deleted
-identity cannot be re-registered.
-
-`POST /api/v1/agents` is open too, and that one *is* survivable: a proposal
-grants nothing until an operator approves it, which is exactly why approval
-lives on http instead. Teardown has no equivalent second step.
-
-**Mitigation today:** SPEC § 14.1 pins the hub to a trust-bounded interface.
-That is a deployment assumption, not an enforcement.
-
 ### `can_proxy` is self-asserted
 
 http sets the grant on its own row when it registers itself, because

@@ -17,12 +17,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh } from "./harness";
+import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
 
 let mesh: Mesh;
 
 beforeAll(async () => {
-  mesh = await startMesh({ withHttp: false });
+  // Teardown (§ 9.3) needs an admin session, which only the http server issues.
+  mesh = await startMesh();
   await provisionProxy(mesh.hub, "gateway");
   await provision(mesh.hub, "person", "human");
   await provision(mesh.hub, "other-person", "human");
@@ -111,7 +112,7 @@ describe("refusals", () => {
 
   test("a torn-down identity cannot be spoken for", async () => {
     await provision(mesh.hub, "departed", "human");
-    await fetch(`${mesh.hub.url}/api/agents/departed`, { method: "DELETE" });
+    await teardown(mesh.http, "departed");
 
     const { rpc } = await asSocket("gateway", ["departed"]);
     const res = await rpc.call("mesh.send", {
