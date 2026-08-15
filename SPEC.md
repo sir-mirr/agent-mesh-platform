@@ -1564,6 +1564,7 @@ document:
 | `ai-codex` | 1 |
 | `ai-gemini` | 1 |
 | `service` | 0 |
+| `human` | 0 |
 
 **Adding a type is an operator action, not a caller action.** `POST
 /api/v1/agents` is unauthenticated (§ 10.1), so a registration endpoint that
@@ -1576,6 +1577,18 @@ identity of that type may exist without an approved signing key. `service` is
 seeded at `0` because the baseline services predate keys; every AI runtime type
 is seeded at `1`. A deployment that wants its services authenticated too raises
 the flag, and no code changes.
+
+`human` is seeded at `0` for a reason that does not expire. A person is
+authenticated at the web surface by session token and holds no key, so their
+envelopes reach the hub through a proxy socket rather than one of their own.
+Requiring a key would require a browser to hold one, against a key model of one
+approved key per identity (§ 10.2) — which fits an installed agent on a machine
+and not a person with a laptop and a phone.
+
+Before `human` existed a person had no type in this registry at all: they were
+recorded only in the http server's own store, so the hub had no vocabulary for
+the participants it routes the most traffic for, and `proxy_for` (§ 8.1) was the
+only place their existence appeared.
 
 ---
 

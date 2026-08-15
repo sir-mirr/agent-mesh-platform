@@ -55,7 +55,7 @@ describe("storage split", () => {
 
 describe("agent type registry", () => {
   test("accepts every seeded type, including ai-gemini", async () => {
-    for (const type of ["ai-claude", "ai-codex", "ai-gemini", "service"]) {
+    for (const type of ["ai-claude", "ai-codex", "ai-gemini", "service", "human"]) {
       expect((await provision(mesh.hub, `seed-${type}`, type)).status).toBe(201);
     }
   });
@@ -88,6 +88,7 @@ describe("agent type registry", () => {
     expect(byType["ai-codex"]).toBe(1);
     expect(byType["ai-gemini"]).toBe(1);
     expect(byType["service"]).toBe(0);
+    expect(byType["human"]).toBe(0);
   });
 });
 

@@ -55,11 +55,14 @@ describe("agents schema", () => {
     agentsSchema.migrate(db);
     const types = agentsSchema.listTypes(db);
     expect(types.map((t) => t.type).sort())
-      .toEqual(["ai-claude", "ai-codex", "ai-gemini", "service"]);
+      .toEqual(["ai-claude", "ai-codex", "ai-gemini", "human", "service"]);
     expect(agentsSchema.getType(db, "ai-gemini")?.requires_key).toBe(1);
     // Baseline services predate keys; a deployment wanting them authenticated
     // raises this flag rather than changing code.
     expect(agentsSchema.getType(db, "service")?.requires_key).toBe(0);
+    // A person is authenticated by session token at the web surface and holds
+    // no key; requiring one would require a browser to hold it.
+    expect(agentsSchema.getType(db, "human")?.requires_key).toBe(0);
     expect(agentsSchema.getType(db, "nonesuch")).toBeNull();
   });
 
@@ -70,7 +73,7 @@ describe("agents schema", () => {
 
     agentsSchema.migrate(db);
 
-    expect(agentsSchema.listTypes(db)).toHaveLength(4);
+    expect(agentsSchema.listTypes(db)).toHaveLength(5);
     // INSERT OR IGNORE: a deployment that tightened a seeded row keeps it.
     expect(agentsSchema.getType(db, "service")?.requires_key).toBe(1);
   });

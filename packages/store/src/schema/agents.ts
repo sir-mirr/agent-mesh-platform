@@ -26,12 +26,25 @@ import type { Database } from "bun:sqlite";
  *
  * `service` is seeded at `0` because the baseline services predate keys. A
  * deployment that wants them authenticated raises the flag.
+ *
+ * `human` is seeded at `0` for a different and more permanent reason. A person
+ * signs into the web surface and is authenticated there by session token; they
+ * hold no key and never connect a socket of their own, so their envelopes reach
+ * the hub through the http server. Requiring a key of them would require a
+ * browser to hold one, and the key model here is one approved key per identity
+ * — which fits an installed agent on one machine and not a person with a laptop
+ * and a phone.
+ *
+ * Until now a person had no type at all: they existed only in the http server's
+ * own registry, so the hub had no word for the participants it was routing the
+ * most traffic for.
  */
 const SEEDED_TYPES: ReadonlyArray<[type: string, description: string, requiresKey: 0 | 1]> = [
   ["ai-claude", "Claude runtime", 1],
   ["ai-codex", "Codex runtime", 1],
   ["ai-gemini", "Gemini runtime", 1],
   ["service", "Baseline service", 0],
+  ["human", "Person, authenticated by web session rather than by key", 0],
 ];
 
 export function migrate(db: Database): void {
