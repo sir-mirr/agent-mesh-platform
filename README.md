@@ -321,6 +321,7 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 │   ├── store/                     # schema and access for the shared databases
 │   ├── hub/                       # JSON-RPC 2.0 broker (port 3100)
 │   ├── http/                      # REST + SSE + OAuth + PWA (port 3000)
+│   │   └── src/ui/                #   server-rendered pages
 │   └── self-reminder/             # scheduler daemon
 ├── package.json
 ├── bun.lock
