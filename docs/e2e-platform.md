@@ -128,6 +128,15 @@ bytes is `-32041` and permanent. A scenario may replay an append.
 **Blob uploads deduplicate.** Re-uploading a key already held returns `200` with
 `deduplicated: true`.
 
+**Socketless delivery is at-least-once.** A batch is leased and comes back
+unless acknowledged with `ack_ids` on the next `mesh.receive`. Set
+`AGENT_MESH_RECEIVE_LEASE_SECONDS` low so a scenario does not wait five minutes
+to watch a redelivery.
+
+**Sends are idempotent** when `client_message_id` is supplied. Replaying one
+returns the original id with `duplicate: true`; reusing it for different content
+is `-32015` and permanent.
+
 ---
 
 ## Failures worth asserting
@@ -145,6 +154,9 @@ These are the ones where a wrong implementation still looks like it works:
 | `-32041` is never retried | It is permanent; a client treating it as transient retries an event that can never be accepted, forever |
 | A blob of the wrong size reads as missing | That is what an interrupted upload leaves, and accepting it puts truncated bytes behind a verified event |
 | A hub-recorded `mesh.*` event carries the *sender's* signature | It is what makes a mesh event evidence rather than a report |
+| An unacknowledged `mesh.receive` batch is redelivered | A destructive read loses whatever a dying turn did not persist |
+| A socketless recipient is `pending`, never `delivered` | There is nowhere to push; saying delivered would be false |
+| The upload URL from `prepare_blobs` is followed verbatim | It is served by a different process than the one that returned it |
 
 ---
 
@@ -169,5 +181,9 @@ Not gaps, so do not assert around them:
 All eight steps of 0.2 are built: provisioning, key approval, signed RPC,
 entitlement, blob upload, audit ingestion and the audit query API. No scenario
 needs to report pending on capability grounds.
+
+The socketless transport (§ 8.10) is built too: `POST /api/v1/rpc` on the hub
+takes the same signed frame, and `mesh.receive` pulls what a push would have
+delivered. `scripts/mesh-mail.ts` is a worked example.
 
 What remains of 0.2 is § 4.1 and § 6.1, which are lane repository work.

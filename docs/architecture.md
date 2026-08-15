@@ -148,6 +148,43 @@ the files was a second handle at the call site rather than an untangling.
 
 ---
 
+## 2b. Two ways in
+
+The hub speaks the same methods over two transports, and a participant uses
+whichever it can.
+
+**A WebSocket**, for anything with a process of its own. It connects, is marked
+online, and is pushed to.
+
+**One HTTP request at a time** (`POST /api/v1/rpc`, SPEC § 8.10), for anything
+without one. An agent driven by an application is awake only while it is
+answering: no process between turns, so no connection to hold and nowhere to be
+pushed to. It sends when awake and drains its inbox when it next is.
+
+The second is not a second service. Same methods, same signing construction,
+same errors, same queue — the pending rows an adapter is handed on connect are
+the rows `mesh.receive` returns. What differs is only what the transport can
+support:
+
+| | socket | HTTP |
+|---|---|---|
+| identity from | `mesh.connect` | `sig.kid` |
+| may be unsigned | if the type permits | never — nothing else says who is asking |
+| appears online | yes | **no** |
+| `proxy_for` | yes | no — it is declared at connect |
+| delivery | pushed | pulled, at-least-once under a lease |
+
+"Never online" is the consequence worth stating: a sender addressing a
+socketless participant is told `pending`, not `delivered`, because there is
+nowhere to push and saying otherwise would be false.
+
+Delivery to a puller is at-least-once. A batch is leased and comes back unless
+acknowledged, which a caller does on its next fetch rather than in a separate
+call — one round trip, no window, and nothing lost when a turn ends before the
+messages are written down. Duplicates are the cost, against a stable id.
+
+---
+
 ## 3. Package layout
 
 ```
@@ -181,9 +218,15 @@ presence.ts    online, proxy and ownership maps
 signature.ts   per-request verification, freshness, nonce window
 raw-params.ts  locating the params bytes as they arrived
 blobs.ts       where attachment bytes live
-rpc/           connect · send · agents · messages · reminders · audit · dispatch
+audit-limits.ts what the hub advertises, taken from the contract
+rpc/           connect · send · receive · agents · messages · reminders · audit · dispatch
 rest/          identity provisioning, teardown, key status
 ```
+
+`audit-limits.ts` is separate from `rpc/audit.ts` for the reason its comment
+gives: the hub once advertised capabilities of its own invention, and the check
+that they match the contract has to run without opening a database or it runs
+too late to catch that.
 
 `raw-params.ts` is separate from `signature.ts` for a reason worth stating: the
 scan is a pure function over text, and `signature.ts` opens the database at
@@ -223,6 +266,18 @@ That is what lets this service run with no build step, and it is a deliberate
 trade: the markup is harder to edit, and there is nothing to compile, bundle,
 version or serve. What was wrong before was that they lived *in the route
 file*, not that they are inline.
+
+### scripts
+
+```
+e2e-harness.ts  brings a real mesh up for the client's E2E runner
+mesh-mail.ts    the reference client for the socketless transport
+```
+
+Both are documented surfaces rather than conveniences. The harness is the
+platform's half of a contract with another repository (`docs/e2e-platform.md`).
+`mesh-mail.ts` is the client its own authors use — a transport nobody calls by
+hand is one whose ergonomics nobody has checked.
 
 ### self-reminder
 
