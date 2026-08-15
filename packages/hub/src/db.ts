@@ -84,6 +84,20 @@ export const stmtAgentExists = agentsDb.prepare(`
 `);
 
 /** Provisioning (SPEC § 10.1). Same immutability rule on `created_at`. */
+/**
+ * Insert only if the identity is free (SPEC § 10.1, `create_only`).
+ *
+ * `changes` is the answer, and the check is the insert rather than a read
+ * before one — a separate existence check leaves a window in which a second
+ * caller registers between the two, which is precisely the race a lane
+ * onboarding must not lose.
+ */
+export const stmtInsertAgentIfAbsent = agentsDb.prepare(`
+  INSERT INTO agents (identity, type, description, last_seen, created_at)
+  VALUES (?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(identity) DO NOTHING
+`);
+
 export const stmtUpsertAgentTyped = agentsDb.prepare(`
   INSERT INTO agents (identity, type, description, last_seen, created_at)
   VALUES (?, ?, ?, datetime('now'), datetime('now'))

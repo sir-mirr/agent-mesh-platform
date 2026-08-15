@@ -1552,10 +1552,39 @@ operator provisioning tooling, or remote lane VMs.
                                           // case-sensitive; kebab-case RECOMMENDED
   "type":        "<string>",              // required; MUST exist in agent_types (§ 10.3)
   "description": "<string, ≤ 256 chars>", // optional, may be null
-  "public_key":  "<base64url, 43 chars>"  // Ed25519 raw 32B; REQUIRED when the
+  "public_key":  "<base64url, 43 chars>", // Ed25519 raw 32B; REQUIRED when the
                                           // type has requires_key (§ 10.3)
+  "create_only": true | false             // optional, default false
 }
 ```
+
+**`create_only` (0.2).** When true the hub MUST refuse rather than update if the
+identity already exists, and MUST make the existence check and the insert one
+atomic operation — a caller that reads first and registers after loses the race
+it is trying to avoid.
+
+Onboarding a new participant MUST use it. Without it the route upserts, so a
+second lane registering an existing name takes that identity over: its
+description is replaced, its pending key superseded, and the taker is answered
+`200`. The holder finds out when their approval fails against a fingerprint
+nobody recognises.
+
+A refusal changes nothing — not the row, not the description, and above all not
+the key. Refusing while still superseding would be worse than the upsert, since
+the caller is told no and the damage is done regardless.
+
+Rotation and re-registration keep update semantics, which is why the default is
+`false`.
+
+Refusals carry a machine-readable `code`, because a caller must tell them apart
+without matching prose and they call for different responses:
+
+| `code` | Status | Meaning |
+|--------|--------|---------|
+| `IDENTITY_EXISTS` | `409` | The name is taken. Choose another. |
+| `IDENTITY_DELETED` | `409` | The name was torn down (§ 9.3) and is never usable again. |
+
+Neither is retryable.
 
 **Behavior** — the hub MUST:
 

@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { PUBLIC_KEY_RE } from "@agent-mesh/contracts";
+import { PROVISION_ERROR, PUBLIC_KEY_RE } from "@agent-mesh/contracts";
 import { agentsSchema, keys } from "@agent-mesh/store";
 
 import {
@@ -24,6 +24,7 @@ import {
   stmtInsertKeyEvent,
   stmtKeysOfAgent,
   stmtRevokeKeysOfAgent,
+  stmtInsertAgentIfAbsent,
   stmtSelectAgent,
   stmtSetCanProxy,
   stmtSoftDeleteAgent,
@@ -57,6 +58,7 @@ interface ProvisionRequest {
   description: string | null;
   publicKey: string | null;
   canProxy: boolean | null;
+  createOnly: boolean;
 }
 
 /**
@@ -78,6 +80,10 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
   const description = body.description ?? null;
   const publicKey = body.public_key ?? null;
   const canProxy = body.can_proxy === undefined ? null : body.can_proxy;
+  const createOnly = body.create_only === true;
+  if (body.create_only !== undefined && typeof body.create_only !== "boolean") {
+    return jsonResponse(400, { ok: false, error: "create_only must be a boolean" });
+  }
 
   if (!identity || typeof identity !== "string") {
     return jsonResponse(400, { ok: false, error: "identity is required (string)" });
@@ -109,6 +115,8 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
   if (existing?.deleted_at) {
     return jsonResponse(409, {
       ok: false,
+      code: PROVISION_ERROR.IDENTITY_DELETED,
+      identity,
       error: `identity '${identity}' was deleted and cannot be re-registered`,
     });
   }
@@ -155,7 +163,7 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
     return jsonResponse(400, { ok: false, error: "can_proxy must be a boolean" });
   }
 
-  return { identity, type, description, publicKey, canProxy };
+  return { identity, type, description, publicKey, canProxy, createOnly };
 }
 
 /**
@@ -178,6 +186,34 @@ function recordKey(route: string, r: ProvisionRequest): { fingerprint: string; s
 
 /** Returns whether the row already existed, or the `500` to send back. */
 function upsert(route: string, r: ProvisionRequest): boolean | Response {
+  // `create_only`: refuse rather than adopt. Onboarding a new participant must
+  // never take over an existing one — the default upsert would replace its
+  // description and supersede its pending key, and answer 200.
+  //
+  // The insert is the check. Reading first and inserting after leaves a window
+  // for a second caller to register between the two, which is the race this
+  // exists to close.
+  if (r.createOnly) {
+    let created = false;
+    try {
+      created = stmtInsertAgentIfAbsent.run(r.identity, r.type, r.description).changes > 0;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`${route} db error for ${r.identity}: ${msg}`);
+      return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
+    }
+    if (!created) {
+      log(`${route}: refused ${r.identity} — already exists (create_only)`);
+      return jsonResponse(409, {
+        ok: false,
+        code: PROVISION_ERROR.IDENTITY_EXISTS,
+        identity: r.identity,
+        error: `identity '${r.identity}' already exists`,
+      });
+    }
+    return false;
+  }
+
   const existed = !!stmtAgentExists.get(r.identity);
   try {
     stmtUpsertAgentTyped.run(r.identity, r.type, r.description);

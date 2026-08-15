@@ -296,3 +296,100 @@ describe("storage", () => {
     db.close();
   });
 });
+
+/**
+ * § 10.1 `create_only` — onboarding must never take over an existing identity.
+ *
+ * The route upserts by default, so a check followed by a provision has a window
+ * in which a second lane adopts the first one's identity and supersedes its
+ * pending key. The taker sees a 200; the holder sees their key vanish and finds
+ * out when approval fails.
+ */
+describe("create_only", () => {
+  const registerOnce = (identity: string, publicKey?: string, description?: string) =>
+    fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        identity, type: "ai-codex", create_only: true,
+        ...(publicKey ? { public_key: publicKey } : {}),
+        ...(description ? { description } : {}),
+      }),
+    });
+
+  test("creates when the name is free", async () => {
+    const k = newKey();
+    const res = await registerOnce("lane-fresh", k.publicKey);
+    expect(res.status).toBe(201);
+    expect((await res.json()).key.status).toBe("pending");
+  });
+
+  test("refuses when taken, with a code a caller can branch on", async () => {
+    const a = newKey();
+    await registerOnce("lane-taken", a.publicKey);
+
+    const b = newKey();
+    const res = await registerOnce("lane-taken", b.publicKey, "second lane");
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    // A code, not prose: "taken" and "torn down" need different responses from
+    // a person, and neither is fixed by retrying.
+    expect(body.code).toBe("IDENTITY_EXISTS");
+    expect(body.identity).toBe("lane-taken");
+  });
+
+  test("a refused registration changes nothing at all", async () => {
+    // The assertion that matters. A refusal that still superseded the key would
+    // be worse than the upsert it replaced — the caller is told no and the
+    // damage is done anyway.
+    const original = newKey();
+    await registerOnce("lane-intact", original.publicKey, "the original");
+
+    const intruder = newKey();
+    expect((await registerOnce("lane-intact", intruder.publicKey, "the intruder")).status).toBe(409);
+
+    const body = await keysOf("lane-intact");
+    expect(body.keys).toHaveLength(1);
+    expect(body.keys[0].fingerprint).toBe(original.fingerprint);
+    expect(body.keys[0].status).toBe("pending");
+
+    const db = new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+    const row = db.prepare(`SELECT description FROM agents WHERE identity = ?`)
+      .get("lane-intact") as { description: string };
+    db.close();
+    expect(row.description).toBe("the original");
+  });
+
+  test("a torn-down identity is refused with its own code", async () => {
+    await registerOnce("lane-gone", newKey().publicKey);
+    await fetch(`${mesh.hub.url}/api/agents/lane-gone`, { method: "DELETE" });
+
+    const res = await registerOnce("lane-gone", newKey().publicKey);
+    expect(res.status).toBe(409);
+    // Distinct from IDENTITY_EXISTS: this name is never usable again, so a
+    // caller should pick another rather than wait.
+    expect((await res.json()).code).toBe("IDENTITY_DELETED");
+  });
+
+  test("without it, the old update semantics still apply", async () => {
+    // Rotation and re-registration depend on them, so the default must not
+    // change under anyone.
+    const k = newKey();
+    await register("lane-updatable", "ai-codex", k.publicKey);
+    const again = await register("lane-updatable", "ai-codex", k.publicKey);
+    expect(again.status).toBe(200);
+  });
+
+  test("concurrent registrations of one name produce exactly one winner", async () => {
+    // The race the guard exists for. The insert is the check, so the loser
+    // cannot slip between a read and a write.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => registerOnce("lane-race", newKey().publicKey)),
+    );
+    const created = results.filter((r) => r.status === 201);
+    const refused = results.filter((r) => r.status === 409);
+    expect(created).toHaveLength(1);
+    expect(refused).toHaveLength(7);
+    expect((await keysOf("lane-race")).keys).toHaveLength(1);
+  });
+});
