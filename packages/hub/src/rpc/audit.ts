@@ -15,11 +15,11 @@
 
 import { createHash } from "node:crypto";
 
-import { deriveBlobKey } from "@agent-mesh/contracts";
+import { MESH_ERROR, deriveBlobKey } from "@agent-mesh/contracts";
 import { nonces } from "@agent-mesh/store";
 
 import { agentsDb, auditDb, stmtInsertAuditBlob, stmtInsertAuditEvent, stmtSelectAuditEvent } from "../db";
-import { INVALID_PARAMS, INVALID_REQUEST, SERVER_ERROR, rpcError, rpcResult } from "../jsonrpc";
+import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { rawParams } from "../raw-params";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
@@ -233,7 +233,7 @@ export function handleAuditAppend(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log(`audit duplicate check failed for ${eventId}: ${message}`);
-    return rpcError(id, SERVER_ERROR, `audit append failed: ${message}`, {
+    return rpcError(id, MESH_ERROR.SERVER_ERROR, `audit append failed: ${message}`, {
       code: "AUDIT_APPEND_FAILED",
     });
   }
@@ -342,7 +342,7 @@ export function handleAuditAppend(
     // locally — which puts it somewhere a person can see, rather than in a
     // retry loop nobody is watching.
     log(`audit append failed for ${eventId}: ${message}`);
-    return rpcError(id, SERVER_ERROR, `audit append failed: ${message}`, {
+    return rpcError(id, MESH_ERROR.SERVER_ERROR, `audit append failed: ${message}`, {
       code: "AUDIT_APPEND_FAILED",
     });
   }

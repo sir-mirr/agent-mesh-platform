@@ -21,10 +21,12 @@ into a single shared backbone via well-defined contracts.
                  │                                          │
    external ───► │  agent-mesh-http   agent-mesh-hub        │
    clients       │  :3000  REST/SSE   :3100  JSON-RPC WS    │
-                 │  OAuth, PWA        SQLite hub.db         │
+                 │  OAuth, PWA        + POST /api/v1/rpc    │
                  │                                          │
                  │            agent-mesh-self-reminder      │
-                 │            cron / once / in              │
+                 │            once / interval / cron        │
+                 │                                          │
+                 │  agents.db  hub.db  audit.db  uploads/   │
                  └──────────────────────────────────────────┘
                                   ▲
                                   │  hub WS  /  HTTP REST
@@ -56,16 +58,26 @@ can be zero and these three still run cleanly.
 
 | Service                     | Port | Role                                                       |
 |-----------------------------|------|------------------------------------------------------------|
-| `agent-mesh-hub`            | 3100 | JSON-RPC 2.0 over WebSocket broker; SQLite `hub.db`        |
+| `agent-mesh-hub`            | 3100 | JSON-RPC 2.0 broker over WebSocket, and over HTTP for callers that cannot hold a socket |
 | `agent-mesh-http`           | 3000 | Hono REST API + SSE + GitHub OAuth + admin + Web Push/PWA  |
-| `agent-mesh-self-reminder`  | —    | Scheduler (cron / once / in), at-least-once delivery       |
+| `agent-mesh-self-reminder`  | —    | Scheduler (once / interval / cron), at-least-once delivery |
+
+Storage is four SQLite files, not one (`SPEC.md` § 3.1). `agents.db` holds
+identity and keys, `hub.db` message routing, `audit.db` events and their
+attachment references, `self-reminder.db` scheduler state. Audit does not share
+a file with `messages`: audit growth must not be able to take routing down with
+it, and the two rotate on completely different policies (§ 15.6).
 
 The hub's `ExecStartPost` runs `ops/bin/bootstrap-hub-service-identities.sh`,
-which idempotently UPSERTs the service identities it discovers from the env
-layout (4 sources: `shared/http.env`, `shared/self-reminder.env`,
-`*/adapter.env`, `*/discord.env`) so the mesh has a known initial agent set
-on first boot. The set is dynamic — see `SPEC.md` § 10 for the normative
-discovery contract.
+which idempotently provisions the **baseline** service identities it discovers
+from the env layout — `shared/http.env` and `shared/self-reminder.env` — so the
+mesh has a known initial agent set on first boot. It provisions them through
+`POST /api/v1/agents` and never opens `hub.db`.
+
+It does **not** walk the env tree for lane identities. 0.2 removed hub-direct
+forwarding, so a channel-driver holds no hub identity, and lane components are
+not deployed from this repository; a lane provisions its own identity through
+the same endpoint. See `SPEC.md` § 10 for the normative discovery contract.
 
 ### Add-on — a *lane* (runtime-adapter + channel-driver)
 
@@ -80,8 +92,8 @@ instantiation; ports follow a fixed offset rule.
 | channel-driver    | Wraps an external channel; forwards to the adapter        |
 
 **Both are built in a separate repository.** This one holds the baseline they
-attach to, the contracts they implement (`SPEC.md` §§ 4–6), and the two
-contract they consume, `@agent-mesh/contracts`.
+attach to and the contracts they implement (`SPEC.md` §§ 4–6); the wire types
+they consume come from `@agent-mesh/contracts`.
 
 Every lane includes a runtime-adapter. A channel-driver forwards to it and
 does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
@@ -93,8 +105,9 @@ does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
 Prerequisites:
 
 - Linux host with systemd
-- [Bun](https://bun.sh) runtime
-- SQLite 3
+- [Bun](https://bun.sh) runtime — SQLite is embedded via `bun:sqlite`, so no
+  separate install is needed to *run* the mesh
+- The `sqlite3` CLI, if you intend to apply `ops/migrations/` by hand
 - A GitHub OAuth app (for the HTTP admin login)
 
 ```bash
@@ -109,15 +122,20 @@ bun install
 # Required: env/shared/{common,hub,http,self-reminder}.env
 #           secrets/shared.env  (GITHUB_CLIENT_SECRET, JWT_SECRET, VAPID_*)
 
-# 4. Install the three baseline systemd units (templates in ops/systemd/)
-sudo cp ops/systemd/agent-mesh-{hub,http,self-reminder}.service \
+# 4. Install the baseline systemd units (ops/systemd/)
+sudo cp ops/systemd/agent-mesh-*.service ops/systemd/agent-mesh-*.timer \
         /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now \
-    agent-mesh-hub agent-mesh-http agent-mesh-self-reminder
+    agent-mesh-hub-lab agent-mesh-http-lab agent-mesh-self-reminder-lab
 
-# 5. Verify
+# 5. Enable orphan blob collection (SPEC § 15.6 requires it out of process).
+#    The timer, not the service — the service is what the timer triggers.
+sudo systemctl enable --now agent-mesh-collect-orphans-lab.timer
+
+# 6. Verify
 curl -fsS http://localhost:3000/api/v1/health
+curl -fsS http://localhost:3100/health     # reports agent_mesh_spec (§ 13)
 ```
 
 At this point the mesh is live with zero agents. The HTTP server serves the
@@ -139,10 +157,10 @@ The two halves talk only over the internal network.
         │ agent-mesh-hub      :3100  (WS)      │
         │ agent-mesh-http     :3000  (REST/SSE)│
         │ agent-mesh-self-reminder             │
-        │ hub.db, uploads/ (attachments)       │
+        │ agents.db hub.db audit.db  uploads/  │
         └────────────┬─────────────────────────┘
                      │ ws://<core-vm>:3100/ws
-                     │ identity-only auth
+                     │ Ed25519-signed requests
        ┌─────────────┼─────────────┐
        │             │             │
    ┌───┴───┐     ┌───┴───┐     ┌───┴───┐
@@ -162,9 +180,12 @@ The two halves talk only over the internal network.
   channel-driver(s).
 - **Transport** — plain `ws://` on the internal network. TLS / `wss://`
   is not required at v0.1.
-- **Auth** — identity-only. The lane's `mesh.connect` identity string
-  is the credential; there is no separate per-lane bearer token for hub
-  access.
+- **Auth** — **signed requests**, not identity-only. From 0.2 every
+  JSON-RPC request carries an Ed25519 signature over its own bytes, and
+  the hub verifies it against a key an operator approved (§ 8.1, § 10.2).
+  The identity string names who is speaking; the signature is what makes
+  the claim worth anything. There is still no per-lane bearer token — the
+  key replaces it.
 - **Bootstrap (MUST)** — lane VMs MUST NOT write to `hub.db` directly
   (no remote `sqlite3 INSERT`). Identity provisioning goes through the
   core hub's `POST /api/v1/agents` endpoint, after which the lane VM may
@@ -206,7 +227,7 @@ Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 
 Lane components — runtime-adapters and channel-drivers — are built and deployed
 from a separate repository. This one provides the baseline they attach to, the
-contract they implement (`SPEC.md` §§ 4–6), and the two packages they consume:
+contract they implement (`SPEC.md` §§ 4–6), and the package they consume,
 `@agent-mesh/contracts`.
 
 What a lane needs from here:
@@ -245,11 +266,21 @@ a hub identity of its own, and every lane includes a runtime-adapter
 - **Self-reminder** (`packages/self-reminder`) — Independent scheduler
   daemon. Connects to the hub as `identity=self-reminder`, accepts schedule
   requests over the mesh, persists them, and re-injects payloads at fire
-  time with at-least-once semantics.
+  time with at-least-once semantics. A fired reminder is sent **from
+  `self-reminder`**, not from the identity that scheduled it — the daemon is
+  the sender at fire time, and claiming otherwise reads as a proxied send that
+  § 8.2 refuses.
 - **Contracts** ([`agent-mesh-contracts`](https://github.com/sir-mirr/agent-mesh-contracts))
   — the types and fixtures both sides are checked against: `envelope`,
-  `signature`, `blob-key`, `audit`, `errors`, `attachment`, `ownership`,
-  `capabilities`, `tool-contract`. Not in this repository.
+  `signature`, `key`, `blob-key`, `audit`, `errors`, `attachment`, `ownership`,
+  `capabilities`, `history`, `hub`, `mailbox`, `registry`, `schedule`,
+  `action-proxy`, `tool-contract`. Delivered as an immutable Git tag, not in
+  this repository.
+
+  The fixtures are the point: they let the two implementations be **shown** to
+  agree on bytes rather than assumed to. Every defect that a fully green local
+  suite has missed here was a cross-implementation disagreement, because a test
+  written against one side can only assert that side agrees with itself.
 - **Lanes** — One runtime-adapter plus zero or more channel-drivers, joined by
   an intra-lane HTTP control plane. The adapter holds the lane's single hub
   connection. Built and deployed from a separate repository.
@@ -263,7 +294,8 @@ a hub identity of its own, and every lane includes a runtime-adapter
 - **Storage**: SQLite via `bun:sqlite`
 - **Inter-agent transport**: JSON-RPC 2.0 over WebSocket
 - **Streaming**: Server-Sent Events (SSE)
-- **Auth**: GitHub OAuth + JWT (HS256)
+- **Auth**: Ed25519-signed JSON-RPC requests between agents; GitHub OAuth +
+  JWT (HS256) for people
 - **Notifications**: Web Push (VAPID)
 - **Process supervision**: systemd (templated units)
 
@@ -273,31 +305,69 @@ a hub identity of its own, and every lane includes a runtime-adapter
 
 ### Hub JSON-RPC (`ws://<host>:3100`)
 
-| Method                 | Purpose                                              |
-|------------------------|------------------------------------------------------|
-| `mesh.connect`         | Connect identity (optionally `proxy_for[]`) — SSOT   |
-| `mesh.register`        | Deprecated alias of `mesh.connect` (see SPEC §8.1a)  |
-| `mesh.send`            | Send an envelope to another identity                 |
-| `mesh.list_agents`     | Enumerate registered agents and online status        |
-| `mesh.fetch_messages`  | Pull stored history for a peer                       |
+Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1).
+
+| Method                      | Purpose                                              |
+|-----------------------------|------------------------------------------------------|
+| `mesh.connect`              | Connect identity (optionally `proxy_for[]`) — SSOT   |
+| `mesh.register`             | Deprecated alias of `mesh.connect` (§ 8.1a)          |
+| `mesh.send`                 | Send an envelope; `client_message_id` makes it idempotent |
+| `mesh.receive`              | Drain the inbox with a piggybacked ACK (§ 8.10.1)    |
+| `mesh.list_agents`          | Enumerate registered agents and online status        |
+| `mesh.fetch_messages`       | Pull stored history for a peer                       |
+| `mesh.schedule_reminder`    | Schedule once / interval / cron (§ 8.5)              |
+| `mesh.cancel_reminder`      | Cancel one, owner-scoped                             |
+| `mesh.list_reminders`       | List your own                                        |
+| `mesh.audit.prepare_blobs`  | Ask which attachment bytes the store already holds   |
+| `mesh.audit.append`         | Commit one audit event (§ 8.9.3)                     |
+
+Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
+
+### Hub over HTTP (`POST http://<host>:3100/api/v1/rpc`)
+
+The same methods for a participant that cannot hold a socket — an agent driven
+by an application rather than a daemon, awake only while it is answering
+(§ 8.10). Identity comes from the signature. `mesh.connect` and `mesh.register`
+are absent: they mark a socket online and there is no socket, so a socketless
+participant is never online and a sender addressing it is told `pending` rather
+than `delivered`.
 
 ### HTTP REST (`http://<host>:3000`)
 
 | Path                                | Description                          |
 |-------------------------------------|--------------------------------------|
-| `GET  /api/v1/health`               | Liveness / version                   |
+| `GET  /api/v1/health`               | Liveness                             |
 | `GET  /api/v1/agents`               | List agents                          |
 | `POST /api/v1/messages`             | Send an envelope                     |
 | `GET  /api/v1/messages/:agent`      | Per-peer history                     |
 | `GET  /api/v1/messages/search`      | Full-text search                     |
-| `GET  /api/v1/events/:agentId`      | SSE event stream                     |
+| `GET  /api/v1/events/:agentId`      | SSE event stream — JWT as `?token=`, not a cookie |
 | `POST /api/v1/upload`               | Upload an attachment                 |
+| `GET  /api/v1/attachments/:id`      | Download attachment bytes (§ 15.3)   |
+| `PUT  /api/v1/audit/blobs/{key}`    | Streamed blob upload, signature-authorised (§ 9.1) |
+| `GET  /api/v1/audit/events`         | Cursor-paginated audit query         |
 | `GET  /api/v1/files`                | Serve a single file by `?path=` query |
-| `*    /api/v1/admin/*`              | `pending` / `approve` / `deny`       |
+| `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
+| `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |
 | `GET  /auth/github`, `/auth/me`     | GitHub OAuth + JWT session           |
 
+**Auth has three states, not two** (`SPEC.md` § 9.1). No session is `401`; a
+valid session for a user no operator has approved is `403`; an approved user
+gets the route's own answer. A client that reads `403` as "wrong credentials"
+and re-authenticates loops forever — `/auth/me` answers `200` with
+`approved: false` and is how you tell the difference.
+
 Full request/response shapes and auth requirements are in `SPEC.md`.
+
+### Control plane (`http://<host>:3100`)
+
+| Path                                    | Description                    |
+|-----------------------------------------|--------------------------------|
+| `GET    /health`                        | Liveness, online count, `agent_mesh_spec` (§ 13) |
+| `POST   /api/v1/agents`                 | Provision an identity (§ 10.1); `create_only` refuses to take over an existing one |
+| `GET    /api/v1/agents/{identity}/keys` | Key record and status (§ 10.2) |
+| `DELETE /api/agents/{id}`               | Soft-delete teardown (§ 9.3)   |
 
 ---
 
@@ -313,13 +383,19 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 │   ├── implementation-plan-0.2.md # what to build next, in order
 │   ├── decisions/                 # settled design, with the reasoning
 │   ├── proposals/                 # cross-team interface work
-│   └── open-questions.md
+│   ├── open-questions.md
+│   ├── deferred.md                # found, not fixed, and why
+│   └── e2e-platform.md            # this side's half of the E2E scenarios
 ├── test/                          # integration — real processes, real ports
+├── scripts/
+│   ├── e2e-harness.ts             # stand up a mesh for the client's E2E run
+│   ├── mesh-mail.ts               # reference client for the socketless transport
+│   └── collect-orphan-blobs.ts    # § 15.6 sweep, run by the timer below
 ├── ops/
 │   ├── bin/bootstrap-hub-service-identities.sh
 │   ├── env/shared/                # baseline env examples
 │   ├── migrations/                # forward-only SQL
-│   └── systemd/                   # the three baseline units
+│   └── systemd/                   # baseline units + orphan-collection timer
 ├── packages/
 │   ├── store/                     # schema and access for the shared databases
 │   ├── hub/                       # JSON-RPC 2.0 broker (port 3100)
@@ -339,6 +415,24 @@ delivered as an immutable Git tag.
 Instance data — env files, secrets, state, attachments, handoffs, channels —
 lives **outside** the code repository and is not versioned here. See
 `SPEC.md` § "Instance data layout".
+
+---
+
+## Working on it
+
+```bash
+bun run typecheck
+bun test packages/     # unit
+bun test test/         # integration — starts real hub and http processes
+```
+
+CI runs all three. A failure in `test/` usually means wiring rather than logic:
+those tests spawn the real entrypoints on real ports, because the bugs worth
+catching there are the ones where each half works and the two disagree.
+
+`docs/architecture.md` explains how this repository is built and why;
+`SPEC.md` is the contract any implementation satisfies. **When they disagree,
+SPEC wins and the architecture document is wrong.**
 
 ---
 

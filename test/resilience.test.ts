@@ -234,3 +234,36 @@ describe("the dispatcher's last-resort guard", () => {
     rpc.close();
   });
 });
+
+describe("the hub and the contract agree on how to class a failure", () => {
+  test("the code the hub emits is the one contracts classes permanent", async () => {
+    // Not a restatement of the hub's own constant: the two are checked against
+    // each other. Every defect a fully green suite here has missed was a
+    // cross-implementation disagreement, because a test written against one
+    // side can only assert that side agrees with itself — and the client
+    // caught this exact table being incomplete before this test existed.
+    const { ERROR_CLASS, MESH_ERROR } = await import("@agent-mesh/contracts");
+
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "res-e" });
+
+    const thaw = breakTable("audit.db", "audit_events");
+    let code: number;
+    try {
+      const res = await rpc.call("mesh.audit.append", {
+        schema_version: 1,
+        event_id: "01900000-0000-7000-8000-00000000ad01",
+        event_type: "channel.message.received",
+        occurred_at: new Date().toISOString(),
+        payload: { note: "classed" },
+      });
+      code = res.error.code;
+    } finally {
+      thaw();
+    }
+
+    expect(code).toBe(MESH_ERROR.SERVER_ERROR);
+    expect(ERROR_CLASS[code]).toBe("permanent");
+    rpc.close();
+  });
+});

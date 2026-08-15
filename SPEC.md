@@ -1502,7 +1502,8 @@ and teardown. These routes live on the hub port, NOT on
 | GET    | `/health`                         | None   | `200`   | Hub liveness, `online_agents` count, and `agent_mesh_spec` (§ 13). |
 | POST   | `/api/agents`                     | None † | `200`   | Legacy provisioning alias; response shape MAY differ from `/api/v1/agents` — see § 10.1. |
 | POST   | `/api/v1/agents`                  | None † | `200`\|`201` | Canonical identity provisioning (§ 10.1). |
-| DELETE | `/api/agents/{identity}`          | None † | `200`   | Teardown identity + its messages atomically — see § 9.3. |
+| GET    | `/api/v1/agents/{identity}/keys`  | None † | `200`   | Key record and current status for one identity (§ 10.2). Read-only: the hub never decides a key, because it cannot authenticate who is asking — approval is on `agent-mesh-http` (§ 10.2.1). |
+| DELETE | `/api/agents/{identity}`          | None † | `200`   | Teardown — a **soft delete**. It does not touch `messages`; see § 9.3. |
 
 † At v0.1, hub REST routes are unauthenticated on the assumption the
 hub binds to a trust-bounded interface (Tailscale or LXC-internal
