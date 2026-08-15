@@ -29,7 +29,17 @@ import {
 } from "../db";
 import { log } from "../log";
 
-const IDENTITY_RE = /^[a-z][a-z0-9-]*$/;
+/**
+ * SPEC § 10.1. A letter or digit, then letters, digits and hyphens.
+ *
+ * Kebab-case is recommended and is what every baseline identity uses, but it is
+ * a convention. 0.1 enforced it, which was right while every identity was a
+ * service an operator named and wrong once § 10.3 admitted `human`: a person's
+ * identity is a login they already have, and the systems people federate from
+ * permit uppercase. Comparison is case-sensitive, matching SQLite's default
+ * collation — `Codex` and `codex` are two identities.
+ */
+const IDENTITY_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const MAX_DESCRIPTION_LEN = 256;
 
 export function jsonResponse(status: number, body: unknown): Response {
@@ -69,7 +79,7 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
   if (!IDENTITY_RE.test(identity)) {
     return jsonResponse(400, {
       ok: false,
-      error: "identity must be kebab-case (^[a-z][a-z0-9-]*$)",
+      error: "identity must match ^[A-Za-z0-9][A-Za-z0-9-]*$",
     });
   }
   if (!type || typeof type !== "string") {
@@ -200,7 +210,7 @@ export function handleDeleteAgent(identity: string): Response {
   if (!IDENTITY_RE.test(identity)) {
     return jsonResponse(400, {
       ok: false,
-      error: "invalid identity format (must be kebab-case ^[a-z][a-z0-9-]*$)",
+      error: "invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)",
     });
   }
 

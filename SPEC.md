@@ -101,7 +101,7 @@ agent-mesh is split into two strictly separated layers.
 | Transport       | WebSocket, JSON-RPC 2.0                                     |
 | Default port    | `3100` (configurable via `AGENT_MESH_HUB_PORT`)             |
 | Storage         | Three SQLite databases under `${AGENT_MESH_STATE_DIR}` — see below |
-| Identity model  | One agent ↔ one identity string (kebab-case recommended)    |
+| Identity model  | One agent ↔ one identity string, compared case-sensitively  |
 | Bootstrap hook  | `ExecStartPost` MUST run `ops/bin/bootstrap-hub-service-identities.sh` |
 
 **Storage (0.2).** Identity, routing and audit data MUST live in separate
@@ -214,8 +214,8 @@ WebSocket will return `-32601` METHOD_NOT_FOUND.
 ## 4. Add-on contract — lanes
 
 A **lane** is the unit of add-on deployment. A lane is identified by a
-short kebab-case name (e.g. `prod-codex1`, `test-claude1`) which is also
-its hub identity.
+short name (e.g. `prod-codex1`, `test-claude1`) which is also its hub identity.
+Kebab-case is recommended for a lane, which is named by whoever deploys it.
 
 ### 4.1. Composition
 
@@ -481,7 +481,7 @@ clients.
 
 ```
 params: {
-  identity:    string         // kebab-case; MUST be pre-registered
+  identity:    string         // MUST be pre-registered; case-sensitive
   proxy_for?:  string[]       // additional identities this socket handles
 }
 result: {
@@ -708,7 +708,7 @@ params: {}                    // no params at v0.1; status filter is
                               // include all rows
 result: {
   agents: Array<{
-    id:          string       // identity (kebab-case)
+    id:          string       // identity
     type:        string | null
     description: string | null
     online:      boolean
@@ -1241,8 +1241,8 @@ counterpart of `POST /api/v1/agents`. Together they let the hub own the
 full identity lifecycle (create ↔ delete) without callers needing direct
 SQL access to `hub.db`.
 
-**Identity validation.** `{identity}` MUST match
-`^[a-z][a-z0-9-]*$`. Anything else MUST return `400` with body
+**Identity validation.** `{identity}` MUST match `^[A-Za-z0-9][A-Za-z0-9-]*$`
+(§ 10.1). Anything else MUST return `400` with body
 `{ "ok": false, "error": "invalid identity format …" }`.
 
 **Behavior (0.2).** Teardown is a **soft delete**. The hub MUST, in a single
@@ -1387,7 +1387,8 @@ operator provisioning tooling, or remote lane VMs.
 
 ```
 {
-  "identity":    "<kebab-case string>",   // required, ^[a-z][a-z0-9-]*$
+  "identity":    "<string>",              // required, ^[A-Za-z0-9][A-Za-z0-9-]*$
+                                          // case-sensitive; kebab-case RECOMMENDED
   "type":        "<string>",              // required; MUST exist in agent_types (§ 10.3)
   "description": "<string, ≤ 256 chars>", // optional, may be null
   "public_key":  "<base64url, 43 chars>"  // Ed25519 raw 32B; REQUIRED when the
@@ -1397,7 +1398,8 @@ operator provisioning tooling, or remote lane VMs.
 
 **Behavior** — the hub MUST:
 
-1. Validate `identity` against `^[a-z][a-z0-9-]*$`; reject with `400` otherwise.
+1. Validate `identity` against `^[A-Za-z0-9][A-Za-z0-9-]*$`; reject with `400`
+   otherwise. The comparison is case-sensitive throughout — see below.
 2. Validate `type` against the `agent_types` registry (§ 10.3); reject with
    `400` otherwise, listing the registered types.
 3. Reject with `400` when the type has `requires_key` and no `public_key` was
@@ -1409,6 +1411,30 @@ operator provisioning tooling, or remote lane VMs.
    when the row already existed and was updated.
 8. Return `500` only on a genuine DB error; transient errors MAY be retried
    by callers using exponential or fixed backoff.
+
+**Identity format (0.2).** An identity MUST match
+`^[A-Za-z0-9][A-Za-z0-9-]*$`: it begins with a letter or digit, and continues
+with letters, digits and hyphens. Kebab-case is **RECOMMENDED** and is what
+every baseline identity uses, but it is a convention, not a constraint.
+
+**Identities are compared case-sensitively.** `Codex` and `codex` are two
+identities, exactly as they are two rows. Every store compares them under
+SQLite's default binary collation, so this is what implementations already do;
+stating it removes the reading under which they were the same identity written
+two ways.
+
+0.1 required `^[a-z][a-z0-9-]*$`. That rule was written when every identity was
+a service an operator named, and it stopped being right once § 10.3 admitted
+`human`: a person's identity is the login they already have, and the systems
+people federate from — GitHub among them — permit uppercase. Lowercasing to fit
+was not available either, because the identity is the same string the http
+server sends as `from` (§ 8.2); normalising one half would split it from the
+other. The rule excluded people from the mesh to preserve a naming convention.
+
+The cost is that two identities can now differ only by case and be confusable
+to a reader. That is accepted: an identity is matched by machines and is not a
+display name (§ 9.1), and a rule that guarantees legibility at the price of
+excluding real participants is the wrong trade.
 
 **Response body** (both `200` and `201`):
 

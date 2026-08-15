@@ -37,7 +37,7 @@ function restBase(): string {
 }
 
 /** The hub's rule (SPEC § 10.1). Checked here only to report it usefully. */
-const IDENTITY_RE = /^[a-z][a-z0-9-]*$/
+const IDENTITY_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/
 
 export interface ProvisionOutcome {
   ok: boolean
@@ -54,10 +54,11 @@ export interface ProvisionOutcome {
  * reconnect backfill retries.
  */
 export async function provisionHuman(identity: string): Promise<ProvisionOutcome> {
-  // A GitHub login may contain characters the identity rule does not allow —
-  // uppercase, most commonly. Lowercasing it here would split the identity from
-  // the `github_login` this server uses everywhere else, including the `from`
-  // it sends to the hub, so the mismatch is reported rather than papered over.
+  // A person's identity is their GitHub login verbatim, which is also the
+  // `github_login` this server sends as `from` (SPEC § 8.2). Nothing is
+  // normalised: § 10.1 compares identities case-sensitively for exactly this
+  // reason, so the two halves cannot drift. A login the rule still rejects —
+  // one that starts with a hyphen, say — is reported rather than mangled to fit.
   if (!IDENTITY_RE.test(identity)) {
     return { ok: false, reason: `"${identity}" is not a valid mesh identity (must match ${IDENTITY_RE})` }
   }

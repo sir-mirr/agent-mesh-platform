@@ -116,11 +116,17 @@ The related distinction: an **identity** is permanent and unique on the mesh; a
 uniqueness rules.
 
 A person's identity is their GitHub login verbatim, which is also the
-`github_login` this server authorises them by. The two are deliberately not
-normalised into each other: SPEC § 10.1 requires kebab-case, GitHub permits
-uppercase, and lowercasing for the mesh would split the identity from the `from`
-the http server sends on their behalf. A login the rule rejects is approved as a
-web user and logged as not registrable — visible rather than silently
+`github_login` this server authorises them by and sends as `from`. Nothing is
+normalised between them, and SPEC § 10.1 was changed so that nothing has to be:
+identities are compared case-sensitively and kebab-case is a recommendation
+rather than a rule.
+
+That rule was written when every identity was a service an operator named. It
+stopped being right the moment a person could hold one — GitHub permits
+uppercase, and lowercasing to fit would have split the identity from the `from`
+sent on the same person's behalf. It was excluding real participants to preserve
+a naming convention. A login the loosened rule still rejects is approved as a web
+user and logged as not registrable, which is visible rather than silently
 half-working.
 
 ### What 0.2 still changes

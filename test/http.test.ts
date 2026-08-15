@@ -216,14 +216,24 @@ describe("people are mesh participants", () => {
     expect(meshIdentity("twice-person")).toEqual({ identity: "twice-person", type: "human" });
   });
 
-  test("a login the identity rule rejects still gets approved, and says so", async () => {
-    // GitHub allows uppercase; the identity rule (SPEC § 10.1) does not.
-    // Lowercasing here would split the mesh identity from the github_login this
-    // server sends as `from`, so approval succeeds and the person is simply not
-    // a mesh participant yet.
+  test("an uppercase login registers verbatim", async () => {
+    // GitHub permits uppercase and 0.1's kebab-case rule excluded it, which
+    // excluded the person. § 10.1 now takes the login as it is — and MUST, since
+    // the same string is what this server sends as `from` (§ 8.2). Normalising
+    // one half would split it from the other.
     requestAccess("MixedCase");
     expect((await approve("MixedCase")).status).toBe(200);
-    expect(meshIdentity("MixedCase")).toBeNull();
+    expect(meshIdentity("MixedCase")).toEqual({ identity: "MixedCase", type: "human" });
+    // Case-sensitive: the lowercase spelling is a different identity, and no
+    // row was created for it.
     expect(meshIdentity("mixedcase")).toBeNull();
+  });
+
+  test("a login the rule still rejects is approved and reported", async () => {
+    // The rule loosened, it did not disappear: an identity begins with a letter
+    // or digit. Such a person stays a web user and is logged, not mangled to fit.
+    requestAccess("-leading-hyphen");
+    expect((await approve("-leading-hyphen")).status).toBe(200);
+    expect(meshIdentity("-leading-hyphen")).toBeNull();
   });
 });
