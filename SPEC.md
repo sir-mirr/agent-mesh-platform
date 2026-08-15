@@ -1211,6 +1211,30 @@ immutable and content-addressed.
 | `-32602` | malformed params, caps exceeded | **permanent** |
 | `-32000` | `AUDIT_APPEND_FAILED` — the store refused the write for a reason the hub could not classify | **permanent** |
 
+This table covers the audit path. **Every** code § 8 defines carries a
+class, and `@agent-mesh/contracts` holds the complete mapping:
+
+| Code | Name | Class |
+|------|------|-------|
+| `-32010` | `DUPLICATE_IDENTITY` | transient-operator |
+| `-32011` | `IDENTITY_NOT_REGISTERED` | transient-operator |
+| `-32012` | `SIGNATURE_INVALID` | **permanent** |
+| `-32013` | `NOT_ENTITLED` | **permanent** |
+| `-32014` | `KEY_NOT_APPROVED` | wait-approval |
+| `-32015` | `SEND_CONFLICT` | **permanent** |
+
+`transient-operator` means retry, but far more slowly, and say plainly
+that someone has to intervene. Both identity errors clear — one when
+the incumbent disconnects (§ 8.1), one when the identity is provisioned
+(§ 10.1) — but neither clears because the client tried harder, and
+reporting them as ordinary `transient` produces a hot loop against a
+condition no amount of retrying resolves.
+
+**A code with no class MUST be treated as permanent.** Defaulting an
+unrecognised code to `transient` turns a code from a newer hub into an
+unbounded retry, which is the failure this whole split exists to
+prevent.
+
 Clients MUST distinguish the two classes. Transient errors are retried with
 backoff and jitter and no maximum attempt count. **Permanent errors MUST NOT
 be retried** — the event is dropped and the failure recorded locally, as § 13

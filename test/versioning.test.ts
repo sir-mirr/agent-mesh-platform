@@ -144,3 +144,34 @@ describe("the error vocabulary is complete", () => {
     expect(stale).toEqual([]);
   });
 });
+
+describe("every code the hub emits is classified", () => {
+  test("the hub's own error constants all resolve to a class", async () => {
+    // The direction the contract cannot check: contracts knows its tables
+    // agree with themselves, and only this repository knows which codes the
+    // hub actually puts on the wire.
+    const { errorClass, ERROR_CLASS } = await import("@agent-mesh/contracts");
+
+    const proc = Bun.spawnSync([
+      // `[-]` rather than a leading `-`, which grep reads as an option.
+      "grep", "-rhoE", "--include=*.ts", "[-]32[0-9]{3}",
+      join(REPO_ROOT, "packages/hub/src"),
+    ]);
+    const emitted = new Set(
+      new TextDecoder().decode(proc.stdout).trim().split("\n").map(Number).filter(Boolean),
+    );
+    expect(emitted.size).toBeGreaterThan(8);
+
+    // `-32700`/`-32603` are JSON-RPC's own; `-32042` is retired and burned.
+    const jsonRpcReserved = new Set([-32700, -32600, -32601, -32603]);
+    const unclassified = [...emitted].filter(
+      (code) => code !== -32042 && !jsonRpcReserved.has(code) && !Object.hasOwn(ERROR_CLASS, code),
+    );
+    expect(unclassified).toEqual([]);
+
+    // And the accessor never leaves a caller without an answer.
+    for (const code of emitted) {
+      expect(typeof errorClass(code)).toBe("string");
+    }
+  });
+});
