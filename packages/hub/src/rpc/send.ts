@@ -16,7 +16,15 @@ import {
   stmtSelectIdempotency,
   stmtUpdateMessageStatus,
 } from "../db";
-import { INVALID_PARAMS, INVALID_REQUEST, NOT_ENTITLED, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
+import {
+  INVALID_PARAMS,
+  INVALID_REQUEST,
+  NOT_ENTITLED,
+  SERVER_ERROR,
+  rpcError,
+  rpcNotification,
+  rpcResult,
+} from "../jsonrpc";
 import { log } from "../log";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
@@ -147,7 +155,22 @@ export function handleSend(
       stmtInsertIdempotency.run(senderIdentity, clientMessageId, idempotencyDigest, msgId, status);
     }
   });
-  persist();
+  try {
+    persist();
+  } catch (err) {
+    // Unguarded, this threw out of the WebSocket message handler and the send
+    // simply never answered. On a full volume — the realistic exhaustion case,
+    // since separate volumes are a deployment choice — that is routing stopping
+    // because storage filled, which is the inversion § 15.6 exists to forbid.
+    //
+    // Reported instead, as a transient the caller can retry. The hub stays up
+    // and every other socket keeps working; what fails is this one write.
+    const message = err instanceof Error ? err.message : String(err);
+    log(`send failed to persist ${msgId} (${route}): ${message}`);
+    return rpcError(id, SERVER_ERROR, `could not persist message: ${message}`, {
+      retryable: true,
+    });
+  }
 
   // Deliver immediately if recipient is online
   if (recipientWs) {

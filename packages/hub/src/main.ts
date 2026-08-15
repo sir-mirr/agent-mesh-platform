@@ -10,6 +10,7 @@
  */
 
 import { closeDatabases, stmtUpdateLastSeen } from "./db";
+import { SERVER_ERROR, rpcError } from "./jsonrpc";
 import { log } from "./log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
@@ -151,7 +152,19 @@ const server = Bun.serve({
     },
 
     message(ws, msg) {
-      const response = dispatch(ws, msg as string | Buffer);
+      // The last guard. A handler that throws here would otherwise take the
+      // exception out of the socket callback and answer nothing — the caller
+      // waits for a reply that never comes, which is indistinguishable from a
+      // hung hub. § 15.6 requires routing to survive storage failing; this is
+      // what makes that true for anything not anticipated in a handler.
+      let response: string | null;
+      try {
+        response = dispatch(ws, msg as string | Buffer);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log(`unhandled error dispatching a request: ${message}`);
+        response = rpcError(null, SERVER_ERROR, `internal error: ${message}`);
+      }
       if (response) {
         ws.send(response);
       }
