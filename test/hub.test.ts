@@ -205,3 +205,71 @@ describe("dispatch", () => {
     rpc.close();
   });
 });
+
+/**
+ * § 8.4 — `mesh.fetch_messages`.
+ *
+ * It had no integration coverage, which is how `sent_by` reached it without
+ * reaching its SPEC block: nothing asserted the returned shape against the
+ * document, so the two could differ without anything saying so.
+ */
+describe("fetch_messages returns the documented shape", () => {
+  test("every field § 8.4 lists, and nothing claiming to be a cursor", async () => {
+    await provision(mesh.hub, "fetch-a", "service");
+    await provision(mesh.hub, "fetch-b", "service");
+
+    const a = await connectRpc(mesh.hub);
+    await a.call("mesh.connect", { identity: "fetch-a" });
+    await a.call("mesh.send", { to: "fetch-b", content: "one", reply_to: null });
+
+    const res = await a.call("mesh.fetch_messages", { agent_id: "fetch-b" });
+    a.close();
+
+    const m = res.result.messages[0];
+    expect(Object.keys(m).sort())
+      .toEqual(["content", "from", "id", "reply_to", "sent_by", "status", "to", "ts"]);
+    expect(m).toMatchObject({ from: "fetch-a", to: "fetch-b", content: "one", sent_by: "fetch-a" });
+    expect(["delivered", "pending"]).toContain(m.status);
+  });
+
+  test("limit defaults to 20 and is capped at 200", async () => {
+    await provision(mesh.hub, "fetch-many", "service");
+    await provision(mesh.hub, "fetch-peer", "service");
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "fetch-many" });
+    for (let i = 0; i < 25; i++) {
+      await rpc.call("mesh.send", { to: "fetch-peer", content: `m${i}` });
+    }
+
+    expect((await rpc.call("mesh.fetch_messages", { agent_id: "fetch-peer" })).result.messages)
+      .toHaveLength(20);
+    expect((await rpc.call("mesh.fetch_messages", { agent_id: "fetch-peer", limit: 5 })).result.messages)
+      .toHaveLength(5);
+    // Over the maximum is clamped rather than refused.
+    const wide = await rpc.call("mesh.fetch_messages", { agent_id: "fetch-peer", limit: 5000 });
+    expect(wide.error).toBeUndefined();
+    expect(wide.result.messages.length).toBeLessThanOrEqual(200);
+    rpc.close();
+  });
+
+  test("both directions of one conversation, and no third party's", async () => {
+    await provision(mesh.hub, "conv-a", "service");
+    await provision(mesh.hub, "conv-b", "service");
+    await provision(mesh.hub, "conv-c", "service");
+
+    const a = await connectRpc(mesh.hub);
+    await a.call("mesh.connect", { identity: "conv-a" });
+    await a.call("mesh.send", { to: "conv-b", content: "a to b" });
+    await a.call("mesh.send", { to: "conv-c", content: "a to c" });
+
+    const b = await connectRpc(mesh.hub);
+    await b.call("mesh.connect", { identity: "conv-b" });
+    await b.call("mesh.send", { to: "conv-a", content: "b to a" });
+    b.close();
+
+    const res = await a.call("mesh.fetch_messages", { agent_id: "conv-b" });
+    a.close();
+    const contents = res.result.messages.map((m: any) => m.content).sort();
+    expect(contents).toEqual(["a to b", "b to a"]);
+  });
+});

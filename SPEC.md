@@ -782,6 +782,8 @@ result: {
     id:       string          // hub-assigned message id
     from:     string          // sender identity
     to:       string          // recipient identity
+    sent_by:  string | null   // identity that transmitted it (0.2, § 8.2);
+                              // equals `from` unless a proxy overrode it
     content:  string          // flat content string (see § 8.2)
     reply_to: string | null
     status:   "delivered" | "pending"
