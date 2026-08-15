@@ -27,6 +27,7 @@ for a description of running code.
 | 9.1 | Audit blob upload and audit query routes | no |
 | 9.3 | Identity teardown is a soft delete | no |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | no |
+| 10.3 | Agent types come from a registry table, not a hardcoded enum | no |
 | 15.2 | Blob keys retain the file extension | **yes** (0.1 behaviour, now normative) |
 
 Upgrading from 0.1 does **not** migrate existing data. Each store is treated
@@ -549,22 +550,38 @@ measured at ~1.7 µs, against ~32 µs for the Ed25519 verification it feeds — 
 cheaper than the `PRAGMA data_version` check a cache-invalidation scheme would
 need on the same path. WAL readers do not block, and key writes are rare.
 
-Signature verification is enforced only for identities that have an approved
-key. An identity with none connects unsigned, as at 0.1.
+**Whether an identity may go unsigned is a property of its type, not of
+whether it happens to have a key.** The `agent_types` registry (§ 10.3) carries
+a `requires_key` flag; every AI runtime type is seeded with it set.
 
-An identity whose key is `pending`, `denied` or `revoked` has no approved key.
-Its requests are rejected with `-32014`, and the hub MUST close any connection
-it already holds for that identity as soon as the state is observed — which,
-because state is read per request, is at its next request.
+- `requires_key = 1` — every request MUST carry a signature verifiable against
+  an `approved` key. An identity with no key at all, or whose key is `pending`,
+  `denied` or `revoked`, is rejected with `-32014`. There is no unsigned path.
+- `requires_key = 0` — an identity with no key connects unsigned. If it *has*
+  an approved key, its requests are still verified; a key is not optional once
+  approved.
+
+An earlier draft enforced signatures only where an approved key already
+existed, which read as backward compatibility but was an open door: a caller
+could register an identity without `public_key` and then connect unsigned,
+skipping the authentication the audit trail depends on. Since upgrades do not
+migrate data (§ 0), there was no 0.1 state to be compatible with. § 10.1 now
+also refuses to provision a `requires_key` type without a key.
+
+`-32014` carries `key_status` — `missing`, `pending`, `denied` or `revoked` —
+so a client can tell waiting for approval from having been shut off. The hub
+MUST close any connection it holds for such an identity as soon as the state is
+observed, which, because state is read per request, is at its next request.
 
 Errors:
 
 - `-32012` SIGNATURE_INVALID — signature absent, malformed, outside the
   freshness window, a replayed nonce, or not verifiable against the
   identity's approved key.
-- `-32014` KEY_NOT_APPROVED — the identity has no `approved` key. `data`
-  carries `{ code: "KEY_NOT_APPROVED", identity, key_status }` so a client can
-  distinguish waiting for approval from having been revoked.
+- `-32014` KEY_NOT_APPROVED — the identity requires a key (§ 10.3) and has no
+  `approved` one. `data` carries `{ code: "KEY_NOT_APPROVED", identity,
+  key_status }` where `key_status` is one of `missing` | `pending` | `denied` |
+  `revoked`.
 
 Any param beyond `identity` and `proxy_for` is **ignored** by the hub.
 In particular, `type` and `description` (if present, e.g. carried over
@@ -951,9 +968,9 @@ one blob into two. The rule the hub applies is § 15.2.
 `blobs` MUST NOT exceed `max_attachments_per_event`, and the declared sizes
 MUST NOT total more than `max_attachments_bytes_per_event`.
 
-The nonce is bound to `(identity, blob_key, size)` and carries an expiry. It is
-not single-use: because the upload is content-addressed, replaying a grant can
-only re-upload identical bytes, which deduplicates to no effect.
+The nonce is bound to `(identity, blob_key, size)` and expires after 15
+minutes. It is not single-use — see § 9.1 for the upload authorisation
+construction and why replay is harmless here.
 
 #### 8.9.3. `mesh.audit.append`
 
@@ -1113,20 +1130,44 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 require a bearer token; clients SHOULD tolerate `401`.
 
 § The blob `PUT` is authorised by a signature, not a session — an adapter has
-no browser login, and the identity behind the upload is known to the hub
-rather than to `agent-mesh-http`. The client sends
+no browser login, and the identity behind the upload is known to the hub rather
+than to `agent-mesh-http`. The server reads the nonce row and the identity's
+approved public key from `agents.db` and verifies. No shared secret between the
+two services is required.
 
 ```
-Authorization: <base64url signature over (nonce ‖ sha256 ‖ size)>
+Authorization: AgentMeshSig kid="<fingerprint>", nonce="<opaque>", sig="<base64url>"
 ```
 
-using the nonce issued by `mesh.audit.prepare_blobs` (§ 8.9.2). The server
-reads the nonce and the identity's approved public key from `agents.db` and
-verifies. No shared secret between the two services is required.
+The scheme name is `AgentMeshSig`; parameters follow RFC 9110 auth-param
+syntax, in any order, values quoted.
 
-Binding the signature to `sha256` and `size` rather than to the nonce alone
-means a leaked signature authorises only the identical bytes, which
-deduplicate to no effect.
+The signed bytes use the same construction as § 8.1 — same `LP`, same domain
+separator shape, different version string so an upload signature cannot be
+replayed as an RPC signature or the reverse:
+
+```
+preimage = "agent-mesh/upload/v1" ‖ 0x00
+         ‖ LP(nonce)                  // UTF-8
+         ‖ LP(blob_key)               // UTF-8
+         ‖ LP(sha256)                 // UTF-8, lowercase hex
+         ‖ LP(decimal(size))          // UTF-8, no leading zeros
+```
+
+The nonce travels in the `Authorization` header rather than the URL: query
+strings turn up in access logs and proxy caches, and this one authorises a
+write. `blob_key` is in the request path already and is included in the
+preimage so a grant cannot be redirected to a different key.
+
+The hub issues the nonce in `mesh.audit.prepare_blobs` (§ 8.9.2), records it
+bound to `(identity, blob_key, size)`, and gives it a **TTL of 15 minutes** —
+comfortably longer than the 180-second upload timeout, so a retry after a
+timeout reuses the grant rather than making a round trip for a new one.
+
+The nonce is not single-use. Because the upload is content-addressed and the
+signature covers `blob_key`, `sha256` and `size`, a replayed grant can only
+store the identical bytes under the identical key, which deduplicates to no
+effect. An expired nonce is re-requested through `prepare_blobs`.
 
 The server MUST require `Content-Length`, reject a declared size mismatch
 (`422`), reject over `max_blob_bytes` (`413`), abort past
@@ -1315,22 +1356,26 @@ operator provisioning tooling, or remote lane VMs.
 ```
 {
   "identity":    "<kebab-case string>",   // required, ^[a-z][a-z0-9-]*$
-  "type":        "ai-claude" | "ai-codex" | "service",  // required
+  "type":        "<string>",              // required; MUST exist in agent_types (§ 10.3)
   "description": "<string, ≤ 256 chars>", // optional, may be null
-  "public_key":  "<base64url, 43 chars>"  // optional (0.2); Ed25519 raw 32B
+  "public_key":  "<base64url, 43 chars>"  // Ed25519 raw 32B; REQUIRED when the
+                                          // type has requires_key (§ 10.3)
 }
 ```
 
 **Behavior** — the hub MUST:
 
 1. Validate `identity` against `^[a-z][a-z0-9-]*$`; reject with `400` otherwise.
-2. Validate `type` against the enum above; reject with `400` otherwise.
-3. Reject with `409` when the identity exists and is soft-deleted (§ 9.3).
-4. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
-5. When `public_key` is present, record it per § 10.2.
-6. Return `201 Created` when the row did not previously exist, `200 OK`
+2. Validate `type` against the `agent_types` registry (§ 10.3); reject with
+   `400` otherwise, listing the registered types.
+3. Reject with `400` when the type has `requires_key` and no `public_key` was
+   supplied, and the identity has no approved key already.
+4. Reject with `409` when the identity exists and is soft-deleted (§ 9.3).
+5. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
+6. When `public_key` is present, record it per § 10.2.
+7. Return `201 Created` when the row did not previously exist, `200 OK`
    when the row already existed and was updated.
-7. Return `500` only on a genuine DB error; transient errors MAY be retried
+8. Return `500` only on a genuine DB error; transient errors MAY be retried
    by callers using exponential or fixed backoff.
 
 **Response body** (both `200` and `201`):
@@ -1457,6 +1502,48 @@ doubt on the window preceding it.
 
 A revocation MAY be requested by the operator, or submitted by the holder
 signed with the key being revoked.
+
+### 10.3. Agent type registry (0.2)
+
+`agents.type` is a classification label. The hub stores it and echoes it back;
+nothing in the hub branches on its value. 0.1 nevertheless validated it against
+a hardcoded enum of `ai-claude | ai-codex | service`, which meant supporting a
+new runtime required a specification revision to widen a list that no code
+read.
+
+The set is therefore **data, not a wire constant**:
+
+```sql
+CREATE TABLE agent_types (
+  type         TEXT PRIMARY KEY,
+  description  TEXT,
+  requires_key INTEGER NOT NULL DEFAULT 1,   -- see § 8.1
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+The hub seeds it at boot, idempotently. The seeded set is **informative** —
+a deployment may extend it, and adding a runtime needs no change to this
+document:
+
+| `type` | `requires_key` |
+|--------|----------------|
+| `ai-claude` | 1 |
+| `ai-codex` | 1 |
+| `ai-gemini` | 1 |
+| `service` | 0 |
+
+**Adding a type is an operator action, not a caller action.** `POST
+/api/v1/agents` is unauthenticated (§ 10.1), so a registration endpoint that
+also created types would make the check meaningless — any caller could invent a
+type and register under it. New types are added through the http admin surface,
+behind the same gate as key approval (§ 10.2), or out of band by an operator.
+
+`requires_key` is what makes the type meaningful: it declares whether an
+identity of that type may exist without an approved signing key. `service` is
+seeded at `0` because the baseline services predate keys; every AI runtime type
+is seeded at `1`. A deployment that wants its services authenticated too raises
+the flag, and no code changes.
 
 ---
 
