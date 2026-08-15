@@ -69,7 +69,7 @@ Everything is SQLite under `AGENT_MESH_STATE_DIR` on the core VM.
 | `hub.db` | `messages` | rw | ro | — |
 | `audit.db` | `audit_events`, `audit_event_blobs` | rw | ro | — |
 | `agent-mesh.db` | users, policies, approvals, push subs, `agent_registry` | — | rw | — |
-| `self-reminder.db` | reminders, scheduler state | rw | — | rw |
+| `self-reminder.db` | `reminders`, `audit_log` | rw | — | rw |
 | `uploads/` | attachment bytes | ro | rw | — |
 
 http holds `agents.db` read-write for two things it owns and the hub cannot: an
@@ -98,6 +98,13 @@ shared shape is stated once.
 
 `agent-mesh.db` is deliberately **not** in it. Nothing but http opens that file,
 so it is not shared, and putting it there would suggest otherwise.
+
+`self-reminder.db` was, for a while, the counter-example that proved the rule.
+Its DDL sat inline in the daemon's `main.ts` while the hub wrote rows to it —
+§ 8.5 lets a reminder be scheduled with the daemon down, so the hub must be able
+to create the table it writes. It could not, so every reminder RPC failed on any
+state directory the daemon had not touched first. The schema is in `store` now
+and both processes migrate it.
 
 ### Two agent lists, on purpose
 

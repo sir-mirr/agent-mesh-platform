@@ -10,7 +10,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { agentsSchema, auditSchema, hubSchema, openStore } from "@agent-mesh/store";
+import { agentsSchema, auditSchema, hubSchema, openStore, selfReminderSchema } from "@agent-mesh/store";
 
 /** Message routing and history. */
 export const db = openStore("hub", { create: true });
@@ -34,9 +34,18 @@ auditSchema.migrate(auditDb);
  * it when a reminder RPC arrives, and a deployment may never see one.
  */
 let _srDb: Database | null = null;
+/**
+ * The scheduler's store, opened lazily.
+ *
+ * Created and migrated here as well as by the daemon, because § 8.5 lets a
+ * reminder be scheduled while the daemon is down — the row waits for it. Opening
+ * without `create` meant every reminder RPC failed on a state directory the
+ * daemon had not touched first, which is every fresh deployment and every test.
+ */
 export function srDb(): Database {
   if (!_srDb) {
-    _srDb = openStore("selfReminder");
+    _srDb = openStore("selfReminder", { create: true });
+    selfReminderSchema.migrate(_srDb);
   }
   return _srDb;
 }

@@ -6,6 +6,7 @@
  * categories rather than reminder content or credentials.
  */
 import { Database } from "bun:sqlite";
+import { selfReminderSchema } from "@agent-mesh/store";
 import WebSocket from "ws";
 
 import { HubLifecycle, hubErrorCategory } from "./lifecycle";
@@ -31,27 +32,7 @@ function log(event: string, fields: Record<string, unknown> = {}): void {
 const db = new Database(DB_PATH, { create: true });
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA busy_timeout = 5000;");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS reminders (
-    id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, type TEXT NOT NULL CHECK (type IN ('once','cron','interval')),
-    schedule_spec TEXT NOT NULL, payload TEXT NOT NULL, context TEXT, idempotency_key TEXT,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','firing','paused','fired','cancelled','exhausted','dead')),
-    next_fire_at DATETIME, fire_count INTEGER NOT NULL DEFAULT 0, last_fired_at DATETIME,
-    created_at DATETIME NOT NULL DEFAULT (datetime('now')), updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    created_by TEXT NOT NULL
-  );
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_idem_active ON reminders (agent_id, idempotency_key) WHERE status = 'active' AND idempotency_key IS NOT NULL;
-  CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders (next_fire_at) WHERE status = 'active' AND next_fire_at IS NOT NULL;
-  CREATE INDEX IF NOT EXISTS idx_reminders_owner ON reminders (agent_id, status);
-  CREATE TABLE IF NOT EXISTS audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, reminder_id TEXT NOT NULL, agent_id TEXT NOT NULL,
-    scheduled_at DATETIME NOT NULL, fired_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    delivery_status TEXT NOT NULL CHECK (delivery_status IN ('firing','delivered','queued','failed','skipped','dedup')),
-    hub_msg_id TEXT, attempt INTEGER NOT NULL DEFAULT 1, error TEXT
-  );
-  CREATE INDEX IF NOT EXISTS idx_audit_reminder ON audit_log (reminder_id, fired_at);
-  CREATE INDEX IF NOT EXISTS idx_audit_agent_time ON audit_log (agent_id, fired_at DESC);
-`);
+selfReminderSchema.migrate(db);
 
 const recovered = db.prepare(`UPDATE reminders SET status = 'active', updated_at = datetime('now') WHERE status = 'firing'`).run();
 if (recovered.changes > 0) log("recovered_stuck_firing_rows", { count: recovered.changes });

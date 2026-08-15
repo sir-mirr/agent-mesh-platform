@@ -1,0 +1,190 @@
+/**
+ * § 8.5, § 8.6, § 8.7 — the reminder methods.
+ *
+ * The whole family had no integration coverage. They are the oldest surface in
+ * the hub and the one nothing in 0.2 touched, which is exactly why they were
+ * never looked at: the parts under active change get tested, the parts that
+ * merely have to keep working do not.
+ *
+ * The requirement worth asserting is ownership. § 8.6 and § 8.7 are
+ * owner-scoped, so a bug there is not a crash — it is one identity reading or
+ * cancelling another's reminders, which nothing else in the system would notice.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
+import { connectRpc, provision, startMesh, type Mesh, type RpcClient } from "./harness";
+
+let mesh: Mesh;
+let alice: RpcClient;
+let bob: RpcClient;
+
+const soon = () => new Date(Date.now() + 3_600_000).toISOString();
+let seq = 0;
+const reminderId = () => `rem_${(seq++).toString(16).padStart(16, "0")}`;
+
+beforeAll(async () => {
+  mesh = await startMesh({ withHttp: false });
+  await provision(mesh.hub, "rem-alice", "service");
+  await provision(mesh.hub, "rem-bob", "service");
+  alice = await connectRpc(mesh.hub);
+  bob = await connectRpc(mesh.hub);
+  await alice.call("mesh.connect", { identity: "rem-alice" });
+  await bob.call("mesh.connect", { identity: "rem-bob" });
+});
+
+afterAll(() => {
+  alice?.close();
+  bob?.close();
+  mesh?.stop();
+});
+
+const schedule = (rpc: RpcClient, over: Record<string, unknown> = {}) =>
+  rpc.call("mesh.schedule_reminder", {
+    id: reminderId(),
+    type: "once",
+    schedule_spec: soon(),
+    payload: "remember this",
+    next_fire_at: soon(),
+    ...over,
+  });
+
+describe("scheduling", () => {
+  test("echoes what § 8.5 says it echoes", async () => {
+    const id = reminderId();
+    const at = soon();
+    const res = await alice.call("mesh.schedule_reminder", {
+      id, type: "once", schedule_spec: at, payload: "p", next_fire_at: at,
+    });
+    expect(res.error).toBeUndefined();
+    expect(res.result).toMatchObject({ ok: true, id, type: "once", next_fire_at: at });
+  });
+
+  test("a missing required field is refused", async () => {
+    for (const field of ["id", "type", "schedule_spec", "payload", "next_fire_at"]) {
+      const params: Record<string, unknown> = {
+        id: reminderId(), type: "once", schedule_spec: soon(),
+        payload: "p", next_fire_at: soon(),
+      };
+      delete params[field];
+      const res = await alice.call("mesh.schedule_reminder", params);
+      expect(res.error, `missing ${field}`).toMatchObject({ code: -32602 });
+    }
+  });
+
+  test("a repeated idempotency_key is reported, not duplicated", async () => {
+    // § 8.5: callers SHOULD treat this as success — the prior schedule is still
+    // pending, so the intent is satisfied.
+    const key = `idem-${Math.random().toString(36).slice(2)}`;
+    const first = await schedule(alice, { idempotency_key: key });
+    expect(first.result.ok).toBe(true);
+
+    const second = await schedule(alice, { idempotency_key: key });
+    expect(second.result).toMatchObject({ ok: false, error: "dedup", idempotency_key: key });
+
+    const rows = (await alice.call("mesh.list_reminders", {})).result.rows;
+    expect(rows.filter((r: any) => r.idempotency_key === key)).toHaveLength(1);
+  });
+
+  test("an unconnected socket cannot schedule", async () => {
+    const stranger = await connectRpc(mesh.hub);
+    const res = await schedule(stranger);
+    stranger.close();
+    expect(res.error).toMatchObject({ code: -32600 });
+  });
+});
+
+describe("ownership", () => {
+  test("a reminder belongs to the identity that scheduled it", async () => {
+    const id = reminderId();
+    await schedule(alice, { id, payload: "alice's" });
+
+    const hers = (await alice.call("mesh.list_reminders", {})).result.rows;
+    expect(hers.map((r: any) => r.id)).toContain(id);
+
+    // § 8.5: other identities cannot read it.
+    const his = (await bob.call("mesh.list_reminders", {})).result.rows;
+    expect(his.map((r: any) => r.id)).not.toContain(id);
+  });
+
+  test("one identity cannot cancel another's", async () => {
+    // The failure this guards is silent: not a crash, but one participant
+    // quietly cancelling another's schedule.
+    const id = reminderId();
+    await schedule(alice, { id });
+
+    const attempt = await bob.call("mesh.cancel_reminder", { id });
+    expect(attempt.result.changes).toBe(0);
+
+    // Still hers, still active.
+    const hers = (await alice.call("mesh.list_reminders", {})).result.rows;
+    expect(hers.find((r: any) => r.id === id)?.status).toBe("active");
+  });
+});
+
+describe("cancelling", () => {
+  test("transitions an active reminder and reports one change", async () => {
+    const id = reminderId();
+    await schedule(alice, { id });
+    expect((await alice.call("mesh.cancel_reminder", { id })).result.changes).toBe(1);
+
+    const rows = (await alice.call("mesh.list_reminders", { status: "cancelled" })).result.rows;
+    expect(rows.map((r: any) => r.id)).toContain(id);
+  });
+
+  test("cancelling twice reports no second change", async () => {
+    // A terminal row is left alone — the caller learns nothing happened rather
+    // than being told it succeeded again.
+    const id = reminderId();
+    await schedule(alice, { id });
+    await alice.call("mesh.cancel_reminder", { id });
+    expect((await alice.call("mesh.cancel_reminder", { id })).result.changes).toBe(0);
+  });
+
+  test("cancelling something that never existed is 0, not an error", async () => {
+    expect((await alice.call("mesh.cancel_reminder", { id: "rem_nonexistent" })).result.changes)
+      .toBe(0);
+  });
+
+  test("a missing id is refused", async () => {
+    expect((await alice.call("mesh.cancel_reminder", {})).error).toMatchObject({ code: -32602 });
+  });
+});
+
+describe("listing", () => {
+  test("defaults to active", async () => {
+    const active = reminderId();
+    const cancelled = reminderId();
+    await schedule(alice, { id: active });
+    await schedule(alice, { id: cancelled });
+    await alice.call("mesh.cancel_reminder", { id: cancelled });
+
+    const rows = (await alice.call("mesh.list_reminders", {})).result.rows;
+    expect(rows.map((r: any) => r.id)).toContain(active);
+    expect(rows.map((r: any) => r.id)).not.toContain(cancelled);
+    expect(rows.every((r: any) => r.status === "active")).toBe(true);
+  });
+
+  test("status: all spans terminal states too", async () => {
+    const id = reminderId();
+    await schedule(alice, { id });
+    await alice.call("mesh.cancel_reminder", { id });
+    const rows = (await alice.call("mesh.list_reminders", { status: "all" })).result.rows;
+    expect(rows.map((r: any) => r.id)).toContain(id);
+  });
+
+  test("limit is honoured and bounded", async () => {
+    for (let i = 0; i < 4; i++) await schedule(alice);
+    expect((await alice.call("mesh.list_reminders", { limit: 2 })).result.rows).toHaveLength(2);
+    const wide = await alice.call("mesh.list_reminders", { limit: 100_000 });
+    expect(wide.error).toBeUndefined();
+    expect(wide.result.rows.length).toBeLessThanOrEqual(200);
+  });
+
+  test("an unconnected socket cannot list", async () => {
+    const stranger = await connectRpc(mesh.hub);
+    const res = await stranger.call("mesh.list_reminders", {});
+    stranger.close();
+    expect(res.error).toMatchObject({ code: -32600 });
+  });
+});

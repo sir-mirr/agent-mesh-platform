@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -266,5 +266,29 @@ describe("open, without create", () => {
     expect(() =>
       writer.prepare(`INSERT INTO agent_types (type, requires_key) VALUES ('probe', 0)`).run(),
     ).not.toThrow();
+  });
+});
+
+describe("openStore and openAt agree", () => {
+  test("openStore opens an existing file with neither flag set", () => {
+    // This is how the hub reaches self-reminder.db, and it threw "flags must
+    // include SQLITE_OPEN_READONLY or SQLITE_OPEN_READWRITE" — every reminder
+    // RPC returned -32000. openAt had the same hole and was fixed; openStore
+    // carried its own copy of the same three lines and was not.
+    const dir = mkdtempSync(join(tmpdir(), "agent-mesh-store-"));
+    const path = join(dir, "self-reminder.db");
+    openAt(path, { create: true }).close();
+
+    const opened = openAt(path);
+    expect(() => opened.exec("CREATE TABLE probe (x INTEGER)")).not.toThrow();
+  });
+
+  test("openStore is openAt, not a second implementation of it", () => {
+    // The duplication is what let one be fixed and the other not, so the test
+    // is that there is only one implementation to fix.
+    const source = readFileSync(join(import.meta.dir, "open.ts"), "utf8");
+    const openStoreBody = source.slice(source.indexOf("export function openStore"));
+    expect(openStoreBody).toContain("openAt(");
+    expect(openStoreBody.slice(0, openStoreBody.indexOf("\n}"))).not.toContain("new Database");
   });
 });

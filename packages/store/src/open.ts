@@ -56,16 +56,8 @@ export interface OpenOptions {
  * rather than a short wait.
  */
 export function openStore(name: StoreName, opts: OpenOptions = {}): Database {
-  const path = join(stateDir(opts.env), STORE_FILES[name]);
-  const db = new Database(path, {
-    ...(opts.readonly ? { readonly: true } : {}),
-    ...(opts.create ? { create: true } : {}),
-  });
-  if (!opts.readonly) {
-    db.exec("PRAGMA journal_mode = WAL;");
-  }
-  db.exec("PRAGMA busy_timeout = 5000;");
-  return db;
+  const { env: _env, ...rest } = opts;
+  return openAt(join(stateDir(opts.env), STORE_FILES[name]), rest);
 }
 
 /** Open an explicit path — for tests, and for the paths env vars still override. */
