@@ -81,3 +81,19 @@ describe("raw params extraction", () => {
     expect(rawParams(text)).toBe('{"x":1}');
   });
 });
+
+/**
+ * What the hub advertises has to be what the contract describes.
+ *
+ * It was not, and the failure was invisible from this side: the hub returned a
+ * shape of its own with no `version` field, and a client that MUST NOT guess an
+ * unrecognised version simply never started its audit worker. Nothing errored
+ * here. The whole surface was off, and the hub's own tests passed.
+ */
+describe("advertised audit capabilities match the contract", () => {
+  test("every field, with the contract's values", async () => {
+    const { AUDIT_LIMITS } = await import("./rpc/audit-limits");
+    const { AUDIT_CAPABILITY_DEFAULTS } = await import("@agent-mesh/contracts");
+    expect(AUDIT_LIMITS).toEqual(AUDIT_CAPABILITY_DEFAULTS);
+  });
+});

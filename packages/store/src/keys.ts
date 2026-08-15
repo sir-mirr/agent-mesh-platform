@@ -81,6 +81,26 @@ export function pendingKey(db: Database, identity: string): AgentKeyRow | null {
   return keyByStatus(db, identity, "pending");
 }
 
+/**
+ * Which identity holds this fingerprint as its approved key.
+ *
+ * The reverse of the usual lookup, and it is what lets a caller with no socket
+ * identify itself: at most one key per identity is approved, so a fingerprint
+ * names exactly one participant. A caller therefore does not have to *claim* an
+ * identity over HTTP — the signature already says which one it is, and a claim
+ * it could make separately would be a claim it could get wrong or lie about.
+ *
+ * Deliberately restricted to `approved`. A revoked or denied fingerprint
+ * resolves to nothing, so a withdrawn key stops identifying its holder at the
+ * same moment it stops verifying.
+ */
+export function identityForFingerprint(db: Database, fingerprint: string): string | null {
+  const row = db
+    .prepare(`SELECT identity FROM agent_keys WHERE fingerprint = ? AND status = 'approved'`)
+    .get(fingerprint) as { identity: string } | undefined;
+  return row?.identity ?? null;
+}
+
 export function listKeys(db: Database, identity: string): AgentKeyRow[] {
   return db
     .prepare(`SELECT * FROM agent_keys WHERE identity = ? ORDER BY proposed_at DESC`)

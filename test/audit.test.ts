@@ -13,7 +13,10 @@ import { Database } from "bun:sqlite";
 import { createHash, sign as edSign } from "node:crypto";
 import { join } from "node:path";
 
-import { formatUploadAuthorization, uploadSignaturePreimage } from "@agent-mesh/contracts";
+import {
+  AUDIT_CAPABILITY_DEFAULTS, AUDIT_SCHEMA_VERSION,
+  formatUploadAuthorization, uploadSignaturePreimage,
+} from "@agent-mesh/contracts";
 
 import {
   connectRpc, loginAsAdmin, newKeyPair, provision, startMesh,
@@ -78,10 +81,23 @@ describe("capabilities", () => {
     const fresh = await connectRpc(mesh.hub, { kid: other.fingerprint, privateKey: other.privateKey });
     const res = await fresh.call("mesh.connect", { identity: "audit-capabilities" });
     fresh.close();
+    const audit = res.result.capabilities.audit;
+
+    // Every field § 8.9.1 requires, with the contract's values. The hub
+    // previously advertised its own shape and its own numbers: `version` was
+    // missing entirely, and since a client MUST NOT guess an unrecognised
+    // version, the advertisement it received made audit refuse to start. The
+    // whole surface was gated on a field nobody had noticed was absent.
+    expect(audit).toMatchObject(AUDIT_CAPABILITY_DEFAULTS);
+
+    // Additive, and distinct from `version`. That one is the protocol —
+    // methods, params, errors; this is the highest event schema. They move for
+    // different reasons, and a client keying off the wrong one would gate the
+    // audit surface on an unrelated change.
+    expect(audit.schema_version_max).toBe(AUDIT_SCHEMA_VERSION);
     // Absent on a 0.1 hub, which is how a client detects one rather than
     // discovering it by having an append refused.
-    expect(res.result.capabilities.audit.schema_version_max).toBe(1);
-    expect(res.result.capabilities.audit.max_blob_bytes).toBeGreaterThan(0);
+    expect(audit.version).toBe(1);
   });
 });
 

@@ -6,7 +6,11 @@
  */
 
 import { INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, rpcError, type JsonRpcRequest } from "../jsonrpc";
-import { wsIdentities } from "../presence";
+import { keys } from "@agent-mesh/store";
+
+import { agentsDb } from "../db";
+import { wsIdentities, wsProxies } from "../presence";
+import { handleReceive } from "./receive";
 import { verifyRequest, type SignatureEnvelope } from "../signature";
 import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
@@ -14,6 +18,94 @@ import { handleFetchMessages } from "./messages";
 import { handleCancelReminder, handleListReminders, handleScheduleReminder } from "./reminders";
 import { handleAuditAppend, handlePrepareBlobs } from "./audit";
 import { handleSend } from "./send";
+
+/**
+ * Dispatch a request that arrived over HTTP rather than a socket (SPEC § 8.10).
+ *
+ * A participant driven by an application rather than a daemon is awake only
+ * while it is answering, so it can neither hold a socket nor be pushed to. It
+ * gets the same methods over one request each.
+ *
+ * **The identity comes from the signature**, resolved through `sig.kid`. At most
+ * one key per identity is approved, so a fingerprint names exactly one
+ * participant — and a caller that instead *claimed* an identity alongside its
+ * signature would be stating something the signature already settles, which is
+ * an opportunity to disagree with itself.
+ *
+ * A signature is therefore required here even for a type that may connect
+ * unsigned over a socket. That is not an extra rule so much as the absence of
+ * one: without a socket to have connected on, an unsigned request carries
+ * nothing that says who is asking.
+ */
+export function dispatchHttp(raw: string): { status: number; body: string } {
+  let req: JsonRpcRequest & { sig?: SignatureEnvelope };
+  try {
+    req = JSON.parse(raw);
+  } catch {
+    return { status: 400, body: rpcError(null, PARSE_ERROR, "Parse error") };
+  }
+  if (!req.method || typeof req.method !== "string") {
+    return { status: 400, body: rpcError(req.id, INVALID_REQUEST, "Invalid request: missing method") };
+  }
+
+  const kid = typeof req.sig?.kid === "string" ? req.sig.kid : null;
+  if (!kid) {
+    return {
+      status: 401,
+      body: rpcError(req.id, INVALID_REQUEST, "requests over HTTP must be signed — there is no socket to identify the caller"),
+    };
+  }
+
+  const identity = keys.identityForFingerprint(agentsDb, kid);
+  if (!identity) {
+    // Also the answer for a revoked or denied key: it stops naming its holder
+    // at the same moment it stops verifying.
+    return {
+      status: 403,
+      body: rpcError(req.id, INVALID_REQUEST, `no approved key with fingerprint ${kid}`),
+    };
+  }
+
+  const verdict = verifyRequest(identity, req.method, req.sig, raw);
+  if (!verdict.ok) {
+    return { status: 401, body: rpcError(req.id, verdict.code, verdict.message, verdict.data) };
+  }
+
+  const params = req.params ?? {};
+
+  // A stand-in socket, registered only for the life of this call. It is never
+  // put in `onlineAgents`, which is correct rather than a shortcut: there is
+  // nowhere to push to, so the caller must not appear online to a sender who
+  // would then be told its message was delivered.
+  const caller = { httpCaller: true, identity };
+  wsIdentities.set(caller, identity);
+  try {
+    switch (req.method) {
+      case "mesh.receive":
+        return { status: 200, body: handleReceive(identity, params, req.id)! };
+      case "mesh.send":
+        return { status: 200, body: handleSend(caller, params, req.id, raw, req.sig)! };
+      case "mesh.list_agents":
+        return { status: 200, body: handleListAgents(caller, params, req.id)! };
+      case "mesh.fetch_messages":
+        return { status: 200, body: handleFetchMessages(caller, params, req.id)! };
+      case "mesh.audit.prepare_blobs":
+        return { status: 200, body: handlePrepareBlobs(caller, params, req.id)! };
+      case "mesh.audit.append":
+        return { status: 200, body: handleAuditAppend(caller, params, req.id, raw, req.sig)! };
+      // mesh.connect and mesh.register are absent on purpose: they mark a socket
+      // online, and there is no socket. An HTTP caller is never online.
+      default:
+        return {
+          status: 404,
+          body: rpcError(req.id, METHOD_NOT_FOUND, `Method not available over HTTP: ${req.method}`),
+        };
+    }
+  } finally {
+    wsIdentities.delete(caller);
+    wsProxies.delete(caller);
+  }
+}
 
 export function dispatch(ws: any, raw: string | Buffer): string | null {
   const text = typeof raw === "string" ? raw : raw.toString();
@@ -69,6 +161,8 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
       return handleCancelReminder(ws, params, req.id);
     case "mesh.list_reminders":
       return handleListReminders(ws, params, req.id);
+    case "mesh.receive":
+      return handleReceive(wsIdentities.get(ws) ?? null, params, req.id);
     case "mesh.audit.prepare_blobs":
       return handlePrepareBlobs(ws, params, req.id);
     case "mesh.audit.append":

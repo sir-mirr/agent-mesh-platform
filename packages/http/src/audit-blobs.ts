@@ -25,6 +25,7 @@ import { mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
+  AUDIT_CAPABILITY_DEFAULTS,
   UPLOAD_AUTH_SCHEME,
   parseUploadAuthorization,
   uploadSignaturePreimage,
@@ -33,9 +34,15 @@ import {
 import { openAt, stateDir, STORE_FILES, nonces, verify } from '@agent-mesh/store'
 import type { Database } from 'bun:sqlite'
 
-/** SPEC § 8.9.1. Mirrors the hub's advertised limits. */
-export const MAX_BLOB_BYTES = 100 * 1024 * 1024
-export const UPLOAD_TIMEOUT_MS = 300_000
+/**
+ * SPEC § 8.9.1, from the contract rather than restated.
+ *
+ * These have to agree with what the hub advertises or a client sizes its
+ * uploads against one number and is refused by another — and the refusal would
+ * arrive after the bytes were sent.
+ */
+export const MAX_BLOB_BYTES = AUDIT_CAPABILITY_DEFAULTS.max_blob_bytes
+export const UPLOAD_TIMEOUT_MS = AUDIT_CAPABILITY_DEFAULTS.upload_timeout_seconds * 1000
 
 const UPLOAD_DIR = join(stateDir(), 'uploads')
 mkdirSync(UPLOAD_DIR, { recursive: true })

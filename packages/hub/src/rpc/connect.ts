@@ -16,7 +16,7 @@ import {
 } from "../jsonrpc";
 import { entitlement } from "@agent-mesh/store";
 
-import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit";
+import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
 
 import { log } from "../log";
 import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
@@ -164,9 +164,13 @@ export function performConnect(
     ok: true,
     identity,
     capabilities: {
+      // The contract's shape, in the contract's order. `schema_version_max` is
+      // additive — § 8.9.1's `version` is the protocol version and this is the
+      // highest event schema, and a client keying off the wrong one would gate
+      // the whole audit surface on a field that moves for a different reason.
       audit: {
-        schema_version_max: MAX_SCHEMA_VERSION,
         ...AUDIT_LIMITS,
+        schema_version_max: MAX_SCHEMA_VERSION,
       },
     },
   });

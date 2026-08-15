@@ -22,16 +22,9 @@ import { agentsDb, auditDb, stmtInsertAuditBlob, stmtInsertAuditEvent, stmtSelec
 import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { rawParams } from "../raw-params";
+import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
 import { wsIdentities } from "../presence";
 import { blobPath, blobStat } from "../blobs";
-
-/** SPEC § 8.9.1 capability limits. Advertised so a client can size a batch. */
-export const AUDIT_LIMITS = {
-  max_attachments_per_event: 32,
-  max_attachments_bytes_per_event: 512 * 1024 * 1024,
-  max_blob_bytes: 100 * 1024 * 1024,
-  upload_timeout_seconds: 300,
-} as const;
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
@@ -141,9 +134,6 @@ export const AUDIT_EVENT_CONFLICT = -32041;
 export const RETIRED_AUDIT_SEQUENCE_CONFLICT = -32042;
 export const AUDIT_BUSY = -32043;
 export const AUDIT_STORAGE_EXHAUSTED = -32044;
-
-/** The highest `schema_version` this hub knows how to validate. */
-export const MAX_SCHEMA_VERSION = 1;
 
 /**
  * `mesh.audit.append` (SPEC § 8.9.3).
@@ -331,6 +321,7 @@ export function handleAuditAppend(
 }
 
 export { blobPath };
+export { AUDIT_LIMITS, MAX_SCHEMA_VERSION };
 
 /**
  * Events the hub records about its own routing (SPEC § 8.9.4).
