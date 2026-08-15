@@ -309,9 +309,12 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 ├── SPEC.md                        # normative contracts
 ├── MIGRATION.md                   # legacy → normalized migration notes
 ├── docs/
+│   ├── architecture.md            # how this repository is built, and why
+│   ├── implementation-plan-0.2.md # what to build next, in order
 │   ├── decisions/                 # settled design, with the reasoning
 │   ├── proposals/                 # cross-team interface work
 │   └── open-questions.md
+├── test/                          # integration — real processes, real ports
 ├── ops/
 │   ├── bin/bootstrap-hub-service-identities.sh
 │   ├── env/shared/                # baseline env examples

@@ -38,6 +38,10 @@ one package.
 
 ## Good places to start
 
+- [`docs/architecture.md`](docs/architecture.md) — read this first. What runs,
+  what owns which data, and the decisions that are not visible from the wire.
+- [`docs/implementation-plan-0.2.md`](docs/implementation-plan-0.2.md) — what is
+  being built next, in dependency order, with what "done" means for each step.
 - [`agent-mesh-contracts`](https://github.com/sir-mirr/agent-mesh-contracts) —
   the types and fixtures every implementation is checked against. Small, pure,
   and where a wire-format change lands after SPEC.
@@ -46,6 +50,9 @@ one package.
 - `SPEC.md` itself — read the section you're touching end-to-end before
   editing code. Drift between SPEC and code is the #1 thing reviewers will
   flag.
+
+Run `bun run typecheck`, `bun test packages/` and `bun test test/` before
+opening a PR. CI runs all three.
 
 ## Code style
 
