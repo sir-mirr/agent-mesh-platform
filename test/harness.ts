@@ -239,6 +239,48 @@ export interface RpcClient {
 }
 
 /** Open a hub WebSocket and correlate responses by JSON-RPC id. */
+/**
+ * Call the hub over HTTP, the way a participant that cannot hold a socket does
+ * (SPEC § 8.10).
+ *
+ * Signs over one serialisation and splices those exact bytes into the frame, as
+ * the socket client does — assembling the envelope with JSON.stringify would
+ * re-serialise the params and sign bytes the hub never receives.
+ */
+export async function callHttp(
+  hub: Service,
+  signer: Signer,
+  method: string,
+  params: unknown,
+): Promise<{ status: number; body: any }> {
+  const rawParams = JSON.stringify(params ?? {});
+  const nonce = randomUUID();
+  const iat = Math.floor(Date.now() / 1000);
+  const value = Buffer.from(
+    edSign(
+      null,
+      Buffer.from(
+        requestSignaturePreimage({
+          method,
+          kid: signer.kid,
+          nonce,
+          iat,
+          rawParams: new TextEncoder().encode(rawParams),
+        }),
+      ),
+      signer.privateKey,
+    ),
+  ).toString("base64url");
+  const sig = JSON.stringify({ alg: "ed25519", kid: signer.kid, nonce, iat, value });
+
+  const res = await fetch(`${hub.url}/api/v1/rpc`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: `{"jsonrpc":"2.0","id":1,"method":${JSON.stringify(method)},"params":${rawParams},"sig":${sig}}`,
+  });
+  return { status: res.status, body: await res.json() };
+}
+
 export interface Signer {
   /** Fingerprint of the key, as `sig.kid`. */
   kid: string;

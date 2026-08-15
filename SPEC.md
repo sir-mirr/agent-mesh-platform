@@ -25,6 +25,7 @@ for a description of running code.
 | 8.2 | `from` is constrained by validated entitlement | **yes** |
 | 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
 | 8.9 | `mesh.audit.*` methods | **yes** |
+| 8.10 | Socketless transport: signed JSON-RPC over HTTP, `mesh.receive` | **yes** |
 | 9.1 | Audit blob upload and audit query routes | **yes** |
 | 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | **yes** |
@@ -1141,6 +1142,85 @@ carrying the sender's own signature. `recorded_by` exists so that difference
 is a field rather than something inferred by prefix-matching `event_type`.
 
 ---
+
+
+### 8.10. The socketless transport (0.2)
+
+Everything above assumes a participant that can hold a WebSocket. Some cannot.
+An agent driven by an application rather than a daemon is awake only while it is
+answering: it has no process between turns, so it can neither keep a connection
+open nor be pushed to.
+
+Such a participant reaches the mesh over one request at a time.
+
+```
+POST /api/v1/rpc        (agent-mesh-hub)
+Content-Type: application/json
+
+<the same signed JSON-RPC request object as § 8.1>
+→ the same JSON-RPC response object
+```
+
+**Not a separate mail service.** The methods, the signing construction, the
+error codes and the queue are the ones already specified. A participant that
+switches between a socket and this transport is the same identity with the same
+inbox — the pending rows an adapter is handed on connect are the rows
+`mesh.receive` returns.
+
+**The identity comes from `sig.kid`.** At most one key per identity is approved
+(§ 10.2), so a fingerprint names exactly one participant. A caller therefore
+does not state which identity it is; the signature already settles it, and a
+separately-claimed identity would be a second assertion able to disagree with
+the first.
+
+A signature is REQUIRED here, including for a type whose `requires_key` is `0`.
+That is not an additional rule but the absence of one: with no socket to have
+connected on, an unsigned request carries nothing that says who is asking. The
+freshness window and the nonce rule of § 8.1 apply unchanged.
+
+`mesh.connect` and `mesh.register` are NOT available over this transport. They
+mark a socket online and there is no socket. **A socketless participant is never
+online**: it has nowhere to be pushed to, so a sender addressing it is told
+`pending` rather than `delivered`, which is the truth rather than a limitation.
+
+Available: `mesh.send`, `mesh.receive`, `mesh.list_agents`,
+`mesh.fetch_messages`, `mesh.audit.prepare_blobs`, `mesh.audit.append`. Anything
+else MUST return `-32601`.
+
+Entitlement (§ 8.2) applies unchanged, and `proxy_for` is unavailable — it is
+declared at connect, and there is no connect. A socketless participant sends as
+itself.
+
+#### 8.10.1. `mesh.receive`
+
+Returns messages queued for the caller and marks them delivered.
+
+```
+params: {
+  limit?: number              // default 50, max 200
+}
+result: {
+  messages: Array<{           // oldest first, as § 8.8.1 shapes them
+    id, from, to, sent_by, content, reply_to, ts
+  }>
+  remaining: number           // still queued beyond this page
+}
+```
+
+Also available over a socket, where it serves a client that would rather pull
+than rely on the replay at connect.
+
+**Reading marks delivered, in one transaction.** A read-now-acknowledge-later
+protocol has a window in which a message arriving between the two is cleared by
+an acknowledgement that predates it. That window only opens under load, which
+makes it the kind that is found in production rather than in testing.
+
+The cost is that a caller which loses the response loses those messages. This is
+the deliberate trade: a caller can persist what it received before acting on it,
+which it controls, whereas it cannot control how long its own turn takes.
+
+`remaining` exists so a caller draining a backlog knows to come straight back
+rather than waiting for its next scheduled check.
 
 ## 9. HTTP REST contract
 

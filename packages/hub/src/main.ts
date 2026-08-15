@@ -15,7 +15,7 @@ import { connectionOwnership, onlineAgents, proxyMap, wsIdentities, wsProxies } 
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
 } from "./rest/agents";
-import { dispatch } from "./rpc/dispatch";
+import { dispatch, dispatchHttp } from "./rpc/dispatch";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -94,6 +94,23 @@ const server = Bun.serve({
         return handlePostAgentsV1(req);
       }
       return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
+    }
+
+    // The socketless transport (SPEC § 8.10). A participant driven by an
+    // application rather than a daemon is awake only while it is answering, so
+    // it can neither hold a socket nor be pushed to. Same methods, one request
+    // each, identity from the signature.
+    if (url.pathname === "/api/v1/rpc") {
+      if (req.method !== "POST") {
+        return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
+      }
+      return req.text().then((body) => {
+        const { status, body: out } = dispatchHttp(body);
+        return new Response(out, {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
     }
 
     // REST: key record for one identity (SPEC § 10.2). Read-only: the hub
