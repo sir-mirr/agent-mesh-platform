@@ -34,6 +34,28 @@ so two agents cannot mail each other in a loop with no human in it.
 Both events fail silently when no mailer is running, which is the normal state
 on a machine not doing cross-agent work.
 
+### While the session is idle
+
+Neither event fires when nobody is typing, so mail arriving into an idle session
+waits for the next prompt. `.claude/hooks/mailbox-watch.ts` covers that gap —
+arm it with the `Monitor` tool:
+
+```
+Monitor({ command: "bun .claude/hooks/mailbox-watch.ts",
+          description: "agent mailbox", persistent: true })
+```
+
+It polls every 30 s and reports only ids above the high-water mark it took when
+armed, so a restart does not re-announce old mail. It **peeks and does not
+clear** — clearing here would race the `Stop` hook and drop the message into the
+gap, and a 10 MB body does not belong in a notification. It reports; the hook
+delivers.
+
+Not `CronCreate`. Cron would start a session on every tick to find an empty
+inbox; the shell-side poll here costs nothing and wakes the model only when mail
+actually lands, which is both cheaper and faster. Both are session-scoped and
+neither survives a restart.
+
 ### Send
 
 ```bash
