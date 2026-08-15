@@ -77,6 +77,34 @@ signed payload from the served one, and both are larger than 0.2.
 
 ---
 
+### A held `once` reminder has no way to be released in production
+
+§ 3.3 holds a one-shot reminder that is badly overdue until an operator decides
+whether to fire it. `ReminderScheduler.recordOverdueDecision` is that decision,
+and **nothing calls it** — there is no route, no CLI, and no admin surface. A
+`once` reminder that falls past the threshold is therefore held forever: still
+`active`, firing nothing, and reported only as a single `overdue_hold` event.
+
+Repeating reminders were freed from this in 0.2 — their next slot is computable,
+so there is nothing to decide. `once` genuinely needs the judgement, so the fix
+is a surface for making it, not removing the hold.
+
+**Why deferred.** It needs an admin route and a UI, and the hold is the safe
+direction meanwhile: a one-shot that never fires is better than one that fires
+at 3am for a moment that passed on Friday.
+
+### Only GitHub OAuth can produce an approved non-admin account
+
+`isUserApproved` passes an admin implicitly and everyone else only via a
+`pending_approvals` row — which is written **only** by the GitHub OAuth
+callback. `seedLocalUsers` seeds one admin. So a deployment with no GitHub
+integration has exactly one usable account, and no way to add a second without
+writing to the database directly.
+
+**Why deferred.** The intended login is GitHub; local login exists for
+bootstrap. Adding local user management is a product decision, not a gap in what
+0.2 set out to build.
+
 ## Known weaknesses
 
 Recorded honestly. Several are stated positions rather than oversights — SPEC
@@ -166,3 +194,16 @@ route was left alone.
 
 Neither the hub's routes nor http's. A restart loop proposing keys is bounded
 by the supersession rule rather than by any limit.
+
+### The SSE stream carries its JWT in the query string
+
+`GET /api/v1/events/:agentId` authenticates by `?token=` because `EventSource`
+cannot set request headers (§ 9.1 †). The token therefore appears in access
+logs, in proxy request lines, and in anything that records URLs — a bearer
+credential in the one place logging tools are designed to keep.
+
+Mitigating properly means a short-lived stream ticket exchanged for the session
+cookie, or moving to WebSocket for the browser stream.
+
+**Why deferred.** The alternative today is no event stream in a browser at all.
+The SPEC records the cost and asks deployments to redact the parameter.
