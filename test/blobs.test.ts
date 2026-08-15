@@ -86,8 +86,15 @@ function authHeader(
   return formatUploadAuthorization({ kid: key.fingerprint, nonce, signature });
 }
 
-const put = (blobKey: string, body: Uint8Array | string, headers: Record<string, string>) =>
-  fetch(`${mesh.http.url}/api/v1/audit/blobs/${blobKey}`, { method: "PUT", body, headers });
+const put = (blobKey: string, body: Uint8Array, headers: Record<string, string>) =>
+  fetch(`${mesh.http.url}/api/v1/audit/blobs/${blobKey}`, {
+    method: "PUT",
+    // Sliced into its own ArrayBuffer: a Uint8Array view over a larger buffer
+    // does not satisfy BodyInit, and the DOM lib's overloads pick
+    // URLSearchParams for the union, which is not the error it looks like.
+    body: body.slice().buffer as ArrayBuffer,
+    headers,
+  });
 
 describe("prepare_blobs", () => {
   test("derives the key, retains the extension, and issues a grant", async () => {
