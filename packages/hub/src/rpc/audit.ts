@@ -21,7 +21,7 @@ import { nonces } from "@agent-mesh/store";
 import { agentsDb, auditDb, stmtInsertAuditBlob, stmtInsertAuditEvent, stmtSelectAuditEvent } from "../db";
 import { INVALID_PARAMS, INVALID_REQUEST, rpcError, rpcResult } from "../jsonrpc";
 import { log } from "../log";
-import { rawParams } from "../signature";
+import { rawParams } from "../raw-params";
 import { wsIdentities } from "../presence";
 import { blobPath, blobStat } from "../blobs";
 

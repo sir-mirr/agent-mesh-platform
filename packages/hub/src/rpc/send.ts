@@ -10,7 +10,7 @@ import { agentsDb, stmtAgentDeleted, stmtInsertMessage, stmtUpdateMessageStatus 
 import { INVALID_PARAMS, INVALID_REQUEST, NOT_ENTITLED, rpcError, rpcNotification, rpcResult } from "../jsonrpc";
 import { log } from "../log";
 import { recordMeshEvent } from "./audit";
-import { rawParams } from "../signature";
+import { rawParams } from "../raw-params";
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
 export function handleSend(
