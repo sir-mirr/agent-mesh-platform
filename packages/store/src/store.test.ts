@@ -147,8 +147,26 @@ describe("hub schema", () => {
     const db = tempDb();
     hubSchema.migrate(db);
     expect(columns(db, "messages")).toEqual([
-      "content", "from_agent", "id", "reply_to", "status", "to_agent", "ts",
+      "content", "from_agent", "id", "reply_to", "sent_by", "status", "to_agent", "ts",
     ]);
+  });
+
+  test("adds sent_by to a database written before the transmitter was recorded", () => {
+    const db = tempDb();
+    db.exec(`CREATE TABLE messages (
+      id TEXT PRIMARY KEY, from_agent TEXT NOT NULL, to_agent TEXT NOT NULL,
+      content TEXT NOT NULL, reply_to TEXT, status TEXT, ts DATETIME
+    )`);
+    db.prepare(`INSERT INTO messages (id, from_agent, to_agent, content) VALUES (?, ?, ?, ?)`)
+      .run("old", "web-user", "codex", "sent before sent_by existed");
+
+    hubSchema.migrate(db);
+
+    expect(columns(db, "messages")).toContain("sent_by");
+    // Deliberately not backfilled from from_agent. Copying it would assert the
+    // message was not proxied, which is the one thing these rows cannot say.
+    expect(db.prepare(`SELECT sent_by FROM messages WHERE id = 'old'`).get())
+      .toEqual({ sent_by: null });
   });
 
   test("is idempotent", () => {

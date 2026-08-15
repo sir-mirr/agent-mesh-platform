@@ -663,6 +663,21 @@ hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
 will be delivered on the recipient's next connect via
 `mesh.fetch_messages`/auto-deliver).
 
+**Transmitter recording (0.2).** The hub MUST record, alongside `from`, the
+identity of the socket that actually sent the envelope. It is taken from the
+authenticated connection and MUST NOT be read from `params` — a field the
+caller can set is a field the caller can lie in, which is the same rule
+§ 8.9.3 applies to `identity` and `recorded_by`.
+
+The two are equal unless a proxy overrode `from`. Recording only `from` erased
+the distinction: a proxied envelope was stored as though the claimed sender
+wrote it, and nothing anywhere recorded which socket produced it, so an
+incorrect override was not merely permitted but invisible.
+
+This is independent of the entitlement rule below. Entitlement decides whether
+an override is *allowed*; the transmitter record is what makes the answer
+auditable either way, and it does not depend on entitlement being implemented.
+
 **Sender validation (0.2).** `from` MUST be either the socket's own connected
 identity or one of the `proxy_for` entries that identity is entitled to. The
 hub MUST reject anything else. At 0.1 `from` was accepted unchecked, which let
@@ -865,11 +880,19 @@ params: {
   from:     string            // sender identity
   to:       string            // recipient identity (this socket's identity
                               // or one of its proxy_for entries)
+  sent_by:  string | null     // identity of the socket that transmitted it
+                              // (0.2). Equals `from` unless a proxy overrode
+                              // it; null only for a message stored before the
+                              // hub recorded this.
   content:  string            // flat content string (see § 8.2)
   reply_to: string | null
   ts:       string            // ISO-8601
 }
 ```
+
+`sent_by` is hub-derived (§ 8.2) and lets a recipient tell an envelope its
+claimed sender wrote from one a proxy forwarded on their behalf. A client that
+treats `from` as the authenticated origin is wrong whenever the two differ.
 
 The hub MUST emit `mesh.message` once per successful delivery. Clients
 SHOULD handle this method; unknown-method behaviour at the JSON-RPC

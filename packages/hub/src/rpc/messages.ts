@@ -30,6 +30,7 @@ export function handleFetchMessages(
     id: string;
     from_agent: string;
     to_agent: string;
+    sent_by: string | null;
     content: string;
     reply_to: string | null;
     status: string;
@@ -40,6 +41,7 @@ export function handleFetchMessages(
     id: r.id,
     from: r.from_agent,
     to: r.to_agent,
+    sent_by: r.sent_by,
     content: r.content,
     reply_to: r.reply_to,
     status: r.status,

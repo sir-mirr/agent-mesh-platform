@@ -182,6 +182,7 @@ export function deliverPending(identity: string, ws: any) {
     id: string;
     from_agent: string;
     to_agent: string;
+    sent_by: string | null;
     content: string;
     reply_to: string | null;
     status: string;
@@ -199,6 +200,9 @@ export function deliverPending(identity: string, ws: any) {
           id: msg.id,
           from: msg.from_agent,
           to: msg.to_agent,
+          // Null for rows stored before the column existed; a replayed message
+          // must not claim it was sent by the identity it is from.
+          sent_by: msg.sent_by,
           content: msg.content,
           reply_to: msg.reply_to,
           ts: msg.ts,

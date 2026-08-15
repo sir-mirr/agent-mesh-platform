@@ -235,3 +235,116 @@ describe("soft delete", () => {
     expect(body).not.toHaveProperty("agents_removed");
   });
 });
+
+/**
+ * SPEC § 8.2 — the hub records the socket that transmitted an envelope
+ * alongside the identity it claims to be from.
+ *
+ * The override itself is not new: it is how the http server forwards for a
+ * logged-in web user. What was missing is that it erased the transmitter, so a
+ * proxied message was stored as though the claimed sender wrote it. Entitlement
+ * (step 6) decides whether an override is permitted; these assert that the
+ * answer is recorded either way, which does not depend on entitlement existing.
+ */
+describe("transmitter recording", () => {
+  const messageRow = (id: string) =>
+    new Database(join(mesh.stateDir, "hub.db"), { readonly: true })
+      .prepare(`SELECT from_agent, to_agent, sent_by FROM messages WHERE id = ?`)
+      .get(id) as { from_agent: string; to_agent: string; sent_by: string | null };
+
+  test("an ordinary send records the sender as both", async () => {
+    await provision(mesh.hub, "plain-sender", "service");
+    await provision(mesh.hub, "plain-recipient", "service");
+
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "plain-sender" });
+    const sent = await rpc.call("mesh.send", { to: "plain-recipient", content: "no proxy here" });
+    rpc.close();
+
+    expect(messageRow(sent.result.id)).toEqual({
+      from_agent: "plain-sender", to_agent: "plain-recipient", sent_by: "plain-sender",
+    });
+  });
+
+  test("a proxied send keeps both identities apart", async () => {
+    await provision(mesh.hub, "proxy-socket", "service");
+    await provision(mesh.hub, "web-user", "service");
+    await provision(mesh.hub, "proxy-recipient", "service");
+
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "proxy-socket" });
+    const sent = await rpc.call("mesh.send", {
+      to: "proxy-recipient", from: "web-user", content: "forwarded on their behalf",
+    });
+    rpc.close();
+
+    // Before this was recorded the row read `from_agent = web-user` with nothing
+    // to say a different socket produced it.
+    expect(messageRow(sent.result.id)).toEqual({
+      from_agent: "web-user", to_agent: "proxy-recipient", sent_by: "proxy-socket",
+    });
+  });
+
+  test("params cannot set the transmitter", async () => {
+    await provision(mesh.hub, "honest-socket", "service");
+    await provision(mesh.hub, "liar-recipient", "service");
+
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "honest-socket" });
+    const sent = await rpc.call("mesh.send", {
+      to: "liar-recipient", sent_by: "someone-else", content: "claiming to be another socket",
+    });
+    rpc.close();
+
+    // The whole point: it comes from the connection, not the request body.
+    expect(messageRow(sent.result.id).sent_by).toBe("honest-socket");
+  });
+
+  test("the recipient is told, live and on replay", async () => {
+    await provision(mesh.hub, "live-proxy", "service");
+    await provision(mesh.hub, "live-user", "service");
+    await provision(mesh.hub, "live-recipient", "service");
+    await provision(mesh.hub, "queued-recipient", "service");
+
+    const recipient = await connectRpc(mesh.hub);
+    await recipient.call("mesh.connect", { identity: "live-recipient" });
+
+    const proxy = await connectRpc(mesh.hub);
+    await proxy.call("mesh.connect", { identity: "live-proxy" });
+    await proxy.call("mesh.send", { to: "live-recipient", from: "live-user", content: "live" });
+    // ...and one to a recipient that is offline, so it is replayed rather than pushed.
+    await proxy.call("mesh.send", { to: "queued-recipient", from: "live-user", content: "queued" });
+    proxy.close();
+
+    await Bun.sleep(100);
+    const pushed = recipient.notifications().find((n) => n.method === "mesh.message");
+    expect(pushed.params).toMatchObject({ from: "live-user", sent_by: "live-proxy" });
+    recipient.close();
+
+    // A replay must carry it too, or reconnecting launders the attribution away.
+    const late = await connectRpc(mesh.hub);
+    await late.call("mesh.connect", { identity: "queued-recipient" });
+    await Bun.sleep(100);
+    const replayed = late.notifications().find((n) => n.method === "mesh.message");
+    expect(replayed.params).toMatchObject({ from: "live-user", sent_by: "live-proxy" });
+    late.close();
+  });
+
+  test("fetch_messages carries it", async () => {
+    await provision(mesh.hub, "hist-proxy", "service");
+    await provision(mesh.hub, "hist-user", "service");
+    await provision(mesh.hub, "hist-peer", "service");
+
+    const proxy = await connectRpc(mesh.hub);
+    await proxy.call("mesh.connect", { identity: "hist-proxy" });
+    await proxy.call("mesh.send", { to: "hist-peer", from: "hist-user", content: "for history" });
+    proxy.close();
+
+    const peer = await connectRpc(mesh.hub);
+    await peer.call("mesh.connect", { identity: "hist-peer" });
+    const res = await peer.call("mesh.fetch_messages", { agent_id: "hist-user" });
+    peer.close();
+
+    expect(res.result.messages[0]).toMatchObject({ from: "hist-user", sent_by: "hist-proxy" });
+  });
+});

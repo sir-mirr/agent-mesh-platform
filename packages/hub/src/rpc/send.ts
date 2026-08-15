@@ -37,15 +37,30 @@ export function handleSend(
 
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const replyTo = params.reply_to ?? null;
-  // Allow overriding sender identity (for proxied messages, e.g. from http-server on behalf of a user)
+
+  // Two identities, and the difference is the point. `from` is who the message
+  // is from and may be overridden by a proxy — the http server forwarding for a
+  // logged-in web user, which is why the override exists at all. `senderIdentity`
+  // is the socket that actually sent it, taken from the connection rather than
+  // from params, so a caller cannot state it.
+  //
+  // Until this was recorded the override erased the transmitter: a proxied
+  // message was stored as though the claimed sender wrote it, and nothing
+  // anywhere said otherwise. Entitlement (SPEC § 8.2, step 6) decides whether an
+  // override is *allowed*; recording the pair is what makes the answer auditable
+  // either way, and it is the half that does not depend on entitlement existing.
   const effectiveSender = (params.from && typeof params.from === "string") ? params.from : senderIdentity;
+  const proxied = effectiveSender !== senderIdentity;
+  const route = proxied
+    ? `${effectiveSender} (via ${senderIdentity}) → ${to}`
+    : `${effectiveSender} → ${to}`;
 
   const recipientWs = onlineAgents.get(to) ?? proxyMap.get(to);
   const isOnline = !!recipientWs;
   const status = isOnline ? "delivered" : "pending";
 
   // Persist message
-  stmtInsertMessage.run(msgId, effectiveSender, to, String(content), replyTo, status);
+  stmtInsertMessage.run(msgId, effectiveSender, to, senderIdentity, String(content), replyTo, status);
 
   // Deliver immediately if recipient is online
   if (recipientWs) {
@@ -55,12 +70,13 @@ export function handleSend(
           id: msgId,
           from: effectiveSender,
           to,
+          sent_by: senderIdentity,
           content: String(content),
           reply_to: replyTo,
           ts: new Date().toISOString(),
         })
       );
-      log(`delivered: ${effectiveSender} → ${to} (${msgId})`);
+      log(`delivered: ${route} (${msgId})`);
       // Notify sender that message was delivered (for typing indicator)
       const senderWs = onlineAgents.get(effectiveSender) ?? proxyMap.get(effectiveSender);
       if (senderWs && senderWs !== recipientWs) {
@@ -73,11 +89,11 @@ export function handleSend(
     } catch (err) {
       // If send fails, mark as pending
       stmtUpdateMessageStatus.run("pending", msgId);
-      log(`delivery failed: ${effectiveSender} → ${to} (${msgId}), queued`);
+      log(`delivery failed: ${route} (${msgId}), queued`);
       return rpcResult(id, { id: msgId, status: "pending" });
     }
   } else {
-    log(`queued: ${senderIdentity} → ${to} (${msgId})`);
+    log(`queued: ${route} (${msgId})`);
   }
 
   return rpcResult(id, { id: msgId, status });

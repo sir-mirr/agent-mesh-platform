@@ -124,8 +124,8 @@ export const stmtKeysOfAgent = agentsDb.prepare(`
 // --- messages ---------------------------------------------------------------
 
 export const stmtInsertMessage = db.prepare(`
-  INSERT INTO messages (id, from_agent, to_agent, content, reply_to, status, ts)
-  VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
 `);
 
 export const stmtUpdateMessageStatus = db.prepare(`
@@ -134,7 +134,7 @@ export const stmtUpdateMessageStatus = db.prepare(`
 
 /** Both directions of one conversation, newest first (SPEC § 8.4). */
 export const stmtFetchMessages = db.prepare(`
-  SELECT id, from_agent, to_agent, content, reply_to, status, ts
+  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
   FROM messages
   WHERE (from_agent = ?1 AND to_agent = ?2)
      OR (from_agent = ?2 AND to_agent = ?1)
@@ -144,7 +144,7 @@ export const stmtFetchMessages = db.prepare(`
 
 /** Oldest first: pending messages are replayed in the order they arrived. */
 export const stmtPendingMessages = db.prepare(`
-  SELECT id, from_agent, to_agent, content, reply_to, status, ts
+  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
   FROM messages
   WHERE to_agent = ? AND status = 'pending'
   ORDER BY ts ASC
