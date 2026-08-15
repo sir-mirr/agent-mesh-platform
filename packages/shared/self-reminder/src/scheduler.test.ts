@@ -75,7 +75,7 @@ describe("ReminderScheduler health and overdue policy", () => {
     expect(db.prepare(`SELECT count(*) AS count FROM audit_log`).get()).toEqual({ count: 0 });
   });
 
-  test("keeps named operating schedules deliverable when the autonomy watchdog is present", async () => {
+  test("keeps named operating schedules deliverable in one tick", async () => {
     const db = testDb();
     const now = new Date("2026-07-22T10:00:00.000Z"); // Wednesday 19:00 KST
     const scheduler = new ReminderScheduler(db, { now: () => now });
@@ -89,7 +89,7 @@ describe("ReminderScheduler health and overdue policy", () => {
     await scheduler.tick(true, async (reminder) => {
       delivered.push(reminder.id);
       return { status: "delivered" };
-    }, async () => undefined);
+    });
 
     expect(delivered).toEqual(["eod-1900-kst", "weekly-1600-kst", "weekly-1700-kst", "daily-scrum-1000-kst"]);
     expect(db.prepare(`SELECT id, status, fire_count, next_fire_at FROM reminders ORDER BY id`).all()).toEqual([

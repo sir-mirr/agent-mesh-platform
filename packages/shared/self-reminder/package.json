@@ -6,7 +6,6 @@
   "description": "Shared Agent-Mesh self-reminder service entrypoint.",
   "exports": {
     ".": "./src/main.ts",
-    "./autonomy": "./src/autonomy.ts",
     "./scheduler": "./src/scheduler.ts"
   },
   "dependencies": {

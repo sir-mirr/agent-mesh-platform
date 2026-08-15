@@ -9,5 +9,4 @@ secrets/
 tmp/
 .DS_Store
 *.tsbuildinfo
-.synapse/artifacts/
 .worktrees/

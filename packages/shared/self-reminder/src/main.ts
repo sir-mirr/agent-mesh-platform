@@ -76,10 +76,7 @@ setInterval(() => {
       .catch((error) => {
         log("reminder_delivery_rpc_failed", { reminder_id: reminder.id, error_category: hubErrorCategory(error) });
         throw error;
-      }),
-  (recipient, content) =>
-    lifecycle.request("mesh.send", { from: IDENTITY, to: recipient, content })
-  );
+      }));
 }, POLL_MS);
 
 log("scheduler_started", { db_path: DB_PATH, poll_ms: POLL_MS, identity: IDENTITY, overdue_policy: "hold_pending_pm_decision" });

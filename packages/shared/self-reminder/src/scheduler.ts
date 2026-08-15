@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
 import { CronExpressionParser } from "cron-parser";
-import { AutonomyTaskStore, type WatchdogOptions, type WatchdogSend } from "./autonomy";
 
 export type ConnectivityState = "connecting" | "registered" | "unavailable";
 
@@ -20,7 +19,6 @@ export interface SchedulerOptions {
   stalledAfterMs?: number;
   stallLogIntervalMs?: number;
   log?: (event: string, fields: Record<string, unknown>) => void;
-  autonomy?: WatchdogOptions;
 }
 
 function sqliteTime(date: Date): string {
@@ -72,8 +70,6 @@ export class ReminderScheduler {
   private readonly stallLogIntervalMs: number;
   private readonly log: (event: string, fields: Record<string, unknown>) => void;
   private ticking = false;
-  /** Typed lifecycle API; the watchdog is driven from the existing scheduler tick. */
-  readonly autonomy: AutonomyTaskStore;
 
   constructor(private readonly db: Database, options: SchedulerOptions = {}) {
     this.now = options.now ?? (() => new Date());
@@ -82,7 +78,6 @@ export class ReminderScheduler {
     this.stallLogIntervalMs = options.stallLogIntervalMs ?? 5 * 60_000;
     this.log = options.log ?? (() => {});
     this.migrate();
-    this.autonomy = new AutonomyTaskStore(this.db, { ...options.autonomy, log: this.log });
   }
 
   setConnectivity(state: ConnectivityState, errorCategory?: string): void {
@@ -131,7 +126,6 @@ export class ReminderScheduler {
   async tick(
     hubReady: boolean,
     sendReminder: (reminder: DueReminder, content: string) => Promise<{ id?: string; status?: string }>,
-    sendAutonomy?: WatchdogSend,
   ): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
@@ -139,7 +133,6 @@ export class ReminderScheduler {
       const now = this.now();
       const nowSql = sqliteTime(now);
       this.putState("last_due_scan", now.toISOString(), now);
-      if (hubReady && sendAutonomy) await this.autonomy.tickWatchdog(sendAutonomy);
       const due = this.db.prepare(`
         SELECT id, agent_id, type, schedule_spec, payload, context, next_fire_at
           FROM reminders WHERE status = 'active' AND next_fire_at <= ?
