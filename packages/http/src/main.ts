@@ -1829,6 +1829,15 @@ app.post('/api/v1/push/subscribe', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
+  // Approval, not merely a session (§ 9.1). These two were the only `JWT`
+  // routes that stopped at `extractJwt`, so a user whose access an operator has
+  // not granted could still register a delivery endpoint against this
+  // deployment — and would then be holding a subscription for a mesh they
+  // cannot read.
+  if (!isUserApproved(payload.github_login, payload.role)) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
   let body: Record<string, unknown>
   try {
     body = await c.req.json()
@@ -1853,6 +1862,15 @@ app.post('/api/v1/push/unsubscribe', async (c) => {
   const payload = await extractJwt(c)
   if (!payload) {
     return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  // Approval, not merely a session (§ 9.1). These two were the only `JWT`
+  // routes that stopped at `extractJwt`, so a user whose access an operator has
+  // not granted could still register a delivery endpoint against this
+  // deployment — and would then be holding a subscription for a mesh they
+  // cannot read.
+  if (!isUserApproved(payload.github_login, payload.role)) {
+    return c.json({ error: 'Forbidden' }, 403)
   }
 
   let body: Record<string, unknown>

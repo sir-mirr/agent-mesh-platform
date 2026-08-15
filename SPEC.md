@@ -1369,7 +1369,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
-| GET    | `/api/v1/events/:agentId` (SSE)   | JWT    | `200`   | Server-sent events for a single inbox. |
+| GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single inbox. |
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
 | GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
 | GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
@@ -1377,6 +1377,11 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
+| GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
+| GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
+| POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
+| POST   | `/api/v1/admin/keys/deny`         | JWT\*  | `200`   | Deny a proposed key, by fingerprint (§ 10.2.1). |
+| POST   | `/api/v1/admin/keys/revoke`       | JWT\*  | `200`   | Revoke a key, by fingerprint (§ 10.2.1). |
 | POST   | `/api/v1/admin/approve`           | JWT\*  | `200`   | Approve a pending user. |
 | POST   | `/api/v1/admin/deny`              | JWT\*  | `200`   | Deny a pending user. |
 | GET    | `/api/v1/admin/chat-audits`       | JWT\*  | `200`   | Cursor-paginated message audit log. |
@@ -1391,7 +1396,23 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/auth/github`                    | None   | `302`   | Begin GitHub OAuth flow. |
 | GET    | `/auth/github/callback`           | None   | `302`   | OAuth callback; sets `mesh_token` cookie. |
 | POST   | `/auth/local`                     | None   | `302`   | Local username/password login; sets cookie. |
-| GET    | `/auth/me`                        | JWT    | `200`   | Current user info. |
+| GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved`. |
+
+¶ `/auth/me` is the one `JWT` route that does **not** refuse an
+unapproved user: it answers `200` with `approved: false`. It is how a
+client discovers it is pending, so refusing it would make the pending
+state undiscoverable and leave the client with a `403` it cannot
+explain. It returns `404` for a session whose user row does not exist.
+
+† The SSE route takes its JWT as a `?token=` query parameter, not as the
+`mesh_token` cookie: `EventSource` cannot set request headers, and the
+cookie is not sent on a cross-origin stream. A client that authenticates
+this route the way it authenticates the others receives `401`.
+
+The cost is that the token appears in access logs and in any proxy's
+request line. It is accepted here because the alternative is no event
+stream at all in a browser; deployments that log request lines SHOULD
+redact the parameter.
 
 ‡ `/api/v1/attachments/:id` is unauthenticated at internal-mesh v0.1
 (SPEC § 15.3 — assumes trust-bounded network). Future profiles MAY
@@ -1448,6 +1469,15 @@ retried whole.
 (`{ deduplicated: true }`).
 
 Unauthenticated access to any non-public route MUST return `401`.
+
+**Three states, not two.** A `JWT` route distinguishes *no session*
+(`401`), *a session for a user no operator has approved* (`403`), and
+*an approved user* (the route's own answer). Approval is a separate
+question from role: an admin is approved implicitly, and every other
+login waits in `GET /api/v1/admin/pending` until approved. A client
+that reads `403` as "wrong credentials" and re-authenticates will loop
+forever — the correct handling is to tell the user their access is
+pending.
 Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 `admin` role for a `JWT*` route) MUST return `403`.
 
@@ -1809,6 +1839,30 @@ The hub MUST:
 approval endpoint there would let any caller approve its own key. Approval is
 performed on `agent-mesh-http`, behind the existing admin JWT gate, which is
 why that service holds a read-write handle on `agents.db` (§ 3.1).
+
+#### 10.2.1. Approval routes
+
+Served by `agent-mesh-http` behind the admin JWT gate (§ 9.1), for the
+reason above. Every route is `JWT*`.
+
+| Method | Path                             | Body / params | Result |
+|--------|----------------------------------|---------------|--------|
+| GET    | `/api/v1/admin/keys/pending`     | —             | `{ keys: [{ identity, fingerprint, status, proposed_at }] }` |
+| GET    | `/api/v1/admin/keys/{identity}`  | path identity | `{ keys: [...], events: [...] }` — the full history, including revoked keys |
+| POST   | `/api/v1/admin/keys/approve`     | `{ fingerprint, reason? }` | `{ ok: true, fingerprint, status }` |
+| POST   | `/api/v1/admin/keys/deny`        | `{ fingerprint, reason? }` | `{ ok: true, fingerprint, status }` |
+| POST   | `/api/v1/admin/keys/revoke`      | `{ fingerprint, reason? }` | `{ ok: true, fingerprint, status }` |
+
+**A decision names a fingerprint, never an identity.** An operator who
+approves "whatever is pending for `prod-codex1`" approves whatever
+arrived last — including a proposal that landed between reading the
+screen and clicking. The fingerprint is also the string the operator is
+required to have compared against the one the holder logged, so naming
+it *is* the check. A request without one is `400`.
+
+`reason` is optional and is recorded on the `agent_key_events` row. It
+matters on revocation: a routine `rotation` says nothing about earlier
+signatures, while `compromise` casts doubt on the window preceding it.
 
 **Fingerprint comparison is part of the procedure.** A conformant lane MUST log
 its own key fingerprint at startup, and the approval surface MUST display the
