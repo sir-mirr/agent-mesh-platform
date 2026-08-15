@@ -382,11 +382,6 @@ misrepresented downstream.
   of completeness, and must not be described as complete or tamper-proof.
 - **Dedup is per (hash, extension).** Identical bytes under different
   extensions are stored twice.
-- **hub-direct lanes are not channel-audited.** SPEC § 6.1 offers two
-  forwarding modes, and hub-direct — the driver opening its own hub connection
-  — bypasses the adapter entirely, so there is no outbox and no channel audit.
-  Their mesh traffic is still audited by the hub. This is currently the only
-  documented way to run a Claude lane.
 - **Audit retention is undecided.** Everything else in § 17 now has an answer;
   how long audit events are kept does not, and it is a policy question rather
   than a technical one. Until it is set, storage growth is unbounded, and on a
@@ -394,20 +389,40 @@ misrepresented downstream.
 
 ---
 
-## 6. What the platform will not change
+## 6. hub-direct forwarding is removed, not demoted
 
-**SPEC § 6.1 hub-direct mode stays a first-class mode.** § 15.1 proposes
-demoting it to a migration compatibility mode. Removing or demoting it breaks
-every existing Claude lane — currently the only documented way to run one — and
-affects out-of-tree channel drivers that implement it. It stays; what gets
-documented instead is that **channel audit is a property of adapter mode**, so
-hub-direct drivers are outside channel audit coverage by construction.
+§ 15.1 proposes keeping hub-direct forwarding as a migration compatibility
+mode. It is being removed outright instead, and SPEC § 6.1 drops to a single
+forwarding mode.
 
-**Rebuilding Claude lanes around an adapter is client-side work.** The in-tree
-Claude adapter is a stdio MCP server and hub client with no HTTP ingress, so
-the target architecture needs one built. That work belongs with the runtime
-adapters, which are leaving this repository. The platform is not blocking it
-and is not scheduling it.
+In hub-direct mode the channel driver opens its own hub connection and
+`mesh.send`s inbound channel traffic, and the runtime picks it up from the hub.
+The adapter is not in the path at all:
+
+```
+Discord driver ──WS──▶ hub ──WS──▶ claude adapter ──stdio MCP──▶ Claude Code
+                        ▲
+              the hub is the channel↔runtime transport
+```
+
+That contradicts the proposal's own premise twice over. § 1 puts the hub out of
+the channel real-time path for latency, and this mode puts it back in. And with
+no adapter in the path there is no outbox, so channel traffic has nowhere to be
+recorded.
+
+Removing it means **channel audit applies everywhere** rather than being a
+property of one of two modes — the coverage gap this document would otherwise
+have had to declare disappears.
+
+The cost is that Claude lanes, which run this way today, need an adapter before
+they work again. That is acceptable here: migrating existing deployments is
+already out of scope, and the work lands in the lane repository regardless.
+
+**Building the Claude adapter is client-side work.** The in-tree Claude adapter
+is a stdio MCP server and hub client with no HTTP ingress, so the target
+architecture needs one built. The runtime adapters are leaving this repository;
+the platform's part is the SPEC change, and it is neither blocking nor
+scheduling the rest.
 
 ---
 
@@ -416,7 +431,8 @@ and is not scheduling it.
 | Section | Change |
 |---|---|
 | § 3.1 | hub storage is no longer a single `hub.db` file |
-| § 6.1 | channel audit is a property of adapter mode |
+| § 4.1 | a Claude lane gains a runtime-adapter; it is no longer driver-only |
+| § 6.1 | hub-direct forwarding removed — adapter mode is the only mode |
 | § 8 | new `mesh.audit.*` methods; `mesh.connect` capabilities and signature |
 | § 9.1 | blob `PUT`, audit query API |
 | § 9.4 | host split table gains the new routes |
