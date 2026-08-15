@@ -13,7 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { connectRpc, provision, startMesh, type Mesh, type RpcClient } from "./harness";
+import { connectRpc, newPublicKey, provision, startMesh, type Mesh, type RpcClient } from "./harness";
 
 let mesh: Mesh;
 let alice: RpcClient;
@@ -186,5 +186,68 @@ describe("listing", () => {
     const res = await stranger.call("mesh.list_reminders", {});
     stranger.close();
     expect(res.error).toMatchObject({ code: -32600 });
+  });
+});
+
+/**
+ * § 3.3 — how a fired reminder actually reaches its owner.
+ *
+ * The scheduler's own tests inject a stub sender, so they proved the retry
+ * machinery and nothing about the hub refusing the send. Every reminder owned
+ * by a key-holding runtime was rejected with -32013 and retried until the
+ * overdue hold parked it — a whole feature broken end to end, with green tests
+ * on both sides of the seam.
+ */
+describe("a fired reminder reaches its owner", () => {
+  test("delivered when the daemon sends as itself", async () => {
+    await provision(mesh.hub, "self-reminder", "service");
+    // A key-holding runtime: the case that failed, because § 8.2 refuses
+    // proxying an identity that signs for itself.
+    await provision(mesh.hub, "rem-owner", "ai-codex", null, newPublicKey());
+
+    const daemon = await connectRpc(mesh.hub);
+    await daemon.call("mesh.connect", { identity: "self-reminder" });
+
+    // Exactly what the daemon sends now: no `from`, so the socket identity
+    // stands and the hub does not read it as a proxied send.
+    const res = await daemon.call("mesh.send", {
+      to: "rem-owner", content: "your reminder fired",
+    });
+    daemon.close();
+
+    expect(res.error).toBeUndefined();
+    expect(res.result.id).toBeTruthy();
+  });
+
+  test("claiming the owner's identity is refused, which is why it is not done", async () => {
+    // The old behaviour, asserted so it cannot come back as a "fix" for the
+    // message reading as being from the scheduler.
+    await provision(mesh.hub, "rem-owner-2", "ai-codex", null, newPublicKey());
+    const daemon = await connectRpc(mesh.hub);
+    await daemon.call("mesh.connect", { identity: "self-reminder" });
+
+    const res = await daemon.call("mesh.send", {
+      to: "rem-owner-2", from: "rem-owner-2", content: "pretending to be you",
+    });
+    daemon.close();
+    expect(res.error).toMatchObject({ code: -32013 });
+  });
+
+  test("the owner sees the scheduler as the sender, and sent_by agrees", async () => {
+    await provision(mesh.hub, "rem-watcher", "service");
+    const daemon = await connectRpc(mesh.hub);
+    await daemon.call("mesh.connect", { identity: "self-reminder" });
+
+    const watcher = await connectRpc(mesh.hub);
+    await watcher.call("mesh.connect", { identity: "rem-watcher" });
+    await daemon.call("mesh.send", { to: "rem-watcher", content: "fired" });
+    await Bun.sleep(150);
+    daemon.close();
+
+    const pushed = watcher.notifications().find((n) => n.method === "mesh.message");
+    watcher.close();
+    // Nothing proxied, so the two agree — which is the shape a consumer should
+    // see for anything that is not forwarded on someone's behalf.
+    expect(pushed.params).toMatchObject({ from: "self-reminder", sent_by: "self-reminder" });
   });
 });

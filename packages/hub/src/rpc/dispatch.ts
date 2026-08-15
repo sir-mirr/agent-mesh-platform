@@ -11,7 +11,8 @@ import { keys } from "@agent-mesh/store";
 import { agentsDb } from "../db";
 import { wsIdentities, wsProxies } from "../presence";
 import { handleReceive } from "./receive";
-import { verifyRequest, type SignatureEnvelope } from "../signature";
+import { KEY_NOT_APPROVED, verifyRequest, type SignatureEnvelope } from "../signature";
+import { dropConnection } from "../presence";
 import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
 import { handleFetchMessages } from "./messages";
@@ -140,6 +141,24 @@ export function dispatch(ws: any, raw: string | Buffer): string | null {
   if (speakingAs) {
     const verdict = verifyRequest(speakingAs, req.method, req.sig, text);
     if (!verdict.ok) {
+      // § 8.1: the hub MUST close any connection it holds for an identity whose
+      // key is not approved, as soon as it observes that — which, because key
+      // state is read per request, is here.
+      //
+      // Returning the error alone left the socket in `onlineAgents`, so a
+      // revoked identity still read as online to `mesh.list_agents` and still
+      // received pushed messages. Revocation that leaves the connection
+      // receiving is not revocation.
+      if (verdict.code === KEY_NOT_APPROVED) {
+        const error = rpcError(req.id, verdict.code, verdict.message, verdict.data);
+        // Sent before the close so the client learns why rather than seeing an
+        // unexplained disconnect; 1008 is the policy-violation close § 8.1 uses
+        // for its other two eviction cases.
+        try { ws.send(error); } catch {}
+        dropConnection(ws, speakingAs);
+        try { ws.close(1008, "key not approved"); } catch {}
+        return null;
+      }
       return rpcError(req.id, verdict.code, verdict.message, verdict.data);
     }
   }

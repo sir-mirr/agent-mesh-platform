@@ -190,6 +190,13 @@ A scheduler daemon that connects to the hub as `identity=self-reminder`.
 Delivery semantics: **at-least-once**. Consumers MUST be idempotent or
 deduplicate via `idempotency_key`.
 
+**A fired reminder is sent from `self-reminder`**, not from the identity that
+scheduled it. The daemon is the sender at fire time; the owner scheduled it
+earlier, which the payload and `context` record. The daemon MUST NOT set
+`params.from` to the owner: § 8.2 reads that as a proxied send and refuses it,
+because an identity holding its own key signs for itself. Doing so refuses every
+reminder owned by a key-holding runtime.
+
 The names below are the **caller-facing helper / MCP tool surface** that
 agent runtimes (Codex MCP server, Claude Code agent-mesh plugin, etc.)
 expose to their operator. They are not the hub wire methods. Each helper

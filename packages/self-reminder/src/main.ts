@@ -52,14 +52,28 @@ lifecycle = new HubLifecycle({
   onConnectivityState: (state) => scheduler.setConnectivity(state),
   onUnavailable: (category) => scheduler.setConnectivity("unavailable", category),
   onRegistered: () => scheduler.onHubRegistered((recipient, content) =>
-    lifecycle.request("mesh.send", { from: IDENTITY, to: recipient, content })
+    // No `from`: this daemon is the sender, so the socket's own identity is
+    // correct and stating it again would make the hub treat an ordinary send as
+    // a proxied one (§ 8.2).
+    lifecycle.request("mesh.send", { to: recipient, content })
   ),
 });
 
 lifecycle.start();
 setInterval(() => {
   void scheduler.tick(lifecycle.isReady(), (reminder, content) =>
-    lifecycle.request("mesh.send", { from: reminder.agent_id, to: reminder.agent_id, content })
+    // **From this daemon, not from the owner.** A fired reminder is sent by the
+    // scheduler; the owner scheduled it earlier, which the payload records. It
+    // used to claim `from: reminder.agent_id`, which the hub reads as a proxied
+    // send — and § 8.2 refuses proxying any identity that holds its own key,
+    // because such an identity signs for itself. Every reminder owned by an
+    // `ai-*` runtime was therefore refused with -32013 and retried until the
+    // overdue hold parked it.
+    //
+    // Sending as the owner would need entitlement to allow speaking for a
+    // key-holding identity, which is the one rule that makes entitlement mean
+    // anything. This is also simply truer.
+    lifecycle.request("mesh.send", { to: reminder.agent_id, content })
       .catch((error) => {
         log("reminder_delivery_rpc_failed", { reminder_id: reminder.id, error_category: hubErrorCategory(error) });
         throw error;

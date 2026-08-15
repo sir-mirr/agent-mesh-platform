@@ -271,9 +271,25 @@ describe("key state is read per request", () => {
     // effect only when the socket happened to close, which is precisely the
     // case revocation exists for.
     const after = await rpc.call("mesh.send", { to: "revocable-peer", content: "after" });
-    rpc.close();
     expect(after.error).toMatchObject({ code: -32014 });
     expect(after.error.data).toMatchObject({ code: "KEY_NOT_APPROVED", key_status: "revoked" });
+
+    // § 8.1: the hub MUST close the connection as soon as it observes the
+    // state. Returning the error alone left the socket in the online map, so a
+    // revoked identity still read as online and still received pushed
+    // messages — revocation that leaves the connection receiving is not
+    // revocation.
+    await Bun.sleep(200);
+    const observer = await connectRpc(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey })
+      .catch(() => null);
+    observer?.close();
+
+    const peer = await connectRpc(mesh.hub);
+    await peer.call("mesh.connect", { identity: "revocable-peer" });
+    const listed = (await peer.call("mesh.list_agents", {})).result.agents;
+    peer.close();
+    rpc.close();
+    expect(listed.find((a: any) => a.id === "revocable-signer")?.online).toBe(false);
   });
 
   test("a pending key cannot sign, and says so", async () => {

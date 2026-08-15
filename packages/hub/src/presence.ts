@@ -31,3 +31,30 @@ export const wsProxies = new WeakMap<object, Set<string>>();
  * working (SPEC § 8.1).
  */
 export const connectionOwnership = new ConnectionOwnership<object>();
+
+/**
+ * Remove a socket from every presence map it appears in.
+ *
+ * The close handler has always done this inline. It is a function now because a
+ * second caller needs it: § 8.1 requires the hub to close a connection whose key
+ * is no longer approved, and evicting there by hand would be a second copy of
+ * the same five lines — which is how the socket came to be left online in the
+ * first place.
+ *
+ * Safe to call before `ws.close()`: the close handler runs again and finds
+ * nothing to do.
+ */
+export function dropConnection(ws: any, identity: string): void {
+  const released = connectionOwnership.release(ws);
+  if (released?.wasOwner && onlineAgents.get(identity) === ws) {
+    onlineAgents.delete(identity);
+  }
+  const proxied = wsProxies.get(ws);
+  if (proxied) {
+    for (const pid of proxied) {
+      if (proxyMap.get(pid) === ws) proxyMap.delete(pid);
+    }
+    wsProxies.delete(ws);
+  }
+  wsIdentities.delete(ws);
+}
