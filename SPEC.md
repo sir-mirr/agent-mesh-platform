@@ -1266,18 +1266,18 @@ endpoint (§ 9.4, § 10.1) over loopback, and it MUST:
      `NODE_ENV=development`), description "Agent Mesh Web UI".
    - `shared/self-reminder.env` → `${SELF_REMINDER_IDENTITY:-self-reminder}`,
      description "SelfReminder service (PoC1)".
-   - For every `*/adapter.env`: the `CODEX_ADAPTER_IDENTITY` value,
-     description `Codex runtime adapter for <lane>` where `<lane>` is
-     resolved as `${CODEX_TARGET_AGENT}` (when present) and otherwise
-     falls back to the parent directory's basename.
    The set is dynamic — there is no fixed "built-in six" list, and
    identities such as `admin` or `bootstrap` are not provisioned by
    this script.
 
-   At 0.1 the script also read `HUB_FORWARD_IDENTITY` from every
-   `*/discord.env`. Hub-direct forwarding is removed (§ 6.1), so a
-   channel-driver no longer holds a hub identity of its own and that
-   discovery step goes with it.
+   **The script discovers baseline service identities only.** At 0.1 it also
+   walked the env tree for lane identities, reading `CODEX_ADAPTER_IDENTITY`
+   from every `*/adapter.env` and `HUB_FORWARD_IDENTITY` from every
+   `*/discord.env`. Both are gone: hub-direct forwarding is removed (§ 6.1),
+   so a channel-driver holds no hub identity of its own, and lane components
+   are no longer deployed from this repository. A lane provisions its own
+   identity through `POST /api/v1/agents` (§ 10.1), which cross-VM
+   deployments already required (§ 14.3).
 2. For each discovered identity, `curl -fsS -X POST` to the hub API
    URL. The URL is resolved by the following fallback chain (highest
    precedence first):

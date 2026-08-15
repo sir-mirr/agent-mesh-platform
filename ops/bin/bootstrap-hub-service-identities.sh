@@ -89,31 +89,6 @@ discover_self_reminder_identity() {
   queue_identity "${identity:-self-reminder}" "SelfReminder service (PoC1)"
 }
 
-discover_codex_adapter_identities() {
-  shopt -s nullglob
-  local env_file identity target lane
-  for env_file in "${ENV_ROOT}"/*/adapter.env; do
-    identity="$(read_env_var "$env_file" CODEX_ADAPTER_IDENTITY)"
-    [[ -n "$identity" ]] || continue
-    target="$(read_env_var "$env_file" CODEX_TARGET_AGENT)"
-    lane="${target:-$(basename "$(dirname "$env_file")")}"
-    queue_identity "$identity" "Codex runtime adapter for ${lane}"
-  done
-  shopt -u nullglob
-}
-
-discover_discord_hub_forward_identities() {
-  shopt -s nullglob
-  local env_file identity target
-  for env_file in "${ENV_ROOT}"/*/discord.env; do
-    identity="$(read_env_var "$env_file" HUB_FORWARD_IDENTITY)"
-    target="$(read_env_var "$env_file" HUB_FORWARD_TARGET_AGENT)"
-    [[ -n "$identity" && -n "$target" ]] || continue
-    queue_identity "$identity" "Discord hub-forward for ${target}"
-  done
-  shopt -u nullglob
-}
-
 post_identity() {
   local identity="${1:?identity required}"
   local description="${2-}"
@@ -152,8 +127,6 @@ main() {
 
   discover_http_identity
   discover_self_reminder_identity
-  discover_codex_adapter_identities
-  discover_discord_hub_forward_identities
 
   if ((${#IDENTITY_ORDER[@]} == 0)); then
     log "no service identities discovered under ${ENV_ROOT}"
