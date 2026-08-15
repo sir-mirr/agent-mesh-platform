@@ -332,6 +332,47 @@ are absent: they mark a socket online and there is no socket, so a socketless
 participant is never online and a sender addressing it is told `pending` rather
 than `delivered`.
 
+### Errors
+
+Two things travel with a failure and they answer different questions.
+
+`error.code` is the JSON-RPC number, and what it decides is **retry
+policy** — via `ERROR_CLASS` in `@agent-mesh/contracts`:
+
+| Class | What a client does |
+|-------|--------------------|
+| `transient` | Retry with backoff and jitter, no attempt ceiling. |
+| `transient-operator` | Retry far more slowly, and say plainly that someone has to intervene. |
+| `wait-approval` | A human must approve or restore a key. Never hot-loop. |
+| `permanent` | Stop. Quarantine the payload and its blobs locally, and alert — **not** silent deletion. |
+
+`error.data.code` is a string naming **which condition it was**. Several
+conditions share one number: `-32000` is returned by the dispatcher's
+last-resort guard, by a `mesh.send` that could not persist, by a reminder
+store failure, and by an unclassified audit failure. Branching on the number
+alone cannot tell them apart.
+
+```ts
+import { ERROR_CLASS, ERROR_DATA_CODE, errorClass, errorDataCode } from "@agent-mesh/contracts"
+
+if (errorClass(err.code, "transient") === "permanent") deadLetter(event)
+if (errorDataCode(err) === ERROR_DATA_CODE.AUDIT_APPEND_FAILED) …
+```
+
+**`errorClass` requires you to say what an unknown code means, and that is
+deliberate.** A code this build has never seen is a version skew, and the right
+answer differs by path: on the audit outbox `transient` is the safer miss,
+because a wrong retry is bounded by your backoff ceiling while a wrong
+quarantine has no ceiling and no automatic recovery. On connect or send there
+is no queue to drain later, so `permanent` is safer.
+
+What is not acceptable is a silent default. `ERROR_CLASS[code] ?? "transient"`
+is the natural thing to write, and it is how a code the contract did not yet
+name reached a deployed client as an unbounded retry against a path that was
+already broken. A required argument cannot be silent, and it greps.
+
+`SPEC.md` § 8.9.3 carries the full table.
+
 ### HTTP REST (`http://<host>:3000`)
 
 | Path                                | Description                          |

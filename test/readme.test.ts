@@ -153,3 +153,42 @@ describe("README", () => {
   });
 
 });
+
+describe("README errors section", () => {
+  test("the classes it names are the ones contracts defines", async () => {
+    // The section exists because a client got this wrong twice in one day.
+    // A class listed here that contracts does not have — or one contracts has
+    // and this omits — sends a client author to write a branch for a class
+    // that will never arrive, or leaves them without one that will.
+    const errors = readFileSync(
+      join(REPO_ROOT, "node_modules/@agent-mesh/contracts/src/errors.ts"),
+      "utf8",
+    );
+    const declared = new Set(
+      [...(/export type ErrorClass = ([^;]+);/.exec(errors)?.[1] ?? "").matchAll(/"([a-z-]+)"/g)]
+        .map((m) => m[1]!),
+    );
+    expect(declared.size).toBe(4);
+
+    const table = /### Errors\n([\s\S]*?)\n### /.exec(README)?.[1] ?? "";
+    expect(table.length).toBeGreaterThan(200);
+    for (const cls of declared) {
+      expect(table, `README names ${cls}`).toContain(`\`${cls}\``);
+    }
+  });
+
+  test("the helpers it tells a client to call exist", async () => {
+    const contracts = await import("@agent-mesh/contracts");
+    for (const name of ["errorClass", "errorDataCode", "ERROR_CLASS", "ERROR_DATA_CODE"]) {
+      expect(README, `README mentions ${name}`).toContain(name);
+      expect(contracts, `contracts exports ${name}`).toHaveProperty(name);
+    }
+  });
+
+  test("errorClass is shown with the argument it requires", () => {
+    // Shown as a one-argument call, the example would be the exact mistake the
+    // paragraph beside it is warning about — and it would not compile.
+    const call = /errorClass\(([^)]*)\)/.exec(README)?.[1] ?? "";
+    expect(call.split(",").length).toBe(2);
+  });
+});
