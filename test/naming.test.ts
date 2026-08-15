@@ -206,8 +206,13 @@ describe("a name agrees with whether the function writes", () => {
     const raw = parsedNames();
     expect(raw.length).toBeGreaterThan(200);
 
+    // A proportion, not merely non-zero. `> 0` passes on a parser that has
+    // narrowed to almost nothing — one surviving `if` would satisfy it while
+    // every real function had been dropped. Control flow is the bulk of any
+    // source file, so the share is stable in a way the count is not.
     const keywords = raw.filter((n) => NOT_A_FUNCTION.has(n));
-    expect(keywords.length).toBeGreaterThan(0);
+    expect(keywords.length).toBeGreaterThan(50);
+    expect(keywords.length / raw.length).toBeGreaterThan(0.2);
 
     const scanned = raw.filter((n) => !NOT_A_FUNCTION.has(n));
     for (const keyword of ["if", "for", "while", "switch", "do", "else", "return", "catch"]) {
