@@ -47,9 +47,23 @@ people are proxied rather than signing for themselves (SPEC § 10.3).
 
 If people are ever to sign, this index has to go and verification has to select
 by `sig.kid` — which the wire format already carries, so the change is smaller
-than it sounds.
+than it sounds. Note that verification currently checks `kid` against the single
+approved key rather than selecting by it, deliberately: selecting would let a
+revoked key keep working as long as the caller kept naming it. A multi-key
+version has to keep that property some other way.
 
 **Why deferred.** Nobody needs it while people are proxied.
+
+### Audit payloads are stored verbatim, secrets and all
+
+The payload has to be byte-identical for its digest to stay checkable, and the
+digest is what the attestation signs over. So redaction happens on read, not on
+write, and the store holds whatever a client put there. A reader with direct
+file access sees it unredacted.
+
+**Why deferred.** The alternative breaks the attestation, which is the thing
+audit exists for. Fixing it properly means encrypting at rest or splitting the
+signed payload from the served one, and both are larger than 0.2.
 
 ---
 
@@ -59,35 +73,62 @@ Recorded honestly. Several are stated positions rather than oversights — SPEC
 § 14.2 sets out the v0.1 trust posture — but a stated position is still a
 weakness, and the list is more useful than the distinction.
 
-### The hub is unauthenticated
+### Teardown is unauthenticated, and nothing mitigates it
 
-`POST /api/v1/agents` and `DELETE /api/agents/{identity}` take no credential.
-Anything that reaches the hub's port can provision an identity or take one
-offline permanently.
+`DELETE /api/agents/{identity}` takes no credential. Anything that reaches the
+hub's port can take any identity offline permanently, and a soft-deleted
+identity cannot be re-registered.
 
-Key *approval* is deliberately not here — it is on http behind the admin gate,
-because an approval endpoint on an unauthenticated service would let a caller
-approve its own key. So provisioning being open is survivable: a proposal grants
-nothing until approved. Teardown being open is not mitigated by anything.
+`POST /api/v1/agents` is open too, and that one *is* survivable: a proposal
+grants nothing until an operator approves it, which is exactly why approval
+lives on http instead. Teardown has no equivalent second step.
 
 **Mitigation today:** SPEC § 14.1 pins the hub to a trust-bounded interface.
 That is a deployment assumption, not an enforcement.
 
-### `mesh.connect` takes no credential until step 3
+### `can_proxy` is self-asserted
 
-Anything that reaches the port can connect as any provisioned identity that is
-currently offline. Step 3 closes it for types with `requires_key`; types without
-it stay open by design.
+http sets the grant on its own row when it registers itself, because
+provisioning is unauthenticated and nothing else was going to. So the entitlement
+check reads a value the checked party wrote. It is not circular in practice —
+the subject half of the rule is a type lookup nobody self-asserts — but it means
+`can_proxy` is only as trustworthy as reaching the hub's port is hard.
+
+Closing it means authenticating provisioning, which is the item above.
 
 ### Traffic is plaintext `ws://`
 
-No transport security between the hub and its clients. § 14.2 states this.
+No transport security between the hub and its clients. § 14.2 states this. Every
+signature above is therefore integrity without confidentiality: an observer
+cannot forge a request but can read every one.
 
-### An unentitled `from` is recorded but not refused
+### A `requires_key = 0` type connects unsigned
 
-`messages.sent_by` now records the transmitting socket, so an incorrect
-override is visible after the fact. It is not yet *prevented* — that is step 6.
-Attribution is not access control.
+By design, not by omission — but the guarantee is per type. `service` is seeded
+at 0 because the baseline predates keys, so `http-server` and `self-reminder`
+connect unsigned today. A deployment that wants them authenticated raises the
+flag and provisions keys; nothing in the code needs to change.
+
+### The audit store is never pruned
+
+Retention is indefinite by decision. On exhaustion the hub keeps routing and
+refuses audit writes with `-32044` rather than deleting to make room, so the
+failure mode is "audit stops" rather than "history quietly rewrites itself".
+Someone still has to notice.
+
+### Orphaned blobs are never collected
+
+A blob uploaded before an event that never arrives stays on disk. § 8.9.3 calls
+this a storage concern rather than a consistency defect — blobs are immutable
+and content-addressed — but there is no collector, and the grace period before
+one could safely run is undecided.
+
+### Nonce windows are per process
+
+Both of them. The request-nonce window (§ 8.1) is in memory, which is correct
+for a single hub and would not be for two: a replay could be split across
+instances. The hub does not scale horizontally for the presence reason already
+recorded, so this is a consequence rather than a second limit.
 
 ### Attachment download is unauthenticated
 
