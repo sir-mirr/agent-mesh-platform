@@ -15,6 +15,7 @@
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { generateKeyPairSync } from "node:crypto";
 import { join } from "node:path";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
@@ -153,16 +154,38 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
 }
 
 /** Provision an identity, which every connecting agent must have (SPEC § 8.1). */
+/** A real Ed25519 public key, base64url — SPKI wraps the raw 32 bytes. */
+export function newPublicKey(): string {
+  const { publicKey } = generateKeyPairSync("ed25519");
+  const der = publicKey.export({ format: "der", type: "spki" }) as Buffer;
+  return Buffer.from(der.subarray(der.length - 32)).toString("base64url");
+}
+
+/**
+ * Register an identity.
+ *
+ * A key is generated when the type needs one and the caller did not supply one,
+ * because that is what a real client does — an `ai-*` runtime holds a key, and
+ * SPEC § 10.1 refuses to provision such a type without it. Making every test
+ * that merely needs an agent to exist carry key material would be noise, and
+ * would have obscured the tests that are actually about keys.
+ *
+ * `requiresKey` is inferred from the type prefix rather than read from the
+ * registry: the hub is the authority and a test that guesses wrong gets a `400`
+ * naming the reason, which is a clear enough failure.
+ */
 export async function provision(
   hub: Service,
   identity: string,
   type = "service",
   description: string | null = null,
+  publicKey?: string,
 ): Promise<Response> {
+  const key = publicKey ?? (type.startsWith("ai-") ? newPublicKey() : undefined);
   return fetch(`${hub.url}/api/v1/agents`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ identity, type, description }),
+    body: JSON.stringify({ identity, type, description, ...(key ? { public_key: key } : {}) }),
   });
 }
 

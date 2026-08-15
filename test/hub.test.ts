@@ -8,7 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { connectRpc, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, newPublicKey, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -58,12 +58,26 @@ describe("REST control plane", () => {
     const res = await fetch(`${mesh.hub.url}/api/agents`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identity: "agent-legacy", type: "ai-codex" }),
+      body: JSON.stringify({
+        identity: "agent-legacy", type: "ai-codex", public_key: newPublicKey(),
+      }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ action: "inserted" });
     expect(body.created_at).toBeUndefined();
+  });
+
+  test("the alias applies the same key rule as the canonical route", async () => {
+    // An alias that accepted what the canonical route refuses would be a way
+    // around § 10.1 rather than a compatibility shim.
+    const res = await fetch(`${mesh.hub.url}/api/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity: "alias-unkeyed", type: "ai-codex" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("requires a signing key");
   });
 });
 
