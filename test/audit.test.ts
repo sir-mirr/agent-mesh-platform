@@ -52,7 +52,11 @@ const auditDb = () => new Database(join(mesh.stateDir, "audit.db"), { readonly: 
 
 const event = (over: Record<string, unknown> = {}) => ({
   schema_version: 1,
-  event_id: `evt_${Math.random().toString(36).slice(2)}`,
+  // Time-ordered, as § 8.9.3 requires of every producer. A random id makes the
+  // cursor's tie-break random too — `stored_at` is millisecond precision, so
+  // events collide on it under any load — and the test would then be checking
+  // pagination against a client that breaks the contract pagination rests on.
+  event_id: `evt_${Bun.randomUUIDv7()}`,
   event_type: "channel.message.received",
   occurred_at: new Date().toISOString(),
   ...over,

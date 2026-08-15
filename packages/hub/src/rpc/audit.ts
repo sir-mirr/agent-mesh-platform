@@ -13,7 +13,7 @@
  * is discovered much later as storage that will not deduplicate.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { deriveBlobKey } from "@agent-mesh/contracts";
 import { nonces } from "@agent-mesh/store";
@@ -375,7 +375,15 @@ export function recordMeshEvent(
 ): void {
   const payload = JSON.stringify({
     schema_version: 1,
-    event_id: `evt_${randomUUID()}`,
+    // UUIDv7, not v4. § 8.9.3 requires event ids to be time-ordered and the
+    // query API's cursor pages by `(stored_at, event_id)` — `stored_at` is
+    // millisecond precision, so several events land on the same value under any
+    // load and the id is what breaks the tie. A random id breaks it randomly,
+    // which lets a row inserted later sort before the cursor and be skipped.
+    //
+    // The hub is a producer as much as any client, and this requirement is one
+    // it was placing on others while not meeting it.
+    event_id: `evt_${Bun.randomUUIDv7()}`,
     event_type: eventType,
     occurred_at: new Date().toISOString(),
     correlation_id: fields.messageId,
