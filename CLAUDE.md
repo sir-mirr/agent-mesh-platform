@@ -29,14 +29,24 @@ was written down rather than left in the mailbox.
 | `UserPromptSubmit` | before a turn starts — waiting mail arrives as context |
 | `Stop` | when a turn ends — mail that landed *during* the turn continues it |
 
-**Do not poll by hand.** The hook reads and clears in one round-trip, which
-matters: reading is non-destructive, and `DELETE` clears **everything addressed
-to that identity** rather than the ids just fetched — so every second between
-the two is a window where arriving mail is dropped unread. Checking manually
-across a working turn widens that window from milliseconds to minutes.
+**Nothing is deleted.** The mailbox is the audit record of how the contract
+between the two repositories reached its current state, and an exchange that
+survives only in one agent's transcript is not a record anyone else can read.
 
-Both verbs are scoped by `?agentId=`, so clearing one inbox never touches
-another agent's.
+Delivery is bounded by a high-water mark in
+`~/.claude/agent-mesh/<identity>.mailbox-mark`, written every run. Losing that
+file replays the inbox once — noisy, harmless.
+
+**Not the mailer's `isRead` flag**, which is the obvious choice and the wrong
+one: a plain `GET` marks messages read as a side effect, and
+`mailbox-watch.ts` polls every 30 seconds. Filtering on `isRead` would hand the
+watcher every message first and leave the hook with nothing to deliver. The
+flag is consulted only on the very first run, when there is no mark yet and the
+alternative is replaying everything ever sent.
+
+**Do not poll by hand** either. A `GET` marks read, so a manual check consumes
+the flag the first run depends on, and a turn that forgets to look leaves the
+other side waiting on an answer nobody read.
 
 The `Stop` hook does not fire twice for one turn — `stop_hook_active` guards it,
 so two agents cannot mail each other in a loop with no human in it.
