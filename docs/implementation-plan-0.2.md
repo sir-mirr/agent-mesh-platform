@@ -4,7 +4,26 @@ SPEC 0.2 is a settled contract. This is the order to build it in, what each
 step depends on, and how each one is known to work.
 
 **Increment 1 (steps 1 and 5) is done.** `agents.db` carries identity, the type
-registry and the key tables; teardown is a soft delete. Steps 2 onward remain.
+registry and the key tables; teardown is a soft delete. Steps 2 onward remain —
+that is six of the eight, and all of the security half.
+
+**Three things landed that this plan did not contain.** They came out of
+building step 6 and are recorded here so the plan is not read as the whole of
+what changed:
+
+- `messages.sent_by` — the hub records the socket that transmitted an envelope,
+  not only the `from` it claimed. Independent of step 6: entitlement decides
+  whether an override is allowed, this decides whether the answer is auditable.
+- `human` in `agent_types`, and a person provisioned as a mesh identity when an
+  operator approves them. Step 6 needs to ask what type a `from` names, and
+  before this the hub had no row for a person to have a type in.
+- The identity format loosened to `^[A-Za-z0-9][A-Za-z0-9-]*$`, compared
+  case-sensitively. The old rule excluded the logins people actually have.
+
+**Step 6 is no longer blocked.** The client team confirmed lanes never proxy, so
+the only proxied participants are people, and the rule is a type check rather
+than the storage model this plan left open. It still needs Lyong's confirmation
+before it is built.
 
 Two things shape the whole plan.
 

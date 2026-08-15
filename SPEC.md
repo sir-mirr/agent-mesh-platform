@@ -23,11 +23,14 @@ for a description of running code.
 | 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
 | 8.1 | `mesh.connect` carries a signature and returns capabilities | no |
 | 8.2 | `from` is constrained by validated entitlement | no |
+| 8.2 | The transmitting socket is recorded alongside `from` (`sent_by`) | **yes** |
 | 8.9 | `mesh.audit.*` methods | no |
 | 9.1 | Audit blob upload and audit query routes | no |
 | 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | no |
+| 10.1 | Identity format loosened; kebab-case advisory, case-sensitive | **yes** |
 | 10.3 | Agent types come from a registry table, not a hardcoded enum | **yes** |
+| 10.3 | `human` is a seeded type, and a person holds a mesh identity | **yes** |
 | 15.2 | Blob keys retain the file extension | **yes** (0.1 behaviour, now normative) |
 
 Upgrading from 0.1 does **not** migrate existing data. Each store is treated
