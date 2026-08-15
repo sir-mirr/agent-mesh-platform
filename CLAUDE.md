@@ -30,10 +30,13 @@ was written down rather than left in the mailbox.
 | `Stop` | when a turn ends — mail that landed *during* the turn continues it |
 
 **Do not poll by hand.** The hook reads and clears in one round-trip, which
-matters: reading is non-destructive and `DELETE` clears the whole inbox rather
-than the ids just fetched, so every second between the two is a window where
-arriving mail is dropped. Checking manually across a working turn widens that
-window from milliseconds to minutes.
+matters: reading is non-destructive, and `DELETE` clears **everything addressed
+to that identity** rather than the ids just fetched — so every second between
+the two is a window where arriving mail is dropped unread. Checking manually
+across a working turn widens that window from milliseconds to minutes.
+
+Both verbs are scoped by `?agentId=`, so clearing one inbox never touches
+another agent's.
 
 The `Stop` hook does not fire twice for one turn — `stop_hook_active` guards it,
 so two agents cannot mail each other in a loop with no human in it.
