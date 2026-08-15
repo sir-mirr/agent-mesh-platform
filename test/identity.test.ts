@@ -53,6 +53,82 @@ describe("storage split", () => {
   });
 });
 
+/**
+ * § 3.1 — the hub's baseline invariants.
+ *
+ * These are the properties everything else assumes and nothing else asserts:
+ * which file holds which table, who may create a schema, and that the
+ * deprecated alias is an alias rather than a second way to register.
+ */
+describe("hub baseline invariants", () => {
+  test("audit never shares a file with messages", () => {
+    // § 3.1 states the reason: one file means audit growth exhausting the disk
+    // also stops message routing — a recording feature taking down the
+    // communication feature.
+    const audit = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    const auditTables = (audit.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table'`,
+    ).all() as Array<{ name: string }>).map((t) => t.name);
+    audit.close();
+
+    expect(auditTables).toContain("audit_events");
+    expect(auditTables).toContain("audit_event_blobs");
+    expect(auditTables).not.toContain("messages");
+    expect(auditTables).not.toContain("agents");
+  });
+
+  test("an event and its blob references share one file, because they commit together", () => {
+    // § 8.9.3 requires one transaction, and SQLite gives no atomic commit
+    // across attached databases in WAL mode.
+    const audit = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    const tables = (audit.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'audit_%'`,
+    ).all() as Array<{ name: string }>).map((t) => t.name);
+    audit.close();
+    expect(tables.sort()).toEqual(["audit_event_blobs", "audit_events"]);
+  });
+
+  test("the agents table carries every column § 3.1 names", () => {
+    const cols = (agentsDb().prepare(`PRAGMA table_info(agents)`).all() as Array<{ name: string }>)
+      .map((c) => c.name);
+    for (const required of ["identity", "type", "description", "created_at", "last_seen"]) {
+      expect(cols, `missing ${required}`).toContain(required);
+    }
+  });
+
+  test("mesh.register is an alias, not a second way to register", () => {
+    // § 3.1: the hub MUST NOT register identities outside POST /api/v1/agents,
+    // and the deprecated alias explicitly does not insert rows. If it did, a
+    // caller could mint an identity by connecting as one.
+    return (async () => {
+      const rpc = await connectRpc(mesh.hub);
+      const res = await rpc.call("mesh.register", { identity: "never-provisioned", type: "service" });
+      rpc.close();
+
+      expect(res.error).toMatchObject({ code: -32011 });
+      // bun:sqlite returns null for no row, not undefined. The point is that
+      // there is no row: connecting must not be a way to mint an identity.
+      expect(agentsDb().prepare(`SELECT identity FROM agents WHERE identity = ?`)
+        .get("never-provisioned")).toBeNull();
+    })();
+  });
+
+  test("mesh.register does not overwrite type or description either", async () => {
+    // § 8.1a: type and description on a register call MUST be ignored rather
+    // than persisted — an older client that still sends them must not be able
+    // to relabel an identity by reconnecting.
+    await provision(mesh.hub, "alias-agent", "service", "original description");
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.register", {
+      identity: "alias-agent", type: "ai-claude", description: "rewritten",
+    });
+    rpc.close();
+
+    expect(agentsDb().prepare(`SELECT type, description FROM agents WHERE identity = ?`)
+      .get("alias-agent")).toEqual({ type: "service", description: "original description" });
+  });
+});
+
 describe("agent type registry", () => {
   test("accepts every seeded type, including ai-gemini", async () => {
     for (const type of ["ai-claude", "ai-codex", "ai-gemini", "service", "human"]) {
