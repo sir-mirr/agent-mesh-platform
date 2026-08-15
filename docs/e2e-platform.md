@@ -115,6 +115,13 @@ already-open socket, without a reconnect.
 **Entitlement is checked per request**, not cached from what the socket declared
 at connect.
 
+**Audit appends are idempotent by `event_id`.** A repeat carrying identical
+bytes returns `duplicate: true` and creates one row; a repeat carrying different
+bytes is `-32041` and permanent. A scenario may replay an append.
+
+**Blob uploads deduplicate.** Re-uploading a key already held returns `200` with
+`deduplicated: true`.
+
 ---
 
 ## Failures worth asserting
@@ -129,6 +136,9 @@ These are the ones where a wrong implementation still looks like it works:
 | A revoked key fails on the **open socket**, before any reconnect | Caching the key for the connection's lifetime is the obvious implementation and defeats revocation |
 | `mesh.message` carries `sent_by` | `from` is a claim; `sent_by` is what the hub recorded |
 | An unentitled `from` gives `-32013` | Attribution is not access control |
+| `-32041` is never retried | It is permanent; a client treating it as transient retries an event that can never be accepted, forever |
+| A blob of the wrong size reads as missing | That is what an interrupted upload leaves, and accepting it puts truncated bytes behind a verified event |
+| A hub-recorded `mesh.*` event carries the *sender's* signature | It is what makes a mesh event evidence rather than a report |
 
 ---
 
@@ -149,6 +159,9 @@ Not gaps, so do not assert around them:
 ## Capability status
 
 `SPEC.md`'s table at the top is authoritative — trust it over this document.
-At the time of writing: provisioning, key approval and signed RPC are built;
-audit blob upload and `mesh.audit.*` are not. A scenario requiring those should
-report pending rather than failing.
+
+All eight steps of 0.2 are built: provisioning, key approval, signed RPC,
+entitlement, blob upload, audit ingestion and the audit query API. No scenario
+needs to report pending on capability grounds.
+
+What remains of 0.2 is § 4.1 and § 6.1, which are lane repository work.

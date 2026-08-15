@@ -65,11 +65,17 @@ Everything is SQLite under `AGENT_MESH_STATE_DIR` on the core VM.
 
 | File | Contents | hub | http | self-reminder |
 |------|----------|-----|------|---------------|
-| `agents.db` | `agents`, `agent_types`, `agent_keys`, `agent_key_events` | rw | — (rw at step 2) | — |
+| `agents.db` | `agents`, `agent_types`, `agent_keys`, `agent_key_events`, `upload_nonces` | rw | rw | — |
 | `hub.db` | `messages` | rw | ro | — |
+| `audit.db` | `audit_events`, `audit_event_blobs` | rw | ro | — |
 | `agent-mesh.db` | users, policies, approvals, push subs, `agent_registry` | — | rw | — |
 | `self-reminder.db` | reminders, scheduler state | rw | — | rw |
-| `uploads/` | attachment bytes | — | w | — |
+| `uploads/` | attachment bytes | ro | rw | — |
+
+http holds `agents.db` read-write for two things it owns and the hub cannot: an
+operator's key approval (§ 10.2), which the hub could not authenticate, and the
+blob upload check, which reads the grant and the approved key. The hub still
+owns the DDL.
 
 **More than one process opens some of these.** That is safe because every
 handle sets `journal_mode = WAL` and `busy_timeout`, and because they are all on
@@ -129,13 +135,9 @@ a naming convention. A login the loosened rule still rejects is approved as a we
 user and logged as not registrable, which is visible rather than silently
 half-working.
 
-### What 0.2 still changes
+### Why three files rather than one
 
-`agents.db` is split out. `upload_nonces` joins it at step 4, and http gains
-read-write access at step 2 so an operator can approve a key. `audit.db`
-appears alongside at step 7, written by the hub and read by http.
-
-The reason for three files rather than one is retention. Identity is small and
+Retention. Identity is small and
 permanent; messages are operational and short-lived; audit is kept
 indefinitely. One file means one backup policy, one `VACUUM`, and — the part
 that matters — audit growth filling the disk takes message routing down with
@@ -150,11 +152,18 @@ the files was a second handle at the call site rather than an untangling.
 
 ```
 packages/
-├── store/            schema and handles for the shared databases
+├── store/            schema, handles, and the rules both services apply
 ├── hub/              the broker                    :3100
 ├── http/             the human surface             :3000
 └── self-reminder/    the scheduler
 ```
+
+`store` grew past schema at 0.2, and deliberately. The key lifecycle, the
+entitlement rule, signature verification and upload grants are all run by *both*
+services — the hub accepts key proposals while http approves them, the hub
+verifies request signatures while http verifies upload ones. Two
+implementations of one state machine are two sets of edge cases, and the edge
+cases are the whole of it.
 
 Four packages rather than one because they deploy as separate units and have
 genuinely different dependencies — http pulls `hono` and `web-push`,
@@ -169,9 +178,18 @@ main.ts        config, Bun.serve, heartbeat, shutdown
 db.ts          handles and prepared statements
 jsonrpc.ts     framing and error codes
 presence.ts    online, proxy and ownership maps
-rpc/           connect · send · agents · messages · reminders · dispatch
-rest/          identity provisioning and teardown
+signature.ts   per-request verification, freshness, nonce window
+raw-params.ts  locating the params bytes as they arrived
+blobs.ts       where attachment bytes live
+rpc/           connect · send · agents · messages · reminders · audit · dispatch
+rest/          identity provisioning, teardown, key status
 ```
+
+`raw-params.ts` is separate from `signature.ts` for a reason worth stating: the
+scan is a pure function over text, and `signature.ts` opens the database at
+module load. Splitting them is what makes the scan testable without a state
+directory — and it is the piece most able to disagree with a client silently,
+since a wrong span does not throw, it just fails to verify.
 
 Statements are prepared once at module load: they are on every hot path, and
 re-preparing per call would dominate each one.
@@ -187,8 +205,18 @@ main.ts        routes, SSE fan-out, the audit poller, wiring
 db.ts          agent-mesh.db, and the registry.json import that predates it
 auth.ts        GitHub OAuth and JWT
 provision.ts   registering an approved person as a mesh identity
+keys-admin.ts  an operator's key decisions
+audit-blobs.ts the streaming blob upload
+audit-query.ts the audit read API
 ui/            theme · landing · chat · admin
 ```
+
+Three of those exist here rather than on the hub because each needs something
+the hub does not have. Key approval needs to know who is asking, and the hub
+authenticates nobody — an approval route there would let a caller approve its
+own key, which is the one thing the procedure exists to prevent. The audit query
+needs the admin session. The blob upload needs neither, but § 9.1 puts the blob
+routes alongside the other attachment storage, which is here.
 
 **The pages are template literals that return strings, not static assets.**
 That is what lets this service run with no build step, and it is a deliberate
@@ -236,27 +264,70 @@ audit design, and it lives in the lane repository.
 
 ## 5. Identity and trust, today
 
-Honestly: there is none to speak of.
+0.2 answered four of the five things that were wrong here. What follows is what
+holds now, and what still does not.
 
-- `mesh.connect` takes an identity string and no credential. Anything that can
-  reach `:3100` can connect as any provisioned identity that is currently
-  offline.
-- `POST /api/v1/agents` and `DELETE /api/agents/{identity}` are
-  unauthenticated. The second is now a soft delete, so it no longer destroys
-  message history, but an unauthenticated caller can still take any identity
+### What a request has to prove
+
+`mesh.connect` and every request after it carry a signature, verified against
+the identity's **currently approved** key. Whether a signature is required is a
+property of the identity's type (`agent_types.requires_key`), never of whether
+a key happens to exist — the earlier draft verified only where one did, which
+let a caller register without a key and then connect unsigned.
+
+The key is read per request rather than cached for the connection. Caching would
+make revocation take effect only when the socket happened to close, which is
+precisely the case revocation exists for. Reading the row costs about a
+twentieth of the verification it feeds, so there is nothing to trade.
+
+`iat` must be within ±120 s and a nonce may not repeat inside that window. The
+nonce set is in memory: it only has to be unrepeatable for the width of the
+window, since outside it the freshness check rejects the request anyway.
+
+### What a key has to go through
+
+A key is proposed by anyone — that is what lets provisioning stay
+unauthenticated, because a proposal grants nothing — and is inert until an
+operator approves it. Approval runs on http behind the admin gate and **cannot**
+run on the hub: the hub authenticates nobody, so an approval endpoint there
+would let a caller approve its own key and turn the procedure into a formality.
+
+Decisions are addressed by fingerprint, never by identity. Approving "whatever
+is pending for X" approves whatever arrived last, including a proposal that
+landed between reading the screen and clicking — and the fingerprint is the
+string SPEC § 10.2 requires the operator to have compared against the one the
+holder logged.
+
+### Who may speak for whom
+
+`from` must be the connected identity, or an identity the socket declared in
+`proxy_for` and is entitled to proxy. Entitlement is two conditions: the
+proxying identity carries `can_proxy`, and the subject's type has
+`requires_key = 0`.
+
+The second is the substantive one, and it is a type lookup rather than a grant
+table because that makes it true rather than merely configured — an identity
+that can hold a key signs for itself, so a proxy claim over it is either
+redundant or a lie. The first exists because the second alone would let the
+scheduler speak for a person; it is a `service` exactly as the web gateway is.
+
+Both are read per request against stored rows. An operator who withdraws a grant
+means it from that moment.
+
+### What is still open
+
+- **The hub is unauthenticated for provisioning and teardown.** Provisioning
+  being open is survivable, since a proposal grants nothing. Teardown is not
+  mitigated by anything: an unauthenticated caller can still take any identity
   offline permanently.
-- `proxy_for` is unchecked; a socket may claim to proxy anyone.
-- `mesh.send`'s `from` is unchecked.
+- **Traffic is plaintext `ws://`.** SPEC § 14.2 states this.
+- **`can_proxy` is self-asserted.** http sets it on its own row when it
+  registers, which follows from provisioning being unauthenticated.
+- **A type with `requires_key = 0` connects unsigned.** That is the design, not
+  a gap — but it means the guarantee is per type, and a deployment that wants
+  its services authenticated has to raise the flag.
 
-All of it is consistent with SPEC § 14.2, which states the v0.1 position
-plainly: identity-only auth over plain `ws://` on a trust-bounded network. It
-is a stated position, not an oversight — but it is also why 0.2 exists, and why
-audit ingestion could not be built on top of it as proposed.
-
-0.2 answers all four together with registered Ed25519 keys, an operator
-approval procedure, and a signature on every request. The design is in
-`docs/decisions/identity-and-authentication.md`; the reasoning is there because
-the decisions do not compose if taken separately.
+`docs/deferred.md` carries these with the rest.
 
 ---
 
@@ -272,9 +343,11 @@ It ships TypeScript source with no build step, for the same reason the pages
 are inline: both consumers run Bun with TypeScript 7, so there is nothing to
 compile and nothing that can drift from its source.
 
-This repository does not depend on it yet. The baseline does not consume those
-types today; it will when the 0.2 signature and audit work lands, and a
-dependency ahead of its consumer is noise.
+This repository depends on it as of 0.2, pinned to `v0.4.0`. It supplies the
+signature preimages, the key fingerprint, the identity pattern and the blob key
+rule — every value both sides must derive identically. The fixtures run in this
+repository's CI as well as the contract repository's, which is the point of
+them: two implementations agreeing is only tested where both are present.
 
 ---
 
@@ -309,6 +382,8 @@ accident.
 | `mesh.fetch_messages` has no cursor | SPEC § 8.4 dropped the `before` parameter as unimplemented. Long histories are not reachable past `limit`. |
 | Message content stored more than once | `hub.db` for routing, `agent-mesh.db` for the web UI. Predates this layout and has not been reconciled. |
 | Attachment download is unauthenticated | Ids are sha256 digests, so this is capability-style access. SPEC § 15.3 states it; whether it is sufficient is open. |
+| Audit rows are never pruned | Retention is indefinite by decision. On exhaustion the hub keeps routing and refuses audit writes with `-32044`; it does not delete to make room. |
+| One approved key per identity | Fits an installed agent on one machine. It is also why people are proxied rather than signing for themselves. |
 
 ---
 
