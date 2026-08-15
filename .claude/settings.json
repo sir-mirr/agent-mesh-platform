@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/mailbox.ts\"",
+            "timeout": 10,
+            "statusMessage": "Checking agent mailbox"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/mailbox.ts\"",
+            "timeout": 10,
+            "statusMessage": "Checking agent mailbox"
+          }
+        ]
+      }
+    ]
+  }
+}
