@@ -5,12 +5,22 @@
  * lifecycle and health logs intentionally contain identifiers, counts and error
  * categories rather than reminder content or credentials.
  */
+import { createHash } from "node:crypto";
+
 import { Database } from "bun:sqlite";
 import { selfReminderSchema } from "@agent-mesh/store";
 import WebSocket from "ws";
 
 import { HubLifecycle, hubErrorCategory } from "./lifecycle";
 import { ReminderScheduler } from "./scheduler";
+
+/**
+ * One key per (recipient, recovery). The alert text carries `outage_started`,
+ * so hashing it keys the retry to the outage rather than to the attempt.
+ */
+function recoveryAlertKey(recipient: string, content: string): string {
+  return createHash("sha256").update(`${recipient} ${content}`).digest("hex").slice(0, 32);
+}
 
 const STATE_DIR = process.env.AGENT_MESH_STATE_DIR ?? "/srv/agent-mesh-lab/state/shared";
 const DB_PATH = process.env.SELF_REMINDER_DB ?? `${STATE_DIR}/self-reminder.db`;
@@ -55,13 +65,20 @@ lifecycle = new HubLifecycle({
     // No `from`: this daemon is the sender, so the socket's own identity is
     // correct and stating it again would make the hub treat an ordinary send as
     // a proxied one (§ 8.2).
-    lifecycle.request("mesh.send", { to: recipient, content })
+    //
+    // Keyed on the outage it reports, so a retry after a lost response does not
+    // page the same operator twice for one recovery.
+    lifecycle.request("mesh.send", {
+      to: recipient,
+      content,
+      client_message_id: recoveryAlertKey(recipient, content),
+    })
   ),
 });
 
 lifecycle.start();
 setInterval(() => {
-  void scheduler.tick(lifecycle.isReady(), (reminder, content) =>
+  void scheduler.tick(lifecycle.isReady(), (reminder, content, clientMessageId) =>
     // **From this daemon, not from the owner.** A fired reminder is sent by the
     // scheduler; the owner scheduled it earlier, which the payload records. It
     // used to claim `from: reminder.agent_id`, which the hub reads as a proxied
@@ -73,7 +90,7 @@ setInterval(() => {
     // Sending as the owner would need entitlement to allow speaking for a
     // key-holding identity, which is the one rule that makes entitlement mean
     // anything. This is also simply truer.
-    lifecycle.request("mesh.send", { to: reminder.agent_id, content })
+    lifecycle.request("mesh.send", { to: reminder.agent_id, content, client_message_id: clientMessageId })
       .catch((error) => {
         log("reminder_delivery_rpc_failed", { reminder_id: reminder.id, error_category: hubErrorCategory(error) });
         throw error;

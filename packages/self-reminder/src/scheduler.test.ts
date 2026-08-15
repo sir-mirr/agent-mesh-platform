@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
-import { ReminderScheduler } from "./scheduler";
+import { ReminderScheduler, fireKey } from "./scheduler";
 
 function testDb(): Database {
   const db = new Database(":memory:");
@@ -331,5 +331,88 @@ describe("overdue handling distinguishes repeating from one-shot", () => {
 
     expect(fired).toBe(1);
     expect(rowOf(db, "r1").status).toBe("fired");
+  });
+});
+
+describe("a fire is delivered under a key that identifies the fire", () => {
+  test("the key changes per slot, so a repeating reminder is not deduplicated to one", async () => {
+    // Keying on the reminder id alone would make § 8.2 return the first
+    // envelope for every later slot, and the reminder would appear to fire once.
+    const db = testDb();
+    let now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    const keys: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      await scheduler.tick(true, async (_r, _c, key) => {
+        keys.push(key);
+        return { status: "delivered" };
+      });
+      now = new Date(now.getTime() + 15 * 60_000);
+    }
+
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  test("retrying the same slot reuses the key, so the hub can settle it", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    const keys: string[] = [];
+    // First attempt fails after the hub may already have committed it — the
+    // case the key exists for. The row returns to `active` and the next scan
+    // retries the same slot.
+    await scheduler.tick(true, async (_r, _c, key) => {
+      keys.push(key);
+      throw new Error("connection reset");
+    });
+    expect(rowOf(db, "i1").status).toBe("active");
+
+    await scheduler.tick(true, async (_r, _c, key) => {
+      keys.push(key);
+      return { status: "delivered", duplicate: true };
+    });
+
+    expect(keys[0]).toBe(keys[1]!);
+    expect(keys[0]!.length).toBeLessThanOrEqual(128);
+  });
+
+  test("the key is stable across a restart", () => {
+    // Derived, not random. A daemon that regenerated it on restart would
+    // deliver the pending fire a second time under a key the hub has not seen.
+    expect(fireKey("rem_1", "2026-07-14 09:00:00")).toBe(fireKey("rem_1", "2026-07-14 09:00:00"));
+    expect(fireKey("rem_1", "2026-07-14 09:00:00")).not.toBe(fireKey("rem_1", "2026-07-14 09:15:00"));
+    expect(fireKey("rem_1", "2026-07-14 09:00:00")).not.toBe(fireKey("rem_2", "2026-07-14 09:00:00"));
+  });
+
+  test("a deduplicated delivery is reported as such rather than as a fresh fire", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addDue(db, "2026-07-14 09:00:00");
+    const events: Array<[string, Record<string, unknown>]> = [];
+    const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
+
+    await scheduler.tick(true, async () => ({ status: "delivered", duplicate: true }));
+
+    const fired = events.find(([e]) => e === "reminder_fired");
+    expect(fired?.[1].deduplicated).toBe(true);
+  });
+
+  test("the envelope carries a per-fire handle a consumer can deduplicate on", async () => {
+    const db = testDb();
+    const now = new Date("2026-07-14T09:00:00.000Z");
+    addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
+    const scheduler = new ReminderScheduler(db, { now: () => now });
+
+    let content = "";
+    await scheduler.tick(true, async (_r, c) => {
+      content = c;
+      return { status: "delivered" };
+    });
+
+    expect(content).toContain("fire=i1@2026-07-14T09:00:00Z");
   });
 });

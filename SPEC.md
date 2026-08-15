@@ -239,8 +239,21 @@ slots rather than replaying them — the backlog the hold exists to
 prevent cannot form. Holding them would strand them: the row stays
 `active`, fires nothing, and falls further behind on every scan.
 
-Delivery semantics: **at-least-once**. Consumers MUST be idempotent or
-deduplicate via `idempotency_key`.
+Delivery semantics: **at-least-once**. A fire whose `mesh.send` response
+is lost is retried on the next scan, so the daemon MUST send each fire
+with a `client_message_id` (§ 8.2) identifying the **fire** — derived
+from `(reminder id, scheduled slot)`, not from the reminder id alone. A
+repeating reminder delivers many times under one id, so a key covering
+only the id would make § 8.2 return the first envelope for every later
+slot and the reminder would appear to fire once.
+
+The key MUST be derived rather than generated, so that it survives a
+daemon restart: a key regenerated on restart delivers a pending fire a
+second time under a key the hub has never seen.
+
+The delivered envelope's header carries `fire=<reminder id>@<slot>` for
+consumers deduplicating at their own layer. Consumers MUST be
+idempotent or deduplicate on that.
 
 **A fired reminder is sent from `self-reminder`**, not from the identity that
 scheduled it. The daemon is the sender at fire time; the owner scheduled it
