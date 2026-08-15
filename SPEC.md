@@ -1230,10 +1230,24 @@ the incumbent disconnects (§ 8.1), one when the identity is provisioned
 reporting them as ordinary `transient` produces a hot loop against a
 condition no amount of retrying resolves.
 
-**A code with no class MUST be treated as permanent.** Defaulting an
-unrecognised code to `transient` turns a code from a newer hub into an
-unbounded retry, which is the failure this whole split exists to
-prevent.
+**A code with no class is a version skew, and how to treat it depends
+on the path.** A client MUST make that choice explicit rather than let
+it fall out of an expression.
+
+On a path with an outbox behind it — audit ingestion — an unrecognised
+code SHOULD be treated as `transient`. A wrong retry is bounded by the
+client's backoff ceiling and visible as a rising attempt count; a wrong
+quarantine has neither bound nor automatic recovery, and would hold
+every event that arrived during the skew.
+
+On a path with nothing to drain later — connect, send — it SHOULD be
+treated as `permanent`. There is no queue that will resolve it, and
+retrying a refusal the client cannot act on is a loop.
+
+What is not acceptable is a silent default. `-32000` reached a
+deployed client through `ERROR_CLASS[code] ?? "transient"` written once
+and never reconsidered, which is why `errorClass()` in
+`@agent-mesh/contracts` requires the fallback as an argument.
 
 Clients MUST distinguish the two classes. Transient errors are retried with
 backoff and jitter and no maximum attempt count. **Permanent errors MUST NOT

@@ -169,9 +169,15 @@ describe("every code the hub emits is classified", () => {
     );
     expect(unclassified).toEqual([]);
 
-    // And the accessor never leaves a caller without an answer.
+    // And every emitted code resolves without reaching the caller's fallback —
+    // the fallback answers a version skew, and this build is not skewed with
+    // itself. Both spellings, so a code classified only by accident of the
+    // fallback would show up.
     for (const code of emitted) {
-      expect(typeof errorClass(code)).toBe("string");
+      if (code === -32042 || jsonRpcReserved.has(code)) continue;
+      expect(errorClass(code, "transient"), `class for ${code}`).toBe(
+        errorClass(code, "permanent"),
+      );
     }
   });
 });
