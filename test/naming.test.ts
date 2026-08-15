@@ -130,6 +130,19 @@ function bodyOf(lines: string[], start: number): string {
   return body.join("\n");
 }
 
+/** Every name the declaration matcher found, before any filtering. */
+function parsedNames(): string[] {
+  const names: string[] = [];
+  for (const file of sourceFiles(join(REPO_ROOT, "packages"))) {
+    const masked = maskTemplates(readFileSync(file, "utf8").split("\n")).join("\n");
+    DECL.lastIndex = 0;
+    for (let m = DECL.exec(masked); m; m = DECL.exec(masked)) {
+      names.push(m[1]!.replace(/^#/, ""));
+    }
+  }
+  return names;
+}
+
 function scan(disagrees: (name: string) => boolean): Finding[] {
   const found: Finding[] = [];
   for (const file of sourceFiles(join(REPO_ROOT, "packages"))) {
@@ -181,6 +194,43 @@ describe("a name agrees with whether the function writes", () => {
     for (const name of ["claim", "issueGrant", "recordEvent", "markDeadLetter", "teardownIdentity"]) {
       expect(QUERY_PREFIX.test(name), `${name} reads as a query`).toBe(false);
       expect(WRITE_VERB.test(name), `${name} reads as a write`).toBe(true);
+    }
+  });
+
+  test("the scanner is looking at functions, not at whatever parses", () => {
+    // The client found 180 of its 389 "declarations" were `if` and `for`, and
+    // its suite passed throughout: a checker pointed at the wrong list checks
+    // that list consistently. Ours parses the same way — `if (x) {` is
+    // indistinguishable from a method by shape — so the filter is load-bearing
+    // and this pins that it is doing the work.
+    const raw = parsedNames();
+    expect(raw.length).toBeGreaterThan(200);
+
+    const keywords = raw.filter((n) => NOT_A_FUNCTION.has(n));
+    expect(keywords.length).toBeGreaterThan(0);
+
+    const scanned = raw.filter((n) => !NOT_A_FUNCTION.has(n));
+    for (const keyword of ["if", "for", "while", "switch", "do", "else", "return", "catch"]) {
+      expect(scanned, `${keyword} reached the scanned set`).not.toContain(keyword);
+    }
+  });
+
+  test("functions that write are actually reached", () => {
+    // Canaries, and the check that was missing. Requiring the declaration to
+    // end its line with `{` once dropped every multi-line signature — most of
+    // this codebase — and every rule kept passing because it had nothing left
+    // to judge. Any of these disappearing means the matcher narrowed again.
+    const raw = new Set(parsedNames());
+    for (const canary of [
+      "teardownIdentity",   // export function, multi-line signature
+      "issueGrant",         // export function, multi-line signature
+      "addType",            // export function, multi-line signature
+      "migrate",            // export function, single line
+      "claim",              // class method
+      "handleDeleteAgent",  // export function in a service
+      "putBlob",            // exported async
+    ]) {
+      expect(raw, `${canary} is reached by the matcher`).toContain(canary);
     }
   });
 
