@@ -17,7 +17,9 @@
     "typecheck:http": "bun --bun tsc -p packages/http/tsconfig.json --pretty false",
     "typecheck:self-reminder": "bun --bun tsc -p packages/self-reminder/tsconfig.json --pretty false",
     "test": "bun test packages/",
-    "typecheck:store": "bun --bun tsc -p packages/store/tsconfig.json --pretty false"
+    "typecheck:store": "bun --bun tsc -p packages/store/tsconfig.json --pretty false",
+    "test:integration": "bun test test/",
+    "test:all": "bun test packages/ test/"
   },
   "devDependencies": {
     "@types/bun": "^1.1.13",

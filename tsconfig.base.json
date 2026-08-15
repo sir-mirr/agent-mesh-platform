@@ -50,6 +50,9 @@
     },
     {
       "path": "./packages/self-reminder/tsconfig.json"
+    },
+    {
+      "path": "./test/tsconfig.json"
     }
   ]
 }

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A newer push supersedes an in-flight run on the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      # --frozen-lockfile: CI installs what the lockfile says or fails. A run
+      # that silently resolves something else is not testing what will ship.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests
+        run: bun test packages/
+
+      # Integration tests start real hub and http processes on ephemeral ports.
+      # Kept as a separate step so a failure here is distinguishable at a glance
+      # from a unit failure — they fail for very different reasons.
+      - name: Integration tests
+        run: bun test test/
