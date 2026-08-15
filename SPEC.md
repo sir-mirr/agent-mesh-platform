@@ -4,10 +4,38 @@ This document is the contract that any agent-mesh deployment, alternative
 shared implementation, or external lane (runtime-adapter / channel-driver)
 must satisfy.
 
-Status: Draft, version 0.x. Subject to change before 1.0.
+Status: Draft, version 0.2. Subject to change before 1.0.
 
 The keywords MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are used as
 defined in RFC 2119 / RFC 8174.
+
+### What 0.2 changes, and what does not exist yet
+
+0.2 carries the decisions taken while reviewing the audit ingestion proposal.
+They are settled contracts, but **most are not implemented** — the shipped
+build implements 0.1. This section is the list, so nothing here is mistaken
+for a description of running code.
+
+| § | Change | Built |
+|---|--------|-------|
+| 3.1 | Hub storage splits into `agents.db`, `hub.db`, `audit.db` | no |
+| 4.1 | A Claude lane includes a runtime-adapter | no |
+| 6.1 | Hub-direct forwarding is removed; adapter mode is the only mode | no |
+| 8.1 | `mesh.connect` carries a signature and returns capabilities | no |
+| 8.2 | `from` is constrained by validated entitlement | no |
+| 8.9 | `mesh.audit.*` methods | no |
+| 9.1 | Audit blob upload and audit query routes | no |
+| 9.3 | Identity teardown is a soft delete | no |
+| 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | no |
+| 15.2 | Blob keys retain the file extension | **yes** (0.1 behaviour, now normative) |
+
+Upgrading from 0.1 does **not** migrate existing data. Each store is treated
+as starting empty.
+
+Rationale for these decisions lives in
+`docs/decisions/identity-and-authentication.md` and
+`docs/proposals/audit-ingestion-response.md`. Those documents explain *why*;
+this one states *what*.
 
 ---
 
@@ -71,9 +99,37 @@ agent-mesh is split into two strictly separated layers.
 |-----------------|-------------------------------------------------------------|
 | Transport       | WebSocket, JSON-RPC 2.0                                     |
 | Default port    | `3100` (configurable via `AGENT_MESH_HUB_PORT`)             |
-| Storage         | SQLite database `hub.db` (single file)                      |
+| Storage         | Three SQLite databases under `${AGENT_MESH_STATE_DIR}` — see below |
 | Identity model  | One agent ↔ one identity string (kebab-case recommended)    |
 | Bootstrap hook  | `ExecStartPost` MUST run `ops/bin/bootstrap-hub-service-identities.sh` |
+
+**Storage (0.2).** Identity, routing and audit data MUST live in separate
+database files:
+
+| File | Contents | hub | http |
+|------|----------|-----|------|
+| `agents.db` | `agents`, `agent_keys`, `agent_key_events` | read-write | read-write |
+| `hub.db` | `messages` | read-write | read-only |
+| `audit.db` | `audit_events`, `audit_event_blobs` | read-write | read-only |
+
+Audit MUST NOT share a file with `messages`. A single file means audit growth
+exhausting the disk also stops message routing — a recording feature taking
+down the communication feature. Separate files also allow separate volumes,
+retention and `VACUUM` policies, which these stores need because their
+lifetimes differ: identity is small and permanent, `messages` is operational,
+audit is long-lived.
+
+`audit_events` and `audit_event_blobs` MUST share a file, because an event and
+its attachment references MUST commit in one transaction (§ 8.9.3).
+
+Both `agent-mesh-hub` and `agent-mesh-http` open `agents.db` read-write. This
+is sound because both set `journal_mode = WAL` and `busy_timeout`, and § 14.1
+places them on the same core VM. **The hub owns the DDL** for `agents.db`,
+`hub.db` and `audit.db`; `agent-mesh-http` MUST NOT create or alter their
+schemas.
+
+0.1 used a single `hub.db` holding both `agents` and `messages`. Upgrades do
+not migrate it.
 
 The hub MUST:
 
@@ -163,13 +219,19 @@ its hub identity.
 | Lane type   | Components                                                       |
 |-------------|------------------------------------------------------------------|
 | Codex lane  | `codex-app-server@<lane>` + `codex-adapter@<lane>` + `channel-discord@<lane>` |
-| Claude lane | `channel-discord@<lane>` (+ external Claude Code MCP client)     |
+| Claude lane | `claude-adapter@<lane>` + `channel-discord@<lane>`               |
 
-> **Note (v0.2).** A `runtime-adapter-claude` package exists in-tree as a
-> v0.1 skeleton (`packages/runtime-adapters/claude/`) and is selected by
-> `RUNTIME_KIND=claude` per § 14.8. Full activation — forwarding
-> envelopes to the external Claude Code MCP — lands in v0.2; until then
-> the Claude lane runs without an in-tree runtime-adapter as shown above.
+**Every lane MUST include a runtime-adapter.** A channel-driver MUST NOT be
+the only component of a lane.
+
+This is a change from 0.1, where a Claude lane was the channel-driver alone
+and the driver reached the hub directly (the hub-direct mode removed in
+§ 6.1). That arrangement put the hub in the channel real-time path and left
+channel traffic with no adapter to record it — see § 8.9.
+
+The in-tree `packages/runtime-adapters/claude/` is a stdio MCP server and hub
+client with no HTTP ingress, so it does not yet satisfy § 5.1(6). A conformant
+Claude lane needs that ingress built.
 
 Future lanes MAY use any combination of one runtime-adapter and one or
 more channel-drivers.
@@ -294,7 +356,7 @@ maps channel events to mesh envelopes.
 Reference implementation: `packages/channel-drivers/discord/src/`
 (`main.ts`, `runtime.ts`, `envelope.ts`, `tools.ts`, `attachments.ts`,
 `access.ts`, `channels.ts`, `chunk.ts`, `recent-sent.ts`,
-`hub-forward.ts`, `http.ts`, `config.ts`, `types.ts`).
+`http.ts`, `config.ts`, `types.ts`).
 
 ### 6.1. Required behaviors
 
@@ -305,11 +367,16 @@ A channel-driver implementation MUST:
 2. **Access control** — enforce per-channel access lists
    (`access.ts` model). Unknown senders MUST be rejected and never
    silently approved by the driver itself.
-3. **Forwarding mode** — support two modes:
-   - *Adapter mode* — POST envelopes to an in-tree runtime-adapter
-     (HTTP, mutually authenticated).
-   - *Hub-direct mode* — open a hub WS connection as
-     `HUB_FORWARD_IDENTITY=<lane>` and `mesh.send` directly.
+3. **Forwarding** — POST envelopes to the lane's runtime-adapter over the
+   mutually authenticated HTTP control plane of § 4.5. A channel-driver
+   MUST NOT open its own hub connection.
+
+   0.1 also defined a *hub-direct* mode, in which the driver connected to
+   the hub as `HUB_FORWARD_IDENTITY=<lane>` and called `mesh.send` itself.
+   **That mode is removed at 0.2.** It placed the hub in the channel
+   real-time path, and with no adapter in the path there was no outbox, so
+   channel traffic could not be audited (§ 8.9). `HUB_FORWARD_IDENTITY` and
+   `HUB_FORWARD_TARGET_AGENT` are no longer part of this specification.
 4. **Attachment handling** — persist attachments under
    `attachments/<lane>/<msg_id>/` and reference them in the envelope.
    In a cross-VM deployment (§ 14), the **core VM** is the primary
@@ -393,7 +460,7 @@ All methods are over JSON-RPC 2.0 on a WebSocket. Errors follow the
 JSON-RPC 2.0 error object form.
 
 Identity registration (insertion of `(identity, type, description)`
-rows into `hub.db:agents`) is **not** done over JSON-RPC; it is done
+rows into `agents.db:agents`) is **not** done over JSON-RPC; it is done
 out of band via `POST /api/v1/agents` (see § 10.1). The JSON-RPC
 methods below operate on *already-registered* identities.
 
@@ -410,10 +477,50 @@ params: {
   proxy_for?:  string[]       // additional identities this socket handles
 }
 result: {
-  ok:       true
-  identity: string            // canonical identity
+  ok:           true
+  identity:     string        // canonical identity
+  capabilities?: {            // 0.2; absent on 0.1 hubs
+    audit?: { … }             // see § 8.9.1
+  }
 }
 ```
+
+**Request signing (0.2).** Every request a client sends over the hub
+WebSocket — `mesh.connect` included — MUST carry a signature as a sibling
+member of the JSON-RPC request object. It is not a member of `params`, since
+JSON-RPC has no header slot and `params` belongs to each method's own schema.
+
+```
+{ "jsonrpc": "2.0", "id": 1, "method": "mesh.send", "params": { … },
+  "sig": {
+    "alg":   "ed25519",
+    "kid":   string,          // fingerprint of the signing key
+    "nonce": string,
+    "iat":   number,          // unix seconds
+    "value": string           // base64url
+  } }
+```
+
+The signed bytes are the **received bytes of `params`, verbatim** — no
+canonicalisation scheme. JSON has no canonical byte form, so a signature
+computed over a re-serialised object can differ from one computed over the
+bytes on the wire even when the content is identical. Clients MUST therefore
+retain the serialised form they sent and re-send it byte-for-byte on retry.
+`params` is the scope rather than the whole request because `id` changes
+between retries.
+
+The hub verifies against the identity's approved key (§ 10.1), fetched once at
+`mesh.connect` and cached for the life of the connection. Replay is bounded by
+`nonce` and an `iat` freshness window.
+
+Signature verification is enforced only for identities that have an approved
+key. An identity with none connects unsigned, as at 0.1.
+
+Errors:
+
+- `-32012` SIGNATURE_INVALID — signature absent, malformed, outside the
+  freshness window, a replayed nonce, or not verifiable against the
+  identity's approved key.
 
 Any param beyond `identity` and `proxy_for` is **ignored** by the hub.
 In particular, `type` and `description` (if present, e.g. carried over
@@ -431,13 +538,16 @@ to the `mesh.register` alias of § 8.1a.
 Errors:
 
 - `-32602` INVALID_PARAMS — `params.identity` missing or non-string.
-- `-32010` DUPLICATE_IDENTITY — another connection holds this identity
-  and connected less than the deduplication window ago. `data` carries
-  `{ code: "DUPLICATE_IDENTITY", elapsed_ms, window_ms }`.
-- `-32011` IDENTITY_NOT_REGISTERED — the identity has no row in
-  `hub.db:agents`. `data` carries `{ code: "IDENTITY_NOT_REGISTERED",
-  identity }`. The hub closes the WebSocket with code `1008` shortly
-  after returning this error.
+- `-32010` DUPLICATE_IDENTITY — an established owner still holds this
+  identity. The incumbent is never evicted by a contender. `data` carries
+  `{ code: "DUPLICATE_IDENTITY", ownership: "incumbent_retained",
+  incumbent_connection_generation, contender_connection_generation,
+  source_metadata: "server_connection_sequence" }`. The hub closes the
+  contender's WebSocket with code `1008` shortly after.
+- `-32011` IDENTITY_NOT_REGISTERED — the identity has no live row in
+  `agents.db:agents`, or its row is soft-deleted (§ 9.3). `data` carries
+  `{ code: "IDENTITY_NOT_REGISTERED", identity }`. The hub closes the
+  WebSocket with code `1008` shortly after returning this error.
 
 On success the hub touches `agents.last_seen`, wires the socket into
 the online map, and delivers any pending messages addressed to the
@@ -483,12 +593,25 @@ hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
 will be delivered on the recipient's next connect via
 `mesh.fetch_messages`/auto-deliver).
 
+**Sender validation (0.2).** `from` MUST be either the socket's own connected
+identity or one of the `proxy_for` entries that identity is entitled to. The
+hub MUST reject anything else. At 0.1 `from` was accepted unchecked, which let
+any connected socket originate an envelope as any identity.
+
+`proxy_for` entitlement is likewise validated at `mesh.connect`: a socket may
+only claim identities it is entitled to proxy. The entitlement model is
+`agent-mesh-core/ownership.ts`.
+
+Routing a message MUST also record an audit event (§ 8.9.4).
+
 Errors:
 
 - `-32602` INVALID_PARAMS — `params.to` missing/non-string or
   `params.content` missing.
 - `-32600` INVALID_REQUEST — sender socket is not connected
   (`mesh.connect` / `mesh.register` was never called on this WS).
+- `-32013` NOT_ENTITLED — `params.from` is neither the connected identity
+  nor an entitled `proxy_for` entry.
 
 ### 8.3. `mesh.list_agents`
 
@@ -704,6 +827,189 @@ The hub MUST NOT emit `mesh.delivered` when the recipient is offline
 (in that case `mesh.send.result.status` is `"pending"` and no
 notification is sent until the recipient reconnects).
 
+### 8.9. Audit ingestion (0.2)
+
+Channel traffic does not pass through the hub — a channel-driver forwards it
+to its runtime-adapter directly (§ 6.1), which keeps the hub out of the
+real-time path. The adapter therefore records that traffic asynchronously,
+from a durable local outbox, through the methods below.
+
+Mesh traffic is different: the hub is its real data path, so **the hub records
+mesh events itself** (§ 8.9.4). Adapters MUST NOT report mesh messages — both
+ends would report the same message, and the hub already sees all of it.
+
+The audit trail is a record of **what was collected**, not a guarantee of
+completeness. An adapter that loses its outbox does not report what it lost,
+and the hub cannot detect the gap. Deployments MUST NOT describe it as
+complete or tamper-proof.
+
+#### 8.9.1. Capability advertisement
+
+An audit-capable hub returns an `audit` object in the `mesh.connect` result:
+
+```
+capabilities.audit: {
+  version:                          number   // protocol version
+  content_addressing:               "sha256"
+  max_blob_bytes:                   number
+  max_attachments_per_event:        number
+  max_attachments_bytes_per_event:  number
+  upload_timeout_seconds:           number
+  max_inflight_appends:             number
+  max_inflight_uploads:             number
+}
+```
+
+A client that does not recognise `version` MUST NOT use the audit methods. It
+MUST NOT guess.
+
+Clients MUST respect the in-flight caps. Backoff and jitter only spread out
+reconnection; once connected, an unpaced outbox drain from every lane at once
+lands on the hub exactly as it recovers.
+
+#### 8.9.2. `mesh.audit.prepare_blobs`
+
+Reports which attachment blobs the store already holds, and issues an upload
+grant for those it does not.
+
+```
+params: {
+  event_id: string
+  blobs:    Array<{
+    sha256: string              // lowercase hex
+    size:   number
+    name:   string              // required — the storage key derives from it
+  }>
+}
+result: {
+  blobs: Array<{
+    sha256: string
+    status: "present" | "missing"
+    upload?: {                  // present only when status = "missing"
+      method:     "PUT"
+      url:        string        // § 9.1 blob route
+      nonce:      string
+      expires_at: string        // ISO-8601
+    }
+  }>
+}
+```
+
+`name` is required because the storage key retains the file extension
+(§ 15.2); `sha256` alone does not determine it. Both sides MUST derive the key
+by the same rule: lowercase the extension and reject any that is not
+`[a-zA-Z0-9]{1,16}`.
+
+`blobs` MUST NOT exceed `max_attachments_per_event`, and the declared sizes
+MUST NOT total more than `max_attachments_bytes_per_event`.
+
+The nonce is bound to `(identity, sha256, size)` and carries an expiry. It is
+not single-use: because the upload is content-addressed, replaying a grant can
+only re-upload identical bytes, which deduplicates to no effect.
+
+#### 8.9.3. `mesh.audit.append`
+
+Commits an audit event and its attachment references.
+
+```
+params: {
+  schema_version:      number
+  event_id:            string   // globally unique, time-ordered
+  event_type:          string   // namespace string, not a closed enum
+  occurred_at:         string   // ISO-8601
+  identity:            string   // subject — whose activity this describes
+  recorded_by:         { kind: "hub" | "adapter", identity: string }
+  correlation_id?:     string
+  causation_event_id?: string | null
+  producer_id?:        string   // diagnostic label only; ≤ 64 chars
+  attestation?:        {
+    signed_by: string
+    kid:       string
+    alg:       "ed25519"
+    value:     string
+    covers:    "audit.params" | "mesh.send.params"
+  }
+  …event-type-specific members
+}
+result: {
+  ok:                   true
+  committed:            true
+  duplicate:            boolean
+  event_id:             string
+  identity:             string
+  attachments_verified: number
+  stored_at:            string
+}
+```
+
+The hub MUST:
+
+- Derive `identity` from the connected identity, never from the payload.
+- Reject `schema_version` greater than its own maximum. No data is lost: the
+  outbox retries and drains after the hub is upgraded. Storing an event it
+  cannot validate would record "validated" as a falsehood. **Hubs are upgraded
+  before clients.**
+- Treat `event_id` as globally unique. A repeat carrying an identical payload
+  digest is success with `duplicate: true`; a repeat carrying a different one
+  is `-32041`.
+- Compute the payload digest over the **received bytes of `params`, verbatim**,
+  by the same rule as § 8.1 signatures.
+- Verify every referenced blob exists and matches its declared size.
+- Commit the event and its attachment references in **one transaction**, and
+  ACK only after that transaction commits.
+
+There is no sequence number. Uniqueness comes from `event_id`, causality from
+`causation_event_id`, and ordering from `event_id` being time-ordered. Clients
+MUST specify which time-ordered format they emit (ULID, UUIDv7 or equivalent).
+
+A blob committed before its event, whose event never arrives, is an orphan.
+Orphans are a storage concern (§ 15.6), not a consistency defect — blobs are
+immutable and content-addressed.
+
+**Errors, and how clients must treat them:**
+
+| Code | Name | Class |
+|------|------|-------|
+| `-32040` | `AUDIT_MISSING_BLOBS` — `data.missing_sha256[]` | transient |
+| `-32041` | `AUDIT_EVENT_CONFLICT` — same `event_id`, different payload | **permanent** |
+| `-32043` | `AUDIT_BUSY` — `data.retry_after_ms` | transient |
+| `-32602` | malformed params, caps exceeded | **permanent** |
+
+Clients MUST distinguish the two classes. Transient errors are retried with
+backoff and jitter and no maximum attempt count. **Permanent errors MUST NOT
+be retried** — the event is dropped and the failure recorded locally, as § 13
+already requires for oversized attachments. Without this split an event that
+can never be accepted is retried forever.
+
+A hub MAY always succeed rather than ever emitting `AUDIT_BUSY`. Clients MUST
+handle it regardless, from their first release: adding it later leaves every
+deployed adapter mishandling it on a path that carries audit data.
+
+#### 8.9.4. Hub-produced mesh events
+
+When the hub routes a `mesh.send` it MUST record an audit event itself, with
+`recorded_by.kind = "hub"` and `identity` set to the sending identity.
+
+```
+mesh.message.sent
+mesh.message.delivered
+mesh.message.pending
+```
+
+The event carries the message body — it does not reference `messages` — so
+that audit retention and operational retention are independent. Attachment
+**bytes** are not duplicated; content addressing keeps one file however many
+events reference it.
+
+The hub MUST retain the sender's original `mesh.send` signature as the event's
+`attestation`, with `covers: "mesh.send.params"` and the original `params`
+bytes kept verbatim so the signature stays verifiable.
+
+This makes mesh audit stronger evidence than channel audit. A channel event is
+an adapter's report of its own activity; a mesh event is the hub's observation
+carrying the sender's own signature. `recorded_by` exists so that difference
+is a field rather than something inferred by prefix-matching `event_type`.
+
 ---
 
 ## 9. HTTP REST contract
@@ -734,6 +1040,9 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
 | GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
 | GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
+| PUT    | `/api/v1/audit/blobs/{key}`       | Sig §  | `200`\|`201` | Machine blob upload (0.2). `key` is `<sha256>[.<ext>]` per § 15.2. |
+| GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
+| GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
 | POST   | `/api/v1/admin/approve`           | JWT\*  | `200`   | Approve a pending user. |
 | POST   | `/api/v1/admin/deny`              | JWT\*  | `200`   | Deny a pending user. |
@@ -754,6 +1063,32 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 ‡ `/api/v1/attachments/:id` is unauthenticated at internal-mesh v0.1
 (SPEC § 15.3 — assumes trust-bounded network). Future profiles MAY
 require a bearer token; clients SHOULD tolerate `401`.
+
+§ The blob `PUT` is authorised by a signature, not a session — an adapter has
+no browser login, and the identity behind the upload is known to the hub
+rather than to `agent-mesh-http`. The client sends
+
+```
+Authorization: <base64url signature over (nonce ‖ sha256 ‖ size)>
+```
+
+using the nonce issued by `mesh.audit.prepare_blobs` (§ 8.9.2). The server
+reads the nonce and the identity's approved public key from `agents.db` and
+verifies. No shared secret between the two services is required.
+
+Binding the signature to `sha256` and `size` rather than to the nonce alone
+means a leaked signature authorises only the identical bytes, which
+deduplicate to no effect.
+
+The server MUST require `Content-Length`, reject a declared size mismatch
+(`422`), reject over `max_blob_bytes` (`413`), abort past
+`upload_timeout_seconds` (`408`), hash the stream as it receives, discard on
+digest mismatch (`422`), and rename into place atomically only after
+verification. It MUST NOT create chunk or resumable state. A failed upload is
+retried whole.
+
+`201` on first store, `200` when the blob already existed
+(`{ deduplicated: true }`).
 
 Unauthenticated access to any non-public route MUST return `401`.
 Unauthorized access (valid JWT but missing scope, e.g. JWT without the
@@ -789,31 +1124,47 @@ SQL access to `hub.db`.
 `^[a-z][a-z0-9-]*$`. Anything else MUST return `400` with body
 `{ "ok": false, "error": "invalid identity format …" }`.
 
-**Behavior.** The hub MUST, in a single SQL transaction, delete:
+**Behavior (0.2).** Teardown is a **soft delete**. The hub MUST, in a single
+transaction on `agents.db`:
 
-1. The row in `agents` whose `identity` matches the path parameter.
-2. Every row in `messages` whose `from` or `to` equals that identity.
+1. Set `agents.deleted_at` on the matching row.
+2. Set every key of that identity in `agent_keys` to `revoked`, and append the
+   corresponding `agent_key_events` rows.
 
-If either step fails, the transaction MUST `ROLLBACK` and the hub MUST
-return `500` with `{ "ok": false, "error": "db error: <reason>" }`.
+It MUST NOT touch `messages`, and MUST NOT delete the `agents` or `agent_keys`
+rows.
+
+Hard deletion is incompatible with two other rules. Signatures (§ 8.1) are
+verified against the identity's key, so discarding the key makes every past
+signature permanently unverifiable — the property the signing exists for. And
+freeing the identity string lets a later registration inherit the previous
+holder's message and audit history.
+
+**Re-registration is blocked.** A soft-deleted identity MUST NOT be
+re-registered through § 10.1. Identity strings are not scarce; an operator who
+genuinely needs one back purges it with an out-of-band tool. Physical purging
+is outside the request path and belongs to the retention policy.
+
+Every read of `agents` MUST filter `deleted_at IS NULL` — the pre-registration
+check of § 8.1, `mesh.list_agents`, and the recipient check of § 8.2 included.
 
 **Response body** (`200 OK`):
 
 ```
 {
-  "ok":               true,
-  "identity":         "<echoed identity>",
-  "action":           "deleted" | "not-found",
-  "agents_removed":   <integer, 0 or 1>,
-  "messages_removed": <integer ≥ 0>
+  "ok":         true,
+  "identity":   "<echoed identity>",
+  "action":     "soft-deleted" | "already-deleted" | "not-found",
+  "deleted_at": "<ISO-8601 UTC>"        // absent for "not-found"
 }
 ```
 
-`"action": "not-found"` (with `agents_removed: 0`) is the response for
-a DELETE against an identity that does not exist in `hub.db:agents`.
-Callers (e.g. `destroy-shadow-agent.sh`, the `agent-manage` skill)
-SHOULD treat `200 + not-found` as idempotent success rather than as
-an error.
+`"not-found"` is the response for an identity that has no row at all;
+`"already-deleted"` for one already carrying `deleted_at`. Callers SHOULD
+treat all three as idempotent success.
+
+0.1 deleted the `agents` row and every `messages` row referencing the identity,
+and returned `agents_removed` / `messages_removed`. Those fields are gone.
 
 ### 9.4. Host split summary
 
@@ -825,6 +1176,8 @@ The table below is the SSOT.
 |-------------------------------------------|------------------|--------------|
 | `GET /api/v1/health`, `/api/v1/*` user-facing | `agent-mesh-http` | `3000` |
 | `/api/v1/attachments/:id`                 | `agent-mesh-http` | `3000` |
+| `PUT /api/v1/audit/blobs/{key}`           | `agent-mesh-http` | `3000` |
+| `/api/v1/audit/events*`                   | `agent-mesh-http` | `3000` |
 | `/auth/*`                                 | `agent-mesh-http` | `3000` |
 | `GET /health` (hub liveness)              | `agent-mesh-hub`  | `3100` |
 | `POST /api/agents`                        | `agent-mesh-hub`  | `3100` |
@@ -867,12 +1220,14 @@ endpoint (§ 9.4, § 10.1) over loopback, and it MUST:
      description `Codex runtime adapter for <lane>` where `<lane>` is
      resolved as `${CODEX_TARGET_AGENT}` (when present) and otherwise
      falls back to the parent directory's basename.
-   - For every `*/discord.env`: the `HUB_FORWARD_IDENTITY` value (when
-     paired with `HUB_FORWARD_TARGET_AGENT`), description
-     `Discord hub-forward for <target>`.
    The set is dynamic — there is no fixed "built-in six" list, and
    identities such as `admin` or `bootstrap` are not provisioned by
    this script.
+
+   At 0.1 the script also read `HUB_FORWARD_IDENTITY` from every
+   `*/discord.env`. Hub-direct forwarding is removed (§ 6.1), so a
+   channel-driver no longer holds a hub identity of its own and that
+   discovery step goes with it.
 2. For each discovered identity, `curl -fsS -X POST` to the hub API
    URL. The URL is resolved by the following fallback chain (highest
    precedence first):
@@ -904,7 +1259,7 @@ for remote lanes goes through `POST /api/v1/agents` on the core hub.
 The core hub MUST expose `POST /api/v1/agents` on the same HTTP listener
 that serves WebSocket upgrades (`AGENT_MESH_HUB_PORT`, default `3100`).
 This endpoint is the single normative entry point for inserting or
-updating rows in `hub.db:agents` from any caller — local bootstrap,
+updating rows in `agents.db:agents` from any caller — local bootstrap,
 operator provisioning tooling, or remote lane VMs.
 
 **Request** (`Content-Type: application/json`):
@@ -913,7 +1268,8 @@ operator provisioning tooling, or remote lane VMs.
 {
   "identity":    "<kebab-case string>",   // required, ^[a-z][a-z0-9-]*$
   "type":        "ai-claude" | "ai-codex" | "service",  // required
-  "description": "<string, ≤ 256 chars>"  // optional, may be null
+  "description": "<string, ≤ 256 chars>", // optional, may be null
+  "public_key":  "<base64url, 43 chars>"  // optional (0.2); Ed25519 raw 32B
 }
 ```
 
@@ -921,10 +1277,12 @@ operator provisioning tooling, or remote lane VMs.
 
 1. Validate `identity` against `^[a-z][a-z0-9-]*$`; reject with `400` otherwise.
 2. Validate `type` against the enum above; reject with `400` otherwise.
-3. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
-4. Return `201 Created` when the row did not previously exist, `200 OK`
+3. Reject with `409` when the identity exists and is soft-deleted (§ 9.3).
+4. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
+5. When `public_key` is present, record it per § 10.2.
+6. Return `201 Created` when the row did not previously exist, `200 OK`
    when the row already existed and was updated.
-5. Return `500` only on a genuine DB error; transient errors MAY be retried
+7. Return `500` only on a genuine DB error; transient errors MAY be retried
    by callers using exponential or fixed backoff.
 
 **Response body** (both `200` and `201`):
@@ -941,7 +1299,7 @@ operator provisioning tooling, or remote lane VMs.
 ```
 
 The `created_at` field reflects `agents.created_at` — the timestamp at
-which the identity row was first INSERTed into `hub.db:agents`. The
+which the identity row was first INSERTed into `agents.db:agents`. The
 field is **immutable post-insert**: an `"updated"` response returns the
 *original* creation time, not the touch time of the current UPSERT.
 
@@ -997,10 +1355,60 @@ omits `description` and `created_at` and always returns HTTP `200`
 MUST use `POST /api/v1/agents`.
 
 **Identity teardown.** The destructive counterpart to this endpoint is
-`DELETE /api/agents/{identity}` on the same hub listener — see § 9.3
-for the response shape (`agents_removed`, `messages_removed` counts).
-The hub does not expose a versioned `DELETE /api/v1/agents/{identity}`
-at v0.1; the unversioned form is the only normative shape.
+`DELETE /api/agents/{identity}` on the same hub listener — see § 9.3 for the
+soft-delete semantics and response shape. The hub does not expose a versioned
+`DELETE /api/v1/agents/{identity}`; the unversioned form is the only normative
+shape.
+
+### 10.2. Public key registration and approval (0.2)
+
+An identity's signing key is registered with its identity but is not usable
+until an operator approves it. Registration alone therefore grants nothing,
+which is what allows § 10.1 to stay unauthenticated.
+
+```
+none ──propose (any caller)──▶ pending ──approve (operator)──▶ approved
+                                  └──────deny (operator)─────▶ denied
+approved ──rotation proposal──▶ pending ──approve──▶ previous key revoked
+```
+
+The hub MUST:
+
+- Store keys in `agents.db:agent_keys`, identified by `fingerprint` — the
+  SHA-256 of the public key.
+- Permit at most one `pending` and at most one `approved` key per identity.
+- **Never let a proposal modify an `approved` key.** A proposal for an identity
+  that already has one creates a separate `pending` row; the approved key is
+  untouched until the replacement is approved, at which point the previous key
+  becomes `revoked`.
+- Treat a proposal of a key that already exists as a no-op returning its
+  current status. An adapter restarting and re-sending its key MUST NOT knock
+  its own approved key back to `pending`.
+- Replace the existing `pending` row when a *different* key is proposed while
+  one is pending, so a restarting client cannot flood the queue.
+- Append an `agent_key_events` row for every state change, carrying the action,
+  a reason, the actor and a timestamp.
+
+**Approval is not served by the hub.** The hub has no authentication, so an
+approval endpoint there would let any caller approve its own key. Approval is
+performed on `agent-mesh-http`, behind the existing admin JWT gate, which is
+why that service holds a read-write handle on `agents.db` (§ 3.1).
+
+**Fingerprint comparison is part of the procedure.** A conformant lane MUST log
+its own key fingerprint at startup, and the approval surface MUST display the
+fingerprint being approved. Without the comparison, approval attests to
+nothing.
+
+**Revocation.** A key MAY be revoked at any time, without waiting for a
+replacement to be approved; after revocation the identity can neither connect
+nor sign until a new key is approved. Revocation MUST be a status change, never
+a row deletion — past signatures stay verifiable, and `agent_key_events`
+supplies the timeline needed to judge them. The `reason` matters: a routine
+`rotation` says nothing about earlier signatures, while `compromise` casts
+doubt on the window preceding it.
+
+A revocation MAY be requested by the operator, or submitted by the holder
+signed with the key being revoked.
 
 ---
 
@@ -1077,6 +1485,23 @@ This specification follows semantic versioning at document level.
 
 Implementations SHOULD declare the SPEC version they target in their
 `package.json` under a `agentMeshSpec` field.
+
+**Three version numbers exist and MUST NOT be conflated:**
+
+| Version | Scope | Where |
+|---------|-------|-------|
+| `agentMeshSpec` | this whole document | `package.json` |
+| `capabilities.audit.version` | the audit protocol — methods, params, error codes | negotiated at `mesh.connect` |
+| `schema_version` | the shape of one audit event | stored on the event row |
+
+The first two are runtime facts about an implementation. The third is data
+provenance: it is persisted with the event and is how a stored event is
+interpreted years later, which a connect-time negotiated value cannot express.
+All are numbers.
+
+Adding a method to § 8 is a minor version. Changing or removing an existing
+method's params, results or error codes is a breaking change, permitted
+between `0.x` minors and not after `1.0`.
 
 ---
 
@@ -1320,16 +1745,33 @@ called out.
 ### 15.1. Storage authority
 
 - The **core VM's `agent-mesh-http` service MUST be the sole primary
-  storage authority** for attachment bytes. All attachments uploaded
-  via `POST /api/v1/upload` (§ 9) are written to and retained on the
-  core VM only.
+  storage authority** for attachment bytes. Everything written through
+  `POST /api/v1/upload` and `PUT /api/v1/audit/blobs/{key}` (§ 9.1) is
+  written to and retained on the core VM only.
 - Lane VMs MUST NOT be treated as primary storage. A lane VM MUST
   NOT replicate attachment bytes from the core VM in advance of use
   (no eager replication).
 - The on-disk layout under the core VM is an implementation detail
   but SHOULD live under `<STATE_DIR>/uploads/`.
+- Both upload routes share **one namespace and one directory**. Bytes exist
+  exactly once however many messages or audit events reference them.
+- `agent-mesh-hub` MAY read that directory to confirm a blob exists and check
+  its size (§ 8.9.3). It MUST NOT write to it. Both services are on the same
+  core VM (§ 14.1) and share `AGENT_MESH_STATE_DIR`, so this needs no
+  inter-service call and no shared secret.
 
 ### 15.2. Message attachment metadata schema
+
+**Storage key.** The key is `<sha256>[.<ext>]` — the lowercase hex digest,
+carrying the original file extension when there was one, matched by
+`^[0-9a-f]{64}(\.[a-zA-Z0-9]{1,16})?$`. The extension is retained because the
+download route infers `Content-Type` from it.
+
+Deduplication is therefore per **(digest, extension)**, not per digest: the
+same bytes arriving under two different extensions are stored twice. Producers
+that care MUST normalise the extension — lowercase it — before deriving the
+key, and `mesh.audit.prepare_blobs` (§ 8.9.2) carries `name` for exactly this
+reason.
 
 When a message carries one or more attachments, the message body
 sent over the hub (§ 8) MUST embed an `attachments` array. Each
@@ -1439,6 +1881,37 @@ succeeds.
 - Lanes MUST NOT re-upload an attachment on the lane VM side to
   "rehydrate" the core VM. The core VM remains the sole authority
   for the original bytes.
+
+### 15.6. Retention and orphan collection (0.2)
+
+Nothing in this specification bounds how long the core VM keeps anything.
+Deployments MUST set a policy. Without one, growth is unbounded, and on a
+single-VM deployment a full disk stops message routing rather than only audit —
+which is why § 3.1 separates the files in the first place.
+
+The stores rotate independently:
+
+| Store | Nature |
+|-------|--------|
+| `agents.db` | small, permanent — identity and key history are never rotated |
+| `hub.db:messages` | operational; needs only to outlive delivery and `mesh.fetch_messages` |
+| `audit.db` | long-lived; the retention period is a policy decision, not a technical one |
+| `uploads/` | derived — a blob lives as long as something references it |
+
+**Orphan collection.** A blob is collectable only when **no** row in
+`audit_event_blobs` references it *and* its mtime is older than a grace period.
+Age alone is not sufficient: attachments are shared, so a blob may be old and
+still live.
+
+The grace period exists because a blob uploaded but not yet committed is a
+normal state, not an orphan — § 8.9 uploads bytes before the event that
+references them.
+
+Deleting audit events therefore releases blobs indirectly: references disappear
+first, and collection follows on the next sweep.
+
+Collection MUST run out of process (cron or systemd timer), MUST be idempotent,
+and MUST be safe to run while lane and core processes are live.
 
 ---
 
