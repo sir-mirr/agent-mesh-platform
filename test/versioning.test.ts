@@ -99,3 +99,48 @@ describe("§ 13 version declarations", () => {
     expect(health.agent_mesh_spec).not.toBe(health.version);
   }, 20_000);
 });
+
+describe("the error vocabulary is complete", () => {
+  test("every data.code the services emit has a name in contracts", async () => {
+    // The direction that goes wrong. A hub can start emitting a discriminator
+    // and nothing notices the contract does not name it — which is exactly how
+    // `-32000` reached a client that had to hard-code its own constant to
+    // handle it, and how `ERROR_CLASS` came to have no entry for that code.
+    const { ERROR_DATA_CODE } = await import("@agent-mesh/contracts");
+
+    const emitted = new Set<string>();
+    for (const dir of ["packages/hub/src", "packages/http/src"]) {
+      const proc = Bun.spawnSync(["grep", "-rho", "--include=*.ts", 'code: "[A-Z_]*"', join(REPO_ROOT, dir)]);
+      for (const m of new TextDecoder().decode(proc.stdout).matchAll(/code: "([A-Z_]+)"/g)) {
+        emitted.add(m[1]!);
+      }
+    }
+    expect(emitted.size).toBeGreaterThan(5);
+
+    // `PROVISION_ERROR` covers the REST provisioning surface (§ 10.1), which is
+    // not a JSON-RPC `error.data.code` and has its own constant.
+    const { PROVISION_ERROR } = await import("@agent-mesh/contracts");
+    const elsewhere = new Set(Object.values(PROVISION_ERROR as Record<string, string>));
+
+    const unnamed = [...emitted].filter(
+      (code) => !Object.hasOwn(ERROR_DATA_CODE, code) && !elsewhere.has(code),
+    );
+    expect(unnamed).toEqual([]);
+  });
+
+  test("no name in the vocabulary is one nothing emits", () => {
+    // The other direction: a code kept in the contract after the hub stopped
+    // sending it is a branch a client maintains forever for a case that cannot
+    // happen.
+    const { ERROR_DATA_CODE } = require("@agent-mesh/contracts");
+    const proc = Bun.spawnSync([
+      "grep", "-rho", "--include=*.ts", 'code: "[A-Z_]*"',
+      join(REPO_ROOT, "packages/hub/src"), join(REPO_ROOT, "packages/http/src"),
+    ]);
+    const emitted = new Set(
+      [...new TextDecoder().decode(proc.stdout).matchAll(/code: "([A-Z_]+)"/g)].map((m) => m[1]!),
+    );
+    const stale = Object.keys(ERROR_DATA_CODE).filter((code) => !emitted.has(code));
+    expect(stale).toEqual([]);
+  });
+});

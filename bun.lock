@@ -5,7 +5,7 @@
     "": {
       "name": "agent-mesh-platform",
       "dependencies": {
-        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.7.1",
+        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.7.2",
         "@agent-mesh/store": "workspace:*",
       },
       "devDependencies": {
@@ -42,7 +42,7 @@
     },
   },
   "packages": {
-    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#992472a", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-992472a", "sha512-wOswQRHLQrb1KyEq38YrAejbUbynqxTAkIUk49XNgoEEvrXIiShLpVYjk/PFXGnwvKCrg2cQ4mgVcHQ9b188Zg=="],
+    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#be46950", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-be46950", "sha512-1N1KgpTHwQTG//8V8eouvYfNid2YawY+hGL10rSDmEqKTl+5vvzh9C0lDcLLwLD1GU0VbESfD5jex8VVDMnB6g=="],
 
     "@agent-mesh/http": ["@agent-mesh/http@workspace:packages/http"],
 
