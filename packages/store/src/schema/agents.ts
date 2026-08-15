@@ -39,10 +39,25 @@ import type { Database } from "bun:sqlite";
  * own registry, so the hub had no word for the participants it was routing the
  * most traffic for.
  */
+/**
+ * Seeded idempotently at every hub boot (SPEC § 10.3), and **informative** —
+ * a deployment extends the table through the admin surface without touching
+ * this list.
+ *
+ * Removing an entry here is what makes a removal durable. `INSERT OR IGNORE`
+ * runs on every start, so a type deleted through the API alone comes back the
+ * next time the hub restarts, and the operator who deleted it is not watching
+ * when it does.
+ *
+ * `ai-antigravity` names the **runtime that attaches**, not the model behind
+ * it. `agy` is what a lane actually runs; which model it calls is not
+ * something this deployment observes, and the audit record should not claim
+ * it does.
+ */
 const SEEDED_TYPES: ReadonlyArray<[type: string, description: string, requiresKey: 0 | 1]> = [
   ["ai-claude", "Claude runtime", 1],
   ["ai-codex", "Codex runtime", 1],
-  ["ai-gemini", "Gemini runtime", 1],
+  ["ai-antigravity", "Antigravity (agy) CLI runtime", 1],
   ["service", "Baseline service", 0],
   ["human", "Person, authenticated by web session rather than by key", 0],
 ];
@@ -225,6 +240,56 @@ export interface AgentKeyRow {
 /** Registered types, for validation and for telling a caller what is accepted. */
 export function listTypes(db: Database): AgentTypeRow[] {
   return db.prepare(`SELECT * FROM agent_types ORDER BY type`).all() as AgentTypeRow[];
+}
+
+/**
+ * Add a type (SPEC § 10.3). Create-only.
+ *
+ * Refuses an existing type rather than updating it, because the field worth
+ * updating is `requires_key` and lowering it retroactively lets every identity
+ * of that type connect without a key (§ 8.1) — a change that would silently
+ * disarm the signing requirement for identities provisioned long before. A
+ * deployment that means it does it deliberately and out of band.
+ *
+ * Returns null when the type already exists.
+ */
+export function addType(
+  db: Database,
+  type: string,
+  description: string | null,
+  requiresKey: 0 | 1,
+): AgentTypeRow | null {
+  const result = db
+    .prepare(
+      `INSERT INTO agent_types (type, description, requires_key) VALUES (?, ?, ?)
+       ON CONFLICT(type) DO NOTHING`,
+    )
+    .run(type, description, requiresKey);
+  // `changes` is the answer, not a preceding read: two operators adding the
+  // same type would both see it absent and both believe they created it.
+  if (result.changes === 0) return null;
+  return getType(db, type);
+}
+
+/** Identities carrying a type, soft-deleted ones included. */
+export function identitiesOfType(db: Database, type: string): string[] {
+  return (db.prepare(`SELECT identity FROM agents WHERE type = ?`).all(type) as Array<{ identity: string }>)
+    .map((r) => r.identity);
+}
+
+/**
+ * Remove a type (SPEC § 10.3).
+ *
+ * Refuses while any identity carries it — **including soft-deleted ones**. A
+ * torn-down identity keeps its row so its past signatures stay interpretable
+ * (§ 9.3), and that row names a type; dropping the type would leave the
+ * classification dangling on a record the audit trail still points at.
+ */
+export function removeType(db: Database, type: string): { removed: boolean; inUseBy: string[] } {
+  const inUseBy = identitiesOfType(db, type);
+  if (inUseBy.length > 0) return { removed: false, inUseBy };
+  const result = db.prepare(`DELETE FROM agent_types WHERE type = ?`).run(type);
+  return { removed: result.changes > 0, inUseBy: [] };
 }
 
 export function getType(db: Database, type: string): AgentTypeRow | null {

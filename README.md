@@ -389,6 +389,7 @@ already broken. A required argument cannot be silent, and it greps.
 | `GET  /api/v1/audit/events`         | Cursor-paginated audit query         |
 | `GET  /api/v1/files`                | Serve a single file by `?path=` query |
 | `DELETE /api/v1/admin/agents/{identity}` | Identity teardown, soft delete (§ 9.3) |
+| `*    /api/v1/admin/agent-types`    | The agent type registry: list / add / remove (§ 10.3) |
 | `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
 | `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |

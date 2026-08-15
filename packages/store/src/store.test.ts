@@ -69,8 +69,8 @@ describe("agents schema", () => {
     agentsSchema.migrate(db);
     const types = agentsSchema.listTypes(db);
     expect(types.map((t) => t.type).sort())
-      .toEqual(["ai-claude", "ai-codex", "ai-gemini", "human", "service"]);
-    expect(agentsSchema.getType(db, "ai-gemini")?.requires_key).toBe(1);
+      .toEqual(["ai-antigravity", "ai-claude", "ai-codex", "human", "service"]);
+    expect(agentsSchema.getType(db, "ai-antigravity")?.requires_key).toBe(1);
     // Baseline services predate keys; a deployment wanting them authenticated
     // raises this flag rather than changing code.
     expect(agentsSchema.getType(db, "service")?.requires_key).toBe(0);

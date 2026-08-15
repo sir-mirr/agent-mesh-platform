@@ -1446,6 +1446,9 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
 | DELETE | `/api/v1/admin/agents/{identity}` | JWT\*  | `200`   | Identity teardown — a soft delete (§ 9.3). |
+| GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
+| POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
+| DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
@@ -1997,15 +2000,41 @@ document:
 |--------|----------------|
 | `ai-claude` | 1 |
 | `ai-codex` | 1 |
-| `ai-gemini` | 1 |
+| `ai-antigravity` | 1 |
 | `service` | 0 |
 | `human` | 0 |
 
 **Adding a type is an operator action, not a caller action.** `POST
 /api/v1/agents` is unauthenticated (§ 10.1), so a registration endpoint that
 also created types would make the check meaningless — any caller could invent a
-type and register under it. New types are added through the http admin surface,
-behind the same gate as key approval (§ 10.2), or out of band by an operator.
+type and register under it. New types are added through
+`POST /api/v1/admin/agent-types` on `agent-mesh-http`, behind the same gate as
+key approval (§ 10.2.1).
+
+Adding is **create-only**. The field worth updating is `requires_key`, and
+lowering it retroactively lets every identity of that type connect without a
+key (§ 8.1) — silently disarming the signing requirement for identities
+provisioned long before the change. A deployment that means that does it
+deliberately and out of band.
+
+Removal is refused while **any** identity carries the type, soft-deleted ones
+included. A torn-down identity keeps its row so its past signatures stay
+interpretable (§ 9.3), and that row names a type; dropping the type would leave
+the classification dangling on a record the audit trail still points at.
+
+A client MUST NOT invent a missing type or fall back to a neighbouring one. A
+runtime registered under the wrong type makes the audit record state something
+that was never observed — which vendor a lane was actually running.
+
+Because seeding is idempotent and runs on every start, removing a type
+through the API alone is not durable: the next restart puts it back. A
+deployment that means to drop a seeded type removes it from the seed as
+well.
+
+A type names **the runtime that attaches**, not the model behind it.
+`ai-antigravity` is the `agy` CLI; which model it calls is not something
+the deployment observes, and a type that claimed otherwise would make the
+audit record state a fact nobody checked.
 
 `requires_key` is what makes the type meaningful: it declares whether an
 identity of that type may exist without an approved signing key. `service` is

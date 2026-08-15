@@ -39,7 +39,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, type MessageRow } from '@agent-mesh/store'
 import { IDENTITY_RE } from '@agent-mesh/contracts'
 import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
@@ -1196,6 +1196,74 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
     return c.json(r.body, r.status as any)
   })
 }
+
+/**
+ * The agent type registry (SPEC § 10.3).
+ *
+ * § 10.3 says types are added "through the http admin surface, behind the same
+ * gate as key approval" — and until now there was no such route, so the only
+ * way to add one was SQL against `agents.db`. The registry was dynamic on the
+ * read side and manual on the write side.
+ *
+ * It cannot live on the hub for the same reason teardown cannot: `POST
+ * /api/v1/agents` is unauthenticated, so a type-creating endpoint beside it
+ * would make the type check meaningless — any caller could invent a type and
+ * register under it.
+ */
+app.get('/api/v1/admin/agent-types', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+  return c.json({ ok: true, types: agentsSchema.listTypes(agentsDb()) })
+})
+
+app.post('/api/v1/admin/agent-types', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+
+  let body: Record<string, unknown>
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ ok: false, error: 'Invalid JSON body' }, 400)
+  }
+
+  const type = body.type
+  if (typeof type !== 'string' || !IDENTITY_RE.test(type)) {
+    return c.json({ ok: false, error: 'type must match ^[A-Za-z0-9][A-Za-z0-9-]*$' }, 400)
+  }
+  // Defaults to 1. A type that needs no key is the exception — `service` and
+  // `human` — and the safe direction for anything unstated is to require one.
+  const requiresKey = body.requires_key === 0 || body.requires_key === false ? 0 : 1
+  const description = typeof body.description === 'string' ? body.description : null
+
+  const row = agentsSchema.addType(agentsDb(), type, description, requiresKey)
+  if (!row) {
+    return c.json({ ok: false, error: `type '${type}' already exists`, code: 'TYPE_EXISTS' }, 409)
+  }
+  console.log(`[http-server] ${actor} added agent type ${type} (requires_key=${requiresKey})`)
+  return c.json({ ok: true, type: row }, 201)
+})
+
+app.delete('/api/v1/admin/agent-types/:type', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+
+  const type = c.req.param('type')
+  const result = agentsSchema.removeType(agentsDb(), type)
+  if (!result.removed && result.inUseBy.length > 0) {
+    return c.json({
+      ok: false,
+      error: `type '${type}' is carried by ${result.inUseBy.length} identity/identities`,
+      code: 'TYPE_IN_USE',
+      identities: result.inUseBy.slice(0, 20),
+    }, 409)
+  }
+  if (!result.removed) {
+    return c.json({ ok: true, type, action: 'not-found' })
+  }
+  console.log(`[http-server] ${actor} removed agent type ${type}`)
+  return c.json({ ok: true, type, action: 'removed' })
+})
 
 /**
  * `DELETE /api/v1/admin/agents/{identity}` (SPEC § 9.3).

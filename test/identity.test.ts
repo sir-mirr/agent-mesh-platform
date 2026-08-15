@@ -12,7 +12,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, provision, newPublicKey, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
+import { connectRpc, provision, loginAsAdmin, newPublicKey, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
 
 let mesh: Mesh;
 
@@ -133,8 +133,8 @@ describe("hub baseline invariants", () => {
 });
 
 describe("agent type registry", () => {
-  test("accepts every seeded type, including ai-gemini", async () => {
-    for (const type of ["ai-claude", "ai-codex", "ai-gemini", "service", "human"]) {
+  test("accepts every seeded type", async () => {
+    for (const type of ["ai-claude", "ai-codex", "ai-antigravity", "service", "human"]) {
       expect((await provision(mesh.hub, `seed-${type}`, type)).status).toBe(201);
     }
   });
@@ -144,7 +144,7 @@ describe("agent type registry", () => {
     expect(res.status).toBe(400);
     // The error lists the registry rather than a constant, so it stays true
     // as the table grows.
-    expect((await res.json()).error).toContain("ai-gemini");
+    expect((await res.json()).error).toContain("ai-antigravity");
   });
 
   test("a type added to the table is accepted with no code change", async () => {
@@ -165,7 +165,7 @@ describe("agent type registry", () => {
     const byType = Object.fromEntries(rows.map((r) => [r.type, r.requires_key]));
     expect(byType["ai-claude"]).toBe(1);
     expect(byType["ai-codex"]).toBe(1);
-    expect(byType["ai-gemini"]).toBe(1);
+    expect(byType["ai-antigravity"]).toBe(1);
     expect(byType["service"]).toBe(0);
     expect(byType["human"]).toBe(0);
   });
@@ -516,5 +516,125 @@ describe("teardown requires an admin (§ 9.3)", () => {
       ).get(),
     ).toMatchObject({ actor: "admin", reason: "teardown" });
     db.close();
+  });
+});
+
+describe("the agent type registry is writable through the admin surface (§ 10.3)", () => {
+  /**
+   * § 10.3 said types are added "through the http admin surface" and no such
+   * route existed, so the only way to add one was SQL against `agents.db`. The
+   * registry was dynamic on the read side and manual on the write side, which
+   * is how the client came to be blocked on a type nobody could provision.
+   */
+  const url = (p = "") => `${mesh.http.url}/api/v1/admin/agent-types${p}`;
+  const admin = () => loginAsAdmin(mesh.http);
+
+  test("a new type is accepted for provisioning as soon as it is added", async () => {
+    // The whole point: the 400 from `POST /api/v1/agents` lists the registry,
+    // so adding a row has to change what registration accepts with no restart
+    // and no code change.
+    const before = await provision(mesh.hub, "typed-early", "ai-testruntime", null, newPublicKey());
+    expect(before.status).toBe(400);
+    // The refusal lists the registry, not the rejected value — which is the
+    // check that it is reading the table rather than a constant.
+    const listed = (await before.json()).error as string;
+    expect(listed).toContain("type must be one of");
+    expect(listed).not.toContain("ai-testruntime");
+
+    const add = await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: await admin() },
+      body: JSON.stringify({ type: "ai-testruntime", description: "fixture runtime" }),
+    });
+    expect(add.status).toBe(201);
+    // Defaults to requiring a key: the exception is a type that needs none.
+    expect((await add.json()).type).toMatchObject({ type: "ai-testruntime", requires_key: 1 });
+
+    const after = await provision(mesh.hub, "typed-early", "ai-testruntime", null, newPublicKey());
+    expect(after.status).toBe(201);
+  });
+
+  test("adding is create-only", async () => {
+    // `requires_key` is the field worth updating, and lowering it retroactively
+    // lets every identity of that type connect unsigned.
+    const cookie = await admin();
+    const body = JSON.stringify({ type: "ai-onceonly", requires_key: 1 });
+    const first = await fetch(url(), { method: "POST", headers: { "content-type": "application/json", cookie }, body });
+    expect(first.status).toBe(201);
+
+    const second = await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "ai-onceonly", requires_key: 0 }),
+    });
+    expect(second.status).toBe(409);
+    expect((await second.json()).code).toBe("TYPE_EXISTS");
+
+    const listed = await (await fetch(url(), { headers: { cookie } })).json();
+    expect(listed.types.find((t: any) => t.type === "ai-onceonly")).toMatchObject({ requires_key: 1 });
+  });
+
+  test("removal is refused while an identity carries the type", async () => {
+    const cookie = await admin();
+    await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "ai-inuse" }),
+    });
+    await provision(mesh.hub, "holds-the-type", "ai-inuse", null, newPublicKey());
+
+    const res = await fetch(url("/ai-inuse"), { method: "DELETE", headers: { cookie } });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe("TYPE_IN_USE");
+    expect(body.identities).toContain("holds-the-type");
+  });
+
+  test("a soft-deleted identity still blocks removal", async () => {
+    // § 9.3 keeps the row so past signatures stay interpretable, and the row
+    // names a type. Dropping it would dangle the classification on a record the
+    // audit trail still points at.
+    const cookie = await admin();
+    await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "ai-tombstoned" }),
+    });
+    await provision(mesh.hub, "torn-but-typed", "ai-tombstoned", null, newPublicKey());
+    expect((await teardown(mesh.http, "torn-but-typed", cookie)).body.action).toBe("soft-deleted");
+
+    const res = await fetch(url("/ai-tombstoned"), { method: "DELETE", headers: { cookie } });
+    expect(res.status).toBe(409);
+    expect((await res.json()).identities).toContain("torn-but-typed");
+  });
+
+  test("an unused type can be removed", async () => {
+    const cookie = await admin();
+    await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "ai-unused" }),
+    });
+    const res = await fetch(url("/ai-unused"), { method: "DELETE", headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).action).toBe("removed");
+
+    const listed = await (await fetch(url(), { headers: { cookie } })).json();
+    expect(listed.types.some((t: any) => t.type === "ai-unused")).toBe(false);
+  });
+
+  test("every route needs an admin, and none of them acts without one", async () => {
+    const before = await (await fetch(url(), { headers: { cookie: await admin() } })).json();
+
+    expect((await fetch(url())).status).toBe(401);
+    expect((await fetch(url(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ai-sneaked" }),
+    })).status).toBe(401);
+    expect((await fetch(url("/service"), { method: "DELETE" })).status).toBe(401);
+
+    const after = await (await fetch(url(), { headers: { cookie: await admin() } })).json();
+    expect(after.types.map((t: any) => t.type).sort()).toEqual(before.types.map((t: any) => t.type).sort());
   });
 });
