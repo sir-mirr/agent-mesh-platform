@@ -273,3 +273,86 @@ describe("fetch_messages returns the documented shape", () => {
     expect(contents).toEqual(["a to b", "b to a"]);
   });
 });
+
+/**
+ * § 8.8.1 — `mesh.message`, the notification everything else is built on.
+ *
+ * It had no direct coverage: other tests looked for one and read a field, so
+ * the shape was only ever checked where some other assertion happened to need
+ * it. § 8.8 also states two things that are easy to implement backwards — the
+ * hub MUST push exactly once per delivery, and an unknown method at the
+ * JSON-RPC layer MUST NOT close the connection.
+ */
+describe("mesh.message carries the documented shape", () => {
+  test("every field § 8.8.1 lists, and exactly those", async () => {
+    await provision(mesh.hub, "notif-from", "service");
+    await provision(mesh.hub, "notif-to", "service");
+
+    const recipient = await connectRpc(mesh.hub);
+    await recipient.call("mesh.connect", { identity: "notif-to" });
+
+    const sender = await connectRpc(mesh.hub);
+    await sender.call("mesh.connect", { identity: "notif-from" });
+    await sender.call("mesh.send", { to: "notif-to", content: "shaped", reply_to: null });
+    sender.close();
+
+    await Bun.sleep(150);
+    const pushed = recipient.notifications().filter((n) => n.method === "mesh.message");
+    recipient.close();
+
+    // Exactly once per delivery (§ 8.8), not once per socket or once per read.
+    expect(pushed).toHaveLength(1);
+    // A notification: no `id`, so a client must not try to respond to it.
+    expect(pushed[0].id).toBeUndefined();
+    expect(Object.keys(pushed[0].params).sort())
+      .toEqual(["content", "from", "id", "reply_to", "sent_by", "to", "ts"]);
+    expect(pushed[0].params).toMatchObject({
+      from: "notif-from", to: "notif-to", content: "shaped",
+      sent_by: "notif-from", reply_to: null,
+    });
+    expect(new Date(pushed[0].params.ts).toString()).not.toBe("Invalid Date");
+  });
+
+  test("an unknown method does not close the connection", async () => {
+    // § 8.8: unknown-method behaviour at the JSON-RPC layer MUST NOT close the
+    // socket. A hub that disconnected instead would make a newer client's
+    // probing indistinguishable from a network fault.
+    await provision(mesh.hub, "survivor-agent", "service");
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "survivor-agent" });
+
+    const unknown = await rpc.call("mesh.not_a_real_method", {});
+    expect(unknown.error).toMatchObject({ code: -32601 });
+
+    // Still usable afterwards, which is the actual requirement.
+    const after = await rpc.call("mesh.list_agents", {});
+    rpc.close();
+    expect(after.error).toBeUndefined();
+    expect(Array.isArray(after.result.agents)).toBe(true);
+  });
+
+  test("a replayed pending message is pushed once, not once per reconnect", async () => {
+    await provision(mesh.hub, "replay-from", "service");
+    await provision(mesh.hub, "replay-to", "service");
+
+    const sender = await connectRpc(mesh.hub);
+    await sender.call("mesh.connect", { identity: "replay-from" });
+    await sender.call("mesh.send", { to: "replay-to", content: "queued once" });
+    sender.close();
+
+    const first = await connectRpc(mesh.hub);
+    await first.call("mesh.connect", { identity: "replay-to" });
+    await Bun.sleep(150);
+    expect(first.notifications().filter((n) => n.method === "mesh.message")).toHaveLength(1);
+    first.close();
+    await Bun.sleep(100);
+
+    // Delivered on the first connect, so the second sees nothing. A hub that
+    // replayed on every connect would resend the whole history forever.
+    const second = await connectRpc(mesh.hub);
+    await second.call("mesh.connect", { identity: "replay-to" });
+    await Bun.sleep(150);
+    expect(second.notifications().filter((n) => n.method === "mesh.message")).toHaveLength(0);
+    second.close();
+  });
+});
