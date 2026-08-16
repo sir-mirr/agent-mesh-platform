@@ -804,7 +804,7 @@
     letter-spacing: -0.01em;
   }
 
-  /* Edges (Moderate Subtle Slate Tone in Default State) */
+  /* Edges (Balanced Moderate Tone, Uniform 1.8px Thickness, Static Dashes) */
   .edge-line {
     fill: none !important;
     stroke: #64748B;
@@ -821,23 +821,21 @@
   .edge-line.intra-restricted {
     stroke: #64748B;
     stroke-dasharray: 4 4;
-    stroke-width: 1.6;
-    opacity: 0.6;
+    stroke-width: 1.8;
+    opacity: 0.65;
   }
   .edge-line.gateway-link {
     stroke: #818CF8;
-    stroke-dasharray: 5 4;
-    stroke-width: 2.0;
+    stroke-dasharray: 4 4;
+    stroke-width: 1.8;
     opacity: 0.7;
   }
   .edge-line.gateway-bridge {
     stroke: #7C3AED;
-    stroke-dasharray: 8 5;
-    stroke-width: 2.6;
+    stroke-dasharray: 5 4;
+    stroke-width: 1.8;
     opacity: 0.7;
-    animation: flowDash 20s linear infinite;
   }
-  @keyframes flowDash { to { stroke-dashoffset: -100; } }
 
   /* Strong Highlighting ONLY when Node is Selected */
   .edge-line.highlighted {
@@ -1377,7 +1375,7 @@
 
     <!-- Operator Navigation Tabs -->
     <div class="tab-nav">
-      <button class="tab-nav-btn active" id="tabBtnTopology" onclick="switchOperatorTab('topology')" data-i18n="tab_topology">🌐 Network Topology Graph</button>
+      <button class="tab-nav-btn active" id="tabBtnTopology" onclick="switchOperatorTab('topology')" data-i18n="tab_topology">🌐 Agent Topology Graph</button>
       <button class="tab-nav-btn" id="tabBtnPlayground" onclick="switchOperatorTab('playground')" data-i18n="tab_playground">📋 My Agents & Message Playground</button>
     </div>
 
@@ -2422,7 +2420,7 @@
         creator_logged_as: "Logged in as",
         btn_register_agent: "+ Register Agent",
         btn_create_group: "+ Create Group",
-        tab_topology: "🌐 Network Topology Graph",
+        tab_topology: "🌐 Agent Topology Graph",
         tab_playground: "📋 My Agents & Message Playground",
         label_filter_group: "Swarm Galaxies:",
         filter_all: "All (10 Swarms · 139 Nodes)",
@@ -2512,7 +2510,7 @@
         creator_logged_as: "현재 운영자:",
         btn_register_agent: "+ 에이전트 등록",
         btn_create_group: "+ 그룹 생성",
-        tab_topology: "🌐 네트워크 토폴로지 그래프",
+        tab_topology: "🌐 에이전트 토폴로지 그래프",
         tab_playground: "📋 내 에이전트 & 메시지 테스트",
         label_filter_group: "스웜 성단 필터:",
         filter_all: "전체 성단 (10개 스웜 · 139개 노드)",
