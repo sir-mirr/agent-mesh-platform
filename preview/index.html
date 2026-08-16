@@ -912,15 +912,16 @@
 
   .node-title {
     font-family: var(--font-ui);
-    font-size: 10px;
-    font-weight: 750;
+    font-size: 9.5px;
+    font-weight: 700;
     fill: #0F172A;
     text-anchor: middle;
     cursor: pointer;
     paint-order: stroke fill;
-    stroke: #FFFFFF;
+    stroke: rgba(255, 255, 255, 0.95);
     stroke-width: 3px;
     stroke-linejoin: round;
+    letter-spacing: -0.01em;
   }
 
   /* Floating Right Side Overlay Panel */
@@ -1752,22 +1753,22 @@
 
   <script>
     // =========================================================================
-    // 10 SWARM GALAXIES MASTER DEFINITIONS (DIVERSE SIZES: 5, 30, 15, 8, 18, 22, 4, 12, 9, 6)
+    // 10 SWARM GALAXIES MASTER DEFINITIONS (SPACIOUS RADII: 160, 320, 245, 180, 265, 280, 150, 220, 200, 170)
     // =========================================================================
     const MASTER_CLUSTERS_CONFIG = [
       // ROW 1: TOP DECK
-      { id: 'core', name: 'Core Platform Hub', count: 5, cx: 320, cy: 360, r: 135, fill: '#EFF6FF', stroke: '#93C5FD', textColor: '#1E40AF', gw: { id: 'gw-core', x: 320, y: 760 } },
-      { id: 'research', name: 'Research & Reasoning Swarm', count: 30, cx: 920, cy: 360, r: 275, fill: '#ECFDF5', stroke: '#A7F3D0', textColor: '#065F46', gw: { id: 'gw-research', x: 920, y: 760 } },
-      { id: 'delivery', name: 'Execution & Delivery Mesh', count: 15, cx: 1560, cy: 360, r: 195, fill: '#F5F3FF', stroke: '#DDD6FE', textColor: '#5B21B6', gw: { id: 'gw-delivery', x: 1560, y: 760 } },
-      { id: 'security', name: 'Security & Sentinel Ring', count: 8, cx: 2120, cy: 360, r: 150, fill: '#FEF2F2', stroke: '#FECACA', textColor: '#991B1B', gw: { id: 'gw-security', x: 2120, y: 760 } },
-      { id: 'data', name: 'Data & ETL Pipeline Swarm', count: 18, cx: 2740, cy: 360, r: 215, fill: '#F0F9FF', stroke: '#BAE6FD', textColor: '#075985', gw: { id: 'gw-data', x: 2740, y: 760 } },
+      { id: 'core', name: 'Core Platform Hub', count: 5, cx: 360, cy: 400, r: 160, fill: '#EFF6FF', stroke: '#93C5FD', textColor: '#1E40AF', gw: { id: 'gw-core', x: 360, y: 760 } },
+      { id: 'research', name: 'Research & Reasoning Swarm', count: 30, cx: 1120, cy: 400, r: 320, fill: '#ECFDF5', stroke: '#A7F3D0', textColor: '#065F46', gw: { id: 'gw-research', x: 1120, y: 760 } },
+      { id: 'delivery', name: 'Execution & Delivery Mesh', count: 15, cx: 1880, cy: 400, r: 245, fill: '#F5F3FF', stroke: '#DDD6FE', textColor: '#5B21B6', gw: { id: 'gw-delivery', x: 1880, y: 760 } },
+      { id: 'security', name: 'Security & Sentinel Ring', count: 8, cx: 2560, cy: 400, r: 180, fill: '#FEF2F2', stroke: '#FECACA', textColor: '#991B1B', gw: { id: 'gw-security', x: 2560, y: 760 } },
+      { id: 'data', name: 'Data & ETL Pipeline Swarm', count: 18, cx: 3300, cy: 400, r: 265, fill: '#F0F9FF', stroke: '#BAE6FD', textColor: '#075985', gw: { id: 'gw-data', x: 3300, y: 760 } },
 
       // ROW 2: BOTTOM DECK
-      { id: 'edge', name: 'Edge & IoT Micro-Agents', count: 22, cx: 420, cy: 1260, r: 235, fill: '#FFFBEB', stroke: '#FDE68A', textColor: '#92400E', gw: { id: 'gw-edge', x: 420, y: 900 } },
-      { id: 'human', name: 'Human Operator Guild', count: 4, cx: 960, cy: 1260, r: 125, fill: '#EFF6FF', stroke: '#BFDBFE', textColor: '#1D4ED8', gw: { id: 'gw-human', x: 960, y: 900 } },
-      { id: 'refactor', name: 'Autonomous Code Refactor', count: 12, cx: 1500, cy: 1260, r: 175, fill: '#F5F3FF', stroke: '#C4B5FD', textColor: '#6D28D9', gw: { id: 'gw-refactor', x: 1500, y: 900 } },
-      { id: 'vision', name: 'Multi-Modal Vision & Audio', count: 9, cx: 2060, cy: 1260, r: 155, fill: '#ECFDF5', stroke: '#6EE7B7', textColor: '#047857', gw: { id: 'gw-vision', x: 2060, y: 900 } },
-      { id: 'audit', name: 'Compliance & Audit Hive', count: 6, cx: 2600, cy: 1260, r: 140, fill: '#F8FAFC', stroke: '#CBD5E1', textColor: '#334155', gw: { id: 'gw-audit', x: 2600, y: 900 } }
+      { id: 'edge', name: 'Edge & IoT Micro-Agents', count: 22, cx: 500, cy: 1400, r: 280, fill: '#FFFBEB', stroke: '#FDE68A', textColor: '#92400E', gw: { id: 'gw-edge', x: 500, y: 920 } },
+      { id: 'human', name: 'Human Operator Guild', count: 4, cx: 1180, cy: 1400, r: 150, fill: '#EFF6FF', stroke: '#BFDBFE', textColor: '#1D4ED8', gw: { id: 'gw-human', x: 1180, y: 920 } },
+      { id: 'refactor', name: 'Autonomous Code Refactor', count: 12, cx: 1820, cy: 1400, r: 220, fill: '#F5F3FF', stroke: '#C4B5FD', textColor: '#6D28D9', gw: { id: 'gw-refactor', x: 1820, y: 920 } },
+      { id: 'vision', name: 'Multi-Modal Vision & Audio', count: 9, cx: 2480, cy: 1400, r: 200, fill: '#ECFDF5', stroke: '#6EE7B7', textColor: '#047857', gw: { id: 'gw-vision', x: 2480, y: 920 } },
+      { id: 'audit', name: 'Compliance & Audit Hive', count: 6, cx: 3160, cy: 1400, r: 170, fill: '#F8FAFC', stroke: '#CBD5E1', textColor: '#334155', gw: { id: 'gw-audit', x: 3160, y: 920 } }
     ];
 
     const ICONS_PALETTE = ['🤖', '🔬', '💻', '⚡', '📦', '🛡', '📜', '🔑', '📊', '🧠', '💡', '📝', '🏆', '🕸', '🕷', '🚀', '🏷', '💬', '🪝', '📡', '🪵', '🎮', '🔍', '🧬', '🎯', '⚙', '👁', '🎙', '🔐'];
@@ -1810,23 +1811,23 @@
 
       if (stageNum === 1) {
         // Stage 1: Single Swarm centered with local gateway directly underneath
-        configs[0].cx = 400;
-        configs[0].cy = 340;
-        configs[0].gw.x = 400;
-        configs[0].gw.y = 340 + configs[0].r + 65;
+        configs[0].cx = 420;
+        configs[0].cy = 360;
+        configs[0].gw.x = 420;
+        configs[0].gw.y = 360 + configs[0].r + 65;
       } else if (stageNum === 2) {
         // Stage 2: Dual Swarms side-by-side with Gateways placed in the corridor BETWEEN the two groups!
-        configs[0].cx = 320;
-        configs[0].cy = 400;
-        configs[1].cx = 1060;
-        configs[1].cy = 400;
+        configs[0].cx = 360;
+        configs[0].cy = 420;
+        configs[1].cx = 1200;
+        configs[1].cy = 420;
 
         // Place gateways horizontally between the two swarms in the central bridge corridor
-        configs[0].gw.x = 520;
-        configs[0].gw.y = 400;
+        configs[0].gw.x = 600;
+        configs[0].gw.y = 420;
 
-        configs[1].gw.x = 730;
-        configs[1].gw.y = 400;
+        configs[1].gw.x = 800;
+        configs[1].gw.y = 420;
       } else if (stageNum <= 5) {
         // Stages 3 ~ 5: Single top row chain with gateways compactly placed below each swarm
         configs.forEach(c => {
@@ -1838,10 +1839,10 @@
         configs.forEach((c, idx) => {
           if (idx < 5) {
             c.gw.x = c.cx;
-            c.gw.y = 660;
+            c.gw.y = 700;
           } else {
             c.gw.x = c.cx;
-            c.gw.y = 780;
+            c.gw.y = 820;
           }
         });
       }
@@ -1902,41 +1903,64 @@
             }
           }
 
-          // Calculate radial orbit positions with non-overlapping spacing
+          // Calculate spacious concentric orbit positions with radial outward-pointing directional labels
           let nx, ny;
-          let labelOffsetY = 28;
+          let labelOffsetY = 24;
+
           if (cfg.count <= 6) {
+            // Small Swarms (4..6 nodes): 1 spacious outer orbit
             const angle = (i / cfg.count) * Math.PI * 2 + (Math.PI / 6);
-            const rad = cfg.r * 0.54;
+            const rad = cfg.r * 0.58;
             nx = cfg.cx + Math.cos(angle) * rad;
             ny = cfg.cy + Math.sin(angle) * rad;
+            labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
           } else if (cfg.count <= 15) {
+            // Medium Swarms (7..15 nodes, e.g. Delivery 15, Refactor 12, Security 8):
+            // Center Lead + 2 well-staggered concentric rings
             if (i === 0) {
-              nx = cfg.cx; ny = cfg.cy;
+              nx = cfg.cx;
+              ny = cfg.cy;
               labelOffsetY = -22; // Lead label above center
+            } else if (i <= 5) {
+              // Inner Ring (5 nodes, 72 deg spacing)
+              const angle = ((i - 1) / 5) * Math.PI * 2 + (Math.PI / 5);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.44);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.44);
+              labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
             } else {
-              const angle = ((i - 1) / (cfg.count - 1)) * Math.PI * 2 + (Math.PI / 8);
-              const rad = cfg.r * (i % 2 === 0 ? 0.72 : 0.46);
-              nx = cfg.cx + Math.cos(angle) * rad;
-              ny = cfg.cy + Math.sin(angle) * rad;
+              // Outer Ring (remaining nodes, staggered by +18 deg)
+              const remCount = cfg.count - 6;
+              const angle = ((i - 6) / remCount) * Math.PI * 2 + (Math.PI / 10);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.80);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.80);
+              labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
             }
           } else {
-            // Large swarms (18, 22, 30): 3 well-separated concentric orbits with angle offsets
+            // Large Swarms (16..30 nodes, e.g. Research 30, Edge 22, Data 18):
+            // Center Lead + 3 wide concentric rings with angular staggering
             if (i === 0) {
-              nx = cfg.cx; ny = cfg.cy;
+              nx = cfg.cx;
+              ny = cfg.cy;
               labelOffsetY = -22; // Lead label above center
             } else if (i <= 6) {
+              // Ring 1 (6 nodes)
               const angle = ((i - 1) / 6) * Math.PI * 2 + (Math.PI / 6);
-              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.36);
-              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.36);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.35);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.35);
+              labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
             } else if (i <= 16) {
+              // Ring 2 (10 nodes)
               const angle = ((i - 7) / 10) * Math.PI * 2 + (Math.PI / 10);
               nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.64);
               ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.64);
+              labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
             } else {
-              const angle = ((i - 17) / (cfg.count - 17)) * Math.PI * 2 + (Math.PI / 14);
+              // Ring 3 (outer ring)
+              const remCount = cfg.count - 17;
+              const angle = ((i - 17) / remCount) * Math.PI * 2 + (Math.PI / 14);
               nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.88);
               ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.88);
+              labelOffsetY = ny < cfg.cy - 12 ? -20 : 24;
             }
           }
 
