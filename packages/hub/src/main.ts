@@ -15,6 +15,8 @@ import { closeDatabases, stmtUpdateLastSeen } from "./db";
 import { Heartbeat } from "./heartbeat";
 import { SERVER_ERROR, rpcError } from "./jsonrpc";
 import { log } from "./log";
+import { OBSERVED } from "./observed-config";
+import { observedSource } from "./observed";
 import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
@@ -80,14 +82,31 @@ function requestId(raw: string | Buffer): string | number | null {
 // Server
 // ---------------------------------------------------------------------------
 
-const server = Bun.serve({
+/** Carried from the upgrade, where the headers still existed (§ 8.11). */
+interface SocketData {
+  observed: string | null;
+}
+
+const server = Bun.serve<SocketData, never>({
   port: HUB_PORT,
 
   fetch(req, server) {
     const url = new URL(req.url);
 
-    // WebSocket upgrade
-    if (server.upgrade(req)) {
+    // WebSocket upgrade. The observed source is resolved **here**, while the
+    // request and its headers still exist — after the upgrade there is only a
+    // socket, and § 8.11's forwarded-header case would be unrecoverable.
+    if (
+      server.upgrade(req, {
+        data: {
+          observed: observedSource(
+            OBSERVED,
+            server.requestIP(req)?.address,
+            req.headers.get("x-forwarded-for"),
+          ),
+        },
+      })
+    ) {
       return undefined as any;
     }
 
@@ -111,6 +130,14 @@ const server = Bun.serve({
       );
     }
 
+    // Resolved per request rather than per connection: HTTP callers hold no
+    // socket, so this is the only place the address exists (§ 8.10).
+    const observed = observedSource(
+      OBSERVED,
+      server.requestIP(req)?.address,
+      req.headers.get("x-forwarded-for"),
+    );
+
     // The signed inbox surface (§ 9.2.1). Answers `null` for a path it does
     // not own, so it cannot shadow a route that was already here.
     if (url.pathname.startsWith("/api/v1/inbox") ||
@@ -126,6 +153,7 @@ const server = Bun.serve({
           search: url.search,
           authorization: req.headers.get("authorization"),
           body,
+          observed,
         }) ?? new Response("Not Found", { status: 404 }),
       );
     }
@@ -157,7 +185,7 @@ const server = Bun.serve({
         return jsonResponse(405, { ok: false, error: "method not allowed; use POST" });
       }
       return req.text().then((body) => {
-        const { status, body: out } = dispatchHttp(body);
+        const { status, body: out } = dispatchHttp(body, observed);
         return new Response(out, {
           status,
           headers: { "Content-Type": "application/json" },

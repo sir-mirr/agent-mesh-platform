@@ -14,7 +14,7 @@ import {
   rpcNotification,
   rpcResult,
 } from "../jsonrpc";
-import { entitlement } from "@agent-mesh/store";
+import { entitlement, sources } from "@agent-mesh/store";
 
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
 import { recordDelivered } from "./audit";
@@ -79,6 +79,10 @@ export function performConnect(
       { code: "IDENTITY_NOT_REGISTERED", identity }
     );
   }
+
+  // § 8.11. The address was resolved at upgrade, where the headers still
+  // existed, and rides on the socket until now.
+  sources.recordSource(agentsDb, identity, (ws.data as { observed?: string | null } | undefined)?.observed ?? null);
 
   // ── Connection ownership (P0 self-reminder stall remediation) ──────────
   // A live owner is never evicted by a contender, whether the collision is

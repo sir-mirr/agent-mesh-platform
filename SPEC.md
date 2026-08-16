@@ -1335,6 +1335,71 @@ an adapter's report of its own activity; a mesh event is the hub's observation
 carrying the sender's own signature. `recorded_by` exists so that difference
 is a field rather than something inferred by prefix-matching `event_type`.
 
+### 8.11. Observed source
+
+The hub records the address each authenticated request arrived from. It is
+**an observation, never a claim.** A holder of a stolen key signs whatever it
+likes about its hostname or hardware; it cannot make packets arrive from an
+address it does not control, and that difference is the only reason this is
+worth recording.
+
+A hub MUST record it for **every authenticated request**, on every transport,
+after the signature verifies and never before — an unverified request has only
+named an identity, and recording it would let anyone write history for a name
+they do not hold.
+
+Recording is not the same as refusing. Refusal policy is deployment-defined and
+is not specified here; the record exists so that an operator asking later gets
+a history rather than a gap.
+
+**Storage is one row per `(identity, address)`** with a first-seen, a last-seen
+and a counter. The question is which addresses a key has been used from, and a
+row per request answers it while growing without bound.
+
+**Addresses MUST be normalised before storage or comparison.** IPv4-mapped IPv6
+(`::ffff:127.0.0.1`) and its plain form are one host, and a deployment that
+stores one spelling while observing the other refuses every agent it has.
+Ports are stripped: they change per connection.
+
+#### 8.11.1. Behind a proxy
+
+`GET /api/v1/capabilities` MUST report `surface.observed_source`:
+
+| | |
+|---|---|
+| `socket` | the kernel's view of the peer |
+| `forwarded` | taken from `X-Forwarded-For`, from a configured trusted proxy |
+
+It is reported because **a control that is configured off is
+indistinguishable from one that is on** until something asks.
+
+With no trusted proxy configured the hub MUST use the socket address and
+**ignore the header entirely**. Treating it as a fallback means an
+unconfigured deployment believes a string any client can write.
+
+Where trusted proxies are configured:
+
+- The immediate peer MUST be one of them, or the header is disregarded and the
+  socket address used — something reached the hub directly and may have
+  written the whole chain.
+- The address MUST be taken **from the right**: entries are skipped only while
+  contributed by a trusted hop, and the first that was not is the answer.
+  `X-Forwarded-For` accumulates oldest-first, so **the leftmost entry is
+  whatever the original client sent.** It is conventionally "the client" and is
+  exactly the forgeable one — and taking it fails *open*, with the feature
+  still reporting itself enabled while comparing an attacker's string.
+- A chain of nothing but trusted proxies yields **no observation**, not a
+  guess.
+
+Two properties the hub cannot verify and a deployment MUST provide:
+
+1. **The hub is unreachable except through the proxy.** Otherwise an attacker
+   connects directly and writes the header themselves.
+2. **The proxy replaces rather than appends** any inbound header, or the rule
+   above is what saves it.
+
+---
+
 #### 8.9.5. Hub-produced identity events
 
 Some things happen to an **identity** rather than to a message, and § 8.9.4's

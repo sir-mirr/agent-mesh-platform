@@ -32,7 +32,7 @@ import {
   parseRestAuthorization,
   restSignaturePreimage,
 } from "@agent-mesh/contracts";
-import { keys, verify } from "@agent-mesh/store";
+import { keys, sources, verify } from "@agent-mesh/store";
 
 import { agentsDb } from "../db";
 import { nonceWindow } from "../signature";
@@ -71,7 +71,13 @@ function refuse(
  * covers it, so an attacker able to rewrite `?peer=` could otherwise redirect a
  * history read while the signature still verified.
  */
-export function authenticate(method: string, path: string, headerValue: string | null, body: string): SignedResult {
+export function authenticate(
+  method: string,
+  path: string,
+  headerValue: string | null,
+  body: string,
+  observed: string | null = null,
+): SignedResult {
   if (!headerValue) {
     return refuse(401, MESH_ERROR.SIGNATURE_INVALID, "requests to this surface must be signed", "SIGNATURE_INVALID");
   }
@@ -122,6 +128,10 @@ export function authenticate(method: string, path: string, headerValue: string |
   if (!outcome.ok) {
     return refuse(401, MESH_ERROR.SIGNATURE_INVALID, `signature does not verify (${outcome.reason})`, "SIGNATURE_INVALID");
   }
+
+  // § 8.11, after the signature verifies. A refused request must not record a
+  // source for an identity it merely named.
+  sources.recordSource(agentsDb, identity, observed);
 
   return { ok: true, caller: { identity, kid: auth.kid } };
 }
