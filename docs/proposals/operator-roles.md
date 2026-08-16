@@ -1,6 +1,7 @@
 # Proposal — two operator roles, and what separating them can actually enforce
 
-Status: **proposed**. Nothing below is built.
+Status: **proposed** — 0.3 requirement set, first draft ([index](README.md)).
+Nothing below is built.
 
 Today there is one authenticated role that does everything: `admin` approves
 keys, tears identities down, reads the audit trail and reads inbox depth. The

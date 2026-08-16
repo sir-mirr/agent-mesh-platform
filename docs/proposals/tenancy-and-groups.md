@@ -1,6 +1,7 @@
 # Note — what tenancy, groups and gateways will cost, written before they arrive
 
-Status: **not a proposal.** Requirements named as upcoming: restricting who an
+Status: **not a proposal** — 0.3 requirement set, first draft
+([index](README.md)). Requirements named as upcoming: restricting who an
 agent may talk to, agent groups, per-group gateways relaying between groups,
 and tenant isolation. Nothing here is a design. It is what the current
 architecture would have to give up, recorded now because two of these are much

@@ -1,6 +1,7 @@
 # Proposal — what an attestation should actually contain
 
-Status: **proposed**. Companion to
+Status: **proposed** — 0.3 requirement set, first draft ([index](README.md)).
+Companion to
 [`dormancy-reattestation.md`](dormancy-reattestation.md), which left "which
 claims" open because the claim set decides the whole value of the mechanism.
 
