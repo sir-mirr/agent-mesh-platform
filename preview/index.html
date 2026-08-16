@@ -1304,8 +1304,8 @@
             <button class="hud-btn" onclick="resetCanvasTransform()" title="Fit All (10 Galaxies)">⤢</button>
           </div>
 
-          <!-- SVG Canvas Container -->
-          <svg id="topologySvg" viewBox="0 0 3100 1700">
+          <!-- SVG Canvas Container (Exact pixel coordinate rendering for 1:1 mouse-centered zoom) -->
+          <svg id="topologySvg" style="width:100%; height:100%; overflow:visible;">
             <defs>
               <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
@@ -1748,11 +1748,11 @@
     }
 
     // =========================================================================
-    // PAN & MAC TRACKPAD PINCH-TO-ZOOM ENGINE
+    // PAN & MAC TRACKPAD PINCH-TO-ZOOM ENGINE (EXACT MOUSE-POINTER ANCHOR)
     // =========================================================================
-    let panX = 40;
-    let panY = 20;
-    let scale = 0.55;
+    let panX = 60;
+    let panY = 30;
+    let scale = 0.95;
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
@@ -1772,25 +1772,40 @@
       const viewport = document.getElementById('canvasViewport');
       if (!viewport) return;
       const rect = viewport.getBoundingClientRect();
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-      zoomAroundPoint(factor, centerX, centerY);
+      const clientX = rect.left + rect.width / 2;
+      const clientY = rect.top + rect.height / 2;
+      zoomAroundPoint(factor, clientX, clientY);
     }
 
     function zoomAroundPoint(factor, clientX, clientY) {
-      const oldScale = scale;
-      scale = Math.min(Math.max(scale * factor, 0.22), 3.2);
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      
+      // Calculate mouse position relative to canvas viewport top-left
+      const mouseX = clientX - rect.left;
+      const mouseY = clientY - rect.top;
 
-      // Adjust pan to keep client point under cursor
-      panX = clientX - (clientX - panX) * (scale / oldScale);
-      panY = clientY - (clientY - panY) * (scale / oldScale);
+      const oldScale = scale;
+      const newScale = Math.min(Math.max(scale * factor, 0.25), 3.2);
+      if (newScale === oldScale) return;
+
+      // Coordinate in canvas world space under mouse before zoom
+      const worldX = (mouseX - panX) / oldScale;
+      const worldY = (mouseY - panY) / oldScale;
+
+      // Adjust pan offsets so world coordinate stays precisely locked at (mouseX, mouseY)
+      panX = mouseX - (worldX * newScale);
+      panY = mouseY - (worldY * newScale);
+      scale = newScale;
+
       applyCanvasTransform();
     }
 
     function resetCanvasTransform() {
-      panX = 40;
-      panY = 20;
-      scale = 0.52;
+      panX = 60;
+      panY = 30;
+      scale = 0.95;
       applyCanvasTransform();
     }
 
@@ -1843,26 +1858,26 @@
         if (viewport) viewport.classList.remove('is-dragging');
       });
 
-      // Mac Trackpad Pinch-to-Zoom & Mouse Wheel Zoom
+      // Mac Trackpad Pinch-to-Zoom & Mouse Wheel Zoom (Anchored to Mouse Cursor)
       viewport.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const rect = viewport.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
         if (e.ctrlKey) {
-          // Mac Trackpad Pinch Gesture
-          const zoomFactor = 1 - e.deltaY * 0.01;
-          zoomAroundPoint(zoomFactor, mouseX, mouseY);
+          // MacBook Trackpad Pinch Gesture
+          const factor = Math.exp(-e.deltaY * 0.012);
+          zoomAroundPoint(factor, e.clientX, e.clientY);
         } else {
-          // Standard Two-finger Pan or Wheel Zoom
-          if (Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) > 0) {
-            panX -= e.deltaX * 0.9;
-            panY -= e.deltaY * 0.9;
-            applyCanvasTransform();
-          }
+          // Trackpad 2-finger Pan
+          panX -= e.deltaX * 1.0;
+          panY -= e.deltaY * 1.0;
+          applyCanvasTransform();
         }
       }, { passive: false });
+
+      // Double-click to zoom in centered on the clicked point
+      viewport.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.node-group')) return;
+        zoomAroundPoint(1.35, e.clientX, e.clientY);
+      });
     }
 
     let selectedTopologyNodeId = 'core-lead';
