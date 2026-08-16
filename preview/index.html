@@ -2028,11 +2028,15 @@
         }
       }
 
-      // Dynamic Bounding Box computation based on active clusters
-      const minX = Math.min(...CLUSTERS_CONFIG.map(c => c.cx - c.r - 30));
-      const maxX = Math.max(...CLUSTERS_CONFIG.map(c => c.cx + c.r + 30));
-      const minY = Math.min(...CLUSTERS_CONFIG.map(c => c.cy - c.r - 40));
-      const maxY = Math.max(...CLUSTERS_CONFIG.map(c => (c.cy > 700 ? c.cy + c.r + 30 : c.gw.y + 40)));
+      // Dynamic Bounding Box computation based on ALL active cluster circles & gateways
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      CLUSTERS_CONFIG.forEach(c => {
+        // Encompass cluster circle radius, top label badge, and bottom nodes with generous margin
+        minX = Math.min(minX, c.cx - c.r - 60, c.gw ? c.gw.x - 60 : Infinity);
+        maxX = Math.max(maxX, c.cx + c.r + 60, c.gw ? c.gw.x + 60 : -Infinity);
+        minY = Math.min(minY, c.cy - c.r - 80, c.gw ? c.gw.y - 60 : Infinity);
+        maxY = Math.max(maxY, c.cy + c.r + 80, c.gw ? c.gw.y + 60 : -Infinity);
+      });
 
       ENTITY_MIN_X = minX;
       ENTITY_MAX_X = maxX;
@@ -2043,6 +2047,7 @@
       ENTITY_CX = (ENTITY_MIN_X + ENTITY_MAX_X) / 2;
       ENTITY_CY = (ENTITY_MIN_Y + ENTITY_MAX_Y) / 2;
 
+      // 1.5x World Boundary (Strict 50% Outer Space Margin around all entities)
       BOUND_W = ENTITY_W * 1.5;
       BOUND_H = ENTITY_H * 1.5;
       BOUND_MIN_X = ENTITY_CX - BOUND_W / 2;
