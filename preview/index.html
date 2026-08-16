@@ -1389,6 +1389,104 @@
     margin-bottom: 8px;
   }
 
+  /* --- v0.3 Multi-Tenant & Governance Styles --- */
+  .audit-compliance-banner {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-left: 4px solid #F59E0B;
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.875rem;
+    color: #92400E;
+    line-height: 1.5;
+  }
+  .privacy-guarantee-banner {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-left: 4px solid #3B82F6;
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.875rem;
+    color: #1E40AF;
+    line-height: 1.5;
+  }
+
+  .pairing-code-box {
+    background: #F8FAFC;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    text-align: center;
+    margin: 16px 0;
+  }
+  .pairing-code-display {
+    font-family: var(--font-mono);
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--primary);
+    margin: 12px 0 8px;
+    user-select: all;
+  }
+  .pairing-timer-badge {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFFFFF;
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-default);
+  }
+
+  .policy-toggle-row {
+    background: var(--bg-surface-sub);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .policy-rule-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .capability-pill-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .cap-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2.5px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    background: #EFF6FF;
+    color: #1D4ED8;
+    border: 1px solid #DBEAFE;
+  }
+
   /* Modals Overlay */
   .modal-backdrop {
     display: none;
@@ -1409,7 +1507,7 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
     width: 100%;
-    max-width: 520px;
+    max-width: 540px;
     padding: 28px;
     border: 1px solid var(--border-default);
   }
@@ -1439,19 +1537,21 @@
   </div>
 
   <!-- Top Navigation Header -->
+  <!-- Top Navigation Header -->
   <header class="preview-control-bar">
     <div class="preview-brand" onclick="switchView('home')">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
-      <span class="badge badge-success" style="margin-left: 6px;"><span class="live-dot"></span> Online</span>
+      <span class="badge badge-success" style="margin-left: 6px;"><span class="live-dot"></span> v0.3 Live</span>
     </div>
 
     <div class="nav-center-group">
       <!-- Screen Switcher Tabs -->
       <div class="preview-nav">
-        <button class="preview-btn active" onclick="switchView('home')" data-i18n="nav_home">1. Home & Login</button>
-        <button class="preview-btn" onclick="switchView('admin')" data-i18n="nav_admin">2. Platform Admin Console</button>
-        <button class="preview-btn" onclick="switchView('creator')" data-i18n="nav_creator">3. Agent Operations Console</button>
+        <button class="preview-btn active" id="navBtn-home" onclick="switchView('home')" data-i18n="nav_home">1. Home & Login</button>
+        <button class="preview-btn" id="navBtn-platform" onclick="switchView('platform')" data-i18n="nav_platform">2. Platform Operator</button>
+        <button class="preview-btn" id="navBtn-tenant" onclick="switchView('tenant')" data-i18n="nav_tenant">3. Tenant Admin (Acme Corp)</button>
+        <button class="preview-btn" id="navBtn-creator" onclick="switchView('creator')" data-i18n="nav_creator">4. Agent Operations</button>
       </div>
 
       <!-- Language Switcher Combo Box -->
@@ -1464,7 +1564,7 @@
     </div>
   </header>
 
-  <!-- VIEW 1: HOME & DUAL LOGIN -->
+  <!-- VIEW 1: HOME & MULTI-TIER LOGIN -->
   <main id="view-home" class="preview-view active">
     <section class="home-hero-wrap">
       <!-- Centered Primary Hero Content -->
@@ -1560,44 +1660,65 @@
       </div>
     </section>
 
-    <!-- Dual Login Section -->
-    <div class="login-container">
-      <!-- Option A: GitHub OAuth -->
+    <!-- Multi-Tier Login Section (3 Roles) -->
+    <div class="login-container" style="grid-template-columns: repeat(3, 1fr); max-width: 1040px;">
+      <!-- Option A: Agent Operator OAuth -->
       <div class="login-box">
         <span class="login-box-badge" data-i18n="login_oauth_badge">Recommended</span>
         <div>
           <div class="login-box-header">
-            <h2 class="login-box-title" data-i18n="login_oauth_title">GitHub Login</h2>
-            <p class="login-box-subtitle" data-i18n="login_oauth_subtitle">Single-click OAuth for agent developers & participants</p>
+            <h2 class="login-box-title" data-i18n="login_oauth_title">Agent Operator</h2>
+            <p class="login-box-subtitle" data-i18n="login_oauth_subtitle">Single-click GitHub OAuth for agent creators</p>
           </div>
           <p style="font-size:0.875rem; color:var(--text-secondary); line-height:1.5; margin-bottom:24px;" data-i18n="login_oauth_desc">
-            Instantly join as a verified human identity, manage your agent keys, and access interactive messaging channels.
+            Manage your autonomous agent keys, test message routing in playground, and explore topology swarm scale.
           </p>
         </div>
         <button class="btn btn-oauth-github" onclick="switchView('creator')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle; margin-right:6px;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           <span data-i18n="login_oauth_btn">Continue with GitHub</span>
         </button>
       </div>
 
-      <!-- Option B: Local ID / PW Login -->
+      <!-- Option B: Tenant Admin Login -->
+      <div class="login-box" style="border-color:#BFDBFE; background:#F8FAFC;">
+        <span class="login-box-badge" style="background:#0284C7;">Tenant SSO</span>
+        <div>
+          <div class="login-box-header">
+            <h2 class="login-box-title" data-i18n="login_tenant_title">Tenant Admin</h2>
+            <p class="login-box-subtitle" data-i18n="login_tenant_subtitle">Company Admin (Acme Corp)</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="form_tenant_id">Tenant ID</label>
+            <input type="text" class="form-input" value="acme-corp" readonly style="background:#F1F5F9; font-weight:600;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" data-i18n="form_admin_user">Admin Identity</label>
+            <input type="text" class="form-input" value="alice_admin" id="tenantAdminUser">
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%; background:#0284C7;" onclick="switchView('tenant')" data-i18n="login_tenant_btn">
+          Sign In to Acme Corp →
+        </button>
+      </div>
+
+      <!-- Option C: Platform Operator Master Key -->
       <div class="login-box">
         <div>
           <div class="login-box-header">
-            <h2 class="login-box-title" data-i18n="login_admin_title">Platform Admin Login</h2>
-            <p class="login-box-subtitle" data-i18n="login_admin_subtitle">Local bootstrap credentials (admin / admin)</p>
+            <h2 class="login-box-title" data-i18n="login_admin_title">Platform Operator</h2>
+            <p class="login-box-subtitle" data-i18n="login_admin_subtitle">Global mesh infrastructure & gateways</p>
           </div>
           <div class="form-group">
-            <label class="form-label" data-i18n="form_username">Username</label>
-            <input type="text" class="form-input" value="admin" id="loginAdminUser">
+            <label class="form-label" data-i18n="form_master_key">Operator Master Key</label>
+            <input type="password" class="form-input" value="adm_live_k9x2_master_fabric_mesh" id="loginPlatformKey">
           </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="form_password">Password</label>
-            <input type="password" class="form-input" value="admin" id="loginAdminPass">
-          </div>
+          <p style="font-size:0.78rem; color:var(--text-muted); line-height:1.4; margin-bottom:12px;">
+            🔒 <em>Enforces strict message body privacy segregation (Metadata audits only).</em>
+          </p>
         </div>
-        <button class="btn btn-primary" style="width:100%;" onclick="switchView('admin')" data-i18n="login_admin_btn">
-          Sign In to Admin Console →
+        <button class="btn btn-primary" style="width:100%;" onclick="switchView('platform')" data-i18n="login_admin_btn">
+          Sign In as Platform Operator →
         </button>
       </div>
     </div>
@@ -1622,68 +1743,291 @@
     </div>
   </main>
 
-  <!-- VIEW 2: PLATFORM ADMIN CONSOLE -->
-  <main id="view-admin" class="preview-view">
+  <!-- VIEW 2: PLATFORM OPERATOR CONSOLE (Global Infrastructure & Gateways) -->
+  <main id="view-platform" class="preview-view">
     <div class="admin-header-row">
       <div>
-        <h1 class="admin-header-title" data-i18n="admin_title">Platform Admin Console</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;" data-i18n="admin_subtitle">
-          Core Security Gate & Infrastructure Backlog Manager
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <h1 class="admin-header-title" data-i18n="platform_title" style="margin:0;">Platform Operator Console</h1>
+          <span class="badge badge-success"><span class="live-dot"></span> Global Mesh Active</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
+          Global Mesh Infrastructure, Cross-Tenant Gateway Routing & Metadata Audits
         </p>
+        <div class="capability-pill-list">
+          <span class="cap-pill">🔑 cap: mesh.route</span>
+          <span class="cap-pill">🌐 cap: gateway.manage</span>
+          <span class="cap-pill">🏢 cap: tenant.provision</span>
+          <span class="cap-pill">📊 cap: audit.read_metadata (No Content)</span>
+        </div>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-secondary btn-sm" onclick="alert('Live data refreshed from HTTP server :3000.')" data-i18n="btn_refresh">↻ Refresh</button>
-        <button class="btn btn-danger btn-sm" onclick="openTeardownModal('demo-torn-down')" data-i18n="btn_teardown_sim">⚠ Simulate Teardown</button>
+        <button class="btn btn-secondary btn-sm" onclick="alert('Platform mesh routing metrics refreshed.')" data-i18n="btn_refresh">↻ Refresh</button>
+        <button class="btn btn-danger btn-sm" onclick="openTeardownModal('global-mesh-gateway')" data-i18n="btn_teardown_sim">⚠ Simulate Teardown</button>
       </div>
     </div>
 
-    <!-- Stats Ribbon -->
+    <!-- Platform Stats Ribbon -->
     <div class="stats-ribbon">
       <div class="stat-card">
-        <div class="stat-card-label" data-i18n="stat_pending_label">Pending Approvals</div>
-        <div class="stat-card-value" style="color:var(--status-warning);">3 <span class="stat-card-sub" data-i18n="stat_pending_sub">keys</span></div>
+        <div class="stat-card-label" data-i18n="stat_tenants_label">Active Tenants</div>
+        <div class="stat-card-value" style="color:var(--primary);">3 <span class="stat-card-sub">tenants</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label" data-i18n="stat_backlog_label">Inbox Backlog</div>
-        <div class="stat-card-value">5 <span class="stat-card-sub"><strong style="color:var(--status-leased);" data-i18n="stat_backlog_sub">(2 leased)</strong></span></div>
+        <div class="stat-card-label" data-i18n="stat_global_nodes_label">Global Mesh Nodes</div>
+        <div class="stat-card-value">139 <span class="stat-card-sub">(10 swarms)</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label" data-i18n="stat_agents_label">Active Agents</div>
-        <div class="stat-card-value">139 <span class="stat-card-sub" data-i18n="stat_agents_sub">(10 clusters)</span></div>
+        <div class="stat-card-label" data-i18n="stat_highways_label">Backbone Highways</div>
+        <div class="stat-card-value" style="color:#7C3AED;">14 <span class="stat-card-sub">bridges active</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label" data-i18n="stat_quota_label">Hub Status</div>
-        <div class="stat-card-value" style="color:var(--status-success);">Surface v3 <span class="stat-card-sub">Online</span></div>
+        <div class="stat-card-label" data-i18n="stat_privacy_label">Content Privacy</div>
+        <div class="stat-card-value" style="color:var(--status-success);">100% <span class="stat-card-sub">Segregated</span></div>
       </div>
     </div>
 
-    <!-- Admin Tabs -->
+    <!-- Platform Tabs -->
     <div class="tab-nav">
-      <button class="tab-nav-btn active" onclick="switchAdminTab('keys')" data-i18n="tab_keys">Key Approvals (3)</button>
-      <button class="tab-nav-btn" onclick="switchAdminTab('inbox')" data-i18n="tab_inbox">Inbox Backlog (5)</button>
-      <button class="tab-nav-btn" onclick="switchAdminTab('audits')" data-i18n="tab_audits">Live Chat Audits</button>
+      <button class="tab-nav-btn active" id="pTabBtn-gateways" onclick="switchPlatformTab('gateways')" data-i18n="tab_gateways">🌐 Cross-Tenant Gateways & Highways</button>
+      <button class="tab-nav-btn" id="pTabBtn-tenants" onclick="switchPlatformTab('tenants')" data-i18n="tab_tenants">🏢 Tenant Provisioning & Quotas</button>
+      <button class="tab-nav-btn" id="pTabBtn-audits" onclick="switchPlatformTab('audits')" data-i18n="tab_meta_audits">📊 Global Metadata Audits (Zero Content Leak)</button>
+    </div>
+
+    <!-- Tab 1: Cross-Tenant Gateways & Highways -->
+    <div id="platform-panel-gateways">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Inter-Gateway Backbone Routing Matrix</div>
+            <div class="card-subtitle">Dynamic transit routes between core gateways and regional cluster swarms</div>
+          </div>
+          <span class="badge badge-success">All 14 Highways Operational</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+            <thead>
+              <tr style="text-align:left; background:var(--bg-surface-sub); border-bottom:1px solid var(--border-default);">
+                <th style="padding:10px 14px;">Highway Bridge ID</th>
+                <th style="padding:10px 14px;">Origin Gateway</th>
+                <th style="padding:10px 14px;">Target Gateway</th>
+                <th style="padding:10px 14px;">Cross-Deck Type</th>
+                <th style="padding:10px 14px;">Latency</th>
+                <th style="padding:10px 14px;">Throughput</th>
+                <th style="padding:10px 14px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border-default);">
+                <td style="padding:12px 14px; font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">bridge-gw-core-gw-research</td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-core</span></td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-research</span></td>
+                <td style="padding:12px 14px;">Top Deck Transit</td>
+                <td style="padding:12px 14px; color:#059669; font-weight:600;">1.2 ms</td>
+                <td style="padding:12px 14px;">4,820 msg/sec</td>
+                <td style="padding:12px 14px;"><span class="badge badge-success">Healthy</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border-default);">
+                <td style="padding:12px 14px; font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">bridge-cross-gw-core-gw-edge</td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-core</span></td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-edge</span></td>
+                <td style="padding:12px 14px;">Cross-Deck Highway</td>
+                <td style="padding:12px 14px; color:#059669; font-weight:600;">2.4 ms</td>
+                <td style="padding:12px 14px;">2,140 msg/sec</td>
+                <td style="padding:12px 14px;"><span class="badge badge-success">Healthy</span></td>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border-default);">
+                <td style="padding:12px 14px; font-family:var(--font-mono); font-size:0.8rem; font-weight:700;">bridge-cross-gw-research-gw-human</td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-research</span></td>
+                <td style="padding:12px 14px;"><span class="badge badge-leased">gw-human</span></td>
+                <td style="padding:12px 14px;">Cross-Deck Highway</td>
+                <td style="padding:12px 14px; color:#059669; font-weight:600;">1.8 ms</td>
+                <td style="padding:12px 14px;">1,350 msg/sec</td>
+                <td style="padding:12px 14px;"><span class="badge badge-success">Healthy</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Tenant Provisioning & Quotas -->
+    <div id="platform-panel-tenants" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Multi-Tenant Resource Allocation & Ingress Quotas</div>
+            <div class="card-subtitle">Company tenant boundaries, rate limits, and cryptographic isolation</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Opening Tenant Provisioning wizard.')">+ Provision New Tenant</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+          <!-- Tenant 1: Acme Corp -->
+          <div class="policy-rule-card" style="border-left:4px solid var(--primary);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <div>
+                <strong style="font-size:1.05rem;">Acme Corp</strong>
+                <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">tenant: acme-corp</div>
+              </div>
+              <span class="badge badge-success">Active</span>
+            </div>
+            <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+              • Agent Quota: <strong>28 / 50 Agents</strong><br>
+              • Group Clusters: <strong>4 Swarms (Core, Research, Delivery, Sec)</strong><br>
+              • Ingress Limit: <strong>10,000 req/min</strong>
+            </div>
+            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="switchView('tenant')">Manage Tenant Admin View →</button>
+          </div>
+
+          <!-- Tenant 2: Nova BioTech -->
+          <div class="policy-rule-card" style="border-left:4px solid #10B981;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <div>
+                <strong style="font-size:1.05rem;">Nova BioTech</strong>
+                <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">tenant: nova-bio</div>
+              </div>
+              <span class="badge badge-success">Active</span>
+            </div>
+            <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+              • Agent Quota: <strong>42 / 60 Agents</strong><br>
+              • Group Clusters: <strong>3 Swarms (Research, Vision, ETL)</strong><br>
+              • Ingress Limit: <strong>15,000 req/min</strong>
+            </div>
+            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="alert('Switching to Nova BioTech tenant context.')">Manage Tenant Admin View →</button>
+          </div>
+
+          <!-- Tenant 3: Global FinTech -->
+          <div class="policy-rule-card" style="border-left:4px solid #8B5CF6;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+              <div>
+                <strong style="font-size:1.05rem;">Global FinTech</strong>
+                <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">tenant: global-fintech</div>
+              </div>
+              <span class="badge badge-success">Active</span>
+            </div>
+            <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+              • Agent Quota: <strong>69 / 100 Agents</strong><br>
+              • Group Clusters: <strong>3 Swarms (Edge, Data, Audit)</strong><br>
+              • Ingress Limit: <strong>25,000 req/min</strong>
+            </div>
+            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="alert('Switching to Global FinTech tenant context.')">Manage Tenant Admin View →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Global Metadata Audits (Zero Content Leak) -->
+    <div id="platform-panel-audits" style="display:none;">
+      <!-- Blue Privacy Guarantee Banner -->
+      <div class="privacy-guarantee-banner">
+        <span style="font-size:1.3rem;">🔒</span>
+        <div>
+          <strong>Platform Operator Privacy Boundary Enforced (SPEC v0.3 Rule 2)</strong><br>
+          Message bodies and payloads are cryptographically withheld from Platform Operator queries. Delivery metadata (routing endpoints, byte sizes, timestamps, and SHA-256 digests) is preserved for infrastructure telemetry without violating tenant privacy.
+        </div>
+      </div>
+
+      <div class="audit-terminal">
+        <div class="audit-terminal-header">
+          <span style="font-weight:700; font-size:0.95rem;">Global Infrastructure Transit Log (Metadata Only · No Content)</span>
+          <span class="badge badge-success"><span class="live-dot"></span> STREAM ACTIVE</span>
+        </div>
+        <div class="audit-row-item">
+          <span class="audit-time-col">12:44:02</span>
+          <span class="audit-agent-from">acme-corp:core-lead</span> → <span class="audit-agent-to">acme-corp:core-agent-3</span>
+          <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[142 bytes · sha256:8f9a...e41c] delivered via gw-core</span>
+          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+        </div>
+        <div class="audit-row-item">
+          <span class="audit-time-col">12:44:18</span>
+          <span class="audit-agent-from">nova-bio:vision-lead</span> → <span class="audit-agent-to">nova-bio:vision-agent-2</span>
+          <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[1,240 bytes · sha256:3b1a...f902] delivered via gw-vision</span>
+          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+        </div>
+        <div class="audit-row-item">
+          <span class="audit-time-col">12:44:35</span>
+          <span class="audit-agent-from">acme-corp:research-lead</span> → <span class="audit-agent-to">acme-corp:research-agent-12</span>
+          <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[512 bytes · sha256:7c4d...a188] delivered via gw-research</span>
+          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- VIEW 3: TENANT ADMIN CONSOLE (Company Admin: Acme Corp) -->
+  <main id="view-tenant" class="preview-view">
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <h1 class="admin-header-title" style="margin:0;">Tenant Admin Console</h1>
+          <span class="badge badge-leased" style="font-size:0.85rem; font-weight:700;">🏢 Tenant: Acme Corp</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
+          Company Security Gate, Group Governance, Pairing Onboarding & Content Audits
+        </p>
+        <div class="capability-pill-list">
+          <span class="cap-pill">🔑 cap: key.approve</span>
+          <span class="cap-pill">⚠ cap: agent.teardown</span>
+          <span class="cap-pill">📁 cap: group.manage</span>
+          <span class="cap-pill">🛡️ cap: policy.send_restrict</span>
+          <span class="cap-pill" style="background:#FEF3C7; color:#92400E; border-color:#FDE68A;">👁️ cap: audit.read_content</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="alert('Acme Corp tenant state refreshed.')">↻ Refresh</button>
+        <button class="btn btn-danger btn-sm" onclick="openTeardownModal('acme-corp:core-lead')">⚠ Teardown Agent</button>
+      </div>
+    </div>
+
+    <!-- Tenant Stats Ribbon -->
+    <div class="stats-ribbon">
+      <div class="stat-card">
+        <div class="stat-card-label">Pending Key Approvals</div>
+        <div class="stat-card-value" style="color:var(--status-warning);">3 <span class="stat-card-sub">keys</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Tenant Swarm Groups</div>
+        <div class="stat-card-value">4 <span class="stat-card-sub">groups</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Managed Identities</div>
+        <div class="stat-card-value">28 <span class="stat-card-sub">agents</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Audit Read Logging</div>
+        <div class="stat-card-value" style="color:var(--status-success);">Active <span class="stat-card-sub">(audit_read_events)</span></div>
+      </div>
+    </div>
+
+    <!-- Tenant Tabs -->
+    <div class="tab-nav">
+      <button class="tab-nav-btn active" id="tTabBtn-keys" onclick="switchTenantTab('keys')">🔑 Key Approvals (3)</button>
+      <button class="tab-nav-btn" id="tTabBtn-groups" onclick="switchTenantTab('groups')">📁 Group Governance & Send Policies</button>
+      <button class="tab-nav-btn" id="tTabBtn-pairing" onclick="switchTenantTab('pairing')">⚡ Pairing Code Onboarding (RFC 8628)</button>
+      <button class="tab-nav-btn" id="tTabBtn-audits" onclick="switchTenantTab('audits')">📋 Participant Audit Trail (with Content)</button>
     </div>
 
     <!-- Tab 1: Key Approvals (Exact 50-Character Fingerprint Compliant) -->
-    <div id="admin-panel-keys">
+    <div id="tenant-panel-keys">
       <!-- Card 1: demo-pending-claude -->
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
-            <span class="key-agent-name">demo-pending-claude</span>
-            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
+            <span class="key-agent-name">acme-corp:demo-pending-claude</span>
+            <span class="badge badge-warning" style="margin-left:8px;">Pending Approval</span>
           </div>
-          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_1">Proposed: 2 min ago</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Proposed: 2 min ago (owner: alice_admin)</span>
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
             <strong>sha256:</strong>pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw'); alert('50-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw'); alert('50-character fingerprint copied.');">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint (POST /api/v1/admin/keys/approve).');" data-i18n="btn_approve">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('demo-pending-claude', 'sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw')" data-i18n="btn_deny">✕ Revoke / Deny</button>
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint.');">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('acme-corp:demo-pending-claude', 'sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw')">✕ Revoke / Deny</button>
         </div>
       </div>
 
@@ -1691,20 +2035,20 @@
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
-            <span class="key-agent-name">demo-pending-codex</span>
-            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
+            <span class="key-agent-name">acme-corp:demo-pending-codex</span>
+            <span class="badge badge-warning" style="margin-left:8px;">Pending Approval</span>
           </div>
-          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_2">Proposed: 5 min ago</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Proposed: 5 min ago (owner: alice_admin)</span>
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
             <strong>sha256:</strong>bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA'); alert('50-character fingerprint copied.');" data-i18n="btn_copy">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA'); alert('50-character fingerprint copied.');">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_approve">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('demo-pending-codex', 'sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA')" data-i18n="btn_deny">✕ Revoke / Deny</button>
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint.');">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('acme-corp:demo-pending-codex', 'sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA')">✕ Revoke / Deny</button>
         </div>
       </div>
 
@@ -1712,7 +2056,7 @@
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
-            <span class="key-agent-name">demo-compromised-agent</span>
+            <span class="key-agent-name">acme-corp:demo-compromised-agent</span>
             <span class="badge badge-danger" style="margin-left:8px;">Compromised</span>
           </div>
           <span style="font-size:0.8rem; color:var(--text-muted);">Revoked: 10 min ago</span>
@@ -1729,51 +2073,120 @@
       </div>
     </div>
 
-    <!-- Tab 2: Inbox Backlog (3-Tier Metrics & Expiration Countdown) -->
-    <div id="admin-panel-inbox" style="display:none;">
-      <div class="inbox-card-item">
-        <div class="inbox-card-top">
-          <div>
-            <h3 style="font-size:1.1rem; font-weight:700;">demo-receiver</h3>
-            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;" data-i18n="inbox_desc">Socketless agent pull queue status</p>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <span class="badge badge-offline" data-i18n="badge_total_depth">Total Depth: 5</span>
-            <span class="badge badge-leased" data-i18n="badge_leased_count">2 Leased ⚡</span>
-            <span class="badge badge-success" data-i18n="badge_available_count">3 Available</span>
-          </div>
+    <!-- Tab 2: Group Governance & Send Restrictions -->
+    <div id="tenant-panel-groups" style="display:none;">
+      <!-- Send Policy Default Switcher Row -->
+      <div class="policy-toggle-row">
+        <div>
+          <strong style="font-size:1rem; color:var(--text-primary);">Tenant Send Restriction Default Policy</strong>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin:2px 0 0;">
+            Controls whether agent communication across groups/tenants is permitted by default or requires explicit whitelist rules.
+          </p>
         </div>
-        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:14px 16px; font-size:0.85rem; color:var(--text-secondary); line-height:1.6;" data-i18n="inbox_notice">
-          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy.<br>
-          ⚡ <strong>At-Least-Once Lease Window:</strong> In-flight leases naturally expire after <code>receive_lease_seconds</code> (300s) and revert to <em>Available</em> if the worker fails. Readonly inspector guarantees zero accidental lease acquisition by operators.
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:0.85rem; font-weight:700;" id="policyStateLabel">Deny by Default (Explicit Whitelist)</span>
+          <button class="btn btn-primary btn-sm" onclick="toggleSendPolicy()" id="policyToggleBtn">Switch to Allow Default</button>
+        </div>
+      </div>
+
+      <!-- Group Cards Grid -->
+      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:16px;">
+        <div class="policy-rule-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:1.05rem;">Core Platform Hub (5 Agents)</strong>
+            <span class="badge badge-success">Group Lead: Fin둥이</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+            • Gateway: <code>gw-core</code><br>
+            • Allowed Egress: <code>acme-corp:research</code>, <code>acme-corp:delivery</code><br>
+            • Cross-Tenant Send: <span class="badge badge-danger" style="font-size:0.7rem;">Disabled</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openChannelConfigModal('Core Platform Hub')">⚙ Configure Group ACL & Egress</button>
+        </div>
+
+        <div class="policy-rule-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:1.05rem;">Research Swarm (30 Agents)</strong>
+            <span class="badge badge-success">Group Lead: research-lead</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+            • Gateway: <code>gw-research</code><br>
+            • Allowed Egress: <code>acme-corp:core</code>, <code>nova-bio:vision</code><br>
+            • Cross-Tenant Send: <span class="badge badge-success" style="font-size:0.7rem;">Allowed (Nova Bio)</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openChannelConfigModal('Research Swarm')">⚙ Configure Group ACL & Egress</button>
         </div>
       </div>
     </div>
 
-    <!-- Tab 3: Chat Audits Stream (Truth in Attestation: from vs sent_by) -->
-    <div id="admin-panel-audits" style="display:none;">
+    <!-- Tab 3: Agent Onboarding via Pairing Code (RFC 8628) -->
+    <div id="tenant-panel-pairing" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Generate Agent Pairing Code (RFC 8628 Device Flow)</div>
+            <div class="card-subtitle">Claim agent names authenticated in browser, then bind CLI agents securely without sharing human credentials</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="generateNewPairingCode()">+ Generate New Code</button>
+        </div>
+
+        <div class="pairing-code-box">
+          <span style="font-size:0.85rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">Active Single-Use Pairing Code</span>
+          <div class="pairing-code-display" id="pairingCodeDisplay">ACM-8492-KY7</div>
+          <div class="pairing-timer-badge">
+            ⏱ Valid for <strong id="pairingTimerSec" style="color:var(--primary);">284s</strong> · Bound to owner: <strong>alice_admin</strong>
+          </div>
+          <div style="margin-top:16px; font-size:0.85rem; color:var(--text-secondary);">
+            Run on your agent server:
+            <div style="margin-top:6px; background:#1E293B; color:#F8FAFC; padding:10px 14px; border-radius:var(--radius-md); font-family:var(--font-mono); font-size:0.85rem; display:flex; justify-content:space-between; align-items:center;">
+              <code id="pairingCliSnippet">agent-mesh claim --code ACM-8492-KY7 --name fin-helper</code>
+              <button class="btn btn-secondary btn-sm" style="padding:4px 8px;" onclick="navigator.clipboard.writeText(document.getElementById('pairingCliSnippet').innerText); alert('CLI command copied!');">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Participant Audit Trail (with Content & Compliance Notice) -->
+    <div id="tenant-panel-audits" style="display:none;">
+      <!-- Amber Compliance Audit Warning Notice -->
+      <div class="audit-compliance-banner">
+        <span style="font-size:1.3rem;">⚠️</span>
+        <div>
+          <strong>Enterprise Compliance Notice: Message Content Inspection Active</strong><br>
+          You are viewing decrypted message bodies for Acme Corp participant agents. In accordance with enterprise governance policies, <strong>your inspection event has been recorded to <code>audit_read_events</code></strong> (operator: <code>alice_admin</code>, ip: <code>10.0.4.12</code>, timestamp: <code>2026-08-16 20:50:00 KST</code>).
+        </div>
+      </div>
+
       <div class="audit-terminal">
         <div class="audit-terminal-header">
-          <span style="font-weight:700; font-size:0.95rem;" data-i18n="audit_header">Live Chat Audits (audit.db Stream)</span>
-          <span class="badge badge-success"><span class="live-dot"></span> LIVE CONNECTED</span>
+          <span style="font-weight:700; font-size:0.95rem;">Acme Corp Participant Audit Trail (Full Content Stream)</span>
+          <span class="badge badge-success"><span class="live-dot"></span> AUDIT DB SYNCED</span>
         </div>
-        <div class="audit-row-item">
-          <span class="audit-time-col">12:35:10</span>
-          <span class="audit-agent-from">client-claude</span> → <span class="audit-agent-to">platform-claude</span>
-          <span class="audit-msg-content">mutation scanner ratio condition applied (#117)</span>
-          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <div>
+              <span class="audit-time-col">12:48:10</span>
+              <span class="audit-agent-from">acme-corp:core-lead (Fin둥이)</span> → <span class="audit-agent-to">acme-corp:core-agent-3 (Fin자)</span>
+            </div>
+            <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+          </div>
+          <div style="background:#0F172A; border-radius:var(--radius-sm); padding:8px 12px; width:100%; font-family:var(--font-mono); font-size:0.8rem; color:#A7F3D0;">
+            {"action": "ROUTE_DISPATCH", "priority": "HIGH", "payload": "Dispatched settlement verification batch #942 to Fin자 queue."}
+          </div>
         </div>
-        <div class="audit-row-item">
-          <span class="audit-time-col">12:35:25</span>
-          <span class="audit-agent-from">alice_dev <small style="color:var(--text-muted);">(via http-server)</small></span> → <span class="audit-agent-to">demo-receiver</span>
-          <span class="audit-msg-content">manual verification ping dispatched from web console</span>
-          <span class="badge badge-leased" style="font-size:0.7rem;">Operator Proxy</span>
-        </div>
-        <div class="audit-row-item">
-          <span class="audit-time-col">12:35:50</span>
-          <span class="audit-agent-from">platform-claude</span> → <span class="audit-agent-to">platform-fe-antigravity</span>
-          <span class="audit-msg-content">isolated test harness deployed and verified (#121)</span>
-          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+
+        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <div>
+              <span class="audit-time-col">12:48:32</span>
+              <span class="audit-agent-from">acme-corp:core-agent-5 (아름이)</span> → <span class="audit-agent-to">acme-corp:core-lead (Fin둥이)</span>
+            </div>
+            <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
+          </div>
+          <div style="background:#0F172A; border-radius:var(--radius-sm); padding:8px 12px; width:100%; font-family:var(--font-mono); font-size:0.8rem; color:#DDD6FE;">
+            {"action": "EXECUTIVE_SYNC", "status": "CONFIRMED", "payload": "Executive assistant protocol active. Meeting notes synchronized."}
+          </div>
         </div>
       </div>
     </div>
@@ -3260,58 +3673,57 @@
         modal_register_desc: "Provision a new autonomous agent identity and propose its initial Ed25519 public key.",
         btn_submit_agent: "Submit Agent Proposal",
         btn_cancel: "Cancel",
-        btn_confirm_teardown: "Confirm Permanent Teardown"
+        btn_confirm_teardown: "Confirm Permanent Teardown",
+        nav_platform: "2. Platform Operator",
+        nav_tenant: "3. Tenant Admin (Acme Corp)",
+        platform_title: "Platform Operator Console",
+        stat_tenants_label: "Active Tenants",
+        stat_global_nodes_label: "Global Mesh Nodes",
+        stat_highways_label: "Backbone Highways",
+        stat_privacy_label: "Content Privacy",
+        tab_gateways: "🌐 Cross-Tenant Gateways & Highways",
+        tab_tenants: "🏢 Tenant Provisioning & Quotas",
+        tab_meta_audits: "📊 Global Metadata Audits (Zero Content Leak)"
       },
       ko: {
         nav_home: "1. 홈 & 로그인",
-        nav_admin: "2. 플랫폼 관리자 콘솔",
-        nav_creator: "3. 에이전트 운영 콘솔",
+        nav_platform: "2. 플랫폼 운영자 콘솔",
+        nav_tenant: "3. 테넌트 관리자 (Acme Corp)",
+        nav_creator: "4. 에이전트 운영 & 토폴로지",
         hero_eyebrow: "차세대 자율 에이전트 통신 패브릭",
         hero_tagline: "자율 AI 에이전트를 위한 안전한 통신 백본 & 신원 검증 플랫폼",
         hero_desc: "상시 상주 데몬 없이도 자율 AI 에이전트 간 암호학적 메시지 라우팅, 철저한 신원 검증 및 실시간 불변 감사 로깅을 안전하게 제공합니다.",
         login_oauth_badge: "권장",
-        login_oauth_title: "GitHub 로그인",
-        login_oauth_subtitle: "에이전트 개발자 및 일반 참가자를 위한 원클릭 OAuth",
-        login_oauth_desc: "검증된 사람 신원으로 즉시 등록하고, 에이전트 키 관리 및 대화형 메시징 채널을 이용하세요.",
+        login_oauth_title: "에이전트 운영자 (개발자)",
+        login_oauth_subtitle: "에이전트 제작자 및 참가자를 위한 GitHub OAuth",
+        login_oauth_desc: "내 자율 에이전트 키를 관리하고, 메시지 플레이그라운드에서 실시간 라우팅을 테스트하며 토폴로지를 탐색합니다.",
         login_oauth_btn: "GitHub로 계속하기",
-        login_admin_title: "플랫폼 관리자 로그인",
-        login_admin_subtitle: "로컬 부트스트랩 계정 (admin / admin)",
-        form_username: "사용자명 (Username)",
-        form_password: "비밀번호 (Password)",
-        login_admin_btn: "관리자 콘솔로 로그인 →",
+        login_tenant_title: "테넌트 관리자 로그인",
+        login_tenant_subtitle: "회사 어드민 콘솔 (Acme Corp)",
+        form_tenant_id: "테넌트 ID",
+        form_admin_user: "관리자 신원",
+        login_tenant_btn: "Acme Corp 어드민 로그인 →",
+        login_admin_title: "플랫폼 운영자 마스터 로그인",
+        login_admin_subtitle: "글로벌 인프라 & 게이트웨이 전용",
+        form_master_key: "운영자 마스터 키",
+        login_admin_btn: "플랫폼 운영자로 로그인 →",
         feat_1_title: "비동기 자율 메시징",
         feat_1_desc: "상시 연결이 어려운 서버리스 및 온디맨드 AI 에이전트가 서명 기반으로 안전하게 메시지를 송수신할 수 있는 지능형 인박스를 제공합니다.",
         feat_2_title: "암호학적 신원 검증",
         feat_2_desc: "고유 공개키 지문 대조 및 관리자 승인 워크플로우를 통해 모든 참여 에이전트의 신원을 안전하고 투명하게 보증합니다.",
         feat_3_title: "실시간 불변 감사 추적",
         feat_3_desc: "모든 에이전트 간 대화와 상태 변경 내역을 위변조 불가능한 영구 기록으로 보존하며, 실시간 이벤트 스트림으로 투명하게 모니터링합니다.",
-        admin_title: "플랫폼 관리자 콘솔 (Admin Console)",
-        admin_subtitle: "코어 보안 게이트 & 인프라 큐 적체 관리자",
+        platform_title: "플랫폼 운영자 콘솔 (Platform Operator)",
         btn_refresh: "↻ 새로고침",
         btn_teardown_sim: "⚠ Teardown 시뮬레이션",
-        stat_pending_label: "승인 대기 키",
-        stat_pending_sub: "건",
-        stat_backlog_label: "인박스 큐 적체",
-        stat_backlog_sub: "(2건 임대 중)",
-        stat_agents_label: "등록된 에이전트",
-        stat_agents_sub: "(10개 성단 클러스터)",
-        stat_quota_label: "허브 상태",
-        tab_keys: "키 승인 대기열 (3)",
-        tab_inbox: "인박스 적체 감시 (5)",
-        tab_audits: "실시간 메시지 감사",
-        badge_pending: "승인 대기 중",
-        key_prop_1: "제안 시각: 2분 전",
-        key_prop_2: "제안 시각: 5분 전",
-        btn_copy: "📋 복사",
-        btn_approve: "✓ 키 승인 (Approve)",
-        btn_deny: "✕ 취소 / 거부 (Revoke)",
-        inbox_desc: "소켓리스 에이전트 풀 큐 적체 현황",
-        badge_total_depth: "전체 대기열: 5",
-        badge_leased_count: "2건 Leased (임대 중) ⚡",
-        badge_available_count: "3건 즉시 수신 가능",
-        inbox_notice: "ℹ <strong>접근 권한 분리 원칙:</strong> 메시지 본문은 인박스 큐 조회에서 노출되지 않습니다.<br>⚡ <strong>At-Least-Once 임대 시효:</strong> 임대 처리 중인 메시지는 <code>receive_lease_seconds</code>(300초) 후 에이전트 미처리 시 자동으로 <em>Available</em>로 복귀합니다. Readonly 조회를 통해 운영자에 의한 메시지 임대 가로채기를 원천 차단합니다.",
-        audit_header: "실시간 메시지 감사 스트림 (audit.db)",
-        creator_title: "에이전트 운영 콘솔 (Agent Operations)",
+        stat_tenants_label: "활성 테넌트",
+        stat_global_nodes_label: "글로벌 메시 노드",
+        stat_highways_label: "백본 고속도로",
+        stat_privacy_label: "본문 프라이버시",
+        tab_gateways: "🌐 테넌트 간 게이트웨이 & 하이웨이",
+        tab_tenants: "🏢 테넌트 프로비저닝 & 쿼터",
+        tab_meta_audits: "📊 글로벌 메타데이터 감사 (본문 은닉 보장)",
+        creator_title: "에이전트 운영 & 토폴로지 콘솔",
         creator_logged_as: "현재 운영자:",
         btn_register_agent: "+ 에이전트 등록",
         btn_create_group: "+ 그룹 생성",
@@ -3373,7 +3785,7 @@
     }
 
     // =========================================================================
-    // VIEW SWITCHER
+    // VIEW SWITCHER (Home, Platform, Tenant, Creator)
     // =========================================================================
     function switchView(view) {
       document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
@@ -3382,15 +3794,23 @@
       const bgLayer = document.getElementById('landingBgLayer');
 
       if (view === 'home') {
-        document.querySelector('.preview-btn:nth-child(1)').classList.add('active');
+        const btn = document.getElementById('navBtn-home');
+        if (btn) btn.classList.add('active');
         document.getElementById('view-home').classList.add('active');
         if (bgLayer) bgLayer.classList.remove('hidden');
-      } else if (view === 'admin') {
-        document.querySelector('.preview-btn:nth-child(2)').classList.add('active');
-        document.getElementById('view-admin').classList.add('active');
+      } else if (view === 'platform') {
+        const btn = document.getElementById('navBtn-platform');
+        if (btn) btn.classList.add('active');
+        document.getElementById('view-platform').classList.add('active');
+        if (bgLayer) bgLayer.classList.add('hidden');
+      } else if (view === 'tenant') {
+        const btn = document.getElementById('navBtn-tenant');
+        if (btn) btn.classList.add('active');
+        document.getElementById('view-tenant').classList.add('active');
         if (bgLayer) bgLayer.classList.add('hidden');
       } else if (view === 'creator') {
-        document.querySelector('.preview-btn:nth-child(3)').classList.add('active');
+        const btn = document.getElementById('navBtn-creator');
+        if (btn) btn.classList.add('active');
         document.getElementById('view-creator').classList.add('active');
         if (bgLayer) bgLayer.classList.add('hidden');
         renderGalaxyTopologySVG();
@@ -3410,13 +3830,71 @@
       }
     });
 
-    function switchAdminTab(tab) {
-      document.querySelectorAll('.tab-nav-btn').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
+    // Platform Tab Switcher
+    function switchPlatformTab(tab) {
+      document.querySelectorAll('#view-platform .tab-nav-btn').forEach(t => t.classList.remove('active'));
+      const btn = document.getElementById(`pTabBtn-${tab}`);
+      if (btn) btn.classList.add('active');
 
-      document.getElementById('admin-panel-keys').style.display = tab === 'keys' ? 'block' : 'none';
-      document.getElementById('admin-panel-inbox').style.display = tab === 'inbox' ? 'block' : 'none';
-      document.getElementById('admin-panel-audits').style.display = tab === 'audits' ? 'block' : 'none';
+      document.getElementById('platform-panel-gateways').style.display = tab === 'gateways' ? 'block' : 'none';
+      document.getElementById('platform-panel-tenants').style.display = tab === 'tenants' ? 'block' : 'none';
+      document.getElementById('platform-panel-audits').style.display = tab === 'audits' ? 'block' : 'none';
+    }
+
+    // Tenant Tab Switcher
+    function switchTenantTab(tab) {
+      document.querySelectorAll('#view-tenant .tab-nav-btn').forEach(t => t.classList.remove('active'));
+      const btn = document.getElementById(`tTabBtn-${tab}`);
+      if (btn) btn.classList.add('active');
+
+      document.getElementById('tenant-panel-keys').style.display = tab === 'keys' ? 'block' : 'none';
+      document.getElementById('tenant-panel-groups').style.display = tab === 'groups' ? 'block' : 'none';
+      document.getElementById('tenant-panel-pairing').style.display = tab === 'pairing' ? 'block' : 'none';
+      document.getElementById('tenant-panel-audits').style.display = tab === 'audits' ? 'block' : 'none';
+    }
+
+    // Send Policy Toggle (Allow Default vs Deny Default)
+    let sendPolicyAllow = false;
+    function toggleSendPolicy() {
+      sendPolicyAllow = !sendPolicyAllow;
+      const label = document.getElementById('policyStateLabel');
+      const btn = document.getElementById('policyToggleBtn');
+      if (sendPolicyAllow) {
+        label.innerText = currentLang === 'ko' ? '기본 허용 (Allow by Default)' : 'Allow by Default (Open Traffic)';
+        label.style.color = '#059669';
+        btn.innerText = currentLang === 'ko' ? '차단 기본값으로 전환' : 'Switch to Deny Default';
+      } else {
+        label.innerText = currentLang === 'ko' ? '기본 차단 (명시적 화이트리스트)' : 'Deny by Default (Explicit Whitelist)';
+        label.style.color = '#1E293B';
+        btn.innerText = currentLang === 'ko' ? '허용 기본값으로 전환' : 'Switch to Allow Default';
+      }
+    }
+
+    // Pairing Code Generator
+    let pairingTimerInterval = null;
+    let pairingTimeRemaining = 300;
+    function generateNewPairingCode() {
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let part1 = '', part2 = '';
+      for (let i = 0; i < 4; i++) part1 += chars[Math.floor(Math.random() * chars.length)];
+      for (let i = 0; i < 3; i++) part2 += chars[Math.floor(Math.random() * chars.length)];
+      const newCode = `ACM-${part1}-${part2}`;
+
+      document.getElementById('pairingCodeDisplay').innerText = newCode;
+      document.getElementById('pairingCliSnippet').innerText = `agent-mesh claim --code ${newCode} --name fin-helper`;
+      
+      pairingTimeRemaining = 300;
+      if (pairingTimerInterval) clearInterval(pairingTimerInterval);
+      pairingTimerInterval = setInterval(() => {
+        pairingTimeRemaining--;
+        if (pairingTimeRemaining <= 0) {
+          clearInterval(pairingTimerInterval);
+          document.getElementById('pairingTimerSec').innerText = 'Expired';
+        } else {
+          document.getElementById('pairingTimerSec').innerText = `${pairingTimeRemaining}s`;
+        }
+      }, 1000);
+      alert(currentLang === 'ko' ? `신규 페어링 코드 발급: ${newCode}\n(유효시간: 300초)` : `Generated new pairing code: ${newCode}\n(Valid for 300s)`);
     }
 
     function selectAgentTarget(target) {
