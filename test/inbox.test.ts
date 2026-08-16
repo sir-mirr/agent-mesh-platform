@@ -102,6 +102,28 @@ describe("capabilities", () => {
       expect(typeof body[key].version, key).toBe("number");
     }
   });
+
+  test("surface.version moves when the route table does, so absence is never the signal", async () => {
+    // § 9.2. `/keys` gained `type` at surface 2. A client gating on the field's
+    // presence instead cannot separate "this hub is too old" from "this
+    // identity has no type", because `mesh.register` never wrote one — and the
+    // case it guesses wrong is the one where it silently stops checking.
+    //
+    // Read from contracts rather than restated: a literal here would be a
+    // second declaration, and the two only have to disagree once.
+    const { SURFACE_CAPABILITY_DEFAULTS } = await import("@agent-mesh/contracts");
+    const body = await (await fetch(`${mesh.hub.url}/api/v1/capabilities`)).json();
+    expect(body.surface.version).toBe(SURFACE_CAPABILITY_DEFAULTS.version);
+    expect(body.surface.version).toBeGreaterThanOrEqual(2);
+  });
+
+  test("and the route it versions actually answers", async () => {
+    // The pair that makes the version mean something. A hub reporting surface
+    // 2 while `/keys` omits `type` would be worse than one reporting 1.
+    await provision(mesh.hub, "ibx-surface-2", "ai-claude");
+    const body = await (await fetch(`${mesh.hub.url}/api/v1/agents/ibx-surface-2/keys`)).json();
+    expect(body.type).toBe("ai-claude");
+  });
 });
 
 describe("authentication", () => {
