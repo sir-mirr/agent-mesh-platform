@@ -14,38 +14,79 @@ proposal splits it.
 Three rules follow from the split:
 
 1. **Key approval belongs to the agent operator.** It is their agent.
-2. **The platform operator has no audit rights.**
+2. **The platform operator cannot read message content.** Everything else an
+   audit trail holds — who sent to whom, when, how much, what failed — they
+   need, because that is how a mesh gets operated.
 3. **An agent operator's audit reach is their own agents and no further.**
 
-## Rule 2 is a policy boundary, not a security boundary
+## Rule 2 is about content, and content is currently inside the event
 
-This has to be said before anything else is designed on top of it.
+The distinction already exists one layer up and is worth reusing rather than
+reinventing. `GET /api/v1/admin/inbox` reports depth and withholds bodies, on
+the reasoning that **seeing that someone has mail is a different authorisation
+question from reading it.** Rule 2 is that same line drawn through the audit
+trail.
 
-The platform operator runs the host. `agent-mesh-http` opens
-`~/.agent-mesh-local/state/audit.db`; anyone with a shell on that machine
-reads it with `sqlite3` and never touches the role check. They can also read
-`agents.db`, restart the process with the check patched out, or set
-`JWT_SECRET` and mint themselves any role — that value is an environment
-variable on the same host.
+The obstacle is that § 8.9.4 deliberately puts the body *in* the event:
 
-So "the platform operator cannot read the audit trail" is enforceable only as
-far as the platform operator's own restraint, unless one of these is also true:
+```
+payload = { message: { id, from, to, sent_by, content, reply_to }, … }
+payload_digest = sha256(payload)
+```
 
-- **The audit store lives somewhere they do not administer.** A separate host,
-  a managed database, an append-only log service — different blast radius,
-  different people.
-- **Events are encrypted to the owning operator's key**, and the hub writes
-  ciphertext it cannot read back. This is the only version that survives a
-  hostile platform operator, and it costs the audit query API: you cannot
-  filter server-side on fields you cannot read.
-- **Writes are mirrored out** to something with independent retention, so
-  tampering is detectable even if reading is not preventable.
+That was the right call for its own reason — audit retention and operational
+retention stay independent, so rotating `messages` does not hollow out the
+record. It also means there is no read of the audit trail that is not a read
+of message content.
 
-None of that is in this repository today. **The role check is worth building
-anyway** — it removes accident, makes intent explicit, and puts the access on
-record — but the SPEC must not claim it prevents a determined platform
-operator, because it does not. Documenting a control as stronger than it is, is
-how it ends up load-bearing.
+**Splitting the body out is the change.**
+
+```sql
+CREATE TABLE audit_event_bodies (
+  event_id TEXT PRIMARY KEY REFERENCES audit_events(event_id),
+  content  TEXT NOT NULL
+);
+```
+
+with `body_sha256` moved *into* the payload. Without that the digest stops
+covering the content and the body becomes a detachable, swappable blob — the
+integrity property § 8.9.3 exists for would be traded away for an access
+control, which is a bad trade made quietly.
+
+Metadata queries then never join the body table, and the role check is one
+join a platform operator's token never gets.
+
+### It is still a policy boundary until the body is encrypted
+
+The platform operator runs the host. `sqlite3 audit.db` opens both tables and
+never sees the role check; `JWT_SECRET` is an environment variable on the same
+machine, so they can mint any role they like.
+
+The split is worth building regardless — it removes accident, makes intent
+explicit, and puts each access on record — but it prevents a *mistake*, not a
+determined administrator. What would actually prevent one:
+
+- **Bodies encrypted to the tenant's key**, hub writing ciphertext it cannot
+  read back. Costs nothing else here, because bodies are not queried — the
+  metadata that filtering needs stays in the clear. **This is unusually cheap
+  for what it buys, precisely because the split above already isolates the one
+  column nobody filters on.**
+- **The audit store administered by someone else** — different host, different
+  people, different blast radius.
+- **Writes mirrored to independent retention**, so tampering is detectable even
+  where reading is not preventable.
+
+The SPEC must not describe the unencrypted split as preventing a platform
+operator from reading messages. Documenting a control as stronger than it is,
+is how it ends up load-bearing.
+
+### For a commercial deployment this stops being optional
+
+If tenants are meant to operate independently, "the platform operator promises
+not to look" is not a statement a tenant can act on. Encrypted bodies are the
+version that can be stated in a contract, and the split above is what makes
+them cheap. Deciding this before the audit schema is settled is much easier
+than after.
 
 ## Where ownership goes
 
@@ -95,6 +136,42 @@ that route is open.
 
 Names nobody claimed keep the old behaviour or are refused, and that is a
 decision to make rather than one this document should make quietly.
+
+### How the claim is proved
+
+The claim has to bind a **person** to a **name**, and the two live on opposite
+sides: the person is in a browser session, the agent is a process on some host
+with a CLI. Three ways to close that gap, in increasing order of infrastructure.
+
+**Pairing code.** The operator, already logged in, asks the platform for a
+short-lived code; they type it into the CLI; the CLI redeems it and the name is
+bound to that session's user. This is the device authorization grant
+(RFC 8628) with the roles reversed, and it is the only option here that needs
+**no new infrastructure at all** — a table, an expiry, and a rate limit.
+
+Its properties are worth stating because they are what make it good enough: the
+code is short-lived and single-use, it is only ever entered on a host the
+operator already controls, and a stolen code buys one name-claim inside its
+window rather than an account. Redemption should also record the host it came
+from, which is the `observed` half of
+[`attestation-claims.md`](attestation-claims.md) arriving for free at exactly
+the moment ownership is established — the strongest moment to record it.
+
+**Owner email at agent creation.** Cheap to add, and it is a *label* until
+something verifies it. Recording an unverified email as ownership is worse
+than recording nothing, because the screen then shows an owner nobody checked.
+Useful as contact metadata; not as a claim.
+
+**Email verification.** The real answer for a commercial deployment, and it is
+a mail sender, a bounce path, deliverability, and an abuse surface. Deferring
+it until then is the right call — provided the pairing code is built such that
+email verification later *strengthens* the same binding rather than replacing
+it. Concretely: the owner column holds a platform user, and email verification
+becomes a property of that user, not a second ownership mechanism.
+
+The failure to avoid is shipping the email field first, treating it as
+ownership because it is there, and discovering the pairing code has nowhere to
+attach.
 
 ## Self-approval does not break § 10.2
 
