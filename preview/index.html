@@ -893,33 +893,32 @@
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
-            <strong>sha256:</strong>4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU
+            <strong>sha256:</strong>lgmo1MWOb8SNvmOi-hjwmOlJKFlMX5gE56zAY7RYUWQ
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU'); alert('43-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:lgmo1MWOb8SNvmOi-hjwmOlJKFlMX5gE56zAY7RYUWQ'); alert('50-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
           <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint.');" data-i18n="btn_approve">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove(); alert('Denied.');" data-i18n="btn_deny">✕ Deny</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove(); alert('Revocation dialog opened.');" data-i18n="btn_deny">✕ Revoke / Deny</button>
         </div>
       </div>
 
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
-            <span class="key-agent-name">demo-pending-codex</span>
-            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
+            <span class="key-agent-name">demo-compromised-agent</span>
+            <span class="badge badge-danger" style="margin-left:8px;">Compromised</span>
           </div>
-          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_2">Proposed: 5 min ago</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Revoked: 10 min ago</span>
         </div>
-        <div class="fingerprint-container">
-          <div class="fingerprint-text">
-            <strong>sha256:</strong>9vLmK0pQ4w7Xm8P2w1ZqNxB3cR6jFaSdFgHjKlQwErT
+        <div class="fingerprint-container" style="border-color:var(--status-danger-br); background:var(--status-danger-bg);">
+          <div class="fingerprint-text" style="color:var(--status-danger);">
+            <strong>sha256:</strong>x9PqW8zL1mK0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="alert('Fingerprint copied.');" data-i18n="btn_copy">📋 Copy</button>
+          <span class="badge badge-danger">Compromised Key (Leaked)</span>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_approve">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_deny">✕ Deny</button>
+        <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">
+          Reason: <em>"Private key leaked in public github repo commit"</em>
         </div>
       </div>
     </div>
@@ -932,13 +931,14 @@
             <h3 style="font-size:1.1rem; font-weight:700;">demo-receiver</h3>
             <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;" data-i18n="inbox_desc">Socketless agent pull queue status</p>
           </div>
-          <div style="display:flex; gap:8px;">
-            <span class="badge badge-leased" data-i18n="badge_leased_count">2 Leased (In Flight) ⚡</span>
-            <span class="badge badge-warning" data-i18n="badge_pending_count">3 Pending</span>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="badge badge-offline" data-i18n="badge_total_depth">Total Depth: 5</span>
+            <span class="badge badge-leased" data-i18n="badge_leased_count">2 Leased ⚡</span>
+            <span class="badge badge-success" data-i18n="badge_available_count">3 Available</span>
           </div>
         </div>
         <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px 16px; font-size:0.85rem; color:var(--text-secondary);" data-i18n="inbox_notice">
-          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Full text is accessible only under audited chat inspections.
+          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Readonly connection guarantees zero accidental message leasing by operators.
         </div>
       </div>
     </div>
