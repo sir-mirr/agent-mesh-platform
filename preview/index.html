@@ -2151,26 +2151,54 @@
       const miniH = 110;
 
       let html = '';
-      // Render miniature gateway highways
-      ALL_GATEWAYS.forEach((g, idx) => {
-        if (idx < ALL_GATEWAYS.length - 1) {
-          const next = ALL_GATEWAYS[idx + 1];
-          const x1 = ((g.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
-          const y1 = ((g.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-          const x2 = ((next.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
-          const y2 = ((next.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-          html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="1.2" stroke-dasharray="3 1.5" />`;
-        }
+
+      // 1. Cluster-to-Gateway Link Lines (Subtle Slate, 0.75px)
+      CLUSTERS_CONFIG.forEach(cfg => {
+        const x1 = ((cfg.cx - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+        const y1 = ((cfg.cy - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        const x2 = ((cfg.gw.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+        const y2 = ((cfg.gw.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#94A3B8" stroke-width="0.75" stroke-dasharray="2 1.5" />`;
       });
 
-      // Render miniature cluster galaxy circles
+      // 2. Inter-Gateway Highway Backbone Lines (Subtle Indigo/Violet, 0.75px)
+      for (let i = 0; i < 4; i++) {
+        const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 1];
+        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+      }
+      for (let i = 5; i < 9; i++) {
+        const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 1];
+        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+      }
+      for (let i = 0; i < 5; i++) {
+        const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 5];
+        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+      }
+
+      // 3. Cluster Galaxy Circles
       CLUSTERS_CONFIG.forEach(cfg => {
         const cx = ((cfg.cx - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
         const cy = ((cfg.cy - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
         const cr = (cfg.r / WORLD_TOTAL_W) * miniW;
         html += `
-          <circle cx="${cx}" cy="${cy}" r="${cr}" fill="${cfg.fill}" stroke="${cfg.stroke}" stroke-width="1.2" opacity="0.95" />
-          <circle cx="${cx}" cy="${cy}" r="2.2" fill="${cfg.textColor}" />
+          <circle cx="${cx}" cy="${cy}" r="${cr}" fill="${cfg.fill}" stroke="${cfg.stroke}" stroke-width="1.0" opacity="0.92" />
+          <circle cx="${cx}" cy="${cy}" r="1.6" fill="${cfg.textColor}" />
+        `;
+      });
+
+      // 4. Gateway Nodes (Small violet dots with white outline)
+      ALL_GATEWAYS.forEach(gw => {
+        const gx = ((gw.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+        const gy = ((gw.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        html += `
+          <circle cx="${gx}" cy="${gy}" r="2.6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="0.75" />
+          <circle cx="${gx}" cy="${gy}" r="1.0" fill="#EDE9FE" />
         `;
       });
 
