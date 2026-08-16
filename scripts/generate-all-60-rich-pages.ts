@@ -647,20 +647,20 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
         <div class="card-header">
           <div>
             <div class="card-title">Pending Public Key Queue (<code>GET /api/v1/admin/keys/pending</code>)</div>
-            <div class="card-subtitle">SPEC § 11.3: <code>key.approve</code> with <code>*</code> sees all; scoped grant sees only owned agents; empty list returns 200 OK (not 403)</div>
+            <div class="card-subtitle">Caller Ownership Query: <code>GET /api/v1/admin/agents/owned</code> (Gate: <code>key.approve</code>) · Answers "What is mine"</div>
           </div>
           <div style="display:flex; gap:8px;">
             <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Tenant Admin (Wildcard scope: *).')">Admin View (*)</button>
-            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (Owned: acme-corp:core-lead only).')">Scoped View</button>
-            <button class="btn btn-secondary btn-sm" onclick="alert('Simulated 200 OK Empty State for unowned account.')">Empty (0 Owned)</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (GET /api/v1/admin/agents/owned -> [\"acme-corp:core-lead\"]).')">Scoped View</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Simulated 200 OK Empty State: GET /api/v1/admin/agents/owned -> []')">Empty (0 Owned)</button>
           </div>
         </div>
 
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          🔑 <strong>Scoped Approval & Empty State Rules:</strong><br>
-          • <strong>0 Owned Agents (200 OK):</strong> <em>"You do not own any agents yet."</em> &rarr; Prompts user to generate a pairing code.<br>
-          • <strong>Owned Agents, 0 Pending Keys (200 OK):</strong> <em>"All owned agents are fully approved. No pending keys."</em> (Healthy idle state).<br>
-          • <strong>Missing Capability (403):</strong> <code>{ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }</code>.
+          🔑 <strong>Scoped Approval & 3-Tier Empty State Rules (SPEC § 11.3):</strong><br>
+          • <strong>0 Owned Agents (<code>GET /api/v1/admin/agents/owned</code> &rarr; <code>[]</code>):</strong> <em>"You do not own any agents yet."</em> &rarr; Prompts user to generate pairing code.<br>
+          • <strong>Owned Agents, 0 Pending Keys (<code>GET /api/v1/admin/keys/pending</code> &rarr; <code>[]</code>):</strong> <em>"All owned agents fully approved."</em> (Healthy idle state).<br>
+          • <strong>Missing Capability (<code>403 Forbidden</code>):</strong> <code>{ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }</code>.
         </div>
 
         <!-- Active Proposal Card -->
@@ -1204,6 +1204,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
             <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/outbox/{id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/inbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
             <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/agents</code></td><td>Provision identity and propose public key</td><td>SPEC § 9.1</td></tr>
+            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/admin/agents/owned</code></td><td>List identities owned by authenticated caller</td><td>SPEC § 11.3</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/capabilities</code></td><td>Query surface version 4 & observed source</td><td>SPEC § 8.11</td></tr>
           </tbody>
         </table>
