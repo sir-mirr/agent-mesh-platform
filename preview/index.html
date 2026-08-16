@@ -84,6 +84,56 @@
     flex-direction: column;
     letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* --- Animated Background Geometric Canvas & Ambient Glows --- */
+  #meshCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.85;
+  }
+
+  .ambient-glow-1 {
+    position: fixed;
+    top: -100px;
+    left: 10%;
+    width: 550px;
+    height: 550px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(186, 230, 253, 0.45) 0%, rgba(248, 250, 252, 0) 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: floatGlow 14s ease-in-out infinite alternate;
+  }
+  .ambient-glow-2 {
+    position: fixed;
+    bottom: -100px;
+    right: 5%;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(224, 231, 255, 0.5) 0%, rgba(248, 250, 252, 0) 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: floatGlow 18s ease-in-out infinite alternate-reverse;
+  }
+
+  @keyframes floatGlow {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(40px, 30px) scale(1.1); }
+  }
+
+  /* --- Content Layering --- */
+  .preview-control-bar, .preview-view, .modal-backdrop {
+    position: relative;
+    z-index: 10;
   }
 
   /* --- Top Preview Switcher Bar (Light & Clean) --- */
@@ -502,6 +552,13 @@
 </head>
 <body>
 
+  <!-- Ambient Animated Glowing Orbs -->
+  <div class="ambient-glow-1"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- Interactive Abstract Geometric Mesh Canvas -->
+  <canvas id="meshCanvas"></canvas>
+
   <!-- Top Navigation / Switcher Bar -->
   <header class="preview-control-bar">
     <div class="preview-brand">
@@ -870,6 +927,162 @@
     function closeTeardownModal() {
       document.getElementById('teardownModal').classList.remove('active');
     }
+
+    // =========================================================================
+    // ANIMATED ABSTRACT GEOMETRIC MESH CANVAS ENGINE
+    // =========================================================================
+    (function initMeshCanvas() {
+      const canvas = document.getElementById('meshCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      let width = (canvas.width = window.innerWidth);
+      let height = (canvas.height = window.innerHeight);
+
+      window.addEventListener('resize', () => {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+      });
+
+      const mouse = { x: -1000, y: -1000, radius: 180 };
+      window.addEventListener('mousemove', (e) => {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+      });
+      window.addEventListener('mouseleave', () => {
+        mouse.x = -1000;
+        mouse.y = -1000;
+      });
+
+      // Geometric Nodes Generator
+      const NODE_COUNT = Math.min(Math.floor((width * height) / 22000), 55);
+      const nodes = [];
+
+      const SHAPES = ['circle', 'ring', 'triangle', 'diamond', 'hexagon'];
+
+      for (let i = 0; i < NODE_COUNT; i++) {
+        nodes.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          vx: (Math.random() - 0.5) * 0.45,
+          vy: (Math.random() - 0.5) * 0.45,
+          size: Math.random() * 4 + 3,
+          shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
+          angle: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.015,
+          color: Math.random() > 0.4 ? '#2563EB' : (Math.random() > 0.5 ? '#0284C7' : '#7C3AED'),
+          alpha: Math.random() * 0.35 + 0.25,
+          pulse: Math.random() * Math.PI * 2,
+        });
+      }
+
+      function drawShape(ctx, node) {
+        ctx.save();
+        ctx.translate(node.x, node.y);
+        ctx.rotate(node.angle);
+
+        ctx.strokeStyle = node.color;
+        ctx.fillStyle = node.color;
+        ctx.globalAlpha = node.alpha * (0.8 + 0.2 * Math.sin(node.pulse));
+        ctx.lineWidth = 1.2;
+
+        const s = node.size;
+
+        if (node.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(0, 0, s, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (node.shape === 'ring') {
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 1.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, 0, s * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (node.shape === 'triangle') {
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 1.6);
+          ctx.lineTo(s * 1.4, s * 1.2);
+          ctx.lineTo(-s * 1.4, s * 1.2);
+          ctx.closePath();
+          ctx.stroke();
+        } else if (node.shape === 'diamond') {
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 1.5);
+          ctx.lineTo(s * 1.5, 0);
+          ctx.lineTo(0, s * 1.5);
+          ctx.lineTo(-s * 1.5, 0);
+          ctx.closePath();
+          ctx.stroke();
+        } else if (node.shape === 'hexagon') {
+          ctx.beginPath();
+          for (let a = 0; a < 6; a++) {
+            const rad = (a * Math.PI) / 3;
+            const hx = Math.cos(rad) * s * 1.4;
+            const hy = Math.sin(rad) * s * 1.4;
+            if (a === 0) ctx.moveTo(hx, hy);
+            else ctx.lineTo(hx, hy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, width, height);
+
+        // Update and draw connections
+        for (let i = 0; i < nodes.length; i++) {
+          const a = nodes[i];
+          a.x += a.vx;
+          a.y += a.vy;
+          a.angle += a.rotSpeed;
+          a.pulse += 0.02;
+
+          // Boundary bounce
+          if (a.x < 0 || a.x > width) a.vx *= -1;
+          if (a.y < 0 || a.y > height) a.vy *= -1;
+
+          // Mouse gentle repulsion
+          const dx = a.x - mouse.x;
+          const dy = a.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < mouse.radius && dist > 0) {
+            const force = (mouse.radius - dist) / mouse.radius;
+            a.x += (dx / dist) * force * 1.2;
+            a.y += (dy / dist) * force * 1.2;
+          }
+
+          // Connect nearby nodes
+          for (let j = i + 1; j < nodes.length; j++) {
+            const b = nodes[j];
+            const ndx = a.x - b.x;
+            const ndy = a.y - b.y;
+            const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
+
+            const MAX_DIST = 150;
+            if (ndist < MAX_DIST) {
+              const lineAlpha = (1 - ndist / MAX_DIST) * 0.22;
+              ctx.beginPath();
+              ctx.moveTo(a.x, a.y);
+              ctx.lineTo(b.x, b.y);
+              ctx.strokeStyle = '#3B82F6';
+              ctx.globalAlpha = lineAlpha;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+
+          drawShape(ctx, a);
+        }
+
+        requestAnimationFrame(render);
+      }
+
+      render();
+    })();
   </script>
 </body>
 </html>
