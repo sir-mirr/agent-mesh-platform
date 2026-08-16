@@ -39,8 +39,14 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, type MessageRow } from '@agent-mesh/store'
-import { IDENTITY_RE } from '@agent-mesh/contracts'
+import { openStore, teardown, agentsSchema, grants, type MessageRow } from '@agent-mesh/store'
+import {
+  CAPABILITY,
+  IDENTITY_RE,
+  LEGACY_ADMIN_CAPABILITIES,
+  SCOPE_TENANT,
+  type Capability,
+} from '@agent-mesh/contracts'
 import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
@@ -1124,14 +1130,14 @@ app.put('/api/v1/audit/blobs/:key', async (c) => {
 // it to *write* its own events, and says nothing about reading anyone else's.
 
 app.get('/api/v1/audit/events', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
   const r = listAuditEvents(c.req.query() as any)
   return c.json(r.body, r.status as any)
 })
 
 app.get('/api/v1/audit/events/:event_id', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
   const r = getAuditEvent(c.req.param('event_id'))
   return c.json(r.body, r.status as any)
@@ -1144,23 +1150,67 @@ app.get('/api/v1/audit/events/:event_id', async (c) => {
 // caller, so an approval route there would let anyone reaching the port approve
 // their own key.
 
-/** Reject anything without a valid admin JWT. Returns the login, or the response. */
-async function requireAdmin(c: any): Promise<string | Response> {
+/**
+ * Reject anything whose holder lacks `capability` over `scope` (SPEC § 11).
+ *
+ * **The grant is read here, not taken from the token.** The JWT carries who
+ * the caller is; it must not carry what they may do, because then revoking
+ * access does not revoke it — the old answer keeps working until the token
+ * expires, and the moment revocation matters is an incident.
+ *
+ * `role: 'admin'` in a token is still honoured, but only as a *subject* whose
+ * grants were seeded (see `seedLegacyAdminGrants`). The string is never
+ * compared to decide anything.
+ */
+async function requireCapability(
+  c: any,
+  capability: Capability,
+  scope: string = SCOPE_TENANT,
+): Promise<string | Response> {
   const payload = await extractJwt(c)
   if (!payload) return c.json({ error: 'Unauthorized' }, 401)
-  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)
-  return payload.github_login as string
+  const subject = payload.github_login as string
+  if (!grants.has(agentsDb(), subject, capability, scope)) {
+    // Names the capability rather than saying "admin required". An operator
+    // who is told which grant is missing can ask for that one; one told
+    // "forbidden" asks for everything.
+    return c.json({ error: `Missing capability: ${capability}`, capability, scope }, 403)
+  }
+  return subject
+}
+
+/**
+ * What `admin` meant, written down as grants.
+ *
+ * Deployments seeded before § 11 keep working, and nothing anywhere still
+ * compares the string. Deliberately the full set — narrowing it here would be
+ * a silent permission change dressed as a refactor.
+ */
+export function seedLegacyAdminGrants(): void {
+  const db = agentsDb()
+  grants.migrate(db)
+  const admins = getDb()
+    .prepare(`SELECT github_login FROM users WHERE role = 'admin'`)
+    .all() as Array<{ github_login: string }>
+  const local = getDb()
+    .prepare(`SELECT username AS github_login FROM local_users WHERE role = 'admin'`)
+    .all() as Array<{ github_login: string }>
+  for (const { github_login } of [...admins, ...local]) {
+    for (const capability of LEGACY_ADMIN_CAPABILITIES) {
+      grants.grant(db, { subject: github_login, capability, grantedBy: 'legacy-admin-role' })
+    }
+  }
 }
 
 app.get('/api/v1/admin/keys/pending', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
   if (typeof actor !== 'string') return actor
   const r = listPendingKeys()
   return c.json(r.body, r.status as any)
 })
 
 app.get('/api/v1/admin/keys/:identity', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
   if (typeof actor !== 'string') return actor
   const r = keyHistory(c.req.param('identity'))
   return c.json(r.body, r.status as any)
@@ -1168,7 +1218,7 @@ app.get('/api/v1/admin/keys/:identity', async (c) => {
 
 for (const decision of ['approve', 'deny', 'revoke'] as const) {
   app.post(`/api/v1/admin/keys/${decision}`, async (c) => {
-    const actor = await requireAdmin(c)
+    const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
     if (typeof actor !== 'string') return actor
 
     let body: Record<string, unknown>
@@ -1212,7 +1262,7 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * the access is itself recorded.
  */
 app.get('/api/v1/admin/inbox', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const rows = getHubDb().prepare(`
@@ -1229,7 +1279,7 @@ app.get('/api/v1/admin/inbox', async (c) => {
 })
 
 app.get('/api/v1/admin/inbox/:identity', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const identity = c.req.param('identity')
@@ -1271,13 +1321,13 @@ app.get('/api/v1/admin/inbox/:identity', async (c) => {
  * register under it.
  */
 app.get('/api/v1/admin/agent-types', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
   if (typeof actor !== 'string') return actor
   return c.json({ ok: true, types: agentsSchema.listTypes(agentsDb()) })
 })
 
 app.post('/api/v1/admin/agent-types', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
   if (typeof actor !== 'string') return actor
 
   let body: Record<string, unknown>
@@ -1305,7 +1355,7 @@ app.post('/api/v1/admin/agent-types', async (c) => {
 })
 
 app.delete('/api/v1/admin/agent-types/:type', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
   if (typeof actor !== 'string') return actor
 
   const type = c.req.param('type')
@@ -1340,7 +1390,7 @@ app.delete('/api/v1/admin/agent-types/:type', async (c) => {
  * unauthenticated version could only ever write `"hub"`.
  */
 app.delete('/api/v1/admin/agents/:identity', async (c) => {
-  const actor = await requireAdmin(c)
+  const actor = await requireCapability(c, CAPABILITY.AGENT_TEARDOWN)
   if (typeof actor !== 'string') return actor
 
   const identity = c.req.param('identity')
@@ -2084,6 +2134,12 @@ console.log(`agent-mesh-http: STATE_DIR = ${STATE_DIR}`)
 // declared. On a first boot the seed used to run long after the hub connect,
 // leaving the seeded admin unable to send until the next restart.
 await seedLocalUsers()
+
+// § 11. **After** the users exist, not before: `seedLocalUsers` is what
+// creates the default admin, and seeding grants for a table that is still
+// empty produces an admin who can do nothing — every route 403s and the cause
+// is an ordering bug three hundred lines away.
+seedLegacyAdminGrants()
 await redeclareProxies().catch(() => {})
 
 // Start hub.db audit poller (1.5s interval) so Chat Audits SSE captures

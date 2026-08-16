@@ -2423,6 +2423,76 @@ never hard-code it.
 
 ---
 
+## 11. Authorization
+
+A person's authority is a set of **capabilities**, each over a **scope**,
+inside a **tenant**. It is not a role name compared in a route.
+
+```
+platform operator
+  └── tenant admin           a company admin — inside the tenant
+        ├── group manager
+        └── agent manager
+        └── …
+```
+
+That `…` is the reason for the shape. A role is a bundle somebody chose; a
+capability is what a route needs. The set is expected to grow, and a design
+that compares role strings inline extends to a second role by editing every
+site and to a fifth by being wrong at one of them.
+
+| Capability | |
+|---|---|
+| `key.approve` | decide a proposed key (§ 10.2) |
+| `agent.provision` | create an identity and claim the name |
+| `agent.teardown` | destroy one (§ 9.3) |
+| `group.manage` | create groups; move agents between them |
+| `role.grant` | grant and revoke inside this tenant |
+| `audit.read.metadata` | the trail **without** message content |
+| `audit.read.content` | message bodies in the trail |
+| `inbox.read.depth` | queue depth per identity, never bodies |
+
+**The last three carry the privacy boundary.** A platform operator holds
+`audit.read.metadata` and not `audit.read.content` — who sent to whom, when,
+how much and what failed is how a mesh is operated; the bodies are not. It is
+the same line `GET /api/v1/admin/inbox` already draws by reporting depth and
+withholding content: *seeing that someone has mail is a different
+authorisation question from reading it.*
+
+**Scope** is `*` for the whole tenant, a group id, or a single identity. A
+tenant-wide grant satisfies any narrower ask. **A narrow grant MUST NOT widen**
+— holding `key.approve` on one identity must not answer yes for another, which
+is the entire point of scoping it, and the failure is silent: every screen
+works and every action succeeds.
+
+### 11.1. Resolved per request, never carried in the token
+
+An implementation MUST read grants at the point of use. It MUST NOT put the
+decision in the session token.
+
+The reason is revocation. A token that carries `role` fixes the answer for its
+lifetime, so **revoking access does not revoke it** — the holder keeps working
+until expiry, and the one moment revocation matters is an incident, which is
+exactly when nobody can wait out a TTL.
+
+The token carries **who**; the store answers **what**.
+
+A refusal MUST name the missing capability. An operator told which grant they
+lack can ask for that one; an operator told "forbidden" asks for everything.
+Unauthenticated is `401` and unauthorised is `403` — one says sign in, the
+other says ask for a grant, and collapsing them sends people to the wrong
+place.
+
+### 11.2. Migration
+
+A deployment that predates this section has a role string. It MUST be
+converted to grants — the same set that role could already exercise — rather
+than left as a comparison somewhere alongside the capability check. **A
+fallback to the role is not a compatibility shim; it is a hole**, because it
+reinstates exactly the property § 11.1 exists to remove.
+
+---
+
 ## 13. Versioning
 
 This specification follows semantic versioning at document level.
