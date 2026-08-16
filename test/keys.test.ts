@@ -393,3 +393,54 @@ describe("create_only", () => {
     expect((await keysOf("lane-race")).keys).toHaveLength(1);
   });
 });
+
+/**
+ * SPEC § 9.2. Reported by `client-claude` (mail #122): a host re-adding a lane
+ * writes the runtime the user named, and had no way to check that against what
+ * the hub already holds.
+ *
+ * The reason it had none is worth keeping. `mesh.list_agents` carries every
+ * agent's type, but asking it needs a connected lane — and a host whose *first*
+ * lane is the reclaim has none. The check it most needed was the one it could
+ * not run, so it shipped the guard with a hole in it.
+ */
+describe("the registered type is readable without a lane", () => {
+  test("GET /keys reports it", async () => {
+    await register("typed-lane", "ai-antigravity", newKey().publicKey);
+    expect((await keysOf("typed-lane")).type).toBe("ai-antigravity");
+  });
+
+  test("create_only leaves the stored type alone, so a mismatch survives to be seen", async () => {
+    // The reclaim path. `create_only` is what § 10.1 requires for onboarding,
+    // and it refuses rather than updates — so a caller that treats `409` as
+    // "already mine, carry on" ends up with a local config the hub disagrees
+    // with, and nothing anywhere says so.
+    await register("reclaim-guarded", "ai-antigravity", newKey().publicKey);
+    const res = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity: "reclaim-guarded", type: "ai-claude", create_only: true }),
+    });
+    expect(res.status).toBe(409);
+    expect((await keysOf("reclaim-guarded")).type).toBe("ai-antigravity");
+  });
+
+  test("without create_only the hub takes the new type, and says nothing about the old one", async () => {
+    // The other half, and the more dangerous one. § 10.1 step 5 mandates this
+    // upsert, so it is the contract working as written — but the identity's
+    // audit history was written while it was something else, and `type` is
+    // read at display time. Nothing records that it moved.
+    // Recorded in docs/deferred.md.
+    const k = newKey();
+    await register("reclaim-open", "ai-antigravity", k.publicKey);
+    await register("reclaim-open", "ai-claude", k.publicKey);
+    expect((await keysOf("reclaim-open")).type).toBe("ai-claude");
+  });
+
+  test("a name nobody registered still 404s", async () => {
+    // The route must not become a probe for whether a name is taken by
+    // answering `type: null` instead.
+    const res = await fetch(`${mesh.hub.url}/api/v1/agents/never-existed/keys`);
+    expect(res.status).toBe(404);
+  });
+});
