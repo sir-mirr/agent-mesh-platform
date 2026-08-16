@@ -1737,6 +1737,39 @@
     margin-bottom: 12px;
   }
 
+
+  /* Failover Region Card */
+  .region-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .region-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    box-shadow: var(--shadow-xs);
+  }
+  .region-card.active {
+    border-color: #10B981;
+    background: #F0FDF4;
+  }
+  .region-card.degraded {
+    border-color: #EF4444;
+    background: #FEF2F2;
+  }
+
+  /* Rate Limit Range Slider & Meter */
+  .slider-control-box {
+    background: var(--bg-surface-sub);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+
 </style>
 </head>
 <body>
@@ -2086,6 +2119,37 @@
       <button class="tab-nav-btn active" id="tabBtnTopology" onclick="switchOperatorTab('topology')" data-i18n="tab_topology">🌐 Agent Topology Graph</button>
       <button class="tab-nav-btn" id="tabBtnPlayground" onclick="switchOperatorTab('playground')" data-i18n="tab_playground">💬 Message Playground</button>
       <button class="tab-nav-btn" id="tabBtnTrace" onclick="switchOperatorTab('trace')">🔬 WebSocket Frame & Trace Log</button>
+      <button class="tab-nav-btn" id="tabBtnRunner" onclick="switchOperatorTab('runner')">🔌 Local Agent Runner & CLI Guide</button>
+    </div>
+
+    <!-- TAB 4 (New): Local Agent Runner & CLI Connect Guide -->
+    <div id="operator-panel-runner" style="display:none;">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Run Autonomous Agent in Local CLI or Serverless Runtime</div>
+            <div class="card-subtitle">Connect your custom AI agent codebase to the Agent Mesh Platform in 3 steps</div>
+          </div>
+        </div>
+
+        <div style="font-size:0.9rem; line-height:1.7;">
+          <strong>Step 1: Install the Agent Mesh CLI</strong>
+          <div class="code-snippet-box" style="margin:6px 0 16px;">
+curl -fsSL https://get.agent-mesh.dev/install.sh | bash
+          </div>
+
+          <strong>Step 2: Generate Ed25519 Keypair & Claim Identity with Pairing Code</strong>
+          <div class="code-snippet-box" style="margin:6px 0 16px;">
+# Claim agent using single-use pairing code generated in Tenant Admin
+agent-mesh claim --code ACM-8492-KY7 --name my-custom-agent --save-key ~/.agent-mesh/agent.key
+          </div>
+
+          <strong>Step 3: Start Agent Dispatcher or Socketless Poller</strong>
+          <div class="code-snippet-box" style="margin:6px 0;">
+agent-mesh listen --endpoint http://localhost:3000 --key ~/.agent-mesh/agent.key --handler ./my_agent_worker.py
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- TAB 3 (New): WebSocket Frame & Packet Trace -->
@@ -4250,7 +4314,28 @@ func main() {
       document.getElementById('platform-panel-gateways').style.display = tab === 'gateways' ? 'block' : 'none';
       document.getElementById('platform-panel-tenants').style.display = tab === 'tenants' ? 'block' : 'none';
       document.getElementById('platform-panel-telemetry').style.display = tab === 'telemetry' ? 'block' : 'none';
+      document.getElementById('platform-panel-failover').style.display = tab === 'failover' ? 'block' : 'none';
+      document.getElementById('platform-panel-ratelimit').style.display = tab === 'ratelimit' ? 'block' : 'none';
       document.getElementById('platform-panel-audits').style.display = tab === 'audits' ? 'block' : 'none';
+    }
+
+    function triggerSimulatedOutage() {
+      const card = document.getElementById('regionCard-us-east');
+      const badge = document.getElementById('regionBadge-us-east');
+      const traffic = document.getElementById('trafficVal-us-east');
+      const health = document.getElementById('healthVal-us-east');
+      const banner = document.getElementById('failoverAlertBanner');
+
+      card.classList.remove('active');
+      card.classList.add('degraded');
+      badge.className = 'badge badge-danger';
+      badge.innerText = 'Outage / Failover Triggered';
+      traffic.innerText = '0 msg/s (Rerouted)';
+      health.innerText = '0.00% (Down)';
+      banner.style.display = 'block';
+
+      document.getElementById('trafficVal-eu-west').innerText = '15,150 msg/s (+6,200 failover)';
+      document.getElementById('trafficVal-ap-seoul').innerText = '21,400 msg/s (+6,200 failover)';
     }
 
     // Tenant Tab Switcher
@@ -4261,9 +4346,12 @@ func main() {
 
       document.getElementById('tenant-panel-overview').style.display = tab === 'overview' ? 'block' : 'none';
       document.getElementById('tenant-panel-keys').style.display = tab === 'keys' ? 'block' : 'none';
+      document.getElementById('tenant-panel-rotation').style.display = tab === 'rotation' ? 'block' : 'none';
       document.getElementById('tenant-panel-groups').style.display = tab === 'groups' ? 'block' : 'none';
+      document.getElementById('tenant-panel-network').style.display = tab === 'network' ? 'block' : 'none';
       document.getElementById('tenant-panel-pairing').style.display = tab === 'pairing' ? 'block' : 'none';
       document.getElementById('tenant-panel-audits').style.display = tab === 'audits' ? 'block' : 'none';
+      document.getElementById('tenant-panel-siem').style.display = tab === 'siem' ? 'block' : 'none';
       document.getElementById('tenant-panel-rbac').style.display = tab === 'rbac' ? 'block' : 'none';
     }
 
