@@ -106,7 +106,8 @@ determined administrator. What would actually prevent one:
   read back. Costs nothing else here, because bodies are not queried — the
   metadata that filtering needs stays in the clear. **This is unusually cheap
   for what it buys, precisely because the split above already isolates the one
-  column nobody filters on.**
+  column nobody filters on.** One key per tenant, not per operator — see the
+  tenant-admin section for why.
 - **The audit store administered by someone else** — different host, different
   people, different blast radius.
 - **Writes mirrored to independent retention**, so tampering is detectable even
@@ -225,6 +226,56 @@ What genuinely changes: nobody outside is checking that this operator should
 have an agent at all. That is a platform-operator question — they grant
 ownership — and it is the one thing rule 1 leaves them.
 
+## The tenant admin is inside the tenant
+
+A company admin. That settles three things that were open, and creates one
+requirement.
+
+**Ownership is delegation, not sovereignty.** The tenant owns its identities;
+the agent operator is the person answerable for them day to day. So a tenant
+admin reaching an agent inside their own tenant is not a boundary violation —
+it is the boundary working. An agent whose owner leaves is reassigned by the
+tenant admin, and no platform operator touches a table to make that happen.
+
+**The strong boundaries are the two that cross a tenant edge**, and only those:
+
+```
+tenant ─── tenant      never
+tenant ─── platform    no message content
+inside a tenant        the tenant's own policy
+```
+
+**Encryption becomes per tenant, which is simpler than what this document
+first said.** An earlier draft proposed encrypting bodies to the *owning
+operator's* key, which would have locked out the tenant admin too — wrong for
+a company admin, and it would have made key custody a per-person problem.
+One key per tenant, held by the tenant, is both easier to operate and the
+thing a contract can actually describe: the platform cannot read; the company
+can.
+
+### And it makes audit-read logging a requirement
+
+"The company admin can read your agent's messages" is acceptable in a way that
+"someone can read them and nobody knows" is not. The difference is entirely
+whether the access is recorded.
+
+That is currently **not** recorded, and not by oversight: `agent-mesh-http`
+opens `audit.db` with `readonly: true`, so it could not write the event if one
+existed ([`deferred.md`](../deferred.md)). It was deferred as a gap in a
+justification. This decision promotes it — **a tenant admin inside the tenant
+is only a defensible design if reading leaves a trace**, so the deferred item
+becomes a prerequisite of the role model rather than a loose end beside it.
+
+The event shape it needs now exists (§ 8.9.5). What it still needs is a write
+path to a store this process is deliberately prevented from writing to, which
+is a decision about which process owns that write rather than a patch.
+
+**And the record has to survive the person it is about.** A tenant admin is
+accountable to nobody inside the system — they grant the roles — so a trail
+they can delete records nothing. This is the argument for the mirrored,
+append-only option that rule 2's boundary section listed as optional; here it
+is the only thing making the access reviewable.
+
 ## Rule 3 has a shape problem worth deciding early
 
 `audit_events.identity` is **the sending identity**. Scoping by it is one
@@ -264,11 +315,10 @@ argue against first.
   means they can create a tenant admin account, hold it, and read through it.
   Rule 2 survives that only in the encrypted-body version, where the grant does
   not carry the key.
-- **Whether a tenant admin is inside or above their tenant.** If they can grant
-  themselves `audit.read.content` over every agent in the tenant, the agent
-  operator's ownership is advisory. If they cannot, an agent whose owner leaves
-  is unreachable. Both are defensible; picking silently is not.
 - **Teardown.** § 9.3 destroys an identity. Owner, tenant admin, or both?
+  Settled in outline by the section above — the tenant admin can, because
+  someone has to when an owner leaves — but whether an owner can destroy
+  without the tenant admin is still open.
 - **Cross-owner and cross-group proxying.** `sent_by` may belong to a different
   owner than `from`. Whose audit does a proxied send land in — and once
   gateways exist, `sent_by` cannot even name all the carriers
