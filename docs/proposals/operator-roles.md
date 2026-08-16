@@ -267,9 +267,31 @@ justification. This decision promotes it — **a tenant admin inside the tenant
 is only a defensible design if reading leaves a trace**, so the deferred item
 becomes a prerequisite of the role model rather than a loose end beside it.
 
-The event shape it needs now exists (§ 8.9.5). What it still needs is a write
-path to a store this process is deliberately prevented from writing to, which
-is a decision about which process owns that write rather than a patch.
+The event shape it needs now exists (§ 8.9.5). **The write is owned by an
+internal process**, not by `agent-mesh-http` — which keeps that store readonly
+where it is read, so the same code cannot both serve a query and shape the
+record of it.
+
+That leaves one thing to decide, and it is the whole control: **what happens to
+a read when the writer is unavailable.**
+
+```
+fail open   the read proceeds unlogged   → the control disappears exactly when
+                                           someone might want it to, and
+                                           nothing distinguishes an outage from
+                                           an outage someone arranged
+fail closed the read is refused          → an audit outage becomes an audit
+                                           blackout, and the operator who
+                                           needed the trail cannot reach it
+```
+
+§ 15.6 already answers the analogous question the other way — routing keeps
+working when audit writes fail, because a delivery lost to a full disk is the
+worse outcome. **This is not that case.** Message delivery failing open loses
+nothing that was not going to be recorded anyway; an access log failing open
+loses the only record that the access happened. Reusing § 15.6's answer here
+because it is already written down would be the wrong move for a reason that
+looks like consistency.
 
 **And the record has to survive the person it is about.** A tenant admin is
 accountable to nobody inside the system — they grant the roles — so a trail
@@ -296,19 +318,19 @@ the other way: the event carries the message body (§ 8.9.4, deliberately), so
 Bob reading his agent's inbound events reads what Alice's agent sent, and Alice
 did not agree to that.
 
-Three answers, none obviously right:
+**Settled: participant scope, with content.** An agent operator audits what
+their agent sent and what it received, bodies included.
 
-- **Participant scope, full body.** Simple and honest about what a mesh is:
-  if you send to someone, they can read it. Cross-owner sends become a
-  disclosure decision made at send time.
-- **Participant scope, body only for events your agent produced.** The
-  recipient sees that a message arrived, from whom, when, how big — not the
-  content. Consistent with what `admin/inbox` already does for depth.
-- **Owner scope with an explicit share.** Alice grants Bob visibility on the
-  pair. Correct and nobody will configure it.
+The consequence is worth stating rather than discovering: **sending to someone
+is disclosing to them.** Bob's operator reads what Alice's agent sent, because
+Alice's agent sent it to Bob's. That is what a message is, and a mesh that
+pretended otherwise would be lying about what delivery means.
 
-The second matches decisions already taken in this repository and is the one to
-argue against first.
+It does mean the tenant boundary is not "no content crosses". It is **"no
+content crosses except what was sent across"** — a cross-tenant send is a
+disclosure decision, made at send time by the sender, and the send restrictions
+in [`tenancy-and-groups.md`](tenancy-and-groups.md) are where that decision is
+actually controlled. Audit scope is not the place to try to claw it back.
 
 ## What this does not answer
 
@@ -316,10 +338,9 @@ argue against first.
   means they can create a tenant admin account, hold it, and read through it.
   Rule 2 survives that only in the encrypted-body version, where the grant does
   not carry the key.
-- **Teardown.** § 9.3 destroys an identity. Owner, tenant admin, or both?
-  Settled in outline by the section above — the tenant admin can, because
-  someone has to when an owner leaves — but whether an owner can destroy
-  without the tenant admin is still open.
+- **Whether an agent operator can tear down alone.** The tenant admin can —
+  settled. § 9.3 is irreversible and blocks re-registration of the name, so
+  whether the day-to-day owner holds that alone is a separate question.
 - **Cross-owner and cross-group proxying.** `sent_by` may belong to a different
   owner than `from`. Whose audit does a proxied send land in — and once
   gateways exist, `sent_by` cannot even name all the carriers
