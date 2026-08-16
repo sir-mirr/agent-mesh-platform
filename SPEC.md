@@ -1602,13 +1602,22 @@ and teardown. These routes live on the hub port, NOT on
 | GET    | `/health`                         | None   | `200`   | Hub liveness, `online_agents` count, and `agent_mesh_spec` (§ 13). |
 | POST   | `/api/agents`                     | None † | `200`   | Legacy provisioning alias; response shape MAY differ from `/api/v1/agents` — see § 10.1. |
 | POST   | `/api/v1/agents`                  | None † | `200`\|`201` | Canonical identity provisioning (§ 10.1). |
-| GET    | `/api/v1/agents/{identity}/keys`  | None † | `200`   | Key record and current status for one identity (§ 10.2). Read-only: the hub never decides a key, because it cannot authenticate who is asking — approval is on `agent-mesh-http` (§ 10.2.1). |
+| GET    | `/api/v1/agents/{identity}/keys`  | None † | `200`   | What the hub holds for one identity: registered `type`, `deleted`, `key_status`, `keys[]` and `events[]` (§ 10.2). Read-only: the hub never decides a key, because it cannot authenticate who is asking — approval is on `agent-mesh-http` (§ 10.2.1). |
 | DELETE | `/api/agents/{identity}`          | —      | `403`   | **Refused here.** Teardown needs an authenticated caller and the hub has none — see § 9.3. |
 
 † At v0.1, hub REST routes are unauthenticated on the assumption the
 hub binds to a trust-bounded interface (Tailscale or LXC-internal
 bridge). Public-internet deployments MUST gate these routes behind a
 bearer token or equivalent before exposing them (§ 10.1).
+
+`GET /api/v1/agents/{identity}/keys` reports the registered `type`
+because a host **reclaiming** an identity needs it and cannot otherwise
+get it. `mesh.list_agents` (§ 8.3) carries every agent's type, but
+asking it requires a connected lane, and a host whose first lane is the
+reclaim has none — so the check it most needs is the one it cannot run.
+This adds no exposure: the route answers only for a name the caller
+already knew. **Name to attribute, never attribute to name** — the same
+direction § 10.2 fixes for fingerprints.
 
 #### 9.2.1. The signed inbox surface (0.2)
 

@@ -344,7 +344,9 @@ export function handleGetAgentKeys(identity: string): Response {
     return jsonResponse(400, { ok: false, error: "invalid identity format" });
   }
 
-  const agent = stmtSelectAgent.get(identity) as { deleted_at: string | null } | undefined;
+  const agent = stmtSelectAgent.get(identity) as
+    | { type: string | null; deleted_at: string | null }
+    | undefined;
   if (!agent) {
     return jsonResponse(404, { ok: false, error: `identity '${identity}' is not registered` });
   }
@@ -353,6 +355,15 @@ export function handleGetAgentKeys(identity: string): Response {
   return jsonResponse(200, {
     ok: true,
     identity,
+    // The registered type, for a host reclaiming an identity it already holds
+    // a key for. Without it the only way to ask is `mesh.list_agents`, which
+    // needs a connected lane — and a host whose *first* lane is the reclaim has
+    // none, so the check it most needs is the one it cannot run.
+    //
+    // No new exposure: `mesh.list_agents` enumerates every agent's type, and
+    // this route answers only for a name the caller already knew. Name to
+    // attribute, never attribute to name.
+    type: agent.type,
     deleted: !!agent.deleted_at,
     // Why the identity cannot sign, or null when it can — the same value § 8.1
     // puts in a `-32014`, so a client sees one answer from both surfaces.

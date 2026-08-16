@@ -195,3 +195,28 @@ cookie, or moving to WebSocket for the browser stream.
 
 **Why deferred.** The alternative today is no event stream in a browser at all.
 The SPEC records the cost and asks deployments to redact the parameter.
+
+### An identity's `type` can change with nothing recording that it did
+
+§ 10.1 step 5 mandates the upsert: `ON CONFLICT(identity) DO UPDATE SET type,
+description`. So a second `POST /api/v1/agents` for a name that already exists
+replaces its type, and that is the contract working as written.
+
+What is missing is the record. Key transitions each write an
+`agent_key_events` row carrying the actor; `agents.type` has no equivalent. It
+is read at display time, so changing it rewrites how **every past audit event
+for that identity reads** — an identity that acted as one runtime is presented
+as having always been another, and nothing anywhere says otherwise.
+
+Found while answering `client-claude`'s mail #122, which reported the opposite
+symptom: they use `create_only`, which refuses instead of updating, so their
+reclaim left the hub's type and their local config disagreeing with no error.
+Both halves are the same gap seen from either side — the type moves, or fails
+to, and neither outcome is written down.
+
+**Why deferred.** The read side is now closed: `GET /api/v1/agents/{identity}/keys`
+reports the registered type (§ 9.2), so a caller can compare before it acts,
+which is what the reporting case actually needed. Recording the transition
+means a new event shape — `recordMeshEvent` is message-shaped and does not
+fit — and a SPEC section defining it. Worth doing, not worth doing between a
+question and its answer.
