@@ -1334,6 +1334,24 @@ app.post('/api/v1/pairing-codes/redeem', async (c) => {
   return c.json({ ok: true, identity: outcome.identity, owner: outcome.owner })
 })
 
+/**
+ * What the caller owns (SPEC § 11.3).
+ *
+ * **`key.approve` at any scope, not `agent.provision`.** The question is
+ * "which agents are mine to look after", and the screen that asks it is the
+ * approval queue's empty state — an operator who owns nothing needs to be told
+ * that rather than shown a bare "nothing pending", because the two have
+ * different next actions and only one of them is *do nothing*.
+ *
+ * Answers about the caller and nobody else. A tenant-wide grant does not widen
+ * it: "everything in the tenant" is not an answer to "what is mine".
+ */
+app.get('/api/v1/admin/agents/owned', async (c) => {
+  const actor = await requireCapabilityAnyScope(c, CAPABILITY.KEY_APPROVE)
+  if (typeof actor !== 'string') return actor
+  return c.json({ ok: true, owner: actor, identities: ownership.ownedBy(agentsDb(), actor) })
+})
+
 /** Who is answerable for an identity, and how the claim was made. */
 app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)

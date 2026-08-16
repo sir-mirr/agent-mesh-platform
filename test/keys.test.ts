@@ -941,6 +941,28 @@ describe("ownership scopes what an operator sees", () => {
     grantTo("admin", "key.approve", "*");
   });
 
+  test("what I own answers about me, and a tenant-wide grant does not widen it", async () => {
+    // "Everything in the tenant" is not an answer to "what is mine". The
+    // screen asking is the approval queue's empty state, where owning nothing
+    // and having nothing pending are different situations with different next
+    // actions.
+    withDb((db) => db.prepare(
+      `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
+       VALUES ('default','owned-a','admin','test') ON CONFLICT DO NOTHING`).run());
+    withDb((db) => db.prepare(
+      `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
+       VALUES ('default','owned-b','someone-else','test') ON CONFLICT DO NOTHING`).run());
+
+    const body = await (await fetch(`${mesh.http.url}/api/v1/admin/agents/owned`, {
+      headers: { cookie: adminCookie },
+    })).json();
+    expect(body.owner).toBe("admin");
+    expect(body.identities).toContain("owned-a");
+    // `admin` holds key.approve at `*`, and still must not be told it owns
+    // someone else's agent.
+    expect(body.identities).not.toContain("owned-b");
+  });
+
   test("holding the capability at no scope at all is still 403", async () => {
     // The other side of the line. Filtered-to-empty and not-permitted are
     // different answers and must not collapse into one.
