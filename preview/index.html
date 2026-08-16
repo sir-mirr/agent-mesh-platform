@@ -672,14 +672,14 @@
     position: relative;
   }
   .topology-toolbar {
-    padding: 12px 20px;
+    padding: 8px 16px;
     background: #FFFFFF;
     border-bottom: 1px solid var(--border-default);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
   }
   .topology-filters {
     display: flex;
@@ -718,13 +718,13 @@
   }
   .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-  /* Interactive Canvas Container with Dynamic Viewport Height */
+  /* Interactive Canvas Container with Viewport-Fit Height */
   .topology-canvas-wrap {
     position: relative;
     background: #F8FAFC;
     overflow: hidden;
-    height: calc(100vh - 230px);
-    min-height: 520px;
+    height: calc(100vh - 280px);
+    min-height: 460px;
     width: 100%;
     cursor: grab;
     user-select: none;
@@ -1887,18 +1887,30 @@
     // =========================================================================
     // 1.5x WORLD BOUNDING BOX & PAN-ZOOM ENGINE WITH BOUNDARY CLAMPING
     // =========================================================================
-    // Entities World Bounding Box: [180, 2960] x [220, 1500], Center (1570, 860), Size: 2780 x 1280
-    // 1.5x Limit Bounding Box: Width = 4170, Height = 1920
-    const BOUND_MIN_X = -515;
-    const BOUND_MAX_X = 3655;
-    const BOUND_MIN_Y = -100;
-    const BOUND_MAX_Y = 1820;
-    const WORLD_TOTAL_W = BOUND_MAX_X - BOUND_MIN_X; // 4170
-    const WORLD_TOTAL_H = BOUND_MAX_Y - BOUND_MIN_Y; // 1920
+    // Exact Entities World Bounding Box: [120, 3000] x [40, 1530]
+    // Width = 2880, Height = 1490, Center = (1560, 785)
+    const ENTITY_MIN_X = 120;
+    const ENTITY_MAX_X = 3000;
+    const ENTITY_MIN_Y = 40;
+    const ENTITY_MAX_Y = 1530;
+    const ENTITY_W = ENTITY_MAX_X - ENTITY_MIN_X; // 2880
+    const ENTITY_H = ENTITY_MAX_Y - ENTITY_MIN_Y; // 1490
+    const ENTITY_CX = (ENTITY_MIN_X + ENTITY_MAX_X) / 2; // 1560
+    const ENTITY_CY = (ENTITY_MIN_Y + ENTITY_MAX_Y) / 2; // 785
+
+    // 1.5x Limits
+    const BOUND_W = ENTITY_W * 1.5; // 4320
+    const BOUND_H = ENTITY_H * 1.5; // 2235
+    const BOUND_MIN_X = ENTITY_CX - BOUND_W / 2; // -600
+    const BOUND_MAX_X = ENTITY_CX + BOUND_W / 2; // 3720
+    const BOUND_MIN_Y = ENTITY_CY - BOUND_H / 2; // -332
+    const BOUND_MAX_Y = ENTITY_CY + BOUND_H / 2; // 1902
+    const WORLD_TOTAL_W = BOUND_MAX_X - BOUND_MIN_X;
+    const WORLD_TOTAL_H = BOUND_MAX_Y - BOUND_MIN_Y;
 
     let panX = 60;
     let panY = 30;
-    let scale = 0.95;
+    let scale = 0.45;
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
@@ -1970,7 +1982,7 @@
       const mouseY = clientY - rect.top;
 
       const oldScale = scale;
-      const newScale = Math.min(Math.max(scale * factor, 0.25), 3.2);
+      const newScale = Math.min(Math.max(scale * factor, 0.15), 3.2);
       if (newScale === oldScale) return;
 
       const worldX = (mouseX - panX) / oldScale;
@@ -1991,18 +2003,18 @@
       const viewport = document.getElementById('canvasViewport');
       if (!viewport) return;
       const rect = viewport.getBoundingClientRect();
-      const vw = rect.width || 1200;
-      const vh = rect.height || 600;
+      const vw = rect.width || window.innerWidth || 1200;
+      const vh = rect.height || 540;
 
-      // Fit all 10 clusters (width ~2950, height ~1400) comfortably inside viewport with padding
-      const scaleX = (vw - 80) / 2950;
-      const scaleY = (vh - 80) / 1400;
-      const autoScale = Math.min(scaleX, scaleY);
-      scale = Math.max(0.32, Math.min(autoScale, 0.95));
+      // Fit all 10 clusters (width 2880, height 1490) with comfortable padding
+      const scaleX = (vw - 80) / ENTITY_W;
+      const scaleY = (vh - 60) / ENTITY_H;
+      scale = Math.min(scaleX, scaleY);
+      scale = Math.max(0.15, Math.min(scale, 1.1));
 
-      // Center the network in the viewport
-      panX = (vw / 2) - (1570 * scale);
-      panY = (vh / 2) - (860 * scale);
+      // Center the whole graph in the user's viewport
+      panX = (vw / 2) - (ENTITY_CX * scale);
+      panY = (vh / 2) - (ENTITY_CY * scale);
 
       applyCanvasTransform();
     }
