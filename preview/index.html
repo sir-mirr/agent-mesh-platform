@@ -212,37 +212,36 @@
     box-shadow: var(--shadow-sm);
   }
 
-  /* Language Switcher Button */
-  .lang-switcher-wrap {
-    display: flex;
+  /* Language Switcher Combo Box */
+  .lang-select-wrap {
+    position: relative;
+    display: inline-flex;
     align-items: center;
-    background: var(--bg-surface-sub);
+  }
+  .lang-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: #FFFFFF url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") no-repeat right 10px center;
+    background-size: 14px;
     border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
-    padding: 3px;
-    gap: 2px;
-  }
-  .lang-btn {
-    background: transparent;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--text-secondary);
+    padding: 7px 32px 7px 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    color: var(--text-primary);
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    transition: all 0.15s ease;
-  }
-  .lang-btn.active {
-    background: #FFFFFF;
-    color: var(--text-primary);
     box-shadow: var(--shadow-xs);
+    transition: all 0.15s ease;
+    outline: none;
   }
-  .lang-btn:hover:not(.active) {
-    color: var(--text-primary);
+  .lang-select:hover {
+    border-color: var(--border-strong);
+    background-color: var(--bg-surface-sub);
+  }
+  .lang-select:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
   }
 
   .preview-view { display: none; padding: 36px 24px; max-width: 1200px; width: 100%; margin: 0 auto; flex: 1; }
@@ -750,10 +749,12 @@
         <button class="preview-btn" onclick="switchView('creator')" data-i18n="nav_creator">3. Agent Creator Dashboard</button>
       </div>
 
-      <!-- Language Switcher -->
-      <div class="lang-switcher-wrap">
-        <button class="lang-btn active" id="lang-en" onclick="setLanguage('en')">🇺🇸 EN</button>
-        <button class="lang-btn" id="lang-ko" onclick="setLanguage('ko')">🇰🇷 KO</button>
+      <!-- Language Switcher Combo Box -->
+      <div class="lang-select-wrap">
+        <select id="langSelect" class="lang-select" onchange="setLanguage(this.value)" aria-label="Select Language">
+          <option value="en">🇺🇸 English</option>
+          <option value="ko">🇰🇷 한국어</option>
+        </select>
       </div>
     </div>
   </header>
@@ -1204,8 +1205,10 @@
 
     function setLanguage(lang) {
       currentLang = lang;
-      document.getElementById('lang-en').classList.toggle('active', lang === 'en');
-      document.getElementById('lang-ko').classList.toggle('active', lang === 'ko');
+      const select = document.getElementById('langSelect');
+      if (select && select.value !== lang) {
+        select.value = lang;
+      }
 
       const dict = I18N[lang];
       document.querySelectorAll('[data-i18n]').forEach((el) => {
