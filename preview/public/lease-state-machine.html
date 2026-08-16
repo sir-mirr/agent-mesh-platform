@@ -54,12 +54,13 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #3</span>
         </div>
         <h1 class="admin-header-title">Socketless Lease State Machine</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Interactive simulation of 300s TTL atomic lease locking, deletion, and crash recovery</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Interactive simulation of 300s TTL atomic lease locking, piggybacked ack, and crash recovery (SPEC § 8.10)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -70,11 +71,30 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div><div class="card-title">Live State Transition Simulator</div><div class="card-subtitle">Test how messages transition across Available, Leased, and Acknowledged states</div></div><button class="btn btn-primary btn-sm" onclick="alert('Simulated lease acquisition (300s TTL started).')">📥 Poll & Lease Message</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">Live State Transition Simulator</div>
+            <div class="card-subtitle">Test how messages transition across Available, Leased, and Acknowledged states</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Simulated atomic lease acquisition (POST /api/v1/inbox).')">📥 Poll & Lease Message</button>
+        </div>
+
         <div style="display:flex; gap:16px; margin:20px 0;">
-          <div style="flex:1; background:var(--bg-surface-sub); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border-default);"><strong style="font-size:1rem; color:var(--text-primary);">1. Available Pool (3)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Messages awaiting worker acquisition.</p><div class="code-snippet-box" style="margin-top:10px;">msg_94210 (140B)<br>msg_94211 (210B)<br>msg_94212 (512B)</div></div>
-          <div style="flex:1; background:#FFFDF5; border:1px solid #F59E0B; padding:16px; border-radius:var(--radius-md);"><strong style="font-size:1rem; color:#92400E;">2. Leased Active (2)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Locked with in-flight countdown timer.</p><div class="code-snippet-box" style="margin-top:10px; color:#FDE68A;">msg_892147 · 274s remaining<br>msg_892148 · 289s remaining</div></div>
-          <div style="flex:1; background:#F0FDF4; border:1px solid #10B981; padding:16px; border-radius:var(--radius-md);"><strong style="font-size:1rem; color:#065F46;">3. Consumed / Deleted (12)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Atomically acknowledged via DELETE ACK.</p><div class="code-snippet-box" style="margin-top:10px; color:#A7F3D0;">msg_892146 (ACK ✓)<br>msg_892145 (ACK ✓)</div></div>
+          <div style="flex:1; background:var(--bg-surface-sub); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border-default);">
+            <strong style="font-size:1rem; color:var(--text-primary);">1. Available Pool (3)</strong>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Messages awaiting worker acquisition.</p>
+            <div class="code-snippet-box" style="margin-top:10px;">msg_94210 (140B)<br>msg_94211 (210B)<br>msg_94212 (512B)</div>
+          </div>
+          <div style="flex:1; background:#FFFDF5; border:1px solid #F59E0B; padding:16px; border-radius:var(--radius-md);">
+            <strong style="font-size:1rem; color:#92400E;">2. Leased Active (2)</strong>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Locked with in-flight countdown timer.</p>
+            <div class="code-snippet-box" style="margin-top:10px; color:#FDE68A;">msg_892147 · 274s remaining<br>msg_892148 · 289s remaining</div>
+          </div>
+          <div style="flex:1; background:#F0FDF4; border:1px solid #10B981; padding:16px; border-radius:var(--radius-md);">
+            <strong style="font-size:1rem; color:#065F46;">3. Consumed / Deleted (12)</strong>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Atomically acknowledged via next /inbox call.</p>
+            <div class="code-snippet-box" style="margin-top:10px; color:#A7F3D0;">msg_892146 (ACK ✓)<br>msg_892145 (ACK ✓)</div>
+          </div>
         </div>
       </div>
     

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Batch Lease, Atomic ACK (Delete), and NACK (Revert) — Agent Mesh Enterprise Platform</title>
+  <title>Combined Lease & Ack Actions Simulator — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -53,7 +53,7 @@
   
     <a href="/creator/agent-register.html" class="subnav-pill ">➕ Register Agent</a>
   
-    <a href="/creator/agent-teardown.html" class="subnav-pill ">⚠️ Teardown Agent</a>
+    <a href="/creator/agent-teardown.html" class="subnav-pill ">⚠️ Teardown (§9.3)</a>
   
     <a href="/creator/traffic-pulse-sim.html" class="subnav-pill ">✨ Traffic Pulse Sim</a>
   
@@ -62,12 +62,13 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">CREATOR SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #43</span>
         </div>
-        <h1 class="admin-header-title">Batch Lease, Atomic ACK (Delete), and NACK (Revert)</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Simulate worker processing completion (ACK) and crash recovery (NACK)</p>
+        <h1 class="admin-header-title">Combined Lease & Ack Actions Simulator</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Simulate worker batch acquisition with piggybacked ack parameter (SPEC § 8.10)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -77,7 +78,7 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">Queue Actions Simulator</div></div><button class="btn btn-primary btn-sm" onclick="alert('ACK deleted.')">✓ ACK Delete</button> <button class="btn btn-secondary btn-sm" onclick="alert('NACK reverted.')">↩ NACK Revert</button></div>
+      <div class="card"><div class="card-header"><div class="card-title">POST /api/v1/inbox Actions Simulator</div></div><button class="btn btn-primary btn-sm" onclick="alert('Batch leased and previous acked.')">📥 Poll Next + Ack Previous</button></div>
     
   </div>
 

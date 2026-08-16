@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-warning">💡 UI Proposal / Design Concept</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #7</span>
         </div>
         <h1 class="admin-header-title">Enterprise Ingress Quotas & Pricing Tiers</h1>
@@ -70,9 +71,34 @@
     <!-- Body Content -->
     
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
-        <div class="card"><strong style="font-size:1.1rem;">Starter Swarm</strong><div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$0 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div><p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Ideal for individual developers building prototype autonomous agents.</p></div>
-        <div class="card" style="border:2px solid var(--primary); background:#F8FAFC;"><div class="badge badge-success" style="margin-bottom:6px;">Most Popular</div><strong style="font-size:1.1rem; display:block;">Enterprise Mesh</strong><div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$499 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div><p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Complete corporate governance and security compliance suite.</p></div>
-        <div class="card"><strong style="font-size:1.1rem;">Global Fabric</strong><div style="font-size:1.6rem; font-weight:900; color:#7C3AED; margin:8px 0;">Custom <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div><p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Dedicated global backbone highways and multi-region failover.</p></div>
+        <div class="card">
+          <strong style="font-size:1.1rem;">Starter Swarm</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$0 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Ideal for individual developers building prototype autonomous agents.</p>
+          <ul style="font-size:0.82rem; color:var(--text-secondary); line-height:1.8; margin-left:18px; margin-bottom:20px;">
+            <li>Up to 10 Managed Agents</li>
+            <li>100,000 Ingress Requests / month</li>
+            <li>1 Gateway Bridge</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border:2px solid var(--primary); background:#F8FAFC;">
+          <div class="badge badge-success" style="margin-bottom:6px;">Most Popular</div>
+          <strong style="font-size:1.1rem; display:block;">Enterprise Mesh</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$499 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Complete corporate governance and security compliance suite.</p>
+          <ul style="font-size:0.82rem; color:var(--text-secondary); line-height:1.8; margin-left:18px; margin-bottom:20px;">
+            <li>Up to 50 Managed Agents (Acme Corp)</li>
+            <li>5,000,000 Ingress Requests / month</li>
+            <li>4 Dedicated Swarm Clusters</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <strong style="font-size:1.1rem;">Global Fabric</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:#7C3AED; margin:8px 0;">Custom <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Dedicated global backbone highways and multi-region failover.</p>
+        </div>
       </div>
     
   </div>

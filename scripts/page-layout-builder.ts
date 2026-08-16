@@ -1,8 +1,7 @@
-import { writeFileSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync } from 'fs';
 
 // Common sub-nav items per suite
-const SUITE_SUBNAVS: Record<string, { label: string; url: string }[]> = {
+export const SUITE_SUBNAVS: Record<string, { label: string; url: string }[]> = {
   public: [
     { label: '🌟 Landing', url: '/public/index.html' },
     { label: '📐 Security Architecture', url: '/public/security-architecture.html' },
@@ -19,30 +18,30 @@ const SUITE_SUBNAVS: Record<string, { label: string; url: string }[]> = {
     { label: '🏢 Tenants', url: '/platform/tenant-manager.html' },
     { label: '🏢 Tenant Detail', url: '/platform/tenant-detail.html' },
     { label: '🖥️ Telemetry', url: '/platform/telemetry.html' },
-    { label: '🌍 Failover Sim', url: '/platform/failover-sim.html' },
-    { label: '⚡ Rate Limiting', url: '/platform/rate-limiting.html' },
+    { label: '🌍 Failover (Future)', url: '/platform/failover-sim.html' },
+    { label: '⚡ Rate Limiting (Prop)', url: '/platform/rate-limiting.html' },
     { label: '🔒 Metadata Audits', url: '/platform/metadata-audits.html' },
     { label: '🔌 Gateway Sockets', url: '/platform/gateway-inspect.html' },
     { label: '📶 QoS Shaper', url: '/platform/bandwidth-shaper.html' },
     { label: '🔐 Root CA', url: '/platform/certificate-authority.html' },
-    { label: '👁️ §8.11 Sources', url: '/platform/observed-sources.html' }
+    { label: '👁️ §8.11 Observed Sources', url: '/platform/observed-sources.html' }
   ],
   tenant: [
     { label: '📈 Executive Overview', url: '/tenant/index.html' },
     { label: '🔑 Key Approvals (3)', url: '/tenant/key-approvals.html' },
-    { label: '🔄 Key Rotations', url: '/tenant/key-rotations.html' },
+    { label: '🔄 Key Rotations (Prop)', url: '/tenant/key-rotations.html' },
     { label: '⛔ Compromised Keys', url: '/tenant/compromised-keys.html' },
     { label: '📁 Swarm Groups', url: '/tenant/groups.html' },
     { label: '📁 Group Detail', url: '/tenant/group-detail.html' },
     { label: '🛡️ Egress ACL', url: '/tenant/egress-acl.html' },
     { label: '⚙️ Send Policy Default', url: '/tenant/send-policy-default.html' },
-    { label: '🌐 Network CIDR', url: '/tenant/network-attestation.html' },
+    { label: '🌐 Network CIDR (§8.11)', url: '/tenant/network-attestation.html' },
     { label: '🚨 Audit Failure Policy', url: '/tenant/audit-failure-policy.html' },
     { label: '⚡ Pairing Codes', url: '/tenant/pairing-codes.html' },
     { label: '📜 Pairing History', url: '/tenant/pairing-history.html' },
     { label: '📋 Participant Audits', url: '/tenant/participant-audits.html' },
-    { label: '👁️ Audit Read Log', url: '/tenant/audit-read-events.html' },
-    { label: '📦 SIEM / S3 Export', url: '/tenant/siem-export.html' },
+    { label: '👁️ Audit Read Log (Prop)', url: '/tenant/audit-read-events.html' },
+    { label: '📦 SIEM Export (Prop)', url: '/tenant/siem-export.html' },
     { label: '👥 Organization RBAC', url: '/tenant/organization-rbac.html' }
   ],
   creator: [
@@ -56,22 +55,22 @@ const SUITE_SUBNAVS: Record<string, { label: string; url: string }[]> = {
     { label: '🔬 WebSocket Trace', url: '/creator/websocket-trace.html' },
     { label: '🔌 CLI Runner Guide', url: '/creator/agent-runner.html' },
     { label: '➕ Register Agent', url: '/creator/agent-register.html' },
-    { label: '⚠️ Teardown Agent', url: '/creator/agent-teardown.html' },
+    { label: '⚠️ Teardown (§9.3)', url: '/creator/agent-teardown.html' },
     { label: '✨ Traffic Pulse Sim', url: '/creator/traffic-pulse-sim.html' }
   ],
   dev: [
     { label: '📖 Developer Hub', url: '/dev/index.html' },
     { label: '⚡ OpenAPI 3.1 Runner', url: '/dev/openapi-explorer.html' },
-    { label: 'POST /messages/send', url: '/dev/api-messages-send.html' },
-    { label: 'POST /inbox/lease', url: '/dev/api-inbox-lease.html' },
-    { label: 'DELETE /inbox/ack', url: '/dev/api-inbox-ack.html' },
+    { label: 'POST /outbox', url: '/dev/api-outbox.html' },
+    { label: 'POST /inbox (SPEC §8.10)', url: '/dev/api-inbox.html' },
+    { label: 'DELETE /outbox/{id}', url: '/dev/api-outbox-delete.html' },
+    { label: 'GET /inbox/history', url: '/dev/api-inbox-history.html' },
     { label: 'POST /keys/propose', url: '/dev/api-keys-propose.html' },
-    { label: 'GET /capabilities', url: '/dev/api-capabilities.html' },
+    { label: 'GET /capabilities (v4)', url: '/dev/api-capabilities.html' },
     { label: 'TypeScript SDK', url: '/dev/sdk-typescript.html' },
     { label: 'Python SDK', url: '/dev/sdk-python.html' },
     { label: 'Go SDK', url: '/dev/sdk-go.html' },
-    { label: '🪝 Webhooks', url: '/dev/webhooks.html' },
-    { label: '🔄 Dead-Letter Queue', url: '/dev/dead-letter-queue.html' }
+    { label: '🪝 Webhooks & DLQ', url: '/dev/webhooks.html' }
   ]
 };
 
@@ -82,12 +81,17 @@ export function renderRichPage(
   pageUrl: string,
   title: string,
   subtitle: string,
+  isImplemented: boolean,
   bodyContent: string
 ): string {
   const subnavItems = SUITE_SUBNAVS[suiteKey] || [];
   const subnavHtml = subnavItems.map(item => `
     <a href="${item.url}" class="subnav-pill ${item.url === pageUrl ? 'active' : ''}">${item.label}</a>
   `).join('');
+
+  const statusBadge = isImplemented
+    ? `<span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>`
+    : `<span class="badge badge-warning">💡 UI Proposal / Design Concept</span>`;
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -129,8 +133,9 @@ export function renderRichPage(
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">${suiteKey.toUpperCase()} SUITE</span>
+          ${statusBadge}
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #${screenNum}</span>
         </div>
         <h1 class="admin-header-title">${title}</h1>

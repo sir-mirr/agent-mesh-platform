@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #6</span>
         </div>
         <h1 class="admin-header-title">Platform Operator Master Portal</h1>
@@ -70,9 +71,23 @@
     <!-- Body Content -->
     
       <div class="card" style="max-width:500px; margin:40px auto; padding:32px; box-shadow:var(--shadow-lg);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;"><h2 style="font-size:1.3rem; font-weight:800;">Platform Operator Portal</h2><span class="badge badge-danger">Master Key</span></div>
-        <div class="form-group" style="margin-bottom:20px;"><label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px;">Operator Master Key</label><input type="password" value="adm_live_k9x2_master_fabric_mesh" style="width:100%; padding:8px 12px; border:1px solid var(--border-default); border-radius:var(--radius-md); font-family:var(--font-mono);"></div>
-        <a href="/platform/index.html" class="btn btn-primary" style="width:100%; padding:10px; font-size:0.95rem;">Sign In as Platform Operator →</a>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h2 style="font-size:1.3rem; font-weight:800;">Platform Operator Portal</h2>
+          <span class="badge badge-danger">Master Key</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.6;">
+          Manage the 14 global backbone highways, provision new tenant boundaries, monitor cluster node telemetry, and inspect transit metadata.
+        </p>
+        <div class="form-group" style="margin-bottom:20px;">
+          <label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px;">Operator Master Key</label>
+          <input type="password" value="adm_live_k9x2_master_fabric_mesh" style="width:100%; padding:8px 12px; border:1px solid var(--border-default); border-radius:var(--radius-md); font-family:var(--font-mono);">
+        </div>
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:10px 14px; border-radius:var(--radius-md); font-size:0.8rem; margin-bottom:20px;">
+          🔒 <strong>Privacy Boundary Note:</strong> Platform Operator accounts strictly cannot inspect decrypted message payloads.
+        </div>
+        <a href="/platform/index.html" class="btn btn-primary" style="width:100%; padding:10px; font-size:0.95rem;">
+          Sign In as Platform Operator →
+        </a>
       </div>
     
   </div>

@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #5</span>
         </div>
         <h1 class="admin-header-title">Tenant Admin SSO Portal</h1>
@@ -70,9 +71,20 @@
     <!-- Body Content -->
     
       <div class="card" style="max-width:500px; margin:40px auto; padding:32px; box-shadow:var(--shadow-lg);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;"><h2 style="font-size:1.3rem; font-weight:800;">Tenant Admin Login</h2><span class="badge badge-leased">Enterprise SSO</span></div>
-        <div class="form-group" style="margin-bottom:14px;"><label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px;">Organization Tenant Domain</label><input type="text" value="acme-corp" readonly style="width:100%; padding:8px 12px; background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); font-weight:600;"></div>
-        <a href="/tenant/index.html" class="btn btn-primary" style="width:100%; background:#0284C7; padding:10px; font-size:0.95rem;">Sign In to Acme Corp →</a>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h2 style="font-size:1.3rem; font-weight:800;">Tenant Admin Login</h2>
+          <span class="badge badge-leased">Enterprise SSO</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.6;">
+          Access the Acme Corp company security gateway, approve 50-character agent public keys, generate RFC 8628 pairing codes, and configure cross-tenant egress policies.
+        </p>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px;">Organization Tenant Domain</label>
+          <input type="text" value="acme-corp" readonly style="width:100%; padding:8px 12px; background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); font-weight:600;">
+        </div>
+        <a href="/tenant/index.html" class="btn btn-primary" style="width:100%; background:#0284C7; padding:10px; font-size:0.95rem;">
+          Sign In to Acme Corp →
+        </a>
       </div>
     
   </div>

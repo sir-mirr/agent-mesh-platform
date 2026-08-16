@@ -37,15 +37,17 @@
   
     <a href="/dev/openapi-explorer.html" class="subnav-pill ">⚡ OpenAPI 3.1 Runner</a>
   
-    <a href="/dev/api-messages-send.html" class="subnav-pill ">POST /messages/send</a>
+    <a href="/dev/api-outbox.html" class="subnav-pill ">POST /outbox</a>
   
-    <a href="/dev/api-inbox-lease.html" class="subnav-pill ">POST /inbox/lease</a>
+    <a href="/dev/api-inbox.html" class="subnav-pill ">POST /inbox (SPEC §8.10)</a>
   
-    <a href="/dev/api-inbox-ack.html" class="subnav-pill ">DELETE /inbox/ack</a>
+    <a href="/dev/api-outbox-delete.html" class="subnav-pill ">DELETE /outbox/{id}</a>
+  
+    <a href="/dev/api-inbox-history.html" class="subnav-pill ">GET /inbox/history</a>
   
     <a href="/dev/api-keys-propose.html" class="subnav-pill ">POST /keys/propose</a>
   
-    <a href="/dev/api-capabilities.html" class="subnav-pill ">GET /capabilities</a>
+    <a href="/dev/api-capabilities.html" class="subnav-pill ">GET /capabilities (v4)</a>
   
     <a href="/dev/sdk-typescript.html" class="subnav-pill active">TypeScript SDK</a>
   
@@ -53,21 +55,20 @@
   
     <a href="/dev/sdk-go.html" class="subnav-pill ">Go SDK</a>
   
-    <a href="/dev/webhooks.html" class="subnav-pill ">🪝 Webhooks</a>
-  
-    <a href="/dev/dead-letter-queue.html" class="subnav-pill ">🔄 Dead-Letter Queue</a>
+    <a href="/dev/webhooks.html" class="subnav-pill ">🪝 Webhooks & DLQ</a>
   
     </div>
 
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">DEV SUITE</span>
-          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #56</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #57</span>
         </div>
         <h1 class="admin-header-title">Official TypeScript / Node.js SDK Documentation</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Install, initialize, and execute workflows using @agent-mesh/sdk</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Install, initialize, and execute workflows using @agent-mesh/sdk with combined atomic /inbox</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -77,7 +78,27 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">@agent-mesh/sdk (TypeScript)</div></div><div class="code-snippet-box">npm install @agent-mesh/sdk</div></div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">@agent-mesh/sdk (TypeScript)</div></div>
+        <div class="code-snippet-box">import { AgentMeshClient } from '@agent-mesh/sdk';
+
+const client = new AgentMeshClient({
+  endpoint: 'http://localhost:3000',
+  identity: 'lane-claude',
+  privateKey: process.env.AGENT_MESH_KEY
+});
+
+// Single-roundtrip atomic lease + ack loop
+let ackIds: string[] = [];
+while (true) {
+  const batch = await client.inbox.poll({ ackIds, limit: 10, leaseSeconds: 300 });
+  ackIds = [];
+  for (const msg of batch.messages) {
+    console.log('Processing:', msg.payload);
+    ackIds.push(msg.id);
+  }
+}</div>
+      </div>
     
   </div>
 

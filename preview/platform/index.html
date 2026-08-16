@@ -43,9 +43,9 @@
   
     <a href="/platform/telemetry.html" class="subnav-pill ">🖥️ Telemetry</a>
   
-    <a href="/platform/failover-sim.html" class="subnav-pill ">🌍 Failover Sim</a>
+    <a href="/platform/failover-sim.html" class="subnav-pill ">🌍 Failover (Future)</a>
   
-    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting</a>
+    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting (Prop)</a>
   
     <a href="/platform/metadata-audits.html" class="subnav-pill ">🔒 Metadata Audits</a>
   
@@ -55,15 +55,16 @@
   
     <a href="/platform/certificate-authority.html" class="subnav-pill ">🔐 Root CA</a>
   
-    <a href="/platform/observed-sources.html" class="subnav-pill ">👁️ §8.11 Sources</a>
+    <a href="/platform/observed-sources.html" class="subnav-pill ">👁️ §8.11 Observed Sources</a>
   
     </div>
 
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PLATFORM SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #9</span>
         </div>
         <h1 class="admin-header-title">Platform Operator Overview & Backbone Matrix</h1>
@@ -83,7 +84,10 @@
         <div class="telemetry-card"><div style="color:var(--text-secondary); font-size:0.8rem;">Highways Active</div><div style="font-size:1.4rem; font-weight:800; color:#7C3AED;">14</div></div>
         <div class="telemetry-card"><div style="color:var(--text-secondary); font-size:0.8rem;">Observed Source</div><div style="font-size:1.4rem; font-weight:800; color:#059669;">socket (v4)</div></div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title">Global Backbone Routing</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">14 inter-gateway bridges operating with 0.000% packet drop rate.</p></div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Global Backbone Routing Matrix</div></div>
+        <p style="font-size:0.85rem; color:var(--text-secondary);">14 inter-gateway bridges operating with 0.000% packet drop rate across cluster decks.</p>
+      </div>
     
   </div>
 

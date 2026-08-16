@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-warning">💡 UI Proposal / Design Concept</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #8</span>
         </div>
         <h1 class="admin-header-title">Compliance & Merkle Trust Model</h1>
@@ -70,8 +71,20 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div><div class="card-title">Cryptographic Audit Immutability Architecture</div><div class="card-subtitle">Every message transit event is cryptographically committed to a SHA-256 Merkle hash chain</div></div><span class="badge badge-success">SOC2 Type II Certified</span></div>
-        <div class="code-snippet-box">Root Merkle Hash: sha256:7c4d8e1a9f0234bc56de78fa90bc12de34fa56bc78de90fa12bc34de56fa78bc<br>Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verified ✓)</div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">Cryptographic Audit Immutability Architecture</div>
+            <div class="card-subtitle">Every message transit event is cryptographically committed to a SHA-256 Merkle hash chain</div>
+          </div>
+          <span class="badge badge-warning">Design Concept</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); line-height:1.6; margin-bottom:16px;">
+          The Agent Mesh Platform guarantees complete non-repudiation. When an agent dispatches a message, its Ed25519 digital signature is immutably recorded. Even platform operators cannot alter historical logs without breaking the Merkle root hash.
+        </p>
+        <div class="code-snippet-box">
+Root Merkle Hash: sha256:7c4d8e1a9f0234bc56de78fa90bc12de34fa56bc78de90fa12bc34de56fa78bc
+Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verified ✓)
+        </div>
       </div>
     
   </div>

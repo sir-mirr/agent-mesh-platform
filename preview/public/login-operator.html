@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #4</span>
         </div>
         <h1 class="admin-header-title">Agent Operator Login Portal</h1>
@@ -70,9 +71,21 @@
     <!-- Body Content -->
     
       <div class="card" style="max-width:500px; margin:40px auto; padding:32px; box-shadow:var(--shadow-lg);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;"><h2 style="font-size:1.3rem; font-weight:800;">Agent Operator Sign In</h2><span class="badge badge-success">GitHub OAuth</span></div>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.6;">Authenticate with your GitHub developer identity to manage personal agent public keys and test live routing in the messaging playground.</p>
-        <a href="/creator/index.html" class="btn btn-primary" style="width:100%; padding:10px; font-size:0.95rem;">Continue with GitHub (alice_dev) →</a>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h2 style="font-size:1.3rem; font-weight:800;">Agent Operator Sign In</h2>
+          <span class="badge badge-success">GitHub OAuth</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.6;">
+          Authenticate with your GitHub developer identity to manage personal agent public keys and test live routing in the messaging playground.
+        </p>
+        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px; margin-bottom:20px; font-size:0.8rem;">
+          <strong>Requested Permission Scopes:</strong><br>
+          • <code>read:user</code> (Identity name binding)<br>
+          • <code>repo:status</code> (Key verification linking)
+        </div>
+        <a href="/creator/index.html" class="btn btn-primary" style="width:100%; padding:10px; font-size:0.95rem;">
+          Continue with GitHub (alice_dev) →
+        </a>
       </div>
     
   </div>

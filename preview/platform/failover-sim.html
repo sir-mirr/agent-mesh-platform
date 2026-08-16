@@ -43,9 +43,9 @@
   
     <a href="/platform/telemetry.html" class="subnav-pill ">🖥️ Telemetry</a>
   
-    <a href="/platform/failover-sim.html" class="subnav-pill active">🌍 Failover Sim</a>
+    <a href="/platform/failover-sim.html" class="subnav-pill active">🌍 Failover (Future)</a>
   
-    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting</a>
+    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting (Prop)</a>
   
     <a href="/platform/metadata-audits.html" class="subnav-pill ">🔒 Metadata Audits</a>
   
@@ -55,19 +55,20 @@
   
     <a href="/platform/certificate-authority.html" class="subnav-pill ">🔐 Root CA</a>
   
-    <a href="/platform/observed-sources.html" class="subnav-pill ">👁️ §8.11 Sources</a>
+    <a href="/platform/observed-sources.html" class="subnav-pill ">👁️ §8.11 Observed Sources</a>
   
     </div>
 
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PLATFORM SUITE</span>
+          <span class="badge badge-warning">💡 UI Proposal / Design Concept</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #14</span>
         </div>
         <h1 class="admin-header-title">Global Multi-Region Gateway Failover Simulator</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Simulate regional gateway outage and automatic inter-continental rerouting</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Simulate regional gateway outage and automatic inter-continental rerouting (Future Roadmap)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -78,7 +79,13 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">Multi-Region Gateway Failover Engine</div><button class="btn btn-danger btn-sm" onclick="alert('US-East outage triggered! Traffic rerouted to EU-West and AP-Seoul.')">⚡ Simulate US-East Outage</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">Multi-Region Gateway Failover Engine (Future Architecture)</div>
+            <div class="card-subtitle">Hub is currently single-instance in-memory map; this simulates multi-region routing topology</div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="alert('Simulated US-East outage triggered! Traffic rerouted to EU-West and AP-Seoul.')">⚡ Simulate US-East Outage</button>
+        </div>
         <p style="font-size:0.85rem; color:var(--text-secondary);">Automated BGP & DNS rerouting to EU-West and AP-Seoul with zero packet drop.</p>
       </div>
     

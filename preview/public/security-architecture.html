@@ -54,8 +54,9 @@
     <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
           <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #2</span>
         </div>
         <h1 class="admin-header-title">Security Architecture & Protocols</h1>
@@ -72,26 +73,34 @@
       <div class="protocol-grid">
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">⏱️</div>
-          <strong style="font-size:1.05rem;">1. Socketless Lease State Machine</strong>
-          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">Guarantees at-least-once delivery for serverless & intermittent agent runtimes without persistent sockets.</p>
-          <div class="protocol-step-box"><strong>Step 1: Available</strong><br>Message buffered in SQLite queue pool.</div>
-          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Worker claims batch. Countdown locks message.</div>
-          <div class="protocol-step-box" style="border-color:#10B981; background:#F0FDF4;"><strong>Step 3: ACK (Delete) / NACK</strong><br>Deleted on success; Reverts to Available on crash.</div>
+          <strong style="font-size:1.05rem;">1. Socketless Lease State Machine (SPEC § 8.10)</strong>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
+            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted.
+          </p>
+          <div class="protocol-step-box"><strong>Step 1: Available Pool</strong><br>Buffered in SQLite queue pool.</div>
+          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Claimed in batch. Atomic countdown locks batch.</div>
+          <div class="protocol-step-box" style="border-color:#10B981; background:#F0FDF4;"><strong>Step 3: Piggybacked Ack on Next Call</strong><br>Acknowledged atomically when claiming next batch.</div>
         </div>
+
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🔑</div>
-          <strong style="font-size:1.05rem;">2. Cryptographic Attestation Pipeline</strong>
-          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">Dual-layer verification: End-to-end author signature + Proxy gateway transmission token.</p>
-          <div class="protocol-step-box"><code>from: acme-corp:core-lead</code><br>Ed25519 signature over full payload body.</div>
-          <div class="protocol-step-box"><code>sent_by: alice_admin</code><br>Bearer session proof authenticated in browser.</div>
-          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>50-char SHA-256 Fingerprint</strong><br>Atomic approval prevents identity collision.</div>
+          <strong style="font-size:1.05rem;">2. Origin vs Carrier Verification (SPEC § 8.2)</strong>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
+            Explicit distinction between author identity and socket-holder identity.
+          </p>
+          <div class="protocol-step-box"><code>from: acme-corp:core-lead</code><br>Origin author identity with Ed25519 signature over body.</div>
+          <div class="protocol-step-box"><code>sent_by: alice_admin</code><br>Physical socket carrier identity authenticated via JWT/MTLS.</div>
+          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Level 1 vs Level 2 Attestation:</strong><br>Self-reported claim vs Kernel-observed socket.</div>
         </div>
+
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🛡️</div>
-          <strong style="font-size:1.05rem;">3. Privacy Boundary Segregation</strong>
-          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">Role-based zero-trust isolation between Platform Operators and Tenant Administrators.</p>
+          <strong style="font-size:1.05rem;">3. Privacy Boundary & Governance</strong>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
+            Role-based zero-trust isolation between Platform Operators and Tenant Administrators.
+          </p>
           <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Platform Operator:</strong><br>Zero message body access. Transit telemetry only.</div>
-          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Tenant Admin:</strong><br>Content inspection logged in <code>audit_read_events</code>.</div>
+          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Tenant Admin:</strong><br>Participant message inspect with audit read logging.</div>
           <div class="protocol-step-box"><strong>Egress ACL Enforcement:</strong><br>Default Deny cross-tenant boundary barrier.</div>
         </div>
       </div>
