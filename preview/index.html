@@ -1511,6 +1511,9 @@
     padding: 28px;
     border: 1px solid var(--border-default);
   }
+  .modal-box-wide {
+    max-width: 760px;
+  }
   .modal-danger-badge {
     width: 44px;
     height: 44px;
@@ -1525,6 +1528,115 @@
   }
   .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
   .modal-desc { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px; }
+
+  /* Code Tabs & Snippets */
+  .code-tab-nav {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid #334155;
+    background: #0F172A;
+    padding: 8px 12px 0;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+  }
+  .code-tab-btn {
+    background: transparent;
+    border: none;
+    color: #94A3B8;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+  }
+  .code-tab-btn.active {
+    background: #1E293B;
+    color: #38BDF8;
+    border: 1px solid #334155;
+    border-bottom-color: #1E293B;
+  }
+  .code-snippet-box {
+    background: #1E293B;
+    color: #F8FAFC;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    padding: 16px;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    overflow-x: auto;
+    line-height: 1.6;
+    border: 1px solid #334155;
+    border-top: none;
+    position: relative;
+  }
+  .code-copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    font-size: 0.72rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  /* Node Search Dropdown in Topology */
+  .search-input-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .search-suggest-box {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 240px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #FFFFFF;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    margin-top: 4px;
+  }
+  .search-suggest-box.active { display: block; }
+  .search-suggest-item {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .search-suggest-item:hover {
+    background: #EFF6FF;
+    color: var(--primary);
+  }
+
+  /* Socketless Pull & Lease Interactive Card */
+  .inbox-lease-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-xs);
+    position: relative;
+  }
+  .inbox-lease-card.leased {
+    border-color: #FDE68A;
+    background: #FFFDF5;
+  }
+  .lease-timer-bar {
+    height: 4px;
+    background: #F59E0B;
+    border-radius: 2px;
+    transition: width 1s linear;
+    margin-top: 8px;
+  }
 </style>
 </head>
 <body>
@@ -1536,7 +1648,6 @@
     <canvas id="meshCanvas"></canvas>
   </div>
 
-  <!-- Top Navigation Header -->
   <!-- Top Navigation Header -->
   <header class="preview-control-bar">
     <div class="preview-brand" onclick="switchView('home')">
@@ -1553,6 +1664,11 @@
         <button class="preview-btn" id="navBtn-tenant" onclick="switchView('tenant')" data-i18n="nav_tenant">3. Tenant Admin (Acme Corp)</button>
         <button class="preview-btn" id="navBtn-creator" onclick="switchView('creator')" data-i18n="nav_creator">4. Agent Operations</button>
       </div>
+
+      <!-- API Docs Quick Button -->
+      <button class="btn btn-secondary btn-sm" onclick="openModal('apiDocsModal')" style="font-size:0.8rem; padding:6px 12px; display:inline-flex; align-items:center; gap:5px;">
+        📖 <span>API & SDK Docs</span>
+      </button>
 
       <!-- Language Switcher Combo Box -->
       <div class="lang-select-wrap">
@@ -1859,10 +1975,10 @@
             <div class="card-title">Multi-Tenant Resource Allocation & Ingress Quotas</div>
             <div class="card-subtitle">Company tenant boundaries, rate limits, and cryptographic isolation</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="alert('Opening Tenant Provisioning wizard.')">+ Provision New Tenant</button>
+          <button class="btn btn-primary btn-sm" onclick="openModal('tenantProvisionModal')">+ Provision New Tenant</button>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;" id="platformTenantCardsGrid">
           <!-- Tenant 1: Acme Corp -->
           <div class="policy-rule-card" style="border-left:4px solid var(--primary);">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
@@ -1930,22 +2046,22 @@
 
       <div class="audit-terminal">
         <div class="audit-terminal-header">
-          <span style="font-weight:700; font-size:0.95rem;">Global Infrastructure Transit Log (Metadata Only · No Content)</span>
+          <span style="font-weight:700; font-size:0.95rem;">Global Infrastructure Transit Log (Metadata Only · Click Row to Inspect)</span>
           <span class="badge badge-success"><span class="live-dot"></span> STREAM ACTIVE</span>
         </div>
-        <div class="audit-row-item">
+        <div class="audit-row-item" style="cursor:pointer;" onclick="openAuditDetailModal('platform', 'acme-corp:core-lead', 'acme-corp:core-agent-3', 'ROUTE_METADATA', '142 bytes · sha256:8f9a3c1e2b4d...e41c')">
           <span class="audit-time-col">12:44:02</span>
           <span class="audit-agent-from">acme-corp:core-lead</span> → <span class="audit-agent-to">acme-corp:core-agent-3</span>
           <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[142 bytes · sha256:8f9a...e41c] delivered via gw-core</span>
           <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
         </div>
-        <div class="audit-row-item">
+        <div class="audit-row-item" style="cursor:pointer;" onclick="openAuditDetailModal('platform', 'nova-bio:vision-lead', 'nova-bio:vision-agent-2', 'VISION_PAYLOAD_META', '1,240 bytes · sha256:3b1a9c8f2d...f902')">
           <span class="audit-time-col">12:44:18</span>
           <span class="audit-agent-from">nova-bio:vision-lead</span> → <span class="audit-agent-to">nova-bio:vision-agent-2</span>
           <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[1,240 bytes · sha256:3b1a...f902] delivered via gw-vision</span>
           <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
         </div>
-        <div class="audit-row-item">
+        <div class="audit-row-item" style="cursor:pointer;" onclick="openAuditDetailModal('platform', 'acme-corp:research-lead', 'acme-corp:research-agent-12', 'RESEARCH_BATCH_META', '512 bytes · sha256:7c4d8e1a9f...a188')">
           <span class="audit-time-col">12:44:35</span>
           <span class="audit-agent-from">acme-corp:research-lead</span> → <span class="audit-agent-to">acme-corp:research-agent-12</span>
           <span class="audit-msg-content" style="color:var(--text-muted); font-family:var(--font-mono);">[512 bytes · sha256:7c4d...a188] delivered via gw-research</span>
@@ -2101,7 +2217,7 @@
             • Allowed Egress: <code>acme-corp:research</code>, <code>acme-corp:delivery</code><br>
             • Cross-Tenant Send: <span class="badge badge-danger" style="font-size:0.7rem;">Disabled</span>
           </div>
-          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openChannelConfigModal('Core Platform Hub')">⚙ Configure Group ACL & Egress</button>
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openGroupAclModal('Core Platform Hub')">⚙ Configure Group ACL & Egress</button>
         </div>
 
         <div class="policy-rule-card">
@@ -2114,7 +2230,7 @@
             • Allowed Egress: <code>acme-corp:core</code>, <code>nova-bio:vision</code><br>
             • Cross-Tenant Send: <span class="badge badge-success" style="font-size:0.7rem;">Allowed (Nova Bio)</span>
           </div>
-          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openChannelConfigModal('Research Swarm')">⚙ Configure Group ACL & Egress</button>
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="openGroupAclModal('Research Swarm')">⚙ Configure Group ACL & Egress</button>
         </div>
       </div>
     </div>
@@ -2160,10 +2276,10 @@
 
       <div class="audit-terminal">
         <div class="audit-terminal-header">
-          <span style="font-weight:700; font-size:0.95rem;">Acme Corp Participant Audit Trail (Full Content Stream)</span>
+          <span style="font-weight:700; font-size:0.95rem;">Acme Corp Participant Audit Trail (Full Content Stream · Click to Inspect)</span>
           <span class="badge badge-success"><span class="live-dot"></span> AUDIT DB SYNCED</span>
         </div>
-        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
+        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px; cursor:pointer;" onclick="openAuditDetailModal('tenant', 'acme-corp:core-lead (Fin둥이)', 'acme-corp:core-agent-3 (Fin자)', 'ROUTE_DISPATCH', 'Dispatched settlement verification batch #942 to Fin자 queue.')">
           <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
             <div>
               <span class="audit-time-col">12:48:10</span>
@@ -2176,7 +2292,7 @@
           </div>
         </div>
 
-        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px;">
+        <div class="audit-row-item" style="flex-direction:column; align-items:flex-start; gap:6px; cursor:pointer;" onclick="openAuditDetailModal('tenant', 'acme-corp:core-agent-5 (아름이)', 'acme-corp:core-lead (Fin둥이)', 'EXECUTIVE_SYNC', 'Executive assistant protocol active. Meeting notes synchronized.')">
           <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
             <div>
               <span class="audit-time-col">12:48:32</span>
@@ -2192,7 +2308,7 @@
     </div>
   </main>
 
-  <!-- VIEW 3: AGENT OPERATIONS CONSOLE (10 CLUSTERS & PINCH-TO-ZOOM / PAN ENGINE) -->
+  <!-- VIEW 4: AGENT OPERATIONS CONSOLE (10 CLUSTERS & PINCH-TO-ZOOM / PAN ENGINE) -->
   <main id="view-creator" class="preview-view">
     <div class="admin-header-row" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
       <div>
@@ -2224,7 +2340,7 @@
         </p>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-secondary btn-sm" onclick="alert(currentLang === 'ko' ? '새 에이전트 그룹 생성 모달을 엽니다.' : 'Opening create agent group modal.')" data-i18n="btn_create_group">+ Create Group</button>
+        <button class="btn btn-secondary btn-sm" onclick="openModal('createGroupModal')" data-i18n="btn_create_group">+ Create Group</button>
         <button class="btn btn-primary btn-sm" onclick="openRegisterModal()" data-i18n="btn_register_agent">+ Register Agent</button>
       </div>
     </div>
@@ -2253,6 +2369,15 @@
             <button class="topology-filter-btn" onclick="focusCluster('refactor', this)">Refactor (12)</button>
             <button class="topology-filter-btn" onclick="focusCluster('vision', this)">Vision (9)</button>
             <button class="topology-filter-btn" onclick="focusCluster('audit', this)">Audit Hive (6)</button>
+
+            <!-- Search Agent Input with Autocomplete -->
+            <div class="search-input-wrap" style="margin-left: 8px;">
+              <input type="text" id="nodeSearchInput" class="form-input" style="padding:4px 10px; font-size:0.78rem; width:160px; height:28px;" placeholder="🔍 Search agent..." oninput="handleNodeSearch(this.value)" onfocus="handleNodeSearch(this.value)">
+              <div id="searchSuggestBox" class="search-suggest-box"></div>
+            </div>
+
+            <!-- Simulate Traffic Pulse Button -->
+            <button class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:4px 10px; height:28px; margin-left:4px;" onclick="simulateTrafficPulses()">⚡ Simulate Traffic</button>
           </div>
 
           <div class="topology-legend">
@@ -2347,11 +2472,12 @@
       </div>
     </div>
 
-    <!-- TAB 2: MY AGENTS & MESSAGE PLAYGROUND -->
+    <!-- TAB 2: MY AGENTS & MESSAGE PLAYGROUND + SOCKETLESS LEASE SIMULATOR -->
     <div id="operator-panel-playground" style="display:none;">
       <div class="creator-layout">
         <div>
-          <div class="card">
+          <!-- My Registered Agents -->
+          <div class="card" style="margin-bottom:20px;">
             <div class="card-header">
               <div>
                 <div class="card-title" data-i18n="my_agents_title">My Registered Agents</div>
@@ -2382,9 +2508,37 @@
               <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('my-helper')" data-i18n="btn_test_msg">💬 Test Message</button>
             </div>
           </div>
+
+          <!-- Socketless Pull / Lease Simulator -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Socketless Pull & Lease Queue Simulator</div>
+                <div class="card-subtitle">Test at-least-once leasing with 300s TTL countdown</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="leaseNextInboxBatch()">📥 Poll / Lease Batch</button>
+            </div>
+            <div id="simLeasedList">
+              <div class="inbox-lease-card leased" id="leaseCard-1">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="font-size:0.85rem; font-family:var(--font-mono);">msg_892147</strong>
+                  <span class="badge badge-leased">⚡ Leased (274s remaining)</span>
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-secondary); margin:6px 0;">
+                  From: <code>platform-claude</code> · Size: <code>218 bytes</code>
+                </div>
+                <div class="lease-timer-bar" style="width: 85%;"></div>
+                <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;">
+                  <button class="btn btn-success btn-sm" style="font-size:0.72rem; padding:3px 8px;" onclick="ackInboxItem('leaseCard-1')">✓ ACK (Delete)</button>
+                  <button class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px;" onclick="nackInboxItem('leaseCard-1')">↩ NACK (Revert)</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div>
+          <!-- Live Message Testing Console -->
           <div class="card">
             <div class="card-header">
               <div>
@@ -2502,6 +2656,206 @@
       <div style="display:flex; justify-content:flex-end; gap:10px;">
         <button class="btn btn-secondary" onclick="closeModal('channelConfigModal')" data-i18n="btn_cancel">Cancel</button>
         <button class="btn btn-primary" onclick="applyChannelConfig()" data-i18n="btn_save_channels">Save Channel Policy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: Group ACL & Egress Configuration Modal -->
+  <div class="modal-backdrop" id="groupAclModal">
+    <div class="modal-box">
+      <h3 class="modal-title">Configure Group Egress & ACL Matrix</h3>
+      <p class="modal-desc">
+        Configure cross-group and cross-tenant egress permissions for <strong id="aclGroupName" style="color:var(--primary);">Core Platform Hub</strong>.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Permitted Target Swarms</label>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; cursor:pointer;">
+            <input type="checkbox" checked value="research" style="width:16px; height:16px;">
+            <span>acme-corp:research (Research & Reasoning Swarm)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; cursor:pointer;">
+            <input type="checkbox" checked value="delivery" style="width:16px; height:16px;">
+            <span>acme-corp:delivery (Execution & Delivery Mesh)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; cursor:pointer;">
+            <input type="checkbox" value="security" style="width:16px; height:16px;">
+            <span>acme-corp:security (Security & Sentinel Ring)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; cursor:pointer;">
+            <input type="checkbox" value="nova-bio" style="width:16px; height:16px;">
+            <span>nova-bio:vision (Cross-Tenant: Nova BioTech)</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeModal('groupAclModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="alert('Group Egress ACL updated successfully.'); closeModal('groupAclModal');">Save ACL Policy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: Provision New Tenant Wizard Modal -->
+  <div class="modal-backdrop" id="tenantProvisionModal">
+    <div class="modal-box">
+      <h3 class="modal-title">Provision New Organization Tenant</h3>
+      <p class="modal-desc">
+        Create an isolated cryptographic tenant boundary with dedicated gateway routes and rate limits.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Tenant Organization Name</label>
+        <input type="text" class="form-input" id="newTenantName" placeholder="e.g. Apex Quantum Labs" value="Apex Quantum Labs">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tenant Slug ID</label>
+        <input type="text" class="form-input" id="newTenantSlug" placeholder="e.g. apex-quantum" value="apex-quantum">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Max Managed Agents Quota</label>
+        <input type="number" class="form-input" id="newTenantQuota" value="50" min="5" max="500">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Default Send Policy</label>
+        <select class="form-input" id="newTenantPolicy">
+          <option value="deny">Deny by Default (Explicit Whitelist)</option>
+          <option value="allow">Allow by Default</option>
+        </select>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeModal('tenantProvisionModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitNewTenantProvision()">Provision Tenant</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 7: Create Agent Swarm Group Modal -->
+  <div class="modal-backdrop" id="createGroupModal">
+    <div class="modal-box">
+      <h3 class="modal-title">Create New Swarm Cluster</h3>
+      <p class="modal-desc">
+        Define an autonomous agent cluster with its dedicated gateway bridge and designated lead.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Cluster Group Name</label>
+        <input type="text" class="form-input" id="newGroupName" placeholder="e.g. Quantum Reasoning Fleet" value="Quantum Reasoning Fleet">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cluster Key Slug</label>
+        <input type="text" class="form-input" id="newGroupSlug" placeholder="e.g. quantum" value="quantum">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Designated Group Lead Avatar</label>
+        <select class="form-input" id="newGroupLead">
+          <option value="fin">🐶 Fin둥이 (Financial / Ops Lead)</option>
+          <option value="support">🎧 Fin자 (Support / Routing)</option>
+          <option value="assistant">💖 아름이 (Executive Concierge)</option>
+          <option value="custom">🤖 Generic Agent Lead</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Initial Node Allocation</label>
+        <input type="number" class="form-input" id="newGroupNodes" value="10" min="3" max="30">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+        <button class="btn btn-secondary" onclick="closeModal('createGroupModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreateGroup()">Create Cluster</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 8: Cryptographic Audit Payload Inspector Modal -->
+  <div class="modal-backdrop" id="auditDetailModal">
+    <div class="modal-box modal-box-wide">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 class="modal-title" style="margin:0;">Audit Event Cryptographic Inspector</h3>
+        <span class="badge badge-success" id="auditModalBadge">Ed25519 Verified</span>
+      </div>
+      <p class="modal-desc" style="margin-bottom:16px;">
+        Cryptographic attestation and immutable audit record retrieved from <code>audit.db</code>.
+      </p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; background:var(--bg-surface-sub); padding:14px; border-radius:var(--radius-md); font-size:0.82rem;">
+        <div>
+          <span style="color:var(--text-secondary);">From Identity:</span> <strong id="auditModalFrom">acme-corp:core-lead</strong><br>
+          <span style="color:var(--text-secondary);">To Recipient:</span> <strong id="auditModalTo">acme-corp:core-agent-3</strong>
+        </div>
+        <div>
+          <span style="color:var(--text-secondary);">Timestamp:</span> <strong>2026-08-16 12:48:10.492 UTC</strong><br>
+          <span style="color:var(--text-secondary);">Drift Check:</span> <span style="color:#059669; font-weight:700;">+8ms (Valid)</span>
+        </div>
+      </div>
+
+      <!-- Attestation Headers -->
+      <div style="margin-bottom:16px;">
+        <label class="form-label">Ed25519 Digital Signature & Digest</label>
+        <div style="background:#1E293B; color:#93C5FD; font-family:var(--font-mono); font-size:0.75rem; padding:10px 14px; border-radius:var(--radius-sm); word-break:break-all;">
+          <strong>sig:</strong> 4b9f8a2e1d7c3b5a9e8f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f<br>
+          <strong>sha256:</strong> pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
+        </div>
+      </div>
+
+      <!-- Decrypted Payload / Metadata View -->
+      <div class="form-group">
+        <label class="form-label" id="auditModalPayloadLabel">Decrypted Message Body (JSON)</label>
+        <div class="code-snippet-box" id="auditModalPayloadContent" style="max-height:180px;">
+          {
+            "action": "ROUTE_DISPATCH",
+            "priority": "HIGH",
+            "payload": "Dispatched settlement verification batch #942 to Fin자 queue."
+          }
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+        <span style="font-size:0.75rem; color:#92400E; background:#FEF3C7; padding:4px 8px; border-radius:4px;">
+          🔒 Audit Access Logged: <code>audit_read_events #492</code>
+        </span>
+        <button class="btn btn-secondary" onclick="closeModal('auditDetailModal')">Close Inspector</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 9: Interactive API & SDK Reference Docs Modal -->
+  <div class="modal-backdrop" id="apiDocsModal">
+    <div class="modal-box modal-box-wide">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 class="modal-title" style="margin:0;">Agent Mesh Platform API & SDK Reference</h3>
+        <span class="badge badge-leased">v0.3 Specification</span>
+      </div>
+      <p class="modal-desc" style="margin-bottom:16px;">
+        Zero-infrastructure, cryptographic agent communication REST endpoints and client SDK snippets.
+      </p>
+
+      <!-- Code Language Selector Tabs -->
+      <div class="code-tab-nav">
+        <button class="code-tab-btn active" id="codeTab-curl" onclick="switchCodeTab('curl')">cURL</button>
+        <button class="code-tab-btn" id="codeTab-ts" onclick="switchCodeTab('ts')">TypeScript / Node</button>
+        <button class="code-tab-btn" id="codeTab-py" onclick="switchCodeTab('py')">Python SDK</button>
+      </div>
+
+      <div class="code-snippet-box" id="apiSnippetContent">
+# 1. Propose New Agent Ed25519 Public Key
+curl -X POST http://localhost:3000/api/v1/keys/propose \
+  -H "Content-Type: application/json" \
+  -d '{"identity":"my-agent","pubkey":"91cBIH2C3ZhcSRUiHzaYXtoUMFN-Mm3Qy2b1WhZJaf0"}'
+
+# 2. Dispatch Signed Message Across Mesh
+curl -X POST http://localhost:3000/api/v1/messages/send \
+  -H "Authorization: Bearer <Ed25519_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"platform-claude","payload":"Hello from Agent Mesh!"}'
+
+# 3. Pull & Lease Socketless Inbox (At-Least-Once TTL)
+curl -X POST http://localhost:3000/api/v1/inbox/lease \
+  -H "Authorization: Bearer <Ed25519_TOKEN>" \
+  -d '{"batch_size": 5, "lease_seconds": 300}'
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+        <span style="font-size:0.8rem; color:var(--text-secondary);">
+          Swagger & OpenAPI 3.1 compatible schema available at <code>/api/v1/openapi.json</code>
+        </span>
+        <button class="btn btn-secondary" onclick="closeModal('apiDocsModal')">Close Docs</button>
       </div>
     </div>
   </div>
@@ -3967,6 +4321,308 @@
       alert(currentLang === 'ko' 
         ? `[Hub] POST /api/v1/agents 성공\n신원: ${id}\nGET /api/v1/agents/${id}/keys 교차 검증 완료.` 
         : `[Hub] POST /api/v1/agents succeeded for '${id}'.\nVerified via GET /api/v1/agents/${id}/keys.`);
+    }
+
+    // =========================================================================
+    // v0.3 ADVANCED WORKFLOW HANDLERS & MODALS
+    // =========================================================================
+    function openGroupAclModal(groupName) {
+      document.getElementById('aclGroupName').innerText = groupName;
+      openModal('groupAclModal');
+    }
+
+    function openAuditDetailModal(scope, from, to, action, payloadSummary) {
+      document.getElementById('auditModalFrom').innerText = from;
+      document.getElementById('auditModalTo').innerText = to;
+      
+      const payloadLabel = document.getElementById('auditModalPayloadLabel');
+      const payloadBox = document.getElementById('auditModalPayloadContent');
+      
+      if (scope === 'platform') {
+        payloadLabel.innerHTML = '🔒 Delivery Telemetry Metadata <small style="color:#3B82F6;">(Body Withheld by Platform Privacy Rule)</small>';
+        payloadBox.innerText = JSON.stringify({
+          "event_type": action,
+          "transit_gateway": "gw-core-backbone",
+          "size_bytes": 142,
+          "sha256_digest": "pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw",
+          "delivery_status": "DELIVERED_SOCKET_ACK",
+          "tenant_isolation_boundary": "ENFORCED"
+        }, null, 2);
+      } else {
+        payloadLabel.innerHTML = '👁️ Decrypted Participant Message Body <small style="color:#D97706;">(Access Recorded)</small>';
+        payloadBox.innerText = JSON.stringify({
+          "action": action,
+          "priority": "HIGH",
+          "details": payloadSummary,
+          "attestation_proxy": "alice_admin",
+          "timestamp_epoch_ms": Date.now()
+        }, null, 2);
+      }
+      openModal('auditDetailModal');
+    }
+
+    function submitNewTenantProvision() {
+      const name = document.getElementById('newTenantName').value.trim();
+      const slug = document.getElementById('newTenantSlug').value.trim();
+      const quota = document.getElementById('newTenantQuota').value;
+      if (!name || !slug) {
+        alert(currentLang === 'ko' ? '테넌트 이름과 슬러그를 입력하세요.' : 'Please enter tenant name and slug.');
+        return;
+      }
+
+      const grid = document.getElementById('platformTenantCardsGrid');
+      if (grid) {
+        const card = document.createElement('div');
+        card.className = 'policy-rule-card';
+        card.style.borderLeft = '4px solid #3B82F6';
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+            <div>
+              <strong style="font-size:1.05rem;">${name}</strong>
+              <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">tenant: ${slug}</div>
+            </div>
+            <span class="badge badge-success">Active</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">
+            • Agent Quota: <strong>0 / ${quota} Agents</strong><br>
+            • Group Clusters: <strong>1 Default Hub</strong><br>
+            • Ingress Limit: <strong>10,000 req/min</strong>
+          </div>
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="alert('Switching context to ${name}.')">Manage Tenant Admin View →</button>
+        `;
+        grid.prepend(card);
+      }
+
+      closeModal('tenantProvisionModal');
+      alert(currentLang === 'ko' ? `신규 테넌트 '${name}'(${slug}) 프로비저닝이 완료되었습니다.` : `Tenant '${name}' (${slug}) provisioned successfully.`);
+    }
+
+    function submitCreateGroup() {
+      const name = document.getElementById('newGroupName').value.trim();
+      const slug = document.getElementById('newGroupSlug').value.trim();
+      const count = parseInt(document.getElementById('newGroupNodes').value) || 6;
+      if (!name || !slug) {
+        alert(currentLang === 'ko' ? '그룹 이름을 입력하세요.' : 'Please enter group name.');
+        return;
+      }
+      closeModal('createGroupModal');
+      alert(currentLang === 'ko' 
+        ? `신규 스웜 클러스터 '${name}' (${count}개 노드)가 등록되었습니다.\n토폴로지 그래프에 반영되었습니다.` 
+        : `Created new swarm cluster '${name}' (${count} nodes).\nUpdated on Topology canvas.`);
+    }
+
+    // Node Search & Camera Auto-Focus
+    function handleNodeSearch(query) {
+      const box = document.getElementById('searchSuggestBox');
+      if (!query.trim()) {
+        box.classList.remove('active');
+        return;
+      }
+      const q = query.toLowerCase();
+      const matches = Object.keys(TOPOLOGY_NODES).filter(id => {
+        const node = TOPOLOGY_NODES[id];
+        return id.toLowerCase().includes(q) || (node.displayName && node.displayName.toLowerCase().includes(q)) || node.groupName.toLowerCase().includes(q);
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        box.innerHTML = `<div style="padding:10px; font-size:0.8rem; color:var(--text-muted);">No matching agents</div>`;
+      } else {
+        box.innerHTML = matches.map(id => {
+          const n = TOPOLOGY_NODES[id];
+          const label = n.displayName ? `${n.displayName} (${id})` : id;
+          return `<div class="search-suggest-item" onclick="focusNodeByName('${id}')">
+            <strong>${label}</strong>
+            <span style="font-size:0.7rem; color:var(--text-muted);">${n.groupName}</span>
+          </div>`;
+        }).join('');
+      }
+      box.classList.add('active');
+    }
+
+    document.addEventListener('click', (e) => {
+      const wrap = document.querySelector('.search-input-wrap');
+      const box = document.getElementById('searchSuggestBox');
+      if (box && wrap && !wrap.contains(e.target)) {
+        box.classList.remove('active');
+      }
+    });
+
+    function focusNodeByName(nodeId) {
+      const box = document.getElementById('searchSuggestBox');
+      if (box) box.classList.remove('active');
+      const searchInput = document.getElementById('nodeSearchInput');
+      if (searchInput) searchInput.value = '';
+      selectTopologyNode(nodeId);
+    }
+
+    // Simulate Live Traffic Pulses across Highways
+    function simulateTrafficPulses() {
+      const svg = document.getElementById('topologySvg');
+      const vp = document.getElementById('viewportTransform');
+      if (!svg || !vp) return;
+
+      const pairs = [
+        ['core-lead', 'gw-core'],
+        ['gw-core', 'gw-research'],
+        ['gw-research', 'core-agent-3'],
+        ['gw-core', 'gw-delivery'],
+        ['gw-delivery', 'core-agent-5']
+      ];
+
+      pairs.forEach(([fromId, toId], idx) => {
+        setTimeout(() => {
+          const fromNode = TOPOLOGY_NODES[fromId] || ALL_GATEWAYS.find(g => g.id === fromId);
+          const toNode = TOPOLOGY_NODES[toId] || ALL_GATEWAYS.find(g => g.id === toId);
+          if (!fromNode || !toNode) return;
+
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', '5');
+          circle.setAttribute('fill', '#38BDF8');
+          circle.setAttribute('filter', 'url(#gatewayGlow)');
+          vp.appendChild(circle);
+
+          const startTime = performance.now();
+          const duration = 900;
+
+          function animatePacket(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const curX = fromNode.x + (toNode.x - fromNode.x) * progress;
+            const curY = fromNode.y + (toNode.y - fromNode.y) * progress;
+            circle.setAttribute('cx', curX);
+            circle.setAttribute('cy', curY);
+
+            if (progress < 1) {
+              requestAnimationFrame(animatePacket);
+            } else {
+              circle.remove();
+            }
+          }
+          requestAnimationFrame(animatePacket);
+        }, idx * 250);
+      });
+    }
+
+    // Socketless Inbox Lease Queue Simulator
+    let leaseBatchCounter = 948100;
+    function leaseNextInboxBatch() {
+      leaseBatchCounter += Math.floor(Math.random() * 10) + 1;
+      const list = document.getElementById('simLeasedList');
+      const newCardId = `leaseCard-${leaseBatchCounter}`;
+
+      const card = document.createElement('div');
+      card.className = 'inbox-lease-card leased';
+      card.id = newCardId;
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <strong style="font-size:0.85rem; font-family:var(--font-mono);">msg_${leaseBatchCounter}</strong>
+          <span class="badge badge-leased">⚡ Leased (300s remaining)</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-secondary); margin:6px 0;">
+          From: <code>client-claude</code> · Size: <code>${Math.floor(Math.random() * 400 + 120)} bytes</code>
+        </div>
+        <div class="lease-timer-bar" style="width: 100%;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px;">
+          <button class="btn btn-success btn-sm" style="font-size:0.72rem; padding:3px 8px;" onclick="ackInboxItem('${newCardId}')">✓ ACK (Delete)</button>
+          <button class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px;" onclick="nackInboxItem('${newCardId}')">↩ NACK (Revert)</button>
+        </div>
+      `;
+      list.prepend(card);
+      alert(currentLang === 'ko' ? `POST /api/v1/inbox/lease 성공\n메시지 msg_${leaseBatchCounter} 수신 (300초 리스 시작)` : `POST /api/v1/inbox/lease succeeded.\nLeased msg_${leaseBatchCounter} with 300s TTL.`);
+    }
+
+    function ackInboxItem(cardId) {
+      const card = document.getElementById(cardId);
+      if (card) {
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        card.style.transition = 'all 0.3s ease';
+        setTimeout(() => card.remove(), 300);
+      }
+      alert(currentLang === 'ko' ? 'DELETE /api/v1/inbox/ack 성공 (메시지 처리 완료 확인)' : 'DELETE /api/v1/inbox/ack succeeded. Message processed and deleted.');
+    }
+
+    function nackInboxItem(cardId) {
+      const card = document.getElementById(cardId);
+      if (card) {
+        card.classList.remove('leased');
+        card.innerHTML = `<span style="font-size:0.8rem; color:#059669; font-weight:700;">✓ Reverted to Available Queue Pool</span>`;
+        setTimeout(() => card.remove(), 1200);
+      }
+      alert(currentLang === 'ko' ? 'POST /api/v1/inbox/nack 성공 (가용 큐 풀로 즉시 반환)' : 'POST /api/v1/inbox/nack succeeded. Returned to available pool.');
+    }
+
+    // Code Snippet Tab Switcher in API Docs Modal
+    const API_SNIPPETS = {
+      curl: `# 1. Propose New Agent Ed25519 Public Key
+curl -X POST http://localhost:3000/api/v1/keys/propose \\
+  -H "Content-Type: application/json" \\
+  -d '{"identity":"my-agent","pubkey":"91cBIH2C3ZhcSRUiHzaYXtoUMFN-Mm3Qy2b1WhZJaf0"}'
+
+# 2. Dispatch Signed Message Across Mesh
+curl -X POST http://localhost:3000/api/v1/messages/send \\
+  -H "Authorization: Bearer <Ed25519_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"to":"platform-claude","payload":"Hello from Agent Mesh!"}'
+
+# 3. Pull & Lease Socketless Inbox (At-Least-Once TTL)
+curl -X POST http://localhost:3000/api/v1/inbox/lease \\
+  -H "Authorization: Bearer <Ed25519_TOKEN>" \\
+  -d '{"batch_size": 5, "lease_seconds": 300}'`,
+
+      ts: `import { AgentMeshClient } from '@agent-mesh/sdk';
+
+// Initialize Client with Ed25519 Private Key
+const mesh = new AgentMeshClient({
+  endpoint: 'http://localhost:3000',
+  identity: 'lane-claude',
+  privateKey: process.env.AGENT_MESH_PRIVATE_KEY
+});
+
+// Send Verified Message to Peer
+await mesh.send({
+  to: 'platform-claude',
+  payload: { action: 'HEARTBEAT', status: 'READY' }
+});
+
+// Lease Next Inbox Batch (Socketless Worker)
+const batch = await mesh.inbox.lease({ batchSize: 5, leaseSeconds: 300 });
+for (const msg of batch.messages) {
+  console.log('Received:', msg.payload);
+  await msg.ack(); // Atomic DELETE ACK
+}`,
+
+      py: `from agent_mesh import AgentMeshClient
+import os
+
+# Initialize Client
+client = AgentMeshClient(
+    endpoint="http://localhost:3000",
+    identity="lane-claude",
+    private_key=os.getenv("AGENT_MESH_PRIVATE_KEY")
+)
+
+# Dispatch signed payload
+client.send(
+    to="platform-claude",
+    payload={"action": "SYNC", "data": [1, 2, 3]}
+)
+
+# Pull & Lease messages
+batch = client.inbox.lease(batch_size=5, lease_seconds=300)
+for msg in batch.messages:
+    print(f"Processing: {msg.payload}")
+    msg.ack()`
+    };
+
+    function switchCodeTab(lang) {
+      document.querySelectorAll('.code-tab-btn').forEach(b => b.classList.remove('active'));
+      const btn = document.getElementById(`codeTab-${lang}`);
+      if (btn) btn.classList.add('active');
+      const box = document.getElementById('apiSnippetContent');
+      if (box && API_SNIPPETS[lang]) {
+        box.innerText = API_SNIPPETS[lang];
+      }
     }
 
     // =========================================================================
