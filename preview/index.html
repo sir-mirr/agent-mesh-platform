@@ -2346,6 +2346,7 @@
 
       // 1. Cluster-to-Gateway Link Lines (Subtle Slate, 0.75px)
       CLUSTERS_CONFIG.forEach(cfg => {
+        if (!cfg.gw) return;
         const x1 = ((cfg.cx - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
         const y1 = ((cfg.cy - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
         const x2 = ((cfg.gw.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
@@ -2354,23 +2355,34 @@
       });
 
       // 2. Inter-Gateway Highway Backbone Lines (Subtle Indigo/Violet, 0.75px)
-      for (let i = 0; i < 4; i++) {
+      const topGWCount = Math.min(5, ALL_GATEWAYS.length);
+      for (let i = 0; i < topGWCount - 1; i++) {
         const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 1];
-        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+        if (g1 && g2) {
+          const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+          const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+          html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+        }
       }
-      for (let i = 5; i < 9; i++) {
-        const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 1];
-        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+      if (ALL_GATEWAYS.length > 5) {
+        for (let i = 5; i < ALL_GATEWAYS.length - 1; i++) {
+          const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 1];
+          if (g1 && g2) {
+            const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+            const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+            html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+          }
+        }
       }
       for (let i = 0; i < 5; i++) {
-        const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 5];
-        const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
-        html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+        if (i + 5 < ALL_GATEWAYS.length) {
+          const g1 = ALL_GATEWAYS[i], g2 = ALL_GATEWAYS[i + 5];
+          if (g1 && g2) {
+            const x1 = ((g1.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y1 = ((g1.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+            const x2 = ((g2.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW, y2 = ((g2.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+            html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="0.75" stroke-dasharray="2.5 1.5" />`;
+          }
+        }
       }
 
       // 3. Cluster Galaxy Circles
