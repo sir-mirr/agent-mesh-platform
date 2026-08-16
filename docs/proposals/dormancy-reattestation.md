@@ -192,8 +192,12 @@ again.
 
 ## Open
 
-- **Which claims.** The set decides the false-positive rate and nothing else in
-  this document constrains it.
+- **Which claims.** Answered in
+  [`attestation-claims.md`](attestation-claims.md): self-reported values are
+  forgeable by anyone who has read one attestation, so the claim set has to
+  separate what the agent says from what the hub observes, and grade the
+  response by which of the two moved. That document also argues that hardware
+  key attestation would make this proposal unnecessary rather than better.
 - **Three hours.** Chosen by the requirement, not derived. It should be a
   deployment setting advertised in `capabilities`, and the default argued from
   how long a stolen key goes unnoticed rather than from a round number.
