@@ -1,6 +1,7 @@
 # Proposal — re-attestation after dormancy
 
-Status: **proposed**, and **superseded in part**. The claim set was settled as
+Status: **proposed**, and **superseded in part** — 0.3 requirement set,
+first draft ([index](README.md)). The claim set was settled as
 Tier 2 — hub-observed source, no self-reported values — which deletes the
 `-32016` round trip and the attestation-in-`params` design below. See
 [`attestation-claims.md`](attestation-claims.md); the flowchart's left spine
