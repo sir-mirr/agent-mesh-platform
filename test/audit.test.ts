@@ -26,11 +26,13 @@ import {
 let mesh: Mesh;
 let kp: KeyPair;
 let rpc: RpcClient;
+let adminCookie: string;
 const IDENTITY = "audit-agent";
 
 beforeAll(async () => {
   mesh = await startMesh();
   const cookie = await loginAsAdmin(mesh.http);
+  adminCookie = cookie;
   kp = newKeyPair();
   await provision(mesh.hub, IDENTITY, "ai-codex", null, kp.publicKey);
   await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
@@ -463,5 +465,76 @@ describe("query API", () => {
     // Ignoring it would silently return page one to a reader who believes they
     // are on page four.
     expect((await query("?cursor=garbage")).status).toBe(400);
+  });
+});
+
+/**
+ * SPEC § 11. The platform operator reads the trail and not the messages in it.
+ *
+ * This is **redaction on the way out**, not a separate store: the process
+ * still reads the bytes and chooses what to hand back. The structural version
+ * — bodies in their own table, so the query never touches them — is in
+ * `docs/proposals/operator-roles.md` and is not what these tests cover. The
+ * distinction is worth keeping straight, because the weaker mechanism is easy
+ * to describe as the stronger one.
+ */
+describe("§ 11 — content is a separate grant from metadata", () => {
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const setContentGrant = (on: boolean) =>
+    withDb((db) => on
+      ? db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+                    VALUES ('default','admin','audit.read.content','*','test')
+                    ON CONFLICT DO NOTHING`).run()
+      : db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run());
+
+  const events = async () =>
+    (await (await fetch(`${mesh.http.url}/api/v1/audit/events?limit=50`, {
+      headers: { cookie: adminCookie },
+    })).json()).events as Array<{ payload: any }>;
+
+  test("with the grant, bodies are there", async () => {
+    setContentGrant(true);
+    const withBody = (await events()).filter((e) => typeof e.payload?.message?.content === "string");
+    expect(withBody.length).toBeGreaterThan(0);
+    expect(withBody[0]!.payload.message.content).not.toContain("withheld");
+  });
+
+  test("without it, the metadata survives and the body does not", async () => {
+    setContentGrant(false);
+    const rows = await events();
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const e of rows) {
+      const msg = e.payload?.message;
+      if (!msg || typeof msg.content !== "string") continue;
+      expect(msg.content).toContain("requires audit.read.content");
+      // What an operator actually needs to run a mesh is still there. This is
+      // the same line `admin/inbox` draws: seeing that someone has mail is a
+      // different question from reading it.
+      expect(typeof msg.from).toBe("string");
+      expect(typeof msg.to).toBe("string");
+      expect(typeof msg.id).toBe("string");
+      // Length is metadata, not content, and it is what diagnosing a stuck
+      // queue needs.
+      expect(typeof msg.content_length).toBe("number");
+    }
+    setContentGrant(true);
+  });
+
+  test("a single event is gated the same way as the list", async () => {
+    // Two routes, one boundary. A gate applied to the list and forgotten on
+    // the by-id route is the shape this kind of bug takes.
+    setContentGrant(false);
+    const rows = await events();
+    const target = rows.find((e: any) => typeof e.payload?.message?.content === "string") as any;
+    expect(target).toBeTruthy();
+    const one = await (await fetch(`${mesh.http.url}/api/v1/audit/events/${target.event_id}`, {
+      headers: { cookie: adminCookie },
+    })).json();
+    expect(one.event.payload.message.content).toContain("requires audit.read.content");
+    setContentGrant(true);
   });
 });
