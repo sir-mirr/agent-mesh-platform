@@ -94,96 +94,126 @@ than a file copy.
 
 Value: **actually closes it, for the population that can run it.**
 
-## What to build
+## Decision: build Tier 2 only
 
-**Record both what the agent claims and what the hub saw, and never merge
-them.** This repository already keeps that distinction twice — `recorded_by.kind`
-separates an adapter's report from the hub's observation, and `from` / `sent_by`
-separates a sender from the socket that carried it. The same reason applies:
-evidence of different weight must not become one field.
+Self-reported claims are not being collected. The attestation is **what the hub
+observes**, and the consequences of that are larger than they first look.
+
+### The client contract barely changes
+
+Tier 1 required the agent to gather values, digest them, and attach them to
+`params` — which is what forced `-32016 REATTESTATION_REQUIRED`, the retry
+round trip, and the "claim keys expected" negotiation in
+[`dormancy-reattestation.md`](dormancy-reattestation.md).
+
+**All of that disappears.** The agent supplies nothing; the hub looks at the
+connection it already has. `-32016` is deleted from the design. The only new
+thing a client can receive is the refusal:
 
 ```
-attestation = {
-  claimed:  { … Tier 1, salted per-field digests … },   # the agent said so
-  observed: { … Tier 2, recorded by the hub … }         # the hub saw it
-}
+-32017 ATTESTATION_CHANGED
 ```
 
-A mismatch in `observed` is a strong signal. A mismatch in `claimed` is a weak
-one. An operator screen that renders them identically throws away the only
-thing that makes the record worth keeping — the same mistake as showing
-`rotation` and `compromise` in the same grey badge.
+Both transports expose it with no new dependency — measured, not assumed:
 
-### Send digests, not values, and salt them per field
+```
+HTTP  server.requestIP(req)   -> { address: "::ffff:127.0.0.1", family, port }
+WS    ws.remoteAddress        -> "::ffff:127.0.0.1"
+```
 
-Registration stores a random salt per identity. Every claim is recorded as
-`sha256(salt ‖ field_name ‖ value)`.
+**Normalise before comparing.** That is an IPv4-mapped IPv6 address; stored one
+way and observed the other, every comparison fails and every agent is refused.
 
-Three things follow:
+### Comparison becomes free, so dormancy is only about when to *act*
 
-- **The wire never carries hostnames or MACs after registration**, so hub logs
-  and the audit trail stop being a lookup table for what to forge. This
-  materially changes the insider case above.
-- **Per-field digests say which claim moved** — "the address changed, the host
-  did not" — without the hub ever holding the value.
-- **Full values travel only on mismatch**, when an operator has to see what
-  changed and has already been told something is wrong. The exposure is scoped
-  to the failure path instead of every request.
+Tier 1 could only be checked when the agent chose to send claims, which is why
+dormancy was the trigger. Observation costs nothing and is available on every
+request.
 
-The salt is per identity so digests cannot be compared across identities, which
-would otherwise reveal that two agents share a host.
+That separates two things the original proposal had fused:
 
-### Choose claims that change only when the host does
-
-Anything that moves on its own turns this into a refusal generator, and a
-control that cries wolf gets switched off:
-
-| Stable enough | Moves on its own |
+| | |
 |---|---|
-| `machine-id`, disk serial, MAC | kernel/OS patch level, uptime, pid |
-| container image digest | container instance id, ephemeral port |
-| CPU vendor+family | CPU frequency, load, temperature |
+| **Record** the observed source on every request | always |
+| **Block** on a change | after the dormancy window |
 
-Boot id is the interesting middle: it changes on every reboot, which is a
-legitimate event, so including it makes reboots require re-approval. Exclude it
-unless the deployment genuinely wants that.
+Recording always is strictly better: an address change on a busy identity is
+now visible in the audit trail even though it is not blocked, so an operator
+investigating later has the history rather than a gap. Dormancy stops being a
+mechanism constraint and becomes the policy it should have been — *when is a
+change suspicious enough to stop.*
 
-### Grade the response by tier
+### The baseline must come from the agent, not from whoever registered it
 
-A single `ATTESTATION_CHANGED` for every difference is what makes the
-false-positive cost in the dormancy proposal so expensive.
+`POST /api/v1/agents` may be called by an operator from a browser on a
+different machine. Recording *that* address as the agent's baseline would be
+wrong on the first comparison.
 
-```
-observed changed + claimed changed   →  refuse. moved machine, or stolen.
-observed changed, claimed same       →  refuse. same claims from a new
-                                        address is what a thief looks like.
-claimed changed, observed same       →  allow, record, flag. patched, renamed,
-                                        or re-imaged in place.
-neither                              →  allow.
-```
+Capture it at a moment the agent itself is the peer:
 
-The third row is where most legitimate churn lands, and letting it through
-un-blocked is what makes the second row credible enough to act on.
+- **pairing-code redemption** — the CLI runs on the agent's host, which is why
+  [`operator-roles.md`](operator-roles.md) notes this is the strongest moment
+  available; or
+- **first successful authenticated request** after the key is approved, with
+  the identity in a `baselining` state until then.
+
+The second needs no new mechanism and is the fallback where no pairing code was
+used.
+
+### A reverse proxy deletes this tier
+
+`X-Forwarded-For` is a header — Tier 1 wearing a Tier 2 costume. If anything
+sits in front of the hub, the observed address is the proxy's and the real one
+is a claim the client could have written.
+
+This must be **explicit configuration, never inference**: a trusted-proxy list,
+and with none configured the hub uses the socket address and ignores the header
+entirely. A deployment behind an untrusted hop should turn the feature off
+rather than run it on a value anyone can set, and the capability document
+should say which of the two it is doing.
+
+### Granularity is a per-identity choice
+
+| | catches | false-positives on |
+|---|---|---|
+| exact address | most | DHCP renewal, any NAT reassignment |
+| prefix (/24, /48) | moved network | large NAT pools, CGNAT |
+| ASN | moved provider | almost nothing, and misses moves within one cloud |
+
+A fixed-VM lane and a laptop lane want different answers, so this belongs
+beside the identity rather than in a global setting. **ASN is the safe default**
+— it fires on "this key is now being used from a different provider", which is
+the shape of the theft this is for, and stays quiet through the churn that
+makes operators disable things.
+
+### What Tier 2 does not catch, stated plainly
+
+A thief on the **same network** as the victim — same office, same NAT, same
+cloud account, same VPN. For those, the observation is identical and nothing
+here fires. That is the residual, and Tier 3 is the only thing that closes it.
 
 ## What this is honestly worth
 
-**It detects a key that went quiet and came back from somewhere else.** Tier 2
-carries almost all of that. Tier 1 adds a layer against an unsophisticated
-thief and nothing against anyone who has read one attestation — salted digests
-narrow that but do not remove it, because the hub must still be told the values
-at registration.
+**It detects a key that went quiet and came back from a different network.**
+Nothing more, and it does that without the agent's cooperation, which is what
+makes it worth more than the larger Tier 1 design it replaces.
 
 If the requirement is to *prevent* key theft rather than notice it, Tier 3 is
-the answer and this entire mechanism is a workaround for not having it. Worth
-deciding which of the two is actually wanted before the claim set is fixed.
+the answer and this is a workaround for not having it — a good one, and still
+a workaround.
 
 ## Open
 
-- **Is the hub behind a proxy in any target deployment?** Decides whether
-  Tier 2 exists at all.
-- **Prefix, ASN, or exact address**, and whether that is per identity — a
-  fixed-VM lane and a laptop lane want different answers.
-- **Salt rotation.** The salt is a secret in `agents.db`; if it leaks, so does
-  the ability to confirm guessed values by digest.
-- **Is any target population Tier 3 capable?** If so, dormancy re-attestation
-  should be its fallback path rather than the design centre.
+- **Is the hub behind a proxy in any target deployment?** Decides whether this
+  runs at all, and it is the first question to answer.
+- **Default granularity**, and whether a deployment may override it per
+  identity or only globally.
+- **Does the observed source belong to the identity or to the key?** A rotated
+  key on the same host should inherit the baseline; a key moved to a new host
+  is the thing being detected. Keyed on identity is probably right and is not
+  obviously so.
+- **Proxied sends.** `from: alice_dev, sent_by: http-server` — the observed
+  address is the proxy's, always. Gate on the socket holder, or exempt proxied
+  sends entirely.
+- **Is any target population Tier 3 capable?** If so this becomes the fallback
+  path rather than the design centre.

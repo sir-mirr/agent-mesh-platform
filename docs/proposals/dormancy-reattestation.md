@@ -1,6 +1,12 @@
 # Proposal — re-attestation after dormancy
 
-Status: **proposed**. Nothing below is built.
+Status: **proposed**, and **superseded in part**. The claim set was settled as
+Tier 2 — hub-observed source, no self-reported values — which deletes the
+`-32016` round trip and the attestation-in-`params` design below. See
+[`attestation-claims.md`](attestation-claims.md); the flowchart's left spine
+still holds, the branch where the agent supplies claims does not.
+
+Nothing below is built.
 
 A send from an identity that has not sent for three hours must carry a fresh
 signature over the attestation that identity gave when its key was registered.
