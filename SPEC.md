@@ -1615,12 +1615,15 @@ because a host **reclaiming** an identity needs it and may hold no key
 the hub will yet accept.
 
 `mesh.list_agents` (§ 8.3) also carries it, and § 8.10 serves that method
-without a socket — so the gap is not the absence of a connection. It is
-the absence of an *approved* key: `POST /api/v1/rpc` resolves its caller
-by fingerprint and MUST refuse `-32014` while a key is pending, denied or
-revoked, which is precisely the state a host occupies while waiting for
-an operator or recovering from a rotation. This route is unauthenticated
-(†), so it answers throughout.
+without a socket — so the gap is not the absence of a connection. The
+condition there is **being able to sign**: § 8.10 has no unsigned path,
+because without a socket to have connected on there is nothing else that
+says who is asking, so an unsigned request is `-32600` and a request
+signed by a key that is pending, denied or revoked is `-32014`.
+
+That second case is the gap. It is precisely the state a host occupies
+while waiting for an operator to decide, and after a revocation. This
+route is unauthenticated (†), so it answers throughout.
 
 Where both work, this one is narrower. `mesh.list_agents` enumerates
 every agent's type; this answers for a single name the caller already
@@ -1733,6 +1736,27 @@ shape of reason (§ 9.2 †). Nothing here is per-caller.
 
 The three versions are reported separately, as § 13 requires: the
 transport contract, the audit protocol, and this route table.
+
+**`surface.version`:**
+
+| Version | Route table |
+|---------|-------------|
+| `1` | § 9.2 and § 9.2.1 as first built |
+| `2` | `GET /api/v1/agents/{identity}/keys` reports the registered `type` |
+
+A client MUST gate on this rather than on the field's presence. **Absence
+is ambiguous**: a hub too old to report `type` omits it, and a hub that
+reports it answers `null` for an identity registered through
+`mesh.register`, which never wrote one (§ 9.2). Probing cannot separate
+those, and the case a client guesses wrong is the one where it silently
+stops checking.
+
+`agentMeshSpec` (§ 13) cannot serve here. It versions this whole
+document at minor granularity, so it does not move for a field — and a
+deployment reports it from a running process while the field it would be
+standing in for arrived in a build that process may not be. This route
+is served by that same process, which is the property that makes it
+answerable.
 
 ### 9.3. Identity teardown
 
