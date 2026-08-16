@@ -376,27 +376,33 @@
   /* 3-Agent Animated Constellation Triad (Ambient Decorative Background Element on Left) */
   .hero-agents-constellation {
     position: absolute;
-    left: 0px;
-    top: 24px;
-    width: 290px;
-    height: 260px;
+    left: 20px;
+    top: 36px;
+    width: 230px;
+    height: 210px;
     user-select: none;
     z-index: 1;
-    opacity: 0.95;
+    opacity: 0.72;
+    filter: blur(0.4px) drop-shadow(0 4px 16px rgba(37, 99, 235, 0.15));
     pointer-events: auto;
+    transition: opacity 0.35s ease, filter 0.35s ease;
+  }
+  .hero-agents-constellation:hover {
+    opacity: 0.96;
+    filter: blur(0px) drop-shadow(0 6px 20px rgba(37, 99, 235, 0.25));
   }
   @media (max-width: 1200px) {
     .hero-agents-constellation {
-      left: -24px;
+      left: 0px;
       transform: scale(0.85);
       transform-origin: left top;
-      opacity: 0.85;
+      opacity: 0.65;
     }
   }
   @media (max-width: 900px) {
     .hero-agents-constellation {
-      opacity: 0.35;
-      transform: scale(0.72);
+      opacity: 0.3;
+      transform: scale(0.7);
       pointer-events: none;
     }
   }
@@ -413,8 +419,8 @@
   }
 
   .constellation-line {
-    stroke-width: 2.0;
-    stroke-dasharray: 6 5;
+    stroke-width: 1.6;
+    stroke-dasharray: 5 4;
     stroke-linecap: round;
     animation: constellationDash 16s linear infinite;
   }
@@ -425,7 +431,7 @@
 
   /* Flowing Data Pulses on Organic Mesh Edges */
   .mesh-packet {
-    filter: drop-shadow(0 0 6px currentColor);
+    filter: drop-shadow(0 0 5px currentColor);
   }
   .mesh-packet.packet-1 {
     animation: flowEdge1 4.2s ease-in-out infinite;
@@ -438,22 +444,22 @@
   }
 
   @keyframes flowEdge1 {
-    0% { cx: 58px; cy: 46px; opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { cx: 216px; cy: 76px; opacity: 0; }
+    0% { cx: 40px; cy: 32px; opacity: 0; }
+    20% { opacity: 0.9; }
+    80% { opacity: 0.9; }
+    100% { cx: 170px; cy: 56px; opacity: 0; }
   }
   @keyframes flowEdge2 {
-    0% { cx: 216px; cy: 76px; opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { cx: 130px; cy: 188px; opacity: 0; }
+    0% { cx: 170px; cy: 56px; opacity: 0; }
+    20% { opacity: 0.9; }
+    80% { opacity: 0.9; }
+    100% { cx: 102px; cy: 148px; opacity: 0; }
   }
   @keyframes flowEdge3 {
-    0% { cx: 130px; cy: 188px; opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { cx: 58px; cy: 46px; opacity: 0; }
+    0% { cx: 102px; cy: 148px; opacity: 0; }
+    20% { opacity: 0.9; }
+    80% { opacity: 0.9; }
+    100% { cx: 40px; cy: 32px; opacity: 0; }
   }
 
   /* Agent Circular Nodes */
@@ -467,49 +473,55 @@
     transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .hero-agent-node:hover {
-    transform: scale(1.12) !important;
+    transform: scale(1.15) !important;
     z-index: 10;
   }
 
-  /* Asymmetric Organic Constellation Coordinates */
+  /* Asymmetric Coordinates & 2D Horizontal + Vertical Floating Motion */
   .agent-node-1 {
-    top: 12px;
-    left: 24px;
-    animation: floatNode1 5s ease-in-out infinite;
+    top: 8px;
+    left: 16px;
+    animation: floatNode1 6s ease-in-out infinite;
   }
   .agent-node-2 {
-    top: 42px;
-    left: 182px;
-    animation: floatNode2 5.6s ease-in-out infinite 0.7s;
+    top: 32px;
+    left: 146px;
+    animation: floatNode2 6.8s ease-in-out infinite 0.9s;
   }
   .agent-node-3 {
-    top: 154px;
-    left: 96px;
-    animation: floatNode3 5.2s ease-in-out infinite 1.4s;
+    top: 124px;
+    left: 78px;
+    animation: floatNode3 6.4s ease-in-out infinite 1.8s;
   }
 
   @keyframes floatNode1 {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-6px) rotate(1.2deg); }
+    0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+    25% { transform: translate(8px, -6px) rotate(1.5deg); }
+    50% { transform: translate(-6px, -3px) rotate(-1deg); }
+    75% { transform: translate(-8px, 6px) rotate(1deg); }
   }
   @keyframes floatNode2 {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(5px) rotate(-1.5deg); }
+    0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+    25% { transform: translate(-8px, 6px) rotate(-1.5deg); }
+    50% { transform: translate(7px, 8px) rotate(1.2deg); }
+    75% { transform: translate(8px, -5px) rotate(-1deg); }
   }
   @keyframes floatNode3 {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-5px) rotate(1.5deg); }
+    0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+    25% { transform: translate(9px, 5px) rotate(1.2deg); }
+    50% { transform: translate(-8px, -7px) rotate(-1.5deg); }
+    75% { transform: translate(6px, -3px) rotate(1deg); }
   }
 
-  /* 80% Scale Circle Avatar Frame with Pure White Background */
+  /* Compact 48px Circle Frame with Pure White Background */
   .agent-avatar-frame {
     position: relative;
-    width: 68px;
-    height: 68px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     background: #FFFFFF !important;
-    border: 3px solid #FFFFFF;
-    box-shadow: 0 8px 20px -3px rgba(15, 23, 42, 0.16), 0 3px 8px rgba(0, 0, 0, 0.06);
+    border: 2.5px solid #FFFFFF;
+    box-shadow: 0 6px 16px -2px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -517,59 +529,63 @@
   }
 
   .agent-avatar-img {
-    width: 92%;
-    height: 92%;
+    width: 90%;
+    height: 90%;
     object-fit: contain;
     display: block;
     transition: transform 0.3s ease;
   }
   .hero-agent-node:hover .agent-avatar-img {
-    transform: scale(1.08);
+    transform: scale(1.1);
   }
 
   /* Glowing Ambient Outer Rings */
   .agent-glow-ring {
     position: absolute;
-    top: -4px;
-    left: -4px;
-    right: -4px;
-    bottom: 20px;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: 18px;
     border-radius: 50%;
     pointer-events: none;
-    opacity: 0.55;
+    opacity: 0.5;
     animation: ringPulse 3.2s ease-in-out infinite;
   }
   .ring-blue {
-    border: 1.8px solid #3B82F6;
-    box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
+    border: 1.5px solid #3B82F6;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
   }
   .ring-emerald {
-    border: 1.8px solid #10B981;
-    box-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
+    border: 1.5px solid #10B981;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
   }
   .ring-purple {
-    border: 1.8px solid #8B5CF6;
-    box-shadow: 0 0 14px rgba(139, 92, 246, 0.45);
+    border: 1.5px solid #8B5CF6;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
   }
 
   @keyframes ringPulse {
-    0%, 100% { transform: scale(1); opacity: 0.45; }
-    50% { transform: scale(1.06); opacity: 0.85; }
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.08); opacity: 0.8; }
   }
 
-  /* Agent Name Badges */
+  /* Compact Agent Name Badges */
   .agent-node-badge {
-    margin-top: 5px;
-    padding: 2.5px 9px;
+    margin-top: 4px;
+    padding: 2px 7px;
     border-radius: var(--radius-full);
-    font-size: 0.7rem;
+    font-size: 0.62rem;
     font-weight: 750;
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     box-shadow: var(--shadow-xs);
     border: 1px solid transparent;
+  }
+  .agent-node-badge .live-dot {
+    width: 5px;
+    height: 5px;
   }
   .badge-blue {
     background: #EFF6FF;
@@ -1433,7 +1449,7 @@
     <section class="home-hero-wrap">
       <!-- Ambient Decorative Background 3-Agent Triad (Floats on Left) -->
       <div class="hero-agents-constellation" aria-label="Interactive Autonomous Agent Triad">
-        <svg class="constellation-svg" viewBox="0 0 290 260">
+        <svg class="constellation-svg" viewBox="0 0 230 210">
           <defs>
             <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9" />
@@ -1455,17 +1471,17 @@
           </defs>
 
           <!-- Organic Asymmetric Center Ambient Glow Polygon -->
-          <polygon points="58,46 216,76 130,188" fill="url(#meshCenterGlow)" />
+          <polygon points="40,32 170,56 102,148" fill="url(#meshCenterGlow)" />
 
           <!-- Interconnection Organic Triangle Edges -->
-          <line class="constellation-line" x1="58" y1="46" x2="216" y2="76" stroke="url(#lineGrad1)" />
-          <line class="constellation-line" x1="216" y1="76" x2="130" y2="188" stroke="url(#lineGrad2)" />
-          <line class="constellation-line" x1="130" y1="188" x2="58" y2="46" stroke="url(#lineGrad3)" />
+          <line class="constellation-line" x1="40" y1="32" x2="170" y2="56" stroke="url(#lineGrad1)" />
+          <line class="constellation-line" x1="170" y1="56" x2="102" y2="148" stroke="url(#lineGrad2)" />
+          <line class="constellation-line" x1="102" y1="148" x2="40" y2="32" stroke="url(#lineGrad3)" />
 
           <!-- Animated flowing packets / data pulses -->
-          <circle class="mesh-packet packet-1" r="3.5" fill="#3B82F6" />
-          <circle class="mesh-packet packet-2" r="3.5" fill="#8B5CF6" />
-          <circle class="mesh-packet packet-3" r="3.5" fill="#10B981" />
+          <circle class="mesh-packet packet-1" r="3.0" fill="#3B82F6" />
+          <circle class="mesh-packet packet-2" r="3.0" fill="#8B5CF6" />
+          <circle class="mesh-packet packet-3" r="3.0" fill="#10B981" />
         </svg>
 
         <!-- Agent 1: Top-Left (Fin둥이 - Yellow Shiba Financial Lead) -->
