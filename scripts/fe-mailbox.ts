@@ -152,11 +152,16 @@ switch (command) {
     break;
   case "send": {
     const to = args[1] ?? "platform-claude";
-    const body = args.slice(2).join(" ");
+    let body: string | undefined;
+    if (args[2] === "--file" && args[3]) {
+      body = readFileSync(args[3], "utf8");
+    } else {
+      body = args.slice(2).join(" ");
+    }
     await sendMail(to, body || undefined);
     break;
   }
   default:
     console.log(`Unknown command: ${command}`);
-    console.log(`Usage: bun scripts/fe-mailbox.ts [check|peek|send <to> [body]]`);
+    console.log(`Usage: bun scripts/fe-mailbox.ts [check|peek|send <to> [body | --file <path>]]`);
 }
