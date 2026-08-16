@@ -484,18 +484,50 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suite: 'platform',
     suiteTitle: 'Platform Operator',
     role: 'Platform Operator',
-    title: 'Global Metadata Audits (Zero Body Leak)',
-    subtitle: 'Cryptographically segregated transit logs preserving message payload privacy',
+    title: 'Global Metadata Audits (Egress Redaction Active)',
+    subtitle: 'Transit audit stream with egress redaction (SPEC § 11.0: [content withheld — requires audit.read.content])',
     isImplemented: true,
     html: `
       <div class="card">
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          🔒 <strong>Privacy Boundary Enforced:</strong> Payload bodies are cryptographically withheld from Platform Operator logs.
+          🛡️ <strong>Egress Redaction Active (SPEC § 11.0):</strong> Calling <code>GET /api/v1/audit/events</code> without <code>audit.read.content</code> redacts payload bodies to <code>[content withheld — requires audit.read.content]</code> while preserving <code>content_length</code> and routing metadata.
         </div>
+
+        <div class="card-header">
+          <div>
+            <div class="card-title">Transit Audit Events Ledger</div>
+            <div class="card-subtitle">Endpoints: <code>GET /api/v1/audit/events</code> & <code>GET /api/v1/audit/events/{event_id}</code></div>
+          </div>
+        </div>
+
         <table class="data-table">
-          <thead><tr><th>Time</th><th>From</th><th>To</th><th>Metadata Digest</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Payload Body</th>
+              <th>Length</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td>12:44:02</td><td>acme-corp:core-lead</td><td>acme-corp:core-agent-3</td><td>sha256:8f9a... (142 bytes)</td></tr>
+            <tr>
+              <td>12:44:02</td>
+              <td>acme-corp:core-lead</td>
+              <td>acme-corp:core-agent-3</td>
+              <td><code style="color:var(--text-muted);">[content withheld — requires audit.read.content]</code></td>
+              <td><strong>142 B</strong></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Event #evt_948192 Detail (Single-Event Modal):\n\n{\n  \"id\": \"evt_948192\",\n  \"from\": \"acme-corp:core-lead\",\n  \"to\": \"acme-corp:core-agent-3\",\n  \"content\": \"[content withheld — requires audit.read.content]\",\n  \"content_length\": 142\n}')">Inspect Event</button></td>
+            </tr>
+            <tr>
+              <td>12:44:15</td>
+              <td>nova-biotech:research-lead</td>
+              <td>nova-biotech:analyzer-1</td>
+              <td><code style="color:var(--text-muted);">[content withheld — requires audit.read.content]</code></td>
+              <td><strong>528 B</strong></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Event #evt_948193 Detail:\nContent withheld.')">Inspect Event</button></td>
+            </tr>
           </tbody>
         </table>
       </div>

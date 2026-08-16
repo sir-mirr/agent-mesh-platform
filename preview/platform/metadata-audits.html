@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Global Metadata Audits (Zero Body Leak) — Agent Mesh Enterprise Platform</title>
+  <title>Global Metadata Audits (Egress Redaction Active) — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -67,8 +67,8 @@
           <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #16</span>
         </div>
-        <h1 class="admin-header-title">Global Metadata Audits (Zero Body Leak)</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Cryptographically segregated transit logs preserving message payload privacy</p>
+        <h1 class="admin-header-title">Global Metadata Audits (Egress Redaction Active)</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Transit audit stream with egress redaction (SPEC § 11.0: [content withheld — requires audit.read.content])</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -80,12 +80,53 @@
     
       <div class="card">
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          🔒 <strong>Privacy Boundary Enforced:</strong> Payload bodies are cryptographically withheld from Platform Operator logs.
+          🛡️ <strong>Egress Redaction Active (SPEC § 11.0):</strong> Calling <code>GET /api/v1/audit/events</code> without <code>audit.read.content</code> redacts payload bodies to <code>[content withheld — requires audit.read.content]</code> while preserving <code>content_length</code> and routing metadata.
         </div>
+
+        <div class="card-header">
+          <div>
+            <div class="card-title">Transit Audit Events Ledger</div>
+            <div class="card-subtitle">Endpoints: <code>GET /api/v1/audit/events</code> & <code>GET /api/v1/audit/events/{event_id}</code></div>
+          </div>
+        </div>
+
         <table class="data-table">
-          <thead><tr><th>Time</th><th>From</th><th>To</th><th>Metadata Digest</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Payload Body</th>
+              <th>Length</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td>12:44:02</td><td>acme-corp:core-lead</td><td>acme-corp:core-agent-3</td><td>sha256:8f9a... (142 bytes)</td></tr>
+            <tr>
+              <td>12:44:02</td>
+              <td>acme-corp:core-lead</td>
+              <td>acme-corp:core-agent-3</td>
+              <td><code style="color:var(--text-muted);">[content withheld — requires audit.read.content]</code></td>
+              <td><strong>142 B</strong></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Event #evt_948192 Detail (Single-Event Modal):
+
+{
+  "id": "evt_948192",
+  "from": "acme-corp:core-lead",
+  "to": "acme-corp:core-agent-3",
+  "content": "[content withheld — requires audit.read.content]",
+  "content_length": 142
+}')">Inspect Event</button></td>
+            </tr>
+            <tr>
+              <td>12:44:15</td>
+              <td>nova-biotech:research-lead</td>
+              <td>nova-biotech:analyzer-1</td>
+              <td><code style="color:var(--text-muted);">[content withheld — requires audit.read.content]</code></td>
+              <td><strong>528 B</strong></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Event #evt_948193 Detail:
+Content withheld.')">Inspect Event</button></td>
+            </tr>
           </tbody>
         </table>
       </div>
