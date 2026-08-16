@@ -1743,6 +1743,7 @@ transport contract, the audit protocol, and this route table.
 |---------|-------------|
 | `1` | § 9.2 and § 9.2.1 as first built |
 | `2` | `GET /api/v1/agents/{identity}/keys` reports the registered `type` |
+| `3` | `POST /api/v1/agents` refuses a `public_key` held by another identity (§ 10.1) |
 
 A client MUST gate on this rather than on the field's presence. **Absence
 is ambiguous**: a hub too old to report `type` omits it, and a hub that
@@ -1978,12 +1979,34 @@ Neither is retryable.
 3. Reject with `400` when the type has `requires_key` and no `public_key` was
    supplied, and the identity has no approved key already.
 4. Reject with `409` when the identity exists and is soft-deleted (§ 9.3).
-5. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
-6. When `public_key` is present, record it per § 10.2.
-7. Return `201 Created` when the row did not previously exist, `200 OK`
+5. Reject with `409 KEY_HELD_BY_ANOTHER_IDENTITY` when `public_key` is already
+   on record under a different identity — **before writing the row**, and
+   without naming the holder (see below).
+6. UPSERT the row: `INSERT … ON CONFLICT(identity) DO UPDATE SET type, description`.
+7. When `public_key` is present, record it per § 10.2.
+8. Return `201 Created` when the row did not previously exist, `200 OK`
    when the row already existed and was updated.
-8. Return `500` only on a genuine DB error; transient errors MAY be retried
+9. Return `500` only on a genuine DB error; transient errors MAY be retried
    by callers using exponential or fixed backoff.
+
+**Step 5 must precede step 6.** `agent_keys` is keyed on the fingerprint
+alone, so a second identity proposing a key already on record inserts
+nothing. Recording it afterwards therefore reports the *other* holder's
+status — a caller supplying a key it does not own is told `approved`
+while holding none — and leaves behind exactly what step 3 exists to
+prevent: an identity of a `requires_key` type that can never connect.
+Step 3 asks whether a `public_key` was *supplied*, which is not the same
+question as whether one landed.
+
+**The refusal MUST NOT name the holder.** This route needs no
+credential, so an answer identifying the owner of a submitted key makes
+it a fingerprint-to-identity lookup for anything that can reach the port
+— the direction § 10.2 keeps closed. Saying the key is taken is
+unavoidable; saying whose is not.
+
+A caller MUST NOT treat a `key` object in a `2xx` response as proof that
+its own key was recorded. `GET /api/v1/agents/{identity}/keys` lists the
+keys that identity actually holds, and is the check.
 
 **Identity format (0.2).** An identity MUST match
 `^[A-Za-z0-9][A-Za-z0-9-]*$`: it begins with a letter or digit, and continues

@@ -44,6 +44,35 @@ export interface ProposeResult {
   created: boolean;
 }
 
+/**
+ * A key already on record under a different identity (SPEC § 10.1).
+ *
+ * Thrown rather than returned. Routes are expected to refuse before writing
+ * anything — `fingerprintHolder` is there for that — so reaching this means a
+ * caller skipped the check, and the cost of skipping it is an identity of a
+ * `requires_key` type existing with no key at all.
+ *
+ * **It does not carry whose key it is.** Answering that would turn the
+ * provisioning route into a fingerprint-to-identity lookup, readable by anyone
+ * who can reach the port. § 10.2 keeps that direction closed.
+ */
+export class KeyOwnershipError extends Error {
+  constructor(readonly fingerprint: string) {
+    super(`key ${fingerprint} is already registered to another identity`);
+    this.name = "KeyOwnershipError";
+  }
+}
+
+/**
+ * The identity a fingerprint is registered to, or null when it is free.
+ *
+ * For refusing *before* the write. The answer is a name, so a route using it
+ * must compare and discard rather than report — see `KeyOwnershipError`.
+ */
+export function fingerprintHolder(db: Database, fingerprint: string): string | null {
+  return keyByFingerprint(db, fingerprint)?.identity ?? null;
+}
+
 function appendEvent(
   db: Database,
   identity: string,
@@ -154,6 +183,14 @@ export function proposeKey(
 
   const existing = keyByFingerprint(db, fingerprint);
   if (existing) {
+    // **Whose key it is decides which of these two happens.** `agent_keys` is
+    // keyed on the fingerprint alone, so a second identity proposing the same
+    // key hits this branch and used to be answered as though the key were its
+    // own — with the *other* holder's status, while the INSERT never ran. The
+    // caller was told `approved` and had no key.
+    if (existing.identity !== identity) {
+      throw new KeyOwnershipError(fingerprint);
+    }
     // Including `denied` and `revoked`: re-proposing a key an operator has
     // already ruled on returns that ruling rather than quietly reopening it.
     return { fingerprint, status: existing.status, created: false };

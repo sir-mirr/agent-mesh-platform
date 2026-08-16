@@ -484,3 +484,65 @@ describe("the registered type is readable without an approved key", () => {
     expect(rpc.body.result.agents.length).toBeGreaterThan(1);
   });
 });
+
+/**
+ * SPEC § 10.1. `agent_keys` is keyed on the fingerprint alone.
+ *
+ * Found by measurement, not by reading: `platform-fe-antigravity` reported
+ * provisioning as verified (mail #146), and the identity they had created
+ * existed with a `requires_key` type and no key row at all. The response they
+ * quoted said `status: "approved"` — someone else's status, on a key that was
+ * never theirs.
+ *
+ * The reason it read as working is that the two checks each pass. The
+ * `requires_key` guard asks whether a `public_key` was *supplied*. `proposeKey`
+ * finds the fingerprint on record and returns that ruling, which is right for
+ * the same identity re-proposing and wrong for anyone else. Neither is looking
+ * at the thing that matters: whether a key landed **for this identity**.
+ */
+describe("a key already held by another identity", () => {
+  test("is refused, and the row is not created", async () => {
+    const k = newKey();
+    await register("kh-owner", "ai-claude", k.publicKey);
+
+    const res = await register("kh-thief", "ai-claude", k.publicKey);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("KEY_HELD_BY_ANOTHER_IDENTITY");
+
+    // Nothing at all: the identity must not survive a refused provisioning,
+    // or a `requires_key` type is left holding no key.
+    const after = await fetch(`${mesh.hub.url}/api/v1/agents/kh-thief/keys`);
+    expect(after.status).toBe(404);
+  });
+
+  test("does not say whose it is", async () => {
+    // § 10.2 keeps fingerprint-to-identity closed. A refusal that named the
+    // holder would open it on the one route that needs no credential at all.
+    const k = newKey();
+    await register("kh-secret-owner", "ai-claude", k.publicKey);
+    const body = await (await register("kh-prober", "ai-claude", k.publicKey)).json();
+    expect(JSON.stringify(body)).not.toContain("kh-secret-owner");
+  });
+
+  test("the same identity re-proposing its own key is unaffected", async () => {
+    // The behaviour the branch was written for, which the fix must not break.
+    const k = newKey();
+    await register("kh-restarter", "ai-claude", k.publicKey);
+    const again = await register("kh-restarter", "ai-claude", k.publicKey);
+    expect(again.status).toBe(200);
+    expect((await again.json()).key.status).toBe("pending");
+  });
+
+  test("an approved key is still reported to its own holder", async () => {
+    const k = newKey();
+    await register("kh-approved", "ai-claude", k.publicKey);
+    expect((await decide("approve", k.fingerprint)).status).toBe(200);
+    const again = await register("kh-approved", "ai-claude", k.publicKey);
+    expect((await again.json()).key.status).toBe("approved");
+  });
+
+  // The store-level backstop is exercised in packages/store/src/store.test.ts.
+  // It belongs there: `test/` drives real processes over the wire and importing
+  // the store's source into it breaks that boundary — and the build, since the
+  // suite compiles with `rootDir: "."`.
+});
