@@ -2470,6 +2470,29 @@ tenant-wide grant satisfies any narrower ask. **A narrow grant MUST NOT widen**
 is the entire point of scoping it, and the failure is silent: every screen
 works and every action succeeds.
 
+### 11.0. What the content boundary is, and is not
+
+A hub MUST withhold message bodies from `GET /api/v1/audit/events` and
+`/api/v1/audit/events/{event_id}` for a caller without
+`audit.read.content`, and MUST keep the surrounding metadata — `from`, `to`,
+`id`, timestamps, sizes — which is what operating a mesh requires.
+
+**This is redaction on the way out.** The process reads the stored bytes and
+chooses what to return. It prevents an unentitled *caller* from seeing content;
+it does not prevent whoever administers the host from opening the file. Both
+routes MUST be gated, not one — a boundary applied to a listing and forgotten
+on the by-id route is the shape this failure takes.
+
+The stronger version moves bodies to their own table so the metadata query
+never touches them, which also makes per-tenant encryption cheap because
+bodies are the one column nobody filters on. That is not what this section
+requires and MUST NOT be described as though it were: a control documented as
+stronger than it is ends up load-bearing.
+
+`content_sha256`, where present, is **not** content and stays. An operator
+comparing a body obtained elsewhere against the record needs it. A length MAY
+be reported for the same reason.
+
 ### 11.1. Resolved per request, never carried in the token
 
 An implementation MUST read grants at the point of use. It MUST NOT put the

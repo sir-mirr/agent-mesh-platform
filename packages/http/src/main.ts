@@ -1145,14 +1145,18 @@ app.put('/api/v1/audit/blobs/:key', async (c) => {
 app.get('/api/v1/audit/events', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
-  const r = listAuditEvents(c.req.query() as any)
+  // § 11's privacy boundary. The platform operator holds the metadata
+  // capability and not this one; a tenant admin inside the tenant holds both.
+  const withContent = grants.has(agentsDb(), actor, CAPABILITY.AUDIT_READ_CONTENT)
+  const r = listAuditEvents(c.req.query() as any, withContent)
   return c.json(r.body, r.status as any)
 })
 
 app.get('/api/v1/audit/events/:event_id', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
-  const r = getAuditEvent(c.req.param('event_id'))
+  const withContent = grants.has(agentsDb(), actor, CAPABILITY.AUDIT_READ_CONTENT)
+  const r = getAuditEvent(c.req.param('event_id'), withContent)
   return c.json(r.body, r.status as any)
 })
 

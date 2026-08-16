@@ -68,6 +68,41 @@ const REDACTED_KEYS = new Set([
   'reasoning_stream',
 ])
 
+/**
+ * Message content, removed for a caller without `audit.read.content` (§ 11).
+ *
+ * **This is redaction on the way out, not a separate store.** The process
+ * still reads the bytes; what changes is what it hands back. `operator-roles`
+ * proposes moving bodies to their own table so the query never touches them —
+ * that is the structural version and it is not this. Saying so plainly matters
+ * because the weaker thing is easy to describe as the stronger one.
+ *
+ * What it does give: an operator holding `audit.read.metadata` and not
+ * `audit.read.content` gets who, whom, when and how much, and no bodies — the
+ * same line `GET /api/v1/admin/inbox` already draws.
+ *
+ * `content_sha256` is left in place. It is not the content, and an operator
+ * comparing a body they obtained elsewhere against the record needs it.
+ */
+function stripContent(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripContent)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (k === 'content') {
+        out[k] = '[content withheld — requires audit.read.content]'
+        // Length is metadata, not content, and it is what an operator
+        // diagnosing a stuck queue actually needs.
+        if (typeof v === 'string') out.content_length = v.length
+      } else {
+        out[k] = stripContent(v)
+      }
+    }
+    return out
+  }
+  return value
+}
+
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact)
   if (value && typeof value === 'object') {
@@ -97,10 +132,19 @@ interface EventRow {
   stored_at: string
 }
 
-function shape(row: EventRow, blobs: unknown[]): Record<string, unknown> {
+/**
+ * `withContent` is required, with no default (§ 11).
+ *
+ * A default of `true` means a caller that forgets it leaks message bodies, and
+ * a default of `false` means one that forgets it silently withholds them from
+ * someone entitled — the first is a disclosure, the second is a bug report.
+ * Neither is worth the convenience, so the compiler asks every caller.
+ */
+function shape(row: EventRow, blobs: unknown[], withContent: boolean): Record<string, unknown> {
   let payload: unknown
   try {
     payload = redact(JSON.parse(row.payload))
+    if (!withContent) payload = stripContent(payload)
   } catch {
     payload = null
   }
@@ -130,12 +174,12 @@ function attachmentsOf(eventId: string): unknown[] {
     .all(eventId)
 }
 
-export function getEvent(eventId: string): QueryResult {
+export function getEvent(eventId: string, withContent: boolean): QueryResult {
   const row = auditDb()
     .prepare(`SELECT * FROM audit_events WHERE event_id = ?`)
     .get(eventId) as EventRow | undefined
   if (!row) return { status: 404, body: { ok: false, error: `no event '${eventId}'` } }
-  return { status: 200, body: { ok: true, event: shape(row, attachmentsOf(eventId)) } }
+  return { status: 200, body: { ok: true, event: shape(row, attachmentsOf(eventId), withContent) } }
 }
 
 export interface ListQuery {
@@ -159,7 +203,7 @@ function parseCursor(cursor: string): { storedAt: string; eventId: string } | nu
   return { storedAt: cursor.slice(0, at), eventId: cursor.slice(at + 1) }
 }
 
-export function listEvents(q: ListQuery): QueryResult {
+export function listEvents(q: ListQuery, withContent: boolean): QueryResult {
   const limit = Math.min(Math.max(Number(q.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1), MAX_LIMIT)
 
   const where: string[] = []
@@ -215,7 +259,7 @@ export function listEvents(q: ListQuery): QueryResult {
     status: 200,
     body: {
       ok: true,
-      events: page.map((r) => shape(r, attachmentsOf(r.event_id))),
+      events: page.map((r) => shape(r, attachmentsOf(r.event_id), withContent)),
       next_cursor: rows.length > limit && last ? `${last.stored_at}|${last.event_id}` : null,
     },
   }
