@@ -38,9 +38,13 @@ const spec921Routes = extractRoutesFromSection('#### 9.2.1.', '### 9.3.');
 
 const rawAllowedRoutes = [...new Set([...spec91Routes, ...spec92Routes, ...spec921Routes])];
 
+if (rawAllowedRoutes.length === 0) {
+  console.error('❌ Extracted 0 routes from SPEC.md — section header markers changed');
+  errors++;
+}
+
 // Convert paths like `/api/v1/messages/:agent` or `/api/v1/outbox/{message_id}` into flexible match patterns
 function routeToRegex(route: string): RegExp {
-  // Replace `:param` and `{param}` with wildcard segments `[^/?#\s"'<>]+`
   const clean = route.replace(/\/:[a-zA-Z0-9_-]+/g, '/[^/?#\\s"\'<>]+')
                      .replace(/\/\{[a-zA-Z0-9_-]+\}/g, '/[^/?#\\s"\'<>]+')
                      .replace(/\?/g, '\\?');
@@ -52,8 +56,7 @@ const routeRegexes = rawAllowedRoutes.map(r => ({
   regex: routeToRegex(r)
 }));
 
-console.log(`✓ Parsed ${rawAllowedRoutes.length} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1):`);
-rawAllowedRoutes.forEach(r => console.log(`   • ${r}`));
+console.log(`✓ Parsed ${rawAllowedRoutes.length} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1)`);
 
 // 3. Helper to find all HTML files recursively
 function getHtmlFiles(dir: string): string[] {
@@ -73,25 +76,40 @@ function getHtmlFiles(dir: string): string[] {
 
 const htmlFiles = getHtmlFiles('preview');
 
-// 4. Scan all HTML files for `/api/v1/...` and `/auth/...` references and validate against allowlist
+// 4. Scan all HTML files for `/(?:api|auth)/...` references
+let totalRoutesFound = 0;
+// Match routes, including those with template expressions like ${id}
+const ROUTE_EXTRACT_REGEX = /\/(?:api\/v1|auth)\/[a-zA-Z0-9_\-\/{}:$.]+/g;
+
 htmlFiles.forEach(file => {
   const content = readFileSync(file, 'utf-8');
-  // Match any API or auth path pattern in code snippets, strings, or links
-  const foundApiRoutes = [...content.matchAll(/(?:\b|\/|\'|\")(\/(?:api\/v1|auth)\/[a-zA-Z0-9_\-\/{}:]+)/g)].map(m => m[1]);
+  const foundApiRoutes = [...content.matchAll(ROUTE_EXTRACT_REGEX)].map(m => m[0]);
 
-  foundApiRoutes.forEach(route => {
-    // Ignore internal anchor links or file paths
-    if (route.endsWith('.html') || route.endsWith('.css') || route.endsWith('.js') || route.endsWith('.png')) return;
+  foundApiRoutes.forEach(rawRoute => {
+    // Strip trailing punctuation like . , ; : ' " )
+    const cleanedRawRoute = rawRoute.replace(/[.,;:)'"`]+$/, '');
+
+    // Ignore static asset paths (.html, .css, .js, .png, .json)
+    if (cleanedRawRoute.endsWith('.html') || cleanedRawRoute.endsWith('.css') || cleanedRawRoute.endsWith('.js') || cleanedRawRoute.endsWith('.png') || cleanedRawRoute.endsWith('.json')) return;
     
-    const matched = routeRegexes.some(r => r.regex.test(route));
+    // Normalize template literals e.g. /api/v1/agents/${id}/keys -> /api/v1/agents/{param}/keys
+    const normalizedRoute = cleanedRawRoute.replace(/\$\{[a-zA-Z0-9_]+\}/g, '{param}');
+
+    totalRoutesFound++;
+    const matched = routeRegexes.some(r => r.regex.test(normalizedRoute));
     if (!matched) {
-      console.error(`❌ Unauthorized / Invented route '${route}' found in ${file}`);
+      console.error(`❌ Unauthorized / Invented route '${cleanedRawRoute}' (normalized: '${normalizedRoute}') found in ${file}`);
       errors++;
     }
   });
 });
 
-console.log(`✓ Verified ${htmlFiles.length} HTML files against SPEC.md authoritative route allowlist.`);
+if (totalRoutesFound === 0) {
+  console.error('❌ Extracted 0 routes from 61 files — the route extractor is broken!');
+  errors++;
+} else {
+  console.log(`✓ Extracted and verified ${totalRoutesFound} route references across ${htmlFiles.length} HTML files.`);
+}
 
 // 5. Verify all 9 capabilities exist in RBAC
 const rbacHtml = readFileSync('preview/tenant/organization-rbac.html', 'utf-8');
@@ -116,7 +134,7 @@ CAPABILITIES.forEach(cap => {
 console.log(`✓ Verified all 9 capabilities (Contracts v0.9.1) exist in RBAC.`);
 
 if (errors === 0) {
-  console.log('\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors)');
+  console.log(`\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${totalRoutesFound} routes verified)`);
   process.exit(0);
 } else {
   console.error(`\n❌ Total Lint Errors: ${errors}`);
