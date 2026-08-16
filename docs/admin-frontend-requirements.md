@@ -65,8 +65,9 @@
   * 키 승인: `POST /api/v1/admin/keys/approve` `{ fingerprint, reason? }`
   * 키 거부: `POST /api/v1/admin/keys/deny` `{ fingerprint, reason? }`
   * 키 폐기: `POST /api/v1/admin/keys/revoke` `{ fingerprint, reason? }`
-* **REQ-KEY-04 (에이전트별 키 이력 조회)**:
+* **REQ-KEY-04 (에이전트별 키 이력 및 사유 시각화)**:
   * `GET /api/v1/admin/keys/{identity}`를 통해 특정 에이전트의 제안/승인/폐기 전체 감사 타임라인 표시.
+  * **폐기 사유 시각적 구분**: 일상적인 키 교체(`rotation`)와 침해 사고(`compromise`)의 심각도(Badge 색상 및 경고)를 명확히 구분하여 운영자가 이전 서명 구간의 신뢰성을 판단할 수 있도록 지원.
 
 ---
 
@@ -86,8 +87,10 @@
 
 * **REQ-INB-01 (신원별 인박스 적체 현황)**:
   * `GET /api/v1/admin/inbox`를 호출하여 메시지가 적체된 신원 목록 및 큐 깊이(Queue Depth) 현황판 제공.
-* **REQ-INB-02 (특정 신원의 큐 상세 및 임대 상태)**:
-  * `GET /api/v1/admin/inbox/{identity}`를 통해 특정 신원의 큐에 쌓인 메시지 ID, 발신자, 타임스탬프, 크기, 현재 리스(`leased`) 여부 표시 (보안상 본문 제외).
+* **REQ-INB-02 (큐 내용 및 임대 상태 구분 - Critical)**:
+  * `GET /api/v1/admin/inbox/{identity}`를 통해 특정 신원의 큐에 쌓인 메시지 ID, 발신자, 타임스탬프, 크기, 현재 리스(`leased`) 여부 표시.
+  * **Leased 상태 시각화**: "전체 적체 N건"과 "소비자가 처리 중인 Leased M건"을 명확히 분리 표시하여, 수신 프로세스 다운 등으로 인한 임대 고착 상태를 운영자가 즉각 식별할 수 있도록 함.
+  * **본문 비공개 원칙 준수**: 인박스 조회 API는 보안 및 권한 분리 원칙에 따라 메시지 본문(Body)을 반환하지 않으며, 본문 조회가 필요한 경우 감사 로그(`chat-audits`)로 유도.
 
 ---
 
