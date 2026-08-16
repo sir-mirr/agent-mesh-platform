@@ -20,7 +20,7 @@
     --border-strong:   #CBD5E1;
     --border-focus:    #3B82F6;
 
-    /* Primary Brand */
+    /* Primary Brand: Vibrant Tech Blue */
     --primary:         #2563EB;
     --primary-hover:   #1D4ED8;
     --primary-active:  #1E40AF;
@@ -55,7 +55,7 @@
     --text-muted:      #94A3B8;
     --text-inverse:    #FFFFFF;
 
-    /* Fonts */
+    /* Typography */
     --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
@@ -87,7 +87,7 @@
     overflow-x: hidden;
   }
 
-  /* --- Animated Background Geometric Canvas & Ambient Glows (Landing Only) --- */
+  /* --- Animated Background Geometric Canvas (Landing View Only) --- */
   .landing-bg-layer {
     position: fixed;
     top: 0;
@@ -165,6 +165,7 @@
     font-size: 1.15rem;
     color: var(--text-primary);
     letter-spacing: -0.02em;
+    cursor: pointer;
   }
   .brand-icon {
     width: 32px;
@@ -572,7 +573,7 @@
     border-bottom-color: var(--primary);
   }
 
-  /* Key Approval Card Item */
+  /* Key Approval Card Item (50-Character Fingerprint Compliant) */
   .key-verify-card {
     background: #FFFFFF;
     border: 1px solid var(--border-default);
@@ -660,7 +661,7 @@
   .audit-msg-content { color: var(--text-primary); flex: 1; }
 
   /* ==========================================================================
-     VIEW 3: AGENT CREATOR DASHBOARD
+     VIEW 3: AGENT OPERATIONS CONSOLE
      ========================================================================== */
   .creator-layout {
     display: grid;
@@ -684,7 +685,7 @@
     margin-bottom: 8px;
   }
 
-  /* Teardown Modal Overlay */
+  /* Modals Overlay */
   .modal-backdrop {
     display: none;
     position: fixed;
@@ -735,7 +736,7 @@
 
   <!-- Top Navigation Header -->
   <header class="preview-control-bar">
-    <div class="preview-brand">
+    <div class="preview-brand" onclick="switchView('home')">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
       <span class="badge badge-success" style="margin-left: 6px;"><span class="live-dot"></span> Online</span>
@@ -849,7 +850,7 @@
         </p>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-secondary btn-sm" onclick="alert('Data refreshed successfully.')" data-i18n="btn_refresh">↻ Refresh</button>
+        <button class="btn btn-secondary btn-sm" onclick="alert('Live data refreshed from HTTP server :3000.')" data-i18n="btn_refresh">↻ Refresh</button>
         <button class="btn btn-danger btn-sm" onclick="openTeardownModal('demo-torn-down')" data-i18n="btn_teardown_sim">⚠ Simulate Teardown</button>
       </div>
     </div>
@@ -869,8 +870,8 @@
         <div class="stat-card-value">8 <span class="stat-card-sub" data-i18n="stat_agents_sub">registered</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label" data-i18n="stat_quota_label">AI Quota Status</div>
-        <div class="stat-card-value" style="color:var(--status-success);" data-i18n="stat_quota_val">Normal <span class="stat-card-sub">KST 12:40</span></div>
+        <div class="stat-card-label" data-i18n="stat_quota_label">Hub Status</div>
+        <div class="stat-card-value" style="color:var(--status-success);">Surface v3 <span class="stat-card-sub">Online</span></div>
       </div>
     </div>
 
@@ -881,8 +882,9 @@
       <button class="tab-nav-btn" onclick="switchAdminTab('audits')" data-i18n="tab_audits">Live Chat Audits</button>
     </div>
 
-    <!-- Tab 1: Key Approvals (Full Fingerprint Compliant) -->
+    <!-- Tab 1: Key Approvals (Exact 50-Character Fingerprint Compliant) -->
     <div id="admin-panel-keys">
+      <!-- Card 1: demo-pending-claude -->
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
@@ -893,16 +895,38 @@
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
-            <strong>sha256:</strong>lgmo1MWOb8SNvmOi-hjwmOlJKFlMX5gE56zAY7RYUWQ
+            <strong>sha256:</strong>pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:lgmo1MWOb8SNvmOi-hjwmOlJKFlMX5gE56zAY7RYUWQ'); alert('50-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw'); alert('50-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint.');" data-i18n="btn_approve">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove(); alert('Revocation dialog opened.');" data-i18n="btn_deny">✕ Revoke / Deny</button>
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint (POST /api/v1/admin/keys/approve).');" data-i18n="btn_approve">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('demo-pending-claude', 'sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw')" data-i18n="btn_deny">✕ Revoke / Deny</button>
         </div>
       </div>
 
+      <!-- Card 2: demo-pending-codex -->
+      <div class="key-verify-card">
+        <div class="key-verify-top">
+          <div>
+            <span class="key-agent-name">demo-pending-codex</span>
+            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
+          </div>
+          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_2">Proposed: 5 min ago</span>
+        </div>
+        <div class="fingerprint-container">
+          <div class="fingerprint-text">
+            <strong>sha256:</strong>bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA'); alert('50-character fingerprint copied.');" data-i18n="btn_copy">📋 Copy</button>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_approve">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="openRevokeModal('demo-pending-codex', 'sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA')" data-i18n="btn_deny">✕ Revoke / Deny</button>
+        </div>
+      </div>
+
+      <!-- Card 3: Compromised Key Showcase -->
       <div class="key-verify-card">
         <div class="key-verify-top">
           <div>
@@ -923,7 +947,7 @@
       </div>
     </div>
 
-    <!-- Tab 2: Inbox Backlog (Leased vs Pending Distinction) -->
+    <!-- Tab 2: Inbox Backlog (3-Tier Metrics & Expiration Countdown) -->
     <div id="admin-panel-inbox" style="display:none;">
       <div class="inbox-card-item">
         <div class="inbox-card-top">
@@ -937,33 +961,37 @@
             <span class="badge badge-success" data-i18n="badge_available_count">3 Available</span>
           </div>
         </div>
-        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px 16px; font-size:0.85rem; color:var(--text-secondary);" data-i18n="inbox_notice">
-          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Readonly connection guarantees zero accidental message leasing by operators.
+        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:14px 16px; font-size:0.85rem; color:var(--text-secondary); line-height:1.6;" data-i18n="inbox_notice">
+          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy.<br>
+          ⚡ <strong>At-Least-Once Lease Window:</strong> In-flight leases naturally expire after <code>receive_lease_seconds</code> (300s) and revert to <em>Available</em> if the worker fails. Readonly inspector guarantees zero accidental lease acquisition by operators.
         </div>
       </div>
     </div>
 
-    <!-- Tab 3: Chat Audits Stream -->
+    <!-- Tab 3: Chat Audits Stream (Truth in Attestation: from vs sent_by) -->
     <div id="admin-panel-audits" style="display:none;">
       <div class="audit-terminal">
         <div class="audit-terminal-header">
-          <span style="font-weight:700; font-size:0.95rem;" data-i18n="audit_header">Live Chat Audits (SSE Feed)</span>
+          <span style="font-weight:700; font-size:0.95rem;" data-i18n="audit_header">Live Chat Audits (audit.db Stream)</span>
           <span class="badge badge-success"><span class="live-dot"></span> LIVE CONNECTED</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:10</span>
           <span class="audit-agent-from">client-claude</span> → <span class="audit-agent-to">platform-claude</span>
           <span class="audit-msg-content">mutation scanner ratio condition applied (#117)</span>
+          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:25</span>
-          <span class="audit-agent-from">platform-claude</span> → <span class="audit-agent-to">client-claude</span>
-          <span class="audit-msg-content">commit hash 766b20d correction and verified (#118)</span>
+          <span class="audit-agent-from">alice_dev <small style="color:var(--text-muted);">(via http-server)</small></span> → <span class="audit-agent-to">demo-receiver</span>
+          <span class="audit-msg-content">manual verification ping dispatched from web console</span>
+          <span class="badge badge-leased" style="font-size:0.7rem;">Operator Proxy</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:50</span>
           <span class="audit-agent-from">platform-claude</span> → <span class="audit-agent-to">platform-fe-antigravity</span>
           <span class="audit-msg-content">isolated test harness deployed and verified (#121)</span>
+          <span class="badge badge-success" style="font-size:0.7rem;">Ed25519 Verified</span>
         </div>
       </div>
     </div>
@@ -978,11 +1006,11 @@
           <span data-i18n="creator_logged_as">Logged in as</span> <strong style="color:var(--primary);">alice_dev (Agent Operator)</strong>
         </p>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="alert('Register agent dialog will open.')" data-i18n="btn_register_agent">+ Register Agent</button>
+      <button class="btn btn-primary btn-sm" onclick="openRegisterModal()" data-i18n="btn_register_agent">+ Register Agent</button>
     </div>
 
     <div class="creator-layout">
-      <!-- Left: My Agents -->
+      <!-- Left: My Registered Agents -->
       <div>
         <div class="card">
           <div class="card-header">
@@ -999,7 +1027,7 @@
               <span class="badge badge-success">Online (WebSocket)</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); margin-bottom:12px;">
-              Key FP: sha256:7bXmK9y8P2w1ZqL...
+              Key FP: sha256:7bXmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4
             </div>
             <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('lane-claude')" data-i18n="btn_test_msg">💬 Test Message</button>
           </div>
@@ -1010,7 +1038,7 @@
               <span class="badge badge-leased">Socketless (Pull)</span>
             </div>
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); margin-bottom:12px;">
-              Key FP: sha256:3vLmK0pQ4w7Xm8P...
+              Key FP: sha256:3vLmK0pQ4w7Xm8P2w1ZqNxB3cR6jFaSdFgHjKlQwErT9
             </div>
             <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('my-helper')" data-i18n="btn_test_msg">💬 Test Message</button>
           </div>
@@ -1034,10 +1062,10 @@
           </div>
           <div class="form-group">
             <label class="form-label" data-i18n="form_payload">Message Payload</label>
-            <textarea class="form-input" id="creatorMsgBody" style="height:110px; resize:vertical;">Hello! Dispatching a test verification payload from Agent Mesh Platform console.</textarea>
+            <textarea class="form-input" id="creatorMsgBody" style="height:110px; resize:vertical;">Hello! Dispatching a test payload from Agent Mesh Operations Console.</textarea>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; color:var(--text-muted);">📎 Blob Attachment Ready</span>
+            <span style="font-size:0.8rem; color:var(--text-muted);">📎 Sender: <strong>alice_dev (via http-server)</strong></span>
             <button class="btn btn-primary" onclick="simulateSend()" data-i18n="btn_send_now">Send Message ✈</button>
           </div>
         </div>
@@ -1045,7 +1073,7 @@
     </div>
   </main>
 
-  <!-- Teardown Irreversible Modal -->
+  <!-- MODAL 1: Permanent Identity Teardown Modal (SPEC § 9.3) -->
   <div class="modal-backdrop" id="teardownModal">
     <div class="modal-box">
       <div class="modal-danger-badge">⚠</div>
@@ -1053,18 +1081,78 @@
       <p class="modal-desc" data-i18n="modal_teardown_desc">
         Are you sure you want to delete identity <strong id="modalTargetIdentity" style="color:var(--text-primary);">demo-torn-down</strong>?<br><br>
         <strong style="color:var(--status-danger);">[SPEC § 9.3 Invariant Rule]</strong><br>
-        Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong>. Recovery is possible only by direct database surgery.
+        Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong> (returns <code>409 IDENTITY_DELETED</code>). Recovery is possible only by direct database surgery.
       </p>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
-        <button class="btn btn-secondary" onclick="closeTeardownModal()" data-i18n="btn_cancel">Cancel</button>
-        <button class="btn btn-danger" onclick="alert('Teardown executed successfully.'); closeTeardownModal();" data-i18n="btn_confirm_teardown">Confirm Permanent Teardown</button>
+        <button class="btn btn-secondary" onclick="closeModal('teardownModal')" data-i18n="btn_cancel">Cancel</button>
+        <button class="btn btn-danger" onclick="alert('DELETE /api/v1/admin/agents/demo-torn-down executed successfully.'); closeModal('teardownModal');" data-i18n="btn_confirm_teardown">Confirm Permanent Teardown</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Revocation Dialog with Reason Presets & Freeform Input -->
+  <div class="modal-backdrop" id="revokeModal">
+    <div class="modal-box">
+      <div class="modal-danger-badge">🔒</div>
+      <h3 class="modal-title" data-i18n="modal_revoke_title">Revoke / Deny Agent Key</h3>
+      <p class="modal-desc" data-i18n="modal_revoke_desc">
+        Revoking key for <strong id="revokeTargetAgent" style="color:var(--text-primary);">demo-pending-claude</strong>.
+        Please specify a revocation reason for immutable audit tracking.
+      </p>
+      <div class="form-group">
+        <label class="form-label" data-i18n="label_reason_preset">Reason Preset</label>
+        <select class="form-input" id="revokePreset" onchange="document.getElementById('revokeCustomReason').value = this.value">
+          <option value="rotation">Key Rotation (Scheduled)</option>
+          <option value="compromise">Key Compromise (Leaked / Compromised)</option>
+          <option value="expired">Key Expired</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" data-i18n="label_custom_reason">Reason Details (Required on Revocation)</label>
+        <input type="text" class="form-input" id="revokeCustomReason" value="rotation">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary" onclick="closeModal('revokeModal')" data-i18n="btn_cancel">Cancel</button>
+        <button class="btn btn-danger" onclick="executeRevoke()" data-i18n="btn_confirm_revoke">Confirm Revocation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Agent Provisioning Modal with 409 Conflict Simulation -->
+  <div class="modal-backdrop" id="registerModal">
+    <div class="modal-box">
+      <h3 class="modal-title" data-i18n="modal_register_title">Register New Agent</h3>
+      <p class="modal-desc" data-i18n="modal_register_desc">
+        Provision a new autonomous agent identity and propose its initial Ed25519 public key.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Identity Name</label>
+        <input type="text" class="form-input" id="regIdentity" placeholder="e.g. my-autonomous-agent">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Agent Type</label>
+        <select class="form-input" id="regType">
+          <option value="ai-claude">ai-claude (Requires Key)</option>
+          <option value="runtime">runtime (Requires Key)</option>
+          <option value="human">human (OAuth Only)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ed25519 Public Key (Base64URL)</label>
+        <input type="text" class="form-input" id="regPubKey" placeholder="e.g. 91cBIH2C3ZhcSRUiHzaYXtoUMFN-Mm3Qy2b1WhZJaf0">
+      </div>
+      <div id="regErrorAlert" style="display:none; padding:10px 14px; border-radius:var(--radius-md); background:var(--status-danger-bg); border:1px solid var(--status-danger-br); color:var(--status-danger); font-size:0.85rem; margin-bottom:16px;">
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary" onclick="closeModal('registerModal')" data-i18n="btn_cancel">Cancel</button>
+        <button class="btn btn-primary" onclick="simulateRegisterAgent()" data-i18n="btn_submit_agent">Submit Agent Proposal</button>
       </div>
     </div>
   </div>
 
   <script>
     // =========================================================================
-    // I18N TRANSLATION DICTIONARY
+    // I18N TRANSLATION DICTIONARY (English & Korean)
     // =========================================================================
     const I18N = {
       en: {
@@ -1100,8 +1188,7 @@
         stat_backlog_sub: "(2 leased)",
         stat_agents_label: "Active Agents",
         stat_agents_sub: "registered",
-        stat_quota_label: "AI Quota Status",
-        stat_quota_val: "Normal",
+        stat_quota_label: "Hub Status",
         tab_keys: "Key Approvals (3)",
         tab_inbox: "Inbox Backlog (5)",
         tab_audits: "Live Chat Audits",
@@ -1110,12 +1197,13 @@
         key_prop_2: "Proposed: 5 min ago",
         btn_copy: "📋 Copy",
         btn_approve: "✓ Approve Key",
-        btn_deny: "✕ Deny",
+        btn_deny: "✕ Revoke / Deny",
         inbox_desc: "Socketless agent pull queue status",
-        badge_leased_count: "2 Leased (In Flight) ⚡",
-        badge_pending_count: "3 Pending",
-        inbox_notice: "ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Full text is accessible only under audited chat inspections.",
-        audit_header: "Live Chat Audits (SSE Feed)",
+        badge_total_depth: "Total Depth: 5",
+        badge_leased_count: "2 Leased ⚡",
+        badge_available_count: "3 Available",
+        inbox_notice: "ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy.<br>⚡ <strong>At-Least-Once Lease Window:</strong> In-flight leases naturally expire after <code>receive_lease_seconds</code> (300s) and revert to <em>Available</em> if the worker fails. Readonly inspector guarantees zero accidental lease acquisition by operators.",
+        audit_header: "Live Chat Audits (audit.db Stream)",
         creator_title: "Agent Operations Console",
         creator_logged_as: "Logged in as",
         btn_register_agent: "+ Register Agent",
@@ -1129,7 +1217,15 @@
         form_payload: "Message Payload",
         btn_send_now: "Send Message ✈",
         modal_teardown_title: "Permanent Identity Teardown",
-        modal_teardown_desc: "Are you sure you want to delete identity <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>?<br><br><strong style='color:var(--status-danger);'>[Security Invariant Rule]</strong><br>Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong>. Recovery is possible only by direct database surgery.",
+        modal_teardown_desc: "Are you sure you want to delete identity <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>?<br><br><strong style='color:var(--status-danger);'>[SPEC § 9.3 Invariant Rule]</strong><br>Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong> (returns <code>409 IDENTITY_DELETED</code>). Recovery is possible only by direct database surgery.",
+        modal_revoke_title: "Revoke / Deny Agent Key",
+        modal_revoke_desc: "Revoking key for <strong id='revokeTargetAgent' style='color:var(--text-primary);'>demo-pending-claude</strong>. Please specify a revocation reason for immutable audit tracking.",
+        label_reason_preset: "Reason Preset",
+        label_custom_reason: "Reason Details (Required on Revocation)",
+        btn_confirm_revoke: "Confirm Revocation",
+        modal_register_title: "Register New Agent",
+        modal_register_desc: "Provision a new autonomous agent identity and propose its initial Ed25519 public key.",
+        btn_submit_agent: "Submit Agent Proposal",
         btn_cancel: "Cancel",
         btn_confirm_teardown: "Confirm Permanent Teardown"
       },
@@ -1166,8 +1262,7 @@
         stat_backlog_sub: "(2건 임대 중)",
         stat_agents_label: "등록된 에이전트",
         stat_agents_sub: "개",
-        stat_quota_label: "AI 쿼터 상태",
-        stat_quota_val: "정상 (Normal)",
+        stat_quota_label: "허브 상태",
         tab_keys: "키 승인 대기열 (3)",
         tab_inbox: "인박스 적체 감시 (5)",
         tab_audits: "실시간 메시지 감사",
@@ -1176,12 +1271,13 @@
         key_prop_2: "제안 시각: 5분 전",
         btn_copy: "📋 복사",
         btn_approve: "✓ 키 승인 (Approve)",
-        btn_deny: "✕ 거부 (Deny)",
+        btn_deny: "✕ 취소 / 거부 (Revoke)",
         inbox_desc: "소켓리스 에이전트 풀 큐 적체 현황",
+        badge_total_depth: "전체 대기열: 5",
         badge_leased_count: "2건 Leased (임대 중) ⚡",
-        badge_pending_count: "3건 대기 (Pending)",
-        inbox_notice: "ℹ <strong>접근 권한 분리 원칙:</strong> 메시지 본문은 인박스 큐 조회에서 노출되지 않으며, 감사 로그(Chat Audits)를 통해서만 인가된 열람이 가능합니다.",
-        audit_header: "실시간 메시지 감사 스트림 (SSE Feed)",
+        badge_available_count: "3건 즉시 수신 가능",
+        inbox_notice: "ℹ <strong>접근 권한 분리 원칙:</strong> 메시지 본문은 인박스 큐 조회에서 노출되지 않습니다.<br>⚡ <strong>At-Least-Once 임대 시효:</strong> 임대 처리 중인 메시지는 <code>receive_lease_seconds</code>(300초) 후 에이전트 미처리 시 자동으로 <em>Available</em>로 복귀합니다. Readonly 조회를 통해 운영자에 의한 메시지 임대 가로채기를 원천 차단합니다.",
+        audit_header: "실시간 메시지 감사 스트림 (audit.db)",
         creator_title: "에이전트 운영 콘솔 (Agent Operations)",
         creator_logged_as: "현재 운영자:",
         btn_register_agent: "+ 에이전트 등록",
@@ -1195,7 +1291,15 @@
         form_payload: "메시지 페이로드",
         btn_send_now: "메시지 전송 ✈",
         modal_teardown_title: "영구 신원 Teardown 확인",
-        modal_teardown_desc: "신원 <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>을(를) 삭제하시겠습니까?<br><br><strong style='color:var(--status-danger);'>[보안 불변 규정]</strong><br>삭제된 신원은 영구 비활성화(소프트 삭제)되며, 동일한 이름으로의 <strong>재등록이 영구히 금지</strong>됩니다. 복구는 오직 데이터베이스 수동 조작으로만 가능합니다.",
+        modal_teardown_desc: "신원 <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>을(를) 삭제하시겠습니까?<br><br><strong style='color:var(--status-danger);'>[SPEC § 9.3 보안 불변 규정]</strong><br>삭제된 신원은 영구 비활성화(소프트 삭제)되며, 동일한 이름으로의 <strong>재등록이 영구히 금지</strong>(409 IDENTITY_DELETED)됩니다. 복구는 오직 데이터베이스 수동 조작으로만 가능합니다.",
+        modal_revoke_title: "키 거부 / 취소 (Revoke)",
+        modal_revoke_desc: "<strong id='revokeTargetAgent' style='color:var(--text-primary);'>demo-pending-claude</strong>의 키를 취소합니다. 불변 감사 기록을 위해 취소 사유를 입력하십시오.",
+        label_reason_preset: "사유 프리셋 선택",
+        label_custom_reason: "상세 사유 (취소 시 필수 입력)",
+        btn_confirm_revoke: "키 취소 확정",
+        modal_register_title: "신규 에이전트 등록",
+        modal_register_desc: "자율 에이전트 신원을 등록하고 최초 Ed25519 공개키를 제안합니다.",
+        btn_submit_agent: "에이전트 등록 제출",
         btn_cancel: "취소",
         btn_confirm_teardown: "영구 삭제 실행"
       }
@@ -1235,11 +1339,11 @@
       } else if (view === 'admin') {
         document.querySelector('.preview-btn:nth-child(2)').classList.add('active');
         document.getElementById('view-admin').classList.add('active');
-        if (bgLayer) bgLayer.classList.add('hidden'); // Geometric background ONLY on landing
+        if (bgLayer) bgLayer.classList.add('hidden');
       } else if (view === 'creator') {
         document.querySelector('.preview-btn:nth-child(3)').classList.add('active');
         document.getElementById('view-creator').classList.add('active');
-        if (bgLayer) bgLayer.classList.add('hidden'); // Geometric background ONLY on landing
+        if (bgLayer) bgLayer.classList.add('hidden');
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1267,15 +1371,67 @@
       badge.style.display = 'inline-flex';
       setTimeout(() => { badge.style.display = 'none'; }, 3500);
 
-      alert(currentLang === 'ko' ? `[Hub] '${to}'에게 메시지가 배달되었습니다.` : `[Hub] Message delivered successfully to '${to}'.`);
+      alert(currentLang === 'ko' ? `[Hub] '${to}'에게 메시지가 배달되었습니다. (발신: alice_dev via http-server)` : `[Hub] Message delivered successfully to '${to}' (from: alice_dev via http-server).`);
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
     }
 
     function openTeardownModal(target) {
       document.getElementById('modalTargetIdentity').innerText = target;
-      document.getElementById('teardownModal').classList.add('active');
+      openModal('teardownModal');
     }
-    function closeTeardownModal() {
-      document.getElementById('teardownModal').classList.remove('active');
+
+    let activeRevokeFp = '';
+    function openRevokeModal(agent, fp) {
+      document.getElementById('revokeTargetAgent').innerText = agent;
+      activeRevokeFp = fp;
+      openModal('revokeModal');
+    }
+
+    function executeRevoke() {
+      const reason = document.getElementById('revokeCustomReason').value;
+      if (!reason.trim()) {
+        alert(currentLang === 'ko' ? '취소 사유를 반드시 입력해야 합니다.' : 'Revocation reason is required.');
+        return;
+      }
+      closeModal('revokeModal');
+      alert(currentLang === 'ko' ? `POST /api/v1/admin/keys/revoke 성공\n사유: ${reason}` : `POST /api/v1/admin/keys/revoke succeeded\nReason: ${reason}`);
+    }
+
+    function openRegisterModal() {
+      document.getElementById('regErrorAlert').style.display = 'none';
+      openModal('registerModal');
+    }
+
+    function simulateRegisterAgent() {
+      const id = document.getElementById('regIdentity').value.trim();
+      const key = document.getElementById('regPubKey').value.trim();
+      const errBox = document.getElementById('regErrorAlert');
+
+      if (!id) {
+        errBox.innerText = currentLang === 'ko' ? '신원명을 입력하세요.' : 'Identity name is required.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      // Test 409 Key Held Simulation
+      if (key && key.includes('91cBIH2C')) {
+        errBox.innerHTML = currentLang === 'ko' 
+          ? '<strong>409 KEY_HELD_BY_ANOTHER_IDENTITY</strong><br>이 공개키는 이미 다른 신원에 등록되어 있습니다. 에이전트의 키를 확인하십시오.' 
+          : '<strong>409 KEY_HELD_BY_ANOTHER_IDENTITY</strong><br>This public key is already held by another identity. Please check your key.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      closeModal('registerModal');
+      alert(currentLang === 'ko' 
+        ? `[Hub] POST /api/v1/agents 성공\n신원: ${id}\nGET /api/v1/agents/${id}/keys 교차 검증 완료.` 
+        : `[Hub] POST /api/v1/agents succeeded for '${id}'.\nVerified via GET /api/v1/agents/${id}/keys.`);
     }
 
     // =========================================================================
