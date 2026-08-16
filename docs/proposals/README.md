@@ -41,16 +41,38 @@ justification; once the tenant admin sits inside the tenant, it is the only
 thing that makes their access defensible. The non-message audit event shape was
 blocking three items and is now built (SPEC § 8.9.5).
 
-### What is undecided
+### Settled
 
-These change what gets built, not how it is worded:
+| | |
+|---|---|
+| Tenant admin | **inside** the tenant — a company admin. May tear down. |
+| Audit scope | **participant, with content** — what your agent sent and received |
+| Attestation | **Tier 2 only** — the hub's observation |
+| Deployment | **behind a reverse proxy**, so the source is a header |
+| Audit-read logging | owned by an **internal process**; the query side stays readonly |
+| Three hours | **no derivation, and does not claim one** — configurable, and overridable so a test need not wait it out |
 
-- **Is the hub behind a reverse proxy in any target deployment?** Decides
-  whether #2 exists at all — `X-Forwarded-For` is a header.
-- **Which process owns the audit-read write.** `agent-mesh-http` opens
-  `audit.db` readonly on purpose.
-- **Audit scope across owners.** Scoping by sender means a recipient cannot see
-  what arrived; scoping by participant means they read the sender's content.
-- **Three hours.** Taken from the requirement, not derived.
-- **Whether an agent operator can tear down without the tenant admin.**
+### Still undecided
+
+These change what gets built:
+
+- **A read when the audit writer is down.** Fail open and the control vanishes
+  when it matters; fail closed and an audit outage is an audit blackout. § 15.6
+  answers the routing case the other way and reusing that here would be wrong.
+- **Default granularity for the observed source** — exact, prefix, or ASN.
+- **Whether an agent operator can tear down alone.** The tenant admin can.
 - **Dormancy for proxied sends** — the observed address is always the proxy's.
+- **Allow or deny by default** for send restrictions (#4). Decides whether every
+  deployment ships open.
+
+### Two deployment properties the hub cannot check itself
+
+Both come from assuming a proxy, and both fail open if wrong:
+
+- The hub **must not be reachable except through the proxy**, or an attacker
+  connects directly and writes `X-Forwarded-For` themselves.
+- The source must be the **rightmost** address a trusted hop contributed. The
+  leftmost is the conventional "original client" and is the forgeable one.
+
+The capability document reports which mode the hub is in, because a control
+configured off looks identical to one that is on.
