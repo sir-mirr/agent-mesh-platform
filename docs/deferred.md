@@ -248,3 +248,32 @@ need a non-message event shape, which `recordMeshEvent` is not, plus a SPEC
 section defining it. Recorded here rather than fixed quietly because the claim
 was already stated to `platform-fe-antigravity` (mail #139) and written into
 their operator specification as a guarantee — retracted in #145.
+
+### A public key can still be tested against the mesh
+
+`POST /api/v1/agents` now refuses a key held by another identity, which closes
+the worse problem — but the refusal itself answers a question. Submit any public
+key with a throwaway name and a `409 KEY_HELD_BY_ANOTHER_IDENTITY` says the mesh
+knows that key. No credential is needed to ask.
+
+What it does **not** say is whose it is, or what an operator ruled on it, and
+both of those were leaking before the fix.
+
+The direction is what makes it worth recording. `mesh.list_agents` carries no
+key material at all — `{id, description, online, last_seen, type}` — and
+`GET /api/v1/agents/{identity}/keys` answers only for a name the caller already
+knew. Fingerprint-to-anything was closed until this refusal, so this is a small
+opening rather than a restatement of an existing one. `client-claude` read it as
+the latter (mail #150), and the correction is in #151.
+
+**Why deferred.** The route has to answer something, and the alternative is what
+was just fixed: accepting silently and leaving a `requires_key` identity with no
+key. The premise for an attacker is holding a public key already, which § 10.2
+expects lanes to log at startup, so the value of the answer is low.
+
+**The general question is the one to keep.** `key_matches` was proposed and
+withdrawn earlier the same day because it would build a fingerprint-to-identity
+lookup — and while that was being refused, provisioning was already answering a
+weaker form of it. Refusing a new surface does not audit the existing ones.
+Before opening any unauthenticated route, ask what already answers that question
+rather than only whether this one should.
