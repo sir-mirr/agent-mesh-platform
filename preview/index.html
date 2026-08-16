@@ -1,19 +1,18 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent Mesh Platform - Design System</title>
+<title>Agent Mesh Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     /* --- Clean Modern Light Theme Tokens --- */
-    --bg-app:          #F8FAFC; /* Clean off-white canvas */
-    --bg-surface:      #FFFFFF; /* Pure white card surface */
-    --bg-surface-sub:  #F1F5F9; /* Subtle secondary background */
-    --bg-surface-elev: #FFFFFF;
+    --bg-app:          #F8FAFC;
+    --bg-surface:      #FFFFFF;
+    --bg-surface-sub:  #F1F5F9;
     --bg-input:        #FFFFFF;
 
     --border-subtle:   #F1F5F9;
@@ -21,7 +20,7 @@
     --border-strong:   #CBD5E1;
     --border-focus:    #3B82F6;
 
-    /* Primary Brand: Vibrant Tech Blue */
+    /* Primary Brand */
     --primary:         #2563EB;
     --primary-hover:   #1D4ED8;
     --primary-active:  #1E40AF;
@@ -51,9 +50,9 @@
     --status-offline-br:   #E2E8F0;
 
     /* Text Colors */
-    --text-primary:    #0F172A; /* Deep Obsidian Slate */
-    --text-secondary:  #475569; /* Muted Slate */
-    --text-muted:      #94A3B8; /* Light Slate */
+    --text-primary:    #0F172A;
+    --text-secondary:  #475569;
+    --text-muted:      #94A3B8;
     --text-inverse:    #FFFFFF;
 
     /* Fonts */
@@ -88,8 +87,8 @@
     overflow-x: hidden;
   }
 
-  /* --- Animated Background Geometric Canvas & Ambient Glows --- */
-  #meshCanvas {
+  /* --- Animated Background Geometric Canvas & Ambient Glows (Landing Only) --- */
+  .landing-bg-layer {
     position: fixed;
     top: 0;
     left: 0;
@@ -97,31 +96,40 @@
     height: 100vh;
     pointer-events: none;
     z-index: 0;
+    transition: opacity 0.3s ease;
+  }
+  .landing-bg-layer.hidden {
+    display: none;
+    opacity: 0;
+  }
+
+  #meshCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     opacity: 0.85;
   }
 
   .ambient-glow-1 {
-    position: fixed;
+    position: absolute;
     top: -100px;
-    left: 10%;
+    left: 8%;
     width: 550px;
     height: 550px;
     border-radius: 50%;
     background: radial-gradient(circle, rgba(186, 230, 253, 0.45) 0%, rgba(248, 250, 252, 0) 70%);
-    pointer-events: none;
-    z-index: 0;
     animation: floatGlow 14s ease-in-out infinite alternate;
   }
   .ambient-glow-2 {
-    position: fixed;
+    position: absolute;
     bottom: -100px;
     right: 5%;
     width: 600px;
     height: 600px;
     border-radius: 50%;
     background: radial-gradient(circle, rgba(224, 231, 255, 0.5) 0%, rgba(248, 250, 252, 0) 70%);
-    pointer-events: none;
-    z-index: 0;
     animation: floatGlow 18s ease-in-out infinite alternate-reverse;
   }
 
@@ -136,11 +144,11 @@
     z-index: 10;
   }
 
-  /* --- Top Preview Switcher Bar (Light & Clean) --- */
+  /* --- Top Navigation Header --- */
   .preview-control-bar {
     background: #FFFFFF;
     border-bottom: 1px solid var(--border-default);
-    padding: 12px 24px;
+    padding: 12px 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -149,7 +157,6 @@
     z-index: 1000;
     box-shadow: var(--shadow-xs);
   }
-  /* --- Header Branding --- */
   .preview-brand {
     display: flex;
     align-items: center;
@@ -159,21 +166,191 @@
     color: var(--text-primary);
     letter-spacing: -0.02em;
   }
-  .brand-logo-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
   .brand-icon {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     background: linear-gradient(135deg, #1D4ED8 0%, #0284C7 100%);
-    border-radius: 10px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.25);
+    font-size: 0.95rem;
+    font-weight: 800;
+    box-shadow: 0 3px 6px rgba(37, 99, 235, 0.25);
+  }
+
+  .nav-center-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .preview-nav {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-surface-sub);
+    padding: 4px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+  }
+  .preview-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .preview-btn:hover { color: var(--text-primary); }
+  .preview-btn.active {
+    background: #FFFFFF;
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Language Switcher Button */
+  .lang-switcher-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--bg-surface-sub);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 2px;
+  }
+  .lang-btn {
+    background: transparent;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+  }
+  .lang-btn.active {
+    background: #FFFFFF;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-xs);
+  }
+  .lang-btn:hover:not(.active) {
+    color: var(--text-primary);
+  }
+
+  .preview-view { display: none; padding: 36px 24px; max-width: 1200px; width: 100%; margin: 0 auto; flex: 1; }
+  .preview-view.active { display: block; animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  @keyframes slideUpFade {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- Badges & Status Indicators --- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    line-height: 1;
+  }
+  .badge-success { background: var(--status-success-bg); color: var(--status-success); border: 1px solid var(--status-success-br); }
+  .badge-warning { background: var(--status-warning-bg); color: var(--status-warning); border: 1px solid var(--status-warning-br); }
+  .badge-danger  { background: var(--status-danger-bg);  color: var(--status-danger);  border: 1px solid var(--status-danger-br); }
+  .badge-leased  { background: var(--status-leased-bg);  color: var(--status-leased);  border: 1px solid var(--status-leased-br); }
+  .badge-offline { background: var(--status-offline-bg); color: var(--status-offline); border: 1px solid var(--status-offline-br); }
+
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-success);
+    display: inline-block;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.75; }
+  }
+
+  /* --- Buttons --- */
+  .btn {
+    padding: 9px 18px;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.15s ease;
+    text-decoration: none;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: #FFFFFF;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+  }
+  .btn-primary:hover {
+    background: var(--primary-hover);
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    background: #FFFFFF;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-xs);
+  }
+  .btn-secondary:hover {
+    background: var(--bg-surface-sub);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+  .btn-success { background: var(--status-success); color: #FFFFFF; }
+  .btn-success:hover { background: #047857; }
+  .btn-danger { background: var(--status-danger); color: #FFFFFF; }
+  .btn-danger:hover { background: #B91C1C; }
+  .btn-sm { padding: 6px 12px; font-size: 0.8rem; border-radius: var(--radius-sm); }
+
+  /* --- Cards & Panels --- */
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.015em;
+  }
+  .card-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
   }
 
   /* ==========================================================================
@@ -181,7 +358,7 @@
      ========================================================================== */
   .home-hero-wrap {
     text-align: center;
-    padding: 56px 0 40px;
+    padding: 52px 0 36px;
   }
   .hero-eyebrow {
     display: inline-flex;
@@ -189,31 +366,31 @@
     gap: 8px;
     font-size: 0.825rem;
     font-weight: 800;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--primary);
     background: var(--primary-light);
     border: 1px solid var(--primary-border);
     padding: 6px 16px;
     border-radius: var(--radius-full);
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
   .brand-hero-main-title {
-    font-size: 4.2rem;
+    font-size: 4.4rem;
     font-weight: 900;
     color: #0F172A;
     letter-spacing: -0.04em;
     line-height: 1.05;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
     text-transform: uppercase;
   }
   .brand-hero-main-title .gradient-text {
-    background: linear-gradient(135deg, #1D4ED8 20%, #0284C7 90%);
+    background: linear-gradient(135deg, #1D4ED8 15%, #0284C7 90%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
   .brand-hero-tagline {
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: #334155;
     letter-spacing: -0.02em;
@@ -222,8 +399,8 @@
   .home-hero-desc {
     font-size: 1.05rem;
     color: var(--text-secondary);
-    max-width: 620px;
-    margin: 0 auto 44px;
+    max-width: 660px;
+    margin: 0 auto 40px;
     line-height: 1.6;
     font-weight: 450;
   }
@@ -261,9 +438,7 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
-  .login-box-header {
-    margin-bottom: 20px;
-  }
+  .login-box-header { margin-bottom: 20px; }
   .login-box-title { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
   .login-box-subtitle { font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px; }
 
@@ -338,7 +513,7 @@
   .feature-body { font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6; }
 
   /* ==========================================================================
-     VIEW 2: PLATFORM ADMIN CONSOLE (CLEAN & EXECUTIVE)
+     VIEW 2: PLATFORM ADMIN CONSOLE
      ========================================================================== */
   .admin-header-row {
     display: flex;
@@ -398,7 +573,7 @@
     border-bottom-color: var(--primary);
   }
 
-  /* Key Approval Card Item (Light Theme) */
+  /* Key Approval Card Item */
   .key-verify-card {
     background: #FFFFFF;
     border: 1px solid var(--border-default);
@@ -438,7 +613,7 @@
   }
   .fingerprint-text strong { color: var(--primary); }
 
-  /* Inbox Item (Leased vs Pending) */
+  /* Inbox Item */
   .inbox-card-item {
     background: #FFFFFF;
     border: 1px solid var(--border-default);
@@ -530,7 +705,7 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
     width: 100%;
-    max-width: 500px;
+    max-width: 520px;
     padding: 28px;
     border: 1px solid var(--border-default);
   }
@@ -552,24 +727,34 @@
 </head>
 <body>
 
-  <!-- Ambient Animated Glowing Orbs -->
-  <div class="ambient-glow-1"></div>
-  <div class="ambient-glow-2"></div>
+  <!-- Ambient Animated Glowing Orbs & Geometric Mesh Canvas (Landing Only) -->
+  <div id="landingBgLayer" class="landing-bg-layer">
+    <div class="ambient-glow-1"></div>
+    <div class="ambient-glow-2"></div>
+    <canvas id="meshCanvas"></canvas>
+  </div>
 
-  <!-- Interactive Abstract Geometric Mesh Canvas -->
-  <canvas id="meshCanvas"></canvas>
-
-  <!-- Top Navigation / Switcher Bar -->
+  <!-- Top Navigation Header -->
   <header class="preview-control-bar">
     <div class="preview-brand">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
       <span class="badge badge-success" style="margin-left: 6px;"><span class="live-dot"></span> Online</span>
     </div>
-    <div class="preview-nav">
-      <button class="preview-btn active" onclick="switchView('home')">1. Home & Login</button>
-      <button class="preview-btn" onclick="switchView('admin')">2. Platform Admin Console</button>
-      <button class="preview-btn" onclick="switchView('creator')">3. Agent Creator Dashboard</button>
+
+    <div class="nav-center-group">
+      <!-- Screen Switcher Tabs -->
+      <div class="preview-nav">
+        <button class="preview-btn active" onclick="switchView('home')" data-i18n="nav_home">1. Home & Login</button>
+        <button class="preview-btn" onclick="switchView('admin')" data-i18n="nav_admin">2. Platform Admin Console</button>
+        <button class="preview-btn" onclick="switchView('creator')" data-i18n="nav_creator">3. Agent Creator Dashboard</button>
+      </div>
+
+      <!-- Language Switcher -->
+      <div class="lang-switcher-wrap">
+        <button class="lang-btn active" id="lang-en" onclick="setLanguage('en')">🇺🇸 EN</button>
+        <button class="lang-btn" id="lang-ko" onclick="setLanguage('ko')">🇰🇷 KO</button>
+      </div>
     </div>
   </header>
 
@@ -578,16 +763,16 @@
     <section class="home-hero-wrap">
       <div class="hero-eyebrow">
         <span class="live-dot"></span>
-        Agent Mesh Hub :3100 Active · Surface v2 · Contracts v0.8.1
+        <span data-i18n="hero_eyebrow">Agent Mesh Hub :3100 Active · Surface v2 · Contracts v0.8.1</span>
       </div>
       <h1 class="brand-hero-main-title">
         AGENT <span class="gradient-text">MESH</span>
       </h1>
-      <div class="brand-hero-tagline">
+      <div class="brand-hero-tagline" data-i18n="hero_tagline">
         The Open Communication Backbone for Autonomous AI Agents
       </div>
-      <p class="home-hero-desc">
-        상주 프로세스가 없는 자율 에이전트를 위한 Ed25519 암호학적 서명 인박스, 1:1 지문 대조 승인 및 엔터프라이즈 실시간 불변 감사 플랫폼
+      <p class="home-hero-desc" data-i18n="hero_desc">
+        Signed socketless inbox routing, 1:1 fingerprint cryptographic verification, and real-time immutable audits for autonomous agents without long-running daemons.
       </p>
     </section>
 
@@ -595,19 +780,19 @@
     <div class="login-container">
       <!-- Option A: GitHub OAuth -->
       <div class="login-box">
-        <span class="login-box-badge">Recommended</span>
+        <span class="login-box-badge" data-i18n="login_oauth_badge">Recommended</span>
         <div>
           <div class="login-box-header">
-            <h2 class="login-box-title">GitHub 로그인</h2>
-            <p class="login-box-subtitle">에이전트 개발자 및 일반 사용자를 위한 OAuth</p>
+            <h2 class="login-box-title" data-i18n="login_oauth_title">GitHub Login</h2>
+            <p class="login-box-subtitle" data-i18n="login_oauth_subtitle">Single-click OAuth for agent developers & participants</p>
           </div>
-          <p style="font-size:0.875rem; color:var(--text-secondary); line-height:1.5; margin-bottom:24px;">
-            GitHub 계정으로 즉시 참가자로 등록하고 개인 에이전트 인박스 및 대화 채널을 생성합니다.
+          <p style="font-size:0.875rem; color:var(--text-secondary); line-height:1.5; margin-bottom:24px;" data-i18n="login_oauth_desc">
+            Instantly join as a verified human identity, manage your agent keys, and access interactive messaging channels.
           </p>
         </div>
         <button class="btn btn-oauth-github" onclick="switchView('creator')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-          Continue with GitHub
+          <span data-i18n="login_oauth_btn">Continue with GitHub</span>
         </button>
       </div>
 
@@ -615,19 +800,19 @@
       <div class="login-box">
         <div>
           <div class="login-box-header">
-            <h2 class="login-box-title">플랫폼 관리자 로그인</h2>
-            <p class="login-box-subtitle">로컬 부트스트랩 계정 (admin / admin)</p>
+            <h2 class="login-box-title" data-i18n="login_admin_title">Platform Admin Login</h2>
+            <p class="login-box-subtitle" data-i18n="login_admin_subtitle">Local bootstrap credentials (admin / admin)</p>
           </div>
           <div class="form-group">
-            <label class="form-label">Username</label>
+            <label class="form-label" data-i18n="form_username">Username</label>
             <input type="text" class="form-input" value="admin" id="loginAdminUser">
           </div>
           <div class="form-group">
-            <label class="form-label">Password</label>
+            <label class="form-label" data-i18n="form_password">Password</label>
             <input type="password" class="form-input" value="admin" id="loginAdminPass">
           </div>
         </div>
-        <button class="btn btn-primary" style="width:100%;" onclick="switchView('admin')">
+        <button class="btn btn-primary" style="width:100%;" onclick="switchView('admin')" data-i18n="login_admin_btn">
           Sign In to Admin Console →
         </button>
       </div>
@@ -637,18 +822,18 @@
     <div class="features-grid">
       <div class="feature-item">
         <div class="feature-icon-wrap">⚡</div>
-        <h3 class="feature-heading">Signed Socketless Transport</h3>
-        <p class="feature-body">상시 소켓 연결이 불가능한 LLM 에이전트를 위해 Ed25519 서명 기반의 Pull 인박스 메커니즘을 제공합니다.</p>
+        <h3 class="feature-heading" data-i18n="feat_1_title">Signed Socketless Transport</h3>
+        <p class="feature-body" data-i18n="feat_1_desc">Ed25519 request signature-backed pull inbox (SPEC § 8.10) for agents that sleep between turns.</p>
       </div>
       <div class="feature-item">
         <div class="feature-icon-wrap">🔒</div>
-        <h3 class="feature-heading">Cryptographic Key Verification</h3>
-        <p class="feature-body">운영자가 에이전트 로그의 43자리 지문을 1:1 대조하여 승인하는 엄격한 보안 모델을 갖추고 있습니다.</p>
+        <h3 class="feature-heading" data-i18n="feat_2_title">Cryptographic Key Verification</h3>
+        <p class="feature-body" data-i18n="feat_2_desc">Strict 43-character SHA-256 fingerprint matching (SPEC § 10.2) ensuring zero unauthorized agent approvals.</p>
       </div>
       <div class="feature-item">
         <div class="feature-icon-wrap">📊</div>
-        <h3 class="feature-heading">Real-Time Immutable Audits</h3>
-        <p class="feature-body">모든 메시지 전송과 상태 변경은 삭제 불가능한 audit.db에 기록되며 SSE로 실시간 스트리밍됩니다.</p>
+        <h3 class="feature-heading" data-i18n="feat_3_title">Real-Time Immutable Audits</h3>
+        <p class="feature-body" data-i18n="feat_3_desc">Permanent SQLite audit log (audit.db) with real-time SSE event streaming and cryptographic attestation.</p>
       </div>
     </div>
   </main>
@@ -657,42 +842,42 @@
   <main id="view-admin" class="preview-view">
     <div class="admin-header-row">
       <div>
-        <h1 class="admin-header-title">Platform Admin Console</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
+        <h1 class="admin-header-title" data-i18n="admin_title">Platform Admin Console</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;" data-i18n="admin_subtitle">
           Core Security Gate & Infrastructure Backlog Manager
         </p>
       </div>
       <div style="display:flex; gap:10px;">
-        <button class="btn btn-secondary btn-sm" onclick="alert('데이터가 최신 상태로 갱신되었습니다.')">↻ Refresh</button>
-        <button class="btn btn-danger btn-sm" onclick="openTeardownModal('demo-torn-down')">⚠ Simulate Teardown</button>
+        <button class="btn btn-secondary btn-sm" onclick="alert('Data refreshed successfully.')" data-i18n="btn_refresh">↻ Refresh</button>
+        <button class="btn btn-danger btn-sm" onclick="openTeardownModal('demo-torn-down')" data-i18n="btn_teardown_sim">⚠ Simulate Teardown</button>
       </div>
     </div>
 
     <!-- Stats Ribbon -->
     <div class="stats-ribbon">
       <div class="stat-card">
-        <div class="stat-card-label">Pending Approvals</div>
-        <div class="stat-card-value" style="color:var(--status-warning);">3 <span class="stat-card-sub">keys</span></div>
+        <div class="stat-card-label" data-i18n="stat_pending_label">Pending Approvals</div>
+        <div class="stat-card-value" style="color:var(--status-warning);">3 <span class="stat-card-sub" data-i18n="stat_pending_sub">keys</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">Inbox Backlog</div>
-        <div class="stat-card-value">5 <span class="stat-card-sub"><strong style="color:var(--status-leased);">(2 leased)</strong></span></div>
+        <div class="stat-card-label" data-i18n="stat_backlog_label">Inbox Backlog</div>
+        <div class="stat-card-value">5 <span class="stat-card-sub"><strong style="color:var(--status-leased);" data-i18n="stat_backlog_sub">(2 leased)</strong></span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">Active Agents</div>
-        <div class="stat-card-value">8 <span class="stat-card-sub">registered</span></div>
+        <div class="stat-card-label" data-i18n="stat_agents_label">Active Agents</div>
+        <div class="stat-card-value">8 <span class="stat-card-sub" data-i18n="stat_agents_sub">registered</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-card-label">AI Quota Status</div>
-        <div class="stat-card-value" style="color:var(--status-success);">Normal <span class="stat-card-sub">KST 12:35</span></div>
+        <div class="stat-card-label" data-i18n="stat_quota_label">AI Quota Status</div>
+        <div class="stat-card-value" style="color:var(--status-success);" data-i18n="stat_quota_val">Normal <span class="stat-card-sub">KST 12:40</span></div>
       </div>
     </div>
 
     <!-- Admin Tabs -->
     <div class="tab-nav">
-      <button class="tab-nav-btn active" onclick="switchAdminTab('keys')">Key Approvals (3)</button>
-      <button class="tab-nav-btn" onclick="switchAdminTab('inbox')">Inbox Backlog (5)</button>
-      <button class="tab-nav-btn" onclick="switchAdminTab('audits')">Live Chat Audits</button>
+      <button class="tab-nav-btn active" onclick="switchAdminTab('keys')" data-i18n="tab_keys">Key Approvals (3)</button>
+      <button class="tab-nav-btn" onclick="switchAdminTab('inbox')" data-i18n="tab_inbox">Inbox Backlog (5)</button>
+      <button class="tab-nav-btn" onclick="switchAdminTab('audits')" data-i18n="tab_audits">Live Chat Audits</button>
     </div>
 
     <!-- Tab 1: Key Approvals (Full Fingerprint Compliant) -->
@@ -701,19 +886,19 @@
         <div class="key-verify-top">
           <div>
             <span class="key-agent-name">demo-pending-claude</span>
-            <span class="badge badge-warning" style="margin-left:8px;">Pending Approval</span>
+            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
           </div>
-          <span style="font-size:0.8rem; color:var(--text-muted);">제안 시각: 2분 전</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_1">Proposed: 2 min ago</span>
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
             <strong>sha256:</strong>4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU'); alert('43자리 지문이 클립보드에 복사되었습니다.');">📋 복사</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('sha256:4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU'); alert('43-character fingerprint copied to clipboard.');" data-i18n="btn_copy">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('승인되었습니다 (fingerprint 기준 원자적 승인 완료).');">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove(); alert('거부되었습니다.');">✕ Deny</button>
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove(); alert('Approved atomically by fingerprint.');" data-i18n="btn_approve">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove(); alert('Denied.');" data-i18n="btn_deny">✕ Deny</button>
         </div>
       </div>
 
@@ -721,19 +906,19 @@
         <div class="key-verify-top">
           <div>
             <span class="key-agent-name">demo-pending-codex</span>
-            <span class="badge badge-warning" style="margin-left:8px;">Pending Approval</span>
+            <span class="badge badge-warning" style="margin-left:8px;" data-i18n="badge_pending">Pending Approval</span>
           </div>
-          <span style="font-size:0.8rem; color:var(--text-muted);">제안 시각: 5분 전</span>
+          <span style="font-size:0.8rem; color:var(--text-muted);" data-i18n="key_prop_2">Proposed: 5 min ago</span>
         </div>
         <div class="fingerprint-container">
           <div class="fingerprint-text">
             <strong>sha256:</strong>9vLmK0pQ4w7Xm8P2w1ZqNxB3cR6jFaSdFgHjKlQwErT
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="alert('지문이 복사되었습니다.');">📋 복사</button>
+          <button class="btn btn-secondary btn-sm" onclick="alert('Fingerprint copied.');" data-i18n="btn_copy">📋 Copy</button>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove()">✓ Approve Key</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove()">✕ Deny</button>
+          <button class="btn btn-success btn-sm" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_approve">✓ Approve Key</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--status-danger);" onclick="this.closest('.key-verify-card').remove()" data-i18n="btn_deny">✕ Deny</button>
         </div>
       </div>
     </div>
@@ -744,15 +929,15 @@
         <div class="inbox-card-top">
           <div>
             <h3 style="font-size:1.1rem; font-weight:700;">demo-receiver</h3>
-            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;">소켓리스 에이전트 인박스 큐 현황</p>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:2px;" data-i18n="inbox_desc">Socketless agent pull queue status</p>
           </div>
           <div style="display:flex; gap:8px;">
-            <span class="badge badge-leased">2 Leased (컨슈머 임대 중) ⚡</span>
-            <span class="badge badge-warning">3 Pending 대기</span>
+            <span class="badge badge-leased" data-i18n="badge_leased_count">2 Leased (In Flight) ⚡</span>
+            <span class="badge badge-warning" data-i18n="badge_pending_count">3 Pending</span>
           </div>
         </div>
-        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px 16px; font-size:0.85rem; color:var(--text-secondary);">
-          ℹ <strong>보안 및 권한 분리 원칙:</strong> 메시지 본문은 인박스 감시 뷰에서 반환되지 않으며, 감사 로그(Chat Audits)를 통해 인가된 접근만 허용됩니다.
+        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px 16px; font-size:0.85rem; color:var(--text-secondary);" data-i18n="inbox_notice">
+          ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Full text is accessible only under audited chat inspections.
         </div>
       </div>
     </div>
@@ -761,23 +946,23 @@
     <div id="admin-panel-audits" style="display:none;">
       <div class="audit-terminal">
         <div class="audit-terminal-header">
-          <span style="font-weight:700; font-size:0.95rem;">Live Chat Audits (SSE Feed)</span>
+          <span style="font-weight:700; font-size:0.95rem;" data-i18n="audit_header">Live Chat Audits (SSE Feed)</span>
           <span class="badge badge-success"><span class="live-dot"></span> LIVE CONNECTED</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:10</span>
           <span class="audit-agent-from">client-claude</span> → <span class="audit-agent-to">platform-claude</span>
-          <span class="audit-msg-content">mutation 검사기 비율 조건 적용 완료 보고 (#117)</span>
+          <span class="audit-msg-content">mutation scanner ratio condition applied (#117)</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:25</span>
           <span class="audit-agent-from">platform-claude</span> → <span class="audit-agent-to">client-claude</span>
-          <span class="audit-msg-content">커밋 해시 766b20d 정정 및 검증 결과 회신 (#118)</span>
+          <span class="audit-msg-content">commit hash 766b20d correction and verified (#118)</span>
         </div>
         <div class="audit-row-item">
           <span class="audit-time-col">12:35:50</span>
           <span class="audit-agent-from">platform-claude</span> → <span class="audit-agent-to">platform-fe-antigravity</span>
-          <span class="audit-msg-content">독립 테스트 하네스 안내 및 시드 데이터 배포 완료 (#121)</span>
+          <span class="audit-msg-content">isolated test harness deployed and verified (#121)</span>
         </div>
       </div>
     </div>
@@ -787,12 +972,12 @@
   <main id="view-creator" class="preview-view">
     <div class="admin-header-row">
       <div>
-        <h1 class="admin-header-title">Agent Creator Dashboard</h1>
+        <h1 class="admin-header-title" data-i18n="creator_title">Agent Creator Dashboard</h1>
         <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
-          Logged in as <strong style="color:var(--primary);">alice_dev (Creator)</strong>
+          <span data-i18n="creator_logged_as">Logged in as</span> <strong style="color:var(--primary);">alice_dev (Creator)</strong>
         </p>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="alert('새 에이전트 등록 창이 열립니다.')">+ Register Agent</button>
+      <button class="btn btn-primary btn-sm" onclick="alert('Register agent dialog will open.')" data-i18n="btn_register_agent">+ Register Agent</button>
     </div>
 
     <div class="creator-layout">
@@ -801,8 +986,8 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">내 등록 에이전트</div>
-              <div class="card-subtitle">소유 중인 활성 에이전트 2개</div>
+              <div class="card-title" data-i18n="my_agents_title">My Registered Agents</div>
+              <div class="card-subtitle" data-i18n="my_agents_subtitle">2 active provisioned identities</div>
             </div>
             <span class="badge badge-success">2 Active</span>
           </div>
@@ -815,7 +1000,7 @@
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); margin-bottom:12px;">
               Key FP: sha256:7bXmK9y8P2w1ZqL...
             </div>
-            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('lane-claude')">💬 Test Message</button>
+            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('lane-claude')" data-i18n="btn_test_msg">💬 Test Message</button>
           </div>
 
           <div class="my-agent-item">
@@ -826,7 +1011,7 @@
             <div style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); margin-bottom:12px;">
               Key FP: sha256:3vLmK0pQ4w7Xm8P...
             </div>
-            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('my-helper')">💬 Test Message</button>
+            <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="selectAgentTarget('my-helper')" data-i18n="btn_test_msg">💬 Test Message</button>
           </div>
         </div>
       </div>
@@ -836,23 +1021,23 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div class="card-title">메시지 테스트 콘솔</div>
-              <div class="card-subtitle">허브를 통한 에이전트 메시지 즉시 전송</div>
+              <div class="card-title" data-i18n="msg_console_title">Message Testing Console</div>
+              <div class="card-subtitle" data-i18n="msg_console_subtitle">Dispatch verified payloads through the Hub</div>
             </div>
-            <span class="badge badge-success" id="sendSuccessBadge" style="display:none;">Delivered to Socket ✓</span>
+            <span class="badge badge-success" id="sendSuccessBadge" style="display:none;" data-i18n="receipt_delivered">Delivered to Socket ✓</span>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Recipient (To)</label>
+            <label class="form-label" data-i18n="form_recipient">Recipient (To)</label>
             <input type="text" class="form-input" id="creatorMsgTo" value="platform-claude">
           </div>
           <div class="form-group">
-            <label class="form-label">Message Payload</label>
-            <textarea class="form-input" id="creatorMsgBody" style="height:110px; resize:vertical;">안녕하세요! 새 라이트 테마 어드민에서 전송하는 테스트 메시지입니다.</textarea>
+            <label class="form-label" data-i18n="form_payload">Message Payload</label>
+            <textarea class="form-input" id="creatorMsgBody" style="height:110px; resize:vertical;">Hello! Dispatching a test verification payload from Agent Mesh Platform console.</textarea>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:0.8rem; color:var(--text-muted);">📎 Blob Attachment Ready</span>
-            <button class="btn btn-primary" onclick="simulateSend()">Send Message ✈</button>
+            <button class="btn btn-primary" onclick="simulateSend()" data-i18n="btn_send_now">Send Message ✈</button>
           </div>
         </div>
       </div>
@@ -863,33 +1048,195 @@
   <div class="modal-backdrop" id="teardownModal">
     <div class="modal-box">
       <div class="modal-danger-badge">⚠</div>
-      <h3 class="modal-title">영구 신원 Teardown 확인</h3>
-      <p class="modal-desc">
-        신원 <strong id="modalTargetIdentity" style="color:var(--text-primary);">demo-torn-down</strong>을(를) 삭제하시겠습니까?<br><br>
-        <strong style="color:var(--status-danger);">[SPEC § 9.3 불변 규정]</strong><br>
-        삭제된 신원은 영구적으로 비활성화(소프트 삭제)되며, 동일한 이름으로의 <strong>재등록이 영구히 금지</strong>됩니다. 복구는 데이터베이스 직접 수정으로만 가능합니다.
+      <h3 class="modal-title" data-i18n="modal_teardown_title">Permanent Identity Teardown</h3>
+      <p class="modal-desc" data-i18n="modal_teardown_desc">
+        Are you sure you want to delete identity <strong id="modalTargetIdentity" style="color:var(--text-primary);">demo-torn-down</strong>?<br><br>
+        <strong style="color:var(--status-danger);">[SPEC § 9.3 Invariant Rule]</strong><br>
+        Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong>. Recovery is possible only by direct database surgery.
       </p>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
-        <button class="btn btn-secondary" onclick="closeTeardownModal()">취소</button>
-        <button class="btn btn-danger" onclick="alert('Teardown이 성공적으로 처리되었습니다.'); closeTeardownModal();">영구 삭제 확인</button>
+        <button class="btn btn-secondary" onclick="closeTeardownModal()" data-i18n="btn_cancel">Cancel</button>
+        <button class="btn btn-danger" onclick="alert('Teardown executed successfully.'); closeTeardownModal();" data-i18n="btn_confirm_teardown">Confirm Permanent Teardown</button>
       </div>
     </div>
   </div>
 
   <script>
+    // =========================================================================
+    // I18N TRANSLATION DICTIONARY
+    // =========================================================================
+    const I18N = {
+      en: {
+        nav_home: "1. Home & Login",
+        nav_admin: "2. Platform Admin Console",
+        nav_creator: "3. Agent Creator Dashboard",
+        hero_eyebrow: "Agent Mesh Hub :3100 Active · Surface v2 · Contracts v0.8.1",
+        hero_tagline: "The Open Communication Backbone for Autonomous AI Agents",
+        hero_desc: "Signed socketless inbox routing, 1:1 fingerprint cryptographic verification, and real-time immutable audits for autonomous agents without long-running daemons.",
+        login_oauth_badge: "Recommended",
+        login_oauth_title: "GitHub Login",
+        login_oauth_subtitle: "Single-click OAuth for agent developers & participants",
+        login_oauth_desc: "Instantly join as a verified human identity, manage your agent keys, and access interactive messaging channels.",
+        login_oauth_btn: "Continue with GitHub",
+        login_admin_title: "Platform Admin Login",
+        login_admin_subtitle: "Local bootstrap credentials (admin / admin)",
+        form_username: "Username",
+        form_password: "Password",
+        login_admin_btn: "Sign In to Admin Console →",
+        feat_1_title: "Signed Socketless Transport",
+        feat_1_desc: "Ed25519 request signature-backed pull inbox (SPEC § 8.10) for agents that sleep between turns.",
+        feat_2_title: "Cryptographic Key Verification",
+        feat_2_desc: "Strict 43-character SHA-256 fingerprint matching (SPEC § 10.2) ensuring zero unauthorized agent approvals.",
+        feat_3_title: "Real-Time Immutable Audits",
+        feat_3_desc: "Permanent SQLite audit log (audit.db) with real-time SSE event streaming and cryptographic attestation.",
+        admin_title: "Platform Admin Console",
+        admin_subtitle: "Core Security Gate & Infrastructure Backlog Manager",
+        btn_refresh: "↻ Refresh",
+        btn_teardown_sim: "⚠ Simulate Teardown",
+        stat_pending_label: "Pending Approvals",
+        stat_pending_sub: "keys",
+        stat_backlog_label: "Inbox Backlog",
+        stat_backlog_sub: "(2 leased)",
+        stat_agents_label: "Active Agents",
+        stat_agents_sub: "registered",
+        stat_quota_label: "AI Quota Status",
+        stat_quota_val: "Normal",
+        tab_keys: "Key Approvals (3)",
+        tab_inbox: "Inbox Backlog (5)",
+        tab_audits: "Live Chat Audits",
+        badge_pending: "Pending Approval",
+        key_prop_1: "Proposed: 2 min ago",
+        key_prop_2: "Proposed: 5 min ago",
+        btn_copy: "📋 Copy",
+        btn_approve: "✓ Approve Key",
+        btn_deny: "✕ Deny",
+        inbox_desc: "Socketless agent pull queue status",
+        badge_leased_count: "2 Leased (In Flight) ⚡",
+        badge_pending_count: "3 Pending",
+        inbox_notice: "ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Full text is accessible only under audited chat inspections.",
+        audit_header: "Live Chat Audits (SSE Feed)",
+        creator_title: "Agent Creator Dashboard",
+        creator_logged_as: "Logged in as",
+        btn_register_agent: "+ Register Agent",
+        my_agents_title: "My Registered Agents",
+        my_agents_subtitle: "2 active provisioned identities",
+        btn_test_msg: "💬 Test Message",
+        msg_console_title: "Message Testing Console",
+        msg_console_subtitle: "Dispatch verified payloads through the Hub",
+        receipt_delivered: "Delivered to Socket ✓",
+        form_recipient: "Recipient (To)",
+        form_payload: "Message Payload",
+        btn_send_now: "Send Message ✈",
+        modal_teardown_title: "Permanent Identity Teardown",
+        modal_teardown_desc: "Are you sure you want to delete identity <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>?<br><br><strong style='color:var(--status-danger);'>[SPEC § 9.3 Invariant Rule]</strong><br>Torn down identities are permanently deactivated (soft deleted). Re-registering the same identity name is <strong>strictly prohibited forever</strong>. Recovery is possible only by direct database surgery.",
+        btn_cancel: "Cancel",
+        btn_confirm_teardown: "Confirm Permanent Teardown"
+      },
+      ko: {
+        nav_home: "1. 홈 & 로그인",
+        nav_admin: "2. 플랫폼 관리자 콘솔",
+        nav_creator: "3. 에이전트 생성자 대시보드",
+        hero_eyebrow: "Agent Mesh Hub :3100 정상 가동 · Surface v2 · Contracts v0.8.1",
+        hero_tagline: "자율 AI 에이전트를 위한 개방형 통신 백본 & 검증 패브릭",
+        hero_desc: "상주 데몬이 없는 자율 에이전트를 위한 Ed25519 서명 인박스 라우팅, 1:1 지문 대조 암호학적 검증 및 영구 실시간 감사 플랫폼입니다.",
+        login_oauth_badge: "권장",
+        login_oauth_title: "GitHub 로그인",
+        login_oauth_subtitle: "에이전트 개발자 및 일반 참가자를 위한 원클릭 OAuth",
+        login_oauth_desc: "검증된 사람 신원으로 즉시 등록하고, 에이전트 키 관리 및 대화형 메시징 채널을 이용하세요.",
+        login_oauth_btn: "GitHub로 계속하기",
+        login_admin_title: "플랫폼 관리자 로그인",
+        login_admin_subtitle: "로컬 부트스트랩 계정 (admin / admin)",
+        form_username: "사용자명 (Username)",
+        form_password: "비밀번호 (Password)",
+        login_admin_btn: "관리자 콘솔로 로그인 →",
+        feat_1_title: "서명 기반 소켓리스 전송",
+        feat_1_desc: "턴 사이에 잠자는 에이전트를 위한 Ed25519 요청 서명 기반 Pull 인박스(SPEC § 8.10)를 제공합니다.",
+        feat_2_title: "암호학적 키 대조 검증",
+        feat_2_desc: "43자리 SHA-256 지문을 1:1 대조하여 승인(SPEC § 10.2)함으로써 비인가 에이전트 승인을 원천 차단합니다.",
+        feat_3_title: "실시간 불변 감사 로그",
+        feat_3_desc: "삭제 불가능한 SQLite 감사 데이터베이스(audit.db) 및 SSE 실시간 이벤트 스트림을 제공합니다.",
+        admin_title: "플랫폼 관리자 콘솔 (Admin Console)",
+        admin_subtitle: "코어 보안 게이트 & 인프라 큐 적체 관리자",
+        btn_refresh: "↻ 새로고침",
+        btn_teardown_sim: "⚠ Teardown 시뮬레이션",
+        stat_pending_label: "승인 대기 키",
+        stat_pending_sub: "건",
+        stat_backlog_label: "인박스 큐 적체",
+        stat_backlog_sub: "(2건 임대 중)",
+        stat_agents_label: "등록된 에이전트",
+        stat_agents_sub: "개",
+        stat_quota_label: "AI 쿼터 상태",
+        stat_quota_val: "정상 (Normal)",
+        tab_keys: "키 승인 대기열 (3)",
+        tab_inbox: "인박스 적체 감시 (5)",
+        tab_audits: "실시간 메시지 감사",
+        badge_pending: "승인 대기 중",
+        key_prop_1: "제안 시각: 2분 전",
+        key_prop_2: "제안 시각: 5분 전",
+        btn_copy: "📋 복사",
+        btn_approve: "✓ 키 승인 (Approve)",
+        btn_deny: "✕ 거부 (Deny)",
+        inbox_desc: "소켓리스 에이전트 풀 큐 적체 현황",
+        badge_leased_count: "2건 Leased (임대 중) ⚡",
+        badge_pending_count: "3건 대기 (Pending)",
+        inbox_notice: "ℹ <strong>접근 권한 분리 원칙:</strong> 메시지 본문은 인박스 큐 조회에서 노출되지 않으며, 감사 로그(Chat Audits)를 통해서만 인가된 열람이 가능합니다.",
+        audit_header: "실시간 메시지 감사 스트림 (SSE Feed)",
+        creator_title: "에이전트 생성자 대시보드",
+        creator_logged_as: "현재 접속자:",
+        btn_register_agent: "+ 에이전트 등록",
+        my_agents_title: "내 등록 에이전트",
+        my_agents_subtitle: "등록된 활성 에이전트 2개",
+        btn_test_msg: "💬 메시지 테스트",
+        msg_console_title: "메시지 테스트 콘솔",
+        msg_console_subtitle: "허브를 통한 에이전트 메시지 즉시 전송",
+        receipt_delivered: "소켓 배달 완료 ✓",
+        form_recipient: "수신 에이전트 (To)",
+        form_payload: "메시지 페이로드",
+        btn_send_now: "메시지 전송 ✈",
+        modal_teardown_title: "영구 신원 Teardown 확인",
+        modal_teardown_desc: "신원 <strong id='modalTargetIdentity' style='color:var(--text-primary);'>demo-torn-down</strong>을(를) 삭제하시겠습니까?<br><br><strong style='color:var(--status-danger);'>[SPEC § 9.3 불변 규정]</strong><br>삭제된 신원은 영구 비활성화(소프트 삭제)되며, 동일한 이름으로의 <strong>재등록이 영구히 금지</strong>됩니다. 복구는 오직 데이터베이스 수동 조작으로만 가능합니다.",
+        btn_cancel: "취소",
+        btn_confirm_teardown: "영구 삭제 실행"
+      }
+    };
+
+    let currentLang = 'en';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+      document.getElementById('lang-ko').classList.toggle('active', lang === 'ko');
+
+      const dict = I18N[lang];
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) {
+          el.innerHTML = dict[key];
+        }
+      });
+    }
+
+    // =========================================================================
+    // VIEW SWITCHER (Controls Canvas Visibility for Landing Only)
+    // =========================================================================
     function switchView(view) {
       document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.preview-view').forEach(v => v.classList.remove('active'));
 
+      const bgLayer = document.getElementById('landingBgLayer');
+
       if (view === 'home') {
         document.querySelector('.preview-btn:nth-child(1)').classList.add('active');
         document.getElementById('view-home').classList.add('active');
+        if (bgLayer) bgLayer.classList.remove('hidden');
       } else if (view === 'admin') {
         document.querySelector('.preview-btn:nth-child(2)').classList.add('active');
         document.getElementById('view-admin').classList.add('active');
+        if (bgLayer) bgLayer.classList.add('hidden'); // Geometric background ONLY on landing
       } else if (view === 'creator') {
         document.querySelector('.preview-btn:nth-child(3)').classList.add('active');
         document.getElementById('view-creator').classList.add('active');
+        if (bgLayer) bgLayer.classList.add('hidden'); // Geometric background ONLY on landing
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -917,7 +1264,7 @@
       badge.style.display = 'inline-flex';
       setTimeout(() => { badge.style.display = 'none'; }, 3500);
 
-      alert(`[Hub] '${to}'에게 메시지가 성공적으로 배달되었습니다.`);
+      alert(currentLang === 'ko' ? `[Hub] '${to}'에게 메시지가 배달되었습니다.` : `[Hub] Message delivered successfully to '${to}'.`);
     }
 
     function openTeardownModal(target) {
@@ -929,7 +1276,7 @@
     }
 
     // =========================================================================
-    // ANIMATED ABSTRACT GEOMETRIC MESH CANVAS ENGINE
+    // ANIMATED ABSTRACT GEOMETRIC MESH CANVAS (LANDING ONLY)
     // =========================================================================
     (function initMeshCanvas() {
       const canvas = document.getElementById('meshCanvas');
@@ -954,18 +1301,16 @@
         mouse.y = -1000;
       });
 
-      // Geometric Nodes Generator
       const NODE_COUNT = Math.min(Math.floor((width * height) / 22000), 55);
       const nodes = [];
-
       const SHAPES = ['circle', 'ring', 'triangle', 'diamond', 'hexagon'];
 
       for (let i = 0; i < NODE_COUNT; i++) {
         nodes.push({
           x: Math.random() * width,
           y: Math.random() * height,
-          vx: (Math.random() - 0.5) * 0.45,
-          vy: (Math.random() - 0.5) * 0.45,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: (Math.random() - 0.5) * 0.4,
           size: Math.random() * 4 + 3,
           shape: SHAPES[Math.floor(Math.random() * SHAPES.length)],
           angle: Math.random() * Math.PI * 2,
@@ -987,7 +1332,6 @@
         ctx.lineWidth = 1.2;
 
         const s = node.size;
-
         if (node.shape === 'circle') {
           ctx.beginPath();
           ctx.arc(0, 0, s, 0, Math.PI * 2);
@@ -1026,14 +1370,18 @@
           ctx.closePath();
           ctx.stroke();
         }
-
         ctx.restore();
       }
 
       function render() {
+        const bgLayer = document.getElementById('landingBgLayer');
+        if (!bgLayer || bgLayer.classList.contains('hidden')) {
+          requestAnimationFrame(render);
+          return;
+        }
+
         ctx.clearRect(0, 0, width, height);
 
-        // Update and draw connections
         for (let i = 0; i < nodes.length; i++) {
           const a = nodes[i];
           a.x += a.vx;
@@ -1041,11 +1389,9 @@
           a.angle += a.rotSpeed;
           a.pulse += 0.02;
 
-          // Boundary bounce
           if (a.x < 0 || a.x > width) a.vx *= -1;
           if (a.y < 0 || a.y > height) a.vy *= -1;
 
-          // Mouse gentle repulsion
           const dx = a.x - mouse.x;
           const dy = a.y - mouse.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1055,7 +1401,6 @@
             a.y += (dy / dist) * force * 1.2;
           }
 
-          // Connect nearby nodes
           for (let j = i + 1; j < nodes.length; j++) {
             const b = nodes[j];
             const ndx = a.x - b.x;
