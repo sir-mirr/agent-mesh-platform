@@ -1484,6 +1484,8 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
 | DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
+| GET    | `/api/v1/admin/inbox`             | JWT\*  | `200`   | Queue depth per identity (§ 9.2.1). No message bodies. |
+| GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
@@ -1607,6 +1609,113 @@ and teardown. These routes live on the hub port, NOT on
 hub binds to a trust-bounded interface (Tailscale or LXC-internal
 bridge). Public-internet deployments MUST gate these routes behind a
 bearer token or equivalent before exposing them (§ 10.1).
+
+#### 9.2.1. The signed inbox surface (0.2)
+
+`POST /api/v1/rpc` (§ 8.10) carries an inbox and does not describe one.
+These routes are the same methods against the same queue, named so the
+surface can be read. **Nothing here is a second store**, and a
+participant switching between a socket, `/api/v1/rpc` and these routes
+is one identity with one inbox.
+
+| Method | Path | Wraps | Success |
+|--------|------|-------|---------|
+| POST   | `/api/v1/inbox` | `mesh.receive` | `200` |
+| POST   | `/api/v1/outbox` | `mesh.send` | `200` |
+| GET    | `/api/v1/outbox` | — | `200` |
+| DELETE | `/api/v1/outbox/{message_id}` | — | `200` |
+| GET    | `/api/v1/inbox/history` | `mesh.fetch_messages` | `200` |
+| GET    | `/api/v1/capabilities` | — | `200` |
+
+**Authentication.** Every route except `/api/v1/capabilities` MUST carry
+
+```
+Authorization: AgentMeshSig kid="…", nonce="…", iat="…", sig="…"
+```
+
+over `restSignaturePreimage` — its own domain separator, because one key
+also signs § 8.1 and § 9.1 and two signatures replayable into each
+other's position are one signature. The preimage covers the method, the
+path **including its query string**, the `kid`, the nonce, the `iat`,
+and a SHA-256 of the body (empty string when there is none). Freshness
+and the replay rule of § 8.1 apply unchanged, including that a nonce is
+spent on receipt.
+
+The identity is the signature's. No route takes it as a parameter: a
+separately-claimed identity is a second assertion able to disagree with
+the first (§ 8.10).
+
+**`POST /api/v1/inbox` is a POST because it acts.** It leases a batch,
+settles the previous one and writes an audit event. A `GET` would invite
+every layer that treats `GET` as safe to retry it and silently consume a
+lease.
+
+```
+body:   { limit?: number, ack_ids?: string[] }
+result: { messages: [...], remaining: number, lease_seconds: number }
+```
+
+`{ ack_ids, limit: 0 }` settles without taking more, which is the
+end-of-turn case.
+
+**Recall is bounded by hand-over, not by acknowledgement.** A sender MAY
+withdraw a message the recipient has never been given, and MUST NOT
+withdraw one already handed out — that message is part of the
+recipient's record, and a surface letting the sender revoke it makes the
+sender the owner of someone else's audit trail.
+
+```
+status = 'pending', leased_until IS NULL    never handed out   recallable
+status = 'pending', leased_until in future  handed out         NOT recallable
+status = 'delivered'                        acknowledged       NOT recallable
+```
+
+Acknowledgement is the wrong line: a leased message was returned in a
+response, so the recipient holds it whether or not it survived to say
+so.
+
+`GET /api/v1/outbox` returns exactly the recallable set, so a client
+never interprets `leased_until` and the hub never exposes it.
+
+**The listing is a hint; the DELETE is the judgement.** A recipient may
+call `POST /api/v1/inbox` between the two, so the recall MUST re-decide
+in one statement rather than trust the listing — `changes` is the
+answer. A recall that lost the race is `409` with
+`code: "ALREADY_DELIVERED"`.
+
+**A recall MUST emit `mesh.message.recalled`** (§ 8.9.4), carrying the
+`mesh.message.sent` event as `causation_event_id`, `recorded_by.kind =
+"hub"`, and the sender's `AgentMeshSig` as the attestation. Without it
+the trail holds a `sent` event and nothing recording the withdrawal,
+which is the same defect one level down: the sender shaping the record.
+The body is not repeated — the `sent` event already carries it.
+
+The `messages` row is deleted rather than tombstoned. That table is
+operational and rotates (§ 15.6); the audit copy is the permanent record
+and is where the withdrawal belongs.
+
+**`GET /api/v1/capabilities` is unsigned**, and reports what this
+deployment enforces:
+
+```
+{ mailbox: MailboxCapabilities,
+  audit:   AuditCapabilities,
+  surface: { version } }
+```
+
+Unsigned because the values matter most while a caller cannot yet sign:
+a client being set up needs the lease and dedup windows to size its
+retry loop, and its key is `pending` until an operator acts. Gating it
+would withhold them exactly when they are needed, so the client would
+hardcode a guess — the drift this route exists to prevent.
+`GET /api/v1/agents/{identity}/keys` is unauthenticated for the same
+shape of reason (§ 9.2 †). Nothing here is per-caller.
+
+`audit` is included because § 8.9.1 advertises those caps in the
+`mesh.connect` result and this population never connects.
+
+The three versions are reported separately, as § 13 requires: the
+transport contract, the audit protocol, and this route table.
 
 ### 9.3. Identity teardown
 

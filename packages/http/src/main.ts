@@ -1198,6 +1198,66 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
 }
 
 /**
+ * What is queued, for an operator (SPEC § 9.2.1).
+ *
+ * Read-only, and structurally so: this process opens `hub.db` with
+ * `readonly: true`, so these routes cannot lease or acknowledge even if
+ * someone later writes one that tries. That is the whole reason the operator
+ * half lives here rather than beside the agent routes on the hub — there, a
+ * mistake would be a lease taken by someone looking.
+ *
+ * **No message bodies.** Reading someone's mail is a different authorisation
+ * question from seeing that they have mail. An operator diagnosing a stuck
+ * queue needs depth and age; one who needs content has the audit trail, where
+ * the access is itself recorded.
+ */
+app.get('/api/v1/admin/inbox', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+
+  const rows = getHubDb().prepare(`
+    SELECT to_agent AS identity,
+           count(*) AS pending,
+           sum(CASE WHEN leased_until IS NOT NULL AND leased_until >= datetime('now') THEN 1 ELSE 0 END) AS leased,
+           min(ts) AS oldest
+      FROM messages
+     WHERE status = 'pending'
+     GROUP BY to_agent
+     ORDER BY pending DESC
+  `).all()
+  return c.json({ ok: true, inboxes: rows })
+})
+
+app.get('/api/v1/admin/inbox/:identity', async (c) => {
+  const actor = await requireAdmin(c)
+  if (typeof actor !== 'string') return actor
+
+  const identity = c.req.param('identity')
+  if (!IDENTITY_RE.test(identity)) {
+    return c.json({ ok: false, error: 'invalid identity format' }, 400)
+  }
+  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500)
+
+  // `leased` is reported because an operator asking "why is this agent not
+  // receiving" needs to tell an empty queue from one held entirely under
+  // leases by a caller that died.
+  const messages = getHubDb().prepare(`
+    SELECT id, from_agent AS "from", ts, length(content) AS size,
+           (leased_until IS NOT NULL AND leased_until >= datetime('now')) AS leased
+      FROM messages
+     WHERE to_agent = ? AND status = 'pending'
+     ORDER BY ts ASC
+     LIMIT ?
+  `).all(identity, limit) as Array<Record<string, unknown>>
+
+  return c.json({
+    ok: true,
+    identity,
+    messages: messages.map((m) => ({ ...m, leased: m.leased === 1 })),
+  })
+})
+
+/**
  * The agent type registry (SPEC § 10.3).
  *
  * § 10.3 says types are added "through the http admin surface, behind the same

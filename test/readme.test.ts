@@ -98,8 +98,10 @@ describe("README", () => {
     const advertised = new Set(
       [...README.matchAll(/`(mesh\.[a-z_.]+)`/g)]
         .map((m) => m[1]!)
-        // Notifications are pushed, not dispatched.
-        .filter((m) => m !== "mesh.message" && m !== "mesh.delivered"),
+        // Pushed notifications (§ 8.8) and audit event types (§ 8.9.4) are
+        // not dispatchable methods. They share the prefix and nothing else.
+        .filter((m) => m !== "mesh.message" && m !== "mesh.delivered")
+        .filter((m) => !m.startsWith("mesh.message.")),
     );
     expect(advertised.size).toBeGreaterThan(8);
     for (const method of advertised) {

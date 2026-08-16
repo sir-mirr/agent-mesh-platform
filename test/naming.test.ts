@@ -62,7 +62,7 @@ const QUERY_PREFIX =
  * the check cannot judge whether a name says "write", only that somebody did.
  */
 const WRITE_VERB =
-  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|handle|on[A-Z])/i;
+  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|recall|withdraw|handle|on[A-Z])/i;
 
 /** Durable writes — state that outlives the process. */
 const WRITES =

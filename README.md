@@ -323,6 +323,26 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 
 Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
 
+### Signed inbox surface (`http://<host>:3100`)
+
+The same queue and the same identities as `/api/v1/rpc`, named so the surface
+can be read. Signed with `Authorization: AgentMeshSig` (§ 9.2.1).
+
+| Path | Description |
+|------|-------------|
+| `POST   /api/v1/inbox` | Take delivery and settle the previous batch. A `POST` because it leases, settles and audits — a `GET` invites a proxy or a retry to consume a lease. |
+| `POST   /api/v1/outbox` | Send. |
+| `GET    /api/v1/outbox` | Sent messages nobody has been handed — the recall candidates, without bodies. |
+| `DELETE /api/v1/outbox/{id}` | Withdraw one. `409 ALREADY_DELIVERED` once the recipient has it. |
+| `GET    /api/v1/inbox/history?peer=` | Conversation with one peer. |
+| `GET    /api/v1/capabilities` | **Unsigned.** What this deployment enforces. |
+
+**Recall ends at hand-over, not at acknowledgement.** A leased message was
+returned in a response, so the recipient holds it whether or not it survived to
+say so. Withdrawing one they already have would make the sender the owner of
+someone else's record — and every recall emits `mesh.message.recalled`, so the
+trail cannot hold a `sent` with nothing saying it was taken back.
+
 ### Hub over HTTP (`POST http://<host>:3100/api/v1/rpc`)
 
 The same methods for a participant that cannot hold a socket — an agent driven
@@ -390,6 +410,8 @@ already broken. A required argument cannot be silent, and it greps.
 | `GET  /api/v1/files`                | Serve a single file by `?path=` query |
 | `DELETE /api/v1/admin/agents/{identity}` | Identity teardown, soft delete (§ 9.3) |
 | `*    /api/v1/admin/agent-types`    | The agent type registry: list / add / remove (§ 10.3) |
+| `GET  /api/v1/admin/inbox`          | Queue depth per identity (§ 9.2.1) — no message bodies |
+| `GET  /api/v1/admin/inbox/{identity}` | What is queued for one identity, and what is leased |
 | `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
 | `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |

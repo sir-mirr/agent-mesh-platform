@@ -382,7 +382,11 @@ export { AUDIT_LIMITS, MAX_SCHEMA_VERSION };
  * and a delivery that failed because a disk filled would be the worse outcome.
  */
 export function recordMeshEvent(
-  eventType: "mesh.message.sent" | "mesh.message.delivered" | "mesh.message.pending",
+  eventType:
+    | "mesh.message.sent"
+    | "mesh.message.delivered"
+    | "mesh.message.pending"
+    | "mesh.message.recalled",
   fields: {
     messageId: string;
     from: string;
@@ -481,6 +485,37 @@ export function recordDelivered(row: {
     content: row.content,
     replyTo: row.reply_to,
     senderSig: null,
+    senderParams: "{}",
+  });
+}
+
+/**
+ * Record that a sender withdrew a message nobody had been handed (§ 9.2.1).
+ *
+ * Without it the trail holds a `mesh.message.sent` and nothing saying the
+ * message was taken back — which is the standalone mailer's defect one level
+ * down: the sender able to shape the record. The `messages` row is gone by
+ * then, so this event is the only place the withdrawal exists.
+ *
+ * The body is not repeated. `sent` already carries it, audit retention is
+ * indefinite (§ 15.6), and the pair reads as one story: sent, then withdrawn
+ * before anyone saw it.
+ *
+ * The sender's `AgentMeshSig` is the attestation — this is a thing they asked
+ * for, unlike `delivered`, which is the hub's own later observation.
+ */
+export function recordRecalled(
+  row: { id: string; from_agent: string; to_agent: string; sent_by: string | null },
+  senderSig: unknown,
+): void {
+  recordMeshEvent("mesh.message.recalled", {
+    messageId: row.id,
+    from: row.from_agent,
+    to: row.to_agent,
+    sentBy: row.sent_by ?? row.from_agent,
+    content: "",
+    replyTo: null,
+    senderSig,
     senderParams: "{}",
   });
 }

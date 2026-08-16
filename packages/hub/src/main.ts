@@ -19,6 +19,7 @@ import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentiti
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
 } from "./rest/agents";
+import { handleInboxRoute } from "./rest/inbox";
 import { dispatch, dispatchHttp } from "./rpc/dispatch";
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,25 @@ const server = Bun.serve({
           status: 200,
           headers: { "Content-Type": "application/json" },
         }
+      );
+    }
+
+    // The signed inbox surface (§ 9.2.1). Answers `null` for a path it does
+    // not own, so it cannot shadow a route that was already here.
+    if (url.pathname.startsWith("/api/v1/inbox") ||
+        url.pathname.startsWith("/api/v1/outbox") ||
+        url.pathname === "/api/v1/capabilities") {
+      return req.text().then((body) =>
+        handleInboxRoute({
+          method: req.method,
+          // The signature covers the query string, so it has to reach the
+          // verifier exactly as it arrived.
+          path: url.pathname + url.search,
+          pathname: url.pathname,
+          search: url.search,
+          authorization: req.headers.get("authorization"),
+          body,
+        }) ?? new Response("Not Found", { status: 404 }),
       );
     }
 
