@@ -392,11 +392,11 @@
     }
   }
 
-  /* 3-Agent Animated Constellation Triad */
+  /* 3-Agent Animated Constellation Triad (Dynamic Asymmetrical Constellation) */
   .hero-agents-constellation {
     position: relative;
     width: 290px;
-    height: 270px;
+    height: 260px;
     flex-shrink: 0;
     user-select: none;
   }
@@ -413,7 +413,7 @@
   }
 
   .constellation-line {
-    stroke-width: 2.2;
+    stroke-width: 2.0;
     stroke-dasharray: 6 5;
     stroke-linecap: round;
     animation: constellationDash 16s linear infinite;
@@ -423,7 +423,7 @@
     to { stroke-dashoffset: -220; }
   }
 
-  /* Flowing Data Pulses on Mesh Edges */
+  /* Flowing Data Pulses on Organic Mesh Edges */
   .mesh-packet {
     filter: drop-shadow(0 0 6px currentColor);
   }
@@ -438,22 +438,22 @@
   }
 
   @keyframes flowEdge1 {
-    0% { cx: 145px; cy: 50px; opacity: 0; }
+    0% { cx: 58px; cy: 46px; opacity: 0; }
     20% { opacity: 1; }
     80% { opacity: 1; }
-    100% { cx: 58px; cy: 195px; opacity: 0; }
+    100% { cx: 216px; cy: 76px; opacity: 0; }
   }
   @keyframes flowEdge2 {
-    0% { cx: 58px; cy: 195px; opacity: 0; }
+    0% { cx: 216px; cy: 76px; opacity: 0; }
     20% { opacity: 1; }
     80% { opacity: 1; }
-    100% { cx: 232px; cy: 195px; opacity: 0; }
+    100% { cx: 130px; cy: 188px; opacity: 0; }
   }
   @keyframes flowEdge3 {
-    0% { cx: 232px; cy: 195px; opacity: 0; }
+    0% { cx: 130px; cy: 188px; opacity: 0; }
     20% { opacity: 1; }
     80% { opacity: 1; }
-    100% { cx: 145px; cy: 50px; opacity: 0; }
+    100% { cx: 58px; cy: 46px; opacity: 0; }
   }
 
   /* Agent Circular Nodes */
@@ -471,44 +471,45 @@
     z-index: 10;
   }
 
-  /* Node Orbit Coordinates & Organic Floating Keyframes */
+  /* Asymmetric Organic Constellation Coordinates */
   .agent-node-1 {
-    top: 8px;
-    left: 102px;
+    top: 12px;
+    left: 24px;
     animation: floatNode1 5s ease-in-out infinite;
   }
   .agent-node-2 {
-    top: 152px;
-    left: 16px;
+    top: 42px;
+    left: 182px;
     animation: floatNode2 5.6s ease-in-out infinite 0.7s;
   }
   .agent-node-3 {
-    top: 152px;
-    left: 188px;
+    top: 154px;
+    left: 96px;
     animation: floatNode3 5.2s ease-in-out infinite 1.4s;
   }
 
   @keyframes floatNode1 {
     0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-7px) rotate(1.2deg); }
+    50% { transform: translateY(-6px) rotate(1.2deg); }
   }
   @keyframes floatNode2 {
     0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(6px) rotate(-1.5deg); }
+    50% { transform: translateY(5px) rotate(-1.5deg); }
   }
   @keyframes floatNode3 {
     0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-6px) rotate(1.5deg); }
+    50% { transform: translateY(-5px) rotate(1.5deg); }
   }
 
+  /* 80% Scale Circle Avatar Frame with Pure White Background */
   .agent-avatar-frame {
     position: relative;
-    width: 84px;
-    height: 84px;
+    width: 68px;
+    height: 68px;
     border-radius: 50%;
-    background: #FFFFFF;
-    border: 3.5px solid #FFFFFF;
-    box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(0, 0, 0, 0.08);
+    background: #FFFFFF !important;
+    border: 3px solid #FFFFFF;
+    box-shadow: 0 8px 20px -3px rgba(15, 23, 42, 0.16), 0 3px 8px rgba(0, 0, 0, 0.06);
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -516,9 +517,9 @@
   }
 
   .agent-avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    width: 92%;
+    height: 92%;
+    object-fit: contain;
     display: block;
     transition: transform 0.3s ease;
   }
@@ -529,26 +530,26 @@
   /* Glowing Ambient Outer Rings */
   .agent-glow-ring {
     position: absolute;
-    top: -5px;
-    left: -5px;
-    right: -5px;
-    bottom: 22px;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: 20px;
     border-radius: 50%;
     pointer-events: none;
     opacity: 0.55;
     animation: ringPulse 3.2s ease-in-out infinite;
   }
   .ring-blue {
-    border: 2px solid #3B82F6;
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.45);
+    border: 1.8px solid #3B82F6;
+    box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
   }
   .ring-emerald {
-    border: 2px solid #10B981;
-    box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+    border: 1.8px solid #10B981;
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.45);
   }
   .ring-purple {
-    border: 2px solid #8B5CF6;
-    box-shadow: 0 0 16px rgba(139, 92, 246, 0.45);
+    border: 1.8px solid #8B5CF6;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.45);
   }
 
   @keyframes ringPulse {
@@ -558,10 +559,10 @@
 
   /* Agent Name Badges */
   .agent-node-badge {
-    margin-top: 6px;
-    padding: 3px 10px;
+    margin-top: 5px;
+    padding: 2.5px 9px;
     border-radius: var(--radius-full);
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 750;
     white-space: nowrap;
     display: inline-flex;
@@ -1433,18 +1434,18 @@
       <div class="hero-layout-split">
         <!-- Interconnected Animated 3-Agent Triad (Left of Title) -->
         <div class="hero-agents-constellation" aria-label="Interactive Autonomous Agent Triad">
-          <svg class="constellation-svg" viewBox="0 0 290 270">
+          <svg class="constellation-svg" viewBox="0 0 290 260">
             <defs>
               <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9" />
-                <stop offset="100%" stop-color="#10B981" stop-opacity="0.9" />
-              </linearGradient>
-              <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
                 <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.9" />
               </linearGradient>
-              <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#10B981" stop-opacity="0.9" />
+              </linearGradient>
+              <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
                 <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.9" />
               </linearGradient>
               <!-- Central mesh glow -->
@@ -1454,50 +1455,50 @@
               </radialGradient>
             </defs>
 
-            <!-- Center ambient glow polygon -->
-            <polygon points="145,50 58,195 232,195" fill="url(#meshCenterGlow)" />
+            <!-- Organic Asymmetric Center Ambient Glow Polygon -->
+            <polygon points="58,46 216,76 130,188" fill="url(#meshCenterGlow)" />
 
-            <!-- Interconnection Triangle Edges -->
-            <line class="constellation-line" x1="145" y1="50" x2="58" y2="195" stroke="url(#lineGrad1)" />
-            <line class="constellation-line" x1="58" y1="195" x2="232" y2="195" stroke="url(#lineGrad2)" />
-            <line class="constellation-line" x1="232" y1="195" x2="145" y2="50" stroke="url(#lineGrad3)" />
+            <!-- Interconnection Organic Triangle Edges -->
+            <line class="constellation-line" x1="58" y1="46" x2="216" y2="76" stroke="url(#lineGrad1)" />
+            <line class="constellation-line" x1="216" y1="76" x2="130" y2="188" stroke="url(#lineGrad2)" />
+            <line class="constellation-line" x1="130" y1="188" x2="58" y2="46" stroke="url(#lineGrad3)" />
 
             <!-- Animated flowing packets / data pulses -->
-            <circle class="mesh-packet packet-1" r="4" fill="#3B82F6" />
-            <circle class="mesh-packet packet-2" r="4" fill="#10B981" />
-            <circle class="mesh-packet packet-3" r="4" fill="#8B5CF6" />
+            <circle class="mesh-packet packet-1" r="3.5" fill="#3B82F6" />
+            <circle class="mesh-packet packet-2" r="3.5" fill="#8B5CF6" />
+            <circle class="mesh-packet packet-3" r="3.5" fill="#10B981" />
           </svg>
 
-          <!-- Agent 1: Top Center (Fin홍이 - Financial Operations) -->
-          <div class="hero-agent-node agent-node-1" title="Financial Operations Agent: Fin홍이">
+          <!-- Agent 1: Top-Left (Fin둥이 - Yellow Shiba Financial Lead) -->
+          <div class="hero-agent-node agent-node-1" title="Financial Operations Agent: Fin둥이">
             <div class="agent-glow-ring ring-blue"></div>
             <div class="agent-avatar-frame">
-              <img src="/assets/agent-fin.jpg" alt="Fin홍이 Agent" class="agent-avatar-img" />
+              <img src="/assets/agent-fin.png" alt="Fin둥이 Agent" class="agent-avatar-img" />
             </div>
             <div class="agent-node-badge badge-blue">
-              <span class="live-dot"></span> Fin홍이
+              <span class="live-dot"></span> Fin둥이
             </div>
           </div>
 
-          <!-- Agent 2: Bottom Left (Support Agent - Grey Puppy) -->
-          <div class="hero-agent-node agent-node-2" title="Customer Support & Routing Agent">
-            <div class="agent-glow-ring ring-emerald"></div>
-            <div class="agent-avatar-frame">
-              <img src="/assets/agent-support.jpg" alt="Support Agent" class="agent-avatar-img" />
-            </div>
-            <div class="agent-node-badge badge-emerald">
-              <span class="live-dot" style="background:#10B981;"></span> Support
-            </div>
-          </div>
-
-          <!-- Agent 3: Bottom Right (AI Assistant - Anime Girl) -->
-          <div class="hero-agent-node agent-node-3" title="Executive AI Assistant">
+          <!-- Agent 2: Top-Right (아름이 - AI Assistant) -->
+          <div class="hero-agent-node agent-node-2" title="Executive AI Assistant: 아름이">
             <div class="agent-glow-ring ring-purple"></div>
             <div class="agent-avatar-frame">
-              <img src="/assets/agent-assistant.jpg" alt="AI Assistant" class="agent-avatar-img" />
+              <img src="/assets/agent-assistant.png" alt="아름이 Agent" class="agent-avatar-img" />
             </div>
             <div class="agent-node-badge badge-purple">
-              <span class="live-dot" style="background:#8B5CF6;"></span> Assistant
+              <span class="live-dot" style="background:#8B5CF6;"></span> 아름이
+            </div>
+          </div>
+
+          <!-- Agent 3: Bottom-Center (Fin자 - Grey Support Puppy) -->
+          <div class="hero-agent-node agent-node-3" title="Customer Support Agent: Fin자">
+            <div class="agent-glow-ring ring-emerald"></div>
+            <div class="agent-avatar-frame">
+              <img src="/assets/agent-support.png" alt="Fin자 Agent" class="agent-avatar-img" />
+            </div>
+            <div class="agent-node-badge badge-emerald">
+              <span class="live-dot" style="background:#10B981;"></span> Fin자
             </div>
           </div>
         </div>
