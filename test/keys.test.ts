@@ -711,78 +711,67 @@ describe("the observed source is recorded", () => {
  * holds everything.
  */
 describe("capabilities gate the routes", () => {
-  const agentsDbRW = () => new Database(join(mesh.stateDir, "agents.db"));
+  // Raw SQL rather than importing `@agent-mesh/store`. This suite drives real
+  // processes over the wire, and pulling the store's source into it breaks
+  // that boundary — and the build, since `test/` compiles with `rootDir: "."`.
+  // Made that mistake twice today; the second time is why this comment exists.
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const held = (subject: string) =>
+    withDb((db) => (db.prepare(`SELECT capability FROM role_grants WHERE subject = ?`)
+      .all(subject) as Array<{ capability: string }>).map((r) => r.capability));
+  const revoke = (subject: string, capability: string) =>
+    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject = ? AND capability = ?`)
+      .run(subject, capability));
+  const grant = (subject: string, capability: string) =>
+    withDb((db) => db.prepare(
+      `INSERT INTO role_grants (tenant, subject, capability, scope, granted_by)
+       VALUES ('default', ?, ?, '*', 'test') ON CONFLICT DO NOTHING`).run(subject, capability));
+  const asAdmin = (path: string) =>
+    fetch(`${mesh.http.url}${path}`, { headers: { cookie: adminCookie } });
 
-  test("the legacy admin role was seeded as grants, not left as a string", async () => {
-    const { grants: g } = await import("@agent-mesh/store");
-    const db = agentsDbRW();
-    try {
-      const held = g.listFor(db, "admin").map((r) => r.capability).sort();
-      expect(held).toContain("key.approve");
-      expect(held).toContain("agent.teardown");
-      expect(held).toContain("audit.read.metadata");
-      // Deliberately the full set: narrowing it during the migration would be
-      // a silent permission change dressed as a refactor.
-      expect(held).toContain("audit.read.content");
-    } finally {
-      db.close();
-    }
+  test("the legacy admin role was seeded as grants, not left as a string", () => {
+    const caps = held("admin");
+    expect(caps).toContain("key.approve");
+    expect(caps).toContain("agent.teardown");
+    expect(caps).toContain("audit.read.metadata");
+    // Deliberately the full set: narrowing it during the migration would be a
+    // silent permission change dressed as a refactor.
+    expect(caps).toContain("audit.read.content");
   });
 
   test("revoking a grant takes effect on the next request, not at token expiry", async () => {
-    // The reason the answer is not in the JWT. The cookie below is issued
-    // once and never refreshed; if it carried the decision, this would keep
-    // working — and the one moment revocation matters is an incident.
-    const { grants: g } = await import("@agent-mesh/store");
-    const db = agentsDbRW();
-    try {
-      const before = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
-        headers: { cookie: adminCookie },
-      });
-      expect(before.status).toBe(200);
+    // The reason the answer is not in the JWT. This cookie is issued once and
+    // never refreshed; if it carried the decision, this would keep working —
+    // and the one moment revocation matters is an incident.
+    expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
 
-      g.revoke(db, { subject: "admin", capability: "key.approve" });
-      const after = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
-        headers: { cookie: adminCookie },
-      });
-      expect(after.status).toBe(403);
-      // Names the missing grant. An operator told which one can ask for that
-      // one; an operator told "forbidden" asks for everything.
-      expect((await after.json()).capability).toBe("key.approve");
+    revoke("admin", "key.approve");
+    const after = await asAdmin("/api/v1/admin/keys/pending");
+    expect(after.status).toBe(403);
+    // Names the missing grant. An operator told which one can ask for that
+    // one; an operator told "forbidden" asks for everything.
+    expect((await after.json()).capability).toBe("key.approve");
 
-      g.grant(db, { subject: "admin", capability: "key.approve", grantedBy: "test" });
-      expect((await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
-        headers: { cookie: adminCookie },
-      })).status).toBe(200);
-    } finally {
-      db.close();
-    }
+    grant("admin", "key.approve");
+    expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
   });
 
   test("capabilities are separate — losing one does not lose the others", async () => {
     // § 11's privacy boundary is exactly this: the platform operator holds
-    // metadata and not content. If routes shared one check, that split could
-    // not exist.
-    const { grants: g } = await import("@agent-mesh/store");
-    const db = agentsDbRW();
-    try {
-      g.revoke(db, { subject: "admin", capability: "inbox.read.depth" });
-      expect((await fetch(`${mesh.http.url}/api/v1/admin/inbox`, {
-        headers: { cookie: adminCookie },
-      })).status).toBe(403);
-      // Teardown is a different grant and must be unaffected.
-      expect((await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
-        headers: { cookie: adminCookie },
-      })).status).toBe(200);
-      g.grant(db, { subject: "admin", capability: "inbox.read.depth", grantedBy: "test" });
-    } finally {
-      db.close();
-    }
+    // metadata and not content. If the routes shared one check, that split
+    // could not exist.
+    revoke("admin", "inbox.read.depth");
+    expect((await asAdmin("/api/v1/admin/inbox")).status).toBe(403);
+    expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
+    grant("admin", "inbox.read.depth");
   });
 
   test("no session is still 401, not 403", async () => {
-    // Unauthenticated and unauthorised are different answers: one says log in,
-    // the other says ask for a grant.
+    // Unauthenticated and unauthorised are different answers: one says sign
+    // in, the other says ask for a grant.
     expect((await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`)).status).toBe(401);
   });
 });
