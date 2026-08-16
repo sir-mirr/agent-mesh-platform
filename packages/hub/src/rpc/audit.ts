@@ -490,6 +490,76 @@ export function recordDelivered(row: {
 }
 
 /**
+ * Record something that happened to an **identity** rather than to a message
+ * (SPEC § 8.9.5).
+ *
+ * `recordMeshEvent` cannot carry these. Its payload is a message — id, from,
+ * to, content — and an identity changing type has none of that, so every
+ * field would be a lie or a null. Three separate things were deferred waiting
+ * for this shape: a type change leaving no record, audit reads leaving none,
+ * and the re-attestation proposal's two events.
+ *
+ * **`attestation` is null and that is the honest answer.** § 8.9.4 keeps the
+ * sender's `mesh.send` signature because a sender asked for that. Nobody signs
+ * these: `POST /api/v1/agents` is unauthenticated (§ 9.2 †), so the hub can
+ * record *that* a type changed and cannot record who is answerable for it. A
+ * fabricated attestation would be worse than an absent one, and the absence is
+ * itself information about the route.
+ *
+ * `correlation_id` is the identity, not a message id — it is what an operator
+ * pages by when asking what has happened to one participant.
+ *
+ * Never throws, for § 15.6's reason: provisioning does not fail because the
+ * audit store is unwritable.
+ */
+export function recordIdentityEvent(
+  eventType: "mesh.identity.type_changed",
+  fields: {
+    identity: string;
+    /** Merged into the payload under `change`. Shape is per event type. */
+    change: Record<string, unknown>;
+    /** Who caused it, when the route knows. `null` when it cannot. */
+    actor: string | null;
+  },
+): void {
+  const payload = JSON.stringify({
+    schema_version: 1,
+    // UUIDv7 for the same reason § 8.9.3 requires it of producers: the query
+    // API pages by `(stored_at, event_id)` and millisecond `stored_at` ties.
+    event_id: `evt_${Bun.randomUUIDv7()}`,
+    event_type: eventType,
+    occurred_at: new Date().toISOString(),
+    correlation_id: fields.identity,
+    identity: fields.identity,
+    actor: fields.actor,
+    change: fields.change,
+  });
+  const parsed = JSON.parse(payload);
+
+  try {
+    auditDb.transaction(() => {
+      stmtInsertAuditEvent.run(
+        parsed.event_id,
+        1,
+        eventType,
+        parsed.occurred_at,
+        fields.identity,
+        null,
+        null,
+        fields.identity,
+        "hub",
+        null,
+        payload,
+        createHash("sha256").update(payload, "utf8").digest("hex"),
+        null,
+      );
+    })();
+  } catch (err) {
+    log(`audit: could not record ${eventType} for ${fields.identity}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Record that a sender withdrew a message nobody had been handed (§ 9.2.1).
  *
  * Without it the trail holds a `mesh.message.sent` and nothing saying the
