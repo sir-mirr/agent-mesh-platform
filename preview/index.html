@@ -974,6 +974,45 @@
     color: var(--text-primary);
   }
 
+  /* Interactive Mini-Map (Bottom-Left) */
+  .canvas-minimap {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 200px;
+    height: 110px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.1);
+    z-index: 50;
+    overflow: hidden;
+    user-select: none;
+    transition: border-color 0.15s ease;
+  }
+  .canvas-minimap:hover {
+    border-color: var(--border-strong);
+  }
+  #minimapSvg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  .minimap-viewport-lens {
+    fill: rgba(37, 99, 235, 0.16);
+    stroke: #2563EB;
+    stroke-width: 1.8;
+    cursor: move;
+    transition: fill 0.1s ease;
+  }
+  .minimap-viewport-lens:hover {
+    fill: rgba(37, 99, 235, 0.28);
+    stroke: #1D4ED8;
+  }
+
   .peer-channel-pill {
     display: inline-flex;
     align-items: center;
@@ -1379,6 +1418,17 @@
             <span class="hud-scale-text" id="hudScaleDisplay">95%</span>
             <button class="hud-btn" onclick="zoomBy(0.8)" title="Zoom Out">−</button>
             <button class="hud-btn" onclick="resetCanvasTransform()" title="Fit All (10 Galaxies)">⤢</button>
+          </div>
+
+          <!-- Interactive Mini-Map with Draggable Viewport Lens (Bottom-Left) -->
+          <div id="canvasMinimap" class="canvas-minimap" title="Minimap (Drag to navigate canvas)">
+            <svg id="minimapSvg" viewBox="0 0 200 110">
+              <rect width="200" height="110" fill="#F1F5F9" rx="8" />
+              <!-- Minimap Galaxy Swarms & Highways Content -->
+              <g id="minimapContent"></g>
+              <!-- Draggable Viewport Lens -->
+              <rect id="minimapViewportRect" x="0" y="0" width="40" height="24" rx="3" class="minimap-viewport-lens" />
+            </svg>
           </div>
 
           <!-- Floating Right Side Agent Info & Quick Message Overlay Card -->
@@ -1836,8 +1886,17 @@
     }
 
     // =========================================================================
-    // PAN & MAC TRACKPAD PINCH-TO-ZOOM ENGINE (EXACT MOUSE-POINTER ANCHOR)
+    // 1.5x WORLD BOUNDING BOX & PAN-ZOOM ENGINE WITH BOUNDARY CLAMPING
     // =========================================================================
+    // Entities World Bounding Box: [180, 2960] x [220, 1500], Center (1570, 860), Size: 2780 x 1280
+    // 1.5x Limit Bounding Box: Width = 4170, Height = 1920
+    const BOUND_MIN_X = -515;
+    const BOUND_MAX_X = 3655;
+    const BOUND_MIN_Y = -100;
+    const BOUND_MAX_Y = 1820;
+    const WORLD_TOTAL_W = BOUND_MAX_X - BOUND_MIN_X; // 4170
+    const WORLD_TOTAL_H = BOUND_MAX_Y - BOUND_MIN_Y; // 1920
+
     let panX = 60;
     let panY = 30;
     let scale = 0.95;
@@ -1845,7 +1904,42 @@
     let dragStartX = 0;
     let dragStartY = 0;
 
+    function clampPan(targetPanX, targetPanY, targetScale) {
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return { x: targetPanX, y: targetPanY };
+      const rect = viewport.getBoundingClientRect();
+      const vw = rect.width;
+      const vh = rect.height;
+
+      const maxPanX = -BOUND_MIN_X * targetScale;
+      const minPanX = vw - BOUND_MAX_X * targetScale;
+      const maxPanY = -BOUND_MIN_Y * targetScale;
+      const minPanY = vh - BOUND_MAX_Y * targetScale;
+
+      let clampedX = targetPanX;
+      let clampedY = targetPanY;
+
+      if (minPanX > maxPanX) {
+        clampedX = (vw - (BOUND_MIN_X + BOUND_MAX_X) * targetScale) / 2;
+      } else {
+        clampedX = Math.min(Math.max(targetPanX, minPanX), maxPanX);
+      }
+
+      if (minPanY > maxPanY) {
+        clampedY = (vh - (BOUND_MIN_Y + BOUND_MAX_Y) * targetScale) / 2;
+      } else {
+        clampedY = Math.min(Math.max(targetPanY, minPanY), maxPanY);
+      }
+
+      return { x: clampedX, y: clampedY };
+    }
+
     function applyCanvasTransform() {
+      // Apply strict 1.5x world boundary clamping
+      const clamped = clampPan(panX, panY, scale);
+      panX = clamped.x;
+      panY = clamped.y;
+
       const transformGroup = document.getElementById('viewportTransform');
       if (transformGroup) {
         transformGroup.setAttribute('transform', `translate(${panX}, ${panY}) scale(${scale})`);
@@ -1854,6 +1948,9 @@
       if (scaleText) {
         scaleText.innerText = `${Math.round(scale * 100)}%`;
       }
+
+      // Update interactive minimap viewport indicator
+      updateMinimap();
     }
 
     function zoomBy(factor) {
@@ -1870,7 +1967,6 @@
       if (!viewport) return;
       const rect = viewport.getBoundingClientRect();
       
-      // Calculate mouse position relative to canvas viewport top-left
       const mouseX = clientX - rect.left;
       const mouseY = clientY - rect.top;
 
@@ -1878,14 +1974,16 @@
       const newScale = Math.min(Math.max(scale * factor, 0.25), 3.2);
       if (newScale === oldScale) return;
 
-      // Coordinate in canvas world space under mouse before zoom
       const worldX = (mouseX - panX) / oldScale;
       const worldY = (mouseY - panY) / oldScale;
 
-      // Adjust pan offsets so world coordinate stays precisely locked at (mouseX, mouseY)
-      panX = mouseX - (worldX * newScale);
-      panY = mouseY - (worldY * newScale);
+      const targetPanX = mouseX - (worldX * newScale);
+      const targetPanY = mouseY - (worldY * newScale);
+
       scale = newScale;
+      const clamped = clampPan(targetPanX, targetPanY, scale);
+      panX = clamped.x;
+      panY = clamped.y;
 
       applyCanvasTransform();
     }
@@ -1916,8 +2014,11 @@
       const rect = viewport.getBoundingClientRect();
 
       scale = 1.15;
-      panX = (rect.width / 2) - (cfg.cx * scale);
-      panY = (rect.height / 2) - (cfg.cy * scale);
+      const targetPanX = (rect.width / 2) - (cfg.cx * scale);
+      const targetPanY = (rect.height / 2) - (cfg.cy * scale);
+      const clamped = clampPan(targetPanX, targetPanY, scale);
+      panX = clamped.x;
+      panY = clamped.y;
       applyCanvasTransform();
     }
 
@@ -1932,7 +2033,7 @@
 
       // Mouse Pan (Drag with 4px threshold)
       viewport.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls')) return;
+        if (e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls') || e.target.closest('.canvas-minimap')) return;
         isMouseDown = true;
         hasDragged = false;
         isDragging = false;
@@ -1952,8 +2053,11 @@
           viewport.classList.add('is-dragging');
         }
         if (isDragging) {
-          panX = e.clientX - dragStartX;
-          panY = e.clientY - dragStartY;
+          const rawPanX = e.clientX - dragStartX;
+          const rawPanY = e.clientY - dragStartY;
+          const clamped = clampPan(rawPanX, rawPanY, scale);
+          panX = clamped.x;
+          panY = clamped.y;
           applyCanvasTransform();
         }
       });
@@ -1973,25 +2077,139 @@
           zoomAroundPoint(factor, e.clientX, e.clientY);
         } else {
           // Trackpad 2-finger Pan
-          panX -= e.deltaX * 1.0;
-          panY -= e.deltaY * 1.0;
+          const rawPanX = panX - e.deltaX * 1.0;
+          const rawPanY = panY - e.deltaY * 1.0;
+          const clamped = clampPan(rawPanX, rawPanY, scale);
+          panX = clamped.x;
+          panY = clamped.y;
           applyCanvasTransform();
         }
       }, { passive: false });
 
       // Double-click to zoom in centered on the clicked point
       viewport.addEventListener('dblclick', (e) => {
-        if (e.target.closest('.node-group')) return;
+        if (e.target.closest('.node-group') || e.target.closest('.canvas-minimap')) return;
         zoomAroundPoint(1.35, e.clientX, e.clientY);
       });
 
-      // Canvas background click (Outside nodes, edges, and overlay) -> Deselect
+      // Canvas background click (Outside nodes, edges, overlay, and minimap) -> Deselect
       viewport.addEventListener('click', (e) => {
         if (hasDragged || isDragging) return;
-        if (e.target.closest('.node-group') || e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls')) {
+        if (e.target.closest('.node-group') || e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls') || e.target.closest('.canvas-minimap')) {
           return;
         }
         deselectAll();
+      });
+    }
+
+    // =========================================================================
+    // INTERACTIVE MINIMAP ENGINE
+    // =========================================================================
+    function renderMinimapContent() {
+      const miniG = document.getElementById('minimapContent');
+      if (!miniG) return;
+      const miniW = 200;
+      const miniH = 110;
+
+      let html = '';
+      // Render miniature gateway highways
+      ALL_GATEWAYS.forEach((g, idx) => {
+        if (idx < ALL_GATEWAYS.length - 1) {
+          const next = ALL_GATEWAYS[idx + 1];
+          const x1 = ((g.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+          const y1 = ((g.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+          const x2 = ((next.x - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+          const y2 = ((next.y - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+          html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#818CF8" stroke-width="1.2" stroke-dasharray="3 1.5" />`;
+        }
+      });
+
+      // Render miniature cluster galaxy circles
+      CLUSTERS_CONFIG.forEach(cfg => {
+        const cx = ((cfg.cx - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+        const cy = ((cfg.cy - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+        const cr = (cfg.r / WORLD_TOTAL_W) * miniW;
+        html += `
+          <circle cx="${cx}" cy="${cy}" r="${cr}" fill="${cfg.fill}" stroke="${cfg.stroke}" stroke-width="1.2" opacity="0.95" />
+          <circle cx="${cx}" cy="${cy}" r="2.2" fill="${cfg.textColor}" />
+        `;
+      });
+
+      miniG.innerHTML = html;
+    }
+
+    function updateMinimap() {
+      const lens = document.getElementById('minimapViewportRect');
+      const viewport = document.getElementById('canvasViewport');
+      if (!lens || !viewport) return;
+      const rect = viewport.getBoundingClientRect();
+
+      const miniW = 200;
+      const miniH = 110;
+
+      const visibleWorldLeft = -panX / scale;
+      const visibleWorldTop = -panY / scale;
+      const visibleWorldW = rect.width / scale;
+      const visibleWorldH = rect.height / scale;
+
+      let lensX = ((visibleWorldLeft - BOUND_MIN_X) / WORLD_TOTAL_W) * miniW;
+      let lensY = ((visibleWorldTop - BOUND_MIN_Y) / WORLD_TOTAL_H) * miniH;
+      let lensW = (visibleWorldW / WORLD_TOTAL_W) * miniW;
+      let lensH = (visibleWorldH / WORLD_TOTAL_H) * miniH;
+
+      // Clamp lens within minimap boundary
+      lensX = Math.max(0, Math.min(lensX, miniW - lensW));
+      lensY = Math.max(0, Math.min(lensY, miniH - lensH));
+
+      lens.setAttribute('x', lensX);
+      lens.setAttribute('y', lensY);
+      lens.setAttribute('width', Math.min(lensW, miniW));
+      lens.setAttribute('height', Math.min(lensH, miniH));
+    }
+
+    function initMinimapEvents() {
+      const miniSvg = document.getElementById('minimapSvg');
+      if (!miniSvg) return;
+
+      let isMinimapActive = false;
+
+      function navigateFromMinimap(e) {
+        const miniRect = miniSvg.getBoundingClientRect();
+        const clickX = e.clientX - miniRect.left;
+        const clickY = e.clientY - miniRect.top;
+
+        const miniW = 200;
+        const miniH = 110;
+
+        const targetWorldX = BOUND_MIN_X + (clickX / miniW) * WORLD_TOTAL_W;
+        const targetWorldY = BOUND_MIN_Y + (clickY / miniH) * WORLD_TOTAL_H;
+
+        const viewport = document.getElementById('canvasViewport');
+        if (!viewport) return;
+        const rect = viewport.getBoundingClientRect();
+
+        const targetPanX = (rect.width / 2) - targetWorldX * scale;
+        const targetPanY = (rect.height / 2) - targetWorldY * scale;
+
+        const clamped = clampPan(targetPanX, targetPanY, scale);
+        panX = clamped.x;
+        panY = clamped.y;
+        applyCanvasTransform();
+      }
+
+      miniSvg.addEventListener('mousedown', (e) => {
+        isMinimapActive = true;
+        navigateFromMinimap(e);
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (isMinimapActive) {
+          navigateFromMinimap(e);
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        isMinimapActive = false;
       });
     }
 
@@ -2373,7 +2591,9 @@
         document.getElementById('view-creator').classList.add('active');
         if (bgLayer) bgLayer.classList.add('hidden');
         renderGalaxyTopologySVG();
+        renderMinimapContent();
         initPanZoomEngine();
+        initMinimapEvents();
         deselectAll();
         applyCanvasTransform();
       }
@@ -2617,7 +2837,9 @@
 
     // Initial render
     renderGalaxyTopologySVG();
+    renderMinimapContent();
     initPanZoomEngine();
+    initMinimapEvents();
   </script>
 </body>
 </html>
