@@ -70,6 +70,7 @@ const HOT_RELOAD_SCRIPT = `
 
 const server = Bun.serve({
   port: PORT,
+  idleTimeout: 255,
   fetch(req) {
     const url = new URL(req.url);
 
@@ -111,6 +112,25 @@ const server = Bun.serve({
           "content-type": "text/html; charset=utf-8",
           "Cache-Control": "no-cache, no-store, must-revalidate"
         },
+      });
+    }
+
+    // 3. Static Assets (Images, Icons, Fonts)
+    const filePath = join(PREVIEW_DIR, url.pathname);
+    if (existsSync(filePath)) {
+      const fileBytes = readFileSync(filePath);
+      let contentType = "application/octet-stream";
+      if (url.pathname.endsWith(".jpg") || url.pathname.endsWith(".jpeg")) contentType = "image/jpeg";
+      else if (url.pathname.endsWith(".png")) contentType = "image/png";
+      else if (url.pathname.endsWith(".svg")) contentType = "image/svg+xml";
+      else if (url.pathname.endsWith(".css")) contentType = "text/css";
+      else if (url.pathname.endsWith(".js")) contentType = "application/javascript";
+
+      return new Response(fileBytes, {
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=3600"
+        }
       });
     }
 

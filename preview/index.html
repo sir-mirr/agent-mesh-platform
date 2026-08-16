@@ -357,8 +357,235 @@
      ========================================================================== */
   .home-hero-wrap {
     text-align: center;
-    padding: 52px 0 36px;
+    padding: 48px 0 36px;
   }
+
+  /* Hero Split Layout (Interconnected Triad on Left + Title on Right) */
+  .hero-layout-split {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    max-width: 1060px;
+    margin: 0 auto 36px;
+    text-align: left;
+  }
+  @media (max-width: 920px) {
+    .hero-layout-split {
+      flex-direction: column;
+      text-align: center;
+      gap: 28px;
+    }
+  }
+
+  .hero-text-content {
+    flex: 1;
+    min-width: 0;
+  }
+  .hero-text-content .home-hero-desc {
+    margin: 0 0 20px 0;
+    max-width: 620px;
+  }
+  @media (max-width: 920px) {
+    .hero-text-content .home-hero-desc {
+      margin: 0 auto 20px;
+    }
+  }
+
+  /* 3-Agent Animated Constellation Triad */
+  .hero-agents-constellation {
+    position: relative;
+    width: 290px;
+    height: 270px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .constellation-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .constellation-line {
+    stroke-width: 2.2;
+    stroke-dasharray: 6 5;
+    stroke-linecap: round;
+    animation: constellationDash 16s linear infinite;
+  }
+
+  @keyframes constellationDash {
+    to { stroke-dashoffset: -220; }
+  }
+
+  /* Flowing Data Pulses on Mesh Edges */
+  .mesh-packet {
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+  .mesh-packet.packet-1 {
+    animation: flowEdge1 4.2s ease-in-out infinite;
+  }
+  .mesh-packet.packet-2 {
+    animation: flowEdge2 4.2s ease-in-out infinite 1.4s;
+  }
+  .mesh-packet.packet-3 {
+    animation: flowEdge3 4.2s ease-in-out infinite 2.8s;
+  }
+
+  @keyframes flowEdge1 {
+    0% { cx: 145px; cy: 50px; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { cx: 58px; cy: 195px; opacity: 0; }
+  }
+  @keyframes flowEdge2 {
+    0% { cx: 58px; cy: 195px; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { cx: 232px; cy: 195px; opacity: 0; }
+  }
+  @keyframes flowEdge3 {
+    0% { cx: 232px; cy: 195px; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { cx: 145px; cy: 50px; opacity: 0; }
+  }
+
+  /* Agent Circular Nodes */
+  .hero-agent-node {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 2;
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .hero-agent-node:hover {
+    transform: scale(1.12) !important;
+    z-index: 10;
+  }
+
+  /* Node Orbit Coordinates & Organic Floating Keyframes */
+  .agent-node-1 {
+    top: 8px;
+    left: 102px;
+    animation: floatNode1 5s ease-in-out infinite;
+  }
+  .agent-node-2 {
+    top: 152px;
+    left: 16px;
+    animation: floatNode2 5.6s ease-in-out infinite 0.7s;
+  }
+  .agent-node-3 {
+    top: 152px;
+    left: 188px;
+    animation: floatNode3 5.2s ease-in-out infinite 1.4s;
+  }
+
+  @keyframes floatNode1 {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-7px) rotate(1.2deg); }
+  }
+  @keyframes floatNode2 {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(6px) rotate(-1.5deg); }
+  }
+  @keyframes floatNode3 {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(1.5deg); }
+  }
+
+  .agent-avatar-frame {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    border: 3.5px solid #FFFFFF;
+    box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .agent-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+  }
+  .hero-agent-node:hover .agent-avatar-img {
+    transform: scale(1.08);
+  }
+
+  /* Glowing Ambient Outer Rings */
+  .agent-glow-ring {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    right: -5px;
+    bottom: 22px;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0.55;
+    animation: ringPulse 3.2s ease-in-out infinite;
+  }
+  .ring-blue {
+    border: 2px solid #3B82F6;
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.45);
+  }
+  .ring-emerald {
+    border: 2px solid #10B981;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+  }
+  .ring-purple {
+    border: 2px solid #8B5CF6;
+    box-shadow: 0 0 16px rgba(139, 92, 246, 0.45);
+  }
+
+  @keyframes ringPulse {
+    0%, 100% { transform: scale(1); opacity: 0.45; }
+    50% { transform: scale(1.06); opacity: 0.85; }
+  }
+
+  /* Agent Name Badges */
+  .agent-node-badge {
+    margin-top: 6px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: 0.72rem;
+    font-weight: 750;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: var(--shadow-xs);
+    border: 1px solid transparent;
+  }
+  .badge-blue {
+    background: #EFF6FF;
+    color: #1D4ED8;
+    border-color: #BFDBFE;
+  }
+  .badge-emerald {
+    background: #ECFDF5;
+    color: #047857;
+    border-color: #A7F3D0;
+  }
+  .badge-purple {
+    background: #F5F3FF;
+    color: #6D28D9;
+    border-color: #DDD6FE;
+  }
+
   .hero-eyebrow {
     display: inline-flex;
     align-items: center;
@@ -372,15 +599,15 @@
     border: 1px solid var(--primary-border);
     padding: 6px 16px;
     border-radius: var(--radius-full);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .brand-hero-main-title {
-    font-size: 4.4rem;
+    font-size: 4rem;
     font-weight: 900;
     color: #0F172A;
     letter-spacing: -0.04em;
     line-height: 1.05;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     text-transform: uppercase;
   }
   .brand-hero-main-title .gradient-text {
@@ -389,17 +616,17 @@
     -webkit-text-fill-color: transparent;
   }
   .brand-hero-tagline {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: #334155;
     letter-spacing: -0.02em;
     margin-bottom: 12px;
   }
   .home-hero-desc {
-    font-size: 1.05rem;
+    font-size: 1rem;
     color: var(--text-secondary);
     max-width: 660px;
-    margin: 0 auto 40px;
+    margin: 0 auto 36px;
     line-height: 1.6;
     font-weight: 450;
   }
@@ -1203,19 +1430,95 @@
   <!-- VIEW 1: HOME & DUAL LOGIN -->
   <main id="view-home" class="preview-view active">
     <section class="home-hero-wrap">
-      <div class="hero-eyebrow">
-        <span class="live-dot"></span>
-        <span data-i18n="hero_eyebrow">Next-Gen Autonomous Agent Mesh Fabric</span>
+      <div class="hero-layout-split">
+        <!-- Interconnected Animated 3-Agent Triad (Left of Title) -->
+        <div class="hero-agents-constellation" aria-label="Interactive Autonomous Agent Triad">
+          <svg class="constellation-svg" viewBox="0 0 290 270">
+            <defs>
+              <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#10B981" stop-opacity="0.9" />
+              </linearGradient>
+              <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.9" />
+              </linearGradient>
+              <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.9" />
+              </linearGradient>
+              <!-- Central mesh glow -->
+              <radialGradient id="meshCenterGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.12" />
+                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+
+            <!-- Center ambient glow polygon -->
+            <polygon points="145,50 58,195 232,195" fill="url(#meshCenterGlow)" />
+
+            <!-- Interconnection Triangle Edges -->
+            <line class="constellation-line" x1="145" y1="50" x2="58" y2="195" stroke="url(#lineGrad1)" />
+            <line class="constellation-line" x1="58" y1="195" x2="232" y2="195" stroke="url(#lineGrad2)" />
+            <line class="constellation-line" x1="232" y1="195" x2="145" y2="50" stroke="url(#lineGrad3)" />
+
+            <!-- Animated flowing packets / data pulses -->
+            <circle class="mesh-packet packet-1" r="4" fill="#3B82F6" />
+            <circle class="mesh-packet packet-2" r="4" fill="#10B981" />
+            <circle class="mesh-packet packet-3" r="4" fill="#8B5CF6" />
+          </svg>
+
+          <!-- Agent 1: Top Center (Fin홍이 - Financial Operations) -->
+          <div class="hero-agent-node agent-node-1" title="Financial Operations Agent: Fin홍이">
+            <div class="agent-glow-ring ring-blue"></div>
+            <div class="agent-avatar-frame">
+              <img src="/assets/agent-fin.jpg" alt="Fin홍이 Agent" class="agent-avatar-img" />
+            </div>
+            <div class="agent-node-badge badge-blue">
+              <span class="live-dot"></span> Fin홍이
+            </div>
+          </div>
+
+          <!-- Agent 2: Bottom Left (Support Agent - Grey Puppy) -->
+          <div class="hero-agent-node agent-node-2" title="Customer Support & Routing Agent">
+            <div class="agent-glow-ring ring-emerald"></div>
+            <div class="agent-avatar-frame">
+              <img src="/assets/agent-support.jpg" alt="Support Agent" class="agent-avatar-img" />
+            </div>
+            <div class="agent-node-badge badge-emerald">
+              <span class="live-dot" style="background:#10B981;"></span> Support
+            </div>
+          </div>
+
+          <!-- Agent 3: Bottom Right (AI Assistant - Anime Girl) -->
+          <div class="hero-agent-node agent-node-3" title="Executive AI Assistant">
+            <div class="agent-glow-ring ring-purple"></div>
+            <div class="agent-avatar-frame">
+              <img src="/assets/agent-assistant.jpg" alt="AI Assistant" class="agent-avatar-img" />
+            </div>
+            <div class="agent-node-badge badge-purple">
+              <span class="live-dot" style="background:#8B5CF6;"></span> Assistant
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Title & Hero Content -->
+        <div class="hero-text-content">
+          <div class="hero-eyebrow">
+            <span class="live-dot"></span>
+            <span data-i18n="hero_eyebrow">Next-Gen Autonomous Agent Mesh Fabric</span>
+          </div>
+          <h1 class="brand-hero-main-title">
+            AGENT <span class="gradient-text">MESH</span>
+          </h1>
+          <div class="brand-hero-tagline" data-i18n="hero_tagline">
+            The Secure, Verified Communication Backbone for Autonomous AI Agents
+          </div>
+          <p class="home-hero-desc" data-i18n="hero_desc">
+            Enable asynchronous, cryptographic message routing across autonomous AI agents with end-to-end identity verification, immutable audit logging, and zero persistent infrastructure overhead.
+          </p>
+        </div>
       </div>
-      <h1 class="brand-hero-main-title">
-        AGENT <span class="gradient-text">MESH</span>
-      </h1>
-      <div class="brand-hero-tagline" data-i18n="hero_tagline">
-        The Secure, Verified Communication Backbone for Autonomous AI Agents
-      </div>
-      <p class="home-hero-desc" data-i18n="hero_desc">
-        Enable asynchronous, cryptographic message routing across autonomous AI agents with end-to-end identity verification, immutable audit logging, and zero persistent infrastructure overhead.
-      </p>
     </section>
 
     <!-- Dual Login Section -->
