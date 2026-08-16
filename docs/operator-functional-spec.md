@@ -1,14 +1,14 @@
 # Agent Mesh Platform: 운영자 기능 목록 및 UX 동선 명세서
 (Operator Functional Specification & UX Flow Diagrams)
 
-**문서 버전**: 2.0.0 (Platform Backend & Contracts 검토 및 정합성 보정 완료)  
+**문서 버전**: 2.1.0 (임대 시효성 메커니즘 & 운영자 프록시 발신 정직성 반영 완료)  
 **작성자**: `platform-fe-antigravity` (Admin Frontend)  
-**기술 검토**: `platform-claude` (Platform Backend & Contracts)  
-**수신자/검토자**: User (Project Lead)
+**기술 검토 & 합의**: `platform-claude` (Platform Backend & Contracts)  
+**수신자**: User (Project Lead)
 
 ---
 
-## 1. 운영자 페르소나 및 보안 경계 원칙 (Security Boundaries)
+## 1. 운영자 페르소나 및 핵심 보안/감사 원칙
 
 ```mermaid
 graph TD
@@ -17,23 +17,26 @@ graph TD
     Login -->|GitHub OAuth: alice_dev| OprRole[에이전트 운영자 Agent Operator / Developer]
 
     AdmRole --> AdmScope[보안 게이트, 50자 키 승인, 인박스 메트릭, 불변 감사 포렌식, Teardown]
-    OprRole --> OprScope[내 에이전트 신원/공개키 등록, 콘솔 신원 기반 메시지 테스트, 인박스 메타데이터 감시]
+    OprRole --> OprScope[내 에이전트 신원/공개키 등록, 콘솔 프록시 메시지 테스트, 인박스 메타데이터 감시]
 ```
 
-### 🔒 프론트엔드 핵심 보안 & 아키텍처 불변 규정
-1. **임대 무간섭 원칙 (Zero-Lease Interference)**:
-   * 어드민 프론트엔드는 에이전트의 개인키를 보유하지 않으며, `POST /api/v1/inbox`를 직접 호출하지 않습니다.
-   * 큐 조회는 `readonly`로 열린 `GET /api/v1/admin/inbox`를 사용하여 **운영자 조회가 실제 에이전트의 메시지 임대(Lease)를 가로채는 사고를 원천 방지**합니다.
-2. **사유와 동작의 엄격한 분리 (Action vs Reason)**:
-   * `action`: `('proposed', 'approved', 'denied', 'revoked', 'superseded')` (DB 스키마 Enum)
-   * `reason`: 자유 문자열 (Revoke 시 필수, Deny 시 선택). UI는 프리셋(`rotation`, `compromise`, `expired`) + **자유 직접 입력** 지원.
-   * **`compromise`(키 유출)**는 이전 서명 전체를 의심하게 하므로, 일반 `rotation`과 명확히 구별되는 **적색 경고 뱃지**로 렌더링.
-3. **50자리 키 지문 비절삭 (Full 50-char Fingerprint)**:
-   * `sha256:` 접두사(7자) + Base64URL(43자) = **총 50자 전체**를 고정폭 폰트로 온전히 노출.
-4. **인박스 메트릭 수식 정의**:
+### 🔒 프론트엔드 핵심 보안 & 감사 정직성 불변 규정
+
+1. **임대 무간섭 및 시효성 원칙 (Zero-Lease & Dynamic Expiration)**:
+   * 어드민 프론트엔드는 `readonly`로 열린 `GET /api/v1/admin/inbox`를 사용하여 조회 시 임대를 발생시키지 않습니다.
+   * `leased` 카운트는 `leased_until >= datetime('now')`로 계산되므로, 임대 창(`mailbox.receive_lease_seconds`, 기본 300초)이 경과하면 에이전트 미처리 시 자동으로 `Available`로 복귀합니다(At-Least-Once 보증). UI는 하드코딩 없이 `GET /api/v1/capabilities`에서 이 값을 읽어 남은 유효 시간을 시각화합니다.
+2. **발신 주체와 프록시의 정직한 표기 (Truth in Attestation: `from` vs `sent_by`)**:
+   * 사람 운영자(`human`, `alice_dev`)는 `requires_key = 0`이므로 개인키 서명이 없으며, JWT 인증 후 `http-server`의 프록시 소켓을 통해 발신됩니다.
+   * UI 및 감사 로그에서 에이전트의 Ed25519 직접 암호학적 서명과 사람 운영자의 프록시 발신을 엄격히 구분하여 **`alice_dev (via http-server)`**로 정직하게 표기합니다.
+3. **사유와 동작의 스키마 분리 (Action Enum vs Reason Freeform)**:
+   * `action`: `('proposed', 'approved', 'denied', 'revoked', 'superseded')`
+   * `reason`: 자유 문자열 (Revoke 시 필수, Deny 시 선택). UI는 프리셋 + 자유 텍스트 직접 입력을 지원하며, **`compromise`(키 유출)**는 적색 경고 뱃지로 렌더링합니다.
+4. **50자리 키 지문 비절삭 (Full 50-char Fingerprint)**:
+   * `sha256:` 접두사(7자) + Base64URL(43자) = **총 50자 전체**를 고정폭 폰트로 온전히 노출합니다.
+5. **인박스 메트릭 연산 수식**:
    * `Total Depth` = `pending`
-   * `Leased` = `leased` (임대 중인 in-flight 메시지)
-   * `Available` = `pending - leased` (대기 중인 즉시 수신 가능 메시지, 프론트엔드 연산)
+   * `Leased` = `leased` (시각 기준 유효 임대 중인 in-flight 메시지)
+   * `Available` = `pending - leased` (즉시 수신 가능한 대기 메시지)
 
 ---
 
@@ -44,8 +47,8 @@ graph TD
 | 기능 ID | 기능명 | 운영자가 **봐야 하는 것 (SEE)** | 운영자가 **해야 하는 것 (DO)** | 기술 규격 / 엔드포인트 |
 | :--- | :--- | :--- | :--- | :--- |
 | **F-ADM-01** | **암호학적 키 승인 및 거버넌스** | • 전체 에이전트의 승인 대기(`pending`) 키 목록<br>• **50자리 SHA-256 지문 전체** (`sha256:...`, 50자)<br>• 키 제안 시각, 키 타입(`type: "ai-claude"` 등)<br>• 거부/취소 사유 및 `compromise` 위험 상태 배지 | • 50자리 지문 원클릭 복사<br>• 지문 기준 원자적 승인 (`POST /api/v1/agents/{id}/keys/approve`)<br>• 거부/취소 시 사유 입력 (프리셋 선택 + 자유 텍스트 직접 입력) | SPEC § 10.2, § 8.10<br>`GET /api/v1/agents/{id}/keys`<br>`POST /api/v1/agents/{id}/keys/approve`<br>`POST /api/v1/agents/{id}/keys/revoke` |
-| **F-ADM-02** | **인박스 적체 및 임대 감시** | • 에이전트별 인박스 메트릭<br>• **`Total Depth (pending)` vs `Leased (leased)` vs `Available (pending - leased)`**<br>• 개별 메시지 메타데이터 (`id`, `from`, `ts`, `size`, `leased`) | • `readonly` 인박스 메트릭 조회 (임대 미발생 보증)<br>• **접근 분리 원칙**: 큐 조회 시 메시지 본문 미노출 확인 | SPEC § 9.2.1<br>`GET /api/v1/admin/inbox`<br>`GET /api/v1/admin/inbox/:identity` |
-| **F-ADM-03** | **실시간 불변 감사 포렌식** | • 실시간 SSE 감사 이벤트 스트림<br>• 송신자 → 수신자 신원, 메시지 시퀀스 ID, 타임스탬프<br>• 서명 검증 상태 및 첨부 블롭 해시 | • 송수신 에이전트별 / 시간대별 필터링<br>• 감사 기록 열람 (감사 열람 행위 자체도 감사 로그에 영구 기록) | SPEC § 9.1<br>`GET /api/v1/audit/events` |
+| **F-ADM-02** | **인박스 적체 및 임대 감시** | • 에이전트별 인박스 메트릭<br>• **`Total Depth (pending)` vs `Leased (leased)` vs `Available (pending - leased)`**<br>• `capabilities`의 `receive_lease_seconds` 기반 임대 시효 만료 안내<br>• 개별 메시지 메타데이터 (`id`, `from`, `ts`, `size`, `leased`) | • `readonly` 인박스 메트릭 조회 (임대 미발생 보증)<br>• **접근 분리 원칙**: 큐 조회 시 메시지 본문 미노출 확인 | SPEC § 9.2.1<br>`GET /api/v1/admin/inbox`<br>`GET /api/v1/admin/inbox/:identity`<br>`GET /api/v1/capabilities` |
+| **F-ADM-03** | **실시간 불변 감사 포렌식** | • 실시간 SSE 감사 이벤트 스트림<br>• 발신자 및 전송 주체 분리 표기 (**`from: alice_dev`, `sent_by: http-server` vs Ed25519 에이전트 서명**)<br>• 메시지 시퀀스 ID, 타임스탬프, 첨부 블롭 해시 | • 송수신 에이전트별 / 시간대별 필터링<br>• 감사 기록 열람 (감사 열람 행위 자체도 감사 로그에 영구 기록) | SPEC § 9.1<br>`GET /api/v1/audit/events` |
 | **F-ADM-04** | **영구 신원 Teardown 통제** | • 등록된 신원 목록 및 활성/삭제 상태 (`deleted: true/false`)<br>• 삭제된 신원의 톰스톤(Tombstone) 상태 | • 2단계 경고 모달을 통한 영구 삭제 실행 (`DELETE /api/v1/agents/{id}`)<br>• 동일 신원 재등록 시도 시 `409 IDENTITY_DELETED` 에러 처리 보증 | SPEC § 9.3<br>`DELETE /api/v1/agents/{id}` |
 | **F-ADM-05** | **허브 메타데이터 & 인프라 상태** | • `capabilities` 메타데이터 (`surface.version: 2`)<br>• WebSocket 온라인 에이전트 수 (`online_agents`)<br>• Hub 가동 시간 및 AI 쿼터 상태 | • 허브 헬스체크 및 실시간 쿼터 이상 모니터링 | SPEC § 9.2.1, § 8.10<br>`GET /api/v1/capabilities` |
 
@@ -56,7 +59,7 @@ graph TD
 | 기능 ID | 기능명 | 운영자가 **봐야 하는 것 (SEE)** | 운영자가 **해야 하는 것 (DO)** | 기술 규격 / 엔드포인트 |
 | :--- | :--- | :--- | :--- | :--- |
 | **F-OPR-01** | **에이전트 신원 등록 및 키 관리** | • 내가 소유한 등록 에이전트 목록<br>• 에이전트 가동 상태 (`WebSocket Online` vs `Socketless`)<br>• 등록된 공개키 50자리 지문 및 승인/대기/취소 상태 | • 외부 에이전트 신원 신규 등록 (`POST /api/v1/agents`)<br>• 새 Ed25519 공개키 제안 등록 (`POST /api/v1/agents/{id}/keys`)<br>• 키 교체(Rotation) 신청 | SPEC § 8.1, § 10.2<br>`POST /api/v1/agents`<br>`POST /api/v1/agents/{id}/keys` |
-| **F-OPR-02** | **콘솔 메시지 테스트 (Playground)** | • 메시지 수신 가능한 활성/승인 에이전트 디렉토리<br>• 페이로드 편집기 (JSON/Text) 및 블롭 첨부 UI<br>• **즉각 배달 영수증** (`Delivered to WebSocket` / `Queued in Inbox #seq`) | • 콘솔 운영자 신원(`alice_dev`)으로 서명된 테스트 메시지 전송<br>• 전송 레이턴시 및 배달 영수증 확인 (감사 로그에 운영자 발신 기록) | SPEC § 8.10<br>`POST /api/v1/rpc` (`mesh.send`) |
+| **F-OPR-02** | **콘솔 메시지 테스트 (Playground)** | • 메시지 수신 가능한 활성/승인 에이전트 디렉토리<br>• 페이로드 편집기 (JSON/Text) 및 블롭 첨부 UI<br>• **즉각 배달 영수증** (`Delivered to WebSocket` / `Queued in Inbox #seq`) | • 콘솔 운영자 신원(`alice_dev`, via `http-server` 프록시)으로 테스트 메시지 전송<br>• 전송 레이턴시 및 배달 영수증 확인 | SPEC § 8.10<br>`POST /api/v1/messages` |
 | **F-OPR-03** | **에이전트 인박스 메타데이터 감시** | • 내 에이전트의 인박스 적체 메타데이터 (`Total Depth`, `Leased`, `Available`)<br>• 메시지 발신자(`from`), 수신 시각(`ts`), 페이로드 크기(`size`) | • `readonly` 인박스 상태 모니터링 (실제 메시지 수신/임대는 실제 에이전트 프로세스가 수행) | SPEC § 9.2.1<br>`GET /api/v1/admin/inbox/:identity` |
 
 ---
@@ -99,7 +102,7 @@ sequenceDiagram
 
 ---
 
-### Flow 2: [플랫폼 관리자] 인박스 적체 감시 및 수식 기반 렌더링 동선 (F-ADM-02)
+### Flow 2: [플랫폼 관리자] 인박스 적체 감시 및 시효성 수식 기반 렌더링 동선 (F-ADM-02)
 
 ```mermaid
 sequenceDiagram
@@ -111,10 +114,10 @@ sequenceDiagram
 
     Admin->>UI: [Inbox Backlog] 탭 선택
     UI->>HTTP: GET /api/v1/admin/inbox (Readonly)
-    HTTP->>DB: SELECT inboxes (pending, leased, oldest)
+    HTTP->>DB: SELECT inboxes (pending, leased, oldest) WHERE leased_until >= datetime('now')
     DB-->>HTTP: { inboxes: [{ identity: "demo-receiver", pending: 5, leased: 2, oldest: 140 }] }
     HTTP-->>UI: 200 OK
-    Note over UI: 프론트엔드 연산:<br>Total Depth = pending (5)<br>Leased = leased (2)<br>Available = pending - leased (3)
+    Note over UI: 프론트엔드 연산:<br>Total Depth = pending (5)<br>Leased = leased (2, 시효 만료 시 자동 복귀)<br>Available = pending - leased (3)
     UI-->>Admin: 3단 배지 렌더링 [Total Depth: 5] [2 Leased ⚡] [3 Available]<br>(메시지 임대 발생 없이 안전하게 메타데이터만 렌더링)
 ```
 
@@ -175,7 +178,7 @@ sequenceDiagram
 
 ---
 
-### Flow 5: [에이전트 운영자] 콘솔 메시지 테스트 및 즉각 영수증 동선 (F-OPR-02)
+### Flow 5: [에이전트 운영자] 콘솔 프록시 메시지 테스트 동선 (F-OPR-02)
 
 ```mermaid
 sequenceDiagram
@@ -183,23 +186,26 @@ sequenceDiagram
     actor Operator as 에이전트 운영자 (Agent Operator)
     participant UI as 메시지 테스트 콘솔
     participant HTTP as Platform HTTP Server (:3000)
+    participant Hub as Platform Hub (:3100)
     participant Target as 수신 에이전트 (WebSocket / Inbox)
     participant Audit as 감사 저장소 (audit.db)
 
     Operator->>UI: 수신 에이전트 선택 (`platform-claude`), 메시지 본문 입력
     Operator->>UI: [Send Message ✈] 클릭
-    Note over UI: 콘솔 운영자 신원(alice_dev)으로 서명 생성
-    UI->>HTTP: POST /api/v1/rpc { method: "mesh.send", params: { from: "alice_dev", to: "platform-claude", payload: "..." } }
+    Note over UI,HTTP: JWT 인증 기반 HTTP POST (/api/v1/messages)
+    UI->>HTTP: POST /api/v1/messages { to: "platform-claude", body: "..." }
+    HTTP->>Hub: Proxy Socket Frame { from: "alice_dev", sent_by: "http-server", payload: "..." }
     
-    HTTP->>Audit: 감사 이벤트 영구 기록 (발신자 alice_dev 기록)
+    Hub->>Audit: 감사 이벤트 기록 (from: alice_dev, sent_by: http-server)
     
     alt 수신 에이전트가 WebSocket 온라인인 경우
-        HTTP->>Target: WebSocket 프레임 즉시 전송
-        Target-->>HTTP: ACK
+        Hub->>Target: WebSocket 프레임 즉시 전송
+        Target-->>Hub: ACK
+        Hub-->>HTTP: Delivered
         HTTP-->>UI: 200 OK { delivered: true, transport: "websocket", seq: 1042 }
         UI-->>Operator: [Delivered to Socket ✓] 녹색 배지 즉시 점등
     else 수신 에이전트가 소켓리스(Pull) 모드인 경우
-        HTTP->>Target: 인박스 큐 적재 (inbox.db)
+        Hub->>Target: 인박스 큐 적재 (inbox.db)
         HTTP-->>UI: 200 OK { delivered: true, transport: "inbox_queued", seq: 1043 }
         UI-->>Operator: [Queued in Inbox #1043 ⚡] 블루 배지 즉시 점등
     end
