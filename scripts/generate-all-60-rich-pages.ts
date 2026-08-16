@@ -640,7 +640,7 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Tenant Admin',
     role: 'Tenant Admin / Agent Operator',
     title: '50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped)',
-    subtitle: 'Wildcard tenant approval vs scoped ownership approval with 200 OK empty state and 403 handling',
+    subtitle: 'Wildcard tenant approval vs scoped ownership approval with 2-way empty states and 403 handling',
     isImplemented: true,
     html: `
       <div class="card">
@@ -652,20 +652,44 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
           <div style="display:flex; gap:8px;">
             <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Tenant Admin (Wildcard scope: *).')">Admin View (*)</button>
             <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (Owned: acme-corp:core-lead only).')">Scoped View</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Simulated 200 OK Empty State for unowned account.')">Empty (0 Owned)</button>
           </div>
         </div>
 
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          🔑 <strong>Scoped Approval Rules:</strong> If an operator has <code>key.approve</code> scoped to their owned agents but currently has 0 pending keys, the endpoint returns <code>200 OK []</code> (Empty State), <strong>NOT 403</strong>. A <code>403</code> error only occurs when the caller completely lacks the <code>key.approve</code> capability.
+          🔑 <strong>Scoped Approval & Empty State Rules:</strong><br>
+          • <strong>0 Owned Agents (200 OK):</strong> <em>"You do not own any agents yet."</em> &rarr; Prompts user to generate a pairing code.<br>
+          • <strong>Owned Agents, 0 Pending Keys (200 OK):</strong> <em>"All owned agents are fully approved. No pending keys."</em> (Healthy idle state).<br>
+          • <strong>Missing Capability (403):</strong> <code>{ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }</code>.
         </div>
 
-        <div class="code-snippet-box">Identity: acme-corp:core-lead (Fin둥이)
-Fingerprint: sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
-Proposed: 2026-08-17 01:45:00 UTC · Scope: Owned by alice_dev</div>
+        <!-- Active Proposal Card -->
+        <div style="border:1px solid var(--border-default); border-radius:var(--radius-md); padding:14px; background:var(--bg-surface);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:0.95rem; color:var(--text-primary);">acme-corp:core-lead (Fin둥이)</strong>
+            <span class="badge badge-leased">Owned by alice_dev</span>
+          </div>
+          <div class="code-snippet-box">Fingerprint: sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
+Proposed: 2026-08-17 01:45:00 UTC · Origin: Direct Provisioning</div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+            <button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button>
+            <button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Deny Proposal</button>
+          </div>
+        </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
-          <button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button>
-          <button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Deny Proposal</button>
+        <!-- 2-Way Empty State Demonstration Box -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;">
+          <div style="border:1px dashed var(--border-default); border-radius:var(--radius-md); padding:16px; text-align:center; background:var(--bg-surface-sub);">
+            <span style="font-size:1.2rem;">🎟️</span>
+            <div style="font-weight:700; font-size:0.85rem; margin-top:4px;">You do not own any agents yet</div>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin:4px 0 10px;">Claim ownership of an agent via device pairing code.</p>
+            <a href="/tenant/pairing-codes.html" class="btn btn-primary btn-sm" style="font-size:0.75rem;">+ Generate Pairing Code →</a>
+          </div>
+          <div style="border:1px dashed var(--border-default); border-radius:var(--radius-md); padding:16px; text-align:center; background:var(--bg-surface-sub);">
+            <span style="font-size:1.2rem;">✅</span>
+            <div style="font-weight:700; font-size:0.85rem; margin-top:4px;">All owned agents fully approved</div>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px;">No pending key proposals in queue.</p>
+          </div>
         </div>
       </div>
     `

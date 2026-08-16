@@ -4,16 +4,21 @@ import { join } from 'path';
 const REPO_ROOT = process.cwd();
 const isTestMode = process.argv.includes('--test');
 
+// Minimum floor for valid route extraction: 60 modular pages must extract at least 60 route references!
+const MIN_ROUTE_REFERENCES_FLOOR = 60;
+
 export function runLint(options?: {
   mockDeliverables?: string;
   mockSpec?: string;
   mockHtmlFiles?: Record<string, string>;
   mockRbac?: string;
+  minFloorOverride?: number;
   silent?: boolean;
 }): { errors: number; totalRoutesFound: number; totalAllowedRoutes: number } {
   let errors = 0;
   let totalRoutesFound = 0;
   const silent = options?.silent ?? false;
+  const minFloor = options?.minFloorOverride ?? MIN_ROUTE_REFERENCES_FLOOR;
 
   // 1. Verify all files in docs/deliverables.md exist
   const deliverablesMd = options?.mockDeliverables ?? readFileSync('docs/deliverables.md', 'utf-8');
@@ -97,8 +102,9 @@ export function runLint(options?: {
     });
   });
 
-  if (totalRoutesFound === 0) {
-    if (!silent) console.error('❌ Extracted 0 routes from files — route extractor failed');
+  // Anti-degradation floor assertion: check that routes extracted did not degrade below expected floor!
+  if (totalRoutesFound < minFloor) {
+    if (!silent) console.error(`❌ Extracted ${totalRoutesFound} routes, expected at least ${minFloor} — the route extractor is degraded or missing routes!`);
     errors++;
   }
 
@@ -126,14 +132,15 @@ export function runLint(options?: {
   return { errors, totalRoutesFound, totalAllowedRoutes: rawAllowedRoutes.length };
 }
 
-// Self-Test Mode (Meta-Testing the Linter against Mutations)
+// Self-Test Mode (Meta-Testing the Linter against Mutations & Degradations)
 if (isTestMode) {
-  console.log('🧪 --- Running Linter Mutation Self-Test Suite ---');
+  console.log('🧪 --- Running Linter Mutation & Degradation Self-Test Suite ---');
   let testFailures = 0;
 
   // Test 1: Unregistered route MUST fail (errors > 0)
   const mut1 = runLint({
     mockHtmlFiles: { 'test.html': '<div>POST /api/v1/tenants/acme/quota</div>' },
+    minFloorOverride: 1,
     silent: true
   });
   if (mut1.errors === 0) {
@@ -143,16 +150,17 @@ if (isTestMode) {
     console.log('✓ Mutation Test 1 Passed: Invented route was caught.');
   }
 
-  // Test 2: 0 routes extracted MUST fail (errors > 0)
+  // Test 2: Degraded extraction (e.g. only 7 routes when floor is 60) MUST fail
   const mut2 = runLint({
-    mockHtmlFiles: { 'test.html': '<div>No routes here</div>' },
+    mockHtmlFiles: { 'test.html': '<div>' + Array(7).fill('/api/v1/inbox').join(' ') + '</div>' },
+    minFloorOverride: 60,
     silent: true
   });
   if (mut2.errors === 0) {
-    console.error('❌ Mutation Test 2 Failed: 0 routes extracted did not trigger error!');
+    console.error('❌ Mutation Test 2 Failed: Degraded extraction (7 < 60) did not trigger error!');
     testFailures++;
   } else {
-    console.log('✓ Mutation Test 2 Passed: 0 extracted routes was caught.');
+    console.log('✓ Mutation Test 2 Passed: Degraded route extraction (below floor of 60) was caught.');
   }
 
   // Test 3: Missing RBAC capability MUST fail (errors > 0)
@@ -180,7 +188,7 @@ if (isTestMode) {
   }
 
   if (testFailures === 0) {
-    console.log('🎉 ALL 4 LINTER MUTATION SELF-TESTS PASSED!\n');
+    console.log('🎉 ALL 4 LINTER MUTATION & DEGRADATION SELF-TESTS PASSED!\n');
   } else {
     console.error(`❌ Total Mutation Failures: ${testFailures}`);
     process.exit(1);
@@ -194,7 +202,7 @@ const result = runLint();
 if (result.errors === 0) {
   console.log(`✓ Verified 60 files in deliverables manifest exist.`);
   console.log(`✓ Parsed ${result.totalAllowedRoutes} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1).`);
-  console.log(`✓ Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files.`);
+  console.log(`✓ Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files (Floor: >= ${MIN_ROUTE_REFERENCES_FLOOR}).`);
   console.log(`✓ Verified all 9 capabilities (Contracts v0.9.1) exist in RBAC.`);
   console.log(`\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${result.totalRoutesFound} routes verified)`);
   process.exit(0);
