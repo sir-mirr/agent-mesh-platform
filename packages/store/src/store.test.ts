@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAt, stateDir, STORE_FILES } from "./open";
+import * as keys from "./keys";
 import * as agentsSchema from "./schema/agents";
 import * as hubSchema from "./schema/hub";
 
@@ -290,5 +291,80 @@ describe("openStore and openAt agree", () => {
     const openStoreBody = source.slice(source.indexOf("export function openStore"));
     expect(openStoreBody).toContain("openAt(");
     expect(openStoreBody.slice(0, openStoreBody.indexOf("\n}"))).not.toContain("new Database");
+  });
+});
+
+/**
+ * `agent_keys` is keyed on the fingerprint alone, so "this key is on record"
+ * and "this key is on record **for you**" are different questions. Answering
+ * the first when asked the second reported another holder's ruling and
+ * inserted nothing (SPEC § 10.1).
+ *
+ * The route refuses before it writes; this is the backstop under it, so a
+ * future caller that skips that check cannot reintroduce the defect quietly.
+ */
+describe("proposing a key that is already someone else's", () => {
+  function seeded() {
+    const db = tempDb();
+    agentsSchema.migrate(db);
+    db.prepare(`INSERT INTO agents (identity, type) VALUES ('owner', 'ai-claude')`).run();
+    db.prepare(`INSERT INTO agents (identity, type) VALUES ('thief', 'ai-claude')`).run();
+    return db;
+  }
+  // 43 base64url chars, which is all `PUBLIC_KEY_RE` asks of it. The fingerprint
+  // is over the string, so no real key material is needed to test ownership.
+  const KEY = "A".repeat(43);
+
+  test("throws rather than reporting the other identity's status", () => {
+    const db = seeded();
+    const first = keys.proposeKey(db, "owner", KEY, "test");
+    expect(first.created).toBe(true);
+    expect(() => keys.proposeKey(db, "thief", KEY, "test")).toThrow(keys.KeyOwnershipError);
+    db.close();
+  });
+
+  test("and records nothing for the caller that was refused", () => {
+    // Note what this on its own cannot prove. **Nothing is recorded either
+    // way** — that is the defect. A test asserting only the empty result
+    // passes against the broken version too, so the refusal is asserted here
+    // as well and the row state is the second half of one claim.
+    const db = seeded();
+    keys.proposeKey(db, "owner", KEY, "test");
+    expect(() => keys.proposeKey(db, "thief", KEY, "test")).toThrow(keys.KeyOwnershipError);
+    const rows = db.prepare(`SELECT identity FROM agent_keys`).all() as Array<{ identity: string }>;
+    expect(rows).toEqual([{ identity: "owner" }]);
+    const events = db.prepare(`SELECT identity FROM agent_key_events`).all() as Array<{ identity: string }>;
+    expect(events.every((e) => e.identity === "owner")).toBe(true);
+    db.close();
+  });
+
+  test("the error does not carry the holder's name", () => {
+    // § 10.2 keeps fingerprint-to-identity closed, and an exception message
+    // reaches logs and, if a handler is careless, responses.
+    //
+    // The error is captured rather than asserted inside a `try` whose `catch`
+    // would swallow the "it did not throw" failure and pass — which is what
+    // the first draft of this test did.
+    const db = seeded();
+    keys.proposeKey(db, "owner", KEY, "test");
+    let caught: unknown = null;
+    try {
+      keys.proposeKey(db, "thief", KEY, "test");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(keys.KeyOwnershipError);
+    expect(String(caught)).not.toContain("owner");
+    expect((caught as keys.KeyOwnershipError).fingerprint).toBeTruthy();
+    db.close();
+  });
+
+  test("the same identity re-proposing is still the no-op it was", () => {
+    const db = seeded();
+    keys.proposeKey(db, "owner", KEY, "test");
+    const again = keys.proposeKey(db, "owner", KEY, "test");
+    expect(again.created).toBe(false);
+    expect(again.status).toBe("pending");
+    db.close();
   });
 });

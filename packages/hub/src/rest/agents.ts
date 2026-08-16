@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { PROVISION_ERROR, PUBLIC_KEY_RE } from "@agent-mesh/contracts";
+import { PROVISION_ERROR, PUBLIC_KEY_RE, keyFingerprint } from "@agent-mesh/contracts";
 import { agentsSchema, keys } from "@agent-mesh/store";
 
 import {
@@ -138,6 +138,24 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
       return jsonResponse(400, {
         ok: false,
         error: "public_key must be a raw Ed25519 key, base64url, 43 characters",
+      });
+    }
+    // A key already held by someone else (SPEC § 10.1). Refused **here**,
+    // before the row is written, because `agent_keys` is keyed on the
+    // fingerprint alone: the INSERT would silently do nothing and leave a
+    // `requires_key` identity with no key — the state the check below exists
+    // to prevent, reached from the other side.
+    //
+    // The holder's name is compared and discarded. Reporting it would make
+    // this route a fingerprint-to-identity lookup for anyone who can reach the
+    // port, which is the direction § 10.2 keeps closed.
+    const holder = keys.fingerprintHolder(agentsDb, keyFingerprint(publicKey));
+    if (holder !== null && holder !== identity) {
+      return jsonResponse(409, {
+        ok: false,
+        code: PROVISION_ERROR.KEY_HELD_BY_ANOTHER_IDENTITY,
+        identity,
+        error: "that public key is already registered to a different identity",
       });
     }
   }
