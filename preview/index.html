@@ -2228,11 +2228,17 @@
           let type = 'runtime';
           let status = 'Online';
           let badgeClass = 'badge-success';
+          let avatarImg = null;
+          let displayName = '';
 
           if (i === 0) {
             name = `${cfg.id}-lead`;
             type = 'ai-claude';
             icon = cfg.id === 'core' ? '🤖' : (cfg.id === 'research' ? '🔬' : (cfg.id === 'delivery' ? '⚡' : '🧠'));
+            if (cfg.id === 'core') {
+              avatarImg = '/assets/agent-fin.png';
+              displayName = 'core-lead (Fin둥이)';
+            }
           } else if (i === 1 && cfg.id === 'core') {
             name = 'fe-antigravity';
             type = 'admin';
@@ -2243,7 +2249,15 @@
               status = 'Socketless';
               badgeClass = 'badge-leased';
             }
+            if (cfg.id === 'core' && i === 2) {
+              avatarImg = '/assets/agent-support.png';
+              displayName = 'core-agent-3 (Fin자)';
+            } else if (cfg.id === 'core' && i === 4) {
+              avatarImg = '/assets/agent-assistant.png';
+              displayName = 'core-agent-5 (아름이)';
+            }
           }
+          if (!displayName) displayName = name;
 
           // Calculate spacious concentric orbit positions with radial outward-pointing directional labels
           let nx, ny;
@@ -2307,10 +2321,12 @@
           }
 
           memberIds.push(name);
-          nodeCoords.push({ name, x: nx, y: ny, icon, status, badgeClass, type, labelOffsetY });
+          nodeCoords.push({ name, displayName, avatarImg, x: nx, y: ny, icon, status, badgeClass, type, labelOffsetY });
 
           TOPOLOGY_NODES[name] = {
             identity: name,
+            displayName: displayName,
+            avatarImg: avatarImg,
             group: cfg.id,
             groupName: cfg.name,
             type: type,
@@ -2511,14 +2527,26 @@
         } else {
           const isOnline = node.status === 'Online';
           const lOffset = node.labelOffsetY || 28;
+          let innerGraphic = `<text x="${node.x}" y="${node.y + 4}" font-size="10" text-anchor="middle" style="cursor:pointer;">${node.icon || '🤖'}</text>`;
+          if (node.avatarImg) {
+            const clipId = `clip-avatar-${node.identity}`;
+            innerGraphic = `
+              <defs>
+                <clipPath id="${clipId}">
+                  <circle cx="${node.x}" cy="${node.y}" r="14.5" />
+                </clipPath>
+              </defs>
+              <image href="${node.avatarImg}" x="${node.x - 14}" y="${node.y - 14}" width="28" height="28" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid meet" style="cursor:pointer;" />
+            `;
+          }
           html += `
             <g id="node-${nodeId}" class="node-group" onclick="handleNodeClick('${nodeId}', event)">
               <!-- Large 38px Hit Area covering circle, icon, and text label -->
               <circle cx="${node.x}" cy="${node.y + 12}" r="38" fill="transparent" style="cursor:pointer;" />
               <circle cx="${node.x}" cy="${node.y}" r="16" class="node-circle" filter="url(#nodeShadow)" />
+              ${innerGraphic}
               <circle cx="${node.x + 13}" cy="${node.y - 13}" r="3.8" fill="${isOnline ? '#059669' : '#0284C7'}" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="${node.x}" y="${node.y + 4}" font-size="10" text-anchor="middle" style="cursor:pointer;">${node.icon || '🤖'}</text>
-              <text x="${node.x}" y="${node.y + lOffset}" class="node-title">${node.identity}</text>
+              <text x="${node.x}" y="${node.y + lOffset}" class="node-title">${node.displayName || node.identity}</text>
             </g>
           `;
         }
@@ -2961,8 +2989,13 @@
       });
 
       // Update Right-Side Floating Overlay Card
-      document.getElementById('overlayNodeTitle').innerText = data.identity;
-      document.getElementById('overlayNodeIcon').innerText = data.icon || (data.type === 'gateway-bridge' ? '🌐' : '🤖');
+      document.getElementById('overlayNodeTitle').innerText = data.displayName || data.identity;
+      const iconEl = document.getElementById('overlayNodeIcon');
+      if (data.avatarImg) {
+        iconEl.innerHTML = `<img src="${data.avatarImg}" style="width:34px; height:34px; border-radius:50%; object-fit:contain; background:#FFFFFF; border:1.5px solid var(--border-default); vertical-align:middle; box-shadow:var(--shadow-xs);" />`;
+      } else {
+        iconEl.innerHTML = `<span>${data.icon || (data.type === 'gateway-bridge' ? '🌐' : '🤖')}</span>`;
+      }
       document.getElementById('overlayNodeGroup').innerText = data.groupName;
       document.getElementById('overlayNodeBadge').className = `badge ${data.badgeClass}`;
       document.getElementById('overlayNodeBadge').innerText = data.status;
@@ -2973,7 +3006,12 @@
       const peersContainer = document.getElementById('overlayPeersWrap');
       let pillsHtml = '';
       data.directPeers.slice(0, 8).forEach(p => {
-        pillsHtml += `<span class="peer-channel-pill" style="cursor:pointer;" onclick="selectAndFlyToPeer('${p}', event)" title="Select & Fly to ${p}"><span style="color:#059669;">●</span> ${p}</span>`;
+        const peerNode = TOPOLOGY_NODES[p];
+        const pName = peerNode ? (peerNode.displayName || p) : p;
+        const pAvatar = peerNode && peerNode.avatarImg 
+          ? `<img src="${peerNode.avatarImg}" style="width:14px; height:14px; border-radius:50%; vertical-align:middle; margin-right:3px; background:#fff; object-fit:contain;" />` 
+          : `<span style="color:#059669;">●</span>`;
+        pillsHtml += `<span class="peer-channel-pill" style="cursor:pointer;" onclick="selectAndFlyToPeer('${p}', event)" title="Select & Fly to ${p}">${pAvatar} ${pName}</span>`;
       });
       if (data.directPeers.length > 8) {
         pillsHtml += `<span class="peer-channel-pill">+${data.directPeers.length - 8} more</span>`;
