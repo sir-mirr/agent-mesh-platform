@@ -718,12 +718,13 @@
   }
   .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-  /* Interactive Canvas Container with Pan & Zoom Drag */
+  /* Interactive Canvas Container with Dynamic Viewport Height */
   .topology-canvas-wrap {
     position: relative;
     background: #F8FAFC;
     overflow: hidden;
-    height: 640px;
+    height: calc(100vh - 230px);
+    min-height: 520px;
     width: 100%;
     cursor: grab;
     user-select: none;
@@ -1987,9 +1988,22 @@
     }
 
     function resetCanvasTransform() {
-      panX = 60;
-      panY = 30;
-      scale = 0.95;
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      const vw = rect.width || 1200;
+      const vh = rect.height || 600;
+
+      // Fit all 10 clusters (width ~2950, height ~1400) comfortably inside viewport with padding
+      const scaleX = (vw - 80) / 2950;
+      const scaleY = (vh - 80) / 1400;
+      const autoScale = Math.min(scaleX, scaleY);
+      scale = Math.max(0.32, Math.min(autoScale, 0.95));
+
+      // Center the network in the viewport
+      panX = (vw / 2) - (1570 * scale);
+      panY = (vh / 2) - (860 * scale);
+
       applyCanvasTransform();
     }
 
@@ -2593,10 +2607,17 @@
         initPanZoomEngine();
         initMinimapEvents();
         deselectAll();
-        applyCanvasTransform();
+        setTimeout(resetCanvasTransform, 30);
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    window.addEventListener('resize', () => {
+      const creatorView = document.getElementById('view-creator');
+      if (creatorView && creatorView.classList.contains('active')) {
+        applyCanvasTransform();
+      }
+    });
 
     function switchAdminTab(tab) {
       document.querySelectorAll('.tab-nav-btn').forEach(t => t.classList.remove('active'));
