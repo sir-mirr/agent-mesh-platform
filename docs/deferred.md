@@ -220,3 +220,31 @@ which is what the reporting case actually needed. Recording the transition
 means a new event shape — `recordMeshEvent` is message-shaped and does not
 fit — and a SPEC section defining it. Worth doing, not worth doing between a
 question and its answer.
+
+### Reading the audit trail is not itself audited
+
+`GET /api/v1/audit/events` and `/api/v1/audit/events/{event_id}` resolve an
+admin actor and then discard it. Nothing records that someone read the trail,
+or what they read.
+
+This matters because it is load-bearing elsewhere. `GET /api/v1/admin/inbox`
+withholds message bodies on the reasoning that an operator who needs content
+should go to the audit trail, *where the access is itself recorded* — that is
+written into the route's own docstring, and it is not true. The weaker
+half stands (bodies are not in the inbox route); the justification does not.
+
+Structural, not an omission in the handler: `agent-mesh-http` opens `audit.db`
+with `readonly: true` (`audit-query.ts`), so it could not write the event even
+if one were defined. Closing this means either giving that process write access
+to a store it is currently prevented from touching, or routing the record
+through the hub — and both are architecture decisions rather than a patch.
+
+Two smaller questions come with it. A paginating operator would emit one event
+per page, so the trail fills with reads; and a read of the trail becomes an
+entry in the trail, which the next read returns.
+
+**Why deferred.** It shares its blocker with the type-change item above: both
+need a non-message event shape, which `recordMeshEvent` is not, plus a SPEC
+section defining it. Recorded here rather than fixed quietly because the claim
+was already stated to `platform-fe-antigravity` (mail #139) and written into
+their operator specification as a guarantee — retracted in #145.
