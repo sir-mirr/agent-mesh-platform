@@ -25,7 +25,7 @@
  */
 
 import { spawn } from "bun";
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -90,11 +90,16 @@ function spawnService(entry: string, env: Record<string, string>) {
   // should see the harness's own lines, and a full pipe buffer would stall the
   // child it belongs to.
   const label = entry.includes("hub") ? "hub" : "http";
+  // Decoded. A `Uint8Array` interpolated into a template string renders as its
+  // comma-separated bytes, so a child that died printed its stack as four
+  // thousand numbers — unreadable exactly when it is the only thing worth
+  // reading.
+  const decoder = new TextDecoder();
   void (async () => {
-    for await (const chunk of proc.stdout) process.stdout.write(`[${label}] ${chunk}`);
+    for await (const chunk of proc.stdout) process.stdout.write(`[${label}] ${decoder.decode(chunk)}`);
   })();
   void (async () => {
-    for await (const chunk of proc.stderr) process.stderr.write(`[${label}] ${chunk}`);
+    for await (const chunk of proc.stderr) process.stderr.write(`[${label}] ${decoder.decode(chunk)}`);
   })();
   return proc;
 }
@@ -123,7 +128,12 @@ function writeAtomic(path: string, contents: string): void {
 }
 
 const args = parseArgs(process.argv.slice(2));
+// Created, not assumed. `mkdtempSync` makes the directory when no path is
+// given, so the flagged path was the only one that had to exist already — and
+// when it did not, the services died on `SQLITE_CANTOPEN`, fifteen seconds
+// before a health-check timeout that named the port instead of the directory.
 const stateDir = args.stateDir ?? mkdtempSync(join(tmpdir(), "agent-mesh-e2e-"));
+mkdirSync(stateDir, { recursive: true });
 
 const hubPort = await freePort();
 const httpPort = await freePort();
