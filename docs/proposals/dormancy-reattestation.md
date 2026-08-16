@@ -205,9 +205,13 @@ again.
   separate what the agent says from what the hub observes, and grade the
   response by which of the two moved. That document also argues that hardware
   key attestation would make this proposal unnecessary rather than better.
-- **Three hours.** Chosen by the requirement, not derived. It should be a
-  deployment setting advertised in `capabilities`, and the default argued from
-  how long a stolen key goes unnoticed rather than from a round number.
+- **Three hours has no derivation**, and is not claimed to. It is a deployment
+  setting advertised in `capabilities`, overridable by environment variable for
+  the same reason `AGENT_MESH_HEARTBEAT_MS` is: a test of this behaviour has to
+  wait out the window, and a test that waits three hours is one nobody runs.
+  The default should eventually be argued from how long a stolen key goes
+  unnoticed; until someone has that number, a round one honestly labelled is
+  better than a derived-looking one that was also guessed.
 - **Proxied sends.** `from: alice_dev, sent_by: http-server` — whose dormancy
   and whose attestation? The proxy holds the key, so it is the proxy's, and
   a person who has not sent for three hours would otherwise block the whole

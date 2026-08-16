@@ -161,17 +161,53 @@ Capture it at a moment the agent itself is the peer:
 The second needs no new mechanism and is the fallback where no pairing code was
 used.
 
-### A reverse proxy deletes this tier
+### Behind a proxy — assumed, which changes what has to be true
 
-`X-Forwarded-For` is a header — Tier 1 wearing a Tier 2 costume. If anything
-sits in front of the hub, the observed address is the proxy's and the real one
-is a claim the client could have written.
+The deployment assumption is that the hub sits behind a reverse proxy. So the
+observed address is not the socket's; it is `X-Forwarded-For`, and that is a
+**header**. Tier 2 does not survive that on its own — it survives only if two
+things hold, and both are deployment properties rather than code:
 
-This must be **explicit configuration, never inference**: a trusted-proxy list,
-and with none configured the hub uses the socket address and ignores the header
-entirely. A deployment behind an untrusted hop should turn the feature off
-rather than run it on a value anyone can set, and the capability document
-should say which of the two it is doing.
+**1. The hub MUST NOT be reachable except through the proxy.** If it is, an
+attacker connects directly and writes whatever `X-Forwarded-For` they like.
+Every guarantee here collapses to Tier 1 at that point, silently, with the
+feature still reporting that it is on. Bind to loopback or a private interface
+and let the proxy be the only path.
+
+**2. The proxy MUST replace the header, not append to it.** A client that sends
+
+```
+X-Forwarded-For: 203.0.113.9        ← attacker-chosen
+```
+
+and a proxy that appends produces
+
+```
+X-Forwarded-For: 203.0.113.9, 198.51.100.7
+                 ^^^^^^^^^^^^ attacker         ^^^^^^^^^^^^ real
+```
+
+**Take the rightmost value the trusted hop added, never the leftmost.** The
+leftmost is the conventional "original client" and is exactly the one a client
+can forge. This is the single most-repeated mistake in this pattern and it
+fails open — the check keeps running and compares an attacker-supplied string.
+
+So the rule the hub implements:
+
+```
+trusted_proxies configured   →  take the rightmost address contributed by a
+                                trusted hop; ignore everything to its left
+none configured              →  use the socket address; ignore the header
+                                entirely
+hub directly reachable       →  the feature is off, and the capability
+                                document must say so
+```
+
+The third line is not a runtime check the hub can make — it cannot tell whether
+something else can also reach it. It is a deployment claim, so the capability
+document should report **which mode it is in**, and an operator screen should
+show it. A control that is configured off looks identical to one that is on
+until someone asks.
 
 ### Granularity is a per-identity choice
 
@@ -205,8 +241,9 @@ a workaround.
 
 ## Open
 
-- **Is the hub behind a proxy in any target deployment?** Decides whether this
-  runs at all, and it is the first question to answer.
+- **Which proxy, and does it strip inbound `X-Forwarded-For`?** Assumed behind
+  one; the two properties above are what make that safe, and neither is
+  verifiable from inside the hub.
 - **Default granularity**, and whether a deployment may override it per
   identity or only globally.
 - **Does the observed source belong to the identity or to the key?** A rotated
