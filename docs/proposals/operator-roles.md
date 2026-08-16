@@ -6,10 +6,46 @@ Today there is one authenticated role that does everything: `admin` approves
 keys, tears identities down, reads the audit trail and reads inbox depth. The
 proposal splits it.
 
-| | |
-|---|---|
-| **Platform operator** | runs the mesh — processes, ports, storage, upgrades |
-| **Agent operator** | owns specific agents and is answerable for them |
+```
+platform operator            runs the mesh — processes, ports, storage, upgrades
+  └── tenant admin           owns a tenant; grants roles inside it
+        ├── group manager    creates groups, moves agents between them
+        └── agent manager    owns specific agents, approves their keys
+        └── …                more will be added
+```
+
+**That `…` is the design constraint, not a footnote.** The current code asks
+`if (payload.role !== 'admin')` in twenty-odd places, which extends to a second
+role by adding a second string comparison to each of them and to a fifth role by
+being wrong somewhere. A set that is expected to grow has to be a **grant table
+resolved per request**, not an enum compared inline:
+
+```sql
+CREATE TABLE role_grants (
+  tenant     TEXT NOT NULL,
+  subject    TEXT NOT NULL,          -- the person
+  capability TEXT NOT NULL,          -- 'key.approve', 'audit.read.metadata', …
+  scope      TEXT NOT NULL,          -- '*' | group id | identity
+  granted_by TEXT NOT NULL,
+  granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (tenant, subject, capability, scope)
+);
+```
+
+Routes then ask for a capability over a scope. Adding a role becomes rows;
+adding a route becomes one `require(...)` call whose absence is visible.
+
+### Capabilities are resolved per request, not carried in the token
+
+The JWT holds `role` today, so the answer is fixed for the token's lifetime.
+With one admin that is tolerable. With granular roles it means **revoking
+someone's access does not revoke it** — their token keeps working until it
+expires, and the one moment revocation matters is an incident, which is exactly
+when nobody wants to wait out a TTL.
+
+The token should carry identity; the grants should be read at the point of use.
+That is a database read per authenticated request, on a store the process
+already holds open.
 
 Three rules follow from the split:
 
@@ -224,13 +260,21 @@ argue against first.
 
 ## What this does not answer
 
-- **Who onboards the agent operators.** Presumably the platform operator, which
-  means they can create an operator account, hold it, and read audit through
-  it. Rule 2 does not survive that unless account creation is separated too —
-  see the boundary section.
-- **Teardown.** § 9.3 destroys an identity. Owner's call, platform's call, or
-  both?
-- **Cross-owner proxying.** `sent_by` may belong to a different owner than
-  `from`. Whose audit does a proxied send land in?
+- **Who onboards the tenant admins.** The platform operator, presumably — which
+  means they can create a tenant admin account, hold it, and read through it.
+  Rule 2 survives that only in the encrypted-body version, where the grant does
+  not carry the key.
+- **Whether a tenant admin is inside or above their tenant.** If they can grant
+  themselves `audit.read.content` over every agent in the tenant, the agent
+  operator's ownership is advisory. If they cannot, an agent whose owner leaves
+  is unreachable. Both are defensible; picking silently is not.
+- **Teardown.** § 9.3 destroys an identity. Owner, tenant admin, or both?
+- **Cross-owner and cross-group proxying.** `sent_by` may belong to a different
+  owner than `from`. Whose audit does a proxied send land in — and once
+  gateways exist, `sent_by` cannot even name all the carriers
+  ([`tenancy-and-groups.md`](tenancy-and-groups.md)).
 - **The `admin` role's fate.** Splitting it in place breaks every existing
   caller of `/api/v1/admin/*`; keeping it as a superset makes rule 2 a comment.
+  The likely answer is that `admin` becomes a seeded grant set rather than a
+  string, so existing deployments keep working and new checks are written
+  against capabilities from the start.
