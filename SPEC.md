@@ -1586,6 +1586,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/pairing-codes`     | JWT\*  | `201`   | Issue a pairing code binding an identity to the caller (§ 11.3). Returned once; no route reads it back. |
 | POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
 | GET    | `/api/v1/admin/agents/{identity}/owners` | JWT\* | `200` | Who is answerable for an identity, and how the claim was made (§ 11.3). |
+| GET    | `/api/v1/admin/agents/owned`      | JWT\*  | `200`   | What the **caller** owns (§ 11.3). A tenant-wide grant does not widen it — "everything here" is not an answer to "what is mine". |
 | GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
