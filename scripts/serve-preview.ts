@@ -115,9 +115,24 @@ const server = Bun.serve({
       });
     }
 
-    // 3. Static Assets (Images, Icons, Fonts)
+    // 3. Static Assets & Modular HTML Pages
     const filePath = join(PREVIEW_DIR, url.pathname);
     if (existsSync(filePath)) {
+      if (url.pathname.endsWith(".html")) {
+        let html = readFileSync(filePath, "utf8");
+        if (html.includes("</body>")) {
+          html = html.replace("</body>", `${HOT_RELOAD_SCRIPT}</body>`);
+        } else {
+          html += HOT_RELOAD_SCRIPT;
+        }
+        return new Response(html, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+          }
+        });
+      }
+
       const fileBytes = readFileSync(filePath);
       let contentType = "application/octet-stream";
       if (url.pathname.endsWith(".jpg") || url.pathname.endsWith(".jpeg")) contentType = "image/jpeg";
@@ -125,6 +140,7 @@ const server = Bun.serve({
       else if (url.pathname.endsWith(".svg")) contentType = "image/svg+xml";
       else if (url.pathname.endsWith(".css")) contentType = "text/css";
       else if (url.pathname.endsWith(".js")) contentType = "application/javascript";
+      else if (url.pathname.endsWith(".json")) contentType = "application/json";
 
       return new Response(fileBytes, {
         headers: {

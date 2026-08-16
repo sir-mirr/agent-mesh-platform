@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Architecture & Protocols — Agent Mesh Enterprise</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/public/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn active">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <div class="page-container">
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+          <span class="badge badge-leased">Public & Marketing</span>
+          <span class="badge badge-success">Role: Public / Security Team</span>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">Screen #2</span>
+        </div>
+        <h1 class="admin-header-title">Security Architecture & Protocols</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Zero-infrastructure, Ed25519-verified multi-tenant cryptographic pipeline.</p>
+      </div>
+      <div>
+        <a href="/index.html" class="btn btn-secondary btn-sm">← Back to Overview</a>
+      </div>
+    </div>
+
+    
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Cryptographic Attestation & Zero-Body Privacy Model</div>
+        </div>
+        <div class="code-snippet-box">
+// SPEC v0.3 Attestation Pipeline
+from: "acme-corp:core-lead"    // Ed25519 author signature over payload
+sent_by: "alice_admin"         // Bearer token from browser session
+surface.observed_source: "socket" // Kernel-observed source IP validation
+        </div>
+      </div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>
