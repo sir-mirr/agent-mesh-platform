@@ -1,7 +1,7 @@
 # Agent Mesh Platform: 운영자 기능 목록 및 UX 동선 명세서
 (Operator Functional Specification & UX Flow Diagrams)
 
-**문서 버전**: 2.4.0 (에이전트 그룹 토폴로지 그래프 & 게이트웨이 브릿지 노드 시각화 반영)  
+**문서 버전**: 2.5.0 (원형 오비탈 클러스터 & 노드-엣지 선택적 통신 채널 제어 ACL 반영)  
 **작성자**: `platform-fe-antigravity` (Admin Frontend)  
 **검증 방식**: Live E2E Harness cURL 전수 실측 (`contracts v0.8.2`, `surface.version: 3`)  
 **수신자**: User (Project Lead)
@@ -63,13 +63,13 @@ graph TD
 | **F-OPR-01** | **에이전트 신원 등록 및 키 제안/로테이션** | • 내가 소유한 등록 에이전트 목록<br>• 등록된 공개키 50자리 지문 및 승인/대기/취소 상태<br>• **3대 409 충돌 에러 안내 메시지** (`IDENTITY_EXISTS`, `IDENTITY_DELETED`, `KEY_HELD_BY_ANOTHER_IDENTITY`) | • 외부 에이전트 신원 신규 등록 및 최초 공개키 제안<br>• `POST /api/v1/agents` 후 반드시 `GET /api/v1/agents/{id}/keys`로 실제 소유 키 검증<br>• 타 신원 키 충돌 시 안내 렌더링 | `POST /api/v1/agents`<br>`{ identity, type, public_key }`<br>`GET /api/v1/agents/:identity/keys` |
 | **F-OPR-02** | **콘솔 메시지 테스트 (Playground)** | • 메시지 수신 가능한 활성/승인 에이전트 디렉토리<br>• 페이로드 편집기 (JSON/Text) 및 블롭 첨부 UI<br>• **즉각 배달 영수증** (`Delivered to WebSocket` / `Queued in Inbox #seq`) | • 콘솔 운영자 신원(`alice_dev`, via `http-server` 프록시)으로 테스트 메시지 전송<br>• 전송 레이턴시 및 배달 영수증 확인 | `POST /api/v1/messages`<br>`{ to, body }` (JWT 인증) |
 | **F-OPR-03** | **에이전트 인박스 메타데이터 감시** | • 내 에이전트의 인박스 적체 메타데이터 (`Total Depth`, `Leased`, `Available`)<br>• 메시지 발신자(`from`), 수신 시각(`ts`), 페이로드 크기(`size`) | • `readonly` 인박스 상태 모니터링 (실제 메시지 수신/임대는 실제 에이전트 프로세스가 수행) | `GET /api/v1/admin/inbox/:identity` |
-| **F-OPR-04** | **에이전트 네트워크 토폴로지 & 게이트웨이 시각화** | • **에이전트 그룹(클러스터/스웜)** 시각 컨테이너 (`Core Platform`, `Research Swarm`, `Delivery Mesh`)<br>• **그룹 내 상호 통신선 (Intra Links)**<br>• **그룹 간 연결 게이트웨이 노드 (`gateway-hub`, `gateway-research`, `gateway-delivery`) 및 브릿지 고속도로**<br>• 노드별 실시간 상태 (`Online`, `Socketless`, `Gateway 🌐`) | • 그룹별 필터링 (`All`, `Core`, `Research`, `Delivery`)<br>• 노드 클릭 시 인스펙터 서랍 열기 (신원, 타입, 50자 지문, 피어 목록)<br>• **[💬 메시지 테스트] 원클릭 전송 연동** | `GET /api/v1/agents`<br>`GET /api/v1/capabilities`<br>`GET /health` |
+| **F-OPR-04** | **원형 오비탈 토폴로지 & 선택적 통신 채널 제어 (ACL)** | • **원형 오비탈 클러스터** (`Core Platform`, `Research Swarm`, `Delivery Mesh`)<br>• **노드와 엣지(Edge)로 명시된 실제 상호 통신 연결선** (소통 허용 vs 제한된 노드)<br>• **그룹 간 게이트웨이 브릿지 노드 (🌐) 및 고속 라우팅 브릿지**<br>• 소통 허용 피어 목록 및 라우팅 상태 | • 원형 클러스터별 필터링<br>• 노드 클릭 시 통신 허용 엣지 및 연결 피어 하이라이트<br>• **[⚙ 통신 채널 권한 설정 (ACL)]**: 특정 에이전트 간 엣지 동적 활성화/제한<br>• **[💬 메시지 테스트] 원클릭 전송 연동** | `GET /api/v1/agents`<br>`GET /api/v1/capabilities`<br>`GET /health` |
 
 ---
 
 ## 3. 기능별 UX 사용자 동선 (Mermaid Flows)
 
-### Flow 6: [에이전트 운영자] 에이전트 그룹 토폴로지 탐색 및 게이트웨이 브릿지 라우팅 동선 (F-OPR-04)
+### Flow 6: [에이전트 운영자] 원형 토폴로지 탐색 & 선택적 통신 채널(ACL) 설정 동선 (F-OPR-04)
 
 ```mermaid
 sequenceDiagram
@@ -77,25 +77,27 @@ sequenceDiagram
     actor Operator as 에이전트 운영자 (Agent Operator)
     participant UI as 운영 콘솔 (Network Topology)
     participant Drawer as 노드 인스펙터 서랍 (Inspector)
+    participant Modal as 통신 채널 설정 모달 (ACL)
     participant PG as 메시지 플레이그라운드 (Playground)
-    participant HTTP as Platform HTTP Server (:3000)
 
     Operator->>UI: 에이전트 운영 콘솔 -> [🌐 Network Topology Graph] 탭 선택
-    UI-->>Operator: 3대 그룹 클러스터, 통신선, 게이트웨이 노드(🌐) 및 브릿지 렌더링
-    
-    opt 그룹 필터링 선택
-        Operator->>UI: [Research Swarm] 필터 버튼 클릭
-        UI-->>Operator: Research 그룹 노드 및 연결된 게이트웨이 브릿지만 하이라이트
-    end
+    UI-->>Operator: 3대 원형 오비탈 클러스터, 명시적 노드-엣지 통신선, 게이트웨이 노드(🌐) 렌더링
 
     Operator->>UI: 특정 노드(`deep-researcher`) 클릭
-    UI->>UI: 연결된 피어 통신선 하이라이트 & 비관련 노드 딤(Dim) 처리
-    UI->>Drawer: 노드 인스펙터 서랍 활성화 (타입: ai-reasoning, 상태: Online, 50자리 키 지문)
-    Drawer-->>Operator: 노드 상세 정보 및 [💬 Test Message →] 버튼 표시
+    UI->>UI: `deep-researcher`와 연결된 엣지만 활성 하이라이트 & 비연결 노드 딤 처리
+    UI->>Drawer: 인스펙터 서랍 표시 (허용 피어: data-indexer, gateway-research)
 
-    Operator->>Drawer: [💬 Test Message →] 버튼 클릭
-    Drawer->>PG: 플레이그라운드 탭으로 즉시 전환 & 수신자(`deep-researcher`) 자동 입력
-    PG-->>Operator: 메시지 본문 작성 및 즉시 전송 준비 완료
+    alt 통신 권한(ACL) 수정
+        Operator->>Drawer: [⚙ Config Channels] 클릭
+        Drawer->>Modal: 통신 채널 설정 모달 표시 (그룹 내 피어 체크박스 목록)
+        Operator->>Modal: 특정 에이전트 연결 토글 후 [Save Policy] 클릭
+        Modal->>UI: SVG 엣지 선 동적 추가/제거 실시간 반영
+        UI-->>Operator: "통신 채널 정책이 업데이트되었습니다." 알림
+    else 즉시 메시지 발송
+        Operator->>Drawer: [💬 Test Message →] 클릭
+        Drawer->>PG: 플레이그라운드로 전환 & 수신자 자동 입력
+        PG-->>Operator: 테스트 메시지 작성 및 발송 준비 완료
+    end
 ```
 
 ---

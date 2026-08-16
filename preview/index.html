@@ -666,7 +666,7 @@
   .audit-msg-content { color: var(--text-primary); flex: 1; }
 
   /* ==========================================================================
-     VIEW 3: AGENT OPERATIONS CONSOLE (WITH NETWORK TOPOLOGY GRAPH)
+     VIEW 3: AGENT OPERATIONS CONSOLE (CIRCULAR ORBITAL TOPOLOGY)
      ========================================================================== */
   .topology-card {
     background: #FFFFFF;
@@ -725,7 +725,7 @@
     background: #FAFAFC;
     padding: 24px;
     overflow: hidden;
-    min-height: 480px;
+    min-height: 520px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -733,45 +733,54 @@
   #topologySvg {
     width: 100%;
     height: auto;
-    max-height: 520px;
+    max-height: 540px;
     display: block;
   }
 
-  /* SVG Styles */
-  .group-box {
-    fill-opacity: 0.45;
-    stroke-width: 1.5;
-    stroke-dasharray: 4 4;
+  /* SVG Circular Clusters & Explicit Node Links */
+  .group-circle {
+    fill-opacity: 0.4;
+    stroke-width: 1.8;
+    stroke-dasharray: 6 5;
     transition: all 0.3s ease;
   }
-  .group-box-core { fill: #EFF6FF; stroke: #93C5FD; }
-  .group-box-research { fill: #ECFDF5; stroke: #A7F3D0; }
-  .group-box-delivery { fill: #F5F3FF; stroke: #DDD6FE; }
+  .group-circle-core { fill: #EFF6FF; stroke: #93C5FD; }
+  .group-circle-research { fill: #ECFDF5; stroke: #A7F3D0; }
+  .group-circle-delivery { fill: #F5F3FF; stroke: #DDD6FE; }
 
-  .group-label {
-    font-family: var(--font-ui);
-    font-size: 13px;
-    font-weight: 700;
-    fill: #1E293B;
+  .group-badge-rect {
+    fill: #FFFFFF;
+    stroke-width: 1;
+    filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.06));
   }
-  .group-sublabel {
+  .group-label-text {
     font-family: var(--font-ui);
-    font-size: 11px;
-    font-weight: 600;
-    fill: #64748B;
+    font-size: 11.5px;
+    font-weight: 800;
+    text-anchor: middle;
+    letter-spacing: -0.01em;
   }
 
+  /* Node-to-Node Explicit Edges */
   .edge-line {
     stroke: #94A3B8;
-    stroke-width: 1.5;
+    stroke-width: 1.6;
     stroke-linecap: round;
-    transition: all 0.2s ease;
+    transition: all 0.25s ease;
   }
-  .edge-line.intra { stroke: #CBD5E1; stroke-dasharray: 3 3; }
+  .edge-line.intra-active {
+    stroke: #3B82F6;
+    stroke-width: 2;
+  }
+  .edge-line.intra-restricted {
+    stroke: #CBD5E1;
+    stroke-dasharray: 4 4;
+    stroke-width: 1.2;
+  }
   .edge-line.gateway-bridge {
     stroke: #7C3AED;
-    stroke-width: 2.5;
-    stroke-dasharray: 6 4;
+    stroke-width: 3;
+    stroke-dasharray: 8 5;
     animation: flowDash 20s linear infinite;
   }
   @keyframes flowDash {
@@ -779,9 +788,12 @@
   }
 
   .edge-line.highlighted {
-    stroke: var(--primary) !important;
-    stroke-width: 3 !important;
-    stroke-dasharray: none !important;
+    stroke: #2563EB !important;
+    stroke-width: 3.5 !important;
+    filter: drop-shadow(0 0 6px rgba(37, 99, 235, 0.4));
+  }
+  .edge-line.dimmed {
+    opacity: 0.15;
   }
 
   /* Interactive Agent Nodes */
@@ -790,20 +802,20 @@
     transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .node-group:hover {
-    transform: scale(1.08);
+    transform: scale(1.1);
   }
   .node-group.active-selected .node-circle {
     stroke: var(--primary);
     stroke-width: 3.5;
-    filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.3));
+    filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.35));
   }
   .node-group.dimmed {
-    opacity: 0.25;
+    opacity: 0.22;
   }
 
   .node-circle {
     fill: #FFFFFF;
-    stroke: #E2E8F0;
+    stroke: #CBD5E1;
     stroke-width: 2;
     transition: all 0.2s ease;
   }
@@ -815,14 +827,14 @@
 
   .node-title {
     font-family: var(--font-ui);
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 700;
     fill: #0F172A;
     text-anchor: middle;
   }
   .node-badge-text {
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 600;
     fill: #64748B;
     text-anchor: middle;
@@ -839,11 +851,24 @@
   .node-inspector-drawer.active { display: block; }
   .inspector-grid {
     display: grid;
-    grid-template-columns: 2fr 1.5fr 1fr;
+    grid-template-columns: 1.8fr 1.6fr 1.2fr;
     gap: 20px;
     align-items: center;
   }
-  @media (max-width: 850px) { .inspector-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .inspector-grid { grid-template-columns: 1fr; } }
+
+  .peer-channel-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--bg-surface-sub);
+    border: 1px solid var(--border-default);
+    margin: 2px 4px 2px 0;
+  }
 
   .creator-layout {
     display: grid;
@@ -1179,7 +1204,7 @@
     </div>
   </main>
 
-  <!-- VIEW 3: AGENT OPERATIONS CONSOLE (WITH INTERACTIVE NETWORK TOPOLOGY) -->
+  <!-- VIEW 3: AGENT OPERATIONS CONSOLE (WITH CIRCULAR ORBITAL TOPOLOGY) -->
   <main id="view-creator" class="preview-view">
     <div class="admin-header-row">
       <div>
@@ -1200,13 +1225,13 @@
       <button class="tab-nav-btn" id="tabBtnPlayground" onclick="switchOperatorTab('playground')" data-i18n="tab_playground">📋 My Agents & Message Playground</button>
     </div>
 
-    <!-- TAB 1: INTERACTIVE NETWORK TOPOLOGY GRAPH -->
+    <!-- TAB 1: CIRCULAR ORBITAL NETWORK TOPOLOGY GRAPH -->
     <div id="operator-panel-topology">
       <div class="topology-card">
         <!-- Toolbar & Filters -->
         <div class="topology-toolbar">
           <div class="topology-filters">
-            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-right:6px;" data-i18n="label_filter_group">Groups:</span>
+            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-right:6px;" data-i18n="label_filter_group">Orbital Groups:</span>
             <button class="topology-filter-btn active" onclick="filterTopologyGroup('all', this)" data-i18n="filter_all">All Clusters (3)</button>
             <button class="topology-filter-btn" onclick="filterTopologyGroup('core', this)" data-i18n="filter_core">Core Platform</button>
             <button class="topology-filter-btn" onclick="filterTopologyGroup('research', this)" data-i18n="filter_research">Research Swarm</button>
@@ -1218,12 +1243,13 @@
             <span><span class="legend-dot" style="background:#059669;"></span> <span data-i18n="legend_online">Online Agent</span></span>
             <span><span class="legend-dot" style="background:#0284C7;"></span> <span data-i18n="legend_socketless">Socketless Pull</span></span>
             <span><span class="legend-dot" style="background:#7C3AED;"></span> <span data-i18n="legend_gateway">Gateway Node 🌐</span></span>
-            <span><span style="display:inline-block; width:16px; height:2px; background:#CBD5E1; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_intra">Intra Link</span></span>
+            <span><span style="display:inline-block; width:16px; height:2px; background:#3B82F6; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_active_edge">Active Channel</span></span>
+            <span><span style="display:inline-block; width:16px; height:2px; border-top:2px dashed #CBD5E1; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_restricted_edge">Restricted</span></span>
             <span><span style="display:inline-block; width:16px; height:3px; background:#7C3AED; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_bridge">Gateway Bridge</span></span>
           </div>
         </div>
 
-        <!-- Interactive SVG Canvas -->
+        <!-- Interactive SVG Canvas with Circular Orbital Bubbles -->
         <div class="topology-canvas-wrap">
           <svg id="topologySvg" viewBox="0 0 1000 520" preserveAspectRatio="xMidYMid meet">
             <defs>
@@ -1235,136 +1261,146 @@
               </filter>
             </defs>
 
-            <!-- ================= GROUP CLUSTER BOUNDING BOXES ================= -->
-            <!-- Group 1: Core Platform Hub (Left-Top) -->
+            <!-- ================= CIRCULAR ORBITAL GROUP CLUSTERS ================= -->
+            <!-- Group 1: Core Platform Hub (Left Circle) -->
             <g id="group-core" class="cluster-group">
-              <rect x="30" y="30" width="280" height="460" rx="16" ry="16" class="group-box group-box-core" />
-              <text x="50" y="62" class="group-label">Core Platform Hub</text>
-              <text x="50" y="80" class="group-sublabel">Identity & Audit Governance (3 nodes)</text>
+              <circle cx="185" cy="260" r="148" class="group-circle group-circle-core" />
+              <rect x="75" y="85" width="220" height="28" rx="14" ry="14" class="group-badge-rect" stroke="#93C5FD" />
+              <text x="185" y="103" class="group-label-text" fill="#1E40AF">Core Platform Hub (3)</text>
             </g>
 
-            <!-- Group 2: Research & Reasoning Swarm (Center-Top) -->
+            <!-- Group 2: Research & Reasoning Swarm (Center Circle) -->
             <g id="group-research" class="cluster-group">
-              <rect x="360" y="30" width="280" height="460" rx="16" ry="16" class="group-box group-box-research" />
-              <text x="380" y="62" class="group-label">Research & Reasoning Swarm</text>
-              <text x="380" y="80" class="group-sublabel">Analysis & Model Pipeline (3 nodes)</text>
+              <circle cx="500" cy="260" r="148" class="group-circle group-circle-research" />
+              <rect x="375" y="85" width="250" height="28" rx="14" ry="14" class="group-badge-rect" stroke="#A7F3D0" />
+              <text x="500" y="103" class="group-label-text" fill="#065F46">Research & Reasoning Swarm (3)</text>
             </g>
 
-            <!-- Group 3: Execution & Delivery Mesh (Right-Top) -->
+            <!-- Group 3: Execution & Delivery Mesh (Right Circle) -->
             <g id="group-delivery" class="cluster-group">
-              <rect x="690" y="30" width="280" height="460" rx="16" ry="16" class="group-box group-box-delivery" />
-              <text x="710" y="62" class="group-label">Execution & Delivery Mesh</text>
-              <text x="710" y="80" class="group-sublabel">Client CLI & In-Flight Queues (3 nodes)</text>
+              <circle cx="815" cy="260" r="148" class="group-circle group-circle-delivery" />
+              <rect x="695" y="85" width="240" height="28" rx="14" ry="14" class="group-badge-rect" stroke="#DDD6FE" />
+              <text x="815" y="103" class="group-label-text" fill="#5B21B6">Execution & Delivery Mesh (3)</text>
             </g>
 
-            <!-- ================= COMMUNICATION EDGES / LINKS ================= -->
-            <!-- Intra-Group Links: Group 1 (Core) -->
-            <path id="edge-core-1" d="M 170 145 L 170 235" class="edge-line intra" />
-            <path id="edge-core-2" d="M 170 235 L 170 380" class="edge-line intra" />
-            <path id="edge-core-3" d="M 170 145 Q 110 260 170 380" class="edge-line intra" />
+            <!-- ================= EXPLICIT NODE-TO-NODE EDGES ================= -->
+            
+            <!-- Group 1 (Core) Explicit Links -->
+            <!-- platform-claude <-> platform-fe-antigravity (Active Peer Link) -->
+            <path id="edge-claude-fe" d="M 135 220 L 235 220" class="edge-line intra-active" />
+            <!-- platform-claude <-> gateway-hub (Active Gateway Link) -->
+            <path id="edge-claude-gtw" d="M 135 220 L 185 340" class="edge-line intra-active" />
+            <!-- platform-fe-antigravity <-> gateway-hub (Active Gateway Link) -->
+            <path id="edge-fe-gtw" d="M 235 220 L 185 340" class="edge-line intra-active" />
 
-            <!-- Intra-Group Links: Group 2 (Research) -->
-            <path id="edge-res-1" d="M 500 145 L 500 235" class="edge-line intra" />
-            <path id="edge-res-2" d="M 500 235 L 500 380" class="edge-line intra" />
-            <path id="edge-res-3" d="M 500 145 Q 440 260 500 380" class="edge-line intra" />
+            <!-- Group 2 (Research) Explicit Links (Selective Policy Demonstration) -->
+            <!-- deep-researcher <-> data-indexer (Active Query Link) -->
+            <path id="edge-deep-indexer" d="M 450 200 L 450 300" class="edge-line intra-active" />
+            <!-- deep-researcher <-> gateway-research (Active Gateway Link) -->
+            <path id="edge-deep-gtw" d="M 450 200 L 550 340" class="edge-line intra-active" />
+            <!-- data-indexer <-> gateway-research is INTENTIONALLY NOT CONNECTED (Restricted worker by policy) -->
+            <path id="edge-indexer-gtw-restricted" d="M 450 300 L 550 340" class="edge-line intra-restricted" />
 
-            <!-- Intra-Group Links: Group 3 (Delivery) -->
-            <path id="edge-del-1" d="M 830 145 L 830 235" class="edge-line intra" />
-            <path id="edge-del-2" d="M 830 235 L 830 380" class="edge-line intra" />
-            <path id="edge-del-3" d="M 830 145 Q 770 260 830 380" class="edge-line intra" />
+            <!-- Group 3 (Delivery) Explicit Links -->
+            <!-- client-claude <-> gateway-delivery (Active Gateway Link) -->
+            <path id="edge-client-gtw" d="M 765 220 L 815 340" class="edge-line intra-active" />
+            <!-- demo-receiver <-> gateway-delivery (Active Gateway Link) -->
+            <path id="edge-receiver-gtw" d="M 865 220 L 815 340" class="edge-line intra-active" />
+            <!-- client-claude <-> demo-receiver (Restricted direct link: goes through gateway) -->
+            <path id="edge-client-receiver-restricted" d="M 765 220 L 865 220" class="edge-line intra-restricted" />
 
-            <!-- INTER-GROUP GATEWAY BRIDGE CONNECTIONS (Animated Highway) -->
-            <!-- Bridge A: Hub Gateway <-> Research Gateway -->
-            <path id="bridge-hub-research" d="M 170 380 Q 335 340 500 380" class="edge-line gateway-bridge" />
-            <!-- Bridge B: Research Gateway <-> Delivery Gateway -->
-            <path id="bridge-research-delivery" d="M 500 380 Q 665 340 830 380" class="edge-line gateway-bridge" />
-            <!-- Bridge C: Direct High-Speed Hub Gateway <-> Delivery Gateway -->
-            <path id="bridge-hub-delivery" d="M 170 380 Q 500 470 830 380" class="edge-line gateway-bridge" />
+            <!-- INTER-GROUP GATEWAY HIGHWAY BRIDGES (Connecting Gateway Nodes) -->
+            <!-- Bridge A: Hub Gateway (185,340) <-> Research Gateway (550,340) -->
+            <path id="bridge-hub-research" d="M 185 340 Q 367 380 550 340" class="edge-line gateway-bridge" />
+            <!-- Bridge B: Research Gateway (550,340) <-> Delivery Gateway (815,340) -->
+            <path id="bridge-research-delivery" d="M 550 340 Q 682 380 815 340" class="edge-line gateway-bridge" />
+            <!-- Bridge C: Direct Hub Gateway (185,340) <-> Delivery Gateway (815,340) -->
+            <path id="bridge-hub-delivery" d="M 185 340 Q 500 465 815 340" class="edge-line gateway-bridge" />
 
             <!-- ================= AGENT NODES (INTERACTIVE) ================= -->
             
-            <!-- GROUP 1 NODES (Core) -->
+            <!-- GROUP 1 NODES (Core Hub) -->
             <!-- Node: platform-claude -->
             <g id="node-platform-claude" class="node-group" onclick="selectTopologyNode('platform-claude')">
-              <circle cx="170" cy="145" r="32" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="192" cy="123" r="6" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
-              <text x="170" y="142" font-size="16" text-anchor="middle">🤖</text>
-              <text x="170" y="195" class="node-title">platform-claude</text>
-              <text x="170" y="210" class="node-badge-text">ai-claude · Online</text>
+              <circle cx="135" cy="220" r="30" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="155" cy="200" r="5.5" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
+              <text x="135" y="217" font-size="16" text-anchor="middle">🤖</text>
+              <text x="135" y="265" class="node-title">platform-claude</text>
+              <text x="135" y="278" class="node-badge-text">ai-claude · Online</text>
             </g>
 
             <!-- Node: platform-fe-antigravity -->
             <g id="node-platform-fe-antigravity" class="node-group" onclick="selectTopologyNode('platform-fe-antigravity')">
-              <circle cx="170" cy="255" r="30" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="190" cy="235" r="6" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
-              <text x="170" y="252" font-size="15" text-anchor="middle">💻</text>
-              <text x="170" y="302" class="node-title">fe-antigravity</text>
-              <text x="170" y="316" class="node-badge-text">human/admin · Online</text>
+              <circle cx="235" cy="220" r="30" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="255" cy="200" r="5.5" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
+              <text x="235" y="217" font-size="15" text-anchor="middle">💻</text>
+              <text x="235" y="265" class="node-title">fe-antigravity</text>
+              <text x="235" y="278" class="node-badge-text">admin · Online</text>
             </g>
 
             <!-- Gateway Node: gateway-hub (Core Gateway) -->
             <g id="node-gateway-hub" class="node-group" onclick="selectTopologyNode('gateway-hub')">
-              <circle cx="170" cy="380" r="36" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="196" cy="354" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
-              <text x="170" y="377" font-size="18" text-anchor="middle">🌐</text>
-              <text x="170" y="432" class="node-title" fill="#7C3AED">gateway-hub</text>
-              <text x="170" y="446" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
+              <circle cx="185" cy="340" r="34" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
+              <circle cx="209" cy="316" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
+              <text x="185" y="337" font-size="17" text-anchor="middle">🌐</text>
+              <text x="185" y="390" class="node-title" fill="#7C3AED">gateway-hub</text>
+              <text x="185" y="403" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
             </g>
 
-            <!-- GROUP 2 NODES (Research) -->
+            <!-- GROUP 2 NODES (Research Swarm) -->
             <!-- Node: deep-researcher -->
             <g id="node-deep-researcher" class="node-group" onclick="selectTopologyNode('deep-researcher')">
-              <circle cx="500" cy="145" r="32" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="522" cy="123" r="6" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
-              <text x="500" y="142" font-size="16" text-anchor="middle">🔬</text>
-              <text x="500" y="195" class="node-title">deep-researcher</text>
-              <text x="500" y="210" class="node-badge-text">ai-reasoning · Online</text>
+              <circle cx="450" cy="200" r="30" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="470" cy="180" r="5.5" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
+              <text x="450" y="197" font-size="16" text-anchor="middle">🔬</text>
+              <text x="450" y="245" class="node-title">deep-researcher</text>
+              <text x="450" y="258" class="node-badge-text">ai-reasoning · Online</text>
             </g>
 
-            <!-- Node: data-indexer -->
+            <!-- Node: data-indexer (Restricted Worker) -->
             <g id="node-data-indexer" class="node-group" onclick="selectTopologyNode('data-indexer')">
-              <circle cx="500" cy="255" r="30" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="520" cy="235" r="6" fill="#0284C7" stroke="#FFFFFF" stroke-width="2" />
-              <text x="500" y="252" font-size="15" text-anchor="middle">📦</text>
-              <text x="500" y="302" class="node-title">data-indexer</text>
-              <text x="500" y="316" class="node-badge-text">runtime · Socketless</text>
+              <circle cx="450" cy="300" r="28" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="468" cy="282" r="5.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="2" />
+              <text x="450" y="297" font-size="15" text-anchor="middle">📦</text>
+              <text x="450" y="342" class="node-title">data-indexer</text>
+              <text x="450" y="355" class="node-badge-text">runtime · Internal Only</text>
             </g>
 
             <!-- Gateway Node: gateway-research (Research Gateway) -->
             <g id="node-gateway-research" class="node-group" onclick="selectTopologyNode('gateway-research')">
-              <circle cx="500" cy="380" r="36" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="526" cy="354" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
-              <text x="500" y="377" font-size="18" text-anchor="middle">🌐</text>
-              <text x="500" y="432" class="node-title" fill="#7C3AED">gateway-research</text>
-              <text x="500" y="446" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
+              <circle cx="550" cy="340" r="34" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
+              <circle cx="574" cy="316" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
+              <text x="550" y="337" font-size="17" text-anchor="middle">🌐</text>
+              <text x="550" y="390" class="node-title" fill="#7C3AED">gateway-research</text>
+              <text x="550" y="403" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
             </g>
 
-            <!-- GROUP 3 NODES (Delivery) -->
+            <!-- GROUP 3 NODES (Delivery Mesh) -->
             <!-- Node: client-claude -->
             <g id="node-client-claude" class="node-group" onclick="selectTopologyNode('client-claude')">
-              <circle cx="830" cy="145" r="32" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="852" cy="123" r="6" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
-              <text x="830" y="142" font-size="16" text-anchor="middle">⚡</text>
-              <text x="830" y="195" class="node-title">client-claude</text>
-              <text x="830" y="210" class="node-badge-text">cli-client · Online</text>
+              <circle cx="765" cy="220" r="30" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="785" cy="200" r="5.5" fill="#059669" stroke="#FFFFFF" stroke-width="2" />
+              <text x="765" y="217" font-size="16" text-anchor="middle">⚡</text>
+              <text x="765" y="265" class="node-title">client-claude</text>
+              <text x="765" y="278" class="node-badge-text">cli-client · Online</text>
             </g>
 
             <!-- Node: demo-receiver -->
             <g id="node-demo-receiver" class="node-group" onclick="selectTopologyNode('demo-receiver')">
-              <circle cx="830" cy="255" r="30" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="850" cy="235" r="6" fill="#0284C7" stroke="#FFFFFF" stroke-width="2" />
-              <text x="830" y="252" font-size="15" text-anchor="middle">📥</text>
-              <text x="830" y="302" class="node-title">demo-receiver</text>
-              <text x="830" y="316" class="node-badge-text">pull-queue (5 depth)</text>
+              <circle cx="865" cy="220" r="30" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="885" cy="200" r="5.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="2" />
+              <text x="865" y="217" font-size="15" text-anchor="middle">📥</text>
+              <text x="865" y="265" class="node-title">demo-receiver</text>
+              <text x="865" y="278" class="node-badge-text">pull-queue (5 depth)</text>
             </g>
 
             <!-- Gateway Node: gateway-delivery (Delivery Gateway) -->
             <g id="node-gateway-delivery" class="node-group" onclick="selectTopologyNode('gateway-delivery')">
-              <circle cx="830" cy="380" r="36" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="856" cy="354" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
-              <text x="830" y="377" font-size="18" text-anchor="middle">🌐</text>
-              <text x="830" y="432" class="node-title" fill="#7C3AED">gateway-delivery</text>
-              <text x="830" y="446" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
+              <circle cx="815" cy="340" r="34" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
+              <circle cx="839" cy="316" r="6" fill="#7C3AED" stroke="#FFFFFF" stroke-width="2" />
+              <text x="815" y="337" font-size="17" text-anchor="middle">🌐</text>
+              <text x="815" y="390" class="node-title" fill="#7C3AED">gateway-delivery</text>
+              <text x="815" y="403" class="node-badge-text" fill="#7C3AED">Gateway Node</text>
             </g>
           </svg>
         </div>
@@ -1378,21 +1414,28 @@
                 <span id="inspNodeBadge" class="badge badge-success">Online (WebSocket)</span>
                 <span id="inspNodeTypeBadge" class="badge badge-leased">ai-claude</span>
               </div>
-              <p id="inspNodeDesc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5;">
-                Member of <strong>Core Platform Hub</strong> cluster. Routes verified signed events.
+              <p id="inspNodeDesc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:8px;">
+                Member of <strong>Core Platform Hub</strong> orbital cluster.
               </p>
+              <div id="inspPeerPillsWrap" style="font-size:0.75rem; color:var(--text-secondary);">
+                <!-- Dynamic Peer Badges -->
+              </div>
             </div>
 
             <div>
               <div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:4px;" data-i18n="insp_key_label">Public Key Fingerprint (50-char)</div>
-              <div id="inspNodeKey" style="font-family:var(--font-mono); font-size:0.75rem; background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-default); word-break:break-all;">
+              <div id="inspNodeKey" style="font-family:var(--font-mono); font-size:0.75rem; background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-default); word-break:break-all; margin-bottom:6px;">
                 sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
               </div>
+              <span id="inspRoutingPolicy" style="font-size:0.75rem; color:var(--primary); font-weight:600;">Direct & Gateway Enabled</span>
             </div>
 
-            <div style="display:flex; justify-content:flex-end; gap:8px;">
-              <button class="btn btn-secondary btn-sm" onclick="closeInspector()" data-i18n="btn_close">Close</button>
-              <button class="btn btn-primary btn-sm" id="inspActionBtn" onclick="jumpToMessageWithTarget()" data-i18n="btn_send_to_node">💬 Test Message →</button>
+            <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+              <div style="display:flex; gap:6px;">
+                <button class="btn btn-secondary btn-sm" onclick="openChannelConfigModal()" data-i18n="btn_config_channels">⚙ Config Channels</button>
+                <button class="btn btn-primary btn-sm" onclick="jumpToMessageWithTarget()" data-i18n="btn_send_to_node">💬 Test Message →</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:0.75rem;" onclick="closeInspector()" data-i18n="btn_close">✕ Close</button>
             </div>
           </div>
         </div>
@@ -1543,9 +1586,26 @@
     </div>
   </div>
 
+  <!-- MODAL 4: Peer Communication Channel Configuration Modal (ACL Policy) -->
+  <div class="modal-backdrop" id="channelConfigModal">
+    <div class="modal-box">
+      <h3 class="modal-title" data-i18n="modal_channels_title">Configure Peer Communication Channels</h3>
+      <p class="modal-desc">
+        Select which intra-group and gateway peers <strong id="cfgTargetAgent" style="color:var(--primary);">platform-claude</strong> is permitted to exchange direct messages with.
+      </p>
+      <div id="channelPeerCheckboxList" style="margin-bottom:20px; display:flex; flex-direction:column; gap:10px;">
+        <!-- Dynamically rendered peer checkboxes -->
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary" onclick="closeModal('channelConfigModal')" data-i18n="btn_cancel">Cancel</button>
+        <button class="btn btn-primary" onclick="applyChannelConfig()" data-i18n="btn_save_channels">Save Channel Policy</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // =========================================================================
-    // TOPOLOGY NODES DATA DICTIONARY
+    // TOPOLOGY NODES DATA DICTIONARY WITH EXPLICIT EDGE PERMISSIONS
     // =========================================================================
     const TOPOLOGY_NODES = {
       'platform-claude': {
@@ -1557,7 +1617,9 @@
         badgeClass: 'badge-success',
         desc: 'Core Platform Assistant and contracts evaluator. Listens on live WebSocket transport.',
         key: 'sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw',
-        peers: ['platform-fe-antigravity', 'gateway-hub']
+        directPeers: ['platform-fe-antigravity', 'gateway-hub'],
+        restrictedPeers: [],
+        connectedEdges: ['edge-claude-fe', 'edge-claude-gtw']
       },
       'platform-fe-antigravity': {
         identity: 'platform-fe-antigravity',
@@ -1568,7 +1630,9 @@
         badgeClass: 'badge-success',
         desc: 'Web Admin and Operations console agent session. Manages security gates & visual telemetry.',
         key: 'sha256:ZZdAcgecZZ2WyeQs6MYOOYqKtC-16_DIae5vulKpoQw',
-        peers: ['platform-claude', 'gateway-hub']
+        directPeers: ['platform-claude', 'gateway-hub'],
+        restrictedPeers: [],
+        connectedEdges: ['edge-claude-fe', 'edge-fe-gtw']
       },
       'gateway-hub': {
         identity: 'gateway-hub',
@@ -1579,7 +1643,9 @@
         badgeClass: 'badge-gateway',
         desc: 'Inter-Group Routing Gateway bridging Core Platform with Research Swarm and Delivery Mesh.',
         key: 'sha256:gtwHubBridge98xL1mK0vNxB3cR6jFaSdFgHjKlQwErTyU4',
-        peers: ['platform-claude', 'platform-fe-antigravity', 'gateway-research', 'gateway-delivery']
+        directPeers: ['platform-claude', 'platform-fe-antigravity', 'gateway-research', 'gateway-delivery'],
+        restrictedPeers: [],
+        connectedEdges: ['edge-claude-gtw', 'edge-fe-gtw', 'bridge-hub-research', 'bridge-hub-delivery']
       },
       'deep-researcher': {
         identity: 'deep-researcher',
@@ -1590,18 +1656,22 @@
         badgeClass: 'badge-success',
         desc: 'Deep multi-step analytical reasoning agent executing parallel research trees.',
         key: 'sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA',
-        peers: ['data-indexer', 'gateway-research']
+        directPeers: ['data-indexer', 'gateway-research'],
+        restrictedPeers: [],
+        connectedEdges: ['edge-deep-indexer', 'edge-deep-gtw']
       },
       'data-indexer': {
         identity: 'data-indexer',
         group: 'research',
         groupName: 'Research & Reasoning Swarm',
         type: 'runtime',
-        status: 'Socketless (Pull Queue)',
+        status: 'Socketless (Internal Only)',
         badgeClass: 'badge-leased',
-        desc: 'Batch indexing worker pulling corpus documents periodically on-demand.',
+        desc: 'Batch indexing worker pulling corpus documents. Operator policy restricts direct gateway access.',
         key: 'sha256:4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4',
-        peers: ['deep-researcher', 'gateway-research']
+        directPeers: ['deep-researcher'],
+        restrictedPeers: ['gateway-research'],
+        connectedEdges: ['edge-deep-indexer', 'edge-indexer-gtw-restricted']
       },
       'gateway-research': {
         identity: 'gateway-research',
@@ -1612,7 +1682,9 @@
         badgeClass: 'badge-gateway',
         desc: 'Inter-Group Routing Gateway bridging Research Swarm with Core Hub and Delivery Mesh.',
         key: 'sha256:gtwResBridge4t7Xm8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQ',
-        peers: ['deep-researcher', 'data-indexer', 'gateway-hub', 'gateway-delivery']
+        directPeers: ['deep-researcher', 'gateway-hub', 'gateway-delivery'],
+        restrictedPeers: ['data-indexer'],
+        connectedEdges: ['edge-deep-gtw', 'bridge-hub-research', 'bridge-research-delivery', 'edge-indexer-gtw-restricted']
       },
       'client-claude': {
         identity: 'client-claude',
@@ -1623,7 +1695,9 @@
         badgeClass: 'badge-success',
         desc: 'Local developer CLI agent maintaining local project context and command runner.',
         key: 'sha256:3vLmK0pQ4w7Xm8P2w1ZqNxB3cR6jFaSdFgHjKlQwErT9',
-        peers: ['demo-receiver', 'gateway-delivery']
+        directPeers: ['gateway-delivery'],
+        restrictedPeers: ['demo-receiver'],
+        connectedEdges: ['edge-client-gtw', 'edge-client-receiver-restricted']
       },
       'demo-receiver': {
         identity: 'demo-receiver',
@@ -1632,9 +1706,11 @@
         type: 'ai-claude',
         status: 'Socketless (5 Queued)',
         badgeClass: 'badge-leased',
-        desc: 'Pull receiver with 5 queued messages (2 currently leased, 3 available).',
+        desc: 'Pull receiver with 5 queued messages. Communication with CLI client is mediated via gateway.',
         key: 'sha256:lgmo149K_Xm8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTy',
-        peers: ['client-claude', 'gateway-delivery']
+        directPeers: ['gateway-delivery'],
+        restrictedPeers: ['client-claude'],
+        connectedEdges: ['edge-receiver-gtw', 'edge-client-receiver-restricted']
       },
       'gateway-delivery': {
         identity: 'gateway-delivery',
@@ -1645,7 +1721,9 @@
         badgeClass: 'badge-gateway',
         desc: 'Inter-Group Routing Gateway bridging Execution & Delivery Mesh with Core Hub and Research Swarm.',
         key: 'sha256:gtwDelBridge8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErT',
-        peers: ['client-claude', 'demo-receiver', 'gateway-hub', 'gateway-research']
+        directPeers: ['client-claude', 'demo-receiver', 'gateway-hub', 'gateway-research'],
+        restrictedPeers: [],
+        connectedEdges: ['edge-client-gtw', 'edge-receiver-gtw', 'bridge-research-delivery', 'bridge-hub-delivery']
       }
     };
 
@@ -1658,25 +1736,32 @@
 
       // Update node visual active states
       document.querySelectorAll('.node-group').forEach(el => {
-        el.classList.remove('active-selected', 'dimmed');
+        el.classList.remove('active-selected');
+        el.classList.add('dimmed');
       });
       document.querySelectorAll('.edge-line').forEach(el => {
         el.classList.remove('highlighted');
+        el.classList.add('dimmed');
       });
 
       const selectedEl = document.getElementById(`node-${nodeId}`);
-      if (selectedEl) selectedEl.classList.add('active-selected');
+      if (selectedEl) {
+        selectedEl.classList.remove('dimmed');
+        selectedEl.classList.add('active-selected');
+      }
 
-      // Highlight edges connecting to peers
-      data.peers.forEach(peerId => {
+      // Highlight only connected peer nodes & active edges
+      (data.directPeers || []).forEach(peerId => {
         const peerEl = document.getElementById(`node-${peerId}`);
-        // Highlight edge paths
-        document.querySelectorAll('.edge-line').forEach(line => {
-          const id = line.id;
-          if (id && (id.includes(nodeId.split('-')[0]) || id.includes(nodeId) || (data.type === 'gateway-bridge' && id.startsWith('bridge')))) {
-            line.classList.add('highlighted');
-          }
-        });
+        if (peerEl) peerEl.classList.remove('dimmed');
+      });
+
+      (data.connectedEdges || []).forEach(edgeId => {
+        const edgeEl = document.getElementById(edgeId);
+        if (edgeEl) {
+          edgeEl.classList.remove('dimmed');
+          edgeEl.classList.add('highlighted');
+        }
       });
 
       // Update Inspector Drawer
@@ -1684,8 +1769,22 @@
       document.getElementById('inspNodeBadge').className = `badge ${data.badgeClass}`;
       document.getElementById('inspNodeBadge').innerText = data.status;
       document.getElementById('inspNodeTypeBadge').innerText = data.type;
-      document.getElementById('inspNodeDesc').innerHTML = `Cluster: <strong>${data.groupName}</strong>. ${data.desc}`;
+      document.getElementById('inspNodeDesc').innerHTML = `Orbital Group: <strong>${data.groupName}</strong>. ${data.desc}`;
       document.getElementById('inspNodeKey').innerText = data.key;
+
+      // Render Peer Pills
+      const pillsContainer = document.getElementById('inspPeerPillsWrap');
+      let pillsHtml = `<span style="font-weight:700;">Permitted Channels (${data.directPeers.length}):</span> `;
+      data.directPeers.forEach(p => {
+        pillsHtml += `<span class="peer-channel-pill"><span style="color:#059669;">●</span> ${p}</span>`;
+      });
+      if (data.restrictedPeers && data.restrictedPeers.length > 0) {
+        pillsHtml += ` <span style="font-weight:700; margin-left:8px; color:var(--text-muted);">Restricted:</span> `;
+        data.restrictedPeers.forEach(rp => {
+          pillsHtml += `<span class="peer-channel-pill" style="opacity:0.6;"><span style="color:#DC2626;">✕</span> ${rp}</span>`;
+        });
+      }
+      pillsContainer.innerHTML = pillsHtml;
 
       document.getElementById('nodeInspectorDrawer').classList.add('active');
     }
@@ -1693,12 +1792,57 @@
     function closeInspector() {
       document.getElementById('nodeInspectorDrawer').classList.remove('active');
       document.querySelectorAll('.node-group').forEach(el => el.classList.remove('active-selected', 'dimmed'));
-      document.querySelectorAll('.edge-line').forEach(el => el.classList.remove('highlighted'));
+      document.querySelectorAll('.edge-line').forEach(el => el.classList.remove('highlighted', 'dimmed'));
     }
 
     function jumpToMessageWithTarget() {
       switchOperatorTab('playground');
       selectAgentTarget(selectedTopologyNodeId);
+    }
+
+    function openChannelConfigModal() {
+      const data = TOPOLOGY_NODES[selectedTopologyNodeId];
+      if (!data) return;
+
+      document.getElementById('cfgTargetAgent').innerText = data.identity;
+      const list = document.getElementById('channelPeerCheckboxList');
+      list.innerHTML = '';
+
+      // Get all nodes in the same group or gateway
+      Object.keys(TOPOLOGY_NODES).forEach(peerId => {
+        if (peerId === selectedTopologyNodeId) return;
+        const pData = TOPOLOGY_NODES[peerId];
+        const isSameGroup = pData.group === data.group;
+        const isGateway = pData.type === 'gateway-bridge' || data.type === 'gateway-bridge';
+
+        if (isSameGroup || isGateway) {
+          const isConnected = data.directPeers.includes(peerId);
+          const item = document.createElement('label');
+          item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); font-size:0.85rem; cursor:pointer;';
+          item.innerHTML = `
+            <div>
+              <strong>${peerId}</strong> <span style="font-size:0.75rem; color:var(--text-muted);">(${pData.groupName})</span>
+            </div>
+            <input type="checkbox" ${isConnected ? 'checked' : ''} value="${peerId}" style="width:18px; height:18px; cursor:pointer;">
+          `;
+          list.appendChild(item);
+        }
+      });
+
+      openModal('channelConfigModal');
+    }
+
+    function applyChannelConfig() {
+      const checkedPeers = [];
+      document.querySelectorAll('#channelPeerCheckboxList input:checked').forEach(cb => {
+        checkedPeers.push(cb.value);
+      });
+
+      const data = TOPOLOGY_NODES[selectedTopologyNodeId];
+      data.directPeers = checkedPeers;
+      closeModal('channelConfigModal');
+      selectTopologyNode(selectedTopologyNodeId);
+      alert(currentLang === 'ko' ? `'${selectedTopologyNodeId}'의 통신 채널 권한이 업데이트되었습니다.` : `Communication channels updated for '${selectedTopologyNodeId}'.`);
     }
 
     function filterTopologyGroup(group, btn) {
@@ -1791,7 +1935,7 @@
         btn_create_group: "+ Create Group",
         tab_topology: "🌐 Network Topology Graph",
         tab_playground: "📋 My Agents & Message Playground",
-        label_filter_group: "Clusters:",
+        label_filter_group: "Orbital Groups:",
         filter_all: "All Clusters (3)",
         filter_core: "Core Platform",
         filter_research: "Research Swarm",
@@ -1799,11 +1943,15 @@
         legend_online: "Online Agent",
         legend_socketless: "Socketless Pull",
         legend_gateway: "Gateway Node 🌐",
-        legend_intra: "Intra Link",
+        legend_active_edge: "Active Channel",
+        legend_restricted_edge: "Restricted",
         legend_bridge: "Gateway Bridge",
         insp_key_label: "Public Key Fingerprint (50-char)",
         btn_send_to_node: "💬 Test Message →",
-        btn_close: "Close",
+        btn_config_channels: "⚙ Config Channels",
+        btn_close: "✕ Close",
+        modal_channels_title: "Configure Peer Communication Channels",
+        btn_save_channels: "Save Channel Policy",
         my_agents_title: "My Registered Agents",
         my_agents_subtitle: "2 active provisioned identities",
         btn_test_msg: "💬 Test Message",
@@ -1881,7 +2029,7 @@
         btn_create_group: "+ 그룹 생성",
         tab_topology: "🌐 네트워크 토폴로지 그래프",
         tab_playground: "📋 내 에이전트 & 메시지 테스트",
-        label_filter_group: "클러스터 필터:",
+        label_filter_group: "원형 클러스터 필터:",
         filter_all: "전체 클러스터 (3)",
         filter_core: "코어 플랫폼",
         filter_research: "연구 분석 스웜",
@@ -1889,11 +2037,15 @@
         legend_online: "온라인 에이전트",
         legend_socketless: "소켓리스 풀 큐",
         legend_gateway: "게이트웨이 노드 🌐",
-        legend_intra: "그룹 내 통신선",
+        legend_active_edge: "활성 통신선",
+        legend_restricted_edge: "제한된 통신",
         legend_bridge: "그룹 간 게이트웨이 브릿지",
         insp_key_label: "50자리 공개키 지문",
         btn_send_to_node: "💬 테스트 메시지 보내기 →",
-        btn_close: "닫기",
+        btn_config_channels: "⚙ 통신 권한 설정",
+        btn_close: "✕ 닫기",
+        modal_channels_title: "에이전트 간 통신 채널 권한 설정 (ACL)",
+        btn_save_channels: "통신 정책 저장",
         my_agents_title: "내 등록 에이전트",
         my_agents_subtitle: "등록된 활성 에이전트 2개",
         btn_test_msg: "💬 메시지 테스트",
