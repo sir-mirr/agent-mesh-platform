@@ -1862,7 +1862,7 @@
           const gwCfg = ALL_GATEWAYS.find(g => g.id === nodeId);
           if (gwCfg) {
             html += `
-              <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+              <g id="node-${nodeId}" class="node-group" onclick="handleNodeClick('${nodeId}', event)">
                 <!-- Large 45px Hit Area -->
                 <circle cx="${gwCfg.x}" cy="${gwCfg.y + 16}" r="45" fill="transparent" style="cursor:pointer;" />
                 <circle cx="${gwCfg.x}" cy="${gwCfg.y}" r="24" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
@@ -1876,7 +1876,7 @@
           const isOnline = node.status === 'Online';
           const lOffset = node.labelOffsetY || 28;
           html += `
-            <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+            <g id="node-${nodeId}" class="node-group" onclick="handleNodeClick('${nodeId}', event)">
               <!-- Large 38px Hit Area covering circle, icon, and text label -->
               <circle cx="${node.x}" cy="${node.y + 12}" r="38" fill="transparent" style="cursor:pointer;" />
               <circle cx="${node.x}" cy="${node.y}" r="16" class="node-circle" filter="url(#nodeShadow)" />
@@ -2126,11 +2126,19 @@
       // Canvas background click (Outside nodes, edges, overlay, and minimap) -> Deselect
       viewport.addEventListener('click', (e) => {
         if (hasDragged || isDragging) return;
+        if (!e.target || !e.target.isConnected) return; // Prevent deselecting when clicked element is replaced/detached
         if (e.target.closest('.node-group') || e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls') || e.target.closest('.canvas-minimap')) {
           return;
         }
         deselectAll();
       });
+
+      // Stop propagation on side overlay card so clicks inside it never bubble to canvas viewport
+      const overlayContainer = document.getElementById('nodeSideOverlay');
+      if (overlayContainer) {
+        overlayContainer.addEventListener('click', (e) => e.stopPropagation());
+        overlayContainer.addEventListener('mousedown', (e) => e.stopPropagation());
+      }
     }
 
     // =========================================================================
@@ -2253,6 +2261,13 @@
 
     let selectedTopologyNodeId = null;
 
+    function handleNodeClick(nodeId, e) {
+      if (e) {
+        e.stopPropagation();
+      }
+      selectTopologyNode(nodeId);
+    }
+
     function selectTopologyNode(nodeId) {
       selectedTopologyNodeId = nodeId;
       const data = TOPOLOGY_NODES[nodeId];
@@ -2306,7 +2321,7 @@
       const peersContainer = document.getElementById('overlayPeersWrap');
       let pillsHtml = '';
       data.directPeers.slice(0, 8).forEach(p => {
-        pillsHtml += `<span class="peer-channel-pill" style="cursor:pointer;" onclick="selectAndFlyToPeer('${p}')" title="Select & Fly to ${p}"><span style="color:#059669;">●</span> ${p}</span>`;
+        pillsHtml += `<span class="peer-channel-pill" style="cursor:pointer;" onclick="selectAndFlyToPeer('${p}', event)" title="Select & Fly to ${p}"><span style="color:#059669;">●</span> ${p}</span>`;
       });
       if (data.directPeers.length > 8) {
         pillsHtml += `<span class="peer-channel-pill">+${data.directPeers.length - 8} more</span>`;
@@ -2316,7 +2331,11 @@
       document.getElementById('nodeSideOverlay').style.display = 'block';
     }
 
-    function selectAndFlyToPeer(peerId) {
+    function selectAndFlyToPeer(peerId, e) {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
       selectTopologyNode(peerId);
       animatePanToNode(peerId);
     }
