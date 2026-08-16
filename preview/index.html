@@ -357,48 +357,48 @@
      ========================================================================== */
   .home-hero-wrap {
     text-align: center;
-    padding: 48px 0 36px;
-  }
-
-  /* Hero Split Layout (Interconnected Triad on Left + Title on Right) */
-  .hero-layout-split {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 48px;
-    max-width: 1060px;
-    margin: 0 auto 36px;
-    text-align: left;
-  }
-  @media (max-width: 920px) {
-    .hero-layout-split {
-      flex-direction: column;
-      text-align: center;
-      gap: 28px;
-    }
-  }
-
-  .hero-text-content {
-    flex: 1;
-    min-width: 0;
-  }
-  .hero-text-content .home-hero-desc {
-    margin: 0 0 20px 0;
-    max-width: 620px;
-  }
-  @media (max-width: 920px) {
-    .hero-text-content .home-hero-desc {
-      margin: 0 auto 20px;
-    }
-  }
-
-  /* 3-Agent Animated Constellation Triad (Dynamic Asymmetrical Constellation) */
-  .hero-agents-constellation {
     position: relative;
+    padding: 48px 0 36px;
+    max-width: 1140px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  /* Centered Main Hero Content */
+  .hero-main-content {
+    position: relative;
+    z-index: 2;
+    max-width: 740px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  /* 3-Agent Animated Constellation Triad (Ambient Decorative Background Element on Left) */
+  .hero-agents-constellation {
+    position: absolute;
+    left: 0px;
+    top: 24px;
     width: 290px;
     height: 260px;
-    flex-shrink: 0;
     user-select: none;
+    z-index: 1;
+    opacity: 0.95;
+    pointer-events: auto;
+  }
+  @media (max-width: 1200px) {
+    .hero-agents-constellation {
+      left: -24px;
+      transform: scale(0.85);
+      transform-origin: left top;
+      opacity: 0.85;
+    }
+  }
+  @media (max-width: 900px) {
+    .hero-agents-constellation {
+      opacity: 0.35;
+      transform: scale(0.72);
+      pointer-events: none;
+    }
   }
 
   .constellation-svg {
@@ -1431,94 +1431,92 @@
   <!-- VIEW 1: HOME & DUAL LOGIN -->
   <main id="view-home" class="preview-view active">
     <section class="home-hero-wrap">
-      <div class="hero-layout-split">
-        <!-- Interconnected Animated 3-Agent Triad (Left of Title) -->
-        <div class="hero-agents-constellation" aria-label="Interactive Autonomous Agent Triad">
-          <svg class="constellation-svg" viewBox="0 0 290 260">
-            <defs>
-              <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9" />
-                <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.9" />
-              </linearGradient>
-              <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.9" />
-                <stop offset="100%" stop-color="#10B981" stop-opacity="0.9" />
-              </linearGradient>
-              <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
-                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.9" />
-              </linearGradient>
-              <!-- Central mesh glow -->
-              <radialGradient id="meshCenterGlow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.12" />
-                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
-              </radialGradient>
-            </defs>
+      <!-- Ambient Decorative Background 3-Agent Triad (Floats on Left) -->
+      <div class="hero-agents-constellation" aria-label="Interactive Autonomous Agent Triad">
+        <svg class="constellation-svg" viewBox="0 0 290 260">
+          <defs>
+            <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.9" />
+            </linearGradient>
+            <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#10B981" stop-opacity="0.9" />
+            </linearGradient>
+            <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10B981" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.9" />
+            </linearGradient>
+            <!-- Central mesh glow -->
+            <radialGradient id="meshCenterGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.12" />
+              <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
+            </radialGradient>
+          </defs>
 
-            <!-- Organic Asymmetric Center Ambient Glow Polygon -->
-            <polygon points="58,46 216,76 130,188" fill="url(#meshCenterGlow)" />
+          <!-- Organic Asymmetric Center Ambient Glow Polygon -->
+          <polygon points="58,46 216,76 130,188" fill="url(#meshCenterGlow)" />
 
-            <!-- Interconnection Organic Triangle Edges -->
-            <line class="constellation-line" x1="58" y1="46" x2="216" y2="76" stroke="url(#lineGrad1)" />
-            <line class="constellation-line" x1="216" y1="76" x2="130" y2="188" stroke="url(#lineGrad2)" />
-            <line class="constellation-line" x1="130" y1="188" x2="58" y2="46" stroke="url(#lineGrad3)" />
+          <!-- Interconnection Organic Triangle Edges -->
+          <line class="constellation-line" x1="58" y1="46" x2="216" y2="76" stroke="url(#lineGrad1)" />
+          <line class="constellation-line" x1="216" y1="76" x2="130" y2="188" stroke="url(#lineGrad2)" />
+          <line class="constellation-line" x1="130" y1="188" x2="58" y2="46" stroke="url(#lineGrad3)" />
 
-            <!-- Animated flowing packets / data pulses -->
-            <circle class="mesh-packet packet-1" r="3.5" fill="#3B82F6" />
-            <circle class="mesh-packet packet-2" r="3.5" fill="#8B5CF6" />
-            <circle class="mesh-packet packet-3" r="3.5" fill="#10B981" />
-          </svg>
+          <!-- Animated flowing packets / data pulses -->
+          <circle class="mesh-packet packet-1" r="3.5" fill="#3B82F6" />
+          <circle class="mesh-packet packet-2" r="3.5" fill="#8B5CF6" />
+          <circle class="mesh-packet packet-3" r="3.5" fill="#10B981" />
+        </svg>
 
-          <!-- Agent 1: Top-Left (Fin둥이 - Yellow Shiba Financial Lead) -->
-          <div class="hero-agent-node agent-node-1" title="Financial Operations Agent: Fin둥이">
-            <div class="agent-glow-ring ring-blue"></div>
-            <div class="agent-avatar-frame">
-              <img src="/assets/agent-fin.png" alt="Fin둥이 Agent" class="agent-avatar-img" />
-            </div>
-            <div class="agent-node-badge badge-blue">
-              <span class="live-dot"></span> Fin둥이
-            </div>
+        <!-- Agent 1: Top-Left (Fin둥이 - Yellow Shiba Financial Lead) -->
+        <div class="hero-agent-node agent-node-1" title="Financial Operations Agent: Fin둥이">
+          <div class="agent-glow-ring ring-blue"></div>
+          <div class="agent-avatar-frame">
+            <img src="/assets/agent-fin.png" alt="Fin둥이 Agent" class="agent-avatar-img" />
           </div>
-
-          <!-- Agent 2: Top-Right (아름이 - AI Assistant) -->
-          <div class="hero-agent-node agent-node-2" title="Executive AI Assistant: 아름이">
-            <div class="agent-glow-ring ring-purple"></div>
-            <div class="agent-avatar-frame">
-              <img src="/assets/agent-assistant.png" alt="아름이 Agent" class="agent-avatar-img" />
-            </div>
-            <div class="agent-node-badge badge-purple">
-              <span class="live-dot" style="background:#8B5CF6;"></span> 아름이
-            </div>
-          </div>
-
-          <!-- Agent 3: Bottom-Center (Fin자 - Grey Support Puppy) -->
-          <div class="hero-agent-node agent-node-3" title="Customer Support Agent: Fin자">
-            <div class="agent-glow-ring ring-emerald"></div>
-            <div class="agent-avatar-frame">
-              <img src="/assets/agent-support.png" alt="Fin자 Agent" class="agent-avatar-img" />
-            </div>
-            <div class="agent-node-badge badge-emerald">
-              <span class="live-dot" style="background:#10B981;"></span> Fin자
-            </div>
+          <div class="agent-node-badge badge-blue">
+            <span class="live-dot"></span> Fin둥이
           </div>
         </div>
 
-        <!-- Right: Title & Hero Content -->
-        <div class="hero-text-content">
-          <div class="hero-eyebrow">
-            <span class="live-dot"></span>
-            <span data-i18n="hero_eyebrow">Next-Gen Autonomous Agent Mesh Fabric</span>
+        <!-- Agent 2: Top-Right (아름이 - AI Assistant) -->
+        <div class="hero-agent-node agent-node-2" title="Executive AI Assistant: 아름이">
+          <div class="agent-glow-ring ring-purple"></div>
+          <div class="agent-avatar-frame">
+            <img src="/assets/agent-assistant.png" alt="아름이 Agent" class="agent-avatar-img" />
           </div>
-          <h1 class="brand-hero-main-title">
-            AGENT <span class="gradient-text">MESH</span>
-          </h1>
-          <div class="brand-hero-tagline" data-i18n="hero_tagline">
-            The Secure, Verified Communication Backbone for Autonomous AI Agents
+          <div class="agent-node-badge badge-purple">
+            <span class="live-dot" style="background:#8B5CF6;"></span> 아름이
           </div>
-          <p class="home-hero-desc" data-i18n="hero_desc">
-            Enable asynchronous, cryptographic message routing across autonomous AI agents with end-to-end identity verification, immutable audit logging, and zero persistent infrastructure overhead.
-          </p>
         </div>
+
+        <!-- Agent 3: Bottom-Center (Fin자 - Grey Support Puppy) -->
+        <div class="hero-agent-node agent-node-3" title="Customer Support Agent: Fin자">
+          <div class="agent-glow-ring ring-emerald"></div>
+          <div class="agent-avatar-frame">
+            <img src="/assets/agent-support.png" alt="Fin자 Agent" class="agent-avatar-img" />
+          </div>
+          <div class="agent-node-badge badge-emerald">
+            <span class="live-dot" style="background:#10B981;"></span> Fin자
+          </div>
+        </div>
+      </div>
+
+      <!-- Centered Primary Hero Content -->
+      <div class="hero-main-content">
+        <div class="hero-eyebrow">
+          <span class="live-dot"></span>
+          <span data-i18n="hero_eyebrow">Next-Gen Autonomous Agent Mesh Fabric</span>
+        </div>
+        <h1 class="brand-hero-main-title">
+          AGENT <span class="gradient-text">MESH</span>
+        </h1>
+        <div class="brand-hero-tagline" data-i18n="hero_tagline">
+          The Secure, Verified Communication Backbone for Autonomous AI Agents
+        </div>
+        <p class="home-hero-desc" data-i18n="hero_desc">
+          Enable asynchronous, cryptographic message routing across autonomous AI agents with end-to-end identity verification, immutable audit logging, and zero persistent infrastructure overhead.
+        </p>
       </div>
     </section>
 
