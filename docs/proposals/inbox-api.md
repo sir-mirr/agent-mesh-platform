@@ -114,7 +114,7 @@ identity is a second assertion able to disagree with the first (§ 8.10).
 | `GET`  | `/api/v1/outbox` | — | Sent messages **not yet handed to the recipient**. The recall candidates, and nothing else. |
 | `DELETE` | `/api/v1/outbox/{id}` | — | Recall one. Refused once the recipient has been handed it. Emits `mesh.message.recalled`. |
 | `GET`  | `/api/v1/inbox/history?peer=&limit=` | `mesh.fetch_messages` | Conversation with one peer. |
-| `GET`  | `/api/v1/inbox/capabilities` | `MailboxCapabilities` | Batch ceiling, lease seconds, dedup window, version. |
+| `GET`  | `/api/v1/capabilities` | `MailboxCapabilities`, `AuditCapabilities` | **Unsigned.** What this deployment actually enforces. |
 
 ### Recall is bounded by hand-over, not by acknowledgement
 
@@ -154,6 +154,56 @@ DELETE FROM messages
 
 This is the shape `create_only` took in § 10.1: a check followed by a write has
 a window between them, and the window is where the defect lives.
+
+### `GET /api/v1/capabilities` is unsigned, and not under `/inbox`
+
+It moved out of `/inbox` because it does not describe an inbox. It describes
+the deployment, and a socketless participant has no other way to learn it: a
+hub advertises its limits in the `mesh.connect` result (§ 8.9.1, § 8.10), and
+this population never connects. Every other client learns these values by
+connecting; this one would learn them by guessing.
+
+```json
+{
+  "mailbox": { "version": 1, "max_receive_batch": 200,
+               "receive_lease_seconds": 300, "send_dedup_window_seconds": 86400 },
+  "audit":   { "version": 1, "max_blob_bytes": 104857600,
+               "max_attachments_per_event": 20, "upload_timeout_seconds": 180, "…": "…" },
+  "surface": { "version": 1 }
+}
+```
+
+**Unsigned**, deliberately. The values are most useful exactly when a caller
+cannot yet sign: a client being set up needs the lease window and the dedup
+window to size its retry loop, and its key is `pending` until an operator acts.
+Requiring a signature would mean the one moment a client most needs these
+numbers is the moment it cannot have them — so it would hardcode a guess, which
+is the failure this route exists to prevent.
+
+There is precedent in the same shape. `GET /api/v1/agents/{identity}/keys` is
+unauthenticated (§ 9.2 †) because a holder has to be able to check its own
+approval status before it can sign anything.
+
+Nothing here is per-caller. It is deployment configuration, identical for every
+reader, and a caller that can reach the port can already reach `/api/v1/rpc`.
+
+**`audit` is included** for the same reason as `mailbox`: § 8.9.1 advertises
+those caps at connect, and a socketless client that never connects has been
+sizing its uploads against constants it imported. That is not hypothetical —
+the hub once restated the audit limits from memory instead of importing them,
+the values diverged, the client was fail-closed, and audit never started. Every
+test passed, because they asserted the hub agreed with itself.
+
+**Three versions, kept apart** — § 13 says they must not be conflated, and this
+route is where the temptation is:
+
+- `mailbox.version` — the transport contract: methods, params, error codes.
+- `audit.version` — the audit protocol, unchanged from § 8.9.1.
+- `surface.version` — this route table.
+
+The last is separate because a route can be added or renamed while the methods
+underneath do not move, and a client that gated the transport on a route-table
+bump would refuse a hub that had only gained a route.
 
 ### A recall must be audited, or the trail lies by omission
 
@@ -210,6 +260,7 @@ JSON-RPC code stays in the body so a client that already branches on
 | Condition | HTTP | `rpc_code` |
 |-----------|------|-----------|
 | Missing or malformed `Authorization` | `401` | `-32012` |
+| (`/api/v1/capabilities` is exempt — it takes no `Authorization` at all) | — | — |
 | Signature invalid, stale, or replayed | `401` | `-32012` |
 | Key not approved | `403` | `-32014` |
 | Not entitled | `403` | `-32013` |
@@ -235,23 +286,18 @@ A status code alone cannot carry the retry policy — `403` is permanent for
 
 ## Open questions
 
-1. **Is `capabilities` worth a route today?** Nothing currently overrides
-   `MAILBOX_CAPABILITY_DEFAULTS`, so it would report the constant a client can
-   already import. The argument for it is narrower than "someday": the audit
-   surface advertises its capabilities at `mesh.connect` (§ 8.9.1) and a
-   socketless participant has no connect, so it is the one population with no
-   way to learn a deployment's real values. The argument against is that a
-   route nobody varies is a route that will be assumed constant anyway.
+1. **Does a deployment ever vary these values?** Today none does, so
+   `/api/v1/capabilities` reports the constants a client could import instead.
+   The route earns its place only if a deployment can differ — and if none ever
+   can, the honest move is to delete the route and say in SPEC that the
+   defaults are normative rather than advisory. Leaving it both ways is what
+   produced the drift it exists to prevent.
 
-   This matters because getting it wrong already happened here — the hub's
-   audit limits were restated from memory instead of imported, the client was
-   fail-closed, and audit never started. Every test passed, because they
-   asserted the hub agreed with itself.
-
-2. **Does this need its own protocol version**, or does it inherit
-   `MailboxCapabilities.version`? It wraps those methods and adds no semantics,
-   which argues for inheriting; but a route table can change while the methods
-   do not.
+2. **Does the operator surface belong on `/api/v1/admin/`?** It sits beside key
+   approval and teardown, which is consistent. But those act on `agents.db`
+   and this reads `hub.db`, and the admin prefix has so far meant "changes
+   something". A read-only prefix may be worth having before it is the only
+   one of its kind.
 
 ## Migration from the standalone mailer
 
