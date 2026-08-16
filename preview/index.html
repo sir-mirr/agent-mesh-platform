@@ -1013,6 +1013,82 @@
     stroke: #1D4ED8;
   }
 
+  /* Dynamic Swarm Scale Simulation Controller (Stages 1 ~ 10) */
+  .stage-sim-controller {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-full);
+    padding: 3px 8px 3px 10px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    user-select: none;
+  }
+  .stage-sim-label {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+    margin-right: 2px;
+  }
+  .stage-step-btn {
+    background: var(--bg-surface-sub);
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+  .stage-step-btn:hover {
+    background: var(--primary);
+    color: #FFFFFF;
+    border-color: var(--primary);
+  }
+  .stage-pills-wrap {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .stage-pill-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+  .stage-pill-btn:hover {
+    background: var(--bg-surface-sub);
+    color: var(--text-primary);
+  }
+  .stage-pill-btn.active {
+    background: var(--primary);
+    color: #FFFFFF;
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+  }
+  .stage-sim-summary {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-left: 6px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border-default);
+    white-space: nowrap;
+  }
+
   .peer-channel-pill {
     display: inline-flex;
     align-items: center;
@@ -1362,9 +1438,31 @@
 
   <!-- VIEW 3: AGENT OPERATIONS CONSOLE (10 CLUSTERS & PINCH-TO-ZOOM / PAN ENGINE) -->
   <main id="view-creator" class="preview-view">
-    <div class="admin-header-row">
+    <div class="admin-header-row" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
       <div>
-        <h1 class="admin-header-title" data-i18n="creator_title">Agent Operations Console</h1>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <h1 class="admin-header-title" data-i18n="creator_title" style="margin:0;">Agent Operations Console</h1>
+          
+          <!-- Dynamic Swarm Scale Simulation Controller (Stages 1 ~ 10) -->
+          <div class="stage-sim-controller" title="Simulate multi-stage swarm growth from 1 to 10 clusters">
+            <span class="stage-sim-label">⚡ Stage:</span>
+            <button class="stage-step-btn" onclick="stepSimStage(-1)" title="Previous Stage">◀</button>
+            <div class="stage-pills-wrap">
+              <button class="stage-pill-btn" id="simPill-1" onclick="setSimStage(1)">1</button>
+              <button class="stage-pill-btn" id="simPill-2" onclick="setSimStage(2)">2</button>
+              <button class="stage-pill-btn" id="simPill-3" onclick="setSimStage(3)">3</button>
+              <button class="stage-pill-btn" id="simPill-4" onclick="setSimStage(4)">4</button>
+              <button class="stage-pill-btn" id="simPill-5" onclick="setSimStage(5)">5</button>
+              <button class="stage-pill-btn" id="simPill-6" onclick="setSimStage(6)">6</button>
+              <button class="stage-pill-btn" id="simPill-7" onclick="setSimStage(7)">7</button>
+              <button class="stage-pill-btn" id="simPill-8" onclick="setSimStage(8)">8</button>
+              <button class="stage-pill-btn" id="simPill-9" onclick="setSimStage(9)">9</button>
+              <button class="stage-pill-btn active" id="simPill-10" onclick="setSimStage(10)">10</button>
+            </div>
+            <button class="stage-step-btn" onclick="stepSimStage(1)" title="Next Stage">▶</button>
+            <span id="stageSimSummary" class="stage-sim-summary">10 Swarms (139 Nodes)</span>
+          </div>
+        </div>
         <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
           <span data-i18n="creator_logged_as">Logged in as</span> <strong style="color:var(--primary);">alice_dev (Agent Operator)</strong>
         </p>
@@ -1654,9 +1752,9 @@
 
   <script>
     // =========================================================================
-    // 10 SWARM GALAXIES DEFINITIONS (DIVERSE SIZES: 5, 30, 15, 8, 18, 22, 4, 12, 9, 6)
+    // 10 SWARM GALAXIES MASTER DEFINITIONS (DIVERSE SIZES: 5, 30, 15, 8, 18, 22, 4, 12, 9, 6)
     // =========================================================================
-    const CLUSTERS_CONFIG = [
+    const MASTER_CLUSTERS_CONFIG = [
       // ROW 1: TOP DECK
       { id: 'core', name: 'Core Platform Hub', count: 5, cx: 320, cy: 360, r: 135, fill: '#EFF6FF', stroke: '#93C5FD', textColor: '#1E40AF', gw: { id: 'gw-core', x: 320, y: 760 } },
       { id: 'research', name: 'Research & Reasoning Swarm', count: 30, cx: 920, cy: 360, r: 275, fill: '#ECFDF5', stroke: '#A7F3D0', textColor: '#065F46', gw: { id: 'gw-research', x: 920, y: 760 } },
@@ -1674,162 +1772,271 @@
 
     const ICONS_PALETTE = ['🤖', '🔬', '💻', '⚡', '📦', '🛡', '📜', '🔑', '📊', '🧠', '💡', '📝', '🏆', '🕸', '🕷', '🚀', '🏷', '💬', '🪝', '📡', '🪵', '🎮', '🔍', '🧬', '🎯', '⚙', '👁', '🎙', '🔐'];
 
+    // Dynamic Active Swarm Stage State
+    let currentSimStage = 10;
+    let CLUSTERS_CONFIG = [...MASTER_CLUSTERS_CONFIG];
+
     // Dynamic Nodes & Edges Master Dictionary
-    const TOPOLOGY_NODES = {};
-    const ALL_EDGES = [];
-    const ALL_GATEWAYS = [];
+    let TOPOLOGY_NODES = {};
+    let ALL_EDGES = [];
+    let ALL_GATEWAYS = [];
 
-    // Build Galaxy Topology Data Structure
-    CLUSTERS_CONFIG.forEach(cfg => {
-      // 1. Gateway node for this cluster
-      const gwId = cfg.gw.id;
-      ALL_GATEWAYS.push(cfg.gw);
-      TOPOLOGY_NODES[gwId] = {
-        identity: gwId,
-        group: cfg.id,
-        groupName: `${cfg.name} (Gateway)`,
-        type: 'gateway-bridge',
-        status: 'Gateway 🌐',
-        badgeClass: 'badge-gateway',
-        desc: `Inter-Galaxy Routing Gateway for ${cfg.name}.`,
-        key: `sha256:gw_${cfg.id}_${Math.random().toString(36).substring(2, 10)}`,
-        directPeers: [],
-        connectedEdges: []
-      };
+    // Dynamic Entity Bounding Box variables
+    let ENTITY_MIN_X = 120;
+    let ENTITY_MAX_X = 3000;
+    let ENTITY_MIN_Y = 40;
+    let ENTITY_MAX_Y = 1530;
+    let ENTITY_W = 2880;
+    let ENTITY_H = 1490;
+    let ENTITY_CX = 1560;
+    let ENTITY_CY = 785;
 
-      // 2. Member agents inside cluster
-      const memberIds = [];
-      const nodeCoords = [];
+    let BOUND_W = 4320;
+    let BOUND_H = 2235;
+    let BOUND_MIN_X = -600;
+    let BOUND_MAX_X = 3720;
+    let BOUND_MIN_Y = -332;
+    let BOUND_MAX_Y = 1902;
+    let WORLD_TOTAL_W = 4320;
+    let WORLD_TOTAL_H = 2235;
 
-      for (let i = 0; i < cfg.count; i++) {
-        let name = '';
-        let icon = ICONS_PALETTE[(i + cfg.name.length) % ICONS_PALETTE.length];
-        let type = 'runtime';
-        let status = 'Online';
-        let badgeClass = 'badge-success';
+    // Build Galaxy Topology Data Structure for given stage (1 ~ 10)
+    function buildTopologyForStage(stageNum) {
+      currentSimStage = Math.max(1, Math.min(10, stageNum));
+      CLUSTERS_CONFIG = MASTER_CLUSTERS_CONFIG.slice(0, currentSimStage);
 
-        if (i === 0) {
-          name = `${cfg.id}-lead`;
-          type = 'ai-claude';
-          icon = cfg.id === 'core' ? '🤖' : (cfg.id === 'research' ? '🔬' : (cfg.id === 'delivery' ? '⚡' : '🧠'));
-        } else if (i === 1 && cfg.id === 'core') {
-          name = 'fe-antigravity';
-          type = 'admin';
-          icon = '💻';
-        } else {
-          name = `${cfg.id}-agent-${i + 1}`;
-          if (i % 3 === 0) {
-            status = 'Socketless';
-            badgeClass = 'badge-leased';
-          }
-        }
+      TOPOLOGY_NODES = {};
+      ALL_EDGES.length = 0;
+      ALL_GATEWAYS.length = 0;
 
-        // Calculate radial orbit positions with non-overlapping spacing
-        let nx, ny;
-        let labelOffsetY = 28;
-        if (cfg.count <= 6) {
-          const angle = (i / cfg.count) * Math.PI * 2 + (Math.PI / 6);
-          const rad = cfg.r * 0.54;
-          nx = cfg.cx + Math.cos(angle) * rad;
-          ny = cfg.cy + Math.sin(angle) * rad;
-        } else if (cfg.count <= 15) {
+      CLUSTERS_CONFIG.forEach(cfg => {
+        // 1. Gateway node for this cluster
+        const gwId = cfg.gw.id;
+        ALL_GATEWAYS.push(cfg.gw);
+        TOPOLOGY_NODES[gwId] = {
+          identity: gwId,
+          group: cfg.id,
+          groupName: `${cfg.name} (Gateway)`,
+          type: 'gateway-bridge',
+          status: 'Gateway 🌐',
+          badgeClass: 'badge-gateway',
+          desc: `Inter-Galaxy Routing Gateway for ${cfg.name}.`,
+          key: `sha256:gw_${cfg.id}_${Math.random().toString(36).substring(2, 10)}`,
+          directPeers: [],
+          connectedEdges: []
+        };
+
+        // 2. Member agents inside cluster
+        const memberIds = [];
+        const nodeCoords = [];
+
+        for (let i = 0; i < cfg.count; i++) {
+          let name = '';
+          let icon = ICONS_PALETTE[(i + cfg.name.length) % ICONS_PALETTE.length];
+          let type = 'runtime';
+          let status = 'Online';
+          let badgeClass = 'badge-success';
+
           if (i === 0) {
-            nx = cfg.cx; ny = cfg.cy;
-            labelOffsetY = -22; // Lead label above center
+            name = `${cfg.id}-lead`;
+            type = 'ai-claude';
+            icon = cfg.id === 'core' ? '🤖' : (cfg.id === 'research' ? '🔬' : (cfg.id === 'delivery' ? '⚡' : '🧠'));
+          } else if (i === 1 && cfg.id === 'core') {
+            name = 'fe-antigravity';
+            type = 'admin';
+            icon = '💻';
           } else {
-            const angle = ((i - 1) / (cfg.count - 1)) * Math.PI * 2 + (Math.PI / 8);
-            const rad = cfg.r * (i % 2 === 0 ? 0.72 : 0.46);
+            name = `${cfg.id}-agent-${i + 1}`;
+            if (i % 3 === 0) {
+              status = 'Socketless';
+              badgeClass = 'badge-leased';
+            }
+          }
+
+          // Calculate radial orbit positions with non-overlapping spacing
+          let nx, ny;
+          let labelOffsetY = 28;
+          if (cfg.count <= 6) {
+            const angle = (i / cfg.count) * Math.PI * 2 + (Math.PI / 6);
+            const rad = cfg.r * 0.54;
             nx = cfg.cx + Math.cos(angle) * rad;
             ny = cfg.cy + Math.sin(angle) * rad;
-          }
-        } else {
-          // Large swarms (18, 22, 30): 3 well-separated concentric orbits with angle offsets
-          if (i === 0) {
-            nx = cfg.cx; ny = cfg.cy;
-            labelOffsetY = -22; // Lead label above center
-          } else if (i <= 6) {
-            const angle = ((i - 1) / 6) * Math.PI * 2 + (Math.PI / 6);
-            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.36);
-            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.36);
-          } else if (i <= 16) {
-            const angle = ((i - 7) / 10) * Math.PI * 2 + (Math.PI / 10);
-            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.64);
-            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.64);
+          } else if (cfg.count <= 15) {
+            if (i === 0) {
+              nx = cfg.cx; ny = cfg.cy;
+              labelOffsetY = -22; // Lead label above center
+            } else {
+              const angle = ((i - 1) / (cfg.count - 1)) * Math.PI * 2 + (Math.PI / 8);
+              const rad = cfg.r * (i % 2 === 0 ? 0.72 : 0.46);
+              nx = cfg.cx + Math.cos(angle) * rad;
+              ny = cfg.cy + Math.sin(angle) * rad;
+            }
           } else {
-            const angle = ((i - 17) / (cfg.count - 17)) * Math.PI * 2 + (Math.PI / 14);
-            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.88);
-            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.88);
+            // Large swarms (18, 22, 30): 3 well-separated concentric orbits with angle offsets
+            if (i === 0) {
+              nx = cfg.cx; ny = cfg.cy;
+              labelOffsetY = -22; // Lead label above center
+            } else if (i <= 6) {
+              const angle = ((i - 1) / 6) * Math.PI * 2 + (Math.PI / 6);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.36);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.36);
+            } else if (i <= 16) {
+              const angle = ((i - 7) / 10) * Math.PI * 2 + (Math.PI / 10);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.64);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.64);
+            } else {
+              const angle = ((i - 17) / (cfg.count - 17)) * Math.PI * 2 + (Math.PI / 14);
+              nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.88);
+              ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.88);
+            }
           }
+
+          memberIds.push(name);
+          nodeCoords.push({ name, x: nx, y: ny, icon, status, badgeClass, type, labelOffsetY });
+
+          TOPOLOGY_NODES[name] = {
+            identity: name,
+            group: cfg.id,
+            groupName: cfg.name,
+            type: type,
+            status: status,
+            badgeClass: badgeClass,
+            desc: `Active autonomous agent in ${cfg.name} galaxy.`,
+            key: `sha256:${name}_${Math.random().toString(36).substring(2, 12)}L0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y`,
+            directPeers: [],
+            connectedEdges: [],
+            x: nx,
+            y: ny,
+            labelOffsetY: labelOffsetY,
+            icon
+          };
         }
 
-        memberIds.push(name);
-        nodeCoords.push({ name, x: nx, y: ny, icon, status, badgeClass, type, labelOffsetY });
+        // Generate intra-group edge paths & gateway connection
+        nodeCoords.forEach((node, idx) => {
+          // Connect to 1-2 adjacent nodes
+          if (idx > 0) {
+            const target = nodeCoords[idx % 2 === 0 ? 0 : idx - 1];
+            const edgeId = `e-${cfg.id}-${node.name}-${target.name}`;
+            ALL_EDGES.push({ id: edgeId, d: `M ${node.x} ${node.y} L ${target.x} ${target.y}`, type: 'intra-active' });
+            TOPOLOGY_NODES[node.name].directPeers.push(target.name);
+            TOPOLOGY_NODES[target.name].directPeers.push(node.name);
+            TOPOLOGY_NODES[node.name].connectedEdges.push(edgeId);
+            TOPOLOGY_NODES[target.name].connectedEdges.push(edgeId);
+          }
 
-        TOPOLOGY_NODES[name] = {
-          identity: name,
-          group: cfg.id,
-          groupName: cfg.name,
-          type: type,
-          status: status,
-          badgeClass: badgeClass,
-          desc: `Active autonomous agent in ${cfg.name} galaxy.`,
-          key: `sha256:${name}_${Math.random().toString(36).substring(2, 12)}L0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y`,
-          directPeers: [],
-          connectedEdges: [],
-          x: nx,
-          y: ny,
-          labelOffsetY: labelOffsetY,
-          icon
-        };
+          // Connect 1-2 peripheral nodes down to external gateway
+          if (idx === 0 || idx === nodeCoords.length - 1) {
+            const gwEdgeId = `e-gw-${node.name}-${gwId}`;
+            ALL_EDGES.push({ id: gwEdgeId, d: `M ${node.x} ${node.y} L ${cfg.gw.x} ${cfg.gw.y}`, type: 'gateway-link' });
+            TOPOLOGY_NODES[node.name].directPeers.push(gwId);
+            TOPOLOGY_NODES[gwId].directPeers.push(node.name);
+            TOPOLOGY_NODES[node.name].connectedEdges.push(gwEdgeId);
+            TOPOLOGY_NODES[gwId].connectedEdges.push(gwEdgeId);
+          }
+        });
+      });
+
+      // Generate Inter-Gateway Highway Backbone Lines for active gateways
+      // Top Deck Highways
+      const topGWCount = Math.min(5, ALL_GATEWAYS.length);
+      for (let i = 0; i < topGWCount - 1; i++) {
+        const g1 = ALL_GATEWAYS[i];
+        const g2 = ALL_GATEWAYS[i + 1];
+        const bId = `bridge-${g1.id}-${g2.id}`;
+        ALL_EDGES.push({ id: bId, d: `M ${g1.x} ${g1.y} L ${g2.x} ${g2.y}`, type: 'gateway-bridge' });
+        TOPOLOGY_NODES[g1.id].directPeers.push(g2.id);
+        TOPOLOGY_NODES[g2.id].directPeers.push(g1.id);
+        TOPOLOGY_NODES[g1.id].connectedEdges.push(bId);
+        TOPOLOGY_NODES[g2.id].connectedEdges.push(bId);
       }
 
-      // Generate intra-group edge paths & gateway connection
-      nodeCoords.forEach((node, idx) => {
-        // Connect to 1-2 adjacent nodes
-        if (idx > 0) {
-          const target = nodeCoords[idx % 2 === 0 ? 0 : idx - 1];
-          const edgeId = `e-${cfg.id}-${node.name}-${target.name}`;
-          ALL_EDGES.push({ id: edgeId, d: `M ${node.x} ${node.y} L ${target.x} ${target.y}`, type: 'intra-active' });
-          TOPOLOGY_NODES[node.name].directPeers.push(target.name);
-          TOPOLOGY_NODES[target.name].directPeers.push(node.name);
-          TOPOLOGY_NODES[node.name].connectedEdges.push(edgeId);
-          TOPOLOGY_NODES[target.name].connectedEdges.push(edgeId);
+      // Bottom Deck Highways
+      if (ALL_GATEWAYS.length > 5) {
+        for (let i = 5; i < ALL_GATEWAYS.length - 1; i++) {
+          const g1 = ALL_GATEWAYS[i];
+          const g2 = ALL_GATEWAYS[i + 1];
+          const bId = `bridge-${g1.id}-${g2.id}`;
+          ALL_EDGES.push({ id: bId, d: `M ${g1.x} ${g1.y} L ${g2.x} ${g2.y}`, type: 'gateway-bridge' });
+          TOPOLOGY_NODES[g1.id].directPeers.push(g2.id);
+          TOPOLOGY_NODES[g2.id].directPeers.push(g1.id);
+          TOPOLOGY_NODES[g1.id].connectedEdges.push(bId);
+          TOPOLOGY_NODES[g2.id].connectedEdges.push(bId);
         }
+      }
 
-        // Connect 1-2 peripheral nodes down to external gateway
-        if (idx === 0 || idx === nodeCoords.length - 1) {
-          const gwEdgeId = `e-gw-${node.name}-${gwId}`;
-          ALL_EDGES.push({ id: gwEdgeId, d: `M ${node.x} ${node.y} L ${cfg.gw.x} ${cfg.gw.y}`, type: 'gateway-link' });
-          TOPOLOGY_NODES[node.name].directPeers.push(gwId);
-          TOPOLOGY_NODES[gwId].directPeers.push(node.name);
-          TOPOLOGY_NODES[node.name].connectedEdges.push(gwEdgeId);
-          TOPOLOGY_NODES[gwId].connectedEdges.push(gwEdgeId);
+      // Cross-Deck Gateways
+      for (let i = 0; i < 5; i++) {
+        if (i + 5 < ALL_GATEWAYS.length) {
+          const gTop = ALL_GATEWAYS[i];
+          const gBot = ALL_GATEWAYS[i + 5];
+          const bCrossId = `bridge-cross-${gTop.id}-${gBot.id}`;
+          ALL_EDGES.push({ id: bCrossId, d: `M ${gTop.x} ${gTop.y} L ${gBot.x} ${gBot.y}`, type: 'gateway-bridge' });
+          TOPOLOGY_NODES[gTop.id].directPeers.push(gBot.id);
+          TOPOLOGY_NODES[gBot.id].directPeers.push(gTop.id);
+          TOPOLOGY_NODES[gTop.id].connectedEdges.push(bCrossId);
+          TOPOLOGY_NODES[gBot.id].connectedEdges.push(bCrossId);
         }
+      }
+
+      // Dynamic Bounding Box computation based on active clusters
+      const minX = Math.min(...CLUSTERS_CONFIG.map(c => c.cx - c.r - 30));
+      const maxX = Math.max(...CLUSTERS_CONFIG.map(c => c.cx + c.r + 30));
+      const minY = Math.min(...CLUSTERS_CONFIG.map(c => c.cy - c.r - 40));
+      const maxY = Math.max(...CLUSTERS_CONFIG.map(c => (c.cy > 700 ? c.cy + c.r + 30 : c.gw.y + 40)));
+
+      ENTITY_MIN_X = minX;
+      ENTITY_MAX_X = maxX;
+      ENTITY_MIN_Y = minY;
+      ENTITY_MAX_Y = maxY;
+      ENTITY_W = Math.max(600, ENTITY_MAX_X - ENTITY_MIN_X);
+      ENTITY_H = Math.max(400, ENTITY_MAX_Y - ENTITY_MIN_Y);
+      ENTITY_CX = (ENTITY_MIN_X + ENTITY_MAX_X) / 2;
+      ENTITY_CY = (ENTITY_MIN_Y + ENTITY_MAX_Y) / 2;
+
+      BOUND_W = ENTITY_W * 1.5;
+      BOUND_H = ENTITY_H * 1.5;
+      BOUND_MIN_X = ENTITY_CX - BOUND_W / 2;
+      BOUND_MAX_X = ENTITY_CX + BOUND_W / 2;
+      BOUND_MIN_Y = ENTITY_CY - BOUND_H / 2;
+      BOUND_MAX_Y = ENTITY_CY + BOUND_H / 2;
+      WORLD_TOTAL_W = BOUND_MAX_X - BOUND_MIN_X;
+      WORLD_TOTAL_H = BOUND_MAX_Y - BOUND_MIN_Y;
+
+      // Update Toolbar Swarm Filters
+      const totalAgentCount = Object.keys(TOPOLOGY_NODES).filter(k => TOPOLOGY_NODES[k].type !== 'gateway-bridge').length;
+      const filtersWrap = document.querySelector('.topology-filters');
+      if (filtersWrap) {
+        let fHtml = `<span style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-right:4px;" data-i18n="label_filter_group">Swarm Galaxies:</span>`;
+        fHtml += `<button class="topology-filter-btn active" onclick="focusCluster('all', this)">All (${CLUSTERS_CONFIG.length} Swarms · ${totalAgentCount} Nodes)</button>`;
+        CLUSTERS_CONFIG.forEach(c => {
+          fHtml += `<button class="topology-filter-btn" onclick="focusCluster('${c.id}', this)">${c.name.split(' ')[0]} (${c.count})</button>`;
+        });
+        filtersWrap.innerHTML = fHtml;
+      }
+
+      // Update Simulation Pill Buttons and Summary Badge
+      document.querySelectorAll('.stage-pill-btn').forEach((btn, idx) => {
+        btn.classList.toggle('active', idx + 1 === currentSimStage);
       });
-    });
+      const summaryEl = document.getElementById('stageSimSummary');
+      if (summaryEl) {
+        summaryEl.innerText = `${CLUSTERS_CONFIG.length} Swarm${CLUSTERS_CONFIG.length > 1 ? 's' : ''} (${totalAgentCount} Nodes)`;
+      }
 
-    // Generate Inter-Gateway Highway Backbone Lines
-    for (let i = 0; i < ALL_GATEWAYS.length - 1; i++) {
-      const g1 = ALL_GATEWAYS[i];
-      const g2 = ALL_GATEWAYS[i + 1];
-      const bId = `bridge-${g1.id}-${g2.id}`;
-      ALL_EDGES.push({ id: bId, d: `M ${g1.x} ${g1.y} L ${g2.x} ${g2.y}`, type: 'gateway-bridge' });
-      TOPOLOGY_NODES[g1.id].directPeers.push(g2.id);
-      TOPOLOGY_NODES[g2.id].directPeers.push(g1.id);
-      TOPOLOGY_NODES[g1.id].connectedEdges.push(bId);
-      TOPOLOGY_NODES[g2.id].connectedEdges.push(bId);
+      // Re-render Views
+      renderGalaxyTopologySVG();
+      renderMinimapContent();
+      deselectAll();
+      resetCanvasTransform();
     }
 
-    // Connect Top Deck Gateways to Bottom Deck Gateways
-    for (let i = 0; i < 5; i++) {
-      const gTop = ALL_GATEWAYS[i];
-      const gBot = ALL_GATEWAYS[i + 5];
-      const bCrossId = `bridge-cross-${gTop.id}-${gBot.id}`;
-      ALL_EDGES.push({ id: bCrossId, d: `M ${gTop.x} ${gTop.y} L ${gBot.x} ${gBot.y}`, type: 'gateway-bridge' });
-      TOPOLOGY_NODES[gTop.id].directPeers.push(gBot.id);
-      TOPOLOGY_NODES[gBot.id].directPeers.push(gTop.id);
-      TOPOLOGY_NODES[gTop.id].connectedEdges.push(bCrossId);
-      TOPOLOGY_NODES[gBot.id].connectedEdges.push(bCrossId);
+    function setSimStage(stageNum) {
+      buildTopologyForStage(stageNum);
+    }
+
+    function stepSimStage(delta) {
+      setSimStage(currentSimStage + delta);
     }
 
     // =========================================================================
@@ -1899,30 +2106,6 @@
 
       root.innerHTML = html;
     }
-
-    // =========================================================================
-    // 1.5x WORLD BOUNDING BOX & PAN-ZOOM ENGINE WITH BOUNDARY CLAMPING
-    // =========================================================================
-    // Exact Entities World Bounding Box: [120, 3000] x [40, 1530]
-    // Width = 2880, Height = 1490, Center = (1560, 785)
-    const ENTITY_MIN_X = 120;
-    const ENTITY_MAX_X = 3000;
-    const ENTITY_MIN_Y = 40;
-    const ENTITY_MAX_Y = 1530;
-    const ENTITY_W = ENTITY_MAX_X - ENTITY_MIN_X; // 2880
-    const ENTITY_H = ENTITY_MAX_Y - ENTITY_MIN_Y; // 1490
-    const ENTITY_CX = (ENTITY_MIN_X + ENTITY_MAX_X) / 2; // 1560
-    const ENTITY_CY = (ENTITY_MIN_Y + ENTITY_MAX_Y) / 2; // 785
-
-    // 1.5x Limits
-    const BOUND_W = ENTITY_W * 1.5; // 4320
-    const BOUND_H = ENTITY_H * 1.5; // 2235
-    const BOUND_MIN_X = ENTITY_CX - BOUND_W / 2; // -600
-    const BOUND_MAX_X = ENTITY_CX + BOUND_W / 2; // 3720
-    const BOUND_MIN_Y = ENTITY_CY - BOUND_H / 2; // -332
-    const BOUND_MAX_Y = ENTITY_CY + BOUND_H / 2; // 1902
-    const WORLD_TOTAL_W = BOUND_MAX_X - BOUND_MIN_X;
-    const WORLD_TOTAL_H = BOUND_MAX_Y - BOUND_MIN_Y;
 
     let panX = 60;
     let panY = 30;
@@ -2992,9 +3175,8 @@
       render();
     })();
 
-    // Initial render
-    renderGalaxyTopologySVG();
-    renderMinimapContent();
+    // Initial render & engine boot
+    buildTopologyForStage(10);
     initPanZoomEngine();
     initMinimapEvents();
   </script>
