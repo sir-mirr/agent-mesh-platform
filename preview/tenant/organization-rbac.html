@@ -90,12 +90,12 @@
         <div class="card-header">
           <div>
             <div class="card-title">Fine-Grained Capability Grants (SPEC § 11)</div>
-            <div class="card-subtitle">8 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code></div>
+            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
           </div>
         </div>
 
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          ⚡ <strong>Instant Revocation:</strong> Capability grants are verified dynamically on every request. Revoking a capability immediately results in HTTP 403 on the user's next action without requiring logout.
+          ⚡ <strong>Instant Revocation:</strong> Capability grants are verified dynamically on every request. Revoking a capability immediately results in HTTP 403 (e.g. <code>{ error: "Missing capability: source.read", capability: "source.read", scope: "*" }</code>) on the user's next action without requiring logout.
         </div>
 
         <table class="data-table">
@@ -103,13 +103,13 @@
           <tbody>
             <tr>
               <td><strong>alice_admin (Super Admin)</strong></td>
-              <td><code>key.approve, agent.provision, agent.teardown, audit.read.content, group.manage, role.grant</code></td>
+              <td><code>key.approve, agent.provision, agent.teardown, audit.read.content, group.manage, role.grant, source.read</code></td>
               <td><button class="btn btn-secondary btn-sm" onclick="alert('Cannot revoke own primary grant.')">Edit Grants</button></td>
             </tr>
             <tr>
               <td><strong>bob_compliance (Auditor)</strong></td>
-              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth</code></td>
-              <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \"Missing capability: audit.read.content\", capability: \"audit.read.content\" }')">Revoke Content Read</button></td>
+              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth, source.read</code></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \"Missing capability: source.read\", capability: \"source.read\" }')">Revoke Source Read</button></td>
             </tr>
           </tbody>
         </table>

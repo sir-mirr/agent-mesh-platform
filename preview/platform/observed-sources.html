@@ -79,25 +79,28 @@
     <!-- Body Content -->
     
       <div class="card">
-        <!-- Deployment Mode Header Banner -->
-        <div style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
-          <strong>🛡️ Active Deployment Mode: <code>socket</code> (Direct Kernel Observed Source)</strong><br>
-          <span style="font-size:0.8rem; color:#15803D;">The hub directly inspects peer TCP socket addresses. Invariants are cryptographically sound.</span>
+        <!-- Dynamic Evidence Note Banner directly from API -->
+        <div id="evidenceNoteBanner" style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
+          <strong>🛡️ Observed Source Mode: <code>socket</code></strong><br>
+          <span style="font-size:0.85rem; color:#15803D;">"Addresses are the kernel-observed peer of each connection."</span>
         </div>
 
         <div class="card-header">
           <div>
             <div class="card-title">Agent Sources Ledger</div>
-            <div class="card-subtitle">Backing schema: <code>agent_sources (identity, observed, first_seen, last_seen, requests)</code> · Endpoint: <code>GET /api/v1/admin/agent-sources</code></div>
+            <div class="card-subtitle">Endpoint: <code>GET /api/v1/admin/agent-sources</code> (requires capability <code>source.read</code>)</div>
           </div>
-          <span class="badge badge-success">surface.version: 4</span>
+          <div style="display:flex; gap:8px;">
+            <input type="text" placeholder="Filter by ?identity=..." style="padding:4px 8px; font-size:0.8rem; border:1px solid var(--border-default); border-radius:var(--radius-sm);">
+            <button class="btn btn-primary btn-sm" onclick="alert('Fetched latest 500 records from GET /api/v1/admin/agent-sources')">Refresh Sources</button>
+          </div>
         </div>
 
         <table class="data-table">
           <thead>
             <tr>
               <th>Agent Identity</th>
-              <th>Observed Address</th>
+              <th>Observed Peer Address</th>
               <th>First Seen</th>
               <th>Last Seen</th>
               <th>Total Requests</th>
@@ -106,23 +109,23 @@
           <tbody>
             <tr>
               <td><strong>acme-corp:core-lead</strong></td>
-              <td><code>10.0.4.12:49182</code></td>
+              <td><code>127.0.0.1</code></td>
               <td>2026-08-16 10:00:00</td>
-              <td>2026-08-17 01:05:12</td>
+              <td>2026-08-17 01:18:12</td>
               <td><strong>142,890</strong></td>
             </tr>
             <tr>
               <td><strong>acme-corp:core-agent-3</strong></td>
-              <td><code>10.0.4.15:51290</code></td>
+              <td><code>127.0.0.1</code></td>
               <td>2026-08-16 10:05:00</td>
-              <td>2026-08-17 01:04:44</td>
+              <td>2026-08-17 01:17:44</td>
               <td><strong>98,420</strong></td>
             </tr>
             <tr>
               <td><strong>nova-biotech:research-lead</strong></td>
-              <td><code>10.0.5.88:42100</code></td>
+              <td><code>192.168.1.100</code></td>
               <td>2026-08-16 11:20:00</td>
-              <td>2026-08-17 01:02:00</td>
+              <td>2026-08-17 01:12:00</td>
               <td><strong>34,100</strong></td>
             </tr>
           </tbody>

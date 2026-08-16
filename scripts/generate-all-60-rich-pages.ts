@@ -555,25 +555,28 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     isImplemented: true,
     html: `
       <div class="card">
-        <!-- Deployment Mode Header Banner -->
-        <div style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
-          <strong>🛡️ Active Deployment Mode: <code>socket</code> (Direct Kernel Observed Source)</strong><br>
-          <span style="font-size:0.8rem; color:#15803D;">The hub directly inspects peer TCP socket addresses. Invariants are cryptographically sound.</span>
+        <!-- Dynamic Evidence Note Banner directly from API -->
+        <div id="evidenceNoteBanner" style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
+          <strong>🛡️ Observed Source Mode: <code>socket</code></strong><br>
+          <span style="font-size:0.85rem; color:#15803D;">"Addresses are the kernel-observed peer of each connection."</span>
         </div>
 
         <div class="card-header">
           <div>
             <div class="card-title">Agent Sources Ledger</div>
-            <div class="card-subtitle">Backing schema: <code>agent_sources (identity, observed, first_seen, last_seen, requests)</code> · Endpoint: <code>GET /api/v1/admin/agent-sources</code></div>
+            <div class="card-subtitle">Endpoint: <code>GET /api/v1/admin/agent-sources</code> (requires capability <code>source.read</code>)</div>
           </div>
-          <span class="badge badge-success">surface.version: 4</span>
+          <div style="display:flex; gap:8px;">
+            <input type="text" placeholder="Filter by ?identity=..." style="padding:4px 8px; font-size:0.8rem; border:1px solid var(--border-default); border-radius:var(--radius-sm);">
+            <button class="btn btn-primary btn-sm" onclick="alert('Fetched latest 500 records from GET /api/v1/admin/agent-sources')">Refresh Sources</button>
+          </div>
         </div>
 
         <table class="data-table">
           <thead>
             <tr>
               <th>Agent Identity</th>
-              <th>Observed Address</th>
+              <th>Observed Peer Address</th>
               <th>First Seen</th>
               <th>Last Seen</th>
               <th>Total Requests</th>
@@ -582,23 +585,23 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
           <tbody>
             <tr>
               <td><strong>acme-corp:core-lead</strong></td>
-              <td><code>10.0.4.12:49182</code></td>
+              <td><code>127.0.0.1</code></td>
               <td>2026-08-16 10:00:00</td>
-              <td>2026-08-17 01:05:12</td>
+              <td>2026-08-17 01:18:12</td>
               <td><strong>142,890</strong></td>
             </tr>
             <tr>
               <td><strong>acme-corp:core-agent-3</strong></td>
-              <td><code>10.0.4.15:51290</code></td>
+              <td><code>127.0.0.1</code></td>
               <td>2026-08-16 10:05:00</td>
-              <td>2026-08-17 01:04:44</td>
+              <td>2026-08-17 01:17:44</td>
               <td><strong>98,420</strong></td>
             </tr>
             <tr>
               <td><strong>nova-biotech:research-lead</strong></td>
-              <td><code>10.0.5.88:42100</code></td>
+              <td><code>192.168.1.100</code></td>
               <td>2026-08-16 11:20:00</td>
-              <td>2026-08-17 01:02:00</td>
+              <td>2026-08-17 01:12:00</td>
               <td><strong>34,100</strong></td>
             </tr>
           </tbody>
@@ -852,12 +855,12 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
         <div class="card-header">
           <div>
             <div class="card-title">Fine-Grained Capability Grants (SPEC § 11)</div>
-            <div class="card-subtitle">8 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code></div>
+            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
           </div>
         </div>
 
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          ⚡ <strong>Instant Revocation:</strong> Capability grants are verified dynamically on every request. Revoking a capability immediately results in HTTP 403 on the user's next action without requiring logout.
+          ⚡ <strong>Instant Revocation:</strong> Capability grants are verified dynamically on every request. Revoking a capability immediately results in HTTP 403 (e.g. <code>{ error: "Missing capability: source.read", capability: "source.read", scope: "*" }</code>) on the user's next action without requiring logout.
         </div>
 
         <table class="data-table">
@@ -865,13 +868,13 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
           <tbody>
             <tr>
               <td><strong>alice_admin (Super Admin)</strong></td>
-              <td><code>key.approve, agent.provision, agent.teardown, audit.read.content, group.manage, role.grant</code></td>
+              <td><code>key.approve, agent.provision, agent.teardown, audit.read.content, group.manage, role.grant, source.read</code></td>
               <td><button class="btn btn-secondary btn-sm" onclick="alert('Cannot revoke own primary grant.')">Edit Grants</button></td>
             </tr>
             <tr>
               <td><strong>bob_compliance (Auditor)</strong></td>
-              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth</code></td>
-              <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \\\"Missing capability: audit.read.content\\\", capability: \\\"audit.read.content\\\" }')">Revoke Content Read</button></td>
+              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth, source.read</code></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \\\"Missing capability: source.read\\\", capability: \\\"source.read\\\" }')">Revoke Source Read</button></td>
             </tr>
           </tbody>
         </table>
@@ -1240,7 +1243,8 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     "audit.read.content",
     "inbox.read.depth",
     "group.manage",
-    "role.grant"
+    "role.grant",
+    "source.read"
   ]
 }</div>
       </div>
