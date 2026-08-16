@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { keyFingerprint } from "@agent-mesh/contracts";
 
-import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh , teardown} from "./harness";
+import { callHttp, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh , teardown} from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -399,12 +399,20 @@ describe("create_only", () => {
  * writes the runtime the user named, and had no way to check that against what
  * the hub already holds.
  *
- * The reason it had none is worth keeping. `mesh.list_agents` carries every
- * agent's type, but asking it needs a connected lane — and a host whose *first*
- * lane is the reclaim has none. The check it most needed was the one it could
- * not run, so it shipped the guard with a hole in it.
+ * **The reason first given here was wrong**, and the correction is the point.
+ * It said `mesh.list_agents` needs a connected lane, so a host whose first lane
+ * is the reclaim cannot ask. § 8.10 serves that method over `POST /api/v1/rpc`
+ * with no socket at all, so the missing thing was never a connection — it is an
+ * **approved key**, which § 8.10 resolves the caller by and refuses `-32014`
+ * without. That is the state a host occupies while an operator has not decided
+ * yet, and after a revocation.
+ *
+ * The claim came in a mail and went into SPEC without being checked against
+ * § 8.10 in this repository. The tests all passed either way: a reason is not
+ * executable, so nothing here was ever going to fail because it was wrong. The
+ * last test below is what makes this one executable.
  */
-describe("the registered type is readable without a lane", () => {
+describe("the registered type is readable without an approved key", () => {
   test("GET /keys reports it", async () => {
     await register("typed-lane", "ai-antigravity", newKey().publicKey);
     expect((await keysOf("typed-lane")).type).toBe("ai-antigravity");
@@ -442,5 +450,37 @@ describe("the registered type is readable without a lane", () => {
     // answering `type: null` instead.
     const res = await fetch(`${mesh.hub.url}/api/v1/agents/never-existed/keys`);
     expect(res.status).toBe(404);
+  });
+
+  test("and the route that also carries type is closed while the key is pending", async () => {
+    // The corrected reason, made checkable. `mesh.list_agents` over § 8.10
+    // needs no socket — but it resolves its caller by fingerprint, so a key an
+    // operator has not approved gets nothing. `/keys` is unauthenticated and
+    // answers throughout, which is the whole gap this closes.
+    const k = newKeyPair();
+    await register("reclaim-pending", "ai-antigravity", k.publicKey);
+
+    const rpc = await callHttp(mesh.hub, { kid: k.fingerprint, privateKey: k.privateKey },
+      "mesh.list_agents", {});
+    expect(rpc.status).toBe(403);
+    expect(rpc.body.error.code).toBe(-32014);
+    expect(rpc.body.error.data.key_status).toBe("pending");
+
+    expect((await keysOf("reclaim-pending")).type).toBe("ai-antigravity");
+  });
+
+  test("once approved, § 8.10 answers too — and carries every agent's type", async () => {
+    // Why the narrower route is still the better answer where both work.
+    const k = newKeyPair();
+    await register("reclaim-approved", "ai-antigravity", k.publicKey);
+    expect((await decide("approve", k.fingerprint)).status).toBe(200);
+
+    const rpc = await callHttp(mesh.hub, { kid: k.fingerprint, privateKey: k.privateKey },
+      "mesh.list_agents", {});
+    expect(rpc.status).toBe(200);
+    const mine = rpc.body.result.agents.find((a: any) => a.id === "reclaim-approved");
+    expect(mine.type).toBe("ai-antigravity");
+    // Everyone else's, for a caller that asked about itself.
+    expect(rpc.body.result.agents.length).toBeGreaterThan(1);
   });
 });

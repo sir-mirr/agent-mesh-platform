@@ -356,13 +356,18 @@ export function handleGetAgentKeys(identity: string): Response {
     ok: true,
     identity,
     // The registered type, for a host reclaiming an identity it already holds
-    // a key for. Without it the only way to ask is `mesh.list_agents`, which
-    // needs a connected lane — and a host whose *first* lane is the reclaim has
-    // none, so the check it most needs is the one it cannot run.
+    // a key for.
     //
-    // No new exposure: `mesh.list_agents` enumerates every agent's type, and
-    // this route answers only for a name the caller already knew. Name to
-    // attribute, never attribute to name.
+    // `mesh.list_agents` also carries it and is reachable without a socket over
+    // § 8.10, so the gap this closes is **not** "no connection" — it is **no
+    // approved key**. `/api/v1/rpc` resolves the caller by fingerprint and
+    // refuses `-32014` for anything pending, denied or revoked, which is
+    // exactly the state a host is in while it waits for an operator or after a
+    // rotation. This route is unauthenticated, so it answers then.
+    //
+    // It is also the narrower answer where both work: `mesh.list_agents`
+    // enumerates every agent's type, this answers for one name the caller
+    // already knew. Name to attribute, never attribute to name.
     type: agent.type,
     deleted: !!agent.deleted_at,
     // Why the identity cannot sign, or null when it can — the same value § 8.1

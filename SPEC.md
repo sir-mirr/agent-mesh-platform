@@ -1611,13 +1611,21 @@ bridge). Public-internet deployments MUST gate these routes behind a
 bearer token or equivalent before exposing them (§ 10.1).
 
 `GET /api/v1/agents/{identity}/keys` reports the registered `type`
-because a host **reclaiming** an identity needs it and cannot otherwise
-get it. `mesh.list_agents` (§ 8.3) carries every agent's type, but
-asking it requires a connected lane, and a host whose first lane is the
-reclaim has none — so the check it most needs is the one it cannot run.
-This adds no exposure: the route answers only for a name the caller
-already knew. **Name to attribute, never attribute to name** — the same
-direction § 10.2 fixes for fingerprints.
+because a host **reclaiming** an identity needs it and may hold no key
+the hub will yet accept.
+
+`mesh.list_agents` (§ 8.3) also carries it, and § 8.10 serves that method
+without a socket — so the gap is not the absence of a connection. It is
+the absence of an *approved* key: `POST /api/v1/rpc` resolves its caller
+by fingerprint and MUST refuse `-32014` while a key is pending, denied or
+revoked, which is precisely the state a host occupies while waiting for
+an operator or recovering from a rotation. This route is unauthenticated
+(†), so it answers throughout.
+
+Where both work, this one is narrower. `mesh.list_agents` enumerates
+every agent's type; this answers for a single name the caller already
+knew. **Name to attribute, never attribute to name** — the same direction
+§ 10.2 fixes for fingerprints.
 
 #### 9.2.1. The signed inbox surface (0.2)
 
