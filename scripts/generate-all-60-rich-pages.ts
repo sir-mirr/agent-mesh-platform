@@ -76,7 +76,7 @@ const ALL_SCREENS: ScreenSpec[] = [
     suiteTitle: 'Public & Marketing',
     role: 'Public / Security Team',
     title: 'Security Architecture & Protocols',
-    subtitle: 'Zero-infrastructure, Ed25519-verified multi-tenant cryptographic pipeline (SPEC v0.3)',
+    subtitle: 'Origin author vs carrier socket identity, Level 1/2 attestation, and zero-leak privacy (SPEC v0.3 & § 8.2)',
     isImplemented: true,
     html: `
       <div class="protocol-grid">
@@ -84,7 +84,7 @@ const ALL_SCREENS: ScreenSpec[] = [
           <div style="font-size:1.4rem; margin-bottom:8px;">⏱️</div>
           <strong style="font-size:1.05rem;">1. Socketless Lease State Machine (SPEC § 8.10)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted.
+            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
           </p>
           <div class="protocol-step-box"><strong>Step 1: Available Pool</strong><br>Buffered in SQLite queue pool.</div>
           <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Claimed in batch. Atomic countdown locks batch.</div>
@@ -93,24 +93,36 @@ const ALL_SCREENS: ScreenSpec[] = [
 
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🔑</div>
-          <strong style="font-size:1.05rem;">2. Origin vs Carrier Verification (SPEC § 8.2)</strong>
+          <strong style="font-size:1.05rem;">2. Origin vs Carrier Identity (SPEC § 8.2)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Explicit distinction between author identity and socket-holder identity.
+            Explicit distinction between author identity and socket-holder identity:
           </p>
-          <div class="protocol-step-box"><code>from: acme-corp:core-lead</code><br>Origin author identity with Ed25519 signature over body.</div>
-          <div class="protocol-step-box"><code>sent_by: alice_admin</code><br>Physical socket carrier identity authenticated via JWT/MTLS.</div>
-          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Level 1 vs Level 2 Attestation:</strong><br>Self-reported claim vs Kernel-observed socket.</div>
+          <div class="protocol-step-box">
+            <strong>Agent Direct Dispatch:</strong><br>
+            <code>from: "mesh-claude"</code> · <code>sent_by: "mesh-claude"</code><br>
+            <small style="color:#059669;">Ed25519 author signature over payload body.</small>
+          </div>
+          <div class="protocol-step-box" style="background:#FFFDF5; border-color:#F59E0B;">
+            <strong>Human Web Dispatch:</strong><br>
+            <code>from: "alice_dev"</code> · <code>sent_by: "http-server"</code><br>
+            <small style="color:#92400E;">No author Ed25519 signature; signed by http-server socket carrier.</small>
+          </div>
         </div>
 
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🛡️</div>
-          <strong style="font-size:1.05rem;">3. Privacy Boundary & Governance</strong>
+          <strong style="font-size:1.05rem;">3. Attestation Levels & Privacy Boundaries</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Role-based zero-trust isolation between Platform Operators and Tenant Administrators.
+            Level 1 (Agent self-claim) vs Level 2 (Hub kernel-observed socket attestation):
           </p>
-          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Platform Operator:</strong><br>Zero message body access. Transit telemetry only.</div>
-          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Tenant Admin:</strong><br>Participant message inspect with audit read logging.</div>
-          <div class="protocol-step-box"><strong>Egress ACL Enforcement:</strong><br>Default Deny cross-tenant boundary barrier.</div>
+          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;">
+            <strong>Level 2 Hub Observation:</strong><br>
+            <code>surface.observed_source: "socket" | "forwarded"</code>
+          </div>
+          <div class="protocol-step-box">
+            <strong>Platform vs Tenant Privacy:</strong><br>
+            Platform Operator has 0% message body access.
+          </div>
         </div>
       </div>
     `
@@ -539,56 +551,54 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Platform Operator',
     role: 'Platform Operator',
     title: 'SPEC § 8.11 Observed Source Inspector',
-    subtitle: 'Inspection of kernel socket vs X-Forwarded-For attestation telemetry and agent_sources table',
+    subtitle: 'Inspection of kernel socket vs X-Forwarded-For attestation telemetry (GET /api/v1/admin/agent-sources)',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">Agent Sources Ledger (SPEC § 8.11)</div>
-            <div class="card-subtitle">Backing schema: <code>agent_sources (identity, observed, first_seen, last_seen, requests)</code></div>
-          </div>
-          <span class="badge badge-success">surface.version: 4</span>
+        <!-- Deployment Mode Header Banner -->
+        <div style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
+          <strong>🛡️ Active Deployment Mode: <code>socket</code> (Direct Kernel Observed Source)</strong><br>
+          <span style="font-size:0.8rem; color:#15803D;">The hub directly inspects peer TCP socket addresses. Invariants are cryptographically sound.</span>
         </div>
 
-        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
-          👁️ <strong>Observed Source Attestation:</strong> <code>socket</code> indicates kernel-level observed IP; <code>forwarded</code> indicates <code>X-Forwarded-For</code> header from trusted proxy.
+        <div class="card-header">
+          <div>
+            <div class="card-title">Agent Sources Ledger</div>
+            <div class="card-subtitle">Backing schema: <code>agent_sources (identity, observed, first_seen, last_seen, requests)</code> · Endpoint: <code>GET /api/v1/admin/agent-sources</code></div>
+          </div>
+          <span class="badge badge-success">surface.version: 4</span>
         </div>
 
         <table class="data-table">
           <thead>
             <tr>
               <th>Agent Identity</th>
-              <th>Observed Source</th>
-              <th>Source Type</th>
+              <th>Observed Address</th>
               <th>First Seen</th>
               <th>Last Seen</th>
-              <th>Requests Count</th>
+              <th>Total Requests</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>acme-corp:core-lead</strong></td>
               <td><code>10.0.4.12:49182</code></td>
-              <td><span class="badge badge-success">socket</span></td>
               <td>2026-08-16 10:00:00</td>
-              <td>2026-08-17 00:58:12</td>
+              <td>2026-08-17 01:05:12</td>
               <td><strong>142,890</strong></td>
             </tr>
             <tr>
               <td><strong>acme-corp:core-agent-3</strong></td>
               <td><code>10.0.4.15:51290</code></td>
-              <td><span class="badge badge-success">socket</span></td>
               <td>2026-08-16 10:05:00</td>
-              <td>2026-08-17 00:57:44</td>
+              <td>2026-08-17 01:04:44</td>
               <td><strong>98,420</strong></td>
             </tr>
             <tr>
               <td><strong>nova-biotech:research-lead</strong></td>
-              <td><code>192.168.1.100 (Proxy)</code></td>
-              <td><span class="badge badge-warning">forwarded</span></td>
+              <td><code>10.0.5.88:42100</code></td>
               <td>2026-08-16 11:20:00</td>
-              <td>2026-08-17 00:55:00</td>
+              <td>2026-08-17 01:02:00</td>
               <td><strong>34,100</strong></td>
             </tr>
           </tbody>
@@ -835,10 +845,37 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Tenant Admin',
     role: 'Tenant Admin',
     title: 'Admin Member Capability Grants & Role Assignments',
-    subtitle: 'Fine-grained capability assignments for Acme Corp administrators',
+    subtitle: 'Fine-grained capabilities (v0.9.0 / SPEC § 11) and instant revocation rules',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">Administrator Grants</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">alice_admin: Super Admin (all capabilities) · bob_compliance: Auditor.</p></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Fine-Grained Capability Grants (SPEC § 11)</div>
+            <div class="card-subtitle">8 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code></div>
+          </div>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          ⚡ <strong>Instant Revocation:</strong> Capability grants are verified dynamically on every request. Revoking a capability immediately results in HTTP 403 on the user's next action without requiring logout.
+        </div>
+
+        <table class="data-table">
+          <thead><tr><th>Admin Identity</th><th>Active Capabilities</th><th>Actions</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>alice_admin (Super Admin)</strong></td>
+              <td><code>key.approve, agent.provision, agent.teardown, audit.read.content, group.manage, role.grant</code></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Cannot revoke own primary grant.')">Edit Grants</button></td>
+            </tr>
+            <tr>
+              <td><strong>bob_compliance (Auditor)</strong></td>
+              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth</code></td>
+              <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \\\"Missing capability: audit.read.content\\\", capability: \\\"audit.read.content\\\" }')">Revoke Content Read</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     `
   },
 
@@ -979,7 +1016,7 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Agent Operations',
     role: 'Agent Operator',
     title: 'Register New Agent Identity Form & Key Proposer',
-    subtitle: 'Propose new identity name and Ed25519 public key with 409 conflict checks',
+    subtitle: 'Propose new identity name and Ed25519 public key with 409 conflict checks (POST /api/v1/agents)',
     isImplemented: true,
     html: `
       <div class="card"><div class="card-header"><div class="card-title">Register Autonomous Agent</div></div><button class="btn btn-primary" onclick="alert('Agent proposal submitted.')">Submit Agent Proposal</button></div>
@@ -1025,11 +1062,11 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
     title: 'Developer Hub Overview & Quickstart',
-    subtitle: 'REST API, WebSocket documentation, and client SDK downloads (Contracts v0.8.3)',
+    subtitle: 'REST API, WebSocket documentation, and client SDK downloads (Contracts v0.9.0)',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.8.3)</div></div>
+        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.9.0)</div></div>
         <table class="data-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th><th>SPEC Section</th></tr></thead>
           <tbody>
@@ -1038,6 +1075,7 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/outbox</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
             <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/outbox/{id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/inbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/agents</code></td><td>Provision identity and propose public key</td><td>SPEC § 9.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/capabilities</code></td><td>Query surface version 4 & observed source</td><td>SPEC § 8.11</td></tr>
           </tbody>
         </table>
@@ -1146,19 +1184,31 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
   },
   {
     num: 55,
-    path: 'preview/dev/api-keys-propose.html',
-    url: '/dev/api-keys-propose.html',
+    path: 'preview/dev/api-agents-provision.html',
+    url: '/dev/api-agents-provision.html',
     suite: 'dev',
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
-    title: 'API Reference: POST /api/v1/keys/propose',
-    subtitle: 'Specification for proposing new Ed25519 public keys with 50-character SHA-256 fingerprint generation',
+    title: 'API Reference: POST /api/v1/agents (Provision & Key Proposal)',
+    subtitle: 'Provision agent identity, propose public key, and verify with GET /api/v1/agents/{id}/keys',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">POST /api/v1/keys/propose</div><button class="btn btn-primary btn-sm" onclick="alert('Key proposal submitted.')">▶ Execute Propose</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">POST /api/v1/agents</div>
+            <div class="card-subtitle">Identity registration and rolling key proposals supersede pending keys without touching active keys</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Agent provisioned.')">▶ Execute Provision</button>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          🔑 <strong>Verification Best Practice:</strong> Do not rely solely on the <code>2xx</code> response of <code>POST /api/v1/agents</code>. Always query <code>GET /api/v1/agents/{identity}/keys</code> to ensure your 50-character SHA-256 fingerprint has been successfully registered in the database.
+        </div>
+
         <div class="code-snippet-box">{
   "identity": "acme-corp:core-agent-9",
+  "type": "standard",
   "public_key": "91cBIH2CQfK6aV7hT6q3ZpLmQ0vNxB3cR6jFaSdFgHj="
 }</div>
       </div>
@@ -1182,7 +1232,16 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     "version": 4,
     "observed_source": "socket"
   },
-  "capabilities": ["key.approve", "agent.teardown", "audit.read_content"]
+  "capabilities": [
+    "key.approve",
+    "agent.provision",
+    "agent.teardown",
+    "audit.read.metadata",
+    "audit.read.content",
+    "inbox.read.depth",
+    "group.manage",
+    "role.grant"
+  ]
 }</div>
       </div>
     `

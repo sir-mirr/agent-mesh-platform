@@ -60,7 +60,7 @@
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #2</span>
         </div>
         <h1 class="admin-header-title">Security Architecture & Protocols</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Zero-infrastructure, Ed25519-verified multi-tenant cryptographic pipeline (SPEC v0.3)</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Origin author vs carrier socket identity, Level 1/2 attestation, and zero-leak privacy (SPEC v0.3 & § 8.2)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -75,7 +75,7 @@
           <div style="font-size:1.4rem; margin-bottom:8px;">⏱️</div>
           <strong style="font-size:1.05rem;">1. Socketless Lease State Machine (SPEC § 8.10)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted.
+            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
           </p>
           <div class="protocol-step-box"><strong>Step 1: Available Pool</strong><br>Buffered in SQLite queue pool.</div>
           <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Claimed in batch. Atomic countdown locks batch.</div>
@@ -84,24 +84,36 @@
 
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🔑</div>
-          <strong style="font-size:1.05rem;">2. Origin vs Carrier Verification (SPEC § 8.2)</strong>
+          <strong style="font-size:1.05rem;">2. Origin vs Carrier Identity (SPEC § 8.2)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Explicit distinction between author identity and socket-holder identity.
+            Explicit distinction between author identity and socket-holder identity:
           </p>
-          <div class="protocol-step-box"><code>from: acme-corp:core-lead</code><br>Origin author identity with Ed25519 signature over body.</div>
-          <div class="protocol-step-box"><code>sent_by: alice_admin</code><br>Physical socket carrier identity authenticated via JWT/MTLS.</div>
-          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Level 1 vs Level 2 Attestation:</strong><br>Self-reported claim vs Kernel-observed socket.</div>
+          <div class="protocol-step-box">
+            <strong>Agent Direct Dispatch:</strong><br>
+            <code>from: "mesh-claude"</code> · <code>sent_by: "mesh-claude"</code><br>
+            <small style="color:#059669;">Ed25519 author signature over payload body.</small>
+          </div>
+          <div class="protocol-step-box" style="background:#FFFDF5; border-color:#F59E0B;">
+            <strong>Human Web Dispatch:</strong><br>
+            <code>from: "alice_dev"</code> · <code>sent_by: "http-server"</code><br>
+            <small style="color:#92400E;">No author Ed25519 signature; signed by http-server socket carrier.</small>
+          </div>
         </div>
 
         <div class="protocol-card">
           <div style="font-size:1.4rem; margin-bottom:8px;">🛡️</div>
-          <strong style="font-size:1.05rem;">3. Privacy Boundary & Governance</strong>
+          <strong style="font-size:1.05rem;">3. Attestation Levels & Privacy Boundaries</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Role-based zero-trust isolation between Platform Operators and Tenant Administrators.
+            Level 1 (Agent self-claim) vs Level 2 (Hub kernel-observed socket attestation):
           </p>
-          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;"><strong>Platform Operator:</strong><br>Zero message body access. Transit telemetry only.</div>
-          <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Tenant Admin:</strong><br>Participant message inspect with audit read logging.</div>
-          <div class="protocol-step-box"><strong>Egress ACL Enforcement:</strong><br>Default Deny cross-tenant boundary barrier.</div>
+          <div class="protocol-step-box" style="border-color:#3B82F6; background:#EFF6FF;">
+            <strong>Level 2 Hub Observation:</strong><br>
+            <code>surface.observed_source: "socket" | "forwarded"</code>
+          </div>
+          <div class="protocol-step-box">
+            <strong>Platform vs Tenant Privacy:</strong><br>
+            Platform Operator has 0% message body access.
+          </div>
         </div>
       </div>
     

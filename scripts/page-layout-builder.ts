@@ -65,7 +65,7 @@ export const SUITE_SUBNAVS: Record<string, { label: string; url: string }[]> = {
     { label: 'POST /inbox (SPEC §8.10)', url: '/dev/api-inbox.html' },
     { label: 'DELETE /outbox/{id}', url: '/dev/api-outbox-delete.html' },
     { label: 'GET /inbox/history', url: '/dev/api-inbox-history.html' },
-    { label: 'POST /keys/propose', url: '/dev/api-keys-propose.html' },
+    { label: 'POST /agents (Provision/Key)', url: '/dev/api-agents-provision.html' },
     { label: 'GET /capabilities (v4)', url: '/dev/api-capabilities.html' },
     { label: 'TypeScript SDK', url: '/dev/sdk-typescript.html' },
     { label: 'Python SDK', url: '/dev/sdk-python.html' },

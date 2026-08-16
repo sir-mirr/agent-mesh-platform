@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Reference: POST /api/v1/keys/propose — Agent Mesh Enterprise Platform</title>
+  <title>API Reference: POST /api/v1/agents (Provision & Key Proposal) — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -45,7 +45,7 @@
   
     <a href="/dev/api-inbox-history.html" class="subnav-pill ">GET /inbox/history</a>
   
-    <a href="/dev/api-keys-propose.html" class="subnav-pill active">POST /keys/propose</a>
+    <a href="/dev/api-agents-provision.html" class="subnav-pill active">POST /agents (Provision/Key)</a>
   
     <a href="/dev/api-capabilities.html" class="subnav-pill ">GET /capabilities (v4)</a>
   
@@ -67,8 +67,8 @@
           <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #55</span>
         </div>
-        <h1 class="admin-header-title">API Reference: POST /api/v1/keys/propose</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Specification for proposing new Ed25519 public keys with 50-character SHA-256 fingerprint generation</p>
+        <h1 class="admin-header-title">API Reference: POST /api/v1/agents (Provision & Key Proposal)</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Provision agent identity, propose public key, and verify with GET /api/v1/agents/{id}/keys</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -79,9 +79,21 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">POST /api/v1/keys/propose</div><button class="btn btn-primary btn-sm" onclick="alert('Key proposal submitted.')">▶ Execute Propose</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">POST /api/v1/agents</div>
+            <div class="card-subtitle">Identity registration and rolling key proposals supersede pending keys without touching active keys</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Agent provisioned.')">▶ Execute Provision</button>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          🔑 <strong>Verification Best Practice:</strong> Do not rely solely on the <code>2xx</code> response of <code>POST /api/v1/agents</code>. Always query <code>GET /api/v1/agents/{identity}/keys</code> to ensure your 50-character SHA-256 fingerprint has been successfully registered in the database.
+        </div>
+
         <div class="code-snippet-box">{
   "identity": "acme-corp:core-agent-9",
+  "type": "standard",
   "public_key": "91cBIH2CQfK6aV7hT6q3ZpLmQ0vNxB3cR6jFaSdFgHj="
 }</div>
       </div>

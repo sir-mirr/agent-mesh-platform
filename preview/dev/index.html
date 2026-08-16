@@ -45,7 +45,7 @@
   
     <a href="/dev/api-inbox-history.html" class="subnav-pill ">GET /inbox/history</a>
   
-    <a href="/dev/api-keys-propose.html" class="subnav-pill ">POST /keys/propose</a>
+    <a href="/dev/api-agents-provision.html" class="subnav-pill ">POST /agents (Provision/Key)</a>
   
     <a href="/dev/api-capabilities.html" class="subnav-pill ">GET /capabilities (v4)</a>
   
@@ -68,7 +68,7 @@
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #49</span>
         </div>
         <h1 class="admin-header-title">Developer Hub Overview & Quickstart</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">REST API, WebSocket documentation, and client SDK downloads (Contracts v0.8.3)</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">REST API, WebSocket documentation, and client SDK downloads (Contracts v0.9.0)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -79,7 +79,7 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.8.3)</div></div>
+        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.9.0)</div></div>
         <table class="data-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th><th>SPEC Section</th></tr></thead>
           <tbody>
@@ -88,6 +88,7 @@
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/outbox</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
             <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/outbox/{id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/inbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/agents</code></td><td>Provision identity and propose public key</td><td>SPEC § 9.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/capabilities</code></td><td>Query surface version 4 & observed source</td><td>SPEC § 8.11</td></tr>
           </tbody>
         </table>
