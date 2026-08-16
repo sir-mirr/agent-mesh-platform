@@ -113,6 +113,25 @@ export function has(
   return !!row;
 }
 
+/**
+ * Whether `subject` holds `capability` at **any** scope.
+ *
+ * For routes that *filter* rather than gate. Asking `has(..., SCOPE_TENANT)`
+ * there refuses everyone but a tenant-wide holder — and § 11.3 requires the
+ * opposite: an operator scoped to their own agents must reach the route and
+ * see their own rows. A `403` would say they lack a capability they hold.
+ */
+export function hasAny(
+  db: Database,
+  subject: string,
+  capability: Capability,
+  tenant: string = DEFAULT_TENANT,
+): boolean {
+  return !!db
+    .prepare(`SELECT 1 AS ok FROM role_grants WHERE tenant = ? AND subject = ? AND capability = ? LIMIT 1`)
+    .get(tenant, subject, capability);
+}
+
 /** Everything one subject holds — for an operator screen, and for tests. */
 export function listFor(db: Database, subject: string, tenant: string = DEFAULT_TENANT): Grant[] {
   return db

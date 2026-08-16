@@ -11,6 +11,7 @@ export * as teardown from "./teardown";
 export * as outbox from "./outbox";
 export * as sources from "./sources";
 export * as grants from "./grants";
+export * as ownership from "./ownership";
 export type {
   AgentKeyRow,
   AgentRow,

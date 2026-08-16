@@ -834,3 +834,120 @@ describe("the observed sources are readable by an operator", () => {
     expect((await asAdmin("/api/v1/admin/agent-sources?identity=../etc")).status).toBe(400);
   });
 });
+
+/**
+ * SPEC § 11.3. Ownership, and the queue that scopes to it.
+ *
+ * The store-level races are covered in `packages/store/src/ownership.test.ts`.
+ * What is here is the part that only shows up over the wire: an operator with
+ * no agents must see an **empty queue**, not a refusal, and the two are easy
+ * to conflate in a route that filters after a permission check.
+ */
+describe("ownership scopes what an operator sees", () => {
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const grantTo = (subject: string, capability: string, scope = "*") =>
+    withDb((db) => db.prepare(
+      `INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+       VALUES ('default',?,?,?,'test') ON CONFLICT DO NOTHING`).run(subject, capability, scope));
+  const login = async (u: string) => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `username=${u}&password=admin`, redirect: "manual",
+    });
+    return res.headers.get("set-cookie")?.split(";")[0] ?? null;
+  };
+
+  test("a pairing code is issued, redeemed once, and establishes ownership", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "own-lane", "ai-claude", null, kp.publicKey);
+
+    const issued = await fetch(`${mesh.http.url}/api/v1/admin/pairing-codes`, {
+      method: "POST", headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ identity: "own-lane" }),
+    });
+    expect(issued.status).toBe(201);
+    const { code } = await issued.json();
+    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+
+    // Redemption is unauthenticated: the CLI runs on the agent's host and
+    // holds no human session. The code is the credential.
+    const redeemed = await fetch(`${mesh.http.url}/api/v1/pairing-codes/redeem`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, owner: "admin" }),
+    });
+    expect(redeemed.status).toBe(200);
+    expect((await redeemed.json()).identity).toBe("own-lane");
+
+    const again = await fetch(`${mesh.http.url}/api/v1/pairing-codes/redeem`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, owner: "mallory" }),
+    });
+    expect(again.status).toBe(409);
+    expect((await again.json()).reason).toBe("already-redeemed");
+
+    const listed = await (await fetch(`${mesh.http.url}/api/v1/admin/agents/own-lane/owners`, {
+      headers: { cookie: adminCookie },
+    })).json();
+    expect(listed.owners.map((o: any) => o.owner)).toEqual(["admin"]);
+    // How the claim was made is part of the record.
+    expect(listed.owners[0].granted_by).toContain("pairing:");
+  });
+
+  test("an unknown code is 404 and a bad body is 400", async () => {
+    const post = (b: unknown) => fetch(`${mesh.http.url}/api/v1/pairing-codes/redeem`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b),
+    });
+    expect((await post({ code: "ZZZZ-ZZZZ-ZZZZ", owner: "x" })).status).toBe(404);
+    expect((await post({ owner: "x" })).status).toBe(400);
+  });
+
+  test("a tenant-wide grant is not filtered — that is what being inside the tenant means", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "own-visible", "ai-claude", null, kp.publicKey);
+    const body = await (await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
+      headers: { cookie: adminCookie },
+    })).json();
+    expect(body.pending.map((k: any) => k.identity)).toContain("own-visible");
+  });
+
+  test("a scoped operator sees only what they own — and reaching the route at all is the point", async () => {
+    // Two things at once, because they fail as one. A scoped grant must not be
+    // refused (§ 11.3: the answer is an empty or filtered list, never `403`),
+    // and what comes back must be their own agents rather than everyone's.
+    const owned = newKeyPair();
+    const notOwned = newKeyPair();
+    await provision(mesh.hub, "own-mine", "ai-claude", null, owned.publicKey);
+    await provision(mesh.hub, "own-theirs", "ai-claude", null, notOwned.publicKey);
+    withDb((db) => db.prepare(
+      `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
+       VALUES ('default','own-mine','admin','test') ON CONFLICT DO NOTHING`).run());
+
+    // Narrow the grant: `admin` now holds key.approve on one identity only.
+    withDb((db) => db.prepare(
+      `DELETE FROM role_grants WHERE subject='admin' AND scope='*' AND capability='key.approve'`).run());
+    grantTo("admin", "key.approve", "own-mine");
+
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: adminCookie } });
+    // Not 403. Gating this at tenant scope would refuse every operator who
+    // holds only their own agents, which is the failure this route is about.
+    expect(res.status).toBe(200);
+    const identities = (await res.json()).pending.map((k: any) => k.identity);
+    expect(identities).toContain("own-mine");
+    expect(identities).not.toContain("own-theirs");
+
+    grantTo("admin", "key.approve", "*");
+  });
+
+  test("holding the capability at no scope at all is still 403", async () => {
+    // The other side of the line. Filtered-to-empty and not-permitted are
+    // different answers and must not collapse into one.
+    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='key.approve'`).run());
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: adminCookie } });
+    expect(res.status).toBe(403);
+    expect((await res.json()).capability).toBe("key.approve");
+    grantTo("admin", "key.approve", "*");
+  });
+});
