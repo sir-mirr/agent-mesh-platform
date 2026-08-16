@@ -1372,6 +1372,19 @@ That is not an additional rule but the absence of one: with no socket to have
 connected on, an unsigned request carries nothing that says who is asking. The
 freshness window and the nonce rule of § 8.1 apply unchanged.
 
+**A key that is not approved MUST be answered with `-32014` carrying
+`data.key_status`**, as over a socket. The identity is deliberately not
+named: `sig.kid` resolves a caller only while the key is approved, and
+reporting the holder here would build the key-to-identity lookup this
+contract otherwise lacks — probeable by anyone who can reach the port.
+
+The status is what the caller needs and the identity is not. This is
+also the population that needs it most: an agent reaching the mesh this
+way has no `mesh.connect` to have learned its state from, so this
+response is the only thing that distinguishes *waiting for an operator*
+from *shut off*. A generic invalid-request leaves a bootstrapping client
+retrying forever or string-matching prose.
+
 `mesh.connect` and `mesh.register` are NOT available over this transport. They
 mark a socket online and there is no socket. **A socketless participant is never
 online**: it has nowhere to be pushed to, so a sender addressing it is told

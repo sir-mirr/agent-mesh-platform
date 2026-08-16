@@ -407,3 +407,78 @@ describe("a nonce is spent on receipt, not on success (§ 8.1)", () => {
     rpc.close();
   }, 20_000);
 });
+
+describe("§ 8.10 carries § 8.1's error codes, including the key state", () => {
+  /**
+   * The socketless transport answered a non-approved key with a generic
+   * `-32014`-less invalid request. § 8.10 says outright that "the methods, the
+   * signing construction, the error codes and the queue are the ones already
+   * specified", so the code was a contract violation and not a gap.
+   *
+   * It matters most to exactly this population: an agent reaching the mesh this
+   * way has no `mesh.connect` to have learned its key state from, and being
+   * refused is the first thing that happens to every new lane.
+   */
+  const post = async (kp: ReturnType<typeof newKeyPair>) => {
+    const nonce = randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+    const params = "{}";
+    const value = Buffer.from(
+      edSign(null, Buffer.from(requestSignaturePreimage({
+        method: "mesh.list_agents", kid: kp.fingerprint, nonce, iat,
+        rawParams: new TextEncoder().encode(params),
+      })), kp.privateKey),
+    ).toString("base64url");
+    const res = await fetch(`${mesh.hub.url}/api/v1/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: `{"jsonrpc":"2.0","id":1,"method":"mesh.list_agents","params":${params},` +
+        `"sig":${JSON.stringify({ alg: "ed25519", kid: kp.fingerprint, nonce, iat, value })}}`,
+    });
+    return { status: res.status, body: (await res.json()) as any };
+  };
+
+  test("a pending key is -32014 with key_status pending", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "http-pending", "ai-claude", null, kp.publicKey);
+
+    const { body } = await post(kp);
+    expect(body.error.code).toBe(-32014);
+    expect(body.error.data).toMatchObject({ code: "KEY_NOT_APPROVED", key_status: "pending" });
+  });
+
+  test("a revoked key says revoked, so a client stops rather than waits", async () => {
+    // The distinction the generic error destroyed: `pending` means wait for a
+    // person, `revoked` means stop.
+    const kp = newKeyPair();
+    await provision(mesh.hub, "http-revoked", "ai-claude", null, kp.publicKey);
+    await approve(kp.fingerprint);
+    const revoked = await fetch(`${mesh.http.url}/api/v1/admin/keys/revoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: await loginAsAdmin(mesh.http) },
+      body: JSON.stringify({ fingerprint: kp.fingerprint, reason: "rotation" }),
+    });
+    expect(revoked.status).toBe(200);
+
+    const { body } = await post(kp);
+    expect(body.error.code).toBe(-32014);
+    expect(body.error.data.key_status).toBe("revoked");
+  });
+
+  test("an unknown fingerprint is missing, not an internal error", async () => {
+    const { body } = await post(newKeyPair());
+    expect(body.error.code).toBe(-32014);
+    expect(body.error.data.key_status).toBe("missing");
+  });
+
+  test("the refusal never names the holder", async () => {
+    // Reporting the identity would build a key-to-identity lookup probeable by
+    // anyone who can reach the port — the reverse direction of
+    // `GET /api/v1/agents/{identity}/keys`, which requires knowing the name.
+    const kp = newKeyPair();
+    await provision(mesh.hub, "http-unnamed", "ai-claude", null, kp.publicKey);
+
+    const { body } = await post(kp);
+    expect(JSON.stringify(body)).not.toContain("http-unnamed");
+  });
+});

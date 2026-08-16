@@ -139,6 +139,21 @@ is `-32015` and permanent.
 
 ---
 
+## Every assertion cites the section it rests on
+
+A scenario asserts the contract, not the current behaviour. The difference is
+invisible while they agree, which is when it matters.
+
+The `-32014` gap below was found by a walk that expected `-32014` because the
+*socket* path returns it — written from memory, not from § 8.10. It happened to
+be right, because § 8.10 says the error codes carry over unchanged. Had it been
+wrong, the run would have reported a defect the contract never required, and
+the fix would have been to the wrong side.
+
+So a scenario names its clause. `expect(err.code).toBe(-32014)` with a comment
+saying § 8.10 carries § 8.1's error codes is checkable by a reader; the same
+line without it is a preference.
+
 ## Failures worth asserting
 
 These are the ones where a wrong implementation still looks like it works:

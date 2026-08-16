@@ -296,3 +296,33 @@ export function noKeyReason(db: Database, identity: string): NoKeyReason | null 
     .get(identity) as { status: "denied" | "revoked" } | undefined;
   return last?.status ?? "missing";
 }
+
+/**
+ * The status of one key, found by fingerprint (SPEC § 8.1).
+ *
+ * **Returns the status and not the identity**, deliberately. The socketless
+ * transport resolves a caller through `identityForFingerprint`, which answers
+ * only for approved keys — so a caller whose key is pending cannot be told
+ * *why* without some other lookup, and § 8.1 requires it to be told: a client
+ * has to distinguish waiting for an operator from having been shut off.
+ *
+ * Naming the identity here would build the reverse lookup the contract
+ * deliberately lacks — key to holder, probeable by anyone who can reach the
+ * port. The status alone answers the client's question and adds nothing to what
+ * `GET /api/v1/agents/{identity}/keys` already publishes in the other
+ * direction.
+ *
+ * `missing` for a fingerprint no row carries, which is also what a typo looks
+ * like.
+ */
+export function statusOfFingerprint(db: Database, fingerprint: string): NoKeyReason {
+  const row = db
+    .prepare(`SELECT status FROM agent_keys WHERE fingerprint = ?`)
+    .get(fingerprint) as { status: string } | undefined;
+  if (!row) return "missing";
+  if (row.status === "pending") return "pending";
+  if (row.status === "denied" || row.status === "revoked") return row.status;
+  // `approved` cannot reach here: the caller only asks after
+  // `identityForFingerprint` declined, and that answers for approved keys.
+  return "missing";
+}

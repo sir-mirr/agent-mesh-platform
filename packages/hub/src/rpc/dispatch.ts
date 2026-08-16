@@ -59,11 +59,22 @@ export function dispatchHttp(raw: string): { status: number; body: string } {
 
   const identity = keys.identityForFingerprint(agentsDb, kid);
   if (!identity) {
-    // Also the answer for a revoked or denied key: it stops naming its holder
-    // at the same moment it stops verifying.
+    // § 8.10 carries § 8.1's error codes over unchanged, so this is
+    // `-32014` with `key_status` — not a generic invalid request. A client
+    // reaching the mesh this way has no `mesh.connect` to have learned its
+    // state from, so this response is the only thing that tells it whether to
+    // wait for an operator or to stop.
+    //
+    // The identity is not named. `identityForFingerprint` answers for approved
+    // keys only, and reporting the holder here would build the key-to-identity
+    // lookup the contract deliberately lacks.
+    const keyStatus = keys.statusOfFingerprint(agentsDb, kid);
     return {
       status: 403,
-      body: rpcError(req.id, INVALID_REQUEST, `no approved key with fingerprint ${kid}`),
+      body: rpcError(req.id, KEY_NOT_APPROVED, `no approved key with fingerprint ${kid}`, {
+        code: "KEY_NOT_APPROVED",
+        key_status: keyStatus,
+      }),
     };
   }
 
