@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Platform Operator Overview & Backbone Matrix — Agent Mesh Enterprise</title>
+  <title>Platform Operator Overview & Backbone Matrix — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
-  <!-- Navigation Header -->
+  <!-- Global Top Navigation Header -->
   <header class="preview-control-bar">
-    <a href="/public/index.html" class="preview-brand">
+    <a href="/index.html" class="preview-brand">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
-      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
     </a>
 
     <div class="preview-nav">
       <a href="/public/index.html" class="preview-btn ">1. Home & Protocols</a>
       <a href="/platform/index.html" class="preview-btn active">2. Platform Operator</a>
-      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
       <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
-      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
@@ -28,23 +28,54 @@
     </div>
   </header>
 
-  <!-- Main Content Container -->
+  <!-- Main Page Container -->
   <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/platform/index.html" class="subnav-pill active">📊 Overview</a>
+  
+    <a href="/platform/highways.html" class="subnav-pill ">🌐 14 Highways</a>
+  
+    <a href="/platform/tenant-manager.html" class="subnav-pill ">🏢 Tenants</a>
+  
+    <a href="/platform/tenant-detail.html" class="subnav-pill ">🏢 Tenant Detail</a>
+  
+    <a href="/platform/telemetry.html" class="subnav-pill ">🖥️ Telemetry</a>
+  
+    <a href="/platform/failover-sim.html" class="subnav-pill ">🌍 Failover Sim</a>
+  
+    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting</a>
+  
+    <a href="/platform/metadata-audits.html" class="subnav-pill ">🔒 Metadata Audits</a>
+  
+    <a href="/platform/gateway-inspect.html" class="subnav-pill ">🔌 Gateway Sockets</a>
+  
+    <a href="/platform/bandwidth-shaper.html" class="subnav-pill ">📶 QoS Shaper</a>
+  
+    <a href="/platform/certificate-authority.html" class="subnav-pill ">🔐 Root CA</a>
+  
+    <a href="/platform/observed-sources.html" class="subnav-pill ">👁️ §8.11 Sources</a>
+  
+    </div>
+
+    <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-          <span class="badge badge-leased">Platform Operator</span>
-          <span class="badge badge-success">Role: Platform Operator</span>
-          <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">Screen #9</span>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+          <span class="badge badge-leased">PLATFORM SUITE</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #9</span>
         </div>
         <h1 class="admin-header-title">Platform Operator Overview & Backbone Matrix</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Global infrastructure status, highway routing bridges, and active tenants.</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Global infrastructure status, highway routing bridges, and active tenants</p>
       </div>
-      <div>
-        <a href="/index.html" class="btn btn-secondary btn-sm">← Back to Overview</a>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
       </div>
     </div>
 
+    <!-- Body Content -->
     
       <div class="telemetry-grid">
         <div class="telemetry-card"><div style="color:var(--text-secondary); font-size:0.8rem;">Active Tenants</div><div style="font-size:1.4rem; font-weight:800; color:var(--primary);">3</div></div>

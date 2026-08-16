@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Socketless Lease State Machine — Agent Mesh Enterprise</title>
+  <title>Socketless Lease State Machine — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
-  <!-- Navigation Header -->
+  <!-- Global Top Navigation Header -->
   <header class="preview-control-bar">
-    <a href="/public/index.html" class="preview-brand">
+    <a href="/index.html" class="preview-brand">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
-      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
     </a>
 
     <div class="preview-nav">
       <a href="/public/index.html" class="preview-btn active">1. Home & Protocols</a>
       <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
-      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
       <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
-      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
@@ -28,36 +28,53 @@
     </div>
   </header>
 
-  <!-- Main Content Container -->
+  <!-- Main Page Container -->
   <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/public/index.html" class="subnav-pill ">🌟 Landing</a>
+  
+    <a href="/public/security-architecture.html" class="subnav-pill ">📐 Security Architecture</a>
+  
+    <a href="/public/lease-state-machine.html" class="subnav-pill active">⏱️ Lease State Machine</a>
+  
+    <a href="/public/login-operator.html" class="subnav-pill ">👤 Operator Login</a>
+  
+    <a href="/public/login-tenant.html" class="subnav-pill ">🏢 Tenant Login</a>
+  
+    <a href="/public/login-platform.html" class="subnav-pill ">🛡️ Platform Login</a>
+  
+    <a href="/public/pricing-tiers.html" class="subnav-pill ">💎 Pricing & SLAs</a>
+  
+    <a href="/public/compliance-overview.html" class="subnav-pill ">📜 Compliance & Trust</a>
+  
+    </div>
+
+    <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-          <span class="badge badge-leased">Public & Marketing</span>
-          <span class="badge badge-success">Role: Public / Developers</span>
-          <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">Screen #3</span>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+          <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #3</span>
         </div>
         <h1 class="admin-header-title">Socketless Lease State Machine</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Visual explanation of the 300s TTL atomic lease locking mechanism.</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Interactive simulation of 300s TTL atomic lease locking, deletion, and crash recovery</p>
       </div>
-      <div>
-        <a href="/index.html" class="btn btn-secondary btn-sm">← Back to Overview</a>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
       </div>
     </div>
 
+    <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">At-Least-Once Lease State Machine</div></div>
-        <div style="display:flex; gap:16px; margin-top:12px;">
-          <div style="flex:1; background:var(--bg-surface-sub); padding:16px; border-radius:var(--radius-md);">
-            <strong>1. Available</strong><br><small style="color:var(--text-secondary);">Buffered in SQLite queue pool.</small>
-          </div>
-          <div style="flex:1; background:#FFFDF5; border:1px solid #F59E0B; padding:16px; border-radius:var(--radius-md);">
-            <strong>2. Leased (300s TTL)</strong><br><small style="color:var(--text-secondary);">Locked by worker. Countdown active.</small>
-          </div>
-          <div style="flex:1; background:#F0FDF4; border:1px solid #10B981; padding:16px; border-radius:var(--radius-md);">
-            <strong>3. ACK / Delete</strong><br><small style="color:var(--text-secondary);">Atomically removed upon processing success.</small>
-          </div>
+        <div class="card-header"><div><div class="card-title">Live State Transition Simulator</div><div class="card-subtitle">Test how messages transition across Available, Leased, and Acknowledged states</div></div><button class="btn btn-primary btn-sm" onclick="alert('Simulated lease acquisition (300s TTL started).')">📥 Poll & Lease Message</button></div>
+        <div style="display:flex; gap:16px; margin:20px 0;">
+          <div style="flex:1; background:var(--bg-surface-sub); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border-default);"><strong style="font-size:1rem; color:var(--text-primary);">1. Available Pool (3)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Messages awaiting worker acquisition.</p><div class="code-snippet-box" style="margin-top:10px;">msg_94210 (140B)<br>msg_94211 (210B)<br>msg_94212 (512B)</div></div>
+          <div style="flex:1; background:#FFFDF5; border:1px solid #F59E0B; padding:16px; border-radius:var(--radius-md);"><strong style="font-size:1rem; color:#92400E;">2. Leased Active (2)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Locked with in-flight countdown timer.</p><div class="code-snippet-box" style="margin-top:10px; color:#FDE68A;">msg_892147 · 274s remaining<br>msg_892148 · 289s remaining</div></div>
+          <div style="flex:1; background:#F0FDF4; border:1px solid #10B981; padding:16px; border-radius:var(--radius-md);"><strong style="font-size:1rem; color:#065F46;">3. Consumed / Deleted (12)</strong><p style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">Atomically acknowledged via DELETE ACK.</p><div class="code-snippet-box" style="margin-top:10px; color:#A7F3D0;">msg_892146 (ACK ✓)<br>msg_892145 (ACK ✓)</div></div>
         </div>
       </div>
     

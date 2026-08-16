@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Reference: POST /api/v1/inbox/lease — Agent Mesh Enterprise</title>
+  <title>API Reference: POST /api/v1/inbox/lease — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
-  <!-- Navigation Header -->
+  <!-- Global Top Navigation Header -->
   <header class="preview-control-bar">
-    <a href="/public/index.html" class="preview-brand">
+    <a href="/index.html" class="preview-brand">
       <div class="brand-icon">M</div>
       <span>Agent Mesh Platform</span>
-      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
     </a>
 
     <div class="preview-nav">
       <a href="/public/index.html" class="preview-btn ">1. Home & Protocols</a>
       <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
-      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
       <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
-      <a href="/dev/index.html" class="preview-btn active">5. Developer Hub</a>
+      <a href="/dev/index.html" class="preview-btn active">5. Developer Hub & APIs</a>
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
@@ -28,23 +28,54 @@
     </div>
   </header>
 
-  <!-- Main Content Container -->
+  <!-- Main Page Container -->
   <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/dev/index.html" class="subnav-pill ">📖 Developer Hub</a>
+  
+    <a href="/dev/openapi-explorer.html" class="subnav-pill ">⚡ OpenAPI 3.1 Runner</a>
+  
+    <a href="/dev/api-messages-send.html" class="subnav-pill ">POST /messages/send</a>
+  
+    <a href="/dev/api-inbox-lease.html" class="subnav-pill active">POST /inbox/lease</a>
+  
+    <a href="/dev/api-inbox-ack.html" class="subnav-pill ">DELETE /inbox/ack</a>
+  
+    <a href="/dev/api-keys-propose.html" class="subnav-pill ">POST /keys/propose</a>
+  
+    <a href="/dev/api-capabilities.html" class="subnav-pill ">GET /capabilities</a>
+  
+    <a href="/dev/sdk-typescript.html" class="subnav-pill ">TypeScript SDK</a>
+  
+    <a href="/dev/sdk-python.html" class="subnav-pill ">Python SDK</a>
+  
+    <a href="/dev/sdk-go.html" class="subnav-pill ">Go SDK</a>
+  
+    <a href="/dev/webhooks.html" class="subnav-pill ">🪝 Webhooks</a>
+  
+    <a href="/dev/dead-letter-queue.html" class="subnav-pill ">🔄 Dead-Letter Queue</a>
+  
+    </div>
+
+    <!-- Header Row -->
     <div class="admin-header-row">
       <div>
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-          <span class="badge badge-leased">Developer Hub</span>
-          <span class="badge badge-success">Role: Developer / API Consumer</span>
-          <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">Screen #52</span>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+          <span class="badge badge-leased">DEV SUITE</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #52</span>
         </div>
         <h1 class="admin-header-title">API Reference: POST /api/v1/inbox/lease</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Specification for leasing socketless inbox batches with 300s TTL.</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Specification for leasing socketless inbox batches with 300s TTL</p>
       </div>
-      <div>
-        <a href="/index.html" class="btn btn-secondary btn-sm">← Back to Overview</a>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
       </div>
     </div>
 
+    <!-- Body Content -->
     
       <div class="card"><div class="card-header"><div class="card-title">POST /api/v1/inbox/lease</div></div><div class="code-snippet-box">{"batch_size": 10, "lease_seconds": 300}</div></div>
     
