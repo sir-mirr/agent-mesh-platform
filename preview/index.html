@@ -99,210 +99,83 @@
     z-index: 1000;
     box-shadow: var(--shadow-xs);
   }
+  /* --- Header Branding --- */
   .preview-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     font-weight: 800;
-    font-size: 1.05rem;
+    font-size: 1.15rem;
     color: var(--text-primary);
+    letter-spacing: -0.02em;
+  }
+  .brand-logo-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .brand-icon {
-    width: 28px;
-    height: 28px;
-    background: linear-gradient(135deg, #2563EB, #0284C7);
-    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(135deg, #1D4ED8 0%, #0284C7 100%);
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 0.9rem;
-    font-weight: 800;
-    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
-  }
-
-  .preview-nav {
-    display: flex;
-    gap: 4px;
-    background: var(--bg-surface-sub);
-    padding: 4px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-default);
-  }
-  .preview-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .preview-btn:hover { color: var(--text-primary); }
-  .preview-btn.active {
-    background: #FFFFFF;
-    color: var(--primary);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .preview-view { display: none; padding: 36px 24px; max-width: 1200px; width: 100%; margin: 0 auto; flex: 1; }
-  .preview-view.active { display: block; animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-
-  @keyframes slideUpFade {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  /* --- Badges & Status Indicators --- */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    border-radius: var(--radius-full);
-    font-size: 0.75rem;
-    font-weight: 600;
-    font-family: var(--font-ui);
-    line-height: 1;
-  }
-  .badge-success { background: var(--status-success-bg); color: var(--status-success); border: 1px solid var(--status-success-br); }
-  .badge-warning { background: var(--status-warning-bg); color: var(--status-warning); border: 1px solid var(--status-warning-br); }
-  .badge-danger  { background: var(--status-danger-bg);  color: var(--status-danger);  border: 1px solid var(--status-danger-br); }
-  .badge-leased  { background: var(--status-leased-bg);  color: var(--status-leased);  border: 1px solid var(--status-leased-br); }
-  .badge-offline { background: var(--status-offline-bg); color: var(--status-offline); border: 1px solid var(--status-offline-br); }
-
-  .live-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--status-success);
-    display: inline-block;
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.2); opacity: 0.75; }
-  }
-
-  /* --- Buttons --- */
-  .btn {
-    padding: 9px 18px;
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    font-weight: 600;
-    border: none;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    transition: all 0.15s ease;
-    text-decoration: none;
-  }
-  .btn-primary {
-    background: var(--primary);
-    color: #FFFFFF;
-    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
-  }
-  .btn-primary:hover {
-    background: var(--primary-hover);
-    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
-    transform: translateY(-1px);
-  }
-  .btn-secondary {
-    background: #FFFFFF;
-    color: var(--text-secondary);
-    border: 1px solid var(--border-default);
-    box-shadow: var(--shadow-xs);
-  }
-  .btn-secondary:hover {
-    background: var(--bg-surface-sub);
-    color: var(--text-primary);
-    border-color: var(--border-strong);
-  }
-  .btn-success {
-    background: var(--status-success);
-    color: #FFFFFF;
-  }
-  .btn-success:hover { background: #047857; }
-  .btn-danger {
-    background: var(--status-danger);
-    color: #FFFFFF;
-  }
-  .btn-danger:hover { background: #B91C1C; }
-  .btn-sm { padding: 6px 12px; font-size: 0.8rem; border-radius: var(--radius-sm); }
-  .btn-icon { padding: 6px; border-radius: var(--radius-sm); }
-
-  /* --- Cards & Panels --- */
-  .card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 0.2s ease;
-  }
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-  }
-  .card-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: -0.015em;
-  }
-  .card-subtitle {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
+    box-shadow: 0 4px 8px rgba(37, 99, 235, 0.25);
   }
 
   /* ==========================================================================
-     VIEW 1: HOME & DUAL LOGIN (PREMIUM LIGHT SAAS)
+     VIEW 1: HOME & DUAL LOGIN (PROMINENT AGENT MESH BRANDING)
      ========================================================================== */
   .home-hero-wrap {
     text-align: center;
-    padding: 48px 0 36px;
+    padding: 56px 0 40px;
   }
-  .pill-badge {
+  .hero-eyebrow {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    font-size: 0.825rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--primary);
     background: var(--primary-light);
     border: 1px solid var(--primary-border);
-    color: var(--primary-text);
-    padding: 6px 14px;
+    padding: 6px 16px;
     border-radius: var(--radius-full);
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
-  .home-hero-title {
-    font-size: 2.75rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-    margin-bottom: 16px;
+  .brand-hero-main-title {
+    font-size: 4.2rem;
+    font-weight: 900;
+    color: #0F172A;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    margin-bottom: 18px;
+    text-transform: uppercase;
   }
-  .home-hero-title span {
-    background: linear-gradient(135deg, #2563EB 0%, #0284C7 100%);
+  .brand-hero-main-title .gradient-text {
+    background: linear-gradient(135deg, #1D4ED8 20%, #0284C7 90%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
+  .brand-hero-tagline {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #334155;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
   .home-hero-desc {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     color: var(--text-secondary);
-    max-width: 640px;
-    margin: 0 auto 40px;
+    max-width: 620px;
+    margin: 0 auto 44px;
     line-height: 1.6;
-    font-weight: 400;
+    font-weight: 450;
   }
 
   .login-container {
@@ -646,15 +519,18 @@
   <!-- VIEW 1: HOME & DUAL LOGIN -->
   <main id="view-home" class="preview-view active">
     <section class="home-hero-wrap">
-      <div class="pill-badge">
+      <div class="hero-eyebrow">
         <span class="live-dot"></span>
-        Core Hub :3100 Active · 3 Lanes Connected
+        Autonomous Multi-Agent Fabric & Verification
       </div>
-      <h1 class="home-hero-title">
-        Autonomous Multi-Agent<br><span>Communication & Verification</span>
+      <h1 class="brand-hero-main-title">
+        AGENT <span class="gradient-text">MESH</span>
       </h1>
+      <div class="brand-hero-tagline">
+        The Open Communication Backbone for Autonomous AI Agents
+      </div>
       <p class="home-hero-desc">
-        상주 프로세스가 없는 자율 AI 에이전트를 위한 Ed25519 암호학적 서명 인박스 및 엔터프라이즈 감사 패브릭
+        상주 프로세스가 없는 자율 에이전트를 위한 Ed25519 암호학적 서명 인박스, 1:1 지문 대조 승인 및 엔터프라이즈 실시간 불변 감사 플랫폼
       </p>
     </section>
 
