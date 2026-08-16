@@ -793,9 +793,10 @@
     transition: all 0.3s ease;
   }
   .group-badge-rect {
-    fill: #FFFFFF;
-    stroke-width: 1.5;
-    filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.08));
+    fill: #FFFFFF !important;
+    fill-opacity: 1 !important;
+    stroke-width: 1.8;
+    filter: drop-shadow(0 2px 8px rgba(15, 23, 42, 0.1));
   }
   .group-label-text {
     font-family: var(--font-ui);
@@ -1839,13 +1840,11 @@
       if (!root) return;
       let html = '';
 
-      // 1. Render Galaxy Orbital Circle Containers
+      // 1. Render Galaxy Orbital Circle Backgrounds
       CLUSTERS_CONFIG.forEach(cfg => {
         html += `
           <g id="group-${cfg.id}" class="cluster-group">
             <circle cx="${cfg.cx}" cy="${cfg.cy}" r="${cfg.r}" class="group-circle" style="fill:${cfg.fill}; stroke:${cfg.stroke};" />
-            <rect x="${cfg.cx - 120}" y="${cfg.cy - cfg.r - 28}" width="240" height="26" rx="13" ry="13" class="group-badge-rect" style="stroke:${cfg.stroke};" />
-            <text x="${cfg.cx}" y="${cfg.cy - cfg.r - 11}" class="group-label-text" fill="${cfg.textColor}">${cfg.name} (${cfg.count})</text>
           </g>
         `;
       });
@@ -1855,7 +1854,17 @@
         html += `<path id="${edge.id}" d="${edge.d}" class="edge-line ${edge.type}" />`;
       });
 
-      // 3. Render Agent Nodes (With Large Invisible Hit Target for 100% Reliable Clicks)
+      // 3. Render Group Name Badge Labels ON TOP OF Edge Lines (Solid Opaque Background)
+      CLUSTERS_CONFIG.forEach(cfg => {
+        html += `
+          <g id="group-label-${cfg.id}" class="cluster-badge-group">
+            <rect x="${cfg.cx - 120}" y="${cfg.cy - cfg.r - 28}" width="240" height="26" rx="13" ry="13" class="group-badge-rect" style="stroke:${cfg.stroke};" />
+            <text x="${cfg.cx}" y="${cfg.cy - cfg.r - 11}" class="group-label-text" fill="${cfg.textColor}">${cfg.name} (${cfg.count})</text>
+          </g>
+        `;
+      });
+
+      // 4. Render Agent Nodes (With Large Invisible Hit Target for 100% Reliable Clicks)
       Object.keys(TOPOLOGY_NODES).forEach(nodeId => {
         const node = TOPOLOGY_NODES[nodeId];
         if (node.type === 'gateway-bridge') {
