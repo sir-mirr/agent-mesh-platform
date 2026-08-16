@@ -10,17 +10,30 @@ The four resolved items were, in short: hub connect carried no credential;
 teardown, was unauthenticated. They shared one question — what authority says
 an identity is who it claims to be — and were answered together with registered
 Ed25519 public keys, an operator approval procedure, and per-message
-signatures. The teardown became a soft delete, which is what the signature
-decision requires: deleting a key makes every past signature unverifiable.
+signatures.
+
+Teardown took two changes, and reading them as one is a mistake this paragraph
+made for a while. It became a **soft delete** because the signature decision
+requires it — discarding a key makes every past signature unverifiable — and
+that is a different fix from **authenticating it**, which happened later:
+`DELETE /api/agents/{identity}` on the hub was reachable by anyone who could
+reach the port until teardown moved to `agent-mesh-http` behind the admin JWT
+(§ 9.3). Until then a single unauthenticated request revoked every key an
+identity held, and § 9.3 forbids re-registering the name afterwards.
 
 The remaining items below are independent of that work and can move at any
 time. Nothing here should be treated as agreed.
+
+**This file holds questions nobody has ruled on.**
+[`deferred.md`](deferred.md) holds the opposite: things that were decided and
+deferred deliberately. An item in both goes stale in one, so each lives in
+exactly one — line numbers are omitted for the same reason.
 
 ---
 
 ## 5. Attachment download is unauthenticated
 
-`packages/http/src/main.ts:4817` — `GET /api/v1/attachments/:id` serves
+`GET /api/v1/attachments/:id` (`packages/http/src/main.ts`) serves
 bytes to anyone who can reach the port. SPEC § 15.3 states this explicitly and
 tells clients to tolerate a future `401`.
 
@@ -61,10 +74,10 @@ conformant lane — stays here.
 
 Smaller items, same theme:
 
-- `packages/http/src/auth.ts:11` — `JWT_SECRET` falls back to
+- `packages/http/src/auth.ts` — `JWT_SECRET` falls back to
   `'lab-fallback-secret-change-me'`. An unset secret should fail startup, not
   silently sign tokens with a published constant.
-- `packages/http/src/main.ts:519` — `app.use('/*', cors())` allows every
+- `packages/http/src/main.ts` — `app.use('/*', cors())` allows every
   origin, marked "Phase 1". Combined with cookie-borne JWT sessions this
   deserves an allowlist.
 - Bearer comparisons are plain string equality (`packages/http/src/main.ts`

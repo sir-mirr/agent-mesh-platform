@@ -1,6 +1,12 @@
 # Proposal — a named inbox surface over the socketless transport
 
-Status: proposal. Nothing below is built.
+Status: **built** (`13a3409`). SPEC § 9.2.1 is the contract; this is why it
+has the shape it does.
+
+Two things changed on the way in, both recorded below rather than edited away:
+the peek route was cut before it was written, and the operator half moved to
+`agent-mesh-http`. The second is what resolved the `GET`/`POST` argument, so
+the reasoning is worth keeping even though the route table now lives in SPEC.
 
 ## The problem
 

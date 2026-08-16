@@ -1,0 +1,18 @@
+{
+  "fe-mailbox": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "bun ./scripts/fe-mailbox-hook.ts",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bun ./scripts/fe-mailbox-hook.ts",
+        "timeout": 10
+      }
+    ]
+  }
+}

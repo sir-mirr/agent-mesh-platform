@@ -140,7 +140,7 @@ there usually means wiring rather than logic.
 | | |
 |---|---|
 | `docs/architecture.md` | what runs, what owns which data, and why |
-| `docs/implementation-plan-0.2.md` | what is being built next, in order |
+| `docs/implementation-plan-0.2.md` | how 0.2 was built, and why in that order |
 | `SPEC.md` | the normative contract, and its build-status table |
 | `docs/decisions/` | settled design, with the reasoning |
 | `docs/open-questions.md` | what is undecided |

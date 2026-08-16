@@ -139,6 +139,42 @@ is `-32015` and permanent.
 
 ---
 
+## The signed REST surface (§ 9.2.1)
+
+A runner that would rather speak REST than JSON-RPC has the same queue under
+different names. `Authorization: AgentMeshSig` over `restSignaturePreimage`,
+which is a **third** construction — not the RPC one and not the upload one.
+Signing with the wrong preimage fails as a bad signature, which reads like a
+key problem and is not.
+
+```
+POST   /api/v1/inbox                take delivery, settle the previous batch
+POST   /api/v1/outbox               send
+GET    /api/v1/outbox               what is still recallable
+DELETE /api/v1/outbox/{id}          withdraw one
+GET    /api/v1/inbox/history?peer=  conversation
+GET    /api/v1/capabilities         unsigned
+```
+
+Three things bite in scenarios:
+
+**The preimage covers the query string.** A signature built over
+`/api/v1/inbox/history` will not verify a request to
+`/api/v1/inbox/history?peer=b`.
+
+**`POST /api/v1/inbox` is not idempotent.** It leases. A scenario that retries
+it after a timeout gets an empty second batch, not the same one — the first
+call's messages are held until acknowledged or the lease lapses.
+
+**Recall ends at hand-over.** A scenario that sends, receives, then recalls gets
+`409 ALREADY_DELIVERED`. That is the contract, not a race: acknowledgement is
+not the boundary, hand-over is.
+
+`GET /api/v1/capabilities` is worth calling first in any scenario that sizes a
+batch or a retry — it is unsigned, so it works before a key is approved, and it
+reports what the deployment actually enforces rather than what the client
+imported.
+
 ## Every assertion cites the section it rests on
 
 A scenario asserts the contract, not the current behaviour. The difference is

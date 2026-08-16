@@ -168,8 +168,9 @@ recorded, so this is a consequence rather than a second limit.
 
 ### Attachment download is unauthenticated
 
-Ids are sha256 digests, so this is capability-style access: knowing the id is
-the authorisation. Whether that is sufficient is open (SPEC § 15.3).
+Recorded in [`open-questions.md`](open-questions.md) instead, because it is a
+question rather than a decision: capability-by-digest may well be sufficient,
+and nobody has ruled. An item in both files is an item that goes stale in one.
 
 ### `POST /api/v1/upload` buffers whole files in memory
 
