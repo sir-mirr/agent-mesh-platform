@@ -38,19 +38,22 @@ service — the same queue, the same identities, the same signing.
   mesh replaces it; the migration note at the end says what has to be true
   first.
 
-## Where it lives, and why not on `agent-mesh-http`
+## Where the agent half lives
 
 On the **hub**, beside `/api/v1/rpc`.
 
 The two services authenticate different populations. `agent-mesh-http`
 authenticates *people* — GitHub OAuth, a JWT, an approval gate (§ 9.1). The hub
 authenticates *agents* — an Ed25519 signature against an approved key (§ 8.1).
-An inbox belongs to an identity that signs, so it belongs where signing is
-already the rule.
+An inbox belongs to an identity that signs, so the agent half belongs where
+signing is already the rule.
 
 Putting it on the http server would mean either a second auth model for agents
 there, or agents holding sessions, which they cannot: a socketless agent is
 awake only while answering and has nowhere to keep a cookie.
+
+The operator half goes the other way, for the mirror-image reason. Both are
+below.
 
 ## Authentication: the header form already exists
 
@@ -73,66 +76,126 @@ Freshness (±120 s) and the replay window apply unchanged, including the rule
 found today: **the nonce is spent on receipt, not on success** (§ 8.1), so a
 retry after any failure needs a fresh one.
 
-## The routes
+## Two surfaces, because there are two populations
 
-All on `agent-mesh-hub`, default `:3100`. All authenticated by
-`AgentMeshSig`. The identity is the signature's — never a path parameter, for
-the reason § 8.10 gives: a separately-claimed identity is a second assertion
-able to disagree with the first.
+The design settles by asking who is calling.
+
+| | Agents | Operators |
+|---|---|---|
+| Service | `agent-mesh-hub` `:3100` | `agent-mesh-http` `:3000` |
+| Auth | `AgentMeshSig` header | admin JWT (§ 9.1) |
+| `hub.db` handle | read-write | **read-only** |
+| Verbs | `POST`, `DELETE` — every call is an act | `GET` — every call is a read |
+
+This is the split § 10.2 already draws for key approval and § 9.3 now draws for
+teardown: **the hub cannot authenticate a person.** It holds no sessions, so an
+operator-facing route there would be reachable by anything that can reach the
+port.
+
+It also settles the `GET`/`POST` question that the single-surface version could
+not. Taking delivery leases a batch, settles the previous one, and writes an
+audit event — it is not a read, and a `GET` invites every HTTP layer that
+believes `GET` is safe to retry it and quietly consume a lease. On the operator
+side there is nothing to consume, so `GET` is honest there.
+
+The separation is enforced by the file handle rather than by discipline. The
+http server opens `hub.db` with `readonly: true`, so an operator route
+**cannot** lease or acknowledge even if someone later writes one that tries.
+
+## Agent surface — `agent-mesh-hub`, signed
+
+The identity is the signature's, never a path parameter: a separately-claimed
+identity is a second assertion able to disagree with the first (§ 8.10).
 
 | Method | Path | Wraps | Notes |
 |--------|------|-------|-------|
-| `GET`  | `/api/v1/inbox` | — | **Peek. Changes nothing.** Returns what is queued and what is currently leased, without leasing or acknowledging. |
-| `POST` | `/api/v1/inbox/receive` | `mesh.receive` | Lease a batch and settle the previous one. Body: `{ limit?, ack_ids? }`. |
-| `POST` | `/api/v1/inbox/ack` | `mesh.receive` with an empty fetch | Settle without taking more. Body: `{ ack_ids }`. |
-| `POST` | `/api/v1/outbox` | `mesh.send` | Body: `{ to, content, reply_to?, client_message_id? }`. |
+| `POST` | `/api/v1/inbox` | `mesh.receive` | Take delivery and settle the previous batch. Body `{ limit?, ack_ids? }`. End-of-turn settle is `{ ack_ids, limit: 0 }`. |
+| `POST` | `/api/v1/outbox` | `mesh.send` | Body `{ to, content, reply_to?, client_message_id? }`. Returns `{ id, status }`. |
+| `GET`  | `/api/v1/outbox` | — | Sent messages **not yet handed to the recipient**. The recall candidates, and nothing else. |
+| `DELETE` | `/api/v1/outbox/{id}` | — | Recall one. Refused once the recipient has been handed it. Emits `mesh.message.recalled`. |
 | `GET`  | `/api/v1/inbox/history?peer=&limit=` | `mesh.fetch_messages` | Conversation with one peer. |
-| `GET`  | `/api/v1/inbox/capabilities` | `MailboxCapabilities` | Batch ceiling, lease seconds, dedup window, protocol version. |
+| `GET`  | `/api/v1/inbox/capabilities` | `MailboxCapabilities` | Batch ceiling, lease seconds, dedup window, version. |
 
-### `GET /api/v1/inbox` changes nothing, and that is the point
+### Recall is bounded by hand-over, not by acknowledgement
 
-The mailer's `GET` marks messages read. It is the defect this repository spent
-a session working around: the delivery hook had to keep its own high-water mark
-because a watcher polling every thirty seconds would otherwise consume the flag
-the hook depended on.
+A sender may withdraw a message the recipient has never been given. Once it has
+been handed out it is part of the recipient's record, and a surface that lets
+the sender revoke it makes the sender the owner of someone else's audit trail —
+which is the standalone mailer's defect.
 
-A peek that leases would have the same shape one level down — an operator
-running `curl` to see what is queued would silently take a lease and hide those
-messages from the agent for the lease duration.
+The boundary is **hand-over, not acknowledgement**. `messages` already
+distinguishes three states, and only the first is recallable:
 
-So the peek reports and does not claim. It returns each message's `id`, `from`,
-`ts`, a size, and whether it is currently leased — but **not `content`**. A
-message body is the thing worth a lease; handing it out without one invites a
-client to read here and never call `receive`, which is a destructive read
-rebuilt by accident.
+```
+status='pending', leased_until IS NULL     never handed out    recallable
+status='pending', leased_until in future   handed out, unacked NOT recallable
+status='delivered'                         acknowledged        NOT recallable
+```
 
-### `POST /api/v1/inbox/ack` exists for turn boundaries
+Acknowledgement would be the wrong line. A leased message was returned in a
+response — the recipient has it, whether or not it survived to say so.
 
-§ 8.10.1 piggybacks the acknowledgement on the next fetch, and that is right for
-a client with more work coming. A client whose turn is ending has nothing to
-fetch, and its choice today is to call `mesh.receive` with `limit: 0` — which
-reads as a fetch and is not one.
+`GET /api/v1/outbox` returns exactly the first state, so a client never has to
+interpret `leased_until` and the hub does not have to expose it. **The hub
+judges; the client receives a list.**
 
-The route is the same transaction with the fetch omitted. Naming it means the
-common case at end-of-turn is a call that says what it does.
+### The list is a hint; the `DELETE` is the judgement
 
-## What must be refused, explicitly
+A recipient can call `POST /api/v1/inbox` between the list and the recall. So
+the recall re-decides atomically rather than trusting what the list said:
 
-These are stated as requirements because each was a real defect somewhere.
+```sql
+DELETE FROM messages
+ WHERE id = ? AND from_agent = ? AND status = 'pending' AND leased_until IS NULL
+```
 
-- **No deletion.** There is no route that removes a message from an inbox, by
-  the recipient or by the sender. The mailer allows sender recall; a message
-  already delivered and read is part of the recipient's record, and a surface
-  that lets the sender revoke it makes the sender the owner of someone else's
-  audit trail.
-- **No `identity` parameter.** Reading another identity's inbox is not a
-  permission this surface can express, because the signature is the only thing
-  that says who is asking.
-- **No `from` override.** `proxy_for` is declared at connect and there is no
-  connect (§ 8.10). A socketless participant sends as itself.
-- **No unsigned request**, including for a type whose `requires_key` is `0`.
-  With no socket to have connected on, an unsigned request carries nothing
-  that says who is asking.
+`changes` is the answer. `200 { recalled: true }`, or `409` with
+`ALREADY_DELIVERED`.
+
+This is the shape `create_only` took in § 10.1: a check followed by a write has
+a window between them, and the window is where the defect lives.
+
+### A recall must be audited, or the trail lies by omission
+
+Recall is the one place this surface deletes a row. That is not an exception to
+"no deletion" — the message was never handed over, so there is no recipient
+record to damage.
+
+But there **is** already an audit record. `mesh.message.sent` is written when
+the hub accepts the send, not when it hands it over (§ 8.9.4), so a recalled
+message leaves an audit event saying it was sent and nothing saying it was
+withdrawn. That is the same defect as the mailer's in a subtler place: the
+sender ends up able to shape the record.
+
+So a recall emits `mesh.message.recalled`, carrying the original `event_id` as
+`causation_event_id`, with `recorded_by.kind = "hub"` and the sender's
+`AgentMeshSig` as the attestation. The message body is not repeated — the
+`sent` event already holds it, and audit retention is indefinite (§ 15.6), so
+the pair reads as one story: sent, then withdrawn before anyone saw it.
+
+Deleting the `messages` row rather than tombstoning it is deliberate. That
+table is operational and rotates (§ 15.6); the audit copy is the permanent
+record and is where the withdrawal belongs. A tombstone in `messages` would be
+a second, weaker record of the same fact with a different retention policy.
+
+## Operator surface — `agent-mesh-http`, admin JWT
+
+Reads only, against a read-only handle.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/api/v1/admin/inbox/{identity}` | What is queued for one identity: ids, senders, timestamps, sizes, and whether each is currently leased. **No message bodies.** |
+| `GET` | `/api/v1/admin/inbox` | Depth per identity — the "who is backed up" view. |
+
+Bodies are withheld for the same reason the audit query is admin-gated
+separately from lane signing: reading someone's mail is a different
+authorisation question from seeing that they have mail. An operator diagnosing
+a stuck queue needs depth and age, not content; an operator who needs content
+has the audit trail, where the access is itself recorded.
+
+`leased` is reported here because an operator asking "why is this agent not
+receiving" needs to distinguish an empty queue from one where every message is
+held under a lease by a caller that died.
 
 ## Errors
 
@@ -159,25 +222,36 @@ A status code alone cannot carry the retry policy — `403` is permanent for
 `NOT_ENTITLED` and `wait-approval` for `KEY_NOT_APPROVED`. That is why the
 `rpc_code` stays: it is what `ERROR_CLASS` is keyed on.
 
+## Settled while drafting
+
+- **No peek on the agent surface.** An agent has no use for a read that does
+  not deliver, and the operator surface covers the case it was reaching for.
+- **No separate `ack` route.** § 8.10.1 piggybacks acknowledgement on the next
+  fetch; `{ ack_ids, limit: 0 }` is the end-of-turn settle, and the route is not
+  named "fetch" so there is nothing misleading about it.
+- **`inbox` and `outbox` stay separate.** One is mine and one is somebody
+  else's; they differ in idempotency key, in what is checked, and in how they
+  fail. `POST /api/v1/inbox` to send would read as posting to your own inbox.
+
 ## Open questions
 
-1. **Does the peek belong at all?** It is the route most likely to be used by a
-   human with `curl`, and the one that adds a shape (`leased`) the JSON-RPC
-   surface does not have. If it is not worth a second way to be wrong, dropping
-   it costs nothing.
+1. **Is `capabilities` worth a route today?** Nothing currently overrides
+   `MAILBOX_CAPABILITY_DEFAULTS`, so it would report the constant a client can
+   already import. The argument for it is narrower than "someday": the audit
+   surface advertises its capabilities at `mesh.connect` (§ 8.9.1) and a
+   socketless participant has no connect, so it is the one population with no
+   way to learn a deployment's real values. The argument against is that a
+   route nobody varies is a route that will be assumed constant anyway.
 
-2. **Should `receive` accept `limit: 0`?** With an `ack` route it has no use,
-   and refusing it removes a way to write a fetch that is not one.
+   This matters because getting it wrong already happened here — the hub's
+   audit limits were restated from memory instead of imported, the client was
+   fail-closed, and audit never started. Every test passed, because they
+   asserted the hub agreed with itself.
 
-3. **Is `capabilities` reachable unsigned?** It describes the deployment, not
-   the caller. Unsigned makes it usable during setup, before a key is approved
-   — which is exactly when a client wants to know the lease window. Signed
-   keeps one rule for the whole surface.
-
-4. **Does this need its own protocol version**, or does it inherit
-   `MailboxCapabilities.version`? It wraps those methods and adds no
-   semantics, which argues for inheriting; but a route table can change while
-   the methods do not.
+2. **Does this need its own protocol version**, or does it inherit
+   `MailboxCapabilities.version`? It wraps those methods and adds no semantics,
+   which argues for inheriting; but a route table can change while the methods
+   do not.
 
 ## Migration from the standalone mailer
 
