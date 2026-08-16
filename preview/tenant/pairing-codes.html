@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RFC 8628 Device Flow Pairing Code Generator — Agent Mesh Enterprise Platform</title>
+  <title>RFC 8628 Device Flow Pairing Code Generator (SPEC § 11.3) — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -75,8 +75,8 @@
           <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #31</span>
         </div>
-        <h1 class="admin-header-title">RFC 8628 Device Flow Pairing Code Generator</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Issue short-lived single-use pairing codes with 300s TTL for CLI agents</p>
+        <h1 class="admin-header-title">RFC 8628 Device Flow Pairing Code Generator (SPEC § 11.3)</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Issue Crockford-formatted pairing codes (no I/1/O/0), unauthenticated redeem, and 3 explicit rejection modes</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -86,7 +86,44 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">Active Pairing Code: ACM-8492-KY7</div></div><div class="code-snippet-box">agent-mesh claim --code ACM-8492-KY7 --name fin-helper</div></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Issue Pairing Code (<code>POST /api/v1/admin/pairing-codes</code>)</div>
+            <div class="card-subtitle">Format: <code>ABCD-EFGH-JKLM</code> (Excludes confusing letters I, 1, O, 0) · Response: 201 with dynamic <code>expires_at</code></div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Generated pairing code: ACMD-8492-KY7P (valid until 2026-08-17 01:55:00 UTC)')">+ Generate Pairing Code</button>
+        </div>
+
+        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:16px; margin-bottom:20px; text-align:center;">
+          <span style="font-size:0.8rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700; letter-spacing:0.05em;">Active Single-Use Pairing Code</span>
+          <div style="font-family:var(--font-mono); font-size:2rem; font-weight:900; color:var(--primary); letter-spacing:0.1em; margin:8px 0;">
+            ACMD-8492-KY7P
+          </div>
+          <span style="font-size:0.8rem; color:var(--text-muted);">TTL: Expires at 2026-08-17T01:55:00Z (dynamic expires_at)</span>
+        </div>
+
+        <strong style="font-size:0.9rem;">CLI Claim Command (Unauthenticated <code>POST /api/v1/pairing-codes/redeem</code>)</strong>
+        <div class="code-snippet-box" style="margin:8px 0 16px;">
+# Unauthenticated by design — the code itself is the credential!
+curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \
+  -H "Content-Type: application/json" \
+  -d '{"code": "ACMD-8492-KY7P", "owner": "alice_dev"}'
+        </div>
+
+        <strong style="font-size:0.9rem;">3 Explicit Rejection States (SPEC § 11.3)</strong>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:8px;">
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>404 unknown</strong><br>Code does not exist.
+          </div>
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>409 expired</strong><br>TTL expired — issue a new code.
+          </div>
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>409 already-redeemed</strong><br>Claimed by another worker in a race!
+          </div>
+        </div>
+      </div>
     
   </div>
 

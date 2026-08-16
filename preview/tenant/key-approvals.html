@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>50-Character Fingerprint Key Approval Queue — Agent Mesh Enterprise Platform</title>
+  <title>50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped) — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -75,8 +75,8 @@
           <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #22</span>
         </div>
-        <h1 class="admin-header-title">50-Character Fingerprint Key Approval Queue</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Verify exact 50-character SHA-256 key fingerprints with 1-click approvals</p>
+        <h1 class="admin-header-title">50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped)</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Wildcard tenant approval vs scoped ownership approval with 200 OK empty state and 403 handling</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -87,9 +87,29 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">Pending Public Key Proposals (3)</div></div>
-        <div class="code-snippet-box">sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw</div>
-        <div style="display:flex; justify-content:flex-end; gap:8px;"><button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button><button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Revoke</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">Pending Public Key Queue (<code>GET /api/v1/admin/keys/pending</code>)</div>
+            <div class="card-subtitle">SPEC § 11.3: <code>key.approve</code> with <code>*</code> sees all; scoped grant sees only owned agents; empty list returns 200 OK (not 403)</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Tenant Admin (Wildcard scope: *).')">Admin View (*)</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (Owned: acme-corp:core-lead only).')">Scoped View</button>
+          </div>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          🔑 <strong>Scoped Approval Rules:</strong> If an operator has <code>key.approve</code> scoped to their owned agents but currently has 0 pending keys, the endpoint returns <code>200 OK []</code> (Empty State), <strong>NOT 403</strong>. A <code>403</code> error only occurs when the caller completely lacks the <code>key.approve</code> capability.
+        </div>
+
+        <div class="code-snippet-box">Identity: acme-corp:core-lead (Fin둥이)
+Fingerprint: sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
+Proposed: 2026-08-17 01:45:00 UTC · Scope: Owned by alice_dev</div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button>
+          <button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Deny Proposal</button>
+        </div>
       </div>
     
   </div>

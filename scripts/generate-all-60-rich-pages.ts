@@ -638,15 +638,35 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     url: '/tenant/key-approvals.html',
     suite: 'tenant',
     suiteTitle: 'Tenant Admin',
-    role: 'Tenant Admin',
-    title: '50-Character Fingerprint Key Approval Queue',
-    subtitle: 'Verify exact 50-character SHA-256 key fingerprints with 1-click approvals',
+    role: 'Tenant Admin / Agent Operator',
+    title: '50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped)',
+    subtitle: 'Wildcard tenant approval vs scoped ownership approval with 200 OK empty state and 403 handling',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">Pending Public Key Proposals (3)</div></div>
-        <div class="code-snippet-box">sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw</div>
-        <div style="display:flex; justify-content:flex-end; gap:8px;"><button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button><button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Revoke</button></div>
+        <div class="card-header">
+          <div>
+            <div class="card-title">Pending Public Key Queue (<code>GET /api/v1/admin/keys/pending</code>)</div>
+            <div class="card-subtitle">SPEC § 11.3: <code>key.approve</code> with <code>*</code> sees all; scoped grant sees only owned agents; empty list returns 200 OK (not 403)</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Tenant Admin (Wildcard scope: *).')">Admin View (*)</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (Owned: acme-corp:core-lead only).')">Scoped View</button>
+          </div>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          🔑 <strong>Scoped Approval Rules:</strong> If an operator has <code>key.approve</code> scoped to their owned agents but currently has 0 pending keys, the endpoint returns <code>200 OK []</code> (Empty State), <strong>NOT 403</strong>. A <code>403</code> error only occurs when the caller completely lacks the <code>key.approve</code> capability.
+        </div>
+
+        <div class="code-snippet-box">Identity: acme-corp:core-lead (Fin둥이)
+Fingerprint: sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
+Proposed: 2026-08-17 01:45:00 UTC · Scope: Owned by alice_dev</div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+          <button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button>
+          <button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Deny Proposal</button>
+        </div>
       </div>
     `
   },
@@ -700,10 +720,45 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Tenant Admin',
     role: 'Tenant Admin',
     title: 'Core Platform Hub Cluster Detail & Member Agents',
-    subtitle: 'Deep-dive into Core Platform Hub member identities and capabilities',
+    subtitle: 'Deep-dive into Core Platform Hub member identities, capabilities, and agent owners (GET /api/v1/admin/agents/{id}/owners)',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">Core Platform Hub Details</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">5 member agents provisioned · Gateway: gw-core.</p></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Core Platform Hub Member Agents & Ownership Ledger</div>
+            <div class="card-subtitle">Endpoint: <code>GET /api/v1/admin/agents/{identity}/owners</code> (SPEC § 11.3)</div>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Agent Identity</th>
+              <th>Designated Lead</th>
+              <th>Owners (Plural)</th>
+              <th>Ownership Origin (granted_by)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>acme-corp:core-lead</strong></td>
+              <td>Fin둥이 (Lead)</td>
+              <td><code>alice_dev, bob_admin</code></td>
+              <td><span class="badge badge-success">pairing:alice_dev</span></td>
+              <td><span class="badge badge-success">Active</span></td>
+            </tr>
+            <tr>
+              <td><strong>acme-corp:core-agent-3</strong></td>
+              <td>Fin자</td>
+              <td><code>alice_dev</code></td>
+              <td><span class="badge badge-leased">admin_direct (alice_admin)</span></td>
+              <td><span class="badge badge-success">Active</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     `
   },
   {
@@ -771,12 +826,49 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     url: '/tenant/pairing-codes.html',
     suite: 'tenant',
     suiteTitle: 'Tenant Admin',
-    role: 'Tenant Admin',
-    title: 'RFC 8628 Device Flow Pairing Code Generator',
-    subtitle: 'Issue short-lived single-use pairing codes with 300s TTL for CLI agents',
+    role: 'Tenant Admin / Agent Operator',
+    title: 'RFC 8628 Device Flow Pairing Code Generator (SPEC § 11.3)',
+    subtitle: 'Issue Crockford-formatted pairing codes (no I/1/O/0), unauthenticated redeem, and 3 explicit rejection modes',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">Active Pairing Code: ACM-8492-KY7</div></div><div class="code-snippet-box">agent-mesh claim --code ACM-8492-KY7 --name fin-helper</div></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Issue Pairing Code (<code>POST /api/v1/admin/pairing-codes</code>)</div>
+            <div class="card-subtitle">Format: <code>ABCD-EFGH-JKLM</code> (Excludes confusing letters I, 1, O, 0) · Response: 201 with dynamic <code>expires_at</code></div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="alert('Generated pairing code: ACMD-8492-KY7P (valid until 2026-08-17 01:55:00 UTC)')">+ Generate Pairing Code</button>
+        </div>
+
+        <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:16px; margin-bottom:20px; text-align:center;">
+          <span style="font-size:0.8rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700; letter-spacing:0.05em;">Active Single-Use Pairing Code</span>
+          <div style="font-family:var(--font-mono); font-size:2rem; font-weight:900; color:var(--primary); letter-spacing:0.1em; margin:8px 0;">
+            ACMD-8492-KY7P
+          </div>
+          <span style="font-size:0.8rem; color:var(--text-muted);">TTL: Expires at 2026-08-17T01:55:00Z (dynamic expires_at)</span>
+        </div>
+
+        <strong style="font-size:0.9rem;">CLI Claim Command (Unauthenticated <code>POST /api/v1/pairing-codes/redeem</code>)</strong>
+        <div class="code-snippet-box" style="margin:8px 0 16px;">
+# Unauthenticated by design — the code itself is the credential!
+curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
+  -H "Content-Type: application/json" \\
+  -d '{"code": "ACMD-8492-KY7P", "owner": "alice_dev"}'
+        </div>
+
+        <strong style="font-size:0.9rem;">3 Explicit Rejection States (SPEC § 11.3)</strong>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:8px;">
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>404 unknown</strong><br>Code does not exist.
+          </div>
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>409 expired</strong><br>TTL expired — issue a new code.
+          </div>
+          <div style="background:#FEF2F2; border:1px solid #FCA5A5; padding:12px; border-radius:var(--radius-md); font-size:0.8rem; color:#991B1B;">
+            <strong>409 already-redeemed</strong><br>Claimed by another worker in a race!
+          </div>
+        </div>
+      </div>
     `
   },
   {
@@ -787,10 +879,19 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Tenant Admin',
     role: 'Tenant Admin',
     title: 'Claimed & Expired Pairing Code Audit Log',
-    subtitle: 'Historical ledger of claimed, expired, and revoked pairing codes',
+    subtitle: 'Historical ledger of claimed, expired, and revoked pairing codes with multi-owner tracking',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">Pairing Code Ledger</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">14 codes claimed successfully in last 30 days.</p></div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Pairing Code Ledger</div></div>
+        <table class="data-table">
+          <thead><tr><th>Code</th><th>Target Identity</th><th>Redeemed By (Owner)</th><th>Redeemed At</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>ACMD-8492-KY7P</code></td><td>acme-corp:core-lead</td><td>alice_dev</td><td>2026-08-17 01:25:00</td><td><span class="badge badge-success">200 OK (Claimed)</span></td></tr>
+            <tr><td><code>BKLP-3912-WZ8X</code></td><td>acme-corp:core-agent-3</td><td>bob_dev</td><td>2026-08-16 22:10:00</td><td><span class="badge badge-danger">409 already-redeemed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
     `
   },
   {
@@ -848,7 +949,7 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Tenant Admin',
     role: 'Tenant Admin',
     title: 'Admin Member Capability Grants & Role Assignments',
-    subtitle: 'Fine-grained capabilities (v0.9.0 / SPEC § 11) and instant revocation rules',
+    subtitle: 'Fine-grained capabilities (v0.9.1 / SPEC § 11) and instant revocation rules',
     isImplemented: true,
     html: `
       <div class="card">
@@ -1065,11 +1166,11 @@ Block Height: #894,210 · Audit Log Checkpoint: 2026-08-17 00:00:00 UTC (Verifie
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
     title: 'Developer Hub Overview & Quickstart',
-    subtitle: 'REST API, WebSocket documentation, and client SDK downloads (Contracts v0.9.0)',
+    subtitle: 'REST API, WebSocket documentation, and client SDK downloads (Contracts v0.9.1)',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.9.0)</div></div>
+        <div class="card-header"><div class="card-title">Official Endpoints (Contracts v0.9.1)</div></div>
         <table class="data-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th><th>SPEC Section</th></tr></thead>
           <tbody>

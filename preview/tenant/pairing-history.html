@@ -76,7 +76,7 @@
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #32</span>
         </div>
         <h1 class="admin-header-title">Claimed & Expired Pairing Code Audit Log</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Historical ledger of claimed, expired, and revoked pairing codes</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Historical ledger of claimed, expired, and revoked pairing codes with multi-owner tracking</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -86,7 +86,16 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">Pairing Code Ledger</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">14 codes claimed successfully in last 30 days.</p></div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Pairing Code Ledger</div></div>
+        <table class="data-table">
+          <thead><tr><th>Code</th><th>Target Identity</th><th>Redeemed By (Owner)</th><th>Redeemed At</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>ACMD-8492-KY7P</code></td><td>acme-corp:core-lead</td><td>alice_dev</td><td>2026-08-17 01:25:00</td><td><span class="badge badge-success">200 OK (Claimed)</span></td></tr>
+            <tr><td><code>BKLP-3912-WZ8X</code></td><td>acme-corp:core-agent-3</td><td>bob_dev</td><td>2026-08-16 22:10:00</td><td><span class="badge badge-danger">409 already-redeemed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
     
   </div>
 

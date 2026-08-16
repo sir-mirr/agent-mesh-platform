@@ -76,7 +76,7 @@
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #26</span>
         </div>
         <h1 class="admin-header-title">Core Platform Hub Cluster Detail & Member Agents</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Deep-dive into Core Platform Hub member identities and capabilities</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Deep-dive into Core Platform Hub member identities, capabilities, and agent owners (GET /api/v1/admin/agents/{id}/owners)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -86,7 +86,42 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">Core Platform Hub Details</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">5 member agents provisioned · Gateway: gw-core.</p></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Core Platform Hub Member Agents & Ownership Ledger</div>
+            <div class="card-subtitle">Endpoint: <code>GET /api/v1/admin/agents/{identity}/owners</code> (SPEC § 11.3)</div>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Agent Identity</th>
+              <th>Designated Lead</th>
+              <th>Owners (Plural)</th>
+              <th>Ownership Origin (granted_by)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>acme-corp:core-lead</strong></td>
+              <td>Fin둥이 (Lead)</td>
+              <td><code>alice_dev, bob_admin</code></td>
+              <td><span class="badge badge-success">pairing:alice_dev</span></td>
+              <td><span class="badge badge-success">Active</span></td>
+            </tr>
+            <tr>
+              <td><strong>acme-corp:core-agent-3</strong></td>
+              <td>Fin자</td>
+              <td><code>alice_dev</code></td>
+              <td><span class="badge badge-leased">admin_direct (alice_admin)</span></td>
+              <td><span class="badge badge-success">Active</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     
   </div>
 
