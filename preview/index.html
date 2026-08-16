@@ -1800,10 +1800,59 @@
     let WORLD_TOTAL_W = 4320;
     let WORLD_TOTAL_H = 2235;
 
+    // Adaptive Geometry Layout Engine for Stages 1 ~ 10
+    function getAdaptiveClusterLayout(stageNum) {
+      // Deep clone configs from master template
+      const configs = MASTER_CLUSTERS_CONFIG.slice(0, stageNum).map(c => ({
+        ...c,
+        gw: { ...c.gw }
+      }));
+
+      if (stageNum === 1) {
+        // Stage 1: Single Swarm centered with local gateway directly underneath
+        configs[0].cx = 400;
+        configs[0].cy = 340;
+        configs[0].gw.x = 400;
+        configs[0].gw.y = 340 + configs[0].r + 65;
+      } else if (stageNum === 2) {
+        // Stage 2: Dual Swarms side-by-side with Gateways placed in the corridor BETWEEN the two groups!
+        configs[0].cx = 320;
+        configs[0].cy = 400;
+        configs[1].cx = 1060;
+        configs[1].cy = 400;
+
+        // Place gateways horizontally between the two swarms in the central bridge corridor
+        configs[0].gw.x = 520;
+        configs[0].gw.y = 400;
+
+        configs[1].gw.x = 730;
+        configs[1].gw.y = 400;
+      } else if (stageNum <= 5) {
+        // Stages 3 ~ 5: Single top row chain with gateways compactly placed below each swarm
+        configs.forEach(c => {
+          c.gw.x = c.cx;
+          c.gw.y = c.cy + c.r + 65;
+        });
+      } else {
+        // Stages 6 ~ 10: Dual Deck Grid with central highway spine
+        configs.forEach((c, idx) => {
+          if (idx < 5) {
+            c.gw.x = c.cx;
+            c.gw.y = 660;
+          } else {
+            c.gw.x = c.cx;
+            c.gw.y = 780;
+          }
+        });
+      }
+
+      return configs;
+    }
+
     // Build Galaxy Topology Data Structure for given stage (1 ~ 10)
     function buildTopologyForStage(stageNum) {
       currentSimStage = Math.max(1, Math.min(10, stageNum));
-      CLUSTERS_CONFIG = MASTER_CLUSTERS_CONFIG.slice(0, currentSimStage);
+      CLUSTERS_CONFIG = getAdaptiveClusterLayout(currentSimStage);
 
       TOPOLOGY_NODES = {};
       ALL_EDGES.length = 0;
