@@ -10,6 +10,7 @@ export * as nonces from "./nonces";
 export * as teardown from "./teardown";
 export * as outbox from "./outbox";
 export * as sources from "./sources";
+export * as grants from "./grants";
 export type {
   AgentKeyRow,
   AgentRow,
