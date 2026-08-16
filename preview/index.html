@@ -917,22 +917,56 @@
     stroke-linejoin: round;
   }
 
-  /* Node Inspector Drawer */
-  .node-inspector-drawer {
-    display: none;
-    background: #FFFFFF;
-    border-top: 1px solid var(--border-default);
-    padding: 18px 24px;
-    animation: slideUpFade 0.2s ease;
+  /* Floating Right Side Overlay Panel */
+  .node-side-overlay {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 320px;
+    max-width: calc(100% - 32px);
+    z-index: 60;
+    pointer-events: auto;
+    animation: slideLeftFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .node-inspector-drawer.active { display: block; }
-  .inspector-grid {
-    display: grid;
-    grid-template-columns: 1.8fr 1.6fr 1.2fr;
-    gap: 20px;
+  @keyframes slideLeftFade {
+    from { opacity: 0; transform: translateX(14px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .side-overlay-card {
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+    padding: 20px;
+  }
+  .side-overlay-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .overlay-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
     align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
   }
-  @media (max-width: 900px) { .inspector-grid { grid-template-columns: 1fr; } }
+  .overlay-close-btn:hover {
+    background: var(--bg-surface-sub);
+    color: var(--text-primary);
+  }
 
   .peer-channel-pill {
     display: inline-flex;
@@ -1333,12 +1367,54 @@
 
         <!-- Interactive Canvas Wrapper with Trackpad Pinch-Zoom & Mouse Drag Pan -->
         <div id="canvasViewport" class="topology-canvas-wrap">
-          <!-- Floating Mini Zoom HUD Controls -->
+          <!-- Floating Mini Zoom HUD Controls (Bottom-Right) -->
           <div class="canvas-hud-controls">
             <button class="hud-btn" onclick="zoomBy(1.25)" title="Zoom In">+</button>
-            <span class="hud-scale-text" id="hudScaleDisplay">55%</span>
+            <span class="hud-scale-text" id="hudScaleDisplay">95%</span>
             <button class="hud-btn" onclick="zoomBy(0.8)" title="Zoom Out">−</button>
             <button class="hud-btn" onclick="resetCanvasTransform()" title="Fit All (10 Galaxies)">⤢</button>
+          </div>
+
+          <!-- Floating Right Side Agent Info & Quick Message Overlay Card -->
+          <div id="nodeSideOverlay" class="node-side-overlay" style="display:none;">
+            <div class="side-overlay-card">
+              <div class="side-overlay-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span id="overlayNodeIcon" style="font-size:1.4rem;">🤖</span>
+                  <div>
+                    <h3 id="overlayNodeTitle" style="font-size:1.05rem; font-weight:800; color:var(--text-primary);">platform-claude</h3>
+                    <span id="overlayNodeGroup" style="font-size:0.75rem; color:var(--text-secondary); font-weight:600;">Core Platform Hub</span>
+                  </div>
+                </div>
+                <button class="overlay-close-btn" onclick="deselectAll()" title="Close (ESC)">✕</button>
+              </div>
+
+              <div style="margin: 10px 0 12px; display:flex; gap:6px; flex-wrap:wrap;">
+                <span id="overlayNodeBadge" class="badge badge-success">Online</span>
+                <span id="overlayNodeTypeBadge" class="badge badge-leased">ai-claude</span>
+              </div>
+
+              <p id="overlayNodeDesc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">
+                Active autonomous agent in Core Platform Hub galaxy.
+              </p>
+
+              <!-- Quick Message Send Box -->
+              <div style="background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px; margin-bottom:14px;">
+                <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">
+                  ✉ <span data-i18n="overlay_quick_msg">Send Message</span>
+                </label>
+                <input type="text" id="overlayQuickMsgInput" class="form-input" style="font-size:0.85rem; padding:8px 10px; margin-bottom:8px;" placeholder="Enter message payload..." value="Ping from Agent Mesh Console">
+                <button class="btn btn-primary btn-sm" style="width:100%;" onclick="sendQuickMessageFromOverlay()">
+                  <span data-i18n="btn_send_now">Send Message ✈</span>
+                </button>
+              </div>
+
+              <div style="font-size:0.75rem; color:var(--text-secondary);">
+                <span id="overlayPeersCount" style="font-weight:700;">Connected Peers:</span>
+                <div id="overlayPeersWrap" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- SVG Canvas Container (Exact pixel coordinate rendering for 1:1 mouse-centered zoom) -->
@@ -1357,41 +1433,6 @@
               <!-- Dynamically populated 10 Galaxy Swarms, Nodes, and Highway Bridges -->
             </g>
           </svg>
-        </div>
-
-        <!-- Interactive Node Inspector Drawer -->
-        <div id="nodeInspectorDrawer" class="node-inspector-drawer">
-          <div class="inspector-grid">
-            <div>
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
-                <h3 id="inspNodeTitle" style="font-size:1.2rem; font-weight:800; color:var(--text-primary);">platform-claude</h3>
-                <span id="inspNodeBadge" class="badge badge-success">Online</span>
-                <span id="inspNodeTypeBadge" class="badge badge-leased">ai-claude</span>
-              </div>
-              <p id="inspNodeDesc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:8px;">
-                Galaxy Swarm: <strong>Core Platform Hub</strong>.
-              </p>
-              <div id="inspPeerPillsWrap" style="font-size:0.75rem; color:var(--text-secondary);">
-                <!-- Dynamic Peer Badges -->
-              </div>
-            </div>
-
-            <div>
-              <div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); text-transform:uppercase; margin-bottom:4px;" data-i18n="insp_key_label">Public Key Fingerprint (50-char)</div>
-              <div id="inspNodeKey" style="font-family:var(--font-mono); font-size:0.75rem; background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-default); word-break:break-all; margin-bottom:6px;">
-                sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
-              </div>
-              <span id="inspRoutingPolicy" style="font-size:0.75rem; color:var(--primary); font-weight:600;">Inter-Galaxy Gateway Routing Active</span>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
-              <div style="display:flex; gap:6px;">
-                <button class="btn btn-secondary btn-sm" onclick="openChannelConfigModal()" data-i18n="btn_config_channels">⚙ Config Channels</button>
-                <button class="btn btn-primary btn-sm" onclick="jumpToMessageWithTarget()" data-i18n="btn_send_to_node">💬 Test Message →</button>
-              </div>
-              <button class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:0.75rem;" onclick="closeInspector()" data-i18n="btn_close">✕ Close</button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1915,9 +1956,24 @@
         if (e.target.closest('.node-group')) return;
         zoomAroundPoint(1.35, e.clientX, e.clientY);
       });
+
+      // Canvas background click (Outside nodes, edges, and overlay) -> Deselect
+      viewport.addEventListener('click', (e) => {
+        if (e.target.closest('.node-group') || e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls')) {
+          return;
+        }
+        deselectAll();
+      });
     }
 
-    let selectedTopologyNodeId = 'core-lead';
+    // Global ESC key listener to deselect node and hide overlay
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        deselectAll();
+      }
+    });
+
+    let selectedTopologyNodeId = null;
 
     function selectTopologyNode(nodeId) {
       selectedTopologyNodeId = nodeId;
@@ -1959,32 +2015,50 @@
         }
       });
 
-      // Update Inspector Drawer
-      document.getElementById('inspNodeTitle').innerText = data.identity;
-      document.getElementById('inspNodeBadge').className = `badge ${data.badgeClass}`;
-      document.getElementById('inspNodeBadge').innerText = data.status;
-      document.getElementById('inspNodeTypeBadge').innerText = data.type;
-      document.getElementById('inspNodeDesc').innerHTML = `Galaxy Swarm: <strong>${data.groupName}</strong>. ${data.desc}`;
-      document.getElementById('inspNodeKey').innerText = data.key;
+      // Update Right-Side Floating Overlay Card
+      document.getElementById('overlayNodeTitle').innerText = data.identity;
+      document.getElementById('overlayNodeIcon').innerText = data.icon || (data.type === 'gateway-bridge' ? '🌐' : '🤖');
+      document.getElementById('overlayNodeGroup').innerText = data.groupName;
+      document.getElementById('overlayNodeBadge').className = `badge ${data.badgeClass}`;
+      document.getElementById('overlayNodeBadge').innerText = data.status;
+      document.getElementById('overlayNodeTypeBadge').innerText = data.type;
+      document.getElementById('overlayNodeDesc').innerText = data.desc;
 
-      // Render Peer Pills
-      const pillsContainer = document.getElementById('inspPeerPillsWrap');
-      let pillsHtml = `<span style="font-weight:700;">Connected Peers (${data.directPeers.length}):</span> `;
-      data.directPeers.slice(0, 8).forEach(p => {
-        pillsHtml += `<span class="peer-channel-pill"><span style="color:#059669;">●</span> ${p}</span>`;
+      // Render Peer Pills in Overlay
+      const peersContainer = document.getElementById('overlayPeersWrap');
+      let pillsHtml = '';
+      data.directPeers.slice(0, 6).forEach(p => {
+        pillsHtml += `<span class="peer-channel-pill" style="cursor:pointer;" onclick="selectTopologyNode('${p}')"><span style="color:#059669;">●</span> ${p}</span>`;
       });
-      if (data.directPeers.length > 8) {
-        pillsHtml += `<span class="peer-channel-pill">+${data.directPeers.length - 8} more</span>`;
+      if (data.directPeers.length > 6) {
+        pillsHtml += `<span class="peer-channel-pill">+${data.directPeers.length - 6} more</span>`;
       }
-      pillsContainer.innerHTML = pillsHtml;
+      peersContainer.innerHTML = pillsHtml;
 
-      document.getElementById('nodeInspectorDrawer').classList.add('active');
+      document.getElementById('nodeSideOverlay').style.display = 'block';
     }
 
-    function closeInspector() {
-      document.getElementById('nodeInspectorDrawer').classList.remove('active');
-      document.querySelectorAll('.node-group').forEach(el => el.classList.remove('active-selected', 'peer-highlighted', 'dimmed'));
-      document.querySelectorAll('.edge-line').forEach(el => el.classList.remove('highlighted', 'dimmed'));
+    function deselectAll() {
+      selectedTopologyNodeId = null;
+      document.querySelectorAll('.node-group').forEach(el => {
+        el.classList.remove('active-selected', 'peer-highlighted', 'dimmed');
+      });
+      document.querySelectorAll('.edge-line').forEach(el => {
+        el.classList.remove('highlighted', 'dimmed');
+      });
+      const overlay = document.getElementById('nodeSideOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+
+    function sendQuickMessageFromOverlay() {
+      if (!selectedTopologyNodeId) return;
+      const msgInput = document.getElementById('overlayQuickMsgInput');
+      const payload = msgInput ? msgInput.value.trim() : 'Hello';
+      if (!payload) return;
+
+      alert(currentLang === 'ko' 
+        ? `[Hub] '${selectedTopologyNodeId}'에게 메시지가 배달되었습니다.\n내용: "${payload}"` 
+        : `[Hub] Message dispatched to '${selectedTopologyNodeId}':\n"${payload}"`);
     }
 
     function jumpToMessageWithTarget() {
@@ -2271,7 +2345,7 @@
         if (bgLayer) bgLayer.classList.add('hidden');
         renderGalaxyTopologySVG();
         initPanZoomEngine();
-        selectTopologyNode('core-lead');
+        deselectAll();
         applyCanvasTransform();
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
