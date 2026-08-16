@@ -196,6 +196,17 @@ cookie, or moving to WebSocket for the browser stream.
 **Why deferred.** The alternative today is no event stream in a browser at all.
 The SPEC records the cost and asks deployments to redact the parameter.
 
+### ~~An identity's `type` can change with nothing recording that it did~~
+
+**Closed.** `mesh.identity.type_changed` (SPEC § 8.9.5) carries `{from, to}`,
+and § 8.9.5 defines the identity-event shape the two items below were also
+waiting on. `actor` is null because the route cannot authenticate its caller —
+that part is unchanged and is now stated in the contract rather than absent
+from it.
+
+The original entry follows, because the reasoning is why the shape looks the
+way it does.
+
 ### An identity's `type` can change with nothing recording that it did
 
 § 10.1 step 5 mandates the upsert: `ON CONFLICT(identity) DO UPDATE SET type,

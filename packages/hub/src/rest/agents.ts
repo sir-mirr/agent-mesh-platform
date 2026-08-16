@@ -31,6 +31,7 @@ import {
   stmtUpsertAgentTyped,
 } from "../db";
 import { log } from "../log";
+import { recordIdentityEvent } from "../rpc/audit";
 
 /**
  * SPEC § 10.1. A letter or digit, then letters, digits and hyphens.
@@ -233,6 +234,15 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
   }
 
   const existed = !!stmtAgentExists.get(r.identity);
+  // Read before the write, because the upsert overwrites it and the event needs
+  // both halves. § 10.1 step 6 mandates the overwrite, so this is not a guard —
+  // it is the record the overwrite never left. `agents.type` is read at display
+  // time, so changing it re-labels **every past audit event** for this identity
+  // as having come from a different runtime; without this the trail says it
+  // always was.
+  const before = existed
+    ? (stmtSelectAgent.get(r.identity) as { type: string | null } | undefined)?.type ?? null
+    : null;
   try {
     stmtUpsertAgentTyped.run(r.identity, r.type, r.description);
     // Omitted means unchanged, not false. A caller updating a description must
@@ -244,6 +254,18 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
     const msg = err instanceof Error ? err.message : String(err);
     log(`${route} db error for ${r.identity}: ${msg}`);
     return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
+  }
+  if (existed && before !== r.type) {
+    // After the write, not inside the try: a failed audit must not turn a
+    // completed provisioning into a `500` (§ 15.6). `recordIdentityEvent`
+    // swallows its own errors for the same reason.
+    log(`${route}: ${r.identity} type ${before ?? "null"} -> ${r.type}`);
+    recordIdentityEvent("mesh.identity.type_changed", {
+      identity: r.identity,
+      change: { from: before, to: r.type },
+      // The route cannot authenticate its caller, so there is nobody to name.
+      actor: null,
+    });
   }
   return existed;
 }

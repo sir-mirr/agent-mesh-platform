@@ -1335,6 +1335,38 @@ an adapter's report of its own activity; a mesh event is the hub's observation
 carrying the sender's own signature. `recorded_by` exists so that difference
 is a field rather than something inferred by prefix-matching `event_type`.
 
+#### 8.9.5. Hub-produced identity events
+
+Some things happen to an **identity** rather than to a message, and § 8.9.4's
+shape cannot carry them: its payload is a message, so every field would be
+null or false.
+
+```
+mesh.identity.type_changed
+```
+
+`correlation_id` and `identity` are both the identity — it is what an operator
+pages by when asking what has happened to one participant. The payload carries
+`change`, whose shape is per event type; for `type_changed` it is
+`{from, to}`.
+
+**`from` is the reason the event exists.** § 10.1 mandates the upsert that
+replaces `type`, and `agents.type` is read at display time — so the change
+re-labels every past event for that identity as having come from a different
+runtime. The row no longer holds the old value, and an event carrying only
+`to` would say a change happened without saying what it undid.
+
+**`attestation` MUST be null**, and `actor` MAY be. § 8.9.4 keeps the sender's
+`mesh.send` signature because a sender asked for that; nobody signs these.
+`POST /api/v1/agents` is unauthenticated (§ 9.2 †), so the hub can record that
+a type changed and cannot record who is answerable for it. Recording an
+attestation here would attest to nothing, and the absence is itself
+information about the route that caused it.
+
+A hub MUST NOT emit the event when the type is unchanged — a lane
+re-registering on every boot would otherwise fill the trail — nor on first
+registration, where there is no prior value.
+
 ---
 
 

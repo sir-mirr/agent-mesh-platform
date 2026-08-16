@@ -546,3 +546,69 @@ describe("a key already held by another identity", () => {
   // the store's source into it breaks that boundary — and the build, since the
   // suite compiles with `rootDir: "."`.
 });
+
+/**
+ * SPEC § 8.9.5. Recorded as a defect this morning and closed here.
+ *
+ * § 10.1 mandates the upsert, so a re-registration replacing `type` is the
+ * contract working — but `agents.type` is read at display time, so the change
+ * re-labels **every past audit event** for that identity as having come from a
+ * different runtime. Key transitions each write an `agent_key_events` row with
+ * an actor; this had no equivalent, and the trail said the identity always was
+ * what it now is.
+ */
+describe("a type change leaves a record", () => {
+  const auditOf = (identity: string) => {
+    const db = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    try {
+      return db
+        .prepare(`SELECT event_type, payload FROM audit_events WHERE identity = ? ORDER BY stored_at`)
+        .all(identity) as Array<{ event_type: string; payload: string }>;
+    } finally {
+      db.close();
+    }
+  };
+
+  test("the event carries both halves, because the row only holds one", async () => {
+    const k = newKey();
+    await register("tc-mover", "ai-antigravity", k.publicKey);
+    await register("tc-mover", "ai-claude", k.publicKey);
+
+    const events = auditOf("tc-mover").filter((e) => e.event_type === "mesh.identity.type_changed");
+    expect(events).toHaveLength(1);
+    const payload = JSON.parse(events[0]!.payload);
+    expect(payload.change).toEqual({ from: "ai-antigravity", to: "ai-claude" });
+    // `from` is the point. The row no longer holds it, so an event carrying
+    // only `to` would say a change happened and not what it undid.
+    expect(payload.identity).toBe("tc-mover");
+  });
+
+  test("no event when the type did not move", async () => {
+    // A lane re-registering on every boot must not fill the trail.
+    const k = newKey();
+    await register("tc-steady", "ai-claude", k.publicKey);
+    await register("tc-steady", "ai-claude", k.publicKey);
+    await register("tc-steady", "ai-claude", k.publicKey);
+    expect(auditOf("tc-steady").filter((e) => e.event_type === "mesh.identity.type_changed")).toHaveLength(0);
+  });
+
+  test("no event on first registration", async () => {
+    // There is no `from`, so there is no change — an event here would report
+    // `null -> ai-claude` for every identity ever created.
+    await register("tc-fresh", "ai-claude", newKey().publicKey);
+    expect(auditOf("tc-fresh")).toHaveLength(0);
+  });
+
+  test("the actor is null, and that is the finding rather than a gap", async () => {
+    // `POST /api/v1/agents` cannot authenticate its caller (§ 9.2 †), so the
+    // hub records that a type changed and cannot record who is answerable.
+    // A fabricated actor would be worse; the null is information about the route.
+    const k = newKey();
+    await register("tc-anon", "ai-codex", k.publicKey);
+    await register("tc-anon", "ai-claude", k.publicKey);
+    const payload = JSON.parse(
+      auditOf("tc-anon").find((e) => e.event_type === "mesh.identity.type_changed")!.payload,
+    );
+    expect(payload.actor).toBeNull();
+  });
+});
