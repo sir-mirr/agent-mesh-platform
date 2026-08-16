@@ -1,9 +1,9 @@
 # Agent Mesh Platform: 운영자 기능 목록 및 UX 동선 명세서
 (Operator Functional Specification & UX Flow Diagrams)
 
-**문서 버전**: 2.2.0 (Live Test Harness 실측 검증 및 전수 정합성 보정 완료)  
+**문서 버전**: 2.3.0 (KEY_HELD_BY_ANOTHER_IDENTITY 가드 & Surface v3 반영 완료)  
 **작성자**: `platform-fe-antigravity` (Admin Frontend)  
-**검증 방식**: Live E2E Harness cURL 전수 실측 및 `packages/http`, `packages/hub` 소스 레벨 전수 대조  
+**검증 방식**: Live E2E Harness cURL 전수 실측 (`contracts v0.8.2`, `surface.version: 3`)  
 **수신자**: User (Project Lead)
 
 ---
@@ -33,7 +33,7 @@ graph TD
     end
 
     subgraph "Hub Server (:3100) - 무인증 에이전트 라우트"
-        R_Cap["GET /api/v1/capabilities (surface.version: 2)"]
+        R_Cap["GET /api/v1/capabilities (surface.version: 3)"]
         R_Health["GET /health (online_agents)"]
         R_Provision["POST /api/v1/agents (신원 등록 & 키 제안)"]
         R_Keys["GET /api/v1/agents/:identity/keys"]
@@ -42,7 +42,7 @@ graph TD
 
 ---
 
-## 2. 상세 기능 목록 (SEE & DO Matrix, 실측 엔드포인트 전수 반영)
+## 2. 상세 기능 목록 (SEE & DO Matrix)
 
 ### [A] 플랫폼 관리자 (Platform Operator / Admin)
 
@@ -52,15 +52,15 @@ graph TD
 | **F-ADM-02** | **인박스 적체 및 임대 감시** | • 에이전트별 인박스 메트릭<br>• **`Total Depth (pending)` vs `Leased (leased)` vs `Available (pending - leased)`**<br>• `capabilities`의 `receive_lease_seconds` 기반 임대 시효 만료 안내<br>• 개별 메시지 메타데이터 (`id`, `from`, `ts`, `size`, `leased`) | • `readonly` 인박스 메트릭 조회 (임대 미발생 보증)<br>• **접근 분리 원칙**: 큐 조회 시 메시지 본문 미노출 확인 | `GET /api/v1/admin/inbox`<br>`GET /api/v1/admin/inbox/:identity`<br>`GET /api/v1/capabilities` |
 | **F-ADM-03** | **실시간 불변 감사 포렌식** | • 실시간 감사 이벤트 스트림 (`GET /api/v1/audit/events`)<br>• 발신 주체 분리 표기 (**`from: alice_dev`, `sent_by: http-server` vs 에이전트 Ed25519 서명**)<br>• 메시지 시퀀스 ID, 타임스탬프, 첨부 블롭 해시 | • 송수신 에이전트별 / 시간대별 필터링<br>• 커서 기반 페이지네이션 (`next_cursor`) 및 블롭 해시 대조 | `GET /api/v1/audit/events?limit=50&cursor=...` |
 | **F-ADM-04** | **영구 신원 Teardown 통제** | • 등록된 신원 목록 및 활성/삭제 상태 (`deleted: true/false`)<br>• 삭제된 신원의 톰스톤(Tombstone) 상태 | • 2단계 경고 모달을 통한 영구 삭제 실행 (`DELETE /api/v1/admin/agents/:identity`)<br>• 동일 신원 재등록 시도 시 `409 IDENTITY_DELETED` 에러 처리 보증 | `DELETE /api/v1/admin/agents/:identity`<br>(SPEC § 9.3 관리자 세션 필수) |
-| **F-ADM-05** | **허브 메타데이터 & 헬스체크** | • `capabilities` 메타데이터 (`surface.version: 2`)<br>• WebSocket 온라인 에이전트 수 (`online_agents`)<br>• 지원 스펙 버전 (`agent_mesh_spec: "0.2"`) | • 허브 무서명 헬스체크 및 실시간 온라인 상태 모니터링 | `GET /api/v1/capabilities`<br>`GET /health` |
+| **F-ADM-05** | **허브 메타데이터 & 헬스체크** | • `capabilities` 메타데이터 (`surface.version: 3`)<br>• WebSocket 온라인 에이전트 수 (`online_agents`)<br>• 지원 스펙 버전 (`agent_mesh_spec: "0.2"`) | • 허브 무서명 헬스체크 및 실시간 온라인 상태 모니터링 | `GET /api/v1/capabilities`<br>`GET /health` |
 
 ---
 
 ### [B] 에이전트 운영자 (Agent Operator / Workspace)
 
-| 기능 ID | 기능명 | 운영자가 **봐야 하는 것 (SEE)** | 운영자가 **해야 하는 것 (DO)** | 실측 엔드포인트 & 페이로드 |
+| 기능 ID | 기능명 | 운영자가 **봐야 하는 것 (SEE)** | 운영자가 **해야 하는 것 (DO)** | 실측 엔드포인트 & 에러 처리 |
 | :--- | :--- | :--- | :--- | :--- |
-| **F-OPR-01** | **에이전트 신원 등록 및 키 제안/로테이션** | • 내가 소유한 등록 에이전트 목록<br>• 등록된 공개키 50자리 지문 및 승인/대기/취소 상태<br>• 온라인 WebSocket 연결 여부 | • 외부 에이전트 신원 신규 등록 및 최초 공개키 제안<br>• 새 Ed25519 공개키 제안(Key Rotation) 제출 | `POST /api/v1/agents`<br>`{ identity, type, public_key }`<br>`GET /api/v1/agents/:identity/keys` |
+| **F-OPR-01** | **에이전트 신원 등록 및 키 제안/로테이션** | • 내가 소유한 등록 에이전트 목록<br>• 등록된 공개키 50자리 지문 및 승인/대기/취소 상태<br>• **3대 409 충돌 에러 안내 메시지**:<br>&nbsp;&nbsp;1) `IDENTITY_EXISTS`<br>&nbsp;&nbsp;2) `IDENTITY_DELETED`<br>&nbsp;&nbsp;3) `KEY_HELD_BY_ANOTHER_IDENTITY` | • 외부 에이전트 신원 신규 등록 및 최초 공개키 제안<br>• `POST /api/v1/agents` 후 반드시 `GET /api/v1/agents/{id}/keys`로 실제 소유 키 검증<br>• 타 신원 키 충돌 시 안내 렌더링 | `POST /api/v1/agents`<br>`{ identity, type, public_key }`<br>`GET /api/v1/agents/:identity/keys` |
 | **F-OPR-02** | **콘솔 메시지 테스트 (Playground)** | • 메시지 수신 가능한 활성/승인 에이전트 디렉토리<br>• 페이로드 편집기 (JSON/Text) 및 블롭 첨부 UI<br>• **즉각 배달 영수증** (`Delivered to WebSocket` / `Queued in Inbox #seq`) | • 콘솔 운영자 신원(`alice_dev`, via `http-server` 프록시)으로 테스트 메시지 전송<br>• 전송 레이턴시 및 배달 영수증 확인 | `POST /api/v1/messages`<br>`{ to, body }` (JWT 인증) |
 | **F-OPR-03** | **에이전트 인박스 메타데이터 감시** | • 내 에이전트의 인박스 적체 메타데이터 (`Total Depth`, `Leased`, `Available`)<br>• 메시지 발신자(`from`), 수신 시각(`ts`), 페이로드 크기(`size`) | • `readonly` 인박스 상태 모니터링 (실제 메시지 수신/임대는 실제 에이전트 프로세스가 수행) | `GET /api/v1/admin/inbox/:identity` |
 
@@ -159,7 +159,7 @@ sequenceDiagram
 
 ---
 
-### Flow 4: [에이전트 운영자] 신원 등록 및 키 제안 동선 (F-OPR-01)
+### Flow 4: [에이전트 운영자] 신원 등록, 키 충돌 검증 및 소유권 확인 동선 (F-OPR-01)
 
 ```mermaid
 sequenceDiagram
@@ -173,9 +173,18 @@ sequenceDiagram
     UI-->>Operator: 에이전트 등록 모달 표시 (Identity name, Agent Type, Ed25519 Public Key)
     Operator->>UI: 신원명('my-new-bot'), 타입('ai-claude'), 공개키 입력 후 [제출]
     UI->>Hub: POST /api/v1/agents { identity: "my-new-bot", type: "ai-claude", public_key: "..." }
-    Hub->>DB: INSERT INTO agents (identity, type, deleted=0)...<br>INSERT INTO keys (identity, fingerprint, status='pending')...
-    Hub-->>UI: 200 OK { ok: true, identity: "my-new-bot", key: { fingerprint: "sha256:...", status: "pending" } }
-    UI-->>Operator: "에이전트가 등록되었습니다. 플랫폼 관리자의 키 승인 대기 중입니다." 상태 렌더링
+
+    alt 타 신원의 공개키와 충돌 (KEY_HELD_BY_ANOTHER_IDENTITY)
+        Hub-->>UI: 409 Conflict { ok: false, code: "KEY_HELD_BY_ANOTHER_IDENTITY", error: "public_key is already held by another identity" }
+        UI-->>Operator: [오류] "이 공개키는 이미 다른 신원에 등록되어 있습니다. 에이전트의 키를 확인하십시오." 렌더링
+    else 신규 등록 성공
+        Hub->>DB: INSERT INTO agents ... INSERT INTO keys ...
+        Hub-->>UI: 200 OK { ok: true, identity: "my-new-bot", key: { fingerprint: "sha256:...", status: "pending" } }
+        Note over UI: SPEC § 10.1 불변 규정 준수:<br>POST 응답을 맹신하지 않고 /keys로 실제 소유 여부 검증
+        UI->>Hub: GET /api/v1/agents/my-new-bot/keys
+        Hub-->>UI: 200 OK { ok: true, keys: [{ fingerprint: "sha256:...", status: "pending" }] }
+        UI-->>Operator: "에이전트가 등록되었습니다. 플랫폼 관리자의 키 승인 대기 중입니다." 상태 렌더링
+    end
 ```
 
 ---
