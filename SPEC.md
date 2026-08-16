@@ -1583,6 +1583,9 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
 | GET    | `/api/v1/admin/inbox`             | JWT\*  | `200`   | Queue depth per identity (§ 9.2.1). No message bodies. |
 | GET    | `/api/v1/admin/agent-sources`     | JWT\*  | `200`   | Where identities have been observed connecting from (§ 8.11). Carries `observed_source` for the deployment — it is not a per-row property — and the qualifier that makes `forwarded` values evidence. |
+| POST   | `/api/v1/admin/pairing-codes`     | JWT\*  | `201`   | Issue a pairing code binding an identity to the caller (§ 11.3). Returned once; no route reads it back. |
+| POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
+| GET    | `/api/v1/admin/agents/{identity}/owners` | JWT\* | `200` | Who is answerable for an identity, and how the claim was made (§ 11.3). |
 | GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
@@ -2483,6 +2486,51 @@ lack can ask for that one; an operator told "forbidden" asks for everything.
 Unauthenticated is `401` and unauthorised is `403` — one says sign in, the
 other says ask for a grant, and collapsing them sends people to the wrong
 place.
+
+### 11.3. Ownership, and how a claim is proved
+
+An identity has **owners** — plural. The tenant owns its identities; an owner
+is the person answerable for one day to day. One owner means a departure
+strands the agent and the recovery is a hand-edited table, which is the thing
+this exists to remove. A tenant admin may assign and unassign, because someone
+has to when an owner leaves.
+
+**A scoped queue is empty, not forbidden.** An operator holding `key.approve`
+who owns nothing sees no pending keys. Answering `403` would say they lack a
+permission they hold, and send them to ask for a grant they already have. A
+tenant-wide grant is not filtered — that is what being inside the tenant means.
+
+#### Pairing codes
+
+The person is in a browser session; the agent is a process on a host with a
+CLI. The claim has to cross that gap. A hub MAY implement:
+
+```
+POST /api/v1/admin/pairing-codes    authenticated, agent.provision
+     -> { code, identity, expires_at }
+POST /api/v1/pairing-codes/redeem   unauthenticated — the code is the credential
+     -> { ok, identity, owner }
+```
+
+This is the device authorization grant with the roles reversed. Redemption
+**MUST** be single-use and **MUST** be decided in one statement: reading the
+row and then updating it leaves a window in which two redemptions both see an
+unspent code, and the loser would take an ownership the winner already has.
+
+A refusal MUST distinguish `unknown`, `expired` and `already-redeemed`. "Ask
+for another" and "somebody else already used this" call for different
+reactions, and collapsing them into *invalid* hides a race from the person
+losing it.
+
+**Redemption SHOULD record the observed source (§ 8.11).** It is the one
+transaction in which the agent's host and the person vouching for it are both
+known, which makes it the strongest available moment to establish a baseline.
+
+The code is returned once. No route reads it back — a caller that loses it
+issues another rather than recovering that one.
+
+Codes SHOULD avoid characters that are misread when spoken or retyped —
+`I`/`1`, `O`/`0` — because a mistyped code and a stolen one fail identically.
 
 ### 11.2. Migration
 

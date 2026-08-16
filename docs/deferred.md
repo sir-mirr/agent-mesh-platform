@@ -288,3 +288,24 @@ lookup — and while that was being refused, provisioning was already answering 
 weaker form of it. Refusing a new surface does not audit the existing ones.
 Before opening any unauthenticated route, ask what already answers that question
 rather than only whether this one should.
+
+### `scheduler.tick` writes and its name does not say so
+
+`packages/self-reminder/src/scheduler.ts` updates `reminders` inside `tick`.
+The § 11-era naming rule in `test/naming.test.ts` requires a function that
+performs a durable write to announce it, and `tick` does not — it is the idiom
+for one pass of a loop, which says when it runs and nothing about what it does.
+
+It is exempted there **by name, with a reason**, rather than by widening the
+list of accepted write verbs. Widening would silently accept every future
+`tickSomething` and nobody reading the list would know one entry was a
+concession.
+
+**It was invisible until the checker was repaired.** `bodyOf` brace-counted
+from the declaration line, so a function whose parameters carry an inline
+object type had its body end at the parameter — `tick` predates every rule in
+that file and had never once been reported.
+
+**Why deferred.** The honest fix is a rename, and `tick` is the daemon's entry
+point: `main.ts` calls it and six tests name it. That is worth doing and is not
+worth doing between two unrelated changes.

@@ -39,7 +39,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, grants, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, grants, ownership, type MessageRow } from '@agent-mesh/store'
 import {
   CAPABILITY,
   IDENTITY_RE,
@@ -93,6 +93,11 @@ const HUB_URL =
  * report another deployment's configuration.
  */
 const HUB_HTTP_URL = HUB_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
+/** § 11.3. Long enough to walk to another machine, short enough that a
+ *  shoulder-surfed code is worth little. Not derived — argued from neither
+ *  number, and configurable for the same reason the dormancy window is. */
+const PAIRING_TTL_SECONDS = parseInt(process.env.AGENT_MESH_PAIRING_TTL ?? '300', 10)
+const PAIRING_TTL_MAX_SECONDS = 3600
 const HUB_IDENTITY = 'http-server' + (IS_DEV ? '-dev' : '')
 let hubWs: WebSocket | null = null
 let hubConnected = false
@@ -1188,6 +1193,27 @@ async function requireCapability(
 }
 
 /**
+ * Like `requireCapability`, but satisfied by a grant at **any** scope.
+ *
+ * For routes that answer a *list* and filter it. Gating those at tenant scope
+ * refuses every operator who holds only their own agents — which § 11.3 says
+ * must not happen, because the answer for them is an empty list rather than a
+ * refusal.
+ */
+async function requireCapabilityAnyScope(
+  c: any,
+  capability: Capability,
+): Promise<string | Response> {
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  const subject = payload.github_login as string
+  if (!grants.hasAny(agentsDb(), subject, capability)) {
+    return c.json({ error: `Missing capability: ${capability}`, capability, scope: 'any' }, 403)
+  }
+  return subject
+}
+
+/**
  * What `admin` meant, written down as grants.
  *
  * Deployments seeded before § 11 keep working, and nothing anywhere still
@@ -1197,6 +1223,7 @@ async function requireCapability(
 export function seedLegacyAdminGrants(): void {
   const db = agentsDb()
   grants.migrate(db)
+  ownership.migrate(db)
   const admins = getDb()
     .prepare(`SELECT github_login FROM users WHERE role = 'admin'`)
     .all() as Array<{ github_login: string }>
@@ -1210,11 +1237,110 @@ export function seedLegacyAdminGrants(): void {
   }
 }
 
+/**
+ * The approval queue, scoped to what the caller owns (SPEC § 11.3).
+ *
+ * **An operator with no agents sees an empty queue, not a refusal.** They hold
+ * `key.approve` — the capability is theirs; there is simply nothing of theirs
+ * waiting. Answering `403` would say they lack the permission, which is a
+ * different and false statement, and it sends them to ask for a grant they
+ * already have.
+ *
+ * A tenant-wide grant (`scope: "*"`) sees everything, which is what a tenant
+ * admin is: inside the tenant, not above it (§ 11).
+ */
 app.get('/api/v1/admin/keys/pending', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
+  const actor = await requireCapabilityAnyScope(c, CAPABILITY.KEY_APPROVE)
   if (typeof actor !== 'string') return actor
+
   const r = listPendingKeys()
-  return c.json(r.body, r.status as any)
+  if (r.status !== 200) return c.json(r.body, r.status as any)
+
+  const db = agentsDb()
+  // Tenant-wide holders are not filtered. Everyone else sees their own.
+  if (grants.has(db, actor, CAPABILITY.KEY_APPROVE, SCOPE_TENANT)) {
+    return c.json(r.body, 200)
+  }
+  const mine = new Set(ownership.ownedBy(db, actor))
+  const body = r.body as { ok: boolean; pending?: Array<{ identity: string }> }
+  return c.json({ ...body, pending: (body.pending ?? []).filter((k) => mine.has(k.identity)) }, 200)
+})
+
+/**
+ * Issue a pairing code (SPEC § 11.3).
+ *
+ * The operator is in a browser; the agent is a process on some host. This is
+ * the device authorization grant with the roles reversed — the only mechanism
+ * available that binds the two without new infrastructure.
+ */
+app.post('/api/v1/admin/pairing-codes', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const identity = body?.identity
+  if (typeof identity !== 'string' || !IDENTITY_RE.test(identity)) {
+    return c.json({ ok: false, error: 'identity is required and must match the § 10.1 pattern' }, 400)
+  }
+  const ttl = Number(body?.ttl_seconds ?? PAIRING_TTL_SECONDS)
+  if (!Number.isFinite(ttl) || ttl <= 0 || ttl > PAIRING_TTL_MAX_SECONDS) {
+    return c.json({ ok: false, error: `ttl_seconds must be 1..${PAIRING_TTL_MAX_SECONDS}` }, 400)
+  }
+
+  const code = ownership.issueCode(agentsDb(), { identity, issuedBy: actor, ttlSeconds: ttl })
+  console.log(`[http-server] ${actor} issued a pairing code for ${identity}`)
+  // The code itself is returned once and never read back — every later route
+  // answers about it without repeating it, so a screen that loses it has to
+  // issue another rather than recover this one.
+  return c.json({ ok: true, code: code.code, identity, expires_at: code.expires_at }, 201)
+})
+
+/**
+ * Redeem one, from the agent's host.
+ *
+ * **Unauthenticated by design.** The code *is* the credential, and the caller
+ * is a CLI that holds no human session — requiring one would defeat the
+ * purpose, which is to carry an authenticated person's claim to a machine that
+ * has no browser.
+ *
+ * The address is recorded because this is the strongest moment available: the
+ * one transaction in which the agent's host and the person vouching for it are
+ * both known (§ 8.11).
+ */
+app.post('/api/v1/pairing-codes/redeem', async (c) => {
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const code = body?.code
+  const owner = body?.owner
+  if (typeof code !== 'string' || typeof owner !== 'string') {
+    return c.json({ ok: false, error: 'code and owner are required' }, 400)
+  }
+
+  const observed =
+    (c.req.header('x-forwarded-for')?.split(',').pop() ?? '').trim() ||
+    c.req.header('x-real-ip') ||
+    null
+
+  const outcome = ownership.redeem(agentsDb(), code, owner, observed)
+  if (!outcome.ok) {
+    // The three reasons are distinguished on purpose: "ask for another" and
+    // "somebody else already used this" call for different reactions, and
+    // collapsing them into "invalid" hides a race from the person losing it.
+    const status = outcome.reason === 'unknown' ? 404 : 409
+    return c.json({ ok: false, reason: outcome.reason, error: `pairing code ${outcome.reason}` }, status)
+  }
+  console.log(`[http-server] ${owner} claimed ${outcome.identity} via pairing code`)
+  return c.json({ ok: true, identity: outcome.identity, owner: outcome.owner })
+})
+
+/** Who is answerable for an identity, and how the claim was made. */
+app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
+  if (typeof actor !== 'string') return actor
+  const identity = c.req.param('identity')
+  if (!IDENTITY_RE.test(identity)) return c.json({ ok: false, error: 'invalid identity format' }, 400)
+  return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })
 })
 
 app.get('/api/v1/admin/keys/:identity', async (c) => {

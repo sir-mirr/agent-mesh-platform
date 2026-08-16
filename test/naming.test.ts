@@ -62,7 +62,29 @@ const QUERY_PREFIX =
  * the check cannot judge whether a name says "write", only that somebody did.
  */
 const WRITE_VERB =
-  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|recall|withdraw|handle|on[A-Z])/i;
+  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|recall|withdraw|handle|grant|redeem|assign|unassign|on[A-Z])/i;
+
+/**
+ * Names that write and do not say so, accepted with a reason.
+ *
+ * **An exemption is visible; a widened verb list is not.** Adding `tick` to
+ * `WRITE_VERB` above would silently accept every future `tickSomething`, and
+ * nobody reading that list would know one entry was a concession rather than a
+ * word that announces an effect. Here the concession has a name and a
+ * sentence.
+ *
+ * `tick` was invisible until `bodyOf` was fixed — it predates every rule in
+ * this file and was never once reported.
+ */
+const EXEMPT = new Map<string, string>([
+  [
+    "packages/self-reminder/src/scheduler.ts:tick",
+    "Scheduler step. `tick` is the idiom for one pass of a loop and does not " +
+      "announce the write it performs; renaming it touches the daemon's entry " +
+      "point and its tests, which is worth doing and is not worth doing " +
+      "between two other changes. Recorded in docs/deferred.md.",
+  ],
+]);
 
 /** Durable writes — state that outlives the process. */
 const WRITES =
@@ -116,6 +138,24 @@ function maskTemplates(lines: string[]): string[] {
   return out;
 }
 
+/**
+ * The body, from the line carrying the signature's opening brace.
+ *
+ * **Not from the declaration line.** Starting there and brace-counting ends
+ * the body at the first `{...}` it meets — which, for a parameter typed
+ * inline, is the parameter:
+ *
+ *     export function assign(
+ *       o: { tenant?: string; identity: string },   <- opens and closes here
+ *     ): void {
+ *       db.prepare(`INSERT INTO …`)                 <- never read
+ *
+ * `assign` and `unassign` write and were both invisible. This is the third
+ * defect in this file and the third of the same shape: the rule kept passing
+ * while checking less than it claimed. Found by noticing two functions that
+ * should have been reported were not — which is only visible if you know what
+ * the answer should be, so the test below now pins the count.
+ */
 function bodyOf(lines: string[], start: number): string {
   const body: string[] = [];
   let depth = 0;
@@ -156,8 +196,12 @@ function scan(disagrees: (name: string) => boolean): Finding[] {
 
       // Line of the declaration, so the body is read from the unmasked source.
       const line = masked.slice(0, m.index).split("\n").length;
-      const wrote = WRITES.exec(bodyOf(raw, line - 1 + (m[0].startsWith("\n") ? 1 : 0)));
-      if (wrote && disagrees(name)) {
+      // From the signature's brace, which is the end of the match — see
+      // `bodyOf`. Masking preserves line count, so the two indexes agree.
+      const braceLine = masked.slice(0, m.index + m[0].length).split("\n").length - 1;
+      const wrote = WRITES.exec(bodyOf(raw, braceLine));
+      const rel = file.slice(REPO_ROOT.length).replace(/^\//, "");
+      if (wrote && disagrees(name) && !EXEMPT.has(`${rel}:${name}`)) {
         found.push({ file: file.slice(REPO_ROOT.length), line, name, wrote: wrote[0] });
       }
     }
@@ -186,6 +230,23 @@ describe("a name agrees with whether the function writes", () => {
       "}",
     ];
     expect(WRITES.test(bodyOf(writing, 0))).toBe(true);
+
+    // **The body starts at the signature's brace, not at the declaration.**
+    // Reverting that made `assign` and `unassign` invisible again while every
+    // test here still passed, so this pins it: a parameter typed inline opens
+    // and closes a brace before the body does, and brace-counting from the
+    // declaration line ends the body there.
+    const inlineParam = [
+      "export function assign(",
+      "  o: { tenant?: string; identity: string },",
+      "): void {",
+      "  db.prepare(`INSERT INTO agent_owners (a) VALUES (?)`).run(1);",
+      "}",
+    ];
+    expect(WRITES.test(bodyOf(inlineParam, 0)), "declaration line: body ends at the parameter")
+      .toBe(false);
+    expect(WRITES.test(bodyOf(inlineParam, 2)), "brace line: the body is read")
+      .toBe(true);
     expect(QUERY_PREFIX.test("checkNonce")).toBe(true);
     expect(WRITE_VERB.test("processRetry")).toBe(false);
     expect(WRITE_VERB.test("syncState")).toBe(false);
@@ -195,6 +256,19 @@ describe("a name agrees with whether the function writes", () => {
       expect(QUERY_PREFIX.test(name), `${name} reads as a query`).toBe(false);
       expect(WRITE_VERB.test(name), `${name} reads as a write`).toBe(true);
     }
+  });
+
+  test("the scan path reaches a body behind an inline-typed parameter", () => {
+    // The self-check above exercises `bodyOf` with an explicit start line, so
+    // it passes whatever `scan` chooses to pass in — reverting the fix left it
+    // green. This walks the real path over the real tree.
+    //
+    // `ownership.assign` is the shape: parameters carrying `{ … }` on one
+    // line, an `INSERT INTO` in the body. Brace-counting from the declaration
+    // ends at the parameter and the write is never seen.
+    const everyWrite = scan(() => true).map((f) => `${f.name}`);
+    expect(everyWrite, "assign writes and its body must be reachable").toContain("assign");
+    expect(everyWrite, "unassign writes and its body must be reachable").toContain("unassign");
   });
 
   test("the scanner is looking at functions, not at whatever parses", () => {
