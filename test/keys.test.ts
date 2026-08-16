@@ -612,3 +612,91 @@ describe("a type change leaves a record", () => {
     expect(payload.actor).toBeNull();
   });
 });
+
+/**
+ * SPEC § 8.11. The hub's own observation, recorded for every authenticated
+ * request on every transport.
+ *
+ * Unit coverage for the extraction — including the `X-Forwarded-For` forgery
+ * this is built against — is in `packages/hub/src/observed.test.ts`. What is
+ * checked here is the wiring: three transports resolve the address in three
+ * different places, and a transport that quietly records nothing looks
+ * identical to one that works.
+ */
+describe("the observed source is recorded", () => {
+  const sourcesOf = (identity: string) => {
+    const db = new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+    try {
+      return db
+        .prepare(`SELECT observed, requests FROM agent_sources WHERE identity = ?`)
+        .all(identity) as Array<{ observed: string; requests: number }>;
+    } finally {
+      db.close();
+    }
+  };
+
+  test("on connect, over a socket", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "src-ws", "ai-claude", null, kp.publicKey);
+    await decide("approve", kp.fingerprint);
+    const rpc = await connectRpc(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey });
+    await rpc.call("mesh.connect", { identity: "src-ws" });
+    rpc.close();
+
+    const rows = sourcesOf("src-ws");
+    expect(rows).toHaveLength(1);
+    // Normalised: the harness connects over v4 loopback and Bun reports
+    // `::ffff:127.0.0.1`. Storing that spelling would make every later
+    // comparison against `127.0.0.1` fail.
+    expect(rows[0]!.observed).toBe("127.0.0.1");
+  });
+
+  test("on a socketless request, where there is no socket to hang it on", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "src-http", "ai-claude", null, kp.publicKey);
+    await decide("approve", kp.fingerprint);
+    const res = await callHttp(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey },
+      "mesh.list_agents", {});
+    expect(res.status).toBe(200);
+    expect(sourcesOf("src-http")[0]?.observed).toBe("127.0.0.1");
+  });
+
+  test("repeats increment rather than adding rows", async () => {
+    // One row per address is the shape the question has — "which addresses has
+    // this key been used from" — and a row per request answers it while
+    // growing without bound.
+    const kp = newKeyPair();
+    await provision(mesh.hub, "src-repeat", "ai-claude", null, kp.publicKey);
+    await decide("approve", kp.fingerprint);
+    const signer = { kid: kp.fingerprint, privateKey: kp.privateKey };
+    await callHttp(mesh.hub, signer, "mesh.list_agents", {});
+    await callHttp(mesh.hub, signer, "mesh.list_agents", {});
+    await callHttp(mesh.hub, signer, "mesh.list_agents", {});
+
+    const rows = sourcesOf("src-repeat");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.requests).toBeGreaterThanOrEqual(3);
+  });
+
+  test("a request that fails to authenticate records nothing", async () => {
+    // The row asserts that this identity was *seen* here. An unverified
+    // request only claimed the name, so recording it would let anyone write
+    // arbitrary history for an identity they do not hold.
+    const kp = newKeyPair();
+    const other = newKeyPair();
+    await provision(mesh.hub, "src-unauth", "ai-claude", null, kp.publicKey);
+    await decide("approve", kp.fingerprint);
+    // Signs with a key that is not this identity's.
+    const res = await callHttp(mesh.hub, { kid: kp.fingerprint, privateKey: other.privateKey },
+      "mesh.list_agents", {});
+    expect(res.status).toBe(401);
+    expect(sourcesOf("src-unauth")).toHaveLength(0);
+  });
+
+  test("capabilities reports how the address was learned", async () => {
+    // A control configured off is indistinguishable from one that is on until
+    // somebody asks. This is the asking.
+    const body = await (await fetch(`${mesh.hub.url}/api/v1/capabilities`)).json();
+    expect(body.surface.observed_source).toBe("socket");
+  });
+});

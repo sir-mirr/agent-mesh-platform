@@ -9,6 +9,7 @@ export * as verify from "./verify";
 export * as nonces from "./nonces";
 export * as teardown from "./teardown";
 export * as outbox from "./outbox";
+export * as sources from "./sources";
 export type {
   AgentKeyRow,
   AgentRow,

@@ -30,6 +30,7 @@ import { MESH_ERROR, MAILBOX_CAPABILITY_DEFAULTS, SURFACE_CAPABILITY_DEFAULTS } 
 import { outbox } from "@agent-mesh/store";
 
 import { db as hubDb, stmtMessageById } from "../db";
+import { OBSERVED } from "../observed-config";
 import { log } from "../log";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "../rpc/audit-limits";
 import { recordRecalled } from "../rpc/audit";
@@ -95,6 +96,8 @@ export interface InboxRequest {
   search: string;
   authorization: string | null;
   body: string;
+  /** The hub's own observation of the peer (§ 8.11). */
+  observed?: string | null;
 }
 
 /**
@@ -114,7 +117,11 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     return json(200, {
       mailbox: MAILBOX_CAPABILITY_DEFAULTS,
       audit: { ...AUDIT_LIMITS, schema_version_max: MAX_SCHEMA_VERSION },
-      surface: SURFACE_CAPABILITY_DEFAULTS,
+      // `observed_source` is the running deployment's, not the default's
+      // (§ 8.11). Reporting the constant would tell every caller `socket`
+      // however the process was configured — the exact drift this route
+      // exists to prevent.
+      surface: { ...SURFACE_CAPABILITY_DEFAULTS, observed_source: OBSERVED.mode },
     });
   }
 
@@ -125,7 +132,7 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     pathname.startsWith("/api/v1/outbox/");
   if (!isOurs) return null;
 
-  const auth = authenticate(method, req.path, req.authorization, req.body);
+  const auth = authenticate(method, req.path, req.authorization, req.body, req.observed ?? null);
   if (!auth.ok) return json(auth.refusal.status, auth.refusal.body);
   const caller = auth.caller;
 

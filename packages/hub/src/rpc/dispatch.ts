@@ -6,7 +6,7 @@
  */
 
 import { INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, rpcError, type JsonRpcRequest } from "../jsonrpc";
-import { keys } from "@agent-mesh/store";
+import { keys, sources } from "@agent-mesh/store";
 
 import { agentsDb } from "../db";
 import { wsIdentities, wsProxies } from "../presence";
@@ -38,7 +38,7 @@ import { handleSend } from "./send";
  * one: without a socket to have connected on, an unsigned request carries
  * nothing that says who is asking.
  */
-export function dispatchHttp(raw: string): { status: number; body: string } {
+export function dispatchHttp(raw: string, observed: string | null = null): { status: number; body: string } {
   let req: JsonRpcRequest & { sig?: SignatureEnvelope };
   try {
     req = JSON.parse(raw);
@@ -82,6 +82,11 @@ export function dispatchHttp(raw: string): { status: number; body: string } {
   if (!verdict.ok) {
     return { status: 401, body: rpcError(req.id, verdict.code, verdict.message, verdict.data) };
   }
+
+  // § 8.11. After the signature verifies and before anything acts on it: the
+  // record is of an *authenticated* request, so an unverified one must not
+  // create a source row for an identity it only claimed.
+  sources.recordSource(agentsDb, identity, observed);
 
   const params = req.params ?? {};
 

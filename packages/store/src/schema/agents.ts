@@ -175,6 +175,33 @@ export function migrate(db: Database): void {
       ON agent_key_events(identity, occurred_at);
   `);
 
+  // Where each identity has been observed connecting from (SPEC § 8.11).
+  //
+  // One row per (identity, source) rather than one per request: the interesting
+  // question is "which addresses has this key been used from", and a row per
+  // request answers it while growing without bound. The counter and the two
+  // timestamps keep the history an operator actually needs — when a source
+  // first appeared and whether it is still in use.
+  //
+  // Recorded for every authenticated request, not only after dormancy. The
+  // observation costs nothing, so an address change on a busy identity is in
+  // the record even where policy does not refuse it — an operator looking
+  // afterwards gets a history instead of a gap.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_sources (
+      identity   TEXT NOT NULL,
+      observed   TEXT NOT NULL,
+      first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      requests   INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (identity, observed)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_agent_sources_last_seen
+      ON agent_sources(identity, last_seen DESC);
+  `);
+
   // Upload grants (SPEC § 8.9.2, § 9.1). Here rather than in `audit.db`
   // because the http server needs them to authorise a PUT, and it holds this
   // file read-write already for key approval — an upload must not require it
