@@ -804,48 +804,54 @@
     letter-spacing: -0.01em;
   }
 
-  /* Edges (Bold, High Contrast, Solidly Visible) */
+  /* Edges (Moderate Subtle Slate Tone in Default State) */
   .edge-line {
     fill: none !important;
     stroke: #64748B;
-    stroke-width: 2.2;
+    stroke-width: 1.8;
     stroke-linecap: round;
-    transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
+    opacity: 0.7;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
   }
   .edge-line.intra-active {
-    stroke: #2563EB;
-    stroke-width: 2.4;
+    stroke: #64748B;
+    stroke-width: 1.8;
+    opacity: 0.7;
   }
   .edge-line.intra-restricted {
-    stroke: #475569;
-    stroke-dasharray: 5 4;
-    stroke-width: 2.0;
+    stroke: #64748B;
+    stroke-dasharray: 4 4;
+    stroke-width: 1.6;
+    opacity: 0.6;
   }
   .edge-line.gateway-link {
-    stroke: #6366F1;
-    stroke-width: 2.6;
-    stroke-dasharray: 6 4;
+    stroke: #818CF8;
+    stroke-dasharray: 5 4;
+    stroke-width: 2.0;
+    opacity: 0.7;
   }
   .edge-line.gateway-bridge {
     stroke: #7C3AED;
-    stroke-width: 3.8;
-    stroke-dasharray: 9 5;
+    stroke-dasharray: 8 5;
+    stroke-width: 2.6;
+    opacity: 0.7;
     animation: flowDash 20s linear infinite;
   }
   @keyframes flowDash { to { stroke-dashoffset: -100; } }
 
-  /* Strong Highlighting on Selected & Connected Edges */
+  /* Strong Highlighting ONLY when Node is Selected */
   .edge-line.highlighted {
     stroke: #0284C7 !important;
-    stroke-width: 5.0 !important;
+    stroke-width: 4.8 !important;
     stroke-dasharray: none !important;
+    opacity: 1 !important;
     filter: drop-shadow(0 0 10px rgba(2, 132, 199, 0.95));
   }
-  /* Unselected edges stay clearly visible and sharp (no invisible #E2E8F0) */
+  /* Unselected edges in selection mode remain at that exact moderate subtle tone */
   .edge-line.dimmed {
     stroke: #64748B !important;
-    stroke-width: 2.0 !important;
-    opacity: 0.75 !important;
+    stroke-width: 1.8 !important;
+    opacity: 0.7 !important;
   }
 
   /* Interactive Agent Nodes (Solid, Crisp, High-Contrast) */
@@ -910,7 +916,7 @@
     font-weight: 750;
     fill: #0F172A;
     text-anchor: middle;
-    pointer-events: none;
+    cursor: pointer;
     paint-order: stroke fill;
     stroke: #FFFFFF;
     stroke-width: 3px;
@@ -1668,36 +1674,36 @@
           }
         }
 
-        // Calculate spiral/radial position inside circle
+        // Calculate radial orbit positions with non-overlapping spacing
         let nx, ny;
         if (cfg.count <= 6) {
           const angle = (i / cfg.count) * Math.PI * 2;
-          const rad = cfg.r * 0.52;
+          const rad = cfg.r * 0.54;
           nx = cfg.cx + Math.cos(angle) * rad;
           ny = cfg.cy + Math.sin(angle) * rad;
         } else if (cfg.count <= 15) {
           if (i === 0) { nx = cfg.cx; ny = cfg.cy; }
           else {
             const angle = ((i - 1) / (cfg.count - 1)) * Math.PI * 2;
-            const rad = cfg.r * (i % 2 === 0 ? 0.65 : 0.45);
+            const rad = cfg.r * (i % 2 === 0 ? 0.72 : 0.44);
             nx = cfg.cx + Math.cos(angle) * rad;
             ny = cfg.cy + Math.sin(angle) * rad;
           }
         } else {
-          // Large swarms (18, 22, 30): 3 concentric orbits
+          // Large swarms (18, 22, 30): 3 well-separated concentric orbits
           if (i === 0) { nx = cfg.cx; ny = cfg.cy; }
-          else if (i < 8) {
-            const angle = (i / 7) * Math.PI * 2;
+          else if (i <= 6) {
+            const angle = ((i - 1) / 6) * Math.PI * 2;
             nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.32);
             ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.32);
-          } else if (i < 18) {
-            const angle = ((i - 8) / 10) * Math.PI * 2;
+          } else if (i <= 16) {
+            const angle = ((i - 7) / 10) * Math.PI * 2 + 0.32;
             nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.62);
             ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.62);
           } else {
-            const angle = ((i - 18) / (cfg.count - 18)) * Math.PI * 2;
-            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.84);
-            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.84);
+            const angle = ((i - 17) / (cfg.count - 17)) * Math.PI * 2 + 0.16;
+            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.86);
+            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.86);
           }
         }
 
@@ -1794,7 +1800,7 @@
         html += `<path id="${edge.id}" d="${edge.d}" class="edge-line ${edge.type}" />`;
       });
 
-      // 3. Render Agent Nodes
+      // 3. Render Agent Nodes (With Large Invisible Hit Target for 100% Reliable Clicks)
       Object.keys(TOPOLOGY_NODES).forEach(nodeId => {
         const node = TOPOLOGY_NODES[nodeId];
         if (node.type === 'gateway-bridge') {
@@ -1802,9 +1808,11 @@
           if (gwCfg) {
             html += `
               <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+                <!-- Large 45px Hit Area -->
+                <circle cx="${gwCfg.x}" cy="${gwCfg.y + 16}" r="45" fill="transparent" style="cursor:pointer;" />
                 <circle cx="${gwCfg.x}" cy="${gwCfg.y}" r="24" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
                 <circle cx="${gwCfg.x + 18}" cy="${gwCfg.y - 18}" r="5" fill="#7C3AED" stroke="#FFFFFF" stroke-width="1.5" />
-                <text x="${gwCfg.x}" y="${gwCfg.y + 5}" font-size="14" text-anchor="middle">🌐</text>
+                <text x="${gwCfg.x}" y="${gwCfg.y + 5}" font-size="14" text-anchor="middle" style="cursor:pointer;">🌐</text>
                 <text x="${gwCfg.x}" y="${gwCfg.y + 40}" class="node-title" fill="#7C3AED">${nodeId}</text>
               </g>
             `;
@@ -1813,9 +1821,11 @@
           const isOnline = node.status === 'Online';
           html += `
             <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+              <!-- Large 38px Hit Area covering circle, icon, and text label -->
+              <circle cx="${node.x}" cy="${node.y + 12}" r="38" fill="transparent" style="cursor:pointer;" />
               <circle cx="${node.x}" cy="${node.y}" r="16" class="node-circle" filter="url(#nodeShadow)" />
               <circle cx="${node.x + 13}" cy="${node.y - 13}" r="3.8" fill="${isOnline ? '#059669' : '#0284C7'}" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="${node.x}" y="${node.y + 4}" font-size="10" text-anchor="middle">${node.icon || '🤖'}</text>
+              <text x="${node.x}" y="${node.y + 4}" font-size="10" text-anchor="middle" style="cursor:pointer;">${node.icon || '🤖'}</text>
               <text x="${node.x}" y="${node.y + 28}" class="node-title">${node.identity}</text>
             </g>
           `;
@@ -1915,24 +1925,42 @@
       const viewport = document.getElementById('canvasViewport');
       if (!viewport) return;
 
-      // Mouse Pan (Drag)
+      let isMouseDown = false;
+      let startMouseX = 0;
+      let startMouseY = 0;
+      let hasDragged = false;
+
+      // Mouse Pan (Drag with 4px threshold)
       viewport.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.node-group')) return; // Allow node clicking
-        isDragging = true;
+        if (e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls')) return;
+        isMouseDown = true;
+        hasDragged = false;
+        isDragging = false;
+        startMouseX = e.clientX;
+        startMouseY = e.clientY;
         dragStartX = e.clientX - panX;
         dragStartY = e.clientY - panY;
-        viewport.classList.add('is-dragging');
       });
 
       window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        panX = e.clientX - dragStartX;
-        panY = e.clientY - dragStartY;
-        applyCanvasTransform();
+        if (!isMouseDown) return;
+        const dx = e.clientX - startMouseX;
+        const dy = e.clientY - startMouseY;
+        if (!hasDragged && Math.hypot(dx, dy) > 4) {
+          hasDragged = true;
+          isDragging = true;
+          viewport.classList.add('is-dragging');
+        }
+        if (isDragging) {
+          panX = e.clientX - dragStartX;
+          panY = e.clientY - dragStartY;
+          applyCanvasTransform();
+        }
       });
 
       window.addEventListener('mouseup', () => {
-        isDragging = false;
+        isMouseDown = false;
+        setTimeout(() => { isDragging = false; hasDragged = false; }, 40);
         if (viewport) viewport.classList.remove('is-dragging');
       });
 
@@ -1959,6 +1987,7 @@
 
       // Canvas background click (Outside nodes, edges, and overlay) -> Deselect
       viewport.addEventListener('click', (e) => {
+        if (hasDragged || isDragging) return;
         if (e.target.closest('.node-group') || e.target.closest('.node-side-overlay') || e.target.closest('.canvas-hud-controls')) {
           return;
         }
