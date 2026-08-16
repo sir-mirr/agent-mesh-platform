@@ -746,7 +746,7 @@
       <div class="preview-nav">
         <button class="preview-btn active" onclick="switchView('home')" data-i18n="nav_home">1. Home & Login</button>
         <button class="preview-btn" onclick="switchView('admin')" data-i18n="nav_admin">2. Platform Admin Console</button>
-        <button class="preview-btn" onclick="switchView('creator')" data-i18n="nav_creator">3. Agent Creator Dashboard</button>
+        <button class="preview-btn" onclick="switchView('creator')" data-i18n="nav_creator">3. Agent Operations Console</button>
       </div>
 
       <!-- Language Switcher Combo Box -->
@@ -969,13 +969,13 @@
     </div>
   </main>
 
-  <!-- VIEW 3: AGENT CREATOR DASHBOARD -->
+  <!-- VIEW 3: AGENT OPERATIONS CONSOLE -->
   <main id="view-creator" class="preview-view">
     <div class="admin-header-row">
       <div>
-        <h1 class="admin-header-title" data-i18n="creator_title">Agent Creator Dashboard</h1>
+        <h1 class="admin-header-title" data-i18n="creator_title">Agent Operations Console</h1>
         <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">
-          <span data-i18n="creator_logged_as">Logged in as</span> <strong style="color:var(--primary);">alice_dev (Creator)</strong>
+          <span data-i18n="creator_logged_as">Logged in as</span> <strong style="color:var(--primary);">alice_dev (Agent Operator)</strong>
         </p>
       </div>
       <button class="btn btn-primary btn-sm" onclick="alert('Register agent dialog will open.')" data-i18n="btn_register_agent">+ Register Agent</button>
@@ -1070,7 +1070,7 @@
       en: {
         nav_home: "1. Home & Login",
         nav_admin: "2. Platform Admin Console",
-        nav_creator: "3. Agent Creator Dashboard",
+        nav_creator: "3. Agent Operations Console",
         hero_eyebrow: "Next-Gen Autonomous Agent Mesh Fabric",
         hero_tagline: "The Secure, Verified Communication Backbone for Autonomous AI Agents",
         hero_desc: "Enable asynchronous, cryptographic message routing across autonomous AI agents with end-to-end identity verification, immutable audit logging, and zero persistent infrastructure overhead.",
@@ -1116,7 +1116,7 @@
         badge_pending_count: "3 Pending",
         inbox_notice: "ℹ <strong>Access Separation Principle:</strong> Message bodies are withheld from the queue inspector to protect payload privacy. Full text is accessible only under audited chat inspections.",
         audit_header: "Live Chat Audits (SSE Feed)",
-        creator_title: "Agent Creator Dashboard",
+        creator_title: "Agent Operations Console",
         creator_logged_as: "Logged in as",
         btn_register_agent: "+ Register Agent",
         my_agents_title: "My Registered Agents",
@@ -1136,7 +1136,7 @@
       ko: {
         nav_home: "1. 홈 & 로그인",
         nav_admin: "2. 플랫폼 관리자 콘솔",
-        nav_creator: "3. 에이전트 생성자 대시보드",
+        nav_creator: "3. 에이전트 운영 콘솔",
         hero_eyebrow: "차세대 자율 에이전트 통신 패브릭",
         hero_tagline: "자율 AI 에이전트를 위한 안전한 통신 백본 & 신원 검증 플랫폼",
         hero_desc: "상시 상주 데몬 없이도 자율 AI 에이전트 간 암호학적 메시지 라우팅, 철저한 신원 검증 및 실시간 불변 감사 로깅을 안전하게 제공합니다.",
@@ -1182,8 +1182,8 @@
         badge_pending_count: "3건 대기 (Pending)",
         inbox_notice: "ℹ <strong>접근 권한 분리 원칙:</strong> 메시지 본문은 인박스 큐 조회에서 노출되지 않으며, 감사 로그(Chat Audits)를 통해서만 인가된 열람이 가능합니다.",
         audit_header: "실시간 메시지 감사 스트림 (SSE Feed)",
-        creator_title: "에이전트 생성자 대시보드",
-        creator_logged_as: "현재 접속자:",
+        creator_title: "에이전트 운영 콘솔 (Agent Operations)",
+        creator_logged_as: "현재 운영자:",
         btn_register_agent: "+ 에이전트 등록",
         my_agents_title: "내 등록 에이전트",
         my_agents_subtitle: "등록된 활성 에이전트 2개",
