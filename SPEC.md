@@ -1582,6 +1582,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
 | DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
 | GET    | `/api/v1/admin/inbox`             | JWT\*  | `200`   | Queue depth per identity (§ 9.2.1). No message bodies. |
+| GET    | `/api/v1/admin/agent-sources`     | JWT\*  | `200`   | Where identities have been observed connecting from (§ 8.11). Carries `observed_source` for the deployment — it is not a per-row property — and the qualifier that makes `forwarded` values evidence. |
 | GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |

@@ -775,3 +775,62 @@ describe("capabilities gate the routes", () => {
     expect((await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`)).status).toBe(401);
   });
 });
+
+/**
+ * SPEC § 8.11 read side. Built to the shape `platform-fe-antigravity` needed
+ * (mail #171) — screen design first, then the route to fit it, which is the
+ * order that avoids an API nobody can draw.
+ */
+describe("the observed sources are readable by an operator", () => {
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const asAdmin = (path: string) =>
+    fetch(`${mesh.http.url}${path}`, { headers: { cookie: adminCookie } });
+
+  test("rows come back, and the deployment mode comes with them", async () => {
+    const kp = newKeyPair();
+    await provision(mesh.hub, "asrc-one", "ai-claude", null, kp.publicKey);
+    await decide("approve", kp.fingerprint);
+    await callHttp(mesh.hub, { kid: kp.fingerprint, privateKey: kp.privateKey }, "mesh.list_agents", {});
+
+    const body = await (await asAdmin("/api/v1/admin/agent-sources?identity=asrc-one")).json();
+    expect(body.ok).toBe(true);
+    expect(body.sources.map((s: any) => s.observed)).toContain("127.0.0.1");
+    // The mode is read from the hub that is answering, not from a constant in
+    // this process — the two are configured separately.
+    expect(body.observed_source).toBe("socket");
+    expect(body.evidence_note).toContain("kernel-observed");
+  });
+
+  test("the mode is not a per-row column, because it cannot vary per row", async () => {
+    // A column would suggest a distinction that does not exist, and an
+    // operator would read evidence into rows that have none.
+    const body = await (await asAdmin("/api/v1/admin/agent-sources")).json();
+    expect(Array.isArray(body.sources)).toBe(true);
+    for (const row of body.sources) {
+      expect(Object.keys(row).sort()).toEqual(
+        ["first_seen", "identity", "last_seen", "observed", "requests"],
+      );
+    }
+  });
+
+  test("it has its own capability, not audit.read.metadata", async () => {
+    // Where every agent runs is a network fact about someone's hosts. An
+    // operator entitled to a trail is not automatically entitled to that.
+    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='source.read'`).run());
+    const refused = await asAdmin("/api/v1/admin/agent-sources");
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).capability).toBe("source.read");
+    // The audit trail is a different grant and must still answer.
+    expect((await asAdmin("/api/v1/audit/events")).status).toBe(200);
+    withDb((db) => db.prepare(
+      `INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+       VALUES ('default','admin','source.read','*','test') ON CONFLICT DO NOTHING`).run());
+  });
+
+  test("a malformed identity is refused rather than matched", async () => {
+    expect((await asAdmin("/api/v1/admin/agent-sources?identity=../etc")).status).toBe(400);
+  });
+});
