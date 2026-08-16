@@ -142,12 +142,6 @@
     100% { transform: translate(40px, 30px) scale(1.1); }
   }
 
-  /* --- Content Layering --- */
-  .preview-control-bar, .preview-view, .modal-backdrop {
-    position: relative;
-    z-index: 10;
-  }
-
   /* --- Top Navigation Header --- */
   .preview-control-bar {
     background: #FFFFFF;
@@ -249,7 +243,7 @@
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
   }
 
-  .preview-view { display: none; padding: 36px 24px; max-width: 1480px; width: 100%; margin: 0 auto; flex: 1; }
+  .preview-view { display: none; padding: 24px 20px; max-width: 1540px; width: 100%; margin: 0 auto; flex: 1; }
   .preview-view.active { display: block; animation: slideUpFade 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
 
   @keyframes slideUpFade {
@@ -666,7 +660,7 @@
   .audit-msg-content { color: var(--text-primary); flex: 1; }
 
   /* ==========================================================================
-     VIEW 3: AGENT OPERATIONS CONSOLE (DYNAMIC SIZING: 5, 30, 15 AGENTS)
+     VIEW 3: AGENT OPERATIONS CONSOLE (10 CLUSTERS & PINCH-TO-ZOOM / PAN)
      ========================================================================== */
   .topology-card {
     background: #FFFFFF;
@@ -675,9 +669,10 @@
     box-shadow: var(--shadow-sm);
     overflow: hidden;
     margin-bottom: 24px;
+    position: relative;
   }
   .topology-toolbar {
-    padding: 14px 20px;
+    padding: 12px 20px;
     background: #FFFFFF;
     border-bottom: 1px solid var(--border-default);
     display: flex;
@@ -690,16 +685,20 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    overflow-x: auto;
+    max-width: 820px;
+    padding-bottom: 2px;
   }
   .topology-filter-btn {
     background: var(--bg-surface-sub);
     border: 1px solid var(--border-default);
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    padding: 5px 12px;
+    padding: 4px 10px;
     border-radius: var(--radius-full);
     cursor: pointer;
+    white-space: nowrap;
     transition: all 0.15s ease;
   }
   .topology-filter-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
@@ -712,42 +711,86 @@
   .topology-legend {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     font-size: 0.75rem;
     color: var(--text-secondary);
     font-weight: 500;
   }
   .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-  /* SVG Topology Container */
+  /* Interactive Canvas Container with Pan & Zoom Drag */
   .topology-canvas-wrap {
     position: relative;
-    background: #FAFAFC;
-    padding: 20px;
-    overflow-x: auto;
-    min-height: 600px;
+    background: #F8FAFC;
+    overflow: hidden;
+    height: 640px;
+    width: 100%;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .topology-canvas-wrap.is-dragging {
+    cursor: grabbing !important;
+  }
+
+  #topologySvg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    transform-origin: 0 0;
+  }
+
+  /* Floating Zoom HUD Controls (Bottom-Right of Canvas) */
+  .canvas-hud-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 4px 8px;
+    box-shadow: var(--shadow-md);
+    z-index: 50;
+  }
+  .hud-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 700;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.15s ease;
   }
-  #topologySvg {
-    width: 100%;
-    height: auto;
-    max-height: 720px;
-    display: block;
+  .hud-btn:hover {
+    background: var(--bg-surface-sub);
+    color: var(--primary);
+  }
+  .hud-scale-text {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 44px;
+    text-align: center;
   }
 
-  /* SVG Circular Clusters (Dynamic Sizes) */
+  /* SVG Cluster Containers & Explicit Edges */
   .group-circle {
-    fill-opacity: 0.35;
+    fill-opacity: 0.32;
     stroke-width: 1.8;
     stroke-dasharray: 6 5;
     transition: all 0.3s ease;
   }
-  .group-circle-core { fill: #EFF6FF; stroke: #93C5FD; }
-  .group-circle-research { fill: #ECFDF5; stroke: #A7F3D0; }
-  .group-circle-delivery { fill: #F5F3FF; stroke: #DDD6FE; }
-
   .group-badge-rect {
     fill: #FFFFFF;
     stroke-width: 1;
@@ -755,13 +798,13 @@
   }
   .group-label-text {
     font-family: var(--font-ui);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
     text-anchor: middle;
     letter-spacing: -0.01em;
   }
 
-  /* Edge Lines (Strict fill:none to prevent black fills) */
+  /* Edges (Strict fill:none) */
   .edge-line {
     fill: none !important;
     stroke: #94A3B8;
@@ -789,19 +832,15 @@
     stroke-dasharray: 7 4;
     animation: flowDash 20s linear infinite;
   }
-  @keyframes flowDash {
-    to { stroke-dashoffset: -100; }
-  }
+  @keyframes flowDash { to { stroke-dashoffset: -100; } }
 
   .edge-line.highlighted {
     stroke: #2563EB !important;
-    stroke-width: 3 !important;
+    stroke-width: 3.2 !important;
     stroke-dasharray: none !important;
-    filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.4));
+    filter: drop-shadow(0 0 5px rgba(37, 99, 235, 0.4));
   }
-  .edge-line.dimmed {
-    opacity: 0.15;
-  }
+  .edge-line.dimmed { opacity: 0.12; }
 
   /* Interactive Agent Nodes (Smooth In-Place Scale Hover) */
   .node-group {
@@ -811,16 +850,14 @@
     transition: transform 0.15s ease, opacity 0.2s ease;
   }
   .node-group:hover {
-    transform: scale(1.18);
+    transform: scale(1.22);
   }
   .node-group.active-selected .node-circle {
     stroke: var(--primary) !important;
     stroke-width: 3.5 !important;
     filter: drop-shadow(0 3px 8px rgba(37, 99, 235, 0.35));
   }
-  .node-group.dimmed {
-    opacity: 0.22;
-  }
+  .node-group.dimmed { opacity: 0.18; }
 
   .node-circle {
     fill: #FFFFFF;
@@ -836,7 +873,7 @@
 
   .node-title {
     font-family: var(--font-ui);
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 700;
     fill: #0F172A;
     text-anchor: middle;
@@ -1077,7 +1114,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-card-label" data-i18n="stat_agents_label">Active Agents</div>
-        <div class="stat-card-value">53 <span class="stat-card-sub" data-i18n="stat_agents_sub">registered</span></div>
+        <div class="stat-card-value">139 <span class="stat-card-sub" data-i18n="stat_agents_sub">(10 clusters)</span></div>
       </div>
       <div class="stat-card">
         <div class="stat-card-label" data-i18n="stat_quota_label">Hub Status</div>
@@ -1207,7 +1244,7 @@
     </div>
   </main>
 
-  <!-- VIEW 3: AGENT OPERATIONS CONSOLE (TOPOLOGY: DYNAMIC CLUSTER SIZING) -->
+  <!-- VIEW 3: AGENT OPERATIONS CONSOLE (10 CLUSTERS & PINCH-TO-ZOOM / PAN ENGINE) -->
   <main id="view-creator" class="preview-view">
     <div class="admin-header-row">
       <div>
@@ -1228,33 +1265,47 @@
       <button class="tab-nav-btn" id="tabBtnPlayground" onclick="switchOperatorTab('playground')" data-i18n="tab_playground">📋 My Agents & Message Playground</button>
     </div>
 
-    <!-- TAB 1: DYNAMIC SIZING TOPOLOGY GRAPH (5, 30, 15 AGENTS + 3 GATEWAYS) -->
+    <!-- TAB 1: 10 CLUSTERS TOPOLOGY GRAPH WITH PAN & PINCH-TO-ZOOM -->
     <div id="operator-panel-topology">
       <div class="topology-card">
-        <!-- Toolbar & Filters -->
+        <!-- Toolbar & Cluster Focus Filters -->
         <div class="topology-toolbar">
           <div class="topology-filters">
-            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-right:6px;" data-i18n="label_filter_group">Swarm Clusters:</span>
-            <button class="topology-filter-btn active" onclick="filterTopologyGroup('all', this)" data-i18n="filter_all">All Clusters (50 Agents + 3 Gateways)</button>
-            <button class="topology-filter-btn" onclick="filterTopologyGroup('core', this)" data-i18n="filter_core">Core Platform (5)</button>
-            <button class="topology-filter-btn" onclick="filterTopologyGroup('research', this)" data-i18n="filter_research">Research Swarm (30)</button>
-            <button class="topology-filter-btn" onclick="filterTopologyGroup('delivery', this)" data-i18n="filter_delivery">Delivery Mesh (15)</button>
+            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-right:4px;" data-i18n="label_filter_group">Swarm Galaxies:</span>
+            <button class="topology-filter-btn active" onclick="focusCluster('all', this)" data-i18n="filter_all">All (10 Swarms · 139 Nodes)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('core', this)">Core Hub (5)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('research', this)">Research (30)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('delivery', this)">Delivery (15)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('security', this)">Security (8)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('data', this)">Data ETL (18)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('edge', this)">Edge IoT (22)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('human', this)">Human (4)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('refactor', this)">Refactor (12)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('vision', this)">Vision (9)</button>
+            <button class="topology-filter-btn" onclick="focusCluster('audit', this)">Audit Hive (6)</button>
           </div>
 
-          <!-- Legend -->
           <div class="topology-legend">
             <span><span class="legend-dot" style="background:#059669;"></span> <span data-i18n="legend_online">Online</span></span>
             <span><span class="legend-dot" style="background:#0284C7;"></span> <span data-i18n="legend_socketless">Socketless</span></span>
-            <span><span class="legend-dot" style="background:#7C3AED;"></span> <span data-i18n="legend_gateway">Gateway (External)</span></span>
-            <span><span style="display:inline-block; width:14px; height:2px; background:#60A5FA; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_active_edge">Active Edge</span></span>
-            <span><span style="display:inline-block; width:14px; height:2px; border-top:2px dashed #CBD5E1; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_restricted_edge">Restricted</span></span>
-            <span><span style="display:inline-block; width:14px; height:3px; background:#7C3AED; vertical-align:middle; margin-right:4px;"></span> <span data-i18n="legend_bridge">Gateway Highway</span></span>
+            <span><span class="legend-dot" style="background:#7C3AED;"></span> <span data-i18n="legend_gateway">Gateway 🌐</span></span>
+            <span><span style="display:inline-block; width:12px; height:2px; background:#60A5FA; vertical-align:middle;"></span> <span data-i18n="legend_active_edge">Active</span></span>
+            <span><span style="display:inline-block; width:12px; height:3px; background:#7C3AED; vertical-align:middle;"></span> <span data-i18n="legend_bridge">Highway</span></span>
           </div>
         </div>
 
-        <!-- Interactive SVG Canvas with Variable Sized Clusters -->
-        <div class="topology-canvas-wrap">
-          <svg id="topologySvg" viewBox="0 0 1440 740" preserveAspectRatio="xMidYMid meet">
+        <!-- Interactive Canvas Wrapper with Trackpad Pinch-Zoom & Mouse Drag Pan -->
+        <div id="canvasViewport" class="topology-canvas-wrap">
+          <!-- Floating Mini Zoom HUD Controls -->
+          <div class="canvas-hud-controls">
+            <button class="hud-btn" onclick="zoomBy(1.25)" title="Zoom In">+</button>
+            <span class="hud-scale-text" id="hudScaleDisplay">55%</span>
+            <button class="hud-btn" onclick="zoomBy(0.8)" title="Zoom Out">−</button>
+            <button class="hud-btn" onclick="resetCanvasTransform()" title="Fit All (10 Galaxies)">⤢</button>
+          </div>
+
+          <!-- SVG Canvas Container -->
+          <svg id="topologySvg" viewBox="0 0 3100 1700">
             <defs>
               <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
                 <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.08"/>
@@ -1264,490 +1315,9 @@
               </filter>
             </defs>
 
-            <!-- ================= 3 VARIABLE SIZED CLUSTERS ================= -->
-            <!-- Group 1: Core Platform Hub (Small: 5 Nodes, Center: 180, 260, r=125) -->
-            <g id="group-core" class="cluster-group">
-              <circle cx="180" cy="260" r="125" class="group-circle group-circle-core" />
-              <rect x="80" y="85" width="200" height="26" rx="13" ry="13" class="group-badge-rect" stroke="#93C5FD" />
-              <text x="180" y="102" class="group-label-text" fill="#1E40AF">Core Platform (5 Nodes)</text>
-            </g>
-
-            <!-- Group 2: Research & Reasoning Swarm (Massive: 30 Nodes, Center: 680, 260, r=245) -->
-            <g id="group-research" class="cluster-group">
-              <circle cx="680" cy="260" r="245" class="group-circle group-circle-research" />
-              <rect x="540" y="24" width="280" height="26" rx="13" ry="13" class="group-badge-rect" stroke="#A7F3D0" />
-              <text x="680" y="41" class="group-label-text" fill="#065F46">Research & Reasoning Swarm (30 Nodes)</text>
-            </g>
-
-            <!-- Group 3: Execution & Delivery Mesh (Medium: 15 Nodes, Center: 1220, 260, r=175) -->
-            <g id="group-delivery" class="cluster-group">
-              <circle cx="1220" cy="260" r="175" class="group-circle group-circle-delivery" />
-              <rect x="1095" y="45" width="250" height="26" rx="13" ry="13" class="group-badge-rect" stroke="#DDD6FE" />
-              <text x="1220" y="62" class="group-label-text" fill="#5B21B6">Execution & Delivery Mesh (15 Nodes)</text>
-            </g>
-
-            <!-- ================= EXPLICIT COMMUNICATION EDGES ================= -->
-            
-            <!-- Group 1 (Core - 5 nodes) Intra-Edges -->
-            <path id="e-c-claude-fe" d="M 180 200 L 130 260" class="edge-line intra-active" />
-            <path id="e-c-claude-auth" d="M 180 200 L 230 260" class="edge-line intra-active" />
-            <path id="e-c-fe-audit" d="M 130 260 L 150 330" class="edge-line intra-active" />
-            <path id="e-c-auth-key" d="M 230 260 L 210 330" class="edge-line intra-active" />
-            <path id="e-c-audit-key" d="M 150 330 L 210 330" class="edge-line intra-active" />
-            <!-- Core Gateway Links -->
-            <path id="e-core-gw-1" d="M 150 330 L 180 590" class="edge-line gateway-link" />
-            <path id="e-core-gw-2" d="M 210 330 L 180 590" class="edge-line gateway-link" />
-
-            <!-- Group 2 (Research - 30 nodes) Concentric Intra-Edges -->
-            <!-- Inner Orbits -->
-            <path id="e-r-lead-orch" d="M 680 190 L 630 230" class="edge-line intra-active" />
-            <path id="e-r-lead-hypo" d="M 680 190 L 730 230" class="edge-line intra-active" />
-            <path id="e-r-orch-sum" d="M 630 230 L 630 290" class="edge-line intra-active" />
-            <path id="e-r-hypo-eval" d="M 730 230 L 730 290" class="edge-line intra-active" />
-            <path id="e-r-sum-crit" d="M 630 290 L 680 320" class="edge-line intra-active" />
-            <path id="e-r-eval-crit" d="M 730 290 L 680 320" class="edge-line intra-active" />
-
-            <!-- Middle Orbit Links (RAG & Embeddings) -->
-            <path id="e-r-orch-rag1" d="M 630 230 L 560 170" class="edge-line intra-active" />
-            <path id="e-r-orch-rag2" d="M 630 230 L 530 240" class="edge-line intra-active" />
-            <path id="e-r-hypo-rag3" d="M 730 230 L 800 170" class="edge-line intra-active" />
-            <path id="e-r-hypo-rag4" d="M 730 230 L 830 240" class="edge-line intra-active" />
-            <path id="e-r-sum-rag5" d="M 630 290 L 560 350" class="edge-line intra-active" />
-            <path id="e-r-eval-rag6" d="M 730 290 L 800 350" class="edge-line intra-active" />
-            <path id="e-r-rag1-vec1" d="M 560 170 L 610 130" class="edge-line intra-active" />
-            <path id="e-r-rag3-vec2" d="M 800 170 L 750 130" class="edge-line intra-active" />
-            <path id="e-r-rag2-emb1" d="M 530 240 L 530 300" class="edge-line intra-active" />
-            <path id="e-r-rag4-emb2" d="M 830 240 L 830 300" class="edge-line intra-active" />
-            <path id="e-r-crit-kg" d="M 680 320 L 640 380" class="edge-line intra-active" />
-            <path id="e-r-crit-ent" d="M 680 320 L 720 380" class="edge-line intra-active" />
-
-            <!-- Outer Orbit Links (Crawlers, Indexers, Verifiers) -->
-            <path id="e-r-vec1-craw1" d="M 610 130 L 530 90" class="edge-line intra-active" />
-            <path id="e-r-vec1-craw2" d="M 610 130 L 600 70" class="edge-line intra-active" />
-            <path id="e-r-vec2-craw3" d="M 750 130 L 760 70" class="edge-line intra-active" />
-            <path id="e-r-vec2-craw4" d="M 750 130 L 830 90" class="edge-line intra-active" />
-            <path id="e-r-emb1-idx1" d="M 530 300 L 460 210" class="edge-line intra-active" />
-            <path id="e-r-emb1-idx2" d="M 530 300 L 460 290" class="edge-line intra-active" />
-            <path id="e-r-emb2-idx3" d="M 830 300 L 900 210" class="edge-line intra-active" />
-            <path id="e-r-emb2-idx4" d="M 830 300 L 900 290" class="edge-line intra-active" />
-            <path id="e-r-kg-fact1" d="M 640 380 L 530 420" class="edge-line intra-active" />
-            <path id="e-r-kg-fact2" d="M 640 380 L 600 450" class="edge-line intra-active" />
-            <path id="e-r-ent-cite" d="M 720 380 L 760 450" class="edge-line intra-active" />
-            <path id="e-r-ent-bench" d="M 720 380 L 830 420" class="edge-line intra-active" />
-
-            <!-- Research Gateway Links -->
-            <path id="e-res-gw-1" d="M 600 450 L 680 590" class="edge-line gateway-link" />
-            <path id="e-res-gw-2" d="M 760 450 L 680 590" class="edge-line gateway-link" />
-            <path id="e-res-gw-3" d="M 680 320 L 680 590" class="edge-line gateway-link" />
-
-            <!-- Group 3 (Delivery - 15 nodes) Intra-Edges -->
-            <path id="e-d-lead-dep" d="M 1220 180 L 1220 250" class="edge-line intra-active" />
-            <path id="e-d-dep-rel" d="M 1220 250 L 1220 330" class="edge-line intra-active" />
-            <path id="e-d-lead-ci1" d="M 1220 180 L 1150 180" class="edge-line intra-active" />
-            <path id="e-d-dep-ci2" d="M 1220 250 L 1130 250" class="edge-line intra-active" />
-            <path id="e-d-rel-ci3" d="M 1220 330 L 1150 320" class="edge-line intra-active" />
-            <path id="e-d-ci1-web" d="M 1150 180 L 1170 120" class="edge-line intra-active" />
-            <path id="e-d-ci3-art" d="M 1150 320 L 1160 380" class="edge-line intra-active" />
-            <path id="e-d-lead-rec" d="M 1220 180 L 1290 180" class="edge-line intra-active" />
-            <path id="e-d-dep-bat" d="M 1220 250 L 1310 250" class="edge-line intra-active" />
-            <path id="e-d-rel-que" d="M 1220 330 L 1290 320" class="edge-line intra-active" />
-            <path id="e-d-rec-slk" d="M 1290 180 L 1270 120" class="edge-line intra-active" />
-            <path id="e-d-slk-disc" d="M 1270 120 L 1220 120" class="edge-line intra-active" />
-            <path id="e-d-que-tel" d="M 1290 320 L 1280 380" class="edge-line intra-active" />
-            <path id="e-d-tel-log" d="M 1280 380 L 1220 390" class="edge-line intra-active" />
-
-            <!-- Delivery Gateway Links -->
-            <path id="e-del-gw-1" d="M 1220 330 L 1220 590" class="edge-line gateway-link" />
-            <path id="e-del-gw-2" d="M 1280 380 L 1220 590" class="edge-line gateway-link" />
-            <path id="e-del-gw-3" d="M 1160 380 L 1220 590" class="edge-line gateway-link" />
-
-            <!-- ================= INTER-GATEWAY HIGHWAY BRIDGES (OUTSIDE GROUPS) ================= -->
-            <!-- Bridge 1: Hub Gateway (180,590) <-> Research Gateway (680,590) -->
-            <path id="b-hub-res" d="M 180 590 L 680 590" class="edge-line gateway-bridge" />
-            <!-- Bridge 2: Research Gateway (680,590) <-> Delivery Gateway (1220,590) -->
-            <path id="b-res-del" d="M 680 590 L 1220 590" class="edge-line gateway-bridge" />
-            <!-- Bridge 3: Hub Gateway (180,590) <-> Delivery Gateway (1220,590) - Under Arc -->
-            <path id="b-hub-del" d="M 180 590 Q 680 700 1220 590" class="edge-line gateway-bridge" />
-
-            <!-- ================= GROUP 1: CORE PLATFORM (5 NODES) ================= -->
-            <g id="node-platform-claude" class="node-group" onclick="selectTopologyNode('platform-claude')">
-              <circle cx="180" cy="200" r="18" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="194" cy="186" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="180" y="204" font-size="11" text-anchor="middle">🤖</text>
-              <text x="180" y="228" class="node-title">platform-claude</text>
-            </g>
-
-            <g id="node-fe-antigravity" class="node-group" onclick="selectTopologyNode('fe-antigravity')">
-              <circle cx="130" cy="260" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="143" cy="247" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="130" y="264" font-size="11" text-anchor="middle">💻</text>
-              <text x="130" y="287" class="node-title">fe-antigravity</text>
-            </g>
-
-            <g id="node-auth-guardian" class="node-group" onclick="selectTopologyNode('auth-guardian')">
-              <circle cx="230" cy="260" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="243" cy="247" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="230" y="264" font-size="11" text-anchor="middle">🛡</text>
-              <text x="230" y="287" class="node-title">auth-guard</text>
-            </g>
-
-            <g id="node-audit-logger" class="node-group" onclick="selectTopologyNode('audit-logger')">
-              <circle cx="150" cy="330" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="163" cy="317" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="150" y="334" font-size="11" text-anchor="middle">📜</text>
-              <text x="150" y="357" class="node-title">audit-logger</text>
-            </g>
-
-            <g id="node-key-sentinel" class="node-group" onclick="selectTopologyNode('key-sentinel')">
-              <circle cx="210" cy="330" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="223" cy="317" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="210" y="334" font-size="11" text-anchor="middle">🔑</text>
-              <text x="210" y="357" class="node-title">key-sentinel</text>
-            </g>
-
-            <!-- ================= GROUP 2: RESEARCH SWARM (30 NODES) ================= -->
-            <!-- Inner Orbit (6) -->
-            <g id="node-deep-researcher" class="node-group" onclick="selectTopologyNode('deep-researcher')">
-              <circle cx="680" cy="190" r="18" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="694" cy="176" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="680" y="194" font-size="11" text-anchor="middle">🔬</text>
-              <text x="680" y="217" class="node-title">deep-researcher</text>
-            </g>
-
-            <g id="node-reason-orch" class="node-group" onclick="selectTopologyNode('reason-orch')">
-              <circle cx="630" cy="230" r="16" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="642" cy="218" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="630" y="234" font-size="10" text-anchor="middle">🧠</text>
-              <text x="630" y="255" class="node-title">reason-orch</text>
-            </g>
-
-            <g id="node-hypo-gen" class="node-group" onclick="selectTopologyNode('hypo-gen')">
-              <circle cx="730" cy="230" r="16" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="742" cy="218" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="730" y="234" font-size="10" text-anchor="middle">💡</text>
-              <text x="730" y="255" class="node-title">hypo-gen</text>
-            </g>
-
-            <g id="node-summary-lead" class="node-group" onclick="selectTopologyNode('summary-lead')">
-              <circle cx="630" cy="290" r="16" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="642" cy="278" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="630" y="294" font-size="10" text-anchor="middle">📝</text>
-              <text x="630" y="315" class="node-title">summary-lead</text>
-            </g>
-
-            <g id="node-eval-master" class="node-group" onclick="selectTopologyNode('eval-master')">
-              <circle cx="730" cy="290" r="16" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="742" cy="278" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="730" y="294" font-size="10" text-anchor="middle">🏆</text>
-              <text x="730" y="315" class="node-title">eval-master</text>
-            </g>
-
-            <g id="node-critic-agent" class="node-group" onclick="selectTopologyNode('critic-agent')">
-              <circle cx="680" cy="320" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="693" cy="307" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="680" y="324" font-size="10" text-anchor="middle">⚖</text>
-              <text x="680" y="346" class="node-title">critic-agent</text>
-            </g>
-
-            <!-- Middle Orbit (12) -->
-            <g id="node-rag-worker-1" class="node-group" onclick="selectTopologyNode('rag-worker-1')">
-              <circle cx="560" cy="170" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="571" cy="159" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="560" y="174" font-size="9" text-anchor="middle">📑</text>
-              <text x="560" y="194" class="node-title">rag-1</text>
-            </g>
-
-            <g id="node-rag-worker-2" class="node-group" onclick="selectTopologyNode('rag-worker-2')">
-              <circle cx="530" cy="240" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="541" cy="229" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="530" y="244" font-size="9" text-anchor="middle">📑</text>
-              <text x="530" y="264" class="node-title">rag-2</text>
-            </g>
-
-            <g id="node-rag-worker-3" class="node-group" onclick="selectTopologyNode('rag-worker-3')">
-              <circle cx="800" cy="170" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="811" cy="159" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="800" y="174" font-size="9" text-anchor="middle">📑</text>
-              <text x="800" y="194" class="node-title">rag-3</text>
-            </g>
-
-            <g id="node-rag-worker-4" class="node-group" onclick="selectTopologyNode('rag-worker-4')">
-              <circle cx="830" cy="240" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="841" cy="229" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="830" y="244" font-size="9" text-anchor="middle">📑</text>
-              <text x="830" y="264" class="node-title">rag-4</text>
-            </g>
-
-            <g id="node-rag-worker-5" class="node-group" onclick="selectTopologyNode('rag-worker-5')">
-              <circle cx="560" cy="350" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="571" cy="339" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="560" y="354" font-size="9" text-anchor="middle">📑</text>
-              <text x="560" y="374" class="node-title">rag-5</text>
-            </g>
-
-            <g id="node-rag-worker-6" class="node-group" onclick="selectTopologyNode('rag-worker-6')">
-              <circle cx="800" cy="350" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="811" cy="339" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="800" y="354" font-size="9" text-anchor="middle">📑</text>
-              <text x="800" y="374" class="node-title">rag-6</text>
-            </g>
-
-            <g id="node-vec-primary" class="node-group" onclick="selectTopologyNode('vec-primary')">
-              <circle cx="610" cy="130" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="621" cy="119" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="610" y="134" font-size="9" text-anchor="middle">🔍</text>
-              <text x="610" y="154" class="node-title">vec-pri</text>
-            </g>
-
-            <g id="node-vec-replica" class="node-group" onclick="selectTopologyNode('vec-replica')">
-              <circle cx="750" cy="130" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="761" cy="119" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="750" y="134" font-size="9" text-anchor="middle">🔍</text>
-              <text x="750" y="154" class="node-title">vec-rep</text>
-            </g>
-
-            <g id="node-embed-01" class="node-group" onclick="selectTopologyNode('embed-01')">
-              <circle cx="530" cy="300" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="541" cy="289" r="3.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="530" y="304" font-size="9" text-anchor="middle">🧬</text>
-              <text x="530" y="324" class="node-title">emb-1</text>
-            </g>
-
-            <g id="node-embed-02" class="node-group" onclick="selectTopologyNode('embed-02')">
-              <circle cx="830" cy="300" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="841" cy="289" r="3.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="830" y="304" font-size="9" text-anchor="middle">🧬</text>
-              <text x="830" y="324" class="node-title">emb-2</text>
-            </g>
-
-            <g id="node-kg-builder" class="node-group" onclick="selectTopologyNode('kg-builder')">
-              <circle cx="640" cy="380" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="651" cy="369" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="640" y="384" font-size="9" text-anchor="middle">🕸</text>
-              <text x="640" y="404" class="node-title">kg-bld</text>
-            </g>
-
-            <g id="node-entity-ext" class="node-group" onclick="selectTopologyNode('entity-ext')">
-              <circle cx="720" cy="380" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="731" cy="369" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="720" y="384" font-size="9" text-anchor="middle">🏷</text>
-              <text x="720" y="404" class="node-title">entity-ext</text>
-            </g>
-
-            <!-- Outer Orbit (12) -->
-            <g id="node-crawler-1" class="node-group" onclick="selectTopologyNode('crawler-1')">
-              <circle cx="530" cy="90" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="540" cy="80" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="530" y="93" font-size="8" text-anchor="middle">🕷</text>
-              <text x="530" y="112" class="node-title">craw-1</text>
-            </g>
-
-            <g id="node-crawler-2" class="node-group" onclick="selectTopologyNode('crawler-2')">
-              <circle cx="600" cy="70" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="610" cy="60" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="600" y="73" font-size="8" text-anchor="middle">🕷</text>
-              <text x="600" y="92" class="node-title">craw-2</text>
-            </g>
-
-            <g id="node-crawler-3" class="node-group" onclick="selectTopologyNode('crawler-3')">
-              <circle cx="760" cy="70" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="770" cy="60" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="760" y="73" font-size="8" text-anchor="middle">🕷</text>
-              <text x="760" y="92" class="node-title">craw-3</text>
-            </g>
-
-            <g id="node-crawler-4" class="node-group" onclick="selectTopologyNode('crawler-4')">
-              <circle cx="830" cy="90" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="840" cy="80" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="830" y="93" font-size="8" text-anchor="middle">🕷</text>
-              <text x="830" y="112" class="node-title">craw-4</text>
-            </g>
-
-            <g id="node-idx-1" class="node-group" onclick="selectTopologyNode('idx-1')">
-              <circle cx="460" cy="210" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="470" cy="200" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="460" y="213" font-size="8" text-anchor="middle">📦</text>
-              <text x="460" y="232" class="node-title">idx-1</text>
-            </g>
-
-            <g id="node-idx-2" class="node-group" onclick="selectTopologyNode('idx-2')">
-              <circle cx="460" cy="290" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="470" cy="280" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="460" y="293" font-size="8" text-anchor="middle">📦</text>
-              <text x="460" y="312" class="node-title">idx-2</text>
-            </g>
-
-            <g id="node-idx-3" class="node-group" onclick="selectTopologyNode('idx-3')">
-              <circle cx="900" cy="210" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="910" cy="200" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="900" y="213" font-size="8" text-anchor="middle">📦</text>
-              <text x="900" y="232" class="node-title">idx-3</text>
-            </g>
-
-            <g id="node-idx-4" class="node-group" onclick="selectTopologyNode('idx-4')">
-              <circle cx="900" cy="290" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="910" cy="280" r="3" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="900" y="293" font-size="8" text-anchor="middle">📦</text>
-              <text x="900" y="312" class="node-title">idx-4</text>
-            </g>
-
-            <g id="node-fact-1" class="node-group" onclick="selectTopologyNode('fact-1')">
-              <circle cx="530" cy="420" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="540" cy="410" r="3" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="530" y="423" font-size="8" text-anchor="middle">✅</text>
-              <text x="530" y="442" class="node-title">fact-1</text>
-            </g>
-
-            <g id="node-fact-2" class="node-group" onclick="selectTopologyNode('fact-2')">
-              <circle cx="600" cy="450" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="610" cy="440" r="3" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="600" y="453" font-size="8" text-anchor="middle">✅</text>
-              <text x="600" y="472" class="node-title">fact-2</text>
-            </g>
-
-            <g id="node-cite-eval" class="node-group" onclick="selectTopologyNode('cite-eval')">
-              <circle cx="760" cy="450" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="770" cy="440" r="3" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="760" y="453" font-size="8" text-anchor="middle">🎯</text>
-              <text x="760" y="472" class="node-title">cite-eval</text>
-            </g>
-
-            <g id="node-benchmark-bot" class="node-group" onclick="selectTopologyNode('benchmark-bot')">
-              <circle cx="830" cy="420" r="14" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="840" cy="410" r="3" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="830" y="423" font-size="8" text-anchor="middle">📊</text>
-              <text x="830" y="442" class="node-title">bench-bot</text>
-            </g>
-
-            <!-- ================= GROUP 3: EXECUTION & DELIVERY MESH (15 NODES) ================= -->
-            <g id="node-client-claude" class="node-group" onclick="selectTopologyNode('client-claude')">
-              <circle cx="1220" cy="180" r="18" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1234" cy="166" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="184" font-size="11" text-anchor="middle">⚡</text>
-              <text x="1220" y="208" class="node-title">client-claude</text>
-            </g>
-
-            <g id="node-deploy-orch" class="node-group" onclick="selectTopologyNode('deploy-orch')">
-              <circle cx="1220" cy="250" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1233" cy="237" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="254" font-size="11" text-anchor="middle">🚀</text>
-              <text x="1220" y="277" class="node-title">deploy-orch</text>
-            </g>
-
-            <g id="node-release-agent" class="node-group" onclick="selectTopologyNode('release-agent')">
-              <circle cx="1220" cy="330" r="17" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1233" cy="317" r="4" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="334" font-size="11" text-anchor="middle">🏷</text>
-              <text x="1220" y="357" class="node-title">release-agent</text>
-            </g>
-
-            <g id="node-ci-runner-1" class="node-group" onclick="selectTopologyNode('ci-runner-1')">
-              <circle cx="1150" cy="180" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1161" cy="169" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1150" y="184" font-size="9" text-anchor="middle">⚙</text>
-              <text x="1150" y="204" class="node-title">ci-1</text>
-            </g>
-
-            <g id="node-ci-runner-2" class="node-group" onclick="selectTopologyNode('ci-runner-2')">
-              <circle cx="1130" cy="250" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1141" cy="239" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1130" y="254" font-size="9" text-anchor="middle">⚙</text>
-              <text x="1130" y="274" class="node-title">ci-2</text>
-            </g>
-
-            <g id="node-ci-runner-3" class="node-group" onclick="selectTopologyNode('ci-runner-3')">
-              <circle cx="1150" cy="320" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1161" cy="309" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1150" y="324" font-size="9" text-anchor="middle">⚙</text>
-              <text x="1150" y="344" class="node-title">ci-3</text>
-            </g>
-
-            <g id="node-webhook-proxy" class="node-group" onclick="selectTopologyNode('webhook-proxy')">
-              <circle cx="1170" cy="120" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1181" cy="109" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1170" y="124" font-size="9" text-anchor="middle">🪝</text>
-              <text x="1170" y="144" class="node-title">webhook</text>
-            </g>
-
-            <g id="node-artifacts-cache" class="node-group" onclick="selectTopologyNode('artifacts-cache')">
-              <circle cx="1160" cy="380" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1171" cy="369" r="3.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1160" y="384" font-size="9" text-anchor="middle">💾</text>
-              <text x="1160" y="404" class="node-title">artifacts</text>
-            </g>
-
-            <g id="node-demo-receiver" class="node-group" onclick="selectTopologyNode('demo-receiver')">
-              <circle cx="1290" cy="180" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1301" cy="169" r="3.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1290" y="184" font-size="9" text-anchor="middle">📥</text>
-              <text x="1290" y="204" class="node-title">demo-recv</text>
-            </g>
-
-            <g id="node-batch-worker" class="node-group" onclick="selectTopologyNode('batch-worker')">
-              <circle cx="1310" cy="250" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1321" cy="239" r="3.5" fill="#0284C7" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1310" y="254" font-size="9" text-anchor="middle">📦</text>
-              <text x="1310" y="274" class="node-title">batch-wrk</text>
-            </g>
-
-            <g id="node-queue-drainer" class="node-group" onclick="selectTopologyNode('queue-drainer')">
-              <circle cx="1290" cy="320" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1301" cy="309" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1290" y="324" font-size="9" text-anchor="middle">🚿</text>
-              <text x="1290" y="344" class="node-title">q-drain</text>
-            </g>
-
-            <g id="node-slack-bridge" class="node-group" onclick="selectTopologyNode('slack-bridge')">
-              <circle cx="1270" cy="120" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1281" cy="109" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1270" y="124" font-size="9" text-anchor="middle">💬</text>
-              <text x="1270" y="144" class="node-title">slack-bot</text>
-            </g>
-
-            <g id="node-discord-hook" class="node-group" onclick="selectTopologyNode('discord-hook')">
-              <circle cx="1220" cy="120" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1231" cy="109" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="124" font-size="9" text-anchor="middle">🎮</text>
-              <text x="1220" y="144" class="node-title">discord</text>
-            </g>
-
-            <g id="node-telemetry-push" class="node-group" onclick="selectTopologyNode('telemetry-push')">
-              <circle cx="1280" cy="380" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1291" cy="369" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1280" y="384" font-size="9" text-anchor="middle">📡</text>
-              <text x="1280" y="404" class="node-title">telemetry</text>
-            </g>
-
-            <g id="node-log-shipper" class="node-group" onclick="selectTopologyNode('log-shipper')">
-              <circle cx="1220" cy="390" r="15" class="node-circle" filter="url(#nodeShadow)" />
-              <circle cx="1231" cy="379" r="3.5" fill="#059669" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="394" font-size="9" text-anchor="middle">🪵</text>
-              <text x="1220" y="414" class="node-title">log-ship</text>
-            </g>
-
-            <!-- ================= EXTERNAL GATEWAY NODES (OUTSIDE CIRCLES) ================= -->
-            <!-- Gateway 1: gateway-hub (Position: 180, 590) -->
-            <g id="node-gateway-hub" class="node-group" onclick="selectTopologyNode('gateway-hub')">
-              <circle cx="180" cy="590" r="25" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="199" cy="571" r="5" fill="#7C3AED" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="180" y="595" font-size="15" text-anchor="middle">🌐</text>
-              <text x="180" y="632" class="node-title" fill="#7C3AED">gateway-hub</text>
-            </g>
-
-            <!-- Gateway 2: gateway-research (Position: 680, 590) -->
-            <g id="node-gateway-research" class="node-group" onclick="selectTopologyNode('gateway-research')">
-              <circle cx="680" cy="590" r="25" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="699" cy="571" r="5" fill="#7C3AED" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="680" y="595" font-size="15" text-anchor="middle">🌐</text>
-              <text x="680" y="632" class="node-title" fill="#7C3AED">gateway-research</text>
-            </g>
-
-            <!-- Gateway 3: gateway-delivery (Position: 1220, 590) -->
-            <g id="node-gateway-delivery" class="node-group" onclick="selectTopologyNode('gateway-delivery')">
-              <circle cx="1220" cy="590" r="25" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
-              <circle cx="1239" cy="571" r="5" fill="#7C3AED" stroke="#FFFFFF" stroke-width="1.5" />
-              <text x="1220" y="595" font-size="15" text-anchor="middle">🌐</text>
-              <text x="1220" y="632" class="node-title" fill="#7C3AED">gateway-delivery</text>
+            <!-- Transformed Viewport Layer (Controlled by Pan/Zoom JS Engine) -->
+            <g id="viewportTransform">
+              <!-- Dynamically populated 10 Galaxy Swarms, Nodes, and Highway Bridges -->
             </g>
           </svg>
         </div>
@@ -1762,7 +1332,7 @@
                 <span id="inspNodeTypeBadge" class="badge badge-leased">ai-claude</span>
               </div>
               <p id="inspNodeDesc" style="font-size:0.85rem; color:var(--text-secondary); line-height:1.5; margin-bottom:8px;">
-                Orbital Swarm: <strong>Core Platform Hub</strong>.
+                Galaxy Swarm: <strong>Core Platform Hub</strong>.
               </p>
               <div id="inspPeerPillsWrap" style="font-size:0.75rem; color:var(--text-secondary);">
                 <!-- Dynamic Peer Badges -->
@@ -1774,7 +1344,7 @@
               <div id="inspNodeKey" style="font-family:var(--font-mono); font-size:0.75rem; background:var(--bg-surface-sub); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-default); word-break:break-all; margin-bottom:6px;">
                 sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
               </div>
-              <span id="inspRoutingPolicy" style="font-size:0.75rem; color:var(--primary); font-weight:600;">Inter-Group Gateway Routing Active</span>
+              <span id="inspRoutingPolicy" style="font-size:0.75rem; color:var(--primary); font-weight:600;">Inter-Galaxy Gateway Routing Active</span>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
@@ -1792,7 +1362,6 @@
     <!-- TAB 2: MY AGENTS & MESSAGE PLAYGROUND -->
     <div id="operator-panel-playground" style="display:none;">
       <div class="creator-layout">
-        <!-- Left: My Registered Agents -->
         <div>
           <div class="card">
             <div class="card-header">
@@ -1827,7 +1396,6 @@
           </div>
         </div>
 
-        <!-- Right: Message Playground -->
         <div>
           <div class="card">
             <div class="card-header">
@@ -1873,7 +1441,7 @@
     </div>
   </div>
 
-  <!-- MODAL 2: Revocation Dialog with Reason Presets & Freeform Input -->
+  <!-- MODAL 2: Revocation Dialog with Reason Presets -->
   <div class="modal-backdrop" id="revokeModal">
     <div class="modal-box">
       <div class="modal-danger-badge">🔒</div>
@@ -1952,391 +1520,352 @@
 
   <script>
     // =========================================================================
-    // TOPOLOGY NODES DATA DICTIONARY (50 SWARM NODES + 3 EXTERNAL GATEWAYS)
+    // 10 SWARM GALAXIES DEFINITIONS (DIVERSE SIZES: 5, 30, 15, 8, 18, 22, 4, 12, 9, 6)
     // =========================================================================
-    const TOPOLOGY_NODES = {
-      // --- Group 1: Core Platform Hub (5 Nodes) ---
-      'platform-claude': {
-        identity: 'platform-claude',
-        group: 'core',
-        groupName: 'Core Platform Hub (5 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Core Platform Assistant and contracts evaluator. Listens on live WebSocket transport.',
-        key: 'sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw',
-        directPeers: ['fe-antigravity', 'auth-guardian'],
-        connectedEdges: ['e-c-claude-fe', 'e-c-claude-auth']
-      },
-      'fe-antigravity': {
-        identity: 'fe-antigravity',
-        group: 'core',
-        groupName: 'Core Platform Hub (5 Nodes)',
-        type: 'admin',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Web Admin and Operations console agent session. Manages security gates & visual telemetry.',
-        key: 'sha256:ZZdAcgecZZ2WyeQs6MYOOYqKtC-16_DIae5vulKpoQw',
-        directPeers: ['platform-claude', 'audit-logger'],
-        connectedEdges: ['e-c-claude-fe', 'e-c-fe-audit']
-      },
-      'auth-guardian': {
-        identity: 'auth-guardian',
-        group: 'core',
-        groupName: 'Core Platform Hub (5 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Authentication and JWT claim validator evaluating session constraints.',
-        key: 'sha256:4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4',
-        directPeers: ['platform-claude', 'key-sentinel'],
-        connectedEdges: ['e-c-claude-auth', 'e-c-auth-key']
-      },
-      'audit-logger': {
-        identity: 'audit-logger',
-        group: 'core',
-        groupName: 'Core Platform Hub (5 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Immutable audit append-only writer maintaining cryptographic trail.',
-        key: 'sha256:bqoclMpIdB5Qj7Tn59qE1mIcPEiE3EubNnfX_1fgWDA',
-        directPeers: ['fe-antigravity', 'key-sentinel', 'gateway-hub'],
-        connectedEdges: ['e-c-fe-audit', 'e-c-audit-key', 'e-core-gw-1']
-      },
-      'key-sentinel': {
-        identity: 'key-sentinel',
-        group: 'core',
-        groupName: 'Core Platform Hub (5 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Public key fingerprint validator guarding cryptographic proposals.',
-        key: 'sha256:8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y',
-        directPeers: ['auth-guardian', 'audit-logger', 'gateway-hub'],
-        connectedEdges: ['e-c-auth-key', 'e-c-audit-key', 'e-core-gw-2']
-      },
+    const CLUSTERS_CONFIG = [
+      // ROW 1: TOP DECK
+      { id: 'core', name: 'Core Platform Hub', count: 5, cx: 300, cy: 340, r: 125, fill: '#EFF6FF', stroke: '#93C5FD', textColor: '#1E40AF', gw: { id: 'gw-core', x: 300, y: 720 } },
+      { id: 'research', name: 'Research & Reasoning Swarm', count: 30, cx: 840, cy: 340, r: 245, fill: '#ECFDF5', stroke: '#A7F3D0', textColor: '#065F46', gw: { id: 'gw-research', x: 840, y: 720 } },
+      { id: 'delivery', name: 'Execution & Delivery Mesh', count: 15, cx: 1440, cy: 340, r: 175, fill: '#F5F3FF', stroke: '#DDD6FE', textColor: '#5B21B6', gw: { id: 'gw-delivery', x: 1440, y: 720 } },
+      { id: 'security', name: 'Security & Sentinel Ring', count: 8, cx: 1960, cy: 340, r: 140, fill: '#FEF2F2', stroke: '#FECACA', textColor: '#991B1B', gw: { id: 'gw-security', x: 1960, y: 720 } },
+      { id: 'data', name: 'Data & ETL Pipeline Swarm', count: 18, cx: 2540, cy: 340, r: 190, fill: '#F0F9FF', stroke: '#BAE6FD', textColor: '#075985', gw: { id: 'gw-data', x: 2540, y: 720 } },
 
-      // --- Group 2: Research Swarm (30 Nodes) ---
-      'deep-researcher': {
-        identity: 'deep-researcher',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-reasoning',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Lead analytical reasoning agent orchestrating parallel research trees.',
-        key: 'sha256:HjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFg',
-        directPeers: ['reason-orch', 'hypo-gen'],
-        connectedEdges: ['e-r-lead-orch', 'e-r-lead-hypo']
-      },
-      'reason-orch': {
-        identity: 'reason-orch',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Reasoning workflow planner delegating parallel RAG workers.',
-        key: 'sha256:TyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwEr',
-        directPeers: ['deep-researcher', 'summary-lead', 'rag-worker-1', 'rag-worker-2'],
-        connectedEdges: ['e-r-lead-orch', 'e-r-orch-sum', 'e-r-orch-rag1', 'e-r-orch-rag2']
-      },
-      'hypo-gen': {
-        identity: 'hypo-gen',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Generates exploratory hypothesis vectors for reasoning pipelines.',
-        key: 'sha256:QwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKl',
-        directPeers: ['deep-researcher', 'eval-master', 'rag-worker-3', 'rag-worker-4'],
-        connectedEdges: ['e-r-lead-hypo', 'e-r-hypo-eval', 'e-r-hypo-rag3', 'e-r-hypo-rag4']
-      },
-      'summary-lead': {
-        identity: 'summary-lead',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Synthesizes multi-agent research drafts.',
-        key: 'sha256:K9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm',
-        directPeers: ['reason-orch', 'critic-agent', 'rag-worker-5'],
-        connectedEdges: ['e-r-orch-sum', 'e-r-sum-crit', 'e-r-sum-rag5']
-      },
-      'eval-master': {
-        identity: 'eval-master',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Scores multi-turn hypothesis accuracy and benchmark convergence.',
-        key: 'sha256:3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB',
-        directPeers: ['hypo-gen', 'critic-agent', 'rag-worker-6'],
-        connectedEdges: ['e-r-hypo-eval', 'e-r-eval-crit', 'e-r-eval-rag6']
-      },
-      'critic-agent': {
-        identity: 'critic-agent',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-reasoning',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Adversarial verifier checking logical fallacies before forwarding to gateway.',
-        key: 'sha256:NxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL0v',
-        directPeers: ['summary-lead', 'eval-master', 'kg-builder', 'entity-ext', 'gateway-research'],
-        connectedEdges: ['e-r-sum-crit', 'e-r-eval-crit', 'e-r-crit-kg', 'e-r-crit-ent', 'e-res-gw-3']
-      },
-      'rag-worker-1': {
-        identity: 'rag-worker-1',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #1.',
-        key: 'sha256:1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w',
-        directPeers: ['reason-orch', 'vec-primary'],
-        connectedEdges: ['e-r-orch-rag1', 'e-r-rag1-vec1']
-      },
-      'rag-worker-2': {
-        identity: 'rag-worker-2',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #2.',
-        key: 'sha256:0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL',
-        directPeers: ['reason-orch', 'embed-01'],
-        connectedEdges: ['e-r-orch-rag2', 'e-r-rag2-emb1']
-      },
-      'rag-worker-3': {
-        identity: 'rag-worker-3',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #3.',
-        key: 'sha256:R6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3c',
-        directPeers: ['hypo-gen', 'vec-replica'],
-        connectedEdges: ['e-r-hypo-rag3', 'e-r-rag3-vec2']
-      },
-      'rag-worker-4': {
-        identity: 'rag-worker-4',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #4.',
-        key: 'sha256:SdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFa',
-        directPeers: ['hypo-gen', 'embed-02'],
-        connectedEdges: ['e-r-hypo-rag4', 'e-r-rag4-emb2']
-      },
-      'rag-worker-5': {
-        identity: 'rag-worker-5',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #5.',
-        key: 'sha256:U4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTy',
-        directPeers: ['summary-lead'],
-        connectedEdges: ['e-r-sum-rag5']
-      },
-      'rag-worker-6': {
-        identity: 'rag-worker-6',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Sub-topic context retriever #6.',
-        key: 'sha256:7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t',
-        directPeers: ['eval-master'],
-        connectedEdges: ['e-r-eval-rag6']
-      },
-      'vec-primary': {
-        identity: 'vec-primary',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Primary vector index engine.',
-        key: 'sha256:8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y',
-        directPeers: ['rag-worker-1', 'crawler-1', 'crawler-2'],
-        connectedEdges: ['e-r-rag1-vec1', 'e-r-vec1-craw1', 'e-r-vec1-craw2']
-      },
-      'vec-replica': {
-        identity: 'vec-replica',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Secondary read-replica vector index.',
-        key: 'sha256:9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK',
-        directPeers: ['rag-worker-3', 'crawler-3', 'crawler-4'],
-        connectedEdges: ['e-r-rag3-vec2', 'e-r-vec2-craw3', 'e-r-vec2-craw4']
-      },
-      'embed-01': {
-        identity: 'embed-01',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Socketless',
-        badgeClass: 'badge-leased',
-        desc: 'Dense embeddings pipeline worker #1.',
-        key: 'sha256:P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8',
-        directPeers: ['rag-worker-2', 'idx-1', 'idx-2'],
-        connectedEdges: ['e-r-rag2-emb1', 'e-r-emb1-idx1', 'e-r-emb1-idx2']
-      },
-      'embed-02': {
-        identity: 'embed-02',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Socketless',
-        badgeClass: 'badge-leased',
-        desc: 'Dense embeddings pipeline worker #2.',
-        key: 'sha256:ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y8P2w1',
-        directPeers: ['rag-worker-4', 'idx-3', 'idx-4'],
-        connectedEdges: ['e-r-rag4-emb2', 'e-r-emb2-idx3', 'e-r-emb2-idx4']
-      },
-      'kg-builder': {
-        identity: 'kg-builder',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Knowledge graph relation synthesizer.',
-        key: 'sha256:FaSdFgHjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6j',
-        directPeers: ['critic-agent', 'fact-1', 'fact-2'],
-        connectedEdges: ['e-r-crit-kg', 'e-r-kg-fact1', 'e-r-kg-fact2']
-      },
-      'entity-ext': {
-        identity: 'entity-ext',
-        group: 'research',
-        groupName: 'Research & Reasoning Swarm (30 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Named entity recognizer extracting citation keys.',
-        key: 'sha256:KlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHj',
-        directPeers: ['critic-agent', 'cite-eval', 'benchmark-bot'],
-        connectedEdges: ['e-r-crit-ent', 'e-r-ent-cite', 'e-r-ent-bench']
-      },
-      'crawler-1': { identity: 'crawler-1', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Corpus web crawler #1.', key: 'sha256:crw1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['vec-primary'], connectedEdges: ['e-r-vec1-craw1'] },
-      'crawler-2': { identity: 'crawler-2', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Corpus web crawler #2.', key: 'sha256:crw2P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['vec-primary'], connectedEdges: ['e-r-vec1-craw2'] },
-      'crawler-3': { identity: 'crawler-3', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Corpus web crawler #3.', key: 'sha256:crw3P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['vec-replica'], connectedEdges: ['e-r-vec2-craw3'] },
-      'crawler-4': { identity: 'crawler-4', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Corpus web crawler #4.', key: 'sha256:crw4P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['vec-replica'], connectedEdges: ['e-r-vec2-craw4'] },
-      'idx-1': { identity: 'idx-1', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Batch indexer #1.', key: 'sha256:idx1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['embed-01'], connectedEdges: ['e-r-emb1-idx1'] },
-      'idx-2': { identity: 'idx-2', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Batch indexer #2.', key: 'sha256:idx2P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['embed-01'], connectedEdges: ['e-r-emb1-idx2'] },
-      'idx-3': { identity: 'idx-3', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Batch indexer #3.', key: 'sha256:idx3P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['embed-02'], connectedEdges: ['e-r-emb2-idx3'] },
-      'idx-4': { identity: 'idx-4', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Batch indexer #4.', key: 'sha256:idx4P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['embed-02'], connectedEdges: ['e-r-emb2-idx4'] },
-      'fact-1': { identity: 'fact-1', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'ai-claude', status: 'Online', badgeClass: 'badge-success', desc: 'Fact verifier #1.', key: 'sha256:fct1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['kg-builder'], connectedEdges: ['e-r-kg-fact1'] },
-      'fact-2': { identity: 'fact-2', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'ai-claude', status: 'Online', badgeClass: 'badge-success', desc: 'Fact verifier #2.', key: 'sha256:fct2P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['kg-builder', 'gateway-research'], connectedEdges: ['e-r-kg-fact2', 'e-res-gw-1'] },
-      'cite-eval': { identity: 'cite-eval', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'ai-claude', status: 'Online', badgeClass: 'badge-success', desc: 'Citation accuracy auditor.', key: 'sha256:cit1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['entity-ext', 'gateway-research'], connectedEdges: ['e-r-ent-cite', 'e-res-gw-2'] },
-      'benchmark-bot': { identity: 'benchmark-bot', group: 'research', groupName: 'Research Swarm (30 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Benchmarking accuracy scoring engine.', key: 'sha256:bnk1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['entity-ext'], connectedEdges: ['e-r-ent-bench'] },
+      // ROW 2: BOTTOM DECK
+      { id: 'edge', name: 'Edge & IoT Micro-Agents', count: 22, cx: 390, cy: 1180, r: 210, fill: '#FFFBEB', stroke: '#FDE68A', textColor: '#92400E', gw: { id: 'gw-edge', x: 390, y: 840 } },
+      { id: 'human', name: 'Human Operator Guild', count: 4, cx: 880, cy: 1180, r: 115, fill: '#EFF6FF', stroke: '#BFDBFE', textColor: '#1D4ED8', gw: { id: 'gw-human', x: 880, y: 840 } },
+      { id: 'refactor', name: 'Autonomous Code Refactor', count: 12, cx: 1380, cy: 1180, r: 160, fill: '#F5F3FF', stroke: '#C4B5FD', textColor: '#6D28D9', gw: { id: 'gw-refactor', x: 1380, y: 840 } },
+      { id: 'vision', name: 'Multi-Modal Vision & Audio', count: 9, cx: 1900, cy: 1180, r: 145, fill: '#ECFDF5', stroke: '#6EE7B7', textColor: '#047857', gw: { id: 'gw-vision', x: 1900, y: 840 } },
+      { id: 'audit', name: 'Compliance & Audit Hive', count: 6, cx: 2420, cy: 1180, r: 130, fill: '#F8FAFC', stroke: '#CBD5E1', textColor: '#334155', gw: { id: 'gw-audit', x: 2420, y: 840 } }
+    ];
 
-      // --- Group 3: Execution & Delivery Mesh (15 Nodes) ---
-      'client-claude': {
-        identity: 'client-claude',
-        group: 'delivery',
-        groupName: 'Execution & Delivery Mesh (15 Nodes)',
-        type: 'cli-client',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Local developer CLI agent maintaining developer command execution context.',
-        key: 'sha256:3vLmK0pQ4w7Xm8P2w1ZqNxB3cR6jFaSdFgHjKlQwErT9',
-        directPeers: ['deploy-orch', 'ci-runner-1', 'demo-receiver'],
-        connectedEdges: ['e-d-lead-dep', 'e-d-lead-ci1', 'e-d-lead-rec']
-      },
-      'deploy-orch': {
-        identity: 'deploy-orch',
-        group: 'delivery',
-        groupName: 'Execution & Delivery Mesh (15 Nodes)',
-        type: 'runtime',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Automated multi-stage deployment orchestrator.',
-        key: 'sha256:HjKlQwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFg',
-        directPeers: ['client-claude', 'release-agent', 'ci-runner-2', 'batch-worker'],
-        connectedEdges: ['e-d-lead-dep', 'e-d-dep-rel', 'e-d-dep-ci2', 'e-d-dep-bat']
-      },
-      'release-agent': {
-        identity: 'release-agent',
-        group: 'delivery',
-        groupName: 'Execution & Delivery Mesh (15 Nodes)',
-        type: 'ai-claude',
-        status: 'Online',
-        badgeClass: 'badge-success',
-        desc: 'Changelog synthesizer and GitHub release asset publisher.',
-        key: 'sha256:QwErTyU4t7XmK9y8P2w1ZqL0vNxB3cR6jFaSdFgHjKl',
-        directPeers: ['deploy-orch', 'ci-runner-3', 'queue-drainer', 'gateway-delivery'],
-        connectedEdges: ['e-d-dep-rel', 'e-d-rel-ci3', 'e-d-rel-que', 'e-del-gw-1']
-      },
-      'ci-runner-1': { identity: 'ci-runner-1', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Unit testing runner #1.', key: 'sha256:ci1P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['client-claude', 'webhook-proxy'], connectedEdges: ['e-d-lead-ci1', 'e-d-ci1-web'] },
-      'ci-runner-2': { identity: 'ci-runner-2', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Integration test runner #2.', key: 'sha256:ci2P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['deploy-orch'], connectedEdges: ['e-d-dep-ci2'] },
-      'ci-runner-3': { identity: 'ci-runner-3', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Security scanner runner #3.', key: 'sha256:ci3P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['release-agent', 'artifacts-cache'], connectedEdges: ['e-d-rel-ci3', 'e-d-ci3-art'] },
-      'webhook-proxy': { identity: 'webhook-proxy', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Incoming webhook gateway.', key: 'sha256:whkP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['ci-runner-1'], connectedEdges: ['e-d-ci1-web'] },
-      'artifacts-cache': { identity: 'artifacts-cache', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Build output blob cache.', key: 'sha256:artP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['ci-runner-3', 'gateway-delivery'], connectedEdges: ['e-d-ci3-art', 'e-del-gw-3'] },
-      'demo-receiver': { identity: 'demo-receiver', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'ai-claude', status: 'Socketless (5 Queued)', badgeClass: 'badge-leased', desc: 'Pull receiver with 5 queued messages.', key: 'sha256:lgmo149K_Xm8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTy', directPeers: ['client-claude', 'slack-bridge'], connectedEdges: ['e-d-lead-rec', 'e-d-rec-slk'] },
-      'batch-worker': { identity: 'batch-worker', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Socketless', badgeClass: 'badge-leased', desc: 'Batch task executor.', key: 'sha256:batP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['deploy-orch'], connectedEdges: ['e-d-dep-bat'] },
-      'queue-drainer': { identity: 'queue-drainer', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Backlog consumer processor.', key: 'sha256:drnP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['release-agent', 'telemetry-push'], connectedEdges: ['e-d-rel-que', 'e-d-que-tel'] },
-      'slack-bridge': { identity: 'slack-bridge', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Slack channel notifier.', key: 'sha256:slkP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['demo-receiver', 'discord-hook'], connectedEdges: ['e-d-rec-slk', 'e-d-slk-disc'] },
-      'discord-hook': { identity: 'discord-hook', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Discord channel notifier.', key: 'sha256:dscP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['slack-bridge'], connectedEdges: ['e-d-slk-disc'] },
-      'telemetry-push': { identity: 'telemetry-push', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Performance telemetry shipper.', key: 'sha256:telP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['queue-drainer', 'log-shipper', 'gateway-delivery'], connectedEdges: ['e-d-que-tel', 'e-d-tel-log', 'e-del-gw-2'] },
-      'log-shipper': { identity: 'log-shipper', group: 'delivery', groupName: 'Delivery Mesh (15 Nodes)', type: 'runtime', status: 'Online', badgeClass: 'badge-success', desc: 'Centralized log forwarder.', key: 'sha256:logP2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErTyU4t7Xm', directPeers: ['telemetry-push'], connectedEdges: ['e-d-tel-log'] },
+    const ICONS_PALETTE = ['🤖', '🔬', '💻', '⚡', '📦', '🛡', '📜', '🔑', '📊', '🧠', '💡', '📝', '🏆', '🕸', '🕷', '🚀', '🏷', '💬', '🪝', '📡', '🪵', '🎮', '🔍', '🧬', '🎯', '⚙', '👁', '🎙', '🔐'];
 
-      // --- EXTERNAL GATEWAY NODES (3 Gateways Outside Groups) ---
-      'gateway-hub': {
-        identity: 'gateway-hub',
-        group: 'core',
-        groupName: 'Core Platform Hub (External Gateway)',
+    // Dynamic Nodes & Edges Master Dictionary
+    const TOPOLOGY_NODES = {};
+    const ALL_EDGES = [];
+    const ALL_GATEWAYS = [];
+
+    // Build Galaxy Topology Data Structure
+    CLUSTERS_CONFIG.forEach(cfg => {
+      // 1. Gateway node for this cluster
+      const gwId = cfg.gw.id;
+      ALL_GATEWAYS.push(cfg.gw);
+      TOPOLOGY_NODES[gwId] = {
+        identity: gwId,
+        group: cfg.id,
+        groupName: `${cfg.name} (Gateway)`,
         type: 'gateway-bridge',
         status: 'Gateway 🌐',
         badgeClass: 'badge-gateway',
-        desc: 'External Gateway Bridge routing messages between Core Hub, Research Swarm, and Delivery Mesh.',
-        key: 'sha256:gtwHubBridge98xL1mK0vNxB3cR6jFaSdFgHjKlQwErTyU4',
-        directPeers: ['audit-logger', 'key-sentinel', 'gateway-research', 'gateway-delivery'],
-        connectedEdges: ['e-core-gw-1', 'e-core-gw-2', 'b-hub-res', 'b-hub-del']
-      },
-      'gateway-research': {
-        identity: 'gateway-research',
-        group: 'research',
-        groupName: 'Research Swarm (External Gateway)',
-        type: 'gateway-bridge',
-        status: 'Gateway 🌐',
-        badgeClass: 'badge-gateway',
-        desc: 'External Gateway Bridge routing queries between Research Swarm, Core Hub, and Delivery Mesh.',
-        key: 'sha256:gtwResBridge4t7Xm8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQ',
-        directPeers: ['critic-agent', 'fact-2', 'cite-eval', 'gateway-hub', 'gateway-delivery'],
-        connectedEdges: ['e-res-gw-1', 'e-res-gw-2', 'e-res-gw-3', 'b-hub-res', 'b-res-del']
-      },
-      'gateway-delivery': {
-        identity: 'gateway-delivery',
-        group: 'delivery',
-        groupName: 'Delivery Mesh (External Gateway)',
-        type: 'gateway-bridge',
-        status: 'Gateway 🌐',
-        badgeClass: 'badge-gateway',
-        desc: 'External Gateway Bridge routing deployments between Delivery Mesh, Core Hub, and Research Swarm.',
-        key: 'sha256:gtwDelBridge8P2w1ZqL0vNxB3cR6jFaSdFgHjKlQwErT',
-        directPeers: ['release-agent', 'artifacts-cache', 'telemetry-push', 'gateway-hub', 'gateway-research'],
-        connectedEdges: ['e-del-gw-1', 'e-del-gw-2', 'e-del-gw-3', 'b-res-del', 'b-hub-del']
+        desc: `Inter-Galaxy Routing Gateway for ${cfg.name}.`,
+        key: `sha256:gw_${cfg.id}_${Math.random().toString(36).substring(2, 10)}`,
+        directPeers: [],
+        connectedEdges: []
+      };
+
+      // 2. Member agents inside cluster
+      const memberIds = [];
+      const nodeCoords = [];
+
+      for (let i = 0; i < cfg.count; i++) {
+        let name = '';
+        let icon = ICONS_PALETTE[(i + cfg.name.length) % ICONS_PALETTE.length];
+        let type = 'runtime';
+        let status = 'Online';
+        let badgeClass = 'badge-success';
+
+        if (i === 0) {
+          name = `${cfg.id}-lead`;
+          type = 'ai-claude';
+          icon = cfg.id === 'core' ? '🤖' : (cfg.id === 'research' ? '🔬' : (cfg.id === 'delivery' ? '⚡' : '🧠'));
+        } else if (i === 1 && cfg.id === 'core') {
+          name = 'fe-antigravity';
+          type = 'admin';
+          icon = '💻';
+        } else {
+          name = `${cfg.id}-agent-${i + 1}`;
+          if (i % 3 === 0) {
+            status = 'Socketless';
+            badgeClass = 'badge-leased';
+          }
+        }
+
+        // Calculate spiral/radial position inside circle
+        let nx, ny;
+        if (cfg.count <= 6) {
+          const angle = (i / cfg.count) * Math.PI * 2;
+          const rad = cfg.r * 0.52;
+          nx = cfg.cx + Math.cos(angle) * rad;
+          ny = cfg.cy + Math.sin(angle) * rad;
+        } else if (cfg.count <= 15) {
+          if (i === 0) { nx = cfg.cx; ny = cfg.cy; }
+          else {
+            const angle = ((i - 1) / (cfg.count - 1)) * Math.PI * 2;
+            const rad = cfg.r * (i % 2 === 0 ? 0.65 : 0.45);
+            nx = cfg.cx + Math.cos(angle) * rad;
+            ny = cfg.cy + Math.sin(angle) * rad;
+          }
+        } else {
+          // Large swarms (18, 22, 30): 3 concentric orbits
+          if (i === 0) { nx = cfg.cx; ny = cfg.cy; }
+          else if (i < 8) {
+            const angle = (i / 7) * Math.PI * 2;
+            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.32);
+            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.32);
+          } else if (i < 18) {
+            const angle = ((i - 8) / 10) * Math.PI * 2;
+            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.62);
+            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.62);
+          } else {
+            const angle = ((i - 18) / (cfg.count - 18)) * Math.PI * 2;
+            nx = cfg.cx + Math.cos(angle) * (cfg.r * 0.84);
+            ny = cfg.cy + Math.sin(angle) * (cfg.r * 0.84);
+          }
+        }
+
+        memberIds.push(name);
+        nodeCoords.push({ name, x: nx, y: ny, icon, status, badgeClass, type });
+
+        TOPOLOGY_NODES[name] = {
+          identity: name,
+          group: cfg.id,
+          groupName: cfg.name,
+          type: type,
+          status: status,
+          badgeClass: badgeClass,
+          desc: `Active autonomous agent in ${cfg.name} galaxy.`,
+          key: `sha256:${name}_${Math.random().toString(36).substring(2, 12)}L0vNxB3cR6jFaSdFgHjKlQwErTyU4t7XmK9y`,
+          directPeers: [],
+          connectedEdges: [],
+          x: nx,
+          y: ny,
+          icon
+        };
       }
-    };
 
-    let selectedTopologyNodeId = 'platform-claude';
+      // Generate intra-group edge paths & gateway connection
+      nodeCoords.forEach((node, idx) => {
+        // Connect to 1-2 adjacent nodes
+        if (idx > 0) {
+          const target = nodeCoords[idx % 2 === 0 ? 0 : idx - 1];
+          const edgeId = `e-${cfg.id}-${node.name}-${target.name}`;
+          ALL_EDGES.push({ id: edgeId, d: `M ${node.x} ${node.y} L ${target.x} ${target.y}`, type: 'intra-active' });
+          TOPOLOGY_NODES[node.name].directPeers.push(target.name);
+          TOPOLOGY_NODES[target.name].directPeers.push(node.name);
+          TOPOLOGY_NODES[node.name].connectedEdges.push(edgeId);
+          TOPOLOGY_NODES[target.name].connectedEdges.push(edgeId);
+        }
+
+        // Connect 1-2 peripheral nodes down to external gateway
+        if (idx === 0 || idx === nodeCoords.length - 1) {
+          const gwEdgeId = `e-gw-${node.name}-${gwId}`;
+          ALL_EDGES.push({ id: gwEdgeId, d: `M ${node.x} ${node.y} L ${cfg.gw.x} ${cfg.gw.y}`, type: 'gateway-link' });
+          TOPOLOGY_NODES[node.name].directPeers.push(gwId);
+          TOPOLOGY_NODES[gwId].directPeers.push(node.name);
+          TOPOLOGY_NODES[node.name].connectedEdges.push(gwEdgeId);
+          TOPOLOGY_NODES[gwId].connectedEdges.push(gwEdgeId);
+        }
+      });
+    });
+
+    // Generate Inter-Gateway Highway Backbone Lines
+    for (let i = 0; i < ALL_GATEWAYS.length - 1; i++) {
+      const g1 = ALL_GATEWAYS[i];
+      const g2 = ALL_GATEWAYS[i + 1];
+      const bId = `bridge-${g1.id}-${g2.id}`;
+      ALL_EDGES.push({ id: bId, d: `M ${g1.x} ${g1.y} L ${g2.x} ${g2.y}`, type: 'gateway-bridge' });
+      TOPOLOGY_NODES[g1.id].directPeers.push(g2.id);
+      TOPOLOGY_NODES[g2.id].directPeers.push(g1.id);
+      TOPOLOGY_NODES[g1.id].connectedEdges.push(bId);
+      TOPOLOGY_NODES[g2.id].connectedEdges.push(bId);
+    }
+
+    // Connect Top Deck Gateways to Bottom Deck Gateways
+    for (let i = 0; i < 5; i++) {
+      const gTop = ALL_GATEWAYS[i];
+      const gBot = ALL_GATEWAYS[i + 5];
+      const bCrossId = `bridge-cross-${gTop.id}-${gBot.id}`;
+      ALL_EDGES.push({ id: bCrossId, d: `M ${gTop.x} ${gTop.y} L ${gBot.x} ${gBot.y}`, type: 'gateway-bridge' });
+      TOPOLOGY_NODES[gTop.id].directPeers.push(gBot.id);
+      TOPOLOGY_NODES[gBot.id].directPeers.push(gTop.id);
+      TOPOLOGY_NODES[gTop.id].connectedEdges.push(bCrossId);
+      TOPOLOGY_NODES[gBot.id].connectedEdges.push(bCrossId);
+    }
+
+    // =========================================================================
+    // SVG RENDERING FUNCTION FOR 10 GALAXIES
+    // =========================================================================
+    function renderGalaxyTopologySVG() {
+      const root = document.getElementById('viewportTransform');
+      if (!root) return;
+      let html = '';
+
+      // 1. Render Galaxy Orbital Circle Containers
+      CLUSTERS_CONFIG.forEach(cfg => {
+        html += `
+          <g id="group-${cfg.id}" class="cluster-group">
+            <circle cx="${cfg.cx}" cy="${cfg.cy}" r="${cfg.r}" class="group-circle" style="fill:${cfg.fill}; stroke:${cfg.stroke};" />
+            <rect x="${cfg.cx - 120}" y="${cfg.cy - cfg.r - 28}" width="240" height="26" rx="13" ry="13" class="group-badge-rect" style="stroke:${cfg.stroke};" />
+            <text x="${cfg.cx}" y="${cfg.cy - cfg.r - 11}" class="group-label-text" fill="${cfg.textColor}">${cfg.name} (${cfg.count})</text>
+          </g>
+        `;
+      });
+
+      // 2. Render Explicit Edge Paths (Strict fill:none)
+      ALL_EDGES.forEach(edge => {
+        html += `<path id="${edge.id}" d="${edge.d}" class="edge-line ${edge.type}" />`;
+      });
+
+      // 3. Render Agent Nodes
+      Object.keys(TOPOLOGY_NODES).forEach(nodeId => {
+        const node = TOPOLOGY_NODES[nodeId];
+        if (node.type === 'gateway-bridge') {
+          const gwCfg = ALL_GATEWAYS.find(g => g.id === nodeId);
+          if (gwCfg) {
+            html += `
+              <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+                <circle cx="${gwCfg.x}" cy="${gwCfg.y}" r="24" class="node-circle gateway-node" filter="url(#gatewayGlow)" />
+                <circle cx="${gwCfg.x + 18}" cy="${gwCfg.y - 18}" r="5" fill="#7C3AED" stroke="#FFFFFF" stroke-width="1.5" />
+                <text x="${gwCfg.x}" y="${gwCfg.y + 5}" font-size="14" text-anchor="middle">🌐</text>
+                <text x="${gwCfg.x}" y="${gwCfg.y + 40}" class="node-title" fill="#7C3AED">${nodeId}</text>
+              </g>
+            `;
+          }
+        } else {
+          const isOnline = node.status === 'Online';
+          html += `
+            <g id="node-${nodeId}" class="node-group" onclick="selectTopologyNode('${nodeId}')">
+              <circle cx="${node.x}" cy="${node.y}" r="16" class="node-circle" filter="url(#nodeShadow)" />
+              <circle cx="${node.x + 13}" cy="${node.y - 13}" r="3.8" fill="${isOnline ? '#059669' : '#0284C7'}" stroke="#FFFFFF" stroke-width="1.5" />
+              <text x="${node.x}" y="${node.y + 4}" font-size="10" text-anchor="middle">${node.icon || '🤖'}</text>
+              <text x="${node.x}" y="${node.y + 28}" class="node-title">${node.identity}</text>
+            </g>
+          `;
+        }
+      });
+
+      root.innerHTML = html;
+    }
+
+    // =========================================================================
+    // PAN & MAC TRACKPAD PINCH-TO-ZOOM ENGINE
+    // =========================================================================
+    let panX = 40;
+    let panY = 20;
+    let scale = 0.55;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    function applyCanvasTransform() {
+      const transformGroup = document.getElementById('viewportTransform');
+      if (transformGroup) {
+        transformGroup.setAttribute('transform', `translate(${panX}, ${panY}) scale(${scale})`);
+      }
+      const scaleText = document.getElementById('hudScaleDisplay');
+      if (scaleText) {
+        scaleText.innerText = `${Math.round(scale * 100)}%`;
+      }
+    }
+
+    function zoomBy(factor) {
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      zoomAroundPoint(factor, centerX, centerY);
+    }
+
+    function zoomAroundPoint(factor, clientX, clientY) {
+      const oldScale = scale;
+      scale = Math.min(Math.max(scale * factor, 0.22), 3.2);
+
+      // Adjust pan to keep client point under cursor
+      panX = clientX - (clientX - panX) * (scale / oldScale);
+      panY = clientY - (clientY - panY) * (scale / oldScale);
+      applyCanvasTransform();
+    }
+
+    function resetCanvasTransform() {
+      panX = 40;
+      panY = 20;
+      scale = 0.52;
+      applyCanvasTransform();
+    }
+
+    function focusCluster(clusterId, btn) {
+      if (btn) {
+        document.querySelectorAll('.topology-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+
+      if (clusterId === 'all') {
+        resetCanvasTransform();
+        return;
+      }
+
+      const cfg = CLUSTERS_CONFIG.find(c => c.id === clusterId);
+      if (!cfg) return;
+
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+
+      scale = 1.15;
+      panX = (rect.width / 2) - (cfg.cx * scale);
+      panY = (rect.height / 2) - (cfg.cy * scale);
+      applyCanvasTransform();
+    }
+
+    function initPanZoomEngine() {
+      const viewport = document.getElementById('canvasViewport');
+      if (!viewport) return;
+
+      // Mouse Pan (Drag)
+      viewport.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.node-group')) return; // Allow node clicking
+        isDragging = true;
+        dragStartX = e.clientX - panX;
+        dragStartY = e.clientY - panY;
+        viewport.classList.add('is-dragging');
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        panX = e.clientX - dragStartX;
+        panY = e.clientY - dragStartY;
+        applyCanvasTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+        if (viewport) viewport.classList.remove('is-dragging');
+      });
+
+      // Mac Trackpad Pinch-to-Zoom & Mouse Wheel Zoom
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (e.ctrlKey) {
+          // Mac Trackpad Pinch Gesture
+          const zoomFactor = 1 - e.deltaY * 0.01;
+          zoomAroundPoint(zoomFactor, mouseX, mouseY);
+        } else {
+          // Standard Two-finger Pan or Wheel Zoom
+          if (Math.abs(e.deltaX) > 0 || Math.abs(e.deltaY) > 0) {
+            panX -= e.deltaX * 0.9;
+            panY -= e.deltaY * 0.9;
+            applyCanvasTransform();
+          }
+        }
+      }, { passive: false });
+    }
+
+    let selectedTopologyNodeId = 'core-lead';
 
     function selectTopologyNode(nodeId) {
       selectedTopologyNodeId = nodeId;
@@ -2378,15 +1907,18 @@
       document.getElementById('inspNodeBadge').className = `badge ${data.badgeClass}`;
       document.getElementById('inspNodeBadge').innerText = data.status;
       document.getElementById('inspNodeTypeBadge').innerText = data.type;
-      document.getElementById('inspNodeDesc').innerHTML = `Swarm Group: <strong>${data.groupName}</strong>. ${data.desc}`;
+      document.getElementById('inspNodeDesc').innerHTML = `Galaxy Swarm: <strong>${data.groupName}</strong>. ${data.desc}`;
       document.getElementById('inspNodeKey').innerText = data.key;
 
       // Render Peer Pills
       const pillsContainer = document.getElementById('inspPeerPillsWrap');
       let pillsHtml = `<span style="font-weight:700;">Connected Peers (${data.directPeers.length}):</span> `;
-      data.directPeers.forEach(p => {
+      data.directPeers.slice(0, 8).forEach(p => {
         pillsHtml += `<span class="peer-channel-pill"><span style="color:#059669;">●</span> ${p}</span>`;
       });
+      if (data.directPeers.length > 8) {
+        pillsHtml += `<span class="peer-channel-pill">+${data.directPeers.length - 8} more</span>`;
+      }
       pillsContainer.innerHTML = pillsHtml;
 
       document.getElementById('nodeInspectorDrawer').classList.add('active');
@@ -2447,29 +1979,6 @@
       alert(currentLang === 'ko' ? `'${selectedTopologyNodeId}'의 통신 채널 권한이 저장되었습니다.` : `Channel ACL policy saved for '${selectedTopologyNodeId}'.`);
     }
 
-    function filterTopologyGroup(group, btn) {
-      document.querySelectorAll('.topology-filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      document.querySelectorAll('.cluster-group').forEach(cg => {
-        if (group === 'all' || cg.id === `group-${group}`) {
-          cg.style.display = 'block';
-        } else {
-          cg.style.display = 'none';
-        }
-      });
-
-      document.querySelectorAll('.node-group').forEach(ng => {
-        const id = ng.id.replace('node-', '');
-        const nodeData = TOPOLOGY_NODES[id];
-        if (group === 'all' || (nodeData && (nodeData.group === group || nodeData.type === 'gateway-bridge'))) {
-          ng.style.display = 'block';
-        } else {
-          ng.style.display = 'none';
-        }
-      });
-    }
-
     function switchOperatorTab(tab) {
       const isTop = tab === 'topology';
       document.getElementById('tabBtnTopology').classList.toggle('active', isTop);
@@ -2514,7 +2023,7 @@
         stat_backlog_label: "Inbox Backlog",
         stat_backlog_sub: "(2 leased)",
         stat_agents_label: "Active Agents",
-        stat_agents_sub: "registered",
+        stat_agents_sub: "(10 clusters)",
         stat_quota_label: "Hub Status",
         tab_keys: "Key Approvals (3)",
         tab_inbox: "Inbox Backlog (5)",
@@ -2537,17 +2046,13 @@
         btn_create_group: "+ Create Group",
         tab_topology: "🌐 Network Topology Graph",
         tab_playground: "📋 My Agents & Message Playground",
-        label_filter_group: "Swarm Clusters:",
-        filter_all: "All Clusters (50 Agents + 3 Gateways)",
-        filter_core: "Core Platform (5)",
-        filter_research: "Research Swarm (30)",
-        filter_delivery: "Delivery Mesh (15)",
+        label_filter_group: "Swarm Galaxies:",
+        filter_all: "All (10 Swarms · 139 Nodes)",
         legend_online: "Online",
         legend_socketless: "Socketless",
-        legend_gateway: "Gateway (External)",
-        legend_active_edge: "Active Edge",
-        legend_restricted_edge: "Restricted",
-        legend_bridge: "Gateway Highway",
+        legend_gateway: "Gateway 🌐",
+        legend_active_edge: "Active",
+        legend_bridge: "Highway",
         insp_key_label: "Public Key Fingerprint (50-char)",
         btn_send_to_node: "💬 Test Message →",
         btn_config_channels: "⚙ Config Channels",
@@ -2608,7 +2113,7 @@
         stat_backlog_label: "인박스 큐 적체",
         stat_backlog_sub: "(2건 임대 중)",
         stat_agents_label: "등록된 에이전트",
-        stat_agents_sub: "개",
+        stat_agents_sub: "(10개 성단 클러스터)",
         stat_quota_label: "허브 상태",
         tab_keys: "키 승인 대기열 (3)",
         tab_inbox: "인박스 적체 감시 (5)",
@@ -2631,17 +2136,13 @@
         btn_create_group: "+ 그룹 생성",
         tab_topology: "🌐 네트워크 토폴로지 그래프",
         tab_playground: "📋 내 에이전트 & 메시지 테스트",
-        label_filter_group: "스웜 클러스터 필터:",
-        filter_all: "전체 클러스터 (50 에이전트 + 3 게이트웨이)",
-        filter_core: "코어 플랫폼 (5)",
-        filter_research: "연구 분석 스웜 (30)",
-        filter_delivery: "실행 배포 메시 (15)",
+        label_filter_group: "스웜 성단 필터:",
+        filter_all: "전체 성단 (10개 스웜 · 139개 노드)",
         legend_online: "온라인",
         legend_socketless: "소켓리스",
-        legend_gateway: "게이트웨이 (외부 노드)",
-        legend_active_edge: "활성 통신선",
-        legend_restricted_edge: "제한된 통신",
-        legend_bridge: "게이트웨이 고속도로",
+        legend_gateway: "게이트웨이 🌐",
+        legend_active_edge: "활성선",
+        legend_bridge: "고속도로",
         insp_key_label: "50자리 공개키 지문",
         btn_send_to_node: "💬 테스트 메시지 보내기 →",
         btn_config_channels: "⚙ 통신 권한 설정",
@@ -2691,7 +2192,7 @@
     }
 
     // =========================================================================
-    // VIEW SWITCHER (Controls Canvas Visibility for Landing Only)
+    // VIEW SWITCHER
     // =========================================================================
     function switchView(view) {
       document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
@@ -2711,8 +2212,10 @@
         document.querySelector('.preview-btn:nth-child(3)').classList.add('active');
         document.getElementById('view-creator').classList.add('active');
         if (bgLayer) bgLayer.classList.add('hidden');
-        // Trigger initial node select
-        selectTopologyNode('platform-claude');
+        renderGalaxyTopologySVG();
+        initPanZoomEngine();
+        selectTopologyNode('core-lead');
+        applyCanvasTransform();
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -2743,12 +2246,8 @@
       alert(currentLang === 'ko' ? `[Hub] '${to}'에게 메시지가 배달되었습니다. (발신: alice_dev via http-server)` : `[Hub] Message delivered successfully to '${to}' (from: alice_dev via http-server).`);
     }
 
-    function openModal(id) {
-      document.getElementById(id).classList.add('active');
-    }
-    function closeModal(id) {
-      document.getElementById(id).classList.remove('active');
-    }
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
     function openTeardownModal(target) {
       document.getElementById('modalTargetIdentity').innerText = target;
@@ -2788,7 +2287,6 @@
         return;
       }
 
-      // Test 409 Key Held Simulation
       if (key && key.includes('91cBIH2C')) {
         errBox.innerHTML = currentLang === 'ko' 
           ? '<strong>409 KEY_HELD_BY_ANOTHER_IDENTITY</strong><br>이 공개키는 이미 다른 신원에 등록되어 있습니다. 에이전트의 키를 확인하십시오.' 
@@ -2956,6 +2454,10 @@
 
       render();
     })();
+
+    // Initial render
+    renderGalaxyTopologySVG();
+    initPanZoomEngine();
   </script>
 </body>
 </html>
