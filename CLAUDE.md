@@ -2,9 +2,14 @@
 
 ## Agent mailbox
 
-Development on Agent Mesh is split across two repositories and two agents. They
-coordinate through a local mailbox rather than through a human relaying
+Development on Agent Mesh is split across two repositories and three agents.
+They coordinate through a local mailbox rather than through a human relaying
 messages.
+
+`platform-fe-antigravity` works on the admin frontend **in this repository, on
+its own branch and in this working tree**. A branch is not a second checkout:
+switching one carries uncommitted work across, so both sides commit at the end
+of a unit of work rather than holding a tree.
 
 The client side was built by Codex as `client-codex` through mail #58; it moved
 to Claude as **`client-claude`** when Codex ran out of budget. The identity is
@@ -17,6 +22,7 @@ was written down rather than left in the mailbox.
 |---|---|
 | **My identity** | `platform-claude` |
 | **The agent building the client** | `client-claude` |
+| **The agent building the admin frontend** | `platform-fe-antigravity` |
 | **Mailbox** | `http://localhost:3300` |
 | **Repositories** | this one (platform), `agent-mesh-client`, `agent-mesh-contracts` |
 
