@@ -85,6 +85,14 @@ const HUB_URL =
   process.env.AGENT_MESH_HUB_URL ??
   process.env.HUB_URL ??
   'ws://127.0.0.1:3100/ws'
+/**
+ * The same hub, over http — derived rather than configured separately.
+ *
+ * A second environment variable is a second thing to get wrong, and the two
+ * pointing at different hubs would be invisible: the routes would work and
+ * report another deployment's configuration.
+ */
+const HUB_HTTP_URL = HUB_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 const HUB_IDENTITY = 'http-server' + (IS_DEV ? '-dev' : '')
 let hubWs: WebSocket | null = null
 let hubConnected = false
@@ -1261,6 +1269,68 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * queue needs depth and age; one who needs content has the audit trail, where
  * the access is itself recorded.
  */
+/**
+ * Where an identity has been observed connecting from (SPEC § 8.11).
+ *
+ * **The deployment mode is reported alongside the rows, not per row.**
+ * `observed_source` is a property of how this hub learns addresses at all —
+ * every row is `socket` or every row is `forwarded` — so a per-row column
+ * would suggest a distinction that cannot exist, and an operator would read
+ * evidence into rows that have none.
+ *
+ * When the mode is `forwarded` the caller is told, in the response, that the
+ * values are only evidence while the hub is unreachable except through its
+ * proxy — which nothing inside the hub can verify. A screen rendering these
+ * without that qualifier is showing a claim as an observation.
+ */
+app.get('/api/v1/admin/agent-sources', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.SOURCE_READ)
+  if (typeof actor !== 'string') return actor
+
+  const identity = c.req.query('identity')
+  if (identity !== undefined && !IDENTITY_RE.test(identity)) {
+    return c.json({ ok: false, error: 'invalid identity format' }, 400)
+  }
+
+  const db = agentsDb()
+  const rows = identity
+    ? db.prepare(
+        `SELECT identity, observed, first_seen, last_seen, requests
+           FROM agent_sources WHERE identity = ? ORDER BY last_seen DESC`,
+      ).all(identity)
+    : db.prepare(
+        `SELECT identity, observed, first_seen, last_seen, requests
+           FROM agent_sources ORDER BY last_seen DESC LIMIT 500`,
+      ).all()
+
+  // Read from the running hub rather than from a constant here: the two
+  // processes are configured separately, and reporting this one's idea of the
+  // mode would describe a deployment that may not be the one answering.
+  let mode: string | null = null
+  try {
+    const res = await fetch(`${HUB_HTTP_URL}/api/v1/capabilities`)
+    if (res.ok) mode = ((await res.json()) as any)?.surface?.observed_source ?? null
+  } catch {
+    // The hub being unreachable is not a reason to withhold the rows; it is a
+    // reason to say the mode is unknown, which is different from `socket`.
+  }
+
+  return c.json({
+    ok: true,
+    observed_source: mode,
+    // Spelled out rather than left for a UI to infer from the mode string.
+    // The qualifier is the part that is easy to drop, and dropping it turns a
+    // header value into an observation.
+    evidence_note:
+      mode === 'forwarded'
+        ? 'Addresses come from X-Forwarded-For via a trusted proxy. They are evidence only while the hub is unreachable except through that proxy, which the hub cannot verify.'
+        : mode === 'socket'
+          ? 'Addresses are the kernel-observed peer of each connection.'
+          : 'The hub did not answer; the mode is unknown.',
+    sources: rows,
+  })
+})
+
 app.get('/api/v1/admin/inbox', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
