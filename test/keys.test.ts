@@ -973,3 +973,90 @@ describe("ownership scopes what an operator sees", () => {
     grantTo("admin", "key.approve", "*");
   });
 });
+
+/**
+ * SPEC § 11.3. Teardown reaches what you own, and no further.
+ *
+ * § 9.3 is irreversible — the name is never usable again — so a teardown that
+ * reaches one identity too far cannot be undone. Every test here is about the
+ * boundary rather than the operation.
+ */
+describe("teardown is scoped", () => {
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const setGrant = (capability: string, scope: string | null) => withDb((db) => {
+    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability=?`).run(capability);
+    if (scope) {
+      db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+                  VALUES ('default','admin',?,?,'test')`).run(capability, scope);
+    }
+  });
+  const own = (identity: string, owner = "admin") => withDb((db) =>
+    db.prepare(`INSERT INTO agent_owners (tenant,identity,owner,granted_by)
+                VALUES ('default',?,?,'test') ON CONFLICT DO NOTHING`).run(identity, owner));
+  const del = (identity: string) =>
+    fetch(`${mesh.http.url}/api/v1/admin/agents/${identity}`, {
+      method: "DELETE", headers: { cookie: adminCookie },
+    });
+
+  test("an owner with a scoped grant may tear down their own", async () => {
+    await provision(mesh.hub, "td-mine", "service");
+    own("td-mine");
+    setGrant("agent.teardown", "td-mine");
+    expect((await del("td-mine")).status).toBe(200);
+    setGrant("agent.teardown", "*");
+  });
+
+  test("a grant scoped to one identity reaches it without ownership", async () => {
+    // Distinguishes the two paths. The capability scoped to this identity is
+    // sufficient on its own; the ownership fallback is for a broader grant
+    // plus "it is mine". Without this the two overlap and a tenant-scope gate
+    // passes the suite while refusing every scoped operator.
+    await provision(mesh.hub, "td-scoped", "service");
+    setGrant("agent.teardown", "td-scoped");
+    expect(withDb((db) => db.prepare(
+      `SELECT count(*) c FROM agent_owners WHERE identity='td-scoped'`).get() as any).c).toBe(0);
+    expect((await del("td-scoped")).status).toBe(200);
+    setGrant("agent.teardown", "*");
+  });
+
+  test("and may not reach one they do not own", async () => {
+    // The failure that cannot be undone. A grant scoped to one identity must
+    // not answer for another.
+    await provision(mesh.hub, "td-theirs", "service");
+    own("td-theirs", "someone-else");
+    setGrant("agent.teardown", "td-mine");
+    const res = await del("td-theirs");
+    expect(res.status).toBe(403);
+    expect((await res.json()).capability).toBe("agent.teardown");
+    // Still alive.
+    expect((await (await fetch(`${mesh.hub.url}/api/v1/agents/td-theirs/keys`)).json()).deleted).toBe(false);
+    setGrant("agent.teardown", "*");
+  });
+
+  test("ownership alone is not enough — the capability is still required", async () => {
+    // Owning an agent says who is answerable for it, not that this person may
+    // destroy it. A deployment can grant one without the other.
+    await provision(mesh.hub, "td-owned-nocap", "service");
+    own("td-owned-nocap");
+    setGrant("agent.teardown", null);
+    expect((await del("td-owned-nocap")).status).toBe(403);
+    setGrant("agent.teardown", "*");
+  });
+
+  test("a tenant-wide grant still reaches everything", async () => {
+    await provision(mesh.hub, "td-anywhere", "service");
+    expect((await del("td-anywhere")).status).toBe(200);
+  });
+
+  test("a malformed name is 400 before anything is authorised", async () => {
+    // Not a scope anything could have been granted over, so asking the grant
+    // table about it would answer a question with no meaning.
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/agents/..%2Fetc`, {
+      method: "DELETE", headers: { cookie: adminCookie },
+    });
+    expect(res.status).toBe(400);
+  });
+});
