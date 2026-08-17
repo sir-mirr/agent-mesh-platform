@@ -28,13 +28,19 @@ export function AuditLogsPage() {
   const { hasCapability } = useRbac();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
   const canReadContent = hasCapability("audit.read.content");
 
   const loadAuditEvents = () => {
     setIsLoading(true);
+    setIsError(false);
     fetchAuditEvents()
       .then((list) => {
         setEvents(list || []);
+      })
+      .catch(() => {
+        setIsError(true);
+        setEvents([]);
       })
       .finally(() => setIsLoading(false));
   };
@@ -179,6 +185,8 @@ export function AuditLogsPage() {
         data={events}
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="감사 로그 데이터를 불러올 수 없습니다 (서버 연결 실패 또는 권한 오류)."
         emptyMessage="현재 기록된 감사 로그 데이터가 없습니다."
       />
     </div>

@@ -211,6 +211,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     return { page, context, errors };
   }
 
+  async function withPage<T>(route: string, fn: (pageInfo: { page: import("playwright").Page; errors: string[] }) => Promise<T>): Promise<T> {
+    const { page, context, errors } = await createAuthedPage(route);
+    try {
+      return await fn({ page, errors });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+
+  async function withViewerPage<T>(cookie: string, route: string, fn: (pageInfo: { page: import("playwright").Page; errors: string[] }) => Promise<T>): Promise<T> {
+    const { page, context, errors } = await createViewerAuthedPage(cookie, route);
+    try {
+      return await fn({ page, errors });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+
   async function createViewerAuthedPage(cookie: string, route: string) {
     const context = await browser.newContext();
     const rawToken = cookie.replace(/^mesh_token=/, "");
@@ -744,6 +762,196 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(matches.length).toBeGreaterThan(0);
     for (const cap of matches) {
       expect(validPlatformCapabilities).toContain(cap);
+    }
+  });
+
+  // SC-DOWN-04: /platform does not show both DEGRADED and "정상 가동 중" when disconnected
+  it("[SC-DOWN-04] renders /platform without contradictory 정상 가동 중 when disconnected", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+      await page.goto(`${viteBaseUrl}/platform`, { waitUntil: "networkidle" });
+      const downText = await page.locator("#root").innerText();
+      expect(downText).not.toContain("정상 가동 중");
+      expect(downText).toContain("OFFLINE");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-DOWN-05: /tenant/audits says cannot read instead of saying no data
+  it("[SC-DOWN-05] renders /tenant/audits with error message instead of no data when disconnected", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+      await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
+      const downText = await page.locator("#root").innerText();
+      expect(downText).not.toContain("현재 기록된 감사 로그 데이터가 없습니다");
+      expect(downText).toContain("감사 로그 데이터를 불러올 수 없습니다");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-DOWN-06: /creator/register handles disconnected state safely
+  it("[SC-DOWN-06] renders /creator/register safely when disconnected", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+      await page.goto(`${viteBaseUrl}/creator/register`, { waitUntil: "networkidle" });
+      expect(await page.locator("input, textarea").count()).toBeGreaterThanOrEqual(1);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-DOWN-07: /creator says cannot read instead of claiming empty list
+  it("[SC-DOWN-07] renders /creator with error message instead of empty agents when disconnected", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      const downText = await page.locator("#root").innerText();
+      expect(downText).not.toContain("현재 등록된 에이전트 데이터가 없습니다");
+      expect(downText).toContain("에이전트 목록을 불러올 수 없습니다");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-DOWN-08: /platform/telemetry does not show active_sockets=0 or info cards when disconnected
+  it("[SC-DOWN-08] renders /platform/telemetry with connection error and no 0 sessions when disconnected", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+      await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
+      const downText = await page.locator("#root").innerText();
+      expect(downText).not.toContain("active_sockets=0");
+      expect(downText).not.toContain("0 sessions");
+      expect(downText).toContain("텔레메트리 서버와 연결할 수 없습니다");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-LOAD-04: In-Flight Delayed API Response on Dashboard eliminates ZERO pattern
+  it("[SC-LOAD-04] does not show ZERO patterns or empty tenant table messages while waiting on /dashboard", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await route.continue();
+      });
+      await page.goto(`${viteBaseUrl}/dashboard`);
+      await page.waitForTimeout(150);
+      const loadText = await page.locator("#root").innerText();
+      expect(loadText).not.toContain("현재 등록된 테넌트 조직 데이터가 없습니다");
+      expect(loadText).not.toContain("0 sessions");
+      expect(loadText).toContain("조회 중");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
+  // SC-LOAD-05: In-Flight Delayed API Response on /tenant/rbac does not render (0명)
+  it("[SC-LOAD-05] does not show (0명) while waiting on /tenant/rbac", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await route.continue();
+      });
+      await page.goto(`${viteBaseUrl}/tenant/rbac`);
+      await page.waitForTimeout(150);
+      const loadText = await page.locator("#root").innerText();
+      expect(loadText).not.toContain("(0명)");
+      expect(loadText).toContain("조회 중");
+    } finally {
+      await context.close().catch(() => {});
     }
   });
 });

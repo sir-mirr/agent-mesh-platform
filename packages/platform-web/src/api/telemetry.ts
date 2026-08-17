@@ -21,6 +21,10 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
     apiClient<any>("/api/v1/health").catch(() => null),
   ]);
 
+  if (usage === null && agents === null && mailbox === null && health === null) {
+    throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
+  }
+
   const agentList: any[] = Array.isArray(agents) ? agents : agents?.agents ?? [];
   const totalAgents = health?.agent_count != null ? health.agent_count : agentList.length;
   const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;

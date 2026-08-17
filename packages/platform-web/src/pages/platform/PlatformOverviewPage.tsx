@@ -18,7 +18,7 @@ export function PlatformOverviewPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
 
-  React.useEffect(() => {
+  const loadPlatformTelemetry = () => {
     setIsLoading(true);
     setIsError(false);
     fetchTelemetry()
@@ -31,6 +31,10 @@ export function PlatformOverviewPage() {
         setTelemetry(null);
       })
       .finally(() => setIsLoading(false));
+  };
+
+  React.useEffect(() => {
+    loadPlatformTelemetry();
   }, []);
 
   const isOnline = !isError && telemetry !== null;
@@ -38,7 +42,7 @@ export function PlatformOverviewPage() {
   const isHealthy = telemetry?.health_status === "ok";
   const uptimeLabel = telemetry?.server_uptime_seconds != null
     ? `${Math.floor(telemetry.server_uptime_seconds / 60)}분 ${telemetry.server_uptime_seconds % 60}초`
-    : "정상 가동 중";
+    : (isOnline ? "정상 가동 중" : "통신 불가");
 
   const serverNodes = isOnline
     ? [
@@ -69,8 +73,8 @@ export function PlatformOverviewPage() {
       header: t("server.col.node", "노드 ID / 역할"),
       render: (item: typeof serverNodes[0]) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{item.id}</div>
-          <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+          <div style={{ fontWeight: 700, color: "var(--color-primary)" }}>{item.id}</div>
+          <div style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
             {item.role}
           </div>
         </div>
@@ -80,7 +84,7 @@ export function PlatformOverviewPage() {
       key: "endpoint",
       header: t("server.col.endpoint", "엔드포인트 경로"),
       render: (item: typeof serverNodes[0]) => (
-        <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.82rem" }}>
+        <code style={{ fontSize: "0.82rem", color: "var(--color-text-primary)" }}>
           {item.endpoint}
         </code>
       ),
@@ -123,7 +127,7 @@ export function PlatformOverviewPage() {
         title={t("server.title", "실시간 서버 인프라 현황판")}
         subtitle={t("server.subtitle", "현재 가동 중인 메시 허브 및 HTTP 서버의 실시간 헬스(/health), 활성 소켓 및 프로세스 모니터링")}
         actions={
-          <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+          <Button variant="secondary" size="sm" onClick={loadPlatformTelemetry}>
             {t("server.refreshBtn", "↻ 메트릭 새로고침")}
           </Button>
         }
@@ -138,15 +142,15 @@ export function PlatformOverviewPage() {
         />
         <KpiCard
           label={t("server.kpi.sockets", "총 온라인 소켓")}
-          value={String(telemetry?.active_sockets ?? 0)}
-          subValue={isOnline ? t("server.kpi.socketsSub", "WebSocket 활성") : "단절됨"}
+          value={isOnline ? String(telemetry?.active_sockets ?? 0) : "—"}
+          subValue={isOnline ? t("server.kpi.socketsSub", "WebSocket 활성") : t("common.disconnected", "통신 불가")}
           color="var(--color-primary)"
           icon="⚡"
         />
         <KpiCard
           label={t("server.kpi.throughput", "전체 초당 처리량")}
-          value={`${telemetry?.total_messages ?? 0} msg`}
-          subValue={isOnline ? t("server.kpi.throughputSub", "실시간 메시지") : "단절됨"}
+          value={isOnline ? `${telemetry?.total_messages ?? 0} msg` : "—"}
+          subValue={isOnline ? t("server.kpi.throughputSub", "실시간 메시지") : t("common.disconnected", "통신 불가")}
           color="var(--color-leased)"
           icon="📡"
         />

@@ -27,11 +27,14 @@ export function AgentsPage() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
 
   // Load real agents from backend
   React.useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     fetchAgents()
       .then((list) => {
         setAgents(
@@ -46,7 +49,10 @@ export function AgentsPage() {
           }))
         );
       })
-      .catch(() => setAgents([]))
+      .catch(() => {
+        setIsError(true);
+        setAgents([]);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -192,6 +198,8 @@ export function AgentsPage() {
         data={agents}
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="에이전트 목록을 불러올 수 없습니다 (서버 연결 실패 또는 권한 오류)."
         emptyMessage="현재 등록된 에이전트 데이터가 없습니다."
       />
 

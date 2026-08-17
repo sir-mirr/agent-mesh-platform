@@ -178,7 +178,7 @@ export function RbacManagementPage() {
       {/* Capability Matrix Section */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          🛡️ 활성 조직원 및 Capability 권한 할당 매트릭스 ({members.length}명)
+          🛡️ 활성 조직원 및 Capability 권한 할당 매트릭스 {isLoading ? "(조회 중...)" : isError ? "(통신 불가)" : `(${members.length}명)`}
         </h3>
         <DataTable
           columns={columns}

@@ -171,7 +171,7 @@ function PlatformAdminDashboard() {
       </div>
 
       {/* Live Server Telemetry */}
-      {telemetry && (
+      {!isLoading && !isError && telemetry && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
           <TelemetryCard
             label="서버 CPU 부하"
@@ -225,7 +225,15 @@ function PlatformAdminDashboard() {
           </Link>
         </div>
 
-        {groups.length === 0 ? (
+        {isLoading ? (
+          <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
+            테넌트 조직 데이터를 불러오는 중입니다...
+          </div>
+        ) : isError ? (
+          <div style={{ padding: 20, textAlign: "center", color: "var(--color-danger)", fontSize: "0.85rem" }}>
+            테넌트 조직 정보를 불러오지 못했습니다 (서버 통신 실패).
+          </div>
+        ) : groups.length === 0 ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
             현재 등록된 테넌트 조직 데이터가 없습니다.
           </div>
