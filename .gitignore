@@ -21,3 +21,7 @@ dist/
 **/dist/
 **/dist
 packages/*/dist/
+
+# Written by a reader following docs/running-locally.md step 0.
+.mesh-local.env
+

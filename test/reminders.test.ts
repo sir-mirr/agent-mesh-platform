@@ -201,8 +201,21 @@ describe("cancelling", () => {
   });
 
   test("cancelling something that never existed is 0, not an error", async () => {
-    expect((await alice.call("mesh.cancel_reminder", { id: "rem_nonexistent" })).result.changes)
-      .toBe(0);
+    // **The load-bearing half is "not an error", and it was implicit.**
+    //
+    // Nothing else in this file cancels an id that was never scheduled, so the
+    // refusal-versus-zero distinction lives only here — a handler that answered
+    // `-32602` for an unknown id would fail this and nothing else.
+    //
+    // The `changes` half is covered elsewhere: dropping `id = ?` from the
+    // UPDATE is caught by "transitions an active reminder and reports one
+    // change" and by "listing defaults to active", measured. It is not caught
+    // here, because by the time this runs the neighbouring test has already
+    // cancelled everything `alice` owns, so an id-blind UPDATE finds nothing
+    // left to over-cancel. Kept as the shape of the answer, not as the guard.
+    const res = await alice.call("mesh.cancel_reminder", { id: "rem_nonexistent" });
+    expect(res.error, "an unknown id was refused rather than answered").toBeUndefined();
+    expect(res.result.changes).toBe(0);
   });
 
   test("a missing id is refused", async () => {

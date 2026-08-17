@@ -26,10 +26,10 @@ beforeAll(async () => {
 });
 afterAll(() => mesh?.stop());
 
-async function approve(fingerprint: string): Promise<void> {
-  const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+async function approve(fingerprint: string, m: Mesh = mesh, c: string = cookie): Promise<void> {
+  const res = await fetch(`${m.http.url}/api/v1/admin/keys/approve`, {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", cookie: c },
     body: JSON.stringify({ fingerprint }),
   });
   expect(res.status).toBe(200);
@@ -41,6 +41,9 @@ async function call(
   method: string,
   path: string,
   body?: unknown,
+  // Defaulted, so every existing call site is untouched. One test needs its own
+  // mesh, because the lease has to be short enough to lapse.
+  m: Mesh = mesh,
 ): Promise<{ status: number; body: any }> {
   const payload = body === undefined ? "" : JSON.stringify(body);
   const nonce = randomUUID();
@@ -52,7 +55,7 @@ async function call(
     })), kp.privateKey),
   ).toString("base64url");
 
-  const res = await fetch(`${mesh.hub.url}${path}`, {
+  const res = await fetch(`${m.hub.url}${path}`, {
     method,
     headers: {
       authorization: formatRestAuthorization({ kid: kp.fingerprint, nonce, iat, signature }),
@@ -64,14 +67,14 @@ async function call(
 }
 
 let seq = 0;
-async function pair(): Promise<{ a: KeyPair; b: KeyPair; ida: string; idb: string }> {
+async function pair(m: Mesh = mesh, c: string = cookie): Promise<{ a: KeyPair; b: KeyPair; ida: string; idb: string }> {
   const n = seq++;
   const a = newKeyPair(), b = newKeyPair();
   const ida = `ibx-a-${n}`, idb = `ibx-b-${n}`;
-  await provision(mesh.hub, ida, "ai-claude", null, a.publicKey);
-  await provision(mesh.hub, idb, "ai-claude", null, b.publicKey);
-  await approve(a.fingerprint);
-  await approve(b.fingerprint);
+  await provision(m.hub, ida, "ai-claude", null, a.publicKey);
+  await provision(m.hub, idb, "ai-claude", null, b.publicKey);
+  await approve(a.fingerprint, m, c);
+  await approve(b.fingerprint, m, c);
   return { a, b, ida, idb };
 }
 
@@ -212,11 +215,47 @@ describe("delivery", () => {
     const second = await call(b, "POST", "/api/v1/mailbox/in", {});
     expect(second.body.messages).toHaveLength(0);
 
+    // **`remaining` cannot see the acknowledgement, and was read as if it
+    // could.** It counts leasable rows only, and this mesh leases for the
+    // 300-second default — so the message is uncounted whether the ack settled
+    // it, ignored it, or the ack path were deleted. Removing `ack_ids` from the
+    // call below left this test green; the assertion below it is what the call
+    // actually establishes.
+    //
+    // The lease half above is real and stays: a second call gets nothing while
+    // the first caller still holds the batch.
     const acked = await call(b, "POST", "/api/v1/mailbox/in", {
       ack_ids: [first.body.messages[0].id], limit: 0,
     });
-    expect(acked.body.remaining).toBe(0);
+    expect(acked.status, "the acknowledgement was refused").toBe(200);
   });
+
+  test("and once acked it does not come back after the lease lapses", async () => {
+    // The half the test above cannot observe, on its own mesh because the lease
+    // has to be short enough to lapse. Without the ack the batch returns — that
+    // is the whole point of a lease — so an empty read here is the
+    // acknowledgement having settled it, over this REST route rather than the
+    // signed RPC one that `test/mailbox.test.ts` covers.
+    const short = await startMesh({ env: { AGENT_MESH_RECEIVE_LEASE_SECONDS: "1" } });
+    try {
+      const shortCookie = await loginAsAdmin(short.http);
+      const p = await pair(short, shortCookie);
+      await call(p.a, "POST", "/api/v1/mailbox/out", { to: p.idb, content: "settle me" }, short);
+
+      const took = await call(p.b, "POST", "/api/v1/mailbox/in", {}, short);
+      expect(took.body.messages).toHaveLength(1);
+
+      await call(p.b, "POST", "/api/v1/mailbox/in", {
+        ack_ids: [took.body.messages[0].id], limit: 0,
+      }, short);
+
+      await Bun.sleep(2100);
+      const after = await call(p.b, "POST", "/api/v1/mailbox/in", {}, short);
+      expect(after.body.messages, "an acknowledged message came back after the lease").toHaveLength(0);
+    } finally {
+      short.stop();
+    }
+  }, 60_000);
 
   test("a GET cannot take delivery", async () => {
     // The whole reason this is a POST: a proxy, a retry or an operator with

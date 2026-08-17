@@ -21,6 +21,7 @@ import { agentsSchema, verify } from "@agent-mesh/store";
 
 import { agentsDb, stmtSelectAgent } from "./db";
 import { rawParams } from "./raw-params";
+import { recordRefusal } from "./refusals";
 import { log } from "./log";
 
 export const SIGNATURE_INVALID = -32012;
@@ -63,6 +64,38 @@ function requiresKey(identity: string): boolean {
  * succeeding.
  */
 export function verifyRequest(
+  identity: string,
+  method: string,
+  sig: SignatureEnvelope | undefined,
+  raw: string,
+): SignatureVerdict {
+  const verdict = verifyRequestInner(identity, method, sig, raw);
+  // **Counted here, at the one exit, rather than at each refusal.** There are
+  // six `ok: false` returns below and a seventh added next year would be
+  // missed silently — a counter that undercounts reads as calm, which is the
+  // failure this exists to prevent. Wrapping cannot drift.
+  if (!verdict.ok) recordRefusal("signature", refusalReason(verdict));
+  return verdict;
+}
+
+/**
+ * A stable, bounded label for what went wrong.
+ *
+ * Derived from the numeric code and the fixed messages this file produces —
+ * never from anything a caller supplied, because a counter keyed on caller
+ * input is a memory leak whose rate the caller chooses.
+ */
+function refusalReason(verdict: SignatureVerdict & { ok: false }): string {
+  if (verdict.code === KEY_NOT_APPROVED) return "key-not-approved";
+  if (verdict.message.startsWith("iat outside")) return "stale";
+  if (verdict.message.startsWith("nonce already")) return "replayed-nonce";
+  if (verdict.message === "malformed sig") return "malformed";
+  if (verdict.message.startsWith("signed with a key")) return "wrong-key";
+  if (verdict.message.startsWith("signature required")) return "unsigned";
+  return "invalid";
+}
+
+function verifyRequestInner(
   identity: string,
   method: string,
   sig: SignatureEnvelope | undefined,

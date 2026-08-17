@@ -470,3 +470,59 @@ export async function teardown(
   });
   return { status: res.status, body: await res.json() };
 }
+
+/**
+ * A signed-in account holding exactly the capabilities named, and no others.
+ *
+ * **§ 11's middle states had no caller.** Every gate has three outcomes — no
+ * session, a session without the capability, a session with it — and only the
+ * outer two could be produced: `admin` holds everything (`LEGACY_ADMIN_
+ * CAPABILITIES` is `ALL_CAPABILITIES`) and a stranger holds nothing. So the
+ * behaviour a route is *for*, the one it advertises to a partially-privileged
+ * operator, was unreachable by construction.
+ *
+ * The username is the subject: `/auth/local` writes it into `users` as
+ * `github_login`, and `requireCapability` reads exactly that.
+ *
+ * `local_users` is written directly because no route creates one. That is the
+ * only place this harness reaches past the API, and it is here rather than
+ * scattered so a reader can see the whole of it.
+ */
+export async function capabilityViewer(
+  mesh: Mesh,
+  ...capabilities: string[]
+): Promise<string> {
+  const { Database } = await import("bun:sqlite");
+  const username = `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
+  const db = new Database(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
+  if (!db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(username)) {
+    db.prepare(
+      "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
+    ).run(username, await Bun.password.hash(username, { algorithm: "bcrypt" }), username, "member");
+  }
+  db.close();
+
+  const admin = await loginAsAdmin(mesh.http);
+  for (const capability of capabilities) {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: admin },
+      body: JSON.stringify({ subject: username, capability, scope: "*" }),
+    });
+    if (res.status >= 400) throw new Error(`granting ${capability} answered ${res.status}`);
+  }
+
+  const login = await fetch(`${mesh.http.url}/auth/local`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify({ username, password: username }),
+    redirect: "manual",
+  });
+  const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+  // **A 302 is not a session.** The cookie is what says the account exists and
+  // signed in; reading the redirect as success cost an hour of somebody's night.
+  if (!cookie.startsWith("mesh_token=")) {
+    throw new Error(`${username} could not sign in: ${login.status}, no mesh_token`);
+  }
+  return cookie;
+}

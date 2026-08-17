@@ -28,6 +28,7 @@ import {
   rpcResult,
 } from "../jsonrpc";
 import { log } from "../log";
+import { recordRefusal } from "../refusals";
 import { checkDormantSource } from "../dormancy";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
@@ -160,6 +161,11 @@ export function handleSend(
   const egress = groups.maySend(agentsDb, effectiveSender, to);
   if (!egress.ok) {
     log(`refused: ${effectiveSender} (${egress.fromGroup}) may not send to ${to} (${egress.toGroup})`);
+    // The pair, not the identities. Group names come from `groups` in the
+    // database rather than from the request, so the set is bounded by how many
+    // groups an operator made — and the pair is what an operator acts on: a
+    // rule to widen, not a sender to chase.
+    recordRefusal("egress", `${egress.fromGroup}->${egress.toGroup}`);
     return rpcError(id, MAILBOX_ERROR.EGRESS_DENIED,
       `no egress rule from '${egress.fromGroup}' to '${egress.toGroup}'`,
       { code: "EGRESS_DENIED", from_group: egress.fromGroup, to_group: egress.toGroup });

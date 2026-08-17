@@ -25,6 +25,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { recordRefusal } from "../refusals";
 
 import {
   MESH_ERROR,
@@ -59,6 +60,16 @@ function refuse(
   code: string,
   extra: Record<string, unknown> = {},
 ): SignedResult {
+  // **Counted here, which is the only exit this path has.** There are two
+  // verifiers in this hub — `verifyRequest` for the socket and this one for
+  // signed HTTP — and a counter on one of them under-reports forever while
+  // reading as calm. That is not hypothetical: the first version wrapped only
+  // the socket verifier, and the test firing a bad signature at
+  // `POST /api/v1/rpc` moved nothing.
+  //
+  // `code` is the machine-readable string this file chooses, never anything a
+  // caller supplied, so the set of reasons is bounded by the source.
+  recordRefusal("signature", code);
   // The JSON-RPC code travels in the body because a status code cannot carry
   // the retry policy: `403` is permanent for NOT_ENTITLED and wait-approval for
   // KEY_NOT_APPROVED, and `ERROR_CLASS` is keyed on the number.

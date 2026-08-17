@@ -5,6 +5,30 @@ on:
     branches: [main]
   pull_request:
 
+  # **Re-run the current tree, without committing to it.**
+  #
+  # That is the whole reason, and it took two wrong ones to get here.
+  #
+  # The first was that CI could not be re-requested at all. Three agents carried
+  # that unchecked and nobody pressed the button; `gh run rerun` works, on
+  # completed and on expired runs alike, and refuses with exit 1 and a message
+  # when an attempt is already in flight.
+  #
+  # The second was mine: that `rerun` failed silently on expired runs. It does
+  # not. I ran it, then read a `gh run list` that did not contain the run I had
+  # just re-run, and concluded from its absence that nothing had happened. The
+  # attempt counter said otherwise the whole time.
+  #
+  # What survives both is the distinction that actually earns this trigger:
+  # `rerun` replays *that run*, and every case here wanted the *current tree*
+  # examined again. Those are different questions, and only one of them is
+  # answered by re-running something from an hour ago.
+  #
+  # It also separates two states that look alike from outside — *this tree is
+  # broken* and *that run was unlucky* — which cannot be told apart while
+  # re-running needs a new commit, because a new commit is a different tree.
+  workflow_dispatch:
+
 concurrency:
   # A newer push supersedes an in-flight run on the same ref.
   group: ${{ github.workflow }}-${{ github.ref }}

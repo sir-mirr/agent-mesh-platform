@@ -223,30 +223,34 @@ describe("§ 9.1 auth", () => {
       "integration-test-secret",
     )}`;
 
-    // **Eight routes fail this today** and are listed rather than excused. They
-    // still gate the way everything did before § 11 — `extractJwt` then
+    // **Eight routes once failed this, and none do now.**
+    //
+    // They gated the way everything did before § 11 — `extractJwt`, then
     // `payload.role !== 'admin'` — and were never migrated, which nothing
-    // noticed because both models answer 401 and 403 identically for every
-    // caller the other tests use.
+    // noticed because both models answer 401 and 403 identically to every
+    // caller the other tests use. Only a token whose role says admin and whose
+    // subject holds no grant separates them, which is what `roleOnly` above is.
     //
-    // Fixing them is not a code change alone: three of them approve *people*
-    // and two report AI usage, and § 11's vocabulary has a capability for
-    // neither. Inventing one here would be deciding a contract in a test file.
+    // Migrating them was not a code change alone. Three admit *people* and two
+    // report AI usage, and § 11's vocabulary had a capability for neither;
+    // inventing one in a test file would have been deciding a contract here.
+    // `user.admit` and `usage.read` (contracts v0.25.0) gave them somewhere to
+    // go.
     //
-    // So the list is sealed instead of skipped. This fails the moment a ninth
-    // route joins the set, and it fails again when one is migrated — which
-    // forces the list down rather than letting it sit. A `skip` would have done
-    // neither.
-    const NOT_YET_ON_CAPABILITIES = new Set([
-      "GET /api/v1/admin/pending",
-      "POST /api/v1/admin/approve",
-      "POST /api/v1/admin/deny",
-      "GET /api/v1/admin/chat-audits",
-      "GET /api/v1/admin/chat-audits/stream",
-      "GET /api/v1/admin/chat-audits/agents",
-      "GET /api/v1/admin/ai-usage",
-      "GET /api/v1/admin/ai-usage/stream",
-    ]);
+    // They came off an allow-list, eight to five to zero, and every step was
+    // forced by this test failing and naming what had moved — the half a `skip`
+    // cannot do. What remained afterwards was `[...new Set([])].filter(...)`
+    // asserted empty: a check no route, no server and no request could move. It
+    // survived a week of arguing that a green which cannot go red says nothing,
+    // written by the same hand three hours after the argument, and was found by
+    // pointing that argument at this suite.
+    //
+    // Not kept as `expect(set.size).toBe(0)` either — that asserts a literal
+    // against itself two lines below where it is declared, which is the same
+    // thing wearing a number. The history is here because it is history; the
+    // check below needs no list.
+    //
+    // **Any JWT* route that does not refuse a role-only session is a finding.**
 
     const adminOnly = routesFromSpec().filter((r) => r.auth === "JWT*");
     expect(adminOnly.length).toBeGreaterThan(5);
@@ -260,11 +264,7 @@ describe("§ 9.1 auth", () => {
       if (status !== 403) roleGated.push(`${route.method} ${route.path}`);
     }
 
-    const unexpected = roleGated.filter((r) => !NOT_YET_ON_CAPABILITIES.has(r));
-    expect(unexpected, "a new route gates on the role rather than a capability").toEqual([]);
-
-    const migrated = [...NOT_YET_ON_CAPABILITIES].filter((r) => !roleGated.includes(r));
-    expect(migrated, "these now refuse a role-only session — take them off the list").toEqual([]);
+    expect(roleGated, "these gate on the role rather than a capability").toEqual([]);
   }, 60_000);
 
   test("every implemented API route is in the § 9.1 table", async () => {

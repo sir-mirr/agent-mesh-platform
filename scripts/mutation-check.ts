@@ -251,8 +251,19 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A scenario verb the runner did not handle fell out of the `switch`, did nothing, and reported green (§ 17.3).",
     file: "test/scenarios.test.ts",
-    from: '    case "sleep":\n      await Bun.sleep(step.seconds * 1000);\n      return;\n',
-    to: "",
+    // **Aimed at `provision`, not at `sleep`.** The first version deleted the
+    // `sleep` case, and `sleep` is used by exactly two of eighteen scenarios —
+    // both of which ask for a bespoke mesh (`receiveLeaseSeconds: 2`). When one
+    // of those failed to come up in CI the suite reported that instead, the
+    // expected string never appeared, and the entry read `not caught`.
+    //
+    // The tool was right and the entry was fragile: it depended on the most
+    // failure-prone step in the run to reach the branch it was testing.
+    // `provision` appears twenty-four times, on the shared mesh, in the first
+    // step of nearly every scenario — so an unhandled verb throws before
+    // anything else can go wrong instead.
+    from: '    case "provision": {',
+    to: '    case "provision-disabled-by-mutation": {',
     suite: "test/scenarios.test.ts",
     expect: ["verb not implemented"],
   },
@@ -473,6 +484,176 @@ const MUTATIONS: Mutation[] = [
     // `Math.max` alone is equivalent under `ceil` — a positive deficit never
     // rounds to zero — so the entry mutates the rounding with it.
     expect: ["nor when the bucket is a fraction of a token short"],
+  },
+
+  {
+    id: "orphan-readonly",
+    defect:
+      "The orphan sweep opened the audit store read-write. It does not write, so nothing observable changes and the whole suite stayed green — but § 15.6 requires a sweep that is safe beside a live core, and a handle that *could* write is one an edit six months from now will write through.",
+    file: "scripts/collect-orphan-blobs.ts",
+    from: 'openStore("audit", { readonly: true })',
+    to: 'openStore("audit")',
+    suite: "test/orphans.test.ts",
+    // A source check, because there is nothing to observe from outside the
+    // process: SQLite refuses the write inside the connection, and no test
+    // holds it. The mtime test beside this one passes under the mutation.
+    expect: ["and could not, because the handle is read-only"],
+  },
+
+  {
+    id: "blob-base-url-advert",
+    defect:
+      "`/api/v1/capabilities` did not report the upload address the hub hands out, so a deployment that forgot `AGENT_MESH_BLOB_BASE_URL` served `http://127.0.0.1:3000` URLs pointing at whatever else held that port — and nothing observable disagreed until the first attachment. The same shape as the receive lease beside it, which is advertised for exactly this reason.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "        blob_base_url: BLOB_BASE_URL,",
+    to: '        blob_base_url: "http://127.0.0.1:3000",',
+    suite: "test/blobs.test.ts",
+    // A harness on ephemeral ports is never legitimately 3000, which is what
+    // separates reporting the configuration from reporting the constant.
+    expect: ["capabilities reports the configured one, not the default"],
+  },
+
+  {
+    id: "spec-capability-drift",
+    defect:
+      "§ 11's capability table in SPEC.md listed eight names while the code enforced twelve, and one of the eight — `inbox.read.depth` — had been renamed to `mailbox.read.depth` and never followed. The normative document named a capability nobody could grant and omitted four that existed.",
+    file: "SPEC.md",
+    from: "| `usage.read` | AI usage figures |\n",
+    to: "",
+    suite: "test/capability-vocabulary.test.ts",
+    // Parsed out of the document rather than restated, the way auth-sweep reads
+    // the § 9.1 route table — a third copy would go stale silently.
+    expect: ["names exactly what the code enforces"],
+  },
+
+  {
+    id: "telemetry-constant",
+    defect:
+      "A screen of constants is what this route replaces — 139 sessions, 1024 MB, 99.99% — and no typecheck or build ever objected, because a constant is perfectly well typed. The only check that separates a reported number from an invented one is whether it follows the mesh.",
+    file: "packages/http/src/main.ts",
+    from: "    keys_awaiting_decision: { waiting: keys.waiting, oldest: keys.oldest },",
+    to: "    keys_awaiting_decision: { waiting: 0, oldest: null },",
+    suite: "test/telemetry.test.ts",
+    // The test provisions a key and asserts the count moved. On an empty mesh
+    // every field here is legitimately zero, so asserting on a fresh mesh alone
+    // would pass against a hardcoded response.
+    expect: ["provisioning a key did not move the count"],
+  },
+  {
+    id: "telemetry-limits-asked",
+    defect:
+      "The rate-limit buckets live in the hub process and nowhere else, so this route asks rather than computes. Answering from here — with anything, including an empty list — reports on a process it cannot see.",
+    file: "packages/http/src/main.ts",
+    // Re-anchored after the block grew a `refusals` field. The first anchor
+    // spanned the whole `if (res.ok)` line and stopped matching the moment the
+    // body was destructured — reported as `checks nothing`, not as caught,
+    // which is the second time today this refusal caught the manifest itself
+    // rather than the code.
+    from: "      limiters = body.limiters",
+    to: "      limiters = []",
+    suite: "test/telemetry.test.ts",
+    expect: ["the limits come from the hub"],
+  },
+
+  {
+    id: "refusals-counted",
+    defect:
+      "§ 8.1 refused a bad signature and forgot it — an RPC error and a line on stdout, nothing queryable. So 'is something failing to get in' meant grepping a process, and 'has this ever happened' had no answer. Counting turned out to need four call sites, not the one the code reads as having.",
+    file: "packages/hub/src/rpc/dispatch.ts",
+    from: '    recordRefusal("signature", `key-${keyStatus ?? "unknown"}`);\n',
+    to: "",
+    suite: "test/telemetry.test.ts",
+    expect: ["a refused signature was not counted"],
+  },
+
+  {
+    id: "truncation-disclosed",
+    defect:
+      "A list capped at ten rows was served with no total beside it, so a screen drawing ten lanes out of two hundred reported that the problem was small and nothing in the response disagreed. Written an hour before it was noticed, in the route added to replace a screen of constants.",
+    file: "packages/http/src/main.ts",
+    from: "    lanes_not_draining_total: lanesTotal,",
+    to: "    lanes_not_draining_total: lanes.length,",
+    suite: "test/telemetry.test.ts",
+    // Not the shape check — `total === shown` agrees with itself for every
+    // input. The one that adds a lane and watches the total move.
+    expect: ["the total did not follow a new lane"],
+  },
+
+  {
+    id: "audit-digest-recomputed",
+    defect:
+      "The audit route returned `payload_digest` beside the row it describes and never compared them. A row edited afterwards carries a digest edited with it, or a mismatch nobody evaluates — and an audit store whose rows can change without detection is a log.",
+    file: "packages/http/src/audit-query.ts",
+    from: "createHash('sha256').update(row.payload, 'utf8').digest('hex') === row.payload_digest,",
+    to: "true,",
+    suite: "test/audit-integrity.test.ts",
+    // The test edits the stored bytes behind the API and expects the route to
+    // notice. Asserting `true` on a fresh mesh passes against a constant.
+    expect: ["the payload changed and the route still said it matched"],
+  },
+
+  {
+    id: "ack-settles-over-rest",
+    defect:
+      "Nothing checked that acknowledging over `/api/v1/mailbox/in` settles a message. The assertion that looked like it did read `remaining`, which counts leasable rows only — so a 300-second lease made it zero whatever the acknowledgement did, and removing `ack_ids` left the suite green.",
+    file: "packages/mailbox/src/receive.ts",
+    from: "      const settled = stmt.ackMessage.run(messageId, identity);",
+    to: "      const settled = { changes: 0 };",
+    suite: "test/mailbox-routes.test.ts",
+    // A one-second lease, so the batch comes back if it was never settled. The
+    // manifest catches a deleted guard; it cannot catch a weakened test, which
+    // is why the first version of this entry — removing the lease wait — was
+    // wrong: that mutation makes the assertion vacuous and therefore green.
+    expect: ["an acknowledged message came back after the lease"],
+  },
+  {
+    id: "bootstrap-observes-registry",
+    defect:
+      "`repeated invocations change nothing` compared two empty lists. Its helper fetched a route the hub answers 405 to, then returned `[]` under a comment promising a fallback nobody wrote — so a script that wiped the registry on its second run passed.",
+    file: "test/bootstrap.test.ts",
+    from: '  const probe = ["http-server", "self-reminder", "not-provisioned-by-bootstrap"];',
+    to: "  const probe: string[] = [];",
+    suite: "test/bootstrap.test.ts",
+    expect: ["the first run provisioned no identity"],
+  },
+
+  {
+    id: "row-payload-agree",
+    defect:
+      "Five fields sit on the audit row and inside the payload it stores, and nothing compared them. The payload is what the producer signed; the columns are the hub's projection of it. A projection that drifts means the row contradicts its own signed bytes, and from outside it looks like a healthy row.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    event_type: row.event_type,",
+    to: '    event_type: row.event_type + "-desynced",',
+    suite: "test/audit-integrity.test.ts",
+    expect: ["row.event_type and payload.event_type disagree"],
+  },
+
+  {
+    id: "redaction-withholds",
+    defect:
+      "\u00a7 11.0's redaction was unreachable by any account and therefore unchecked: admin holds every capability and a stranger holds none, so the state the audit screen advertises — content withheld from a metadata-only reader — had no caller who could stand on it.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      if (k === 'content') {",
+    to: "      if (false) {",
+    suite: "test/audit-integrity.test.ts",
+    // Needs `capabilityViewer`, which makes an account holding exactly
+    // `audit.read.metadata`. Before it existed this branch could not be entered
+    // by any caller the suite could produce.
+    expect: ["content reached a metadata-only reader"],
+  },
+
+  {
+    id: "carrier-not-sender",
+    defect:
+      "The audit row recorded the carrier as the sender. \u00a7 8.2 keeps them apart — `from` is who the message is from, `sent_by` is who carried it — and on a mesh where nothing is ever proxied the two are equal in every row, so overwriting one with the other was invisible.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "      sent_by: fields.sentBy,",
+    to: "      sent_by: fields.from,",
+    suite: "test/audit-integrity.test.ts",
+    // Needs a proxied send, which needs a keyless subject: § 8.2 refuses a
+    // proxy for an identity that holds its own key. No other test in this
+    // repository produces a row where the two differ.
+    expect: ["the carrier was not recorded"],
   },
 
   // ---------------------------------------------------------------------------
@@ -719,6 +900,24 @@ for (const m of selected) {
   // distinction this tool exists to keep.
   if (!/\d+ (pass|fail)/.test(output)) {
     console.error(`✗ ${m.id}: the run reported no test summary — inconclusive, not a verdict`);
+    await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
+    missed++;
+    kinds.set(m.id, "inconclusive");
+    continue;
+  }
+
+  // **A summary is not the same as a run.** `send-idempotent-retry` came back
+  // `0 pass / 1 fail` with `a beforeEach/afterEach hook timed out` — the mesh
+  // never came up, so no test in the file executed and the guard had no chance
+  // to object. The regex above matched `0 pass` and the entry was recorded as
+  // `not caught`, which is a finding about a guard from a run that never
+  // reached it.
+  //
+  // One mutation breaks one guard; the rest of the file still passes. Zero
+  // passing tests means the file did not run, whatever the summary says.
+  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
+  if (passed === 0) {
+    console.error(`✗ ${m.id}: no test in ${m.suite} ran — inconclusive, not a verdict`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");

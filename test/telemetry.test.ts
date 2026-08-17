@@ -1,0 +1,215 @@
+/**
+ * SPEC § 14 / § 10.2 / § 8.10.1 — what an operator does something about.
+ *
+ * **Every assertion here moves a number off zero first.** An empty mesh answers
+ * this route with zeros for everything, and a route that returned hardcoded
+ * zeros would pass any test written against that mesh. The front end this
+ * replaces was a screen of constants — `139` sessions, `1024` MB, `99.99%` —
+ * that no typecheck and no build ever objected to, because a constant is
+ * perfectly well typed. The only check that separates them is whether the
+ * number follows the mesh.
+ *
+ * The requirement asked for CPU, RSS, heap and event-loop lag. Those are not
+ * here (decision D-1): there is one hub process by design and no autoscaler, so
+ * an operator reading `RSS: 412MB` learns something true and acts on none of it.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
+import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
+
+let mesh: Mesh;
+let cookie: string;
+
+beforeAll(async () => {
+  mesh = await startMesh();
+  cookie = await loginAsAdmin(mesh.http);
+}, 60_000);
+afterAll(() => mesh?.stop());
+
+const telemetry = async (query = "") =>
+  (await (await fetch(`${mesh.http.url}/api/v1/admin/telemetry${query}`, { headers: { cookie } })).json()) as any;
+
+describe("the numbers follow the mesh", () => {
+  test("a key waiting for a decision appears, having not been there before", async () => {
+    const before = await telemetry();
+    expect(before.keys_awaiting_decision.waiting).toBe(0);
+    expect(before.keys_awaiting_decision.oldest).toBeNull();
+
+    const key = newKeyPair();
+    expect((await provision(mesh.hub, "telemetry-waiting", "ai-claude", null, key.publicKey)).status).toBe(201);
+
+    const after = await telemetry();
+    expect(after.keys_awaiting_decision.waiting, "provisioning a key did not move the count").toBe(1);
+    // The oldest timestamp is what makes it actionable — a count says somebody
+    // is waiting, this says how long.
+    expect(after.keys_awaiting_decision.oldest).toBeTruthy();
+  }, 30_000);
+
+  test("a message nobody drains shows up as a lane, named", async () => {
+    const before = await telemetry();
+    expect(before.lanes_not_draining).toEqual([]);
+
+    const sender = newKeyPair(), recipient = newKeyPair();
+    await provision(mesh.hub, "telemetry-sender", "ai-claude", null, sender.publicKey);
+    await provision(mesh.hub, "telemetry-recipient", "ai-claude", null, recipient.publicKey);
+    for (const fp of [sender.fingerprint, recipient.fingerprint]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ fingerprint: fp }),
+      });
+    }
+
+    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+    await rpc.call("mesh.connect", { identity: "telemetry-sender" });
+    await rpc.call("mesh.send", { to: "telemetry-recipient", content: "nobody is draining this" });
+    rpc.close();
+
+    const after = await telemetry();
+    const lane = after.lanes_not_draining.find((l: any) => l.identity === "telemetry-recipient");
+    expect(lane, "the undrained lane is not reported").toBeDefined();
+    expect(lane.pending).toBeGreaterThan(0);
+    // An operator chases a lane, not a total — so the identity has to be here.
+    expect(lane.oldest).toBeTruthy();
+
+    // And the mesh is carrying something, which is a different question from
+    // whether anything is stuck.
+    expect(after.messages_accepted, "an accepted message was not counted").toBeGreaterThan(0);
+  }, 45_000);
+});
+
+describe("what it says when it cannot answer", () => {
+  test("the limits come from the hub, with the configuration that produced them", async () => {
+    const body = await telemetry();
+    expect(body.rate_limits_error, `the hub did not answer: ${body.rate_limits_error}`).toBeNull();
+
+    const names = (body.rate_limits as Array<{ name: string }>).map((l) => l.name).sort();
+    expect(names).toEqual(["provision", "signed"]);
+
+    // The configuration travels with the count. A refusal total means nothing
+    // without knowing how tightly the bucket was set.
+    for (const l of body.rate_limits as Array<any>) {
+      expect(typeof l.refusals).toBe("number");
+      expect(l.capacity, `${l.name} reports no capacity`).toBeGreaterThan(0);
+    }
+  }, 30_000);
+
+  test("refusals are reported, and were counted rather than invented", async () => {
+    // **A zero nobody can make non-zero says nothing about the thing it names.**
+    // Signature and egress refusals are refused and logged to stdout; no write
+    // path exists, so there is no store to query. Reporting `0` would tell an
+    // operator the mesh is calm about a question nobody asked.
+    // **The empty array passes if you only check the shape.** § 8.1 refuses a
+    // bad signature and § 12 refuses a send no rule allows; both used to answer
+    // with an RPC error and a line on stdout, so an operator asking "is
+    // something failing to get in" had to grep a process. Reporting `[]` for
+    // that is the same lie as reporting `0`.
+    const before = await telemetry();
+    const countOf = (b: any, kind: string) =>
+      (b.refusals as Array<any> | null)?.filter((r) => r.kind === kind).reduce((n, r) => n + r.count, 0) ?? 0;
+    const beforeSig = countOf(before, "signature");
+
+    // A signed request whose signature is nonsense. Refused by § 8.1, and the
+    // reason has to survive to the counter.
+    await fetch(`${mesh.hub.url}/api/v1/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "mesh.send",
+        params: { to: "nobody", content: "x" },
+        sig: { alg: "ed25519", kid: "0".repeat(64), nonce: "n-telemetry", iat: Math.floor(Date.now() / 1000), value: "bad" },
+      }),
+    });
+
+    const after = await telemetry();
+    expect(countOf(after, "signature"), "a refused signature was not counted").toBeGreaterThan(beforeSig);
+
+    // And the reason travels, because "12 refusals" sends an operator nowhere
+    // while "12 stale" and "12 wrong-key" are different problems.
+    const sig = (after.refusals as Array<any>).filter((r) => r.kind === "signature");
+    expect(sig.length).toBeGreaterThan(0);
+    for (const r of sig) {
+      expect(typeof r.reason).toBe("string");
+      expect(r.reason.length, "a refusal was counted under an empty reason").toBeGreaterThan(0);
+    }
+  }, 30_000);
+
+  test("the reason is drawn from the code, never from the caller", async () => {
+    // A counter keyed on caller input is a memory leak whose rate the caller
+    // chooses. Two refusals differing only in what the caller sent must land
+    // under the same reason.
+    const send = (kid: string, nonce: string) =>
+      fetch(`${mesh.hub.url}/api/v1/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "mesh.send",
+          params: { to: "nobody", content: "x" },
+          sig: { alg: "ed25519", kid, nonce, iat: Math.floor(Date.now() / 1000), value: "bad" },
+        }),
+      });
+
+    const before = await telemetry();
+    const reasons = (b: any) => new Set(((b.refusals ?? []) as Array<any>).map((r) => `${r.kind} ${r.reason}`));
+    const had = reasons(before);
+
+    await send("a".repeat(64), "n-vary-1");
+    await send("b".repeat(64), "n-vary-2");
+    await send("c".repeat(64), "n-vary-3");
+
+    const after = await telemetry();
+    const added = [...reasons(after)].filter((r) => !had.has(r));
+    expect(added.length, `three different kids created ${added.length} new reasons: ${added.join(", ")}`)
+      .toBeLessThanOrEqual(1);
+  }, 30_000);
+});
+
+describe("a truncated list says so", () => {
+  test("lanes report how many there are, not only how many fit", async () => {
+    // **Ten rows out of two hundred draws a screen saying the problem is
+    // small**, and nothing in the response disagreed. This route shipped with
+    // the silent version and was corrected an hour later; the check is here so
+    // the next `LIMIT` cannot arrive without one.
+    const body = await telemetry();
+    expect(typeof body.lanes_not_draining_total, "no total beside the truncated list").toBe("number");
+    expect(body.lanes_not_draining_shown).toBe(body.lanes_not_draining.length);
+    expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(body.lanes_not_draining_shown);
+  }, 30_000);
+
+  test("and the total keeps climbing after the list stops", async () => {
+    // **The cap is 10, so fewer than 10 lanes proves nothing.** `total` and
+    // `shown` move together up to the ceiling, and the first version of this
+    // test made three lanes and passed against `total: lanes.length` — the
+    // mutation manifest caught it as uncaught before it was reported as done.
+    //
+    // Twelve lanes is where the two separate: `shown` saturates and `total`
+    // does not.
+    const before = await telemetry();
+
+    for (let i = 0; i < 12; i++) {
+      const sender = newKeyPair(), recipient = newKeyPair();
+      await provision(mesh.hub, `trunc-s-${i}`, "ai-claude", null, sender.publicKey);
+      await provision(mesh.hub, `trunc-r-${i}`, "ai-claude", null, recipient.publicKey);
+      for (const fp of [sender.fingerprint, recipient.fingerprint]) {
+        await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify({ fingerprint: fp }),
+        });
+      }
+      const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+      await rpc.call("mesh.connect", { identity: `trunc-s-${i}` });
+      await rpc.call("mesh.send", { to: `trunc-r-${i}`, content: `lane ${i}` });
+      rpc.close();
+    }
+
+    const after = await telemetry();
+    expect(after.lanes_not_draining_shown, "the cap is not 10 any more — this test is aimed at the wrong number").toBe(10);
+    expect(after.lanes_not_draining_total, "the total did not follow a new lane")
+      .toBeGreaterThan(after.lanes_not_draining_shown);
+    expect(after.lanes_not_draining_total).toBeGreaterThan(before.lanes_not_draining_total);
+  }, 90_000);
+});

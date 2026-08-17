@@ -67,17 +67,30 @@ async function run(env: Record<string, string>): Promise<Run> {
   return { code, stdout, stderr };
 }
 
+/**
+ * Which of the baseline identities the hub has, asked one at a time.
+ *
+ * **There is no list route, and the version of this that pretended otherwise
+ * returned `[]` in every run.** It fetched `GET /api/v1/agents`, which the hub
+ * answers `405 method not allowed; use POST` — measured, not assumed — and then
+ * returned `[]` on 405 under a comment saying it would "fall back to
+ * per-identity lookups". That fallback was never written, so the idempotence
+ * check below compared `[]` to `[]` and observed nothing: a script that
+ * duplicated an identity, renamed one, or wiped the registry on its second run
+ * passed it unchanged.
+ *
+ * Read through the hub rather than by opening `hub.db`: § 10 forbids that of
+ * the script, and a test that did it would be asserting against a file the
+ * script is not allowed to know exists.
+ */
 async function identities(hub: Service): Promise<string[]> {
-  // Read through the hub rather than by opening `hub.db`: § 10 forbids that of
-  // the script, and a test that did it would be asserting against a file the
-  // script is not allowed to know exists.
-  const res = await fetch(`${hub.url}/api/v1/agents`);
-  if (res.status === 404 || res.status === 405) {
-    // No list route on the control plane; fall back to per-identity lookups.
-    return [];
-  }
-  const body = (await res.json()) as { agents?: Array<{ id?: string; identity?: string }> };
-  return (body.agents ?? []).map((a) => a.id ?? a.identity!).sort();
+  // The identities the env layout seeds, plus one that must never appear. A
+  // probe for an absent name is what turns this from "the ones we expected are
+  // there" into "and nothing else arrived".
+  const probe = ["http-server", "self-reminder", "not-provisioned-by-bootstrap"];
+  const present: string[] = [];
+  for (const id of probe) if (await exists(hub, id)) present.push(id);
+  return present.sort();
 }
 
 async function exists(hub: Service, identity: string): Promise<boolean> {
@@ -150,6 +163,10 @@ describe("§ 10 bootstrap script", () => {
 
     expect((await run(env)).code).toBe(0);
     const first = await identities(mesh.hub);
+    // Not an empty comparison. The first run must actually have provisioned
+    // something, or the two sides below agree about nothing.
+    expect(first, "the first run provisioned no identity — this compares nothing").not.toEqual([]);
+
     expect((await run(env)).code).toBe(0);
     expect((await run(env)).code).toBe(0);
     expect(await identities(mesh.hub)).toEqual(first);
