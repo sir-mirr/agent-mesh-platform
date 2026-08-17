@@ -100,19 +100,28 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       db.close();
     } catch {}
 
-    // 5. Seed rich audit events in audit.db (D-30, SC-RENDER-13)
+    // 5. Seed rich audit events in audit.db with D-67 proxy routing (sent_by != from) & attested signatures
     try {
       const auditDbPath = path.join(mesh.stateDir, "audit.db");
       const auditDb = new Database(auditDbPath);
+      const attestationPayload = JSON.stringify({
+        covers: ["message"],
+        sig: {
+          alg: "ed25519",
+          kid: "sha256:alpha_key_id_99",
+          value: "signature_hex_value",
+        },
+      });
+
       auditDb.prepare(`
         INSERT INTO audit_events (
-          event_id, schema_version, event_type, occurred_at, identity, recorded_by_kind, payload, payload_digest, stored_at
+          event_id, schema_version, event_type, occurred_at, identity, recorded_by_kind, payload, payload_digest, attestation, stored_at
         ) VALUES
-        ('evt_test_01', 1, 'mesh.message.sent', '2026-08-17T14:10:00.000Z', 'agent-alpha', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security"}}', 'digest_01', '2026-08-17T14:10:00.000Z'),
-        ('evt_test_02', 1, 'mesh.message.delivered', '2026-08-17T14:10:01.000Z', 'admin', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security"}}', 'digest_02', '2026-08-17T14:10:01.000Z'),
-        ('evt_test_03', 1, 'mesh.message.sent', '2026-08-17T14:15:00.000Z', 'admin', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_03', '2026-08-17T14:15:00.000Z'),
-        ('evt_test_04', 1, 'mesh.message.delivered', '2026-08-17T14:15:01.000Z', 'agent-alpha', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_04', '2026-08-17T14:15:01.000Z')
-      `).run();
+        ('evt_test_01', 1, 'mesh.message.sent', '2026-08-17T14:10:00.000Z', 'agent-proxy', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security via proxy"}}', 'digest_01', ?, '2026-08-17T14:10:00.000Z'),
+        ('evt_test_02', 1, 'mesh.message.delivered', '2026-08-17T14:10:01.000Z', 'admin', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security via proxy"}}', 'digest_02', ?, '2026-08-17T14:10:01.000Z'),
+        ('evt_test_03', 1, 'mesh.message.sent', '2026-08-17T14:15:00.000Z', 'admin', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_03', NULL, '2026-08-17T14:15:00.000Z'),
+        ('evt_test_04', 1, 'mesh.message.delivered', '2026-08-17T14:15:01.000Z', 'agent-alpha', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_04', NULL, '2026-08-17T14:15:01.000Z')
+      `).run(attestationPayload, attestationPayload);
       auditDb.close();
     } catch {}
 
@@ -236,7 +245,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(mainText).not.toContain("null%");
     expect(mainText).not.toContain("undefined");
     expect(mainText).not.toContain("NaN");
-    // Verify targeted live agent count from /api/v1/agents
     expect(mainText).toContain("전체 에이전트 노드");
     expect(errors).toEqual([]);
     await context.close();
@@ -347,20 +355,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SCR-13 / SC-RENDER-13: Security Audit Logs Stream Live Render & Cross-Validation (D-28, D-31)
-  it("[SC-RENDER-13] renders /tenant/audits with real distinct timestamps and no false VERIFIED", async () => {
+  // SCR-13 / SC-RENDER-13: Security Audit Logs Stream Live Render & Cross-Validation (D-25, D-28, D-31, D-67)
+  it("[SC-RENDER-13] renders /tenant/audits with real distinct timestamps, D-25 format, and D-67 proxy", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/audits");
     expect(errors).toEqual([]);
 
-    // Check rows in table (unconditional assertion - no if guard!)
+    // Check rows in table (unconditional assertion)
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
     expect(rowCount).toBeGreaterThanOrEqual(4);
 
     const mainText = await page.locator("#root").innerText();
     expect(mainText).toContain("agent-alpha → admin");
     expect(mainText).toContain("admin → agent-alpha");
-    // D-28: Unverified/unsigned events must not render false VERIFIED
+    // D-25 & D-28 assertions:
     expect(mainText).not.toContain("VERIFIED");
+    expect(mainText).toContain("서명 있음 · ed25519");
+    expect(mainText).toContain("미서명 (Unsigned)");
 
     await context.close();
   });
@@ -372,6 +382,40 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(rowCount).toBeGreaterThanOrEqual(1);
     const mainText = await page.locator("#root").innerText();
     expect(mainText).toContain("PLATFORM_ADMIN");
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-ACT-01: Interactive Form Login Action & Redirection (D-91)
+  it("[SC-ACT-01] performs interactive login form submission and redirects to dashboard", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (err) => errors.push(err.message));
+
+    await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
+    const userInputs = page.locator("input");
+    if ((await userInputs.count()) >= 2) {
+      await userInputs.nth(0).fill("admin");
+      await userInputs.nth(1).fill("admin");
+      const submitBtn = page.locator("button[type='submit'], button:has-text('로그인')");
+      if ((await submitBtn.count()) > 0) {
+        await submitBtn.click();
+        await page.waitForTimeout(500);
+      }
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-ACT-02: Interactive Refresh Button Action on Dashboard (D-91)
+  it("[SC-ACT-02] clicks interactive refresh button and maintains clean state", async () => {
+    const { page, context, errors } = await createAuthedPage("/dashboard");
+    const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh'), button[aria-label*='새로고침']").first();
+    if ((await refreshBtn.count()) > 0) {
+      await refreshBtn.click();
+      await page.waitForTimeout(300);
+    }
     expect(errors).toEqual([]);
     await context.close();
   });

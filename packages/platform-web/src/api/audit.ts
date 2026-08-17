@@ -30,13 +30,14 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       attestationObj = item.attestation;
     }
 
-    const attestationAlgorithm = attestationObj?.algorithm || attestationObj?.alg || (attestationObj ? "ed25519" : null);
-    const keyId = attestationObj?.key_id || attestationObj?.kid || (attestationObj?.fingerprint ? String(attestationObj.fingerprint).slice(0, 8) : null);
-    const signatureVerified = attestationObj != null && typeof attestationObj.valid === "boolean" ? attestationObj.valid : (item.signature_verified != null ? Boolean(item.signature_verified) : null);
+    const sig = attestationObj?.sig;
+    const attestationAlgorithm = sig?.alg ?? null;
+    const keyId = sig?.kid ?? null;
+    const signatureVerified = item.signature_verified != null ? Boolean(item.signature_verified) : (sig ? true : null);
     
-    const signatureInfo = attestationObj != null
-      ? `서명 있음 · ${attestationAlgorithm || "ed25519"}${keyId ? ` · ${keyId}` : ""}`
-      : (signatureVerified === true ? "서명 있음 · ed25519" : (signatureVerified === false ? "서명 실패 (FAILED)" : "미서명 (Unsigned)"));
+    const signatureInfo = sig != null
+      ? `서명 있음 · ${attestationAlgorithm || "알 수 없음"}${keyId ? ` · ${keyId}` : ""}`
+      : (signatureVerified === true ? "서명 있음" : (signatureVerified === false ? "서명 실패 (FAILED)" : "미서명 (Unsigned)"));
 
     return {
       id: item.event_id || item.id || `evt_${Math.random().toString(36).slice(2, 8)}`,
