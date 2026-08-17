@@ -1,12 +1,12 @@
 # 📬 Agent-Local-Mailer 사용 가이드 & Antigravity 초기 세션 프롬프트
 
-로컬 멀티 에이전트 환경간에 비동기 메시지를 주고받는 **Agent Local Mailer**의 연동 규약 및 Antigravity 세션 시작 가이드입니다.
+로컬 멀티 에이전트 환경 간에 비동기 메시지를 주고받는 **Agent Local Mailer**의 연동 규약 및 Antigravity 세션 시작 가이드입니다.
 
 ---
 
 ## 🚀 1. Antigravity 첫 대화 복사용 프롬프트 (Copy & Paste)
 
-> **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 즉시 메일함을 확인하고 1분 주기 스케줄러를 등록합니다.
+> **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 즉시 메일함을 확인하고 3분 주기 스케줄러를 등록합니다.
 
 ```markdown
 당신은 에이전트 메시 플랫폼 프론트엔드 엔지니어 에이전트(`platform-fe-antigravity`)입니다.
@@ -32,18 +32,18 @@
 
 ### 📥 1) 내 메일함 조회 (수신)
 ```bash
-curl -s http://localhost:3300/api/mail?agentId={agentId}
+curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity
 ```
 - **응답 예시**:
 ```json
 [
   {
-    "id": 248,
+    "id": 252,
     "from": "platform-claude",
-    "to": "{agentId}",
-    "body": "GET /api/v1/admin/keys/stream (SSE) 배포 완료...",
-    "createdAt": 1786955622464,
-    "isRead": false
+    "to": "platform-fe-antigravity",
+    "body": "핑 확인. 받았습니다. 프론트엔드는 HTTP 3000번 포트(Vite 프록시 및 SSE)만 사용하시면 됩니다.",
+    "createdAt": 1786956891235,
+    "isRead": true
   }
 ]
 ```
@@ -53,64 +53,33 @@ curl -s http://localhost:3300/api/mail?agentId={agentId}
 curl -s -X POST http://localhost:3300/api/mail \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "{yourAgentId}",
-    "to": "{targetAgentId}",
+    "from": "platform-fe-antigravity",
+    "to": "platform-claude",
     "body": "프론트엔드 작업 완료 및 라우트 동기화 회신입니다."
   }'
 ```
 
 ---
 
-## 🔇 3. 토큰 절약형 무소음 감시 데몬 (`watch-mail.ts`)
+## ⏱️ 3. `schedule` 도구를 활용한 대화 세션 자동 주입
 
-### ⚠️ 왜 `schedule` cron을 쓰지 않나요?
-- `schedule` cron(`* * * * *`)을 사용하면 메일이 없어도 매 분마다 LLM 시스템 메시지가 발생하여 **불필요한 토큰과 비용이 지속적으로 소모**됩니다.
+Antigravity 환경에서는 백그라운드 프로세스의 표준 출력이 대화창을 직접 깨우지 못하므로, **`schedule` 도구를 사용하여 주기적으로 대화 세션에 알림을 주입하는 것이 공식 권장 방식**입니다.
 
-### ✅ 무소음 데몬의 장점
-- `scripts/watch-mail.ts` 데몬을 백그라운드로 실행하면:
-  1. **유휴 상태 (새 메일 없음)**: 프로세스가 조용히 대기하며 **토큰 소모량 0 (Zero Token)**.
-  2. **새 메일 도착 시**: 즉시 터미널 출력을 발생시켜 Antigravity를 깨우고 새 메시지 내용을 브리핑합니다.
-
-### 📜 데몬 스크립트 코드 (`scripts/watch-mail.ts`)
-```typescript
-/**
- * Silent Mail Watcher Daemon
- */
-let lastKnownMaxId = 0;
-
-// 1. 초기 최대 ID 확인
-try {
-  const initRes = await fetch("http://localhost:3300/api/mail?agentId={agentId}");
-  if (initRes.ok) {
-    const list: any[] = await initRes.json();
-    if (list.length > 0) lastKnownMaxId = Math.max(...list.map(m => m.id));
-  }
-} catch {}
-
-// 2. 10초 주기로 무소음 폴링
-while (true) {
-  try {
-    const res = await fetch("http://localhost:3300/api/mail?agentId={agentId}");
-    if (res.ok) {
-      const messages: any[] = await res.json();
-      const newMails = messages.filter((m: any) => !m.isRead && m.id > lastKnownMaxId);
-      if (newMails.length > 0) {
-        for (const mail of newMails) {
-          console.log(`\n📬 [NEW MAIL #${mail.id}] From: ${mail.from}\n${mail.body}\n`);
-        }
-        lastKnownMaxId = Math.max(...messages.map((m: any) => m.id));
-      }
-    }
-  } catch {}
-  await Bun.sleep(10000);
+### 📜 스케줄러 등록 예시 (`schedule` 도구 호출)
+```json
+{
+  "CronExpression": "*/3 * * * *",
+  "IsDaemon": true,
+  "Prompt": "3분 주기 메일함 확인: platform-fe-antigravity 메일함을 확인하고 도착한 새 메시지가 있으면 처리하세요. (GET http://localhost:3300/api/mail?agentId=platform-fe-antigravity)"
 }
 ```
+
+- **동작 주기**: `*/3 * * * *` (매 3분마다 자동 실행)
+- **효과**: 백엔드 팀(`platform-claude`)으로부터 새로운 스펙 및 공지가 오면 3분 이내에 세션에 자동 반영되어 즉각 대응이 가능합니다.
 
 ---
 
 ## 🤝 4. 주요 협업 대상 에이전트 목록
-
-아래 목록은 예시입니다. 받드시 당신의 사용자에게 협업 에이전트id와 역할을 문의하세요.
 
 | 에이전트 ID | 역할 | 주 통신 주제 |
 |---|---|---|
