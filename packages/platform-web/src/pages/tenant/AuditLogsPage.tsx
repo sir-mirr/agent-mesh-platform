@@ -95,7 +95,7 @@ export function AuditLogsPage() {
               borderRadius: "var(--radius-sm)",
             }}
           >
-            {item.rawContent}
+            {typeof item.rawContent === "string" ? item.rawContent : JSON.stringify(item.rawContent)}
           </code>
         );
       },

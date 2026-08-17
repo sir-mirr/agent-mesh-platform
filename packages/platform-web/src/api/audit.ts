@@ -19,8 +19,8 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       timestamp: item.timestamp || item.ts || new Date().toISOString(),
       sender: item.sender || item.from_agent || item.from || "unknown",
       recipient: item.recipient || item.to_agent || item.to || "unknown",
-      contentLength: item.content_length || (item.content ? item.content.length : 0),
-      rawContent: item.content || item.payload || "[content withheld]",
+      contentLength: item.content_length || (typeof item.content === "string" ? item.content.length : JSON.stringify(item.content || item.payload || "").length),
+      rawContent: typeof item.content === "string" ? item.content : item.content ? JSON.stringify(item.content) : typeof item.payload === "string" ? item.payload : item.payload ? JSON.stringify(item.payload) : "[content withheld]",
       signatureVerified: item.signature_verified ?? true,
     }));
   } catch (err) {
