@@ -989,6 +989,12 @@ export function TopologyPage() {
           </span>
         </div>
 
+        {totalAgentCount === 0 && (
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", padding: "16px 24px", background: "rgba(255,255,255,0.95)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", color: "var(--color-text-muted)", fontSize: "0.9rem", zIndex: 40, boxShadow: "0 10px 25px rgba(0,0,0,0.08)" }}>
+            현재 토폴로지에 등록된 에이전트 데이터가 없습니다.
+          </div>
+        )}
+
         {/* Top Right Compact Filter & Search Tool with Interactive Autocomplete Dropdown */}
         <div
           className="canvas-hud-interactive"

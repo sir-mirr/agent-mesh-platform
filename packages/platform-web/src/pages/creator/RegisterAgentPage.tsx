@@ -359,6 +359,8 @@ curl -X POST http://localhost:3100/api/v1/pairing-codes/redeem \\
           columns={columns}
           data={pendingList}
           keyExtractor={(item) => item.id}
+          isLoading={isLoading}
+          emptyMessage="현재 대기 중인 공개키 제안 데이터가 없습니다."
         />
       </div>
 

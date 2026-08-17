@@ -168,10 +168,13 @@ export function PlaygroundPage() {
             <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
               ✉️ {t("play.dispatchTitle", "메시지 발송 (Outbox Dispatch)")}
             </h3>
-            <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-              권한: <strong>{currentRole}</strong> (등록 에이전트 연동)
-            </span>
           </div>
+
+          {agentsList.length === 0 && (
+            <div style={{ padding: "12px 16px", background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontSize: "0.82rem", textAlign: "center" }}>
+              현재 등록된 에이전트 데이터가 없습니다. 먼저 에이전트를 등록하세요.
+            </div>
+          )}
 
           <form onSubmit={handleSendMessage} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Sender Agent Combobox */}

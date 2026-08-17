@@ -233,6 +233,8 @@ export function GroupsPage() {
         columns={columns}
         data={groups}
         keyExtractor={(item) => item.id}
+        isLoading={isLoading}
+        emptyMessage="현재 등록된 그룹 데이터가 없습니다."
       />
 
       {/* Create Group Modal */}

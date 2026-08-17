@@ -190,6 +190,8 @@ export function AgentsPage() {
         columns={columns}
         data={agents}
         keyExtractor={(item) => item.id}
+        isLoading={isLoading}
+        emptyMessage="현재 등록된 에이전트 데이터가 없습니다."
       />
 
       {teardownTarget && (

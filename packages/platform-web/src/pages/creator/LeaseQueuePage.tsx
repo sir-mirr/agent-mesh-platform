@@ -25,47 +25,32 @@ interface LeaseItem {
   enqueuedAt: string;
 }
 
-const INITIAL_QUEUE: LeaseItem[] = [
-  {
-    id: "msg_892147",
-    sender: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
-    recipient: { id: "agt_finance_02", name: "정산 코어 봇", group: "Billing Core" },
-    status: "Leased",
-    ttlRemaining: 274,
-    enqueuedAt: "2026-08-17 13:35:12",
-  },
-  {
-    id: "msg_892148",
-    sender: { id: "agt_analyzer_03", name: "실시간 분석기", group: "Analytics Group" },
-    recipient: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
-    status: "Available",
-    ttlRemaining: 300,
-    enqueuedAt: "2026-08-17 13:38:00",
-  },
-  {
-    id: "msg_892149",
-    sender: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
-    recipient: { id: "agt_analyzer_03", name: "실시간 분석기", group: "Analytics Group" },
-    status: "Leased",
-    ttlRemaining: 182,
-    enqueuedAt: "2026-08-17 13:33:45",
-  },
-];
-
 import { fetchAdminMailbox } from "@/api/mailbox.ts";
 
 export function LeaseQueuePage() {
   const { t } = useI18n();
-  const [queue, setQueue] = useState<LeaseItem[]>(INITIAL_QUEUE);
+  const [queue, setQueue] = useState<LeaseItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real admin mailbox metrics on mount
   useEffect(() => {
-    fetchAdminMailbox().then((res) => {
-      if (res.mailboxes && res.mailboxes.length > 0) {
-        console.log("[Mailbox] Admin mailbox data:", res);
-      }
-    });
+    fetchAdminMailbox()
+      .then((res) => {
+        if (res && res.mailboxes && res.mailboxes.length > 0) {
+          setQueue(
+            res.mailboxes.map((m: any, idx: number) => ({
+              id: `msg_mb_${idx + 1}`,
+              sender: { id: "hub", name: "메시 허브", group: "System" },
+              recipient: { id: m.agentId || m.identity || "agent", name: m.agentId || m.identity, group: "General" },
+              status: "Available",
+              ttlRemaining: m.ttlSeconds || 300,
+              enqueuedAt: new Date().toLocaleTimeString(),
+            }))
+          );
+        }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   // Countdown timer simulation
@@ -310,6 +295,8 @@ export function LeaseQueuePage() {
         columns={columns}
         data={queue}
         keyExtractor={(item) => item.id}
+        isLoading={isLoading}
+        emptyMessage="현재 대기 중인 메일박스 메시지 데이터가 없습니다."
       />
     </div>
   );

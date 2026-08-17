@@ -64,35 +64,9 @@ export function DataTable<T>({
           </tr>
         </thead>
 
-        <tbody>
-          {isLoading ? (
-            <tr>
-              <td
-                colSpan={columns.length}
-                style={{
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                데이터를 불러오는 중입니다...
-              </td>
-            </tr>
-          ) : data.length === 0 ? (
-            <tr>
-              <td
-                colSpan={columns.length}
-                style={{
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                {emptyMessage}
-              </td>
-            </tr>
-          ) : (
-            data.map((item, index) => (
+        {data.length > 0 && (
+          <tbody>
+            {data.map((item, index) => (
               <tr
                 key={keyExtractor(item, index)}
                 style={{
@@ -119,10 +93,24 @@ export function DataTable<T>({
                   </td>
                 ))}
               </tr>
-            ))
-          )}
-        </tbody>
+            ))}
+          </tbody>
+        )}
       </table>
+
+      {data.length === 0 && (
+        <div
+          style={{
+            padding: "36px 16px",
+            textAlign: "center",
+            color: "var(--color-text-muted)",
+            fontSize: "0.86rem",
+            background: "var(--color-bg-surface)",
+          }}
+        >
+          {isLoading ? "데이터를 불러오는 중입니다..." : emptyMessage}
+        </div>
+      )}
     </div>
   );
 }
