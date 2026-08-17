@@ -13,7 +13,7 @@
  *
  * Two shapes are worth reading before the code.
  *
- * `POST /api/v1/inbox` is a `POST` because it *acts*: it leases a batch,
+ * `POST /api/v1/mailbox/in` is a `POST` because it *acts*: it leases a batch,
  * settles the previous one, and writes an audit event. A `GET` would invite
  * every layer that treats `GET` as safe — a proxy, a retry, an operator with
  * `curl` — to consume a lease without meaning to. The standalone mailer's `GET`
@@ -32,6 +32,7 @@ import { outbox } from "@agent-mesh/store";
 import { db as hubDb, stmtMessageById } from "../db";
 import { OBSERVED } from "../observed-config";
 import { DORMANCY_SECONDS } from "../dormancy";
+import { LEASE_SECONDS } from "../rpc/receive";
 import { log } from "../log";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "../rpc/audit-limits";
 import { recordRecalled } from "../rpc/audit";
@@ -89,7 +90,7 @@ function unwrap(rpc: any, okStatus = 200): Response {
   return json(okStatus, { ok: true, ...rpc.result });
 }
 
-export interface InboxRequest {
+export interface MailboxRequest {
   method: string;
   /** Path with query string, exactly as received — the signature covers it. */
   path: string;
@@ -107,7 +108,7 @@ export interface InboxRequest {
  * Returning null rather than 404 lets the caller fall through to the routes
  * that were already there, so this file cannot accidentally shadow one.
  */
-export function handleInboxRoute(req: InboxRequest): Response | null {
+export function handleMailboxRoute(req: MailboxRequest): Response | null {
   const { pathname, method } = req;
 
   // Unsigned, deliberately: the values matter most while a caller cannot yet
@@ -118,7 +119,14 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     return json(200, {
       // The deployment's window, not the default's — a client sizing its
       // behaviour on a constant would be sizing it on another deployment.
-      mailbox: { ...MAILBOX_CAPABILITY_DEFAULTS, dormancy_seconds: DORMANCY_SECONDS },
+      mailbox: {
+        ...MAILBOX_CAPABILITY_DEFAULTS,
+        dormancy_seconds: DORMANCY_SECONDS,
+        // Was left as the default while `dormancy_seconds` beside it was not,
+        // under a comment saying to do exactly this. A stated principle does
+        // not check itself.
+        receive_lease_seconds: LEASE_SECONDS,
+      },
       audit: { ...AUDIT_LIMITS, schema_version_max: MAX_SCHEMA_VERSION },
       // `observed_source` is the running deployment's, not the default's
       // (§ 8.11). Reporting the constant would tell every caller `socket`
@@ -128,18 +136,23 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     });
   }
 
+  // **One word, and the direction is the caller's.** `in` is what has arrived
+  // for this caller; `out` is what they sent and may still recall. `inbox` and
+  // `outbox` named the same two directions from whichever end the reader
+  // happened to be standing at, which went wrong every time a proxy was in the
+  // path — see docs/decisions/mailbox-and-hub.md.
   const isOurs =
-    pathname === "/api/v1/inbox" ||
-    pathname === "/api/v1/inbox/history" ||
-    pathname === "/api/v1/outbox" ||
-    pathname.startsWith("/api/v1/outbox/");
+    pathname === "/api/v1/mailbox/in" ||
+    pathname === "/api/v1/mailbox/history" ||
+    pathname === "/api/v1/mailbox/out" ||
+    pathname.startsWith("/api/v1/mailbox/out/");
   if (!isOurs) return null;
 
   const auth = authenticate(method, req.path, req.authorization, req.body, req.observed ?? null);
   if (!auth.ok) return json(auth.refusal.status, auth.refusal.body);
   const caller = auth.caller;
 
-  if (pathname === "/api/v1/inbox") {
+  if (pathname === "/api/v1/mailbox/in") {
     if (method !== "POST") return json(405, { ok: false, error: "method not allowed; use POST" });
     let params: Record<string, unknown>;
     try {
@@ -150,7 +163,7 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     return unwrap(JSON.parse(handleReceive(caller.identity, params, 1)));
   }
 
-  if (pathname === "/api/v1/inbox/history") {
+  if (pathname === "/api/v1/mailbox/history") {
     if (method !== "GET") return json(405, { ok: false, error: "method not allowed; use GET" });
     const query = new URLSearchParams(req.search);
     const peer = query.get("peer");
@@ -165,13 +178,13 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     );
   }
 
-  if (pathname === "/api/v1/outbox") {
+  if (pathname === "/api/v1/mailbox/out") {
     if (method === "POST") return sendOne(caller, req.body, req.observed ?? null);
     if (method === "GET") return listOutbox(caller, req.search);
     return json(405, { ok: false, error: "method not allowed; use GET or POST" });
   }
 
-  const messageId = pathname.slice("/api/v1/outbox/".length);
+  const messageId = pathname.slice("/api/v1/mailbox/out/".length);
   if (method !== "DELETE") return json(405, { ok: false, error: "method not allowed; use DELETE" });
   return recallOne(caller, messageId, req.authorization);
 }

@@ -817,7 +817,9 @@ var pollTimer = null;
 function connectSSE(agentId) {
   if (eventSource) { eventSource.close(); eventSource = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  eventSource = new EventSource('/api/v1/events/' + encodeURIComponent(agentId) + '?token=' + encodeURIComponent(TOKEN));
+  // The session cookie carries this now (§ 9.1) — a token in the URL ends up
+  // in access logs, proxy request lines and Referer.
+  eventSource = new EventSource('/api/v1/events/' + encodeURIComponent(agentId), { withCredentials: true });
   eventSource.addEventListener('message', function(e) {
     lastMsgCount = 0;
     lastMsgKey = '';

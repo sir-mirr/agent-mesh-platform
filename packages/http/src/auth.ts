@@ -8,7 +8,28 @@ import { Jwt } from 'hono/utils/jwt'
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? ''
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? ''
-const JWT_SECRET = process.env.JWT_SECRET ?? 'lab-fallback-secret-change-me'
+/**
+ * The signing secret, **required**.
+ *
+ * It used to fall back to a published constant, which is worse than no
+ * authentication: every session token this process issued could be forged by
+ * anyone who had read the source, and nothing anywhere said so. A deployment
+ * that forgot the variable looked exactly like one that had set it.
+ *
+ * Failing at startup is the point. An unset secret is a misconfiguration, and
+ * a misconfiguration that runs is one nobody finds.
+ */
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    console.error(
+      '[http-server] JWT_SECRET is not set. Refusing to start: signing sessions ' +
+        'with a default would mean anyone who has read this file can forge them.',
+    )
+    process.exit(1)
+  }
+  return secret
+})()
 const CALLBACK_URL =
   process.env.CALLBACK_URL ??
   process.env.AGENT_MESH_CALLBACK_URL ??

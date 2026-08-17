@@ -1,11 +1,43 @@
 # End-to-end testing — the platform's half
 
-The client repository drives the cross-repository scenarios. This document is
-the platform side: how to bring a real mesh up, what it guarantees under test,
+The scenarios themselves are in `@agent-mesh/contracts` (`E2E_SCENARIOS`), and
+SPEC § 17 says why they live there rather than on either side. This document is
+the platform half: how to bring a real mesh up, what it guarantees under test,
 and which failures are worth asserting against rather than around.
 
-Scenario format and ordering are the client's — see its `e2e/scenarios/*.json`.
-Nothing here describes behaviour this repository does not own.
+```bash
+bun test test/scenarios.test.ts
+```
+
+`test/scenarios.test.ts` is an interpreter for the verb set and holds no
+expectations of its own, and reads no database. It used to: three scenarios
+asserted a trace straight out of SQLite, and the client's runner — which has no
+database — skipped them. Both sides reported green while § 8.11, § 11.0.1 and
+§ 8.9.5 were each held by one implementation. They go through
+`/api/v1/admin/agent-sources` and `/api/v1/audit/events` now, and nothing is
+skipped by either side. Adding one here would make this repository's green
+mean something the client's green does not, which is the failure the shared list
+exists to prevent — so a new expectation goes in the contracts package, gets a
+tag, and both sides pick it up.
+
+Every scenario here has been mutation-checked: the behaviour it names was
+broken in the source, and the run went red on that scenario and no other.
+Worth repeating after adding one, because a green run says nothing about
+whether the scenario checks anything.
+
+Two of those mutations found the runner rather than the mesh. One made the
+route report a `pending` status for an already-approved key and passed —
+`provision` and `http` each held their own copy of the expectation check, and
+only `http` had learned about body assertions. The other is why this file no
+longer describes a skip.
+
+The first run failed six of eleven, and **five were defects in the scenarios
+rather than in the mesh**: `mesh.connect` refused over HTTP (correct — § 8.10
+has no session to establish), a leased batch expected back immediately (correct
+— that is the destructive read § 8.10.1 rejects), a key collision expressed as a
+keyless registration, and two trace assertions naming tables that were never the
+design. That ratio is the argument for writing scenarios against the contract
+and then running them, rather than writing them from memory of what was built.
 
 ---
 
@@ -25,6 +57,12 @@ for the file rather than polling a port: a port that accepts a connection is not
 the same as a mesh that will answer, and a reader can never see a half-written
 file.
 
+`--receive-lease-seconds <n>` shortens the receive lease, which is what a
+scenario carrying `mesh: { receiveLeaseSeconds }` (SPEC § 17.4) needs. A
+non-positive value is refused rather than defaulted: a typo that silently
+restores the 300-second lease makes `E2E-RECEIVE-002` pass without ever reaching
+the lapse it is about.
+
 ```json
 {
   "base_url": "http://127.0.0.1:59662",
@@ -32,9 +70,24 @@ file.
   "api_http": "http://127.0.0.1:59661",
   "admin_test_handle": { "...": "see below" },
   "state_dir": "/tmp/agent-mesh-e2e-XXXX",
-  "pid": 97647
+  "pid": 97647,
+  "platform": { "worktree": "…", "commit": "db5f42c…", "branch": "main", "dirty": "false" },
+  "mesh_config": { "receive_lease_seconds": 2 }
 }
 ```
+
+**Quote `platform.commit` in any conformance report.** A run once reported
+`E2E-PROXY-001` as a live `can_proxy` self-grant, with a reproduction, a row
+from `agents.db` and two line numbers — all of it true of a worktree forty
+commits behind `main`, where the refusal had not landed. The same scenario
+passed here at the same time, and nothing in the ready file could say why.
+
+`main` lives in the `-main` worktree. The plain repository path is the
+frontend's branch and its hub is whatever that branch last merged.
+
+`mesh_config` echoes what the harness was actually told. A scenario asking for
+a two-second lease and a harness that never got the flag otherwise disagree in
+silence.
 
 `SIGTERM` stops both services, removes the ready file, and clears the state
 directory. If either service dies on its own the harness exits non-zero rather

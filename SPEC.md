@@ -156,7 +156,7 @@ The hub MUST:
   later retrieval via `mesh.fetch_messages`.
 - Treat unknown identities on `mesh.send` as a recoverable error
   (envelope is queued for later delivery).
-- Emit notifications to subscribed clients when their inbox receives a
+- Emit notifications to subscribed clients when their mailbox receives a
   new envelope (`mesh.message` / `mesh.delivered`, see § 8.8).
 - Send a WebSocket-level `ping` frame to every connected agent every
   **30 seconds**. Agents MUST respond with a `pong` frame (the
@@ -757,109 +757,26 @@ fields.
 
 ### 8.2. `mesh.send`
 
-Routes a message envelope (in flat-content form) to another identity.
+**`can_proxy` MUST NOT be settable on `POST /api/v1/agents`.** That route is
+unauthenticated (§ 9.2 †), so a grant made there is one the checked party
+writes for itself, and an entitlement read from a value its subject set is not
+a check. A hub MUST refuse the field with `403
+CAN_PROXY_NOT_SELF_GRANTED` rather than ignore it — a caller that sends it and
+receives `200` believes it worked, and discovers otherwise at its first proxied
+send.
 
-```
-params: {
-  to:        string           // recipient identity
-  content:   string           // message body (often a formatted
-                              // ChannelEnvelope string; see § 7.1)
-  reply_to?: string | null    // peer message id this replies to
-  client_message_id?: string  // idempotency key, unique per sending identity
-  from?:     string           // optional sender override; defaults
-                              // to the socket's registered identity
-                              // (used by proxy senders such as the
-                              // HTTP server forwarding on a user's behalf)
-}
-result: {
-  id:     string              // hub-assigned message id ("msg_<16hex>")
-  status: "delivered" | "pending"
-}
-```
+It is granted two ways, both operator decisions:
 
-**Idempotency (0.2).** When `client_message_id` is present the hub MUST
-remember it, scoped to the **sending identity**. A repeat carrying the same key
-and the same message returns the original `id` and `status` with
-`duplicate: true`; a repeat carrying the same key and a *different* message is
-`-32015` SEND_CONFLICT and is **permanent**.
+- `POST /api/v1/admin/agents/{identity}/can-proxy`, behind
+  `agent.provision` scoped to that identity (§ 11);
+- `AGENT_MESH_PROXY_IDENTITIES` on the hub, for the infrastructure proxies a
+  deployment cannot grant any other way — `agent-mesh-http` needs the flag
+  before anybody can authenticate to grant it.
 
-It exists because the hub can commit a message and then fail to deliver the
-response — a lost HTTP reply, an ambiguous disconnect. To the hub the resulting
-retry is indistinguishable from a new send. Only the caller knows which it is,
-so only the caller can supply the key, and a key that means two things means
-neither.
-
-`status` is `"delivered"` when the recipient socket was online and the
-hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
-`"pending"` otherwise (the envelope is persisted to `messages` and
-will be delivered on the recipient's next connect via
-`mesh.fetch_messages`/auto-deliver).
-
-**Transmitter recording (0.2).** The hub MUST record, alongside `from`, the
-identity of the socket that actually sent the envelope. It is taken from the
-authenticated connection and MUST NOT be read from `params` — a field the
-caller can set is a field the caller can lie in, which is the same rule
-§ 8.9.3 applies to `identity` and `recorded_by`.
-
-The two are equal unless a proxy overrode `from`. Recording only `from` erased
-the distinction: a proxied envelope was stored as though the claimed sender
-wrote it, and nothing anywhere recorded which socket produced it, so an
-incorrect override was not merely permitted but invisible.
-
-This is independent of the entitlement rule below. Entitlement decides whether
-an override is *allowed*; the transmitter record is what makes the answer
-auditable either way, and it does not depend on entitlement being implemented.
-
-**Sender validation (0.2).** `from` MUST be either the socket's own connected
-identity or one of the `proxy_for` entries that identity is entitled to. The
-hub MUST reject anything else. At 0.1 `from` was accepted unchecked, which let
-any connected socket originate an envelope as any identity.
-
-**The entitlement rule.** A socket may speak for an identity when both hold:
-
-1. its own identity carries `can_proxy`, and
-2. the subject's type has `requires_key = 0` (§ 10.3).
-
-Condition 2 is the substantive one, and it is stated against the type registry
-rather than a grant table because that makes it true rather than merely
-configured: **an identity that can hold a key signs for itself**, so a proxy
-claim over it is either redundant or a lie. The override exists for participants
-who by design hold no key — people (§ 10.3) — and that is now a property of the
-type rather than a special case. It is also why a person must hold a registered
-identity: the hub cannot ask the type of a row that does not exist.
-
-Condition 1 exists because condition 2 alone would let any connected agent speak
-for any person; the scheduler is a `service` exactly as the web gateway is.
-`can_proxy` is a column on `agents`, not on `agent_types`, for that reason.
-
-Both are read **per request** against stored rows, not cached from what the
-socket declared at connect. An operator who withdraws a grant, or tears the
-subject down, means it from that moment rather than from whenever the socket
-next reconnects — the same reasoning § 8.1 applies to the signing key.
-
-`proxy_for` is likewise validated at `mesh.connect`. Entries the socket may not
-claim are **dropped rather than failing the connection**: the http server
-declares every approved person at once, and refusing the whole connect over one
-bad entry would take the entire web surface down. A dropped entry is logged, is
-not wired into the socket's routing, and its envelopes are refused with
-`-32013` — which attributes the failure to the one person affected instead of to
-everyone.
-
-A socket must also have *declared* an identity in `proxy_for` to send as it.
-Entitlement alone is not enough, so a socket cannot reach beyond what it
-announced.
-
-Routing a message MUST also record an audit event (§ 8.9.4).
-
-Errors:
-
-- `-32602` INVALID_PARAMS — `params.to` missing/non-string or
-  `params.content` missing.
-- `-32600` INVALID_REQUEST — sender socket is not connected
-  (`mesh.connect` / `mesh.register` was never called on this WS).
-- `-32013` NOT_ENTITLED — `params.from` is neither the connected identity
-  nor an entitled `proxy_for` entry.
-
+The declaration is **additive and applied on provisioning as well as at boot**.
+Additive because clearing on restart would silently undo an operator's runtime
+grant; applied on provisioning because the http server registers itself after
+the hub is running, so a grant made only at boot never finds its row.
 ### 8.3. `mesh.list_agents`
 
 Returns the full agent registry.
@@ -1501,8 +1418,20 @@ Content-Type: application/json
 **Not a separate mail service.** The methods, the signing construction, the
 error codes and the queue are the ones already specified. A participant that
 switches between a socket and this transport is the same identity with the same
-inbox — the pending rows an adapter is handed on connect are the rows
+mailbox — the pending rows an adapter is handed on connect are the rows
 `mesh.receive` returns.
+
+**A successful `mesh.connect` MUST deliver what is waiting**, as `mesh.message`
+notifications, before the participant asks for anything. A lane that only
+listens has no other way to learn what arrived while it was away, and a mesh
+that quietly required a drain call would strand every such participant with a
+full mailbox and no symptom to go on.
+
+Stated because it was previously only implied by the sentence above it, and the
+implication carries too much: whether the hub pushes or the client drains decides
+whether a listening participant needs lease and acknowledgement semantics at all.
+`E2E-CONNECT-001` holds it — a message sent to an identity holding no socket, and
+a connect with no `mesh.receive` anywhere in the scenario.
 
 **The identity comes from `sig.kid`.** At most one key per identity is approved
 (§ 10.2), so a fingerprint names exactly one participant. A caller therefore
@@ -1615,10 +1544,10 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
-| GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single inbox. |
+| GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single mailbox. |
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
 | GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
-| GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
+| GET    | `/api/v1/attachments/:id`         | JWT ‡ | `200`   | Download attachment bytes (§ 15.3). Session **or** an `AgentMeshSig` signature; the caller must be party to a message carrying it. |
 | PUT    | `/api/v1/audit/blobs/{key}`       | Sig §  | `200`\|`201` | Machine blob upload (0.2). `key` is `<sha256>[.<ext>]` per § 15.2. |
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
@@ -1627,18 +1556,19 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
 | DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
-| GET    | `/api/v1/admin/inbox`             | JWT\*  | `200`   | Queue depth per identity (§ 9.2.1). No message bodies. |
+| GET    | `/api/v1/admin/mailbox`           | JWT\*  | `200`   | Mailbox depth per identity (§ 9.2.1). No message bodies. |
 | GET    | `/api/v1/admin/agent-sources`     | JWT\*  | `200`   | Where identities have been observed connecting from (§ 8.11). Carries `observed_source` for the deployment — it is not a per-row property — and the qualifier that makes `forwarded` values evidence. |
 | POST   | `/api/v1/admin/pairing-codes`     | JWT\*  | `201`   | Issue a pairing code binding an identity to the caller (§ 11.3). Returned once; no route reads it back. |
 | POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
 | GET    | `/api/v1/admin/agents/{identity}/owners` | JWT\* | `200` | Who is answerable for an identity, and how the claim was made (§ 11.3). |
 | GET    | `/api/v1/admin/agents/owned`      | JWT\*  | `200`   | What the **caller** owns (§ 11.3). A tenant-wide grant does not widen it — "everything here" is not an answer to "what is mine". |
+| POST   | `/api/v1/admin/agents/{identity}/can-proxy` | JWT\* | `200` | Grant or withdraw `can_proxy` (§ 8.2). Not settable on the unauthenticated provisioning route — a grant the checked party writes is not a check. |
 | GET    | `/api/v1/admin/groups`            | JWT\*  | `200`   | Groups, their members and every egress rule (§ 12). |
 | POST   | `/api/v1/admin/groups`            | JWT\*  | `201`   | Create one. It can send nowhere until a rule says so (§ 12). |
 | POST   | `/api/v1/admin/groups/{group_id}/members` | JWT\* | `200` | Move an identity in. Membership is singular (§ 12). |
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
-| GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
+| GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
@@ -1666,19 +1596,40 @@ client discovers it is pending, so refusing it would make the pending
 state undiscoverable and leave the client with a `403` it cannot
 explain. It returns `404` for a session whose user row does not exist.
 
-† The SSE route takes its JWT as a `?token=` query parameter, not as the
-`mesh_token` cookie: `EventSource` cannot set request headers, and the
-cookie is not sent on a cross-origin stream. A client that authenticates
-this route the way it authenticates the others receives `401`.
+† The SSE route authenticates from the **session cookie**, like every other
+route here. `EventSource` cannot set headers, which is true and does not
+matter: a cookie is not a header the caller sets, it is one the browser sends,
+and it sends it for a same-origin request unasked. Cross-origin consumers pass
+`withCredentials: true`.
+
+It **MUST NOT** accept a credential in the query string. A bearer token in a
+URL lands in access logs, proxy request lines, `Referer` on whatever the page
+loads next, and browser history — the one place logging tools are designed to
+keep.
 
 The cost is that the token appears in access logs and in any proxy's
 request line. It is accepted here because the alternative is no event
 stream at all in a browser; deployments that log request lines SHOULD
 redact the parameter.
 
-‡ `/api/v1/attachments/:id` is unauthenticated at internal-mesh v0.1
-(SPEC § 15.3 — assumes trust-bounded network). Future profiles MAY
-require a bearer token; clients SHOULD tolerate `401`.
+‡ `/api/v1/attachments/:id` authenticates the **parties to the message that
+carries the attachment** — sender or recipient, agent or person. A person
+arrives with the session cookie; an agent signs the request per § 9.2.1.
+
+It was open at internal-mesh v0.1, on the reasoning that a content-addressed
+id is unguessable and therefore a capability. That holds until the id appears
+in a log line, an audit event, or a `download_url` forwarded to somebody else —
+**a capability that travels inside the thing it protects cannot be withdrawn.**
+
+Participation is read from `messages`, not from the audit trail. The audit copy
+is permanent (§ 15.6), so authorising from it would keep granting access long
+after the conversation rotated away; access should expire with the operational
+record rather than with the evidence one. `sent_by` does not count — carrying a
+message is not being party to it.
+
+A caller who is not party gets `404`, the same answer as a missing attachment.
+Distinguishing them would make the route a probe for which digests the mesh
+holds.
 
 § The blob `PUT` is authorised by a signature, not a session — an adapter has
 no browser login, and the identity behind the upload is known to the hub rather
@@ -1783,21 +1734,21 @@ every agent's type; this answers for a single name the caller already
 knew. **Name to attribute, never attribute to name** — the same direction
 § 10.2 fixes for fingerprints.
 
-#### 9.2.1. The signed inbox surface (0.2)
+#### 9.2.1. The signed mailbox surface (0.2)
 
-`POST /api/v1/rpc` (§ 8.10) carries an inbox and does not describe one.
+`POST /api/v1/rpc` (§ 8.10) carries a mailbox and does not describe one.
 These routes are the same methods against the same queue, named so the
 surface can be read. **Nothing here is a second store**, and a
 participant switching between a socket, `/api/v1/rpc` and these routes
-is one identity with one inbox.
+is one identity with one mailbox.
 
 | Method | Path | Wraps | Success |
 |--------|------|-------|---------|
-| POST   | `/api/v1/inbox` | `mesh.receive` | `200` |
-| POST   | `/api/v1/outbox` | `mesh.send` | `200` |
-| GET    | `/api/v1/outbox` | — | `200` |
-| DELETE | `/api/v1/outbox/{message_id}` | — | `200` |
-| GET    | `/api/v1/inbox/history` | `mesh.fetch_messages` | `200` |
+| POST   | `/api/v1/mailbox/in` | `mesh.receive` | `200` |
+| POST   | `/api/v1/mailbox/out` | `mesh.send` | `200` |
+| GET    | `/api/v1/mailbox/out` | — | `200` |
+| DELETE | `/api/v1/mailbox/out/{message_id}` | — | `200` |
+| GET    | `/api/v1/mailbox/history` | `mesh.fetch_messages` | `200` |
 | GET    | `/api/v1/capabilities` | — | `200` |
 
 **Authentication.** Every route except `/api/v1/capabilities` MUST carry
@@ -2604,7 +2555,12 @@ name is never usable again — so a teardown that reached one identity too far
 could not be undone. An agent operator MAY tear down an identity when either:
 
 - they hold `agent.teardown` **scoped to that identity** (or tenant-wide); or
-- they hold it at any scope **and** own the identity.
+- they hold it at any scope **and** own the identity; or
+- they hold `group.manage` **scoped to the group that identity is in** (§ 12).
+
+The third MUST NOT be satisfied by tenant-wide `group.manage`. That grant is
+held by every administrator, so accepting it turns this into a second and wider
+grant of teardown under a different name.
 
 Ownership alone MUST NOT suffice. Being answerable for an agent is not the same
 grant as being permitted to destroy it, and a deployment may give one without
@@ -2751,7 +2707,47 @@ between `0.x` minors and not after `1.0`.
 
 ---
 
-## 14. Cross-VM deployment (internal-mesh v0.1)
+## 14. Rate limiting
+
+A hub SHOULD bound how often a caller may reach its routes, and MUST answer
+`429` with `Retry-After` in whole seconds and `code: "RATE_LIMITED"` when it
+refuses.
+
+The route that needs it is `POST /api/v1/agents`, which is **unauthenticated**
+(§ 9.2 †) — anything that can reach the port may call it as fast as it likes,
+and the supersession rule of § 10.2 bounds what a flood *achieves* rather than
+what it costs.
+
+**Key on what the caller cannot choose.** An unauthenticated route has no
+identity, so the key is the observed source (§ 8.11). A key the caller supplies
+is a suggestion. Where an identity is known — the signed surface of § 9.2.1 —
+that is the better key, so one lane cannot exhaust the budget of everything
+sharing its address.
+
+**`Retry-After` MUST NOT be `0`.** Telling a caller to retry immediately
+invites the loop being limited.
+
+### 14.1. A limit that fires during onboarding is a limit somebody disables
+
+Defaults MUST accommodate a host bringing up a fleet at once, which is
+indistinguishable in shape from a flood and is the common case. The refusal
+exists to stop a *sustained* loop; a burst is normal.
+
+Refill SHOULD be computed from elapsed time rather than driven by a timer. A
+timer that stops leaves every bucket permanently empty; arithmetic fails the
+other way.
+
+Buckets that have refilled completely MUST be discardable — they are
+indistinguishable from absent, and keeping them is a slow leak whose rate an
+unauthenticated caller chooses.
+
+**In-memory buckets are per process.** The hub does not scale horizontally
+(§ 3.1), so this is the whole deployment today; behind two hubs it silently
+becomes a limit of `2n`.
+
+---
+
+## 14A. Cross-VM deployment (internal-mesh v0.1)
 
 This section normalizes the **internal-mesh v0.1** deployment profile,
 in which the baseline runs on one *core VM* and each lane runs on its
@@ -3178,3 +3174,75 @@ exist or be removed independently of compliance:
 
 These domains are governed by deployment-local conventions and are
 beyond the SSOT contract defined here.
+
+---
+
+## 17. Conformance scenarios
+
+An implementation conforms to this specification when it passes the scenarios
+in `@agent-mesh/contracts` (`E2E_SCENARIOS`). They are normative: where a
+scenario and prose here disagree, the scenario is wrong and this document
+stands, but a scenario that passes on one implementation and fails on another
+is a contract defect regardless of which side prose seems to favour.
+
+### 17.1. Why they are not in either repository
+
+Two implementations have to agree on what the mesh does. A scenario list living
+on one side is that side's opinion about the other, and both sides had one —
+the client's as prose assertions, this one's as its own integration tests.
+Neither could be replayed by the other, so "we both pass" was never a claim
+anybody could check.
+
+They ship in the contracts package, pinned by tag like the error codes and for
+the same reason: a shared statement that changes only with a version bump.
+
+### 17.2. Shape
+
+A scenario is an `id`, the `clause` it holds, a `why` saying what breaks if it
+regresses, and a list of steps. Steps use a small verb set — `provision`,
+`approve`, `revoke`, `connect`, `send`, `receive`, `http`, `sleep`,
+`expectStored` — that each side implements against its own transport.
+
+Every scenario MUST cite a clause. A scenario nobody can trace back to this
+document asserts somebody's memory of it.
+
+The verb set is deliberately small. A vocabulary that grows to fit each new
+scenario becomes a second implementation of the protocol, and then the question
+"do both sides agree" is replaced by "does the scenario runner agree with
+itself".
+
+### 17.3. Nothing is skipped
+
+A runner MUST run every scenario and every step. It MUST NOT skip by id, and it
+MUST fail on a verb it does not implement rather than ignoring the step. A step
+silently dropped is a scenario that reports green without running.
+
+**This clause used to permit a skip, and the permission was the defect.** Three
+scenarios asserted a trace by reading the platform's stores directly — an
+observed source (§ 8.11), a content read logged (§ 11.0.1), a type change kept
+(§ 8.9.5). A participant with no access to those stores could not run them, so
+the rule let it skip them by verb, visibly.
+
+Visibly, and to no effect. Each of those clauses was then confirmed by exactly
+one implementation while both reports read green, which is the state conformance
+scenarios exist to make impossible. The skip is what stopped anyone noticing.
+
+They assert through the operator's routes instead, which is the better question:
+a trace written where the operator cannot query it is not serving the operator
+it was written for.
+
+**A verb only one side can run is a clause only one side holds.** If a scenario
+cannot be expressed against the mesh's own surfaces, the gap is in those
+surfaces, and the fix belongs there rather than in a runner reaching past
+them.
+
+### 17.4. A scenario may state the mesh it needs
+
+Some behaviour a default deployment cannot show in test time — a receive lease
+lapsing is the case that forced this. Such a scenario carries `mesh`, and the
+runner starts one shaped that way.
+
+The requirement belongs to the scenario because it is part of the claim: "with
+a two-second lease, an unacknowledged batch comes back" is what is being
+asserted. A runner that quietly used the default would report a pass for
+something it never measured.

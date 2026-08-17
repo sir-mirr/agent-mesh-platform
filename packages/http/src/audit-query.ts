@@ -79,7 +79,7 @@ const REDACTED_KEYS = new Set([
  *
  * What it does give: an operator holding `audit.read.metadata` and not
  * `audit.read.content` gets who, whom, when and how much, and no bodies — the
- * same line `GET /api/v1/admin/inbox` already draws.
+ * same line `GET /api/v1/admin/mailbox` already draws.
  *
  * `content_sha256` is left in place. It is not the content, and an operator
  * comparing a body they obtained elsewhere against the record needs it.
@@ -184,6 +184,17 @@ export function getEvent(eventId: string, withContent: boolean): QueryResult {
 
 export interface ListQuery {
   identity?: string
+  /**
+   * One event type, exactly.
+   *
+   * An operator asking whether an identity changed runtime, or whether
+   * anybody read message content, had to page the whole trail for that
+   * identity and look. That is a question the trail exists to answer, so it
+   * is a filter rather than a client-side scan — and it is what lets the
+   * conformance scenarios assert a trace through this route instead of by
+   * reading the platform's SQLite, which only one of the two runners can do.
+   */
+  event_type?: string
   provider?: string
   correlation_id?: string
   from?: string
@@ -216,6 +227,10 @@ export function listEvents(q: ListQuery, withContent: boolean): QueryResult {
   // `provider` is the producing component. `recorded_by_id` carries it for
   // adapter-reported events; hub-recorded ones have none, which is the
   // distinction § 8.9.4 made a field rather than a prefix match.
+  if (q.event_type) {
+    where.push('event_type = ?')
+    args.push(q.event_type)
+  }
   if (q.provider) {
     where.push('recorded_by_id = ?')
     args.push(q.provider)

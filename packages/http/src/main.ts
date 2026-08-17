@@ -33,16 +33,19 @@ try {
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie } from 'hono/cookie'
-import { randomBytes, createHash } from 'crypto'
+import { randomBytes, createHash, timingSafeEqual } from 'crypto'
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync,
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, grants, groups as groupsStore, ownership, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, verify, type MessageRow } from '@agent-mesh/store'
 import {
   CAPABILITY,
   IDENTITY_RE,
+  SIGNATURE_FRESHNESS_WINDOW_SECONDS,
+  parseRestAuthorization,
+  restSignaturePreimage,
   LEGACY_ADMIN_CAPABILITIES,
   SCOPE_TENANT,
   type Capability,
@@ -52,6 +55,7 @@ import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeA
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
+import * as attachmentAccess from './attachment-access'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -534,10 +538,55 @@ type Message = {
 
 // --- Hono App ---
 
+/**
+ * Compare two secrets without leaking their contents through timing.
+ *
+ * `===` on strings returns at the first differing byte, so the time it takes
+ * is a function of how much of the prefix was right. That is enough to
+ * recover a token a byte at a time given enough attempts — which § 14's rate
+ * limit makes slow rather than impossible.
+ *
+ * Both sides are hashed first so the comparison is over equal-length buffers:
+ * `timingSafeEqual` throws on a length mismatch, and catching that would
+ * reintroduce the leak as an exception nobody times.
+ */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a, 'utf8').digest()
+  const hb = createHash('sha256').update(b, 'utf8').digest()
+  return timingSafeEqual(ha, hb)
+}
+
 const app = new Hono()
 
-// CORS — allow all origins (Phase 1)
-app.use('/*', cors())
+/**
+ * Origins allowed to call this server from a browser (open question 7).
+ *
+ * `cors()` with no argument allowed every origin, and this server
+ * authenticates with a **cookie**. A page on any site could therefore make an
+ * authenticated request on a visitor's behalf and read the answer — the
+ * session is attached by the browser, not by the page, so the page never needs
+ * the token.
+ *
+ * Same-origin is always allowed and needs nothing here; a request with no
+ * `Origin` header is not a browser and is unaffected. This list is for the
+ * cross-origin case, and empty means "none", which is the right default for a
+ * server that hands out sessions.
+ */
+const ALLOWED_ORIGINS = (process.env.AGENT_MESH_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+app.use(
+  '/*',
+  cors({
+    origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
+    // Echoed only for an origin on the list. Without this a browser will not
+    // send the session cookie at all, which is the behaviour wanted for
+    // everyone not on it.
+    credentials: true,
+  }),
+)
 
 // --- Landing Page ---
 
@@ -933,11 +982,22 @@ app.get('/api/v1/messages/search', async (c) => {
 // --- SSE Event Stream ---
 
 app.get('/api/v1/events/:agentId', async (c) => {
-  // Auth from query param (EventSource can't set headers)
-  const token = c.req.query('token')
-  if (!token) return c.json({ error: 'Missing token' }, 401)
-  let payload: JwtPayload
-  try { payload = await verifyJwt(token) } catch { return c.json({ error: 'Invalid token' }, 401) }
+  // **The session cookie, not a query parameter.**
+  //
+  // The old comment here said "EventSource can't set headers", which is true
+  // and was the wrong conclusion: a cookie is not a header the caller sets,
+  // it is one the browser sends, and `EventSource` sends it for a same-origin
+  // request without being asked.
+  //
+  // The parameter it replaced put a bearer credential in the URL — so into
+  // access logs, proxy request lines, `Referer` on anything the page loads
+  // next, and browser history. A credential in the one place logging tools are
+  // built to keep.
+  //
+  // Cross-origin consumers need `withCredentials: true`; that is a smaller ask
+  // than a token in a URL, and § 9.1 says so.
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
   if (!isUserApproved(payload.github_login, payload.role)) return c.json({ error: 'Forbidden' }, 403)
 
   const agentId = c.req.param('agentId')
@@ -1399,6 +1459,39 @@ app.get('/api/v1/admin/agents/owned', async (c) => {
   return c.json({ ok: true, owner: actor, identities: ownership.ownedBy(agentsDb(), actor) })
 })
 
+/**
+ * Grant or withdraw `can_proxy` (SPEC § 8.2).
+ *
+ * **Here rather than on provisioning**, for the reason § 10.2 gives for key
+ * approval: the hub cannot authenticate a caller, so a grant it served would
+ * be one the granted party could write for itself. The entitlement check reads
+ * this value, and a value the checked party sets is not a check.
+ *
+ * Gated on `agent.provision` scoped to the identity. Speaking for someone else
+ * is the strongest thing a participant can be given, and the operator granting
+ * it should be one who could have created the identity in the first place.
+ */
+app.post('/api/v1/admin/agents/:identity/can-proxy', async (c) => {
+  const identity = c.req.param('identity')
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION, identity)
+  if (typeof actor !== 'string') return actor
+  if (!IDENTITY_RE.test(identity)) return badIdentity(c)
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  if (typeof body?.can_proxy !== 'boolean') {
+    return c.json({ ok: false, error: 'can_proxy must be a boolean' }, 400)
+  }
+
+  const db = agentsDb()
+  const exists = db.prepare(`SELECT 1 FROM agents WHERE identity = ? AND deleted_at IS NULL`).get(identity)
+  if (!exists) return c.json({ ok: false, error: `identity '${identity}' is not registered` }, 404)
+
+  db.prepare(`UPDATE agents SET can_proxy = ? WHERE identity = ?`).run(body.can_proxy ? 1 : 0, identity)
+  console.log(`[http-server] ${actor} set can_proxy=${body.can_proxy} on ${identity}`)
+  return c.json({ ok: true, identity, can_proxy: body.can_proxy })
+})
+
 // --- Groups and egress (SPEC § 12) ----------------------------------------
 //
 // Deny by default, so these routes are how a deployment says anything at all.
@@ -1604,8 +1697,8 @@ app.get('/api/v1/admin/agent-sources', async (c) => {
   })
 })
 
-app.get('/api/v1/admin/inbox', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
+app.get('/api/v1/admin/mailbox', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.MAILBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const rows = getHubDb().prepare(`
@@ -1618,11 +1711,11 @@ app.get('/api/v1/admin/inbox', async (c) => {
      GROUP BY to_agent
      ORDER BY pending DESC
   `).all()
-  return c.json({ ok: true, inboxes: rows })
+  return c.json({ ok: true, mailboxes: rows })
 })
 
-app.get('/api/v1/admin/inbox/:identity', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
+app.get('/api/v1/admin/mailbox/:identity', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.MAILBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const identity = c.req.param('identity')
@@ -1761,14 +1854,19 @@ app.delete('/api/v1/admin/agents/:identity', async (c) => {
       !!subject &&
       grants.hasAny(agentsDb(), subject, CAPABILITY.AGENT_TEARDOWN) &&
       ownership.isOwner(agentsDb(), subject, identity)
-    // The group-manager path is **not** here, and its absence is deliberate.
-    // Groups do not exist yet, so the only thing to test would be
-    // `group.manage` at tenant scope — which every seeded admin holds and
-    // which satisfies any identity. That is not "manages the group this agent
-    // is in"; it is a second, wider grant of teardown wearing the wrong name,
-    // and it silently returned `200` for an agent the caller did not own.
-    // It lands with groups.
-    if (!owns) return actor
+    // The group-manager path (§ 12). It asks the question the earlier draft
+    // could not: `group.manage` **scoped to the group this agent is in**.
+    //
+    // Tenant-wide `group.manage` deliberately does not satisfy it. Every
+    // seeded admin holds that, and accepting it would make this a second,
+    // wider grant of teardown wearing a different name — which is exactly
+    // what the first version did before groups existed.
+    const managesGroup =
+      !!subject &&
+      grants.has(agentsDb(), subject, CAPABILITY.GROUP_MANAGE,
+        groupsStore.groupOf(agentsDb(), identity)) &&
+      !grants.has(agentsDb(), subject, CAPABILITY.GROUP_MANAGE, SCOPE_TENANT)
+    if (!owns && !managesGroup) return actor
     if (!IDENTITY_RE.test(identity)) return badIdentity(c)
     return teardownAs(c, subject!, identity)
   }
@@ -2084,8 +2182,7 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
     return c.json({ error: 'ingest disabled (AI_USAGE_INGEST_TOKEN not set)' }, 503)
   }
   const auth = c.req.header('authorization') ?? c.req.header('Authorization') ?? ''
-  const expected = `Bearer ${token}`
-  if (auth !== expected) {
+  if (!timingSafeEqualString(auth ?? '', `Bearer ${token}`)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
@@ -2214,6 +2311,49 @@ const PUBLIC_URL = (
 const UPLOAD_DIR = join(STATE_DIR, 'uploads')
 mkdirSync(UPLOAD_DIR, { recursive: true })
 
+/**
+ * § 15.2. Ten mebibytes, and the slack the multipart envelope adds on top.
+ *
+ * The envelope carries a boundary and per-part headers, so a request whose
+ * body is exactly the limit describes a file slightly under it. Bounding the
+ * envelope bounds the file, which is what can be checked before reading.
+ *
+ * Overridable because the refusal path is only reachable by exceeding it, and
+ * a test that has to send ten megabytes to reach it is one that runs slowly
+ * enough to be skipped.
+ */
+const UPLOAD_MAX_BYTES = parseInt(process.env.AGENT_MESH_UPLOAD_MAX_BYTES ?? '', 10) || 10 * 1024 * 1024
+const UPLOAD_ENVELOPE_SLACK = 64 * 1024
+
+/**
+ * Refuse an upload without materialising it.
+ *
+ * The goal was memory: an oversized upload used to be parsed into memory by
+ * `formData()` and copied again by `arrayBuffer()` before anything checked its
+ * size. Deciding from `Content-Length` keeps that from happening, and it is
+ * kept.
+ *
+ * **The connection is left unusable, and there is no clean fix in this stack.**
+ * The client is mid-send; whatever it has already written sits in the socket
+ * and is read as the start of the next request, which then fails to parse. All
+ * three answers were tried:
+ *
+ *   - `body.cancel()` — disposes of this side, does not stop the sender.
+ *   - `Connection: close` — the correct HTTP answer; this stack ignores it.
+ *   - draining the body — leaves the server waiting on a sender that may never
+ *     finish, which is a worse failure than the one being fixed.
+ *
+ * So: refuse early, and a caller that has been refused must open a new
+ * connection rather than reuse this one. Recorded in docs/deferred.md, because
+ * it is a real edge and pretending otherwise is how it becomes somebody's
+ * afternoon — it cost one here, presenting as "the server crashes on large
+ * uploads". It does not crash.
+ */
+async function refuseUpload(c: any, status: number, error: string) {
+  try { await c.req.raw.body?.cancel() } catch { /* already gone */ }
+  return c.json({ error }, status)
+}
+
 app.post('/api/v1/upload', async (c) => {
   const payload = await extractJwt(c)
   if (!payload) {
@@ -2223,19 +2363,51 @@ app.post('/api/v1/upload', async (c) => {
     return c.json({ error: 'Account pending approval' }, 403)
   }
 
+  // **Refuse on the declaration, before the body is read** (§ 15.2).
+  //
+  // `c.req.formData()` parses the whole multipart body into memory before
+  // anything can look at it, and `file.arrayBuffer()` then copied it again —
+  // so a 100 MiB upload cost 200 MiB and the size check ran after both. A
+  // handful of concurrent uploads took the process down.
+  //
+  // Content-Length is checked first because it is the only bound available
+  // *before* accepting bytes. It is a claim, so the real count is enforced
+  // below as well; the declaration is the part that is easy to get right by
+  // accident, and the part an honest client always sends.
+  const declared = c.req.header('content-length')
+  if (declared === undefined) {
+    return refuseUpload(c, 411, 'Content-Length is required')
+  }
+  const declaredSize = Number(declared)
+  if (!Number.isInteger(declaredSize) || declaredSize < 0) {
+    return refuseUpload(c, 400, 'Content-Length must be a non-negative integer')
+  }
+  // The multipart envelope adds boundary and headers, so the declared body is
+  // larger than the file. Bounding the envelope bounds the file.
+  if (declaredSize > UPLOAD_MAX_BYTES + UPLOAD_ENVELOPE_SLACK) {
+    return refuseUpload(c, 413, `File too large (max ${UPLOAD_MAX_BYTES} bytes)`)
+  }
+
   const formData = await c.req.formData()
   const file = formData.get('file')
   if (!file || !(file instanceof File)) {
     return c.json({ error: 'No file provided' }, 400)
   }
 
-  if (file.size > 10 * 1024 * 1024) {
-    return c.json({ error: 'File too large (max 10MB)' }, 413)
+  if (file.size > UPLOAD_MAX_BYTES) {
+    return c.json({ error: `File too large (max ${UPLOAD_MAX_BYTES} bytes)` }, 413)
   }
 
-  const buffer = await file.arrayBuffer()
-  const bytes = Buffer.from(buffer)
-  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  // Hash by streaming rather than materialising a second copy. The parser
+  // already holds one; there is no reason for this to hold another.
+  const hash = createHash('sha256')
+  const chunks: Uint8Array[] = []
+  for await (const chunk of file.stream() as unknown as AsyncIterable<Uint8Array>) {
+    hash.update(chunk)
+    chunks.push(chunk)
+  }
+  const sha256 = hash.digest('hex')
+  const bytes = Buffer.concat(chunks)
 
   // Opaque content-addressed id (SPEC §15.2). Preserve original extension for
   // best-effort MIME inference on the GET side.
@@ -2278,6 +2450,67 @@ app.post('/api/v1/upload', async (c) => {
 const SHA256_ID_RE = /^[0-9a-f]{64}(?:\.[a-zA-Z0-9]{1,16})?$/
 const LEGACY_ID_RE = /^[0-9]+-[a-zA-Z0-9._-]+$/
 
+/**
+ * The identity behind an attachment request, person or agent (SPEC § 15.3).
+ *
+ * A person arrives with the session cookie. An agent signs the request the way
+ * § 9.2.1 defines, with its own domain separator, and this verifies it against
+ * the key the operator approved.
+ *
+ * **No nonce window here, and that is a stated limit rather than an
+ * oversight.** § 8.1's window lives in the hub, and standing up a second one
+ * in this process would be a second thing to get right. Without it a captured
+ * signature is replayable for the freshness window — which grants exactly what
+ * the original granted: reading bytes that caller was already entitled to
+ * read. A download is idempotent, so replay adds nothing a retry would not.
+ * The same shortcut would not be acceptable on anything that writes.
+ */
+async function attachmentCaller(
+  c: any,
+): Promise<{ identity: string } | { refusal: 401 | 403 }> {
+  const session = await extractJwt(c)
+  if (session) {
+    // Authenticated but not approved is `403`, not `401`. They proved who they
+    // are; what they lack is permission, and telling them to sign in sends
+    // them to fix the wrong thing.
+    return isUserApproved(session.github_login, session.role)
+      ? { identity: session.github_login as string }
+      : { refusal: 403 }
+  }
+
+  const header = c.req.header('authorization')
+  if (!header) return { refusal: 401 }
+  const auth = parseRestAuthorization(header)
+  if (!auth) return { refusal: 401 }
+  if (Math.abs(Math.floor(Date.now() / 1000) - auth.iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {
+    return { refusal: 401 }
+  }
+
+  const db = agentsDb()
+  const identity = keys.identityForFingerprint(db, auth.kid)
+  if (!identity) return { refusal: 401 }
+
+  const url = new URL(c.req.url)
+  const outcome = verify.verifyForIdentity(
+    db,
+    identity,
+    auth.kid,
+    restSignaturePreimage({
+      method: 'GET',
+      path: url.pathname + url.search,
+      kid: auth.kid,
+      nonce: auth.nonce,
+      iat: auth.iat,
+      // A `GET` has no body, and § 9.2.1 spells that as the empty string
+      // rather than the digest of nothing — the two are different bytes and a
+      // client following the contract sends the first.
+      bodySha256: '',
+    }),
+    auth.signature,
+  )
+  return outcome.ok ? { identity } : { refusal: 401 }
+}
+
 app.get('/api/v1/attachments/:id', async (c) => {
   const id = c.req.param('id')
   if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
@@ -2289,9 +2522,32 @@ app.get('/api/v1/attachments/:id', async (c) => {
     return c.json({ error: 'Invalid attachment id format' }, 400)
   }
 
+  // § 15.3. Sender or recipient of a message carrying it — agent or person.
+  //
+  // The route was open on the reasoning that a content-addressed id is
+  // unguessable and therefore a capability. That holds until the id appears in
+  // a log line, an audit event or a forwarded `download_url`, and a capability
+  // that travels inside the thing it protects cannot be withdrawn.
+  const called = await attachmentCaller(c)
+  if ('refusal' in called) {
+    return c.json(
+      called.refusal === 403
+        ? { error: 'Account pending approval' }
+        : { error: 'Unauthorized — sign in, or sign the request (SPEC § 9.2.1)' },
+      called.refusal,
+    )
+  }
+  const caller = called.identity
+  if (!attachmentAccess.mayDownload(getHubDb(), caller, id)) {
+    // Deliberately the same answer whether the attachment exists or the caller
+    // is not party to it. Distinguishing them would turn this route into a
+    // probe for which digests the mesh holds.
+    return c.json({ error: 'Not found' }, 404)
+  }
+
   const filePath = join(UPLOAD_DIR, id)
   if (!existsSync(filePath)) {
-    return c.json({ error: 'Attachment not found' }, 404)
+    return c.json({ error: 'Not found' }, 404)
   }
 
   const { statSync } = require('fs') as typeof import('fs')

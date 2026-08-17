@@ -31,6 +31,23 @@ exactly one — line numbers are omitted for the same reason.
 
 ---
 
+## 5. Attachment download is unauthenticated — ~~closed~~
+
+**Ruled:** the parties to the message carrying it — sender or recipient, agent
+or person. Implemented in SPEC § 15.3.
+
+The capability-by-digest argument was the one on the table, and it loses for a
+reason worth keeping: an unguessable id is a capability only while it stays
+unguessed, and this one travels *inside the thing it protects* — in the
+`download_url` of every message carrying it, in audit events, in logs. A
+capability nobody can withdraw is not one.
+
+Participation reads `messages` rather than the audit trail, so access expires
+with the operational record instead of with the permanent one. `sent_by` does
+not count: carrying a message is not being party to it.
+
+### Original entry
+
 ## 5. Attachment download is unauthenticated
 
 `GET /api/v1/attachments/:id` (`packages/http/src/main.ts`) serves
@@ -45,6 +62,18 @@ Decisions needed:
 
 - Keep capability-by-digest, or require a mesh bearer token?
 - If tokens: lane VMs fetch on demand (§ 15.4) and would each need one.
+
+## 6. One token guards the whole lane HTTP surface — ~~ruled, not changed~~
+
+**Ruled:** the internal network keeps its unauthenticated arrangement. The
+server binds `127.0.0.1`, so this is an intra-host boundary, and splitting the
+credential buys separation between two things already inside the same trust
+boundary.
+
+Left recorded rather than deleted: the ruling holds while the binding does, and
+the day that server listens on anything else this becomes live again.
+
+### Original entry
 
 ## 6. One token guards the whole lane HTTP surface
 
@@ -69,6 +98,25 @@ Decisions needed:
 Note: the adapter and driver have left this repository, so the fix lands in
 the lane repository. The *contract* question — what SPEC § 4.5 requires of a
 conformant lane — stays here.
+
+## 7. HTTP server hardening — ~~closed~~
+
+All three are fixed. `JWT_SECRET` has no fallback and the process refuses to
+start without it; CORS is an allowlist from `AGENT_MESH_ALLOWED_ORIGINS`,
+empty by default; the ingest bearer is compared in constant time over hashes of
+both sides.
+
+**The whole suite passed before any of them**, which is the part worth keeping.
+A published fallback secret, a wildcard CORS policy on a cookie-authenticated
+server, and a `===` on a token are all invisible to tests about behaviour —
+nothing was checking them because nothing they broke was a behaviour.
+
+The CORS one was the live risk: this server authenticates with a **cookie**, so
+a page on any site could make an authenticated request on a visitor's behalf
+and read the answer. The browser attaches the session; the page never needs the
+token.
+
+### Original entry
 
 ## 7. HTTP server hardening
 

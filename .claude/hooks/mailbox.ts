@@ -128,7 +128,24 @@ const input = JSON.parse(await Bun.stdin.text());
 if (input.hook_event_name === "Stop" && input.stop_hook_active) process.exit(0);
 
 const messages = await drain();
-if (messages.length === 0) process.exit(0);
+
+// No mail is not the same as nothing to do (SPEC-adjacent: see
+// `.claude/hooks/more-work.ts`). On `Stop` the turn is about to end, so ask
+// whether work remains before letting it.
+//
+// **Called from here rather than registered separately**, because `/hooks`
+// cannot reload settings mid-session: an entry added to `settings.json` after
+// a session starts never runs, while the commands already registered re-read
+// their *files* on every execution. The separate registration is still there
+// for the next session; this is what makes it work in this one.
+if (messages.length === 0) {
+  if (input.hook_event_name !== "Stop") process.exit(0);
+  const { remainingWork } = await import("./more-work.ts");
+  const reason = await remainingWork();
+  if (!reason) process.exit(0);
+  console.log(JSON.stringify({ decision: "block", reason, systemMessage: "work remains" }));
+  process.exit(0);
+}
 
 const from = [...new Set(messages.map((m) => m.from))].join(", ");
 

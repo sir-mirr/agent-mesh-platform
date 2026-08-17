@@ -312,7 +312,7 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 | `mesh.connect`              | Connect identity (optionally `proxy_for[]`) — SSOT   |
 | `mesh.register`             | Deprecated alias of `mesh.connect` (§ 8.1a)          |
 | `mesh.send`                 | Send an envelope; `client_message_id` makes it idempotent |
-| `mesh.receive`              | Drain the inbox with a piggybacked ACK (§ 8.10.1)    |
+| `mesh.receive`              | Drain the mailbox with a piggybacked ACK (§ 8.10.1)    |
 | `mesh.list_agents`          | Enumerate registered agents and online status        |
 | `mesh.fetch_messages`       | Pull stored history for a peer                       |
 | `mesh.schedule_reminder`    | Schedule once / interval / cron (§ 8.5)              |
@@ -323,18 +323,18 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 
 Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
 
-### Signed inbox surface (`http://<host>:3100`)
+### Signed mailbox surface (`http://<host>:3100`)
 
 The same queue and the same identities as `/api/v1/rpc`, named so the surface
 can be read. Signed with `Authorization: AgentMeshSig` (§ 9.2.1).
 
 | Path | Description |
 |------|-------------|
-| `POST   /api/v1/inbox` | Take delivery and settle the previous batch. A `POST` because it leases, settles and audits — a `GET` invites a proxy or a retry to consume a lease. |
-| `POST   /api/v1/outbox` | Send. |
-| `GET    /api/v1/outbox` | Sent messages nobody has been handed — the recall candidates, without bodies. |
-| `DELETE /api/v1/outbox/{id}` | Withdraw one. `409 ALREADY_DELIVERED` once the recipient has it. |
-| `GET    /api/v1/inbox/history?peer=` | Conversation with one peer. |
+| `POST   /api/v1/mailbox/in` | Take delivery and settle the previous batch. A `POST` because it leases, settles and audits — a `GET` invites a proxy or a retry to consume a lease. |
+| `POST   /api/v1/mailbox/out` | Send. |
+| `GET    /api/v1/mailbox/out` | Sent messages nobody has been handed — the recall candidates, without bodies. |
+| `DELETE /api/v1/mailbox/out/{id}` | Withdraw one. `409 ALREADY_DELIVERED` once the recipient has it. |
+| `GET    /api/v1/mailbox/history?peer=` | Conversation with one peer. |
 | `GET    /api/v1/capabilities` | **Unsigned.** What this deployment enforces. |
 
 **Recall ends at hand-over, not at acknowledgement.** A leased message was
@@ -410,8 +410,8 @@ already broken. A required argument cannot be silent, and it greps.
 | `GET  /api/v1/files`                | Serve a single file by `?path=` query |
 | `DELETE /api/v1/admin/agents/{identity}` | Identity teardown, soft delete (§ 9.3) |
 | `*    /api/v1/admin/agent-types`    | The agent type registry: list / add / remove (§ 10.3) |
-| `GET  /api/v1/admin/inbox`          | Queue depth per identity (§ 9.2.1) — no message bodies |
-| `GET  /api/v1/admin/inbox/{identity}` | What is queued for one identity, and what is leased |
+| `GET  /api/v1/admin/mailbox`        | Mailbox depth per identity (§ 9.2.1) — no message bodies |
+| `GET  /api/v1/admin/mailbox/{identity}` | What is waiting for one identity, and what is leased |
 | `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
 | `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
 | `POST /api/v1/push/subscribe`       | Web Push subscription                |

@@ -123,13 +123,11 @@ function token(cookie: string | undefined): string {
 }
 
 async function call(route: Route, headers: Record<string, string> = {}): Promise<number> {
-  // The SSE route reads its JWT from the query string, because `EventSource`
-  // cannot set headers (§ 9.1 †). Sending it as a cookie is exactly the client
-  // mistake that route's footnote exists to prevent, so the sweep has to make
-  // the same distinction the server does.
-  const credential = route.auth === "JWT †" && headers.cookie
-    ? `?token=${encodeURIComponent(token(headers.cookie))}`
-    : "";
+  // The SSE route used to read its JWT from the query string and no longer
+  // does — the cookie carries it, which is what `EventSource` sends anyway.
+  // The special case is gone, and this sweep treating every route the same is
+  // the evidence that it is.
+  const credential = "";
   const res = await fetch(`${mesh.http.url}${concrete(route.path)}${credential}`, {
     method: route.method,
     headers: { "content-type": "application/json", ...headers },

@@ -35,6 +35,9 @@
       "@agent-mesh/store": [
         "./packages/store/src/index.ts"
       ],
+      "@agent-mesh/mailbox": [
+        "./packages/mailbox/src/index.ts"
+      ],
       "@agent-mesh/platform-web": [
         "./packages/platform-web/src/main.tsx"
       ]
@@ -44,6 +47,9 @@
   "references": [
     {
       "path": "./packages/store/tsconfig.json"
+    },
+    {
+      "path": "./packages/mailbox/tsconfig.json"
     },
     {
       "path": "./packages/hub/tsconfig.json"
@@ -59,6 +65,12 @@
     },
     {
       "path": "./test/tsconfig.json"
+    },
+    {
+      "path": "./scripts/tsconfig.json"
+    },
+    {
+      "path": "./.claude/hooks/tsconfig.json"
     }
   ]
 }

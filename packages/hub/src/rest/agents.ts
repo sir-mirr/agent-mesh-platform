@@ -29,6 +29,7 @@ import {
   stmtSetCanProxy,
   stmtSoftDeleteAgent,
   stmtUpsertAgentTyped,
+  applyDeclaredProxy,
 } from "../db";
 import { log } from "../log";
 import { recordIdentityEvent } from "../rpc/audit";
@@ -178,8 +179,26 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
     }
   }
 
-  if (canProxy !== null && typeof canProxy !== "boolean") {
-    return jsonResponse(400, { ok: false, error: "can_proxy must be a boolean" });
+  // **`can_proxy` is not settable here** (SPEC § 8.2).
+  //
+  // This route is unauthenticated (§ 9.2 †), so accepting the field let the
+  // checked party write the value the entitlement check reads: anyone able to
+  // reach the port could register with `can_proxy: true` and then send as
+  // whoever it declared in `proxy_for`. The subject half of § 8.2 still had to
+  // hold, so it was not a complete bypass — it was one of two conditions
+  // granting itself.
+  //
+  // Refused rather than ignored. A caller that sends it and receives `200`
+  // believes it worked, and finds out at the first proxied send that it did
+  // not.
+  if (canProxy !== null) {
+    return jsonResponse(403, {
+      ok: false,
+      code: "CAN_PROXY_NOT_SELF_GRANTED",
+      error:
+        "can_proxy cannot be set here — this route is unauthenticated. " +
+        "Use POST /api/v1/admin/agents/{identity}/can-proxy with an operator session (SPEC § 8.2).",
+    });
   }
 
   return { identity, type, description, publicKey, canProxy, createOnly };
@@ -255,6 +274,11 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
     log(`${route} db error for ${r.identity}: ${msg}`);
     return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
   }
+  // § 8.2. A declared proxy gets its flag the moment it registers, however
+  // late that is — the http server provisions itself after the hub is already
+  // up, so a grant applied only at hub boot would never find its row.
+  applyDeclaredProxy(r.identity);
+
   if (existed && before !== r.type) {
     // After the write, not inside the try: a failed audit must not turn a
     // completed provisioning into a `500` (§ 15.6). `recordIdentityEvent`

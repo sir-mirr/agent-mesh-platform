@@ -203,8 +203,14 @@ describe("attachment metadata (§ 15.2)", () => {
     expect(body.download_url.startsWith("http")).toBe(true);
     expect(body.download_url.endsWith(`/api/v1/attachments/${body.id}`)).toBe(true);
 
-    // Followed verbatim, which is what a receiver does.
-    const fetched = await fetch(body.download_url);
+    // Followed verbatim, which is what a receiver does — with the session,
+    // because § 15.3 authorises the parties rather than whoever holds the URL.
+    await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ to: "admin", text: "x", attachments: [{ id: body.id, download_url: body.download_url }] }),
+    });
+    const fetched = await fetch(body.download_url, { headers: { cookie: adminCookie } });
     expect(fetched.status).toBe(200);
     expect(await fetched.text()).toBe("absolute please");
   });
@@ -259,6 +265,32 @@ describe("attachment metadata (§ 15.2)", () => {
 });
 
 describe("attachment download", () => {
+  /**
+   * Make `admin` a party to a message carrying this attachment, then fetch.
+   *
+   * § 15.3 authorises the parties to the message, so a bare upload grants the
+   * uploader nothing — an attachment nobody has sent is an attachment nobody
+   * is party to. Sending it is what creates the entitlement, and doing that
+   * here rather than hiding it in a helper keeps the rule visible.
+   */
+  // `admin` to `admin`. The recipient has to be in this server's own registry
+  // (`/api/v1/messages` refuses an unknown one), and the only seeded person is
+  // the admin — which is enough, because § 15.3 asks whether the caller is
+  // *either* end and does not care that both ends are the same one here.
+  const sendCarrying = async (attachmentId: string, to = "admin") => {
+    await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({
+        to,
+        text: "here it is",
+        attachments: [{ id: attachmentId, download_url: `${mesh.http.url}/api/v1/attachments/${attachmentId}` }],
+      }),
+    });
+  };
+  const asAdmin = (id: string) =>
+    fetch(`${mesh.http.url}/api/v1/attachments/${id}`, { headers: { cookie: adminCookie } });
+
   const upload = async (content: string, name: string) => {
     const form = new FormData();
     form.append("file", new Blob([content]), name);
@@ -268,10 +300,11 @@ describe("attachment download", () => {
     return res.json();
   };
 
-  test("serves the bytes with the headers § 15.3 requires", async () => {
+  test("serves the bytes to a party, with the headers § 15.3 requires", async () => {
     const body = "attachment body";
     const up = await upload(body, "note.txt");
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${up.id}`);
+    await sendCarrying(up.id);
+    const res = await asAdmin(up.id);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(body);
@@ -281,15 +314,50 @@ describe("attachment download", () => {
   });
 
   test("a miss is 404 with a JSON body, not an empty response", async () => {
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${"a".repeat(64)}`);
+    const res = await asAdmin("a".repeat(64));
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBeTruthy();
+  });
+
+  test("no credential at all is 401", async () => {
+    const up = await upload("private", "p.txt");
+    await sendCarrying(up.id);
+    expect((await fetch(`${mesh.http.url}/api/v1/attachments/${up.id}`)).status).toBe(401);
+  });
+
+  test("the digest alone is not the id, and does not resolve", async () => {
+    // Ids carry the original extension, so `<sha256>` is a genuine prefix of
+    // `<sha256>.txt`.
+    //
+    // **This does not prove the participation query is prefix-safe**, and it
+    // was written believing it did. The `404` here comes from the filesystem —
+    // no file is named by the bare digest — so swapping the quoted `LIKE` for
+    // a bare one leaves it passing. The quoting is defensive against a shape
+    // this system does not currently produce, and saying so is better than a
+    // test that appears to cover it.
+    const up = await upload("prefixed", "pre.txt");
+    expect(up.id).toBe(`${up.sha256}.txt`);
+    await sendCarrying(up.id);
+    expect((await asAdmin(up.id)).status).toBe(200);
+    expect((await asAdmin(up.sha256)).status).toBe(404);
+  });
+
+  test("a party to no message carrying it gets 404, not 403", async () => {
+    // Uploading is not participation — an attachment nobody has sent is one
+    // nobody is party to. And the answer matches a genuine miss on purpose:
+    // telling them it exists would make this a probe for which digests the
+    // mesh holds.
+    const up = await upload("unsent", "u.txt");
+    const res = await asAdmin(up.id);
+    expect(res.status).toBe(404);
   });
 
   test("ids with separators or .. are refused before the filesystem is touched", async () => {
     // The id is the only gate here, so these are the cases that matter.
     for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b", ".."]) {
-      const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`);
+      const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`, {
+        headers: { cookie: adminCookie },
+      });
       expect([400, 404], `id ${id}`).toContain(res.status);
       // Whatever the status, it must not be a successful read.
       expect(res.status).not.toBe(200);
@@ -297,7 +365,7 @@ describe("attachment download", () => {
   });
 
   test("an id that is neither a digest nor the legacy form is refused", async () => {
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/not-a-real-id`);
+    const res = await asAdmin("not-a-real-id");
     expect(res.status).toBe(400);
   });
 });
@@ -386,5 +454,211 @@ describe("people are mesh participants", () => {
     requestAccess("-leading-hyphen");
     expect((await approve("-leading-hyphen")).status).toBe(200);
     expect(meshIdentity("-leading-hyphen")).toBeNull();
+  });
+});
+
+/**
+ * SPEC § 15.2. The upload bound is checked before the body is read.
+ *
+ * It used to be checked after `formData()` had parsed the whole thing into
+ * memory and `arrayBuffer()` had copied it again — so an oversized upload cost
+ * twice its size before being refused, and a handful of concurrent ones took
+ * the process down.
+ */
+describe("§ 15.2 — uploads are bounded before they are read", () => {
+  // One session for the whole block. Logging in per test made a later one
+  // fail on a null `set-cookie` while the server was demonstrably alive — the
+  // failure was the repeated logins, not the thing under test, and it sent me
+  // looking for a server bug that was not there.
+  let cookie: string;
+  beforeAll(async () => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin", redirect: "manual",
+    });
+    cookie = res.headers.get("set-cookie")!.split(";")[0]!;
+  });
+  const login = async () => cookie;
+  const upload = async (cookie: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${mesh.http.url}/api/v1/upload`, { method: "POST", headers: { cookie }, body: form });
+  };
+
+  test("an oversized declared length is refused without the bytes being sent", async () => {
+    // A raw socket, because `fetch` computes Content-Length from the body it
+    // is given — and the whole point of this check is that it decides from the
+    // **declaration**, before any bytes arrive. Sending a real ten megabytes
+    // would test the same branch far more slowly and prove less.
+    const cookie = await login();
+    const url = new URL(mesh.http.url);
+    const response = await new Promise<string>((resolve, reject) => {
+      let buf = "";
+      const timer = setTimeout(() => reject(new Error("no response")), 8000);
+      Bun.connect({
+        hostname: url.hostname,
+        port: Number(url.port),
+        socket: {
+          open(socket) {
+            socket.write(
+              "POST /api/v1/upload HTTP/1.1\r\n" +
+              `Host: ${url.host}\r\n` +
+              `Cookie: ${cookie}\r\n` +
+              "Content-Type: multipart/form-data; boundary=zz\r\n" +
+              // **Between our limit and Bun's own.** The first draft declared
+              // 200 MiB, which is past `Bun.serve`'s default
+              // `maxRequestBodySize` — so the 413 came from the runtime and
+              // the test passed with our check deleted. It was testing Bun.
+              `Content-Length: ${50 * 1024 * 1024}\r\n` +
+              "\r\n" +
+              "--zz\r\n",
+            );
+          },
+          data(socket, chunk) {
+            buf += new TextDecoder().decode(chunk);
+            if (buf.includes("\r\n\r\n")) { clearTimeout(timer); socket.end(); resolve(buf); }
+          },
+          error(_s, e) { clearTimeout(timer); reject(e); },
+        },
+      }).catch(reject);
+    });
+    expect(response.split("\r\n")[0]).toContain("413");
+  });
+
+  test("a refusal does not take the process down, and the caller reconnects", async () => {
+    // What early refusal costs, stated as a test rather than discovered.
+    //
+    // The process survives — it never crashed, though it read that way for an
+    // afternoon. What the refused caller cannot do is reuse that connection:
+    // its unsent body is still queued and would be parsed as the next request.
+    // Every check here therefore opens a fresh one, which is what a client
+    // must do too.
+    for (let i = 0; i < 3; i++) {
+      const res = await upload(cookie, new File([new Uint8Array(256 * 1024)], `over-${i}.bin`));
+      expect(res.status).toBe(413);
+    }
+    // A new connection, and the server answers normally on it.
+    expect((await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { connection: "close" },
+    })).status).toBe(401);
+  });
+
+  test("an ordinary upload still works and is addressed by its content", async () => {
+    const cookie = await login();
+    const res = await upload(cookie, new File([new TextEncoder().encode("hello mesh")], "greet.txt"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.size).toBe(10);
+    // The id is derived from the bytes, not the name.
+    expect(body.id).toContain(body.sha256);
+  });
+
+  test("the same content uploaded twice is one file", async () => {
+    const cookie = await login();
+    const send = async () =>
+      (await (await upload(cookie, new File([new TextEncoder().encode("dedupe me")], "d.txt"))).json()).id;
+    expect(await send()).toBe(await send());
+  });
+});
+
+/**
+ * SPEC § 9.1 †. The event stream authenticates from the session cookie.
+ *
+ * It used to take `?token=<jwt>`, which put a bearer credential into access
+ * logs, proxy request lines, `Referer` and browser history. The justification
+ * — "`EventSource` cannot set headers" — was true and beside the point: a
+ * cookie is not a header the caller sets.
+ */
+describe("§ 9.1 — the event stream takes no credential in its URL", () => {
+  test("the session cookie is accepted", async () => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin", redirect: "manual",
+    });
+    const cookie = res.headers.get("set-cookie")!.split(";")[0]!;
+    const ctrl = new AbortController();
+    const stream = await fetch(`${mesh.http.url}/api/v1/events/some-agent`, {
+      headers: { cookie }, signal: ctrl.signal,
+    });
+    expect(stream.status).toBe(200);
+    expect(stream.headers.get("content-type")).toContain("text/event-stream");
+    ctrl.abort();
+  });
+
+  test("no session is 401", async () => {
+    expect((await fetch(`${mesh.http.url}/api/v1/events/some-agent`)).status).toBe(401);
+  });
+
+  test("a token in the query string is NOT a credential any more", async () => {
+    // The point of the change. A URL carrying a valid JWT must be as useless
+    // as one carrying nothing, or the parameter still exists — it just stopped
+    // being documented.
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin", redirect: "manual",
+    });
+    const jwt = res.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
+    const withQuery = await fetch(
+      `${mesh.http.url}/api/v1/events/some-agent?token=${encodeURIComponent(jwt)}`,
+    );
+    expect(withQuery.status).toBe(401);
+  });
+});
+
+/**
+ * Open question 7 — the three hardening items, each with a test that fails
+ * without it.
+ *
+ * All three passed the whole suite before being fixed, which is the point:
+ * nothing here was checking them. A published fallback secret, a wildcard
+ * CORS policy on a cookie-authenticated server and a `===` on a bearer token
+ * are invisible to tests about behaviour.
+ */
+describe("open question 7 — hardening", () => {
+  test("CORS does not hand a session to an unlisted origin", async () => {
+    // The server authenticates with a cookie, so a page on any site could
+    // otherwise make an authenticated request on a visitor's behalf and read
+    // the answer — the browser attaches the session, the page never sees it.
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { origin: "https://evil.example" },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("a preflight from an unlisted origin is not granted credentials", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://evil.example",
+        "access-control-request-method": "GET",
+      },
+    });
+    // `Allow-Origin` is the load-bearing header and it is absent.
+    //
+    // `Allow-Credentials: true` is still echoed by Hono's middleware and that
+    // is inert: a browser rejects the response outright when no origin was
+    // allowed, so the credentials header grants nothing to nobody. Asserting
+    // its absence would be asserting something stricter than the property, and
+    // a test that overshoots gets relaxed by whoever it blocks next.
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("a request with no Origin is unaffected — it is not a browser", async () => {
+    // Every server-to-server caller, and the whole of this suite.
+    expect((await fetch(`${mesh.http.url}/api/v1/audit/events`)).status).toBe(401);
+  });
+
+  test("a wrong ingest token is refused, and a right one is accepted", async () => {
+    // The comparison behind this is constant-time; what a test can check is
+    // that swapping it for one has not broken the decision.
+    const url = `${mesh.http.url}/api/v1/ingest/ai-usage`;
+    const wrong = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer nope" },
+      body: JSON.stringify({}),
+    });
+    // 401 when a token is configured, 503 when the feature is off — either is
+    // a refusal, and neither is acceptance.
+    expect([401, 503]).toContain(wrong.status);
   });
 });

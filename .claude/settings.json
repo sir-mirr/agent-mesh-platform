@@ -21,6 +21,12 @@
             "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/mailbox.ts\"",
             "timeout": 10,
             "statusMessage": "Checking agent mailbox"
+          },
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/more-work.ts\"",
+            "timeout": 10,
+            "statusMessage": "Checking for remaining work"
           }
         ]
       }

@@ -28,6 +28,47 @@ export const auditDb = openStore("audit", { create: true });
 agentsSchema.migrate(agentsDb);
 // § 12. Groups live beside identities, and the hub decides every send.
 groupsSchema.migrate(agentsDb);
+
+/**
+ * Proxies the deployment declares (SPEC § 8.2).
+ *
+ * `can_proxy` used to arrive on the unauthenticated provisioning route, which
+ * meant the entitlement check read a value the checked party had written.
+ * Refusing it there left `agent-mesh-http` unable to obtain the flag it
+ * genuinely needs — and it should not be able to grant itself one.
+ *
+ * So a deployment states its proxies. Speaking on behalf of other identities is
+ * the strongest thing a participant can hold, and this is the level at which
+ * that decision belongs: an operator editing configuration, not a process
+ * asking for it at startup.
+ *
+ * **Additive.** It grants and never withdraws, because withdrawing here would
+ * fight the other half of § 8.2: an operator granting through
+ * `POST /api/v1/admin/agents/{identity}/can-proxy` made a decision, and a hub
+ * restart clearing it would undo that silently.
+ */
+export const DECLARED_PROXIES: ReadonlySet<string> = new Set(
+  (process.env.AGENT_MESH_PROXY_IDENTITIES ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
+/**
+ * Apply the declaration to one identity.
+ *
+ * Called at boot **and** on every provisioning, because both orders happen: a
+ * hub restarted beside a running proxy finds the row already there, and a hub
+ * started first finds nothing and must grant when the row appears. The second
+ * is the common case — `agent-mesh-http` registers itself after connecting —
+ * and doing only the first left it unable to proxy at all.
+ */
+export function applyDeclaredProxy(identity: string): void {
+  if (!DECLARED_PROXIES.has(identity)) return;
+  agentsDb.prepare(`UPDATE agents SET can_proxy = 1 WHERE identity = ?`).run(identity);
+}
+
+for (const identity of DECLARED_PROXIES) applyDeclaredProxy(identity);
 hubSchema.migrate(db);
 auditSchema.migrate(auditDb);
 

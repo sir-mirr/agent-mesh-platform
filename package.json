@@ -26,7 +26,8 @@
     "test:all": "bun test packages/ test/",
     "e2e:harness": "bun scripts/e2e-harness.ts",
     "mail": "bun scripts/mesh-mail.ts",
-    "collect-orphans": "bun scripts/collect-orphan-blobs.ts"
+    "collect-orphans": "bun scripts/collect-orphan-blobs.ts",
+    "mutation-check": "bun scripts/mutation-check.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.1.13",
@@ -36,7 +37,7 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.10.0",
+    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.21.0",
     "@agent-mesh/store": "workspace:*"
   }
 }

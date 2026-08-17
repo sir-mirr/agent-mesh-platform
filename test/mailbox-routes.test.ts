@@ -1,5 +1,5 @@
 /**
- * § 9.2.1 — the signed inbox surface.
+ * § 9.2.1 — the signed mailbox surface.
  *
  * A REST naming of methods that already existed. What is worth testing is not
  * that the routes answer, but the three rules that make them different from the
@@ -131,7 +131,7 @@ describe("authentication", () => {
     const kp = newKeyPair();
     await provision(mesh.hub, "ibx-pending", "ai-claude", null, kp.publicKey);
 
-    const res = await call(kp, "GET", "/api/v1/outbox");
+    const res = await call(kp, "GET", "/api/v1/mailbox/out");
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({ code: "KEY_NOT_APPROVED", key_status: "pending" });
     // Naming the holder would build the key-to-identity lookup the contract
@@ -140,7 +140,7 @@ describe("authentication", () => {
   });
 
   test("an unsigned request is refused", async () => {
-    expect((await fetch(`${mesh.hub.url}/api/v1/outbox`)).status).toBe(401);
+    expect((await fetch(`${mesh.hub.url}/api/v1/mailbox/out`)).status).toBe(401);
   });
 
   test("a nonce is spent on receipt, so a signature cannot be replayed", async () => {
@@ -149,13 +149,13 @@ describe("authentication", () => {
     const iat = Math.floor(Date.now() / 1000);
     const signature = Buffer.from(
       edSign(null, Buffer.from(restSignaturePreimage({
-        method: "GET", path: "/api/v1/outbox", kid: a.fingerprint, nonce, iat, bodySha256: "",
+        method: "GET", path: "/api/v1/mailbox/out", kid: a.fingerprint, nonce, iat, bodySha256: "",
       })), a.privateKey),
     ).toString("base64url");
     const header = formatRestAuthorization({ kid: a.fingerprint, nonce, iat, signature });
 
-    expect((await fetch(`${mesh.hub.url}/api/v1/outbox`, { headers: { authorization: header } })).status).toBe(200);
-    expect((await fetch(`${mesh.hub.url}/api/v1/outbox`, { headers: { authorization: header } })).status).toBe(401);
+    expect((await fetch(`${mesh.hub.url}/api/v1/mailbox/out`, { headers: { authorization: header } })).status).toBe(200);
+    expect((await fetch(`${mesh.hub.url}/api/v1/mailbox/out`, { headers: { authorization: header } })).status).toBe(401);
   });
 
   test("a signature does not carry to another path", async () => {
@@ -166,11 +166,11 @@ describe("authentication", () => {
     const iat = Math.floor(Date.now() / 1000);
     const signature = Buffer.from(
       edSign(null, Buffer.from(restSignaturePreimage({
-        method: "GET", path: "/api/v1/outbox", kid: a.fingerprint, nonce, iat, bodySha256: "",
+        method: "GET", path: "/api/v1/mailbox/out", kid: a.fingerprint, nonce, iat, bodySha256: "",
       })), a.privateKey),
     ).toString("base64url");
 
-    const res = await fetch(`${mesh.hub.url}/api/v1/inbox/history?peer=${idb}`, {
+    const res = await fetch(`${mesh.hub.url}/api/v1/mailbox/history?peer=${idb}`, {
       headers: { authorization: formatRestAuthorization({ kid: a.fingerprint, nonce: randomUUID(), iat, signature }) },
     });
     expect(res.status).toBe(401);
@@ -183,12 +183,12 @@ describe("authentication", () => {
     const iat = Math.floor(Date.now() / 1000);
     const signature = Buffer.from(
       edSign(null, Buffer.from(restSignaturePreimage({
-        method: "POST", path: "/api/v1/outbox", kid: a.fingerprint, nonce, iat,
+        method: "POST", path: "/api/v1/mailbox/out", kid: a.fingerprint, nonce, iat,
         bodySha256: createHash("sha256").update(honest, "utf8").digest("hex"),
       })), a.privateKey),
     ).toString("base64url");
 
-    const res = await fetch(`${mesh.hub.url}/api/v1/outbox`, {
+    const res = await fetch(`${mesh.hub.url}/api/v1/mailbox/out`, {
       method: "POST",
       headers: {
         authorization: formatRestAuthorization({ kid: a.fingerprint, nonce, iat, signature }),
@@ -203,16 +203,16 @@ describe("authentication", () => {
 describe("delivery", () => {
   test("taking delivery leases, and a second call gets nothing until acked", async () => {
     const { a, b, idb } = await pair();
-    await call(a, "POST", "/api/v1/outbox", { to: idb, content: "one" });
+    await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "one" });
 
-    const first = await call(b, "POST", "/api/v1/inbox", {});
+    const first = await call(b, "POST", "/api/v1/mailbox/in", {});
     expect(first.body.messages).toHaveLength(1);
     expect(first.body.lease_seconds).toBeGreaterThan(0);
 
-    const second = await call(b, "POST", "/api/v1/inbox", {});
+    const second = await call(b, "POST", "/api/v1/mailbox/in", {});
     expect(second.body.messages).toHaveLength(0);
 
-    const acked = await call(b, "POST", "/api/v1/inbox", {
+    const acked = await call(b, "POST", "/api/v1/mailbox/in", {
       ack_ids: [first.body.messages[0].id], limit: 0,
     });
     expect(acked.body.remaining).toBe(0);
@@ -222,32 +222,32 @@ describe("delivery", () => {
     // The whole reason this is a POST: a proxy, a retry or an operator with
     // `curl` must not be able to consume a lease by looking.
     const { b } = await pair();
-    const res = await call(b, "GET", "/api/v1/inbox");
+    const res = await call(b, "GET", "/api/v1/mailbox/in");
     expect(res.status).toBe(405);
   });
 
   test("history needs a peer", async () => {
     const { b } = await pair();
-    expect((await call(b, "GET", "/api/v1/inbox/history")).status).toBe(400);
+    expect((await call(b, "GET", "/api/v1/mailbox/history")).status).toBe(400);
   });
 });
 
 describe("recall", () => {
   test("a message nobody has been handed can be withdrawn", async () => {
     const { a, idb } = await pair();
-    const sent = await call(a, "POST", "/api/v1/outbox", { to: idb, content: "withdrawn" });
+    const sent = await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "withdrawn" });
     expect(sent.status).toBe(200);
 
-    const listed = await call(a, "GET", "/api/v1/outbox");
+    const listed = await call(a, "GET", "/api/v1/mailbox/out");
     expect(listed.body.messages.map((m: any) => m.id)).toContain(sent.body.id);
     // Size, not content: handing the body back would make this a second read
     // surface for something the caller already sent.
     expect(listed.body.messages[0]).not.toHaveProperty("content");
 
-    const recalled = await call(a, "DELETE", `/api/v1/outbox/${sent.body.id}`);
+    const recalled = await call(a, "DELETE", `/api/v1/mailbox/out/${sent.body.id}`);
     expect(recalled.body).toMatchObject({ recalled: true });
 
-    const after = await call(a, "GET", "/api/v1/outbox");
+    const after = await call(a, "GET", "/api/v1/mailbox/out");
     expect(after.body.messages.map((m: any) => m.id)).not.toContain(sent.body.id);
   });
 
@@ -255,37 +255,37 @@ describe("recall", () => {
     // A leased message was returned in a response — the recipient holds it
     // whether or not it survived to say so.
     const { a, b, idb } = await pair();
-    const sent = await call(a, "POST", "/api/v1/outbox", { to: idb, content: "already handed over" });
-    const received = await call(b, "POST", "/api/v1/inbox", {});
+    const sent = await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "already handed over" });
+    const received = await call(b, "POST", "/api/v1/mailbox/in", {});
     expect(received.body.messages).toHaveLength(1);
 
     // Leased, deliberately not acked.
-    const late = await call(a, "DELETE", `/api/v1/outbox/${sent.body.id}`);
+    const late = await call(a, "DELETE", `/api/v1/mailbox/out/${sent.body.id}`);
     expect(late.status).toBe(409);
     expect(late.body.code).toBe("ALREADY_DELIVERED");
 
-    const listed = await call(a, "GET", "/api/v1/outbox");
+    const listed = await call(a, "GET", "/api/v1/mailbox/out");
     expect(listed.body.messages.map((m: any) => m.id)).not.toContain(sent.body.id);
   });
 
   test("a sender cannot recall someone else's message", async () => {
     const first = await pair();
     const second = await pair();
-    const sent = await call(first.a, "POST", "/api/v1/outbox", { to: first.idb, content: "not yours" });
+    const sent = await call(first.a, "POST", "/api/v1/mailbox/out", { to: first.idb, content: "not yours" });
 
-    const res = await call(second.a, "DELETE", `/api/v1/outbox/${sent.body.id}`);
+    const res = await call(second.a, "DELETE", `/api/v1/mailbox/out/${sent.body.id}`);
     // `404`, not `409`: telling a stranger the message exists would let this
     // enumerate the mesh.
     expect(res.status).toBe(404);
 
-    const still = await call(first.a, "GET", "/api/v1/outbox");
+    const still = await call(first.a, "GET", "/api/v1/mailbox/out");
     expect(still.body.messages.map((m: any) => m.id)).toContain(sent.body.id);
   });
 
   test("the withdrawal is audited, or the trail says only that it was sent", async () => {
     const { a, ida, idb } = await pair();
-    const sent = await call(a, "POST", "/api/v1/outbox", { to: idb, content: "audited withdrawal" });
-    await call(a, "DELETE", `/api/v1/outbox/${sent.body.id}`);
+    const sent = await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "audited withdrawal" });
+    await call(a, "DELETE", `/api/v1/mailbox/out/${sent.body.id}`);
 
     const events = await (await fetch(
       `${mesh.http.url}/api/v1/audit/events?identity=${ida}`, { headers: { cookie } },
@@ -299,14 +299,14 @@ describe("recall", () => {
 describe("the operator surface", () => {
   test("needs an admin, and reads without bodies", async () => {
     const { a, idb } = await pair();
-    await call(a, "POST", "/api/v1/outbox", { to: idb, content: "operator must not read this" });
+    await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "operator must not read this" });
 
-    expect((await fetch(`${mesh.http.url}/api/v1/admin/inbox`)).status).toBe(401);
+    expect((await fetch(`${mesh.http.url}/api/v1/admin/mailbox`)).status).toBe(401);
 
-    const depth = await (await fetch(`${mesh.http.url}/api/v1/admin/inbox`, { headers: { cookie } })).json();
-    expect(depth.inboxes.some((i: any) => i.identity === idb)).toBe(true);
+    const depth = await (await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, { headers: { cookie } })).json();
+    expect(depth.mailboxes.some((i: any) => i.identity === idb)).toBe(true);
 
-    const one = await (await fetch(`${mesh.http.url}/api/v1/admin/inbox/${idb}`, { headers: { cookie } })).json();
+    const one = await (await fetch(`${mesh.http.url}/api/v1/admin/mailbox/${idb}`, { headers: { cookie } })).json();
     expect(one.messages.length).toBeGreaterThan(0);
     // Seeing that someone has mail is a different authorisation question from
     // reading it.
@@ -315,10 +315,10 @@ describe("the operator surface", () => {
 
   test("reports whether a message is leased, so a stuck queue is legible", async () => {
     const { a, b, idb } = await pair();
-    await call(a, "POST", "/api/v1/outbox", { to: idb, content: "held" });
-    await call(b, "POST", "/api/v1/inbox", {});
+    await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "held" });
+    await call(b, "POST", "/api/v1/mailbox/in", {});
 
-    const one = await (await fetch(`${mesh.http.url}/api/v1/admin/inbox/${idb}`, { headers: { cookie } })).json();
+    const one = await (await fetch(`${mesh.http.url}/api/v1/admin/mailbox/${idb}`, { headers: { cookie } })).json();
     expect(one.messages[0].leased).toBe(true);
   });
 });

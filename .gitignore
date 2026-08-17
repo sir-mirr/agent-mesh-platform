@@ -10,3 +10,6 @@ tmp/
 .DS_Store
 *.tsbuildinfo
 .worktrees/
+
+# Evidence from a failing mutation round (scripts/mutation-check.ts).
+mutation-check-*.log

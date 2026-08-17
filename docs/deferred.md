@@ -111,7 +111,25 @@ Recorded honestly. Several are stated positions rather than oversights — SPEC
 § 14.2 sets out the v0.1 trust posture — but a stated position is still a
 weakness, and the list is more useful than the distinction.
 
-### `can_proxy` is self-asserted
+### ~~`can_proxy` is self-asserted~~
+
+**Closed.** The unauthenticated provisioning route refuses the field, and it is
+granted either by an operator holding `agent.provision` over that identity or
+by `AGENT_MESH_PROXY_IDENTITIES` on the hub.
+
+The original entry said closing it meant authenticating provisioning. It did
+not: the route stays open, because a lane must be able to register a key
+without holding a human's credential. What moved is the one field on it that
+was a grant.
+
+**One self-assertion remains and is not hidden.** `agent-mesh-http` is named in
+the deployment's own configuration, so it still ends up with the flag it needs
+without anyone approving it at runtime — there is nobody to approve it before
+the process that authenticates operators is running. What changed is that it is
+no longer *reachable*: an attacker who can open a socket to the hub can no
+longer grant themselves the same thing.
+
+#### Original entry — `can_proxy` is self-asserted
 
 http sets the grant on its own row when it registers itself, because
 provisioning is unauthenticated and nothing else was going to. So the entitlement
@@ -127,12 +145,21 @@ No transport security between the hub and its clients. § 14.2 states this. Ever
 signature above is therefore integrity without confidentiality: an observer
 cannot forge a request but can read every one.
 
+**Why deferred.** It is a deployment concern rather than a code one: TLS
+terminates at the proxy § 8.11.1 already assumes, and the hub binding to
+loopback behind it is the configuration that makes `ws://` safe. Nothing here
+changes when someone does that, which is why nothing here is waiting.
+
 ### A `requires_key = 0` type connects unsigned
 
 By design, not by omission — but the guarantee is per type. `service` is seeded
 at 0 because the baseline predates keys, so `http-server` and `self-reminder`
 connect unsigned today. A deployment that wants them authenticated raises the
 flag and provisions keys; nothing in the code needs to change.
+
+**Why deferred.** Because that last clause is the whole answer — the mechanism
+exists and a deployment chooses. Seeding `service` at `1` instead would break
+every baseline participant on upgrade to fix something a flag already fixes.
 
 ### The audit store is never pruned
 
@@ -141,6 +168,10 @@ refuses audit writes with `-32044` rather than deleting to make room, so the
 failure mode is "audit stops" rather than "history quietly rewrites itself".
 Someone still has to notice.
 
+**Why deferred.** Retention is the decision, not the gap. What is missing is an
+operator noticing before exhaustion, which is monitoring rather than code — and
+pruning is the one remedy that would make the trail lie.
+
 ### A socketless caller can be handed the same message twice
 
 Delivery over § 8.10 is at-least-once: a batch not acknowledged comes back after
@@ -148,6 +179,10 @@ its lease lapses. Clients deduplicate on the stable `id`. This is a deliberate
 trade rather than a defect — a duplicate is visible and cheap, a loss is
 neither — but it does mean the mesh does not promise exactly-once to a caller
 that cannot hold a socket, and no amount of tuning the lease changes that.
+
+**Why deferred.** There is nothing to build. Exactly-once over a transport the
+caller cannot hold open is not available at any price, and the contract says so
+rather than implying otherwise.
 
 ### The send dedup table is never pruned
 
@@ -166,24 +201,104 @@ for a single hub and would not be for two: a replay could be split across
 instances. The hub does not scale horizontally for the presence reason already
 recorded, so this is a consequence rather than a second limit.
 
-### Attachment download is unauthenticated
+**Why deferred.** It becomes real the day a second hub does, and that day
+arrives with presence — which is the constraint that has to move first. Fixing
+this alone would be solving the smaller half of a problem nobody has yet.
 
-Recorded in [`open-questions.md`](open-questions.md) instead, because it is a
-question rather than a decision: capability-by-digest may well be sufficient,
-and nobody has ruled. An item in both files is an item that goes stale in one.
+### ~~Attachment download is unauthenticated~~
 
-### `POST /api/v1/upload` buffers whole files in memory
+**Closed.** Ruled in [`open-questions.md`](open-questions.md) and built as
+SPEC § 15.3: the parties to the message carrying it, sender or recipient, agent
+or person.
+
+### A refused upload leaves its connection unusable
+
+`POST /api/v1/upload` decides from `Content-Length` before reading the body, so
+an oversized upload is never materialised. The client is still sending when the
+refusal goes out, and what it has already written is read as the start of the
+next request on that connection — which then fails to parse, giving the caller
+a `400` on a request that was fine.
+
+**A caller that has been refused must open a new connection.** Three fixes were
+tried and none works in this stack:
+
+| | |
+|---|---|
+| `body.cancel()` | disposes of this side; does not stop the sender |
+| `Connection: close` | the correct HTTP answer, and it is ignored here |
+| draining the body | leaves the server waiting on a sender that may never finish — worse than the problem |
+
+**It does not crash the process**, though it read that way for an afternoon:
+the symptom lands on whatever request happens to follow, so it moves around and
+looks like instability. Written down mostly so the next person recognises it in
+under two hours.
+
+**Why deferred.** The alternative is reading every oversized body in full,
+which is the cost the check exists to avoid, and the affected path is one a
+caller only reaches by being refused.
+
+### ~~`POST /api/v1/upload` buffers whole files in memory~~
+
+**Closed** for the case that mattered. The size is now checked against
+`Content-Length` **before** the body is read, instead of after `formData()` had
+parsed the whole thing into memory and `arrayBuffer()` had copied it again — an
+oversized upload used to cost twice its size before being refused.
+
+Refusing early has its own trap, and it bit immediately: replying before the
+body is consumed leaves an unread stream, the socket resets, and the server
+died on the first oversized upload. `refuseUpload` cancels the body first.
+Reading it to be polite would reintroduce the exact cost the check exists to
+avoid.
+
+The original entry follows.
+
+#### Original entry — `POST /api/v1/upload` buffers whole files in memory
 
 At the 100 MiB limit, a handful of concurrent uploads takes the process down.
 The audit blob route (step 4) streams and does not share this path; the old
 route was left alone.
 
-### No rate limiting anywhere
+### ~~No rate limiting anywhere~~
+
+**Closed** by SPEC § 14. Token buckets on the unauthenticated provisioning
+routes, keyed on the observed source, and on the signed surface keyed on the
+verified identity.
+
+Two things worth keeping from building it.
+
+The first numbers — 20 burst, one per second — broke fifty-eight tests. A suite
+bringing up lanes as fast as it can is exactly the shape of a host onboarding a
+fleet, and the comment predicting that failure was **already in the file** when
+those numbers were chosen. A stated principle does not check itself.
+
+And the buckets are per process. The hub does not scale horizontally today, so
+this is the whole deployment; behind two hubs it silently becomes `2n`.
+
+The original entry follows.
+
+#### Original entry — No rate limiting anywhere
 
 Neither the hub's routes nor http's. A restart loop proposing keys is bounded
 by the supersession rule rather than by any limit.
 
-### The SSE stream carries its JWT in the query string
+### ~~The SSE stream carries its JWT in the query string~~
+
+**Closed.** It authenticates from the session cookie now, like every other
+route, and a query token is refused.
+
+The original entry proposed a short-lived stream ticket, which was the right
+shape for the wrong premise. The premise — "`EventSource` cannot set headers" —
+is true and irrelevant: a cookie is not a header the caller sets, it is one the
+browser sends, and it sends it for a same-origin stream unasked. Cross-origin
+consumers pass `withCredentials: true`.
+
+**Nothing needed building.** The mitigation was already available and the
+footnote explaining why it was not had been read as a constraint for long
+enough to look like one.
+
+The original entry follows.
+
+#### Original entry — The SSE stream carries its JWT in the query string
 
 `GET /api/v1/events/:agentId` authenticates by `?token=` because `EventSource`
 cannot set request headers (§ 9.1 †). The token therefore appears in access
@@ -207,7 +322,7 @@ from it.
 The original entry follows, because the reasoning is why the shape looks the
 way it does.
 
-### An identity's `type` can change with nothing recording that it did
+#### Original entry — An identity's `type` can change with nothing recording that it did
 
 § 10.1 step 5 mandates the upsert: `ON CONFLICT(identity) DO UPDATE SET type,
 description`. So a second `POST /api/v1/agents` for a name that already exists
@@ -251,7 +366,7 @@ Two things it did **not** close, both narrower than the original entry:
 
 The original entry follows, because it is why the shape is what it is.
 
-### Reading the audit trail is not itself audited
+#### Original entry — Reading the audit trail is not itself audited
 
 `GET /api/v1/audit/events` and `/api/v1/audit/events/{event_id}` resolve an
 admin actor and then discard it. Nothing records that someone read the trail,
@@ -308,7 +423,16 @@ weaker form of it. Refusing a new surface does not audit the existing ones.
 Before opening any unauthenticated route, ask what already answers that question
 rather than only whether this one should.
 
-### `scheduler.tick` writes and its name does not say so
+### ~~`scheduler.tick` writes and its name does not say so~~
+
+**Closed.** Renamed to `advanceDue`, which is in the vocabulary and says what
+the method does to the reminders it touches. The exemption list in
+`test/naming.test.ts` is now empty, which is the state it should be in — an
+exemption is a concession with a sentence attached, not a place to put things.
+
+The original entry follows.
+
+#### Original entry — `scheduler.tick` writes and its name does not say so
 
 `packages/self-reminder/src/scheduler.ts` updates `reminders` inside `tick`.
 The § 11-era naming rule in `test/naming.test.ts` requires a function that
@@ -329,7 +453,15 @@ that file and had never once been reported.
 point: `main.ts` calls it and six tests name it. That is worth doing and is not
 worth doing between two unrelated changes.
 
-### The group-manager path to teardown is not implemented
+### ~~The group-manager path to teardown is not implemented~~
+
+**Closed** by SPEC § 12. It now asks the question the earlier draft could not:
+`group.manage` **scoped to the group the agent is in**, and explicitly not the
+tenant-wide grant every administrator holds.
+
+The original entry follows, because it is why the check has that shape.
+
+#### Original entry — The group-manager path to teardown is not implemented
 
 § 11.3 admits two routes to teardown: a scoped capability, and the capability
 plus ownership. A third was intended — a group manager may tear down agents in
@@ -345,3 +477,58 @@ test written from the SPEC sentence, not by reading.
 **Why deferred.** It needs groups. Implementing a check against a concept that
 does not exist yet produced exactly what such a check produces: a permissive
 no-op that reads as a control.
+
+### ~~The integration suite occasionally loses two tests to a mesh that never starts~~
+
+Withdrawn. The mechanism this entry asserted was measured and is not there.
+
+**What was seen**, once: a run printed
+
+```
+service at http://127.0.0.1:PORT/health never became healthy:
+The socket connection was closed unexpectedly
+```
+
+and the summary line captured from it read `407 pass` where adjacent runs read
+`409`.
+
+**What this entry then claimed** was the ephemeral-port dance — `freePort` binds,
+reads the port and closes, and another concurrently starting mesh takes it in
+the gap. That was written as the cause. It was a guess, and it reads as a
+finding.
+
+**Measured.** 400 allocations through the same bind-read-close path, 21
+concurrent to match one per test file, then each port claimed by a real
+`Bun.serve` exactly as a service does: **zero duplicates, zero rebind
+failures.** Eight consecutive full runs of `test/` since: `412 pass, 0 fail`
+every time. No test in `test/` kills a service on purpose, so the health failure
+had no deliberate source either.
+
+The single observation stands and the cause is unknown. It is not a port race.
+
+**Why this is withdrawn rather than left open with a question mark.** An entry
+naming a mechanism sends the next reader to `freePort`, and they will find
+nothing wrong with it, because there is nothing wrong with it. A wrong lead
+costs more than an absent one.
+
+What survives is the reporting point, which was true independently of the cause:
+**a suite that runs fewer tests than it did yesterday reports the same green.**
+Read `Ran N tests`, not the colour. If the symptom returns, capture the service
+stdout — the harness pipes it — rather than reasoning about it from the summary.
+
+### ~~`scripts/` and `.claude/hooks/` were outside the typecheck~~
+
+Closed. `tsconfig.base.json` now references a project for each, and
+`test/typecheck-scope.test.ts` fails if a TypeScript file in this repository
+falls outside every project.
+
+Two defects surfaced the moment the files were compiled for the first time:
+`--state-dir` with nothing after it assigned `undefined`, which the harness read
+as "no state directory" and answered by making a temporary one it removed on
+exit — so a runner that asked to keep state got a mesh whose files were gone.
+And `mailbox-watch.ts` was not a module, making every top-level `await` in it a
+syntax error nobody had run `tsc` over.
+
+Recorded rather than quietly fixed because of what it says about the reports.
+Every "typecheck 0" in this session, while the harness was being changed, was
+true of the repository *except the file being changed*.

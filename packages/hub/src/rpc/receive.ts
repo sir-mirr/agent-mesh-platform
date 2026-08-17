@@ -26,6 +26,8 @@
 
 import { MAILBOX_CAPABILITY_DEFAULTS } from "@agent-mesh/contracts";
 
+import { receive } from "@agent-mesh/mailbox";
+
 import { recordDelivered } from "./audit";
 import {
   db,
@@ -49,7 +51,17 @@ const DEFAULT_LIMIT = 50;
  * comfort setting rather than a correctness one — which is exactly why it is
  * adjustable rather than compiled in.
  */
-const LEASE_SECONDS = Number(
+/**
+ * Exported because `/api/v1/capabilities` advertises it, and for a while it
+ * advertised the *constant* instead — so a deployment that shortened the lease
+ * told every client it had not. Nothing failed: ids are stable and the messages
+ * still came back, the caller just re-polled on a cadence the hub had not asked
+ * for. A defect with no symptom is one that stays.
+ *
+ * One binding, two readers. The alternative — each side reading the environment
+ * — is what produced the divergence.
+ */
+export const LEASE_SECONDS = Number(
   process.env.AGENT_MESH_RECEIVE_LEASE_SECONDS ?? MAILBOX_CAPABILITY_DEFAULTS.receive_lease_seconds,
 );
 
@@ -71,51 +83,27 @@ export function handleReceive(
     ? params.ack_ids.filter((x: unknown) => typeof x === "string")
     : [];
 
-  let page: any[] = [];
-  let remaining = 0;
-
-  // One transaction. The acknowledgement of the last batch and the lease of the
-  // next are the same act, so there is no instant at which a caller has settled
-  // one and not yet claimed the other.
-  const tx = db.transaction(() => {
-    // Scoped to the caller's own queue, and ids it does not hold are ignored
-    // rather than refused: a caller retrying an ambiguous receive re-sends the
-    // same acknowledgements, and failing that retry would strand the very batch
-    // it is trying to settle.
-    for (const messageId of ackIds) {
-      // Recorded on acknowledgement rather than on hand-out, because that is
-      // when it is true: a leased batch may be redelivered, and recording each
-      // attempt would put several `delivered` events behind one message
-      // (§ 8.9.4). `changes` is what says the caller actually held it.
-      const settled = stmtAckMessage.run(messageId, identity);
-      if (settled.changes > 0) {
-        const row = stmtMessageById.get(messageId) as any;
-        if (row) recordDelivered(row);
-      }
-    }
-
-    page = stmtLeasableMessages.all(identity, limit) as any[];
-    for (const m of page) {
-      stmtLeaseMessage.run(m.id, LEASE_SECONDS);
-    }
-    remaining = (stmtCountLeasable.get(identity) as { n: number }).n;
+  const result = receive({
+    db,
+    stmt: {
+      ackMessage: stmtAckMessage,
+      messageById: stmtMessageById,
+      leasableMessages: stmtLeasableMessages,
+      leaseMessage: stmtLeaseMessage,
+      countLeasable: stmtCountLeasable,
+    },
+    identity,
+    limit,
+    ackIds,
+    leaseSeconds: LEASE_SECONDS,
+    // The hub's half. Recording a delivery is an audit concern belonging to
+    // whoever runs the mailbox, which is why the package takes it as a hook
+    // rather than importing it — see docs/decisions/mailbox-and-hub.md.
+    onSettled: (row) => recordDelivered(row as any),
   });
-  tx();
 
-  return rpcResult(id, {
-    messages: page.map((m) => ({
-      id: m.id,
-      from: m.from_agent,
-      to: m.to_agent,
-      sent_by: m.sent_by,
-      content: m.content,
-      reply_to: m.reply_to,
-      ts: m.ts,
-    })),
-    // Counted after the lease, so it excludes what was just handed out.
-    remaining,
-    // So a caller knows how long it has before these are offered again, and can
-    // decide whether to acknowledge now or keep working.
-    lease_seconds: LEASE_SECONDS,
-  });
+
+  // The envelope is the hub's; the answer is the mailbox's. Reshaping it here
+  // would be a second copy of a shape `@agent-mesh/mailbox` already states.
+  return rpcResult(id, result);
 }

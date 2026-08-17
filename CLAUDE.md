@@ -100,6 +100,13 @@ The mailbox is for things the other side cannot discover by reading the repos:
 
 - **A contract changed.** A new `agent-mesh-contracts` tag, and what moved.
   The other side pins a tag and will not notice otherwise.
+
+  **A new error code goes out before the tag, not after.** The rest of a
+  contract change is inert until somebody pins it; a new code is not. The hub
+  can emit it while the other side is still on the old tag, where it is absent
+  from `ERROR_CLASS` and falls to whatever that caller passes as a fallback.
+  `errorClassOf` now answers `permanent` for an unknown in-band code so that
+  window is survivable, and surviving it is not the same as it being fine.
 - **A SPEC section landed, or its status changed.** `SPEC.md`'s table says what
   is built; a change there changes what the other side can rely on.
 - **A blocking question about the other side's half.** Anything that would
@@ -139,7 +146,24 @@ bun test packages/
 bun test test/
 ```
 
-CI runs all three. `test/` starts real hub and http processes, so a failure
+When the change adds or alters a **checker** — a test, a linter, a scope guard —
+also add its mutation to `scripts/mutation-check.ts` and run it:
+
+```bash
+bun run mutation-check
+bun run mutation-check -- --self-check
+```
+
+The second one is the tool checking its own reporting branch. It was added after
+`18/18 caught` was reported while the code that prints a failure had never run
+once — a check whose failure path is untested is a check nobody has seen work.
+
+A green suite is not evidence that a new check checks anything. Checks in this
+repository have reported green while checking nothing, repeatedly, and every one
+was found by breaking the behaviour on purpose rather than by reading the code.
+`docs/decisions/checks-that-check-nothing.md` lists them.
+
+CI runs every command above. `test/` starts real hub and http processes, so a failure
 there usually means wiring rather than logic.
 
 ---
