@@ -148,7 +148,7 @@ export function PlatformOverviewPage() {
         <KpiCard
           label={t("server.kpi.latency", "허브 지연 (p95)")}
           value={isOnline ? `${telemetry?.p99_latency_ms || 0} ms` : "-"}
-          subValue={isOnline ? "최근 p99 측정치" : "통신 불가"}
+          subValue={isOnline ? t("server.kpi.p99Sub", "최근 p99 측정치") : t("common.disconnected", "통신 불가")}
           color="#6366F1"
           icon="⏱️"
         />

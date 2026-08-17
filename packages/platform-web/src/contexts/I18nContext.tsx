@@ -83,6 +83,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "common.search": "검색",
     "common.all": "전체",
     "common.created": "생성 일시",
+    "common.disconnected": "통신 불가",
 
     // Topology Page
     "topo.title": "에이전트 토폴로지",
@@ -155,7 +156,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "dash.pa.tenants": "활성 테넌트 조직",
     "dash.pa.tenantsSub": "등록된 테넌트 조직",
     "dash.pa.latency": "허브 p99 지연",
-    "dash.pa.latencySub": "실시간 지연 지표",
+    "dash.pa.p99Sub": "실시간 p99 측정치",
     "dash.pa.tenantTrafficTitle": "테넌트 조직별 트래픽 및 그룹 할당 현황",
 
     "dash.ta.groups": "조직 소속 그룹",
@@ -172,11 +173,9 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "dash.ga.groups": "담당 관리 그룹",
     "dash.ga.groupsSub": "Support, Billing, Analytics",
     "dash.ga.agents": "그룹 내 에이전트",
-    "dash.ga.agentsSub": "정상 가동",
     "dash.ga.lease": "메일함 큐 적체",
     "dash.ga.leaseSub": "300s TTL 관리",
     "dash.ga.health": "그룹 헬스 지표",
-    "dash.ga.healthSub": "에러율 0.0%",
     "dash.ga.membershipTitle": "그룹별 에이전트 멤버십 & 상태",
 
     "dash.op.fleetTitle": "소유 에이전트 플릿 상태 요약",
@@ -245,7 +244,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "server.kpi.throughput": "전체 초당 처리량",
     "server.kpi.throughputSub": "정상 버퍼",
     "server.kpi.latency": "허브 지연 (p95)",
-    "server.kpi.latencySub": "초저지연 라우팅",
+    "server.kpi.p99Sub": "최근 p99 측정치",
     "server.col.node": "노드 ID / 역할",
     "server.col.port": "포트",
     "server.col.status": "헬스 상태 (/health)",
@@ -260,7 +259,6 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "telem.cpuStatus": "정상 (안정적)",
     "telem.rss": "RSS 메모리 (Resident Set)",
     "telem.lag": "이벤트 루프 지연율 (Lag)",
-    "telem.lagStatus": "초저지연 응답",
     "telem.msgPerSec": "초당 메시지 디스패치 (Msg/s)",
     "telem.msgPerSecStatus": "처리 용량 여유",
     "telem.logTitle": "📊 텔레메트리 진단 로그",
@@ -349,6 +347,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "common.search": "Search",
     "common.all": "All",
     "common.created": "Created At",
+    "common.disconnected": "Offline / Disconnected",
 
     // Topology Page
     "topo.title": "Agent Topology",
@@ -421,7 +420,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "dash.pa.tenants": "Active Tenant Orgs",
     "dash.pa.tenantsSub": "Registered Tenants",
     "dash.pa.latency": "Hub p99 Latency",
-    "dash.pa.latencySub": "Live Latency Metric",
+    "dash.pa.p99Sub": "Live p99 Latency Metric",
     "dash.pa.tenantTrafficTitle": "Tenant Resource & Traffic Breakdown",
 
     "dash.ta.groups": "Tenant Agent Groups",
@@ -438,11 +437,9 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "dash.ga.groups": "Managed Groups",
     "dash.ga.groupsSub": "Support, Billing, Analytics",
     "dash.ga.agents": "Group Agents",
-    "dash.ga.agentsSub": "operational",
     "dash.ga.lease": "Mailbox Queue Depth",
     "dash.ga.leaseSub": "300s TTL flow",
     "dash.ga.health": "Group Health Score",
-    "dash.ga.healthSub": "0.0% Error Rate",
     "dash.ga.membershipTitle": "Group Memberships & Status",
 
     "dash.op.fleetTitle": "Owned Agent Fleet Summary",
@@ -511,7 +508,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "server.kpi.throughput": "Total Throughput",
     "server.kpi.throughputSub": "Buffer Normal",
     "server.kpi.latency": "Hub Latency (p95)",
-    "server.kpi.latencySub": "Ultra-low Latency",
+    "server.kpi.p99Sub": "Recent p99 Measurement",
     "server.col.node": "Node ID / Role",
     "server.col.port": "Port",
     "server.col.status": "Health Status (/health)",
@@ -526,7 +523,6 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "telem.cpuStatus": "Normal (Stable)",
     "telem.rss": "RSS Memory (Resident Set)",
     "telem.lag": "Event Loop Lag",
-    "telem.lagStatus": "Ultra-low Lag",
     "telem.msgPerSec": "Message Dispatch Rate (Msg/s)",
     "telem.msgPerSecStatus": "Headroom Available",
     "telem.logTitle": "📊 Telemetry Diagnostic Log",

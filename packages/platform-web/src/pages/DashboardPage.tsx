@@ -153,7 +153,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
           value={telemetry ? `${telemetry.p99_latency_ms || 0}ms` : "-"}
-          subValue={telemetry ? "실시간 p99 측정치" : "통신 불가"}
+          subValue={telemetry ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
           color="var(--color-warning)"
           icon="⏱️"
         />
