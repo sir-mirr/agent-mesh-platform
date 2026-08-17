@@ -16,8 +16,8 @@ interface AgentPairingModalProps {
   isOpen: boolean;
   onClose: () => void;
   request: PendingAgentRequest | null;
-  onApprove?: (identity: string, code: string) => void;
-  onDeny?: (identity: string) => void;
+  onApprove?: (fingerprint: string, identity: string, code: string) => void;
+  onDeny?: (fingerprint: string, identity: string) => void;
 }
 
 export function AgentPairingModal({
@@ -71,7 +71,7 @@ export function AgentPairingModal({
             variant="danger"
             size="sm"
             onClick={() => {
-              onDeny?.(request.identity);
+              onDeny?.(request.fingerprint, request.identity);
               onClose();
             }}
           >
@@ -85,7 +85,7 @@ export function AgentPairingModal({
               variant="primary"
               size="sm"
               onClick={() => {
-                onApprove?.(request.identity, pairingCode);
+                onApprove?.(request.fingerprint, request.identity, pairingCode);
                 onClose();
               }}
             >

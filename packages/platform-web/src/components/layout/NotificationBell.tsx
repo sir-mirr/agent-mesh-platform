@@ -49,15 +49,15 @@ export function NotificationBell() {
     setIsOpen(false);
   };
 
-  const handleApprove = (identity: string) => {
+  const handleApprove = (fingerprint: string, identity: string) => {
     setRequests((prev) =>
-      prev.map((r) => (r.identity === identity ? { ...r, status: "approved" } : r))
+      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
     );
   };
 
-  const handleDeny = (identity: string) => {
+  const handleDeny = (fingerprint: string, identity: string) => {
     setRequests((prev) =>
-      prev.map((r) => (r.identity === identity ? { ...r, status: "rejected" } : r))
+      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
     );
   };
 

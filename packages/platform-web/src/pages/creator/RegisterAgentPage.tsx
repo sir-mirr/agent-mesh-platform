@@ -63,16 +63,16 @@ export function RegisterAgentPage() {
     }
   };
 
-  const handleApproveFromModal = (identity: string, code: string) => {
+  const handleApproveFromModal = (fingerprint: string, identity: string, code: string) => {
     setPendingList((prev) =>
-      prev.map((r) => (r.identity === identity ? { ...r, status: "approved" } : r))
+      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
     );
     setToastMessage(`에이전트 [${identity}] 승인 및 페어링(${code})이 완료되었습니다.`);
   };
 
-  const handleDenyFromModal = (identity: string) => {
+  const handleDenyFromModal = (fingerprint: string, identity: string) => {
     setPendingList((prev) =>
-      prev.map((r) => (r.identity === identity ? { ...r, status: "rejected" } : r))
+      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
     );
     setToastMessage(`에이전트 [${identity}] 등록 요청이 거절되었습니다.`);
   };
