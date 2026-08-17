@@ -11,9 +11,16 @@ mutation-tested before it is trusted, and the guards named below are in
 A check reports green. It has always reported green. It is also not checking
 the thing its name says, and nothing about the report distinguishes the two.
 
-This happened five times in one working session, across two repositories, and
-each time the document describing the correct behaviour was already written and
-already correct.
+This happened repeatedly in one working session, across two repositories, and
+each time the document describing the correct behaviour was already written
+and already correct.
+
+**The count is deliberately not stated.** A sentence that counts a list below
+it is wrong the first time the list grows, and fixing the number only defers
+that to the next time. `client-claude` corrected an ADR reading "four rules"
+above seven of them, and wrote a fresh count into the next file they touched
+in the same sitting (mail #225). Three sentences in this repository had the
+same defect, one of them inside the tool written for this document.
 
 | What looked like a check | Why it wasn't |
 |---|---|

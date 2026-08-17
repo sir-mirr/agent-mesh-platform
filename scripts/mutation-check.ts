@@ -18,7 +18,7 @@
  *
  * ## Refusals, and what each is for
  *
- * The three checks here are not about the tool failing to answer. They are about
+ * The refusals here are not about the tool failing to answer. They are about
  * the tool answering **wrongly**, which is worse, because a wrong answer here
  * gets acted on.
  *
@@ -243,8 +243,8 @@ const MUTATIONS: Mutation[] = [
 /**
  * Two entries that MUST be reported as failures.
  *
- * **The reporting branch had never run.** Eighteen entries were added, `18/18
- * caught` was observed, and the code that says `✗` was dead the whole time — a
+ * **The reporting branch had never run.** The manifest was filled, every entry
+ * reported caught, and the code that says `✗` was dead the whole time — a
  * check whose failure path is untested is a check nobody has seen work, which is
  * the subject of `docs/decisions/checks-that-check-nothing.md` appearing inside
  * the tool written for it.

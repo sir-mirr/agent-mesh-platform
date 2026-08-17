@@ -21,10 +21,9 @@
  * ## Why a test rather than a note
  *
  * The obvious fix is a line in a document saying the check must cover
- * everything. This session has now watched three separate devices — a hardcoded
- * verb list, a permitted skip, and an unlisted directory — keep the *appearance*
- * of a check while checking nothing, and in each case the document already said
- * the right thing.
+ * everything. This session has watched a hardcoded verb list, a permitted skip and
+ * an unlisted directory all keep the *appearance* of a check while checking
+ * nothing, and in each case the document already said the right thing.
  *
  * A rule does not enforce itself. This does.
  *

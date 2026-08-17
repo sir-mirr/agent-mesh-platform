@@ -158,12 +158,12 @@ The second one is the tool checking its own reporting branch. It was added after
 `18/18 caught` was reported while the code that prints a failure had never run
 once — a check whose failure path is untested is a check nobody has seen work.
 
-A green suite is not evidence that a new check checks anything. Five separate
-checks in this repository reported green while checking nothing, and every one
+A green suite is not evidence that a new check checks anything. Checks in this
+repository have reported green while checking nothing, repeatedly, and every one
 was found by breaking the behaviour on purpose rather than by reading the code.
 `docs/decisions/checks-that-check-nothing.md` lists them.
 
-CI runs all three. `test/` starts real hub and http processes, so a failure
+CI runs every command above. `test/` starts real hub and http processes, so a failure
 there usually means wiring rather than logic.
 
 ---

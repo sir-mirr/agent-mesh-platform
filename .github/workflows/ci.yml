@@ -38,3 +38,18 @@ jobs:
       # from a unit failure — they fail for very different reasons.
       - name: Integration tests
         run: bun test test/
+
+      # The guards checked against the defects they exist for. Moving these into
+      # the repository was supposed to make "this was mutation-tested" a
+      # checkable claim; a manifest nothing runs decays exactly the way the
+      # documentation it replaced did.
+      #
+      # It edits tracked files and restores with `git checkout --`, which is
+      # safe on a fresh checkout and refuses outright on a dirty tree.
+      - name: Mutation check
+        run: bun run mutation-check
+
+      # The tool checking its own reporting branch. Added after `18/18 caught`
+      # was reported while the code that prints a failure had never run.
+      - name: Mutation check — self-check
+        run: bun run mutation-check -- --self-check
