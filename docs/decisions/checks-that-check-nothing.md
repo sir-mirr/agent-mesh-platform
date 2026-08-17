@@ -150,6 +150,48 @@ routes, one shape — refusal treated as evidence.
 Both were found by measuring, not by reading. The recursion stops here because a
 level deeper was tried and bit, not because a stopping point was chosen.
 
+## Three ways, not one
+
+Everything above is one failure — a check that saw nothing and reported a pass.
+`agent-mesh-local-pm` audited the front end with a harness that failed in two
+*other* ways on the same day, and the distinction is worth keeping because the
+fixes are different.
+
+**① The check saw nothing and called it a pass.** Their block rule matched
+`/api/` in the URL, which also matched the dev server's own
+`/src/api/client.ts` — so the application bundle died, every screen went blank,
+and fourteen blank screens were recorded as fourteen passes. Every case in this
+document is this one.
+
+**② The check saw a healthy thing and called it a defect.** With no data in the
+backend, a screen looked identical whether the backend was reachable or not, and
+that was reported as a failure. The tool this document is about did the same to
+me an hour later: a mutation entry pointed at the neighbouring test, so a guard
+that fired correctly was reported as not catching it — a wrong finding, about
+the wrong thing, in the tool built to prevent exactly that.
+
+**③ The check measured a condition that was not the one that matters.** Blocking
+`/auth/*` along with the API bounced the app to a login screen, so the fallback
+code being hunted never got a chance to run. Nothing was broken and nothing was
+misread; the question asked was the wrong question. Cutting only `/api/v1/*` and
+leaving the session alive failed six screens immediately, with fabricated tenant
+names and constants sitting in `catch` branches.
+
+**③ is the hardest of the three**, and not because it is subtle. ① and ② are
+the checker being wrong, and a checker can be fixed by looking at it. ③ is the
+checker doing exactly what it was told while what it was told is wrong — and no
+amount of reading the checker reveals that, because from inside it everything
+is consistent. What revealed it was changing the condition and watching the
+answer change.
+
+The common thread is the one this whole document is about: **the result did not
+say what it had looked at.** `PASS` with no account of what was exercised
+carries the same weight in all three cases, and in two of them it is a lie. That
+harness now prints how many numbers were identical between the two runs, and
+distinguishes `INCONCLUSIVE_NO_DATA` from a failure — which is the same fix as
+naming the check rather than the scenario, and naming the denominator rather
+than the count.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
