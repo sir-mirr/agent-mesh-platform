@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export interface NavItemDef {
   label: string;
@@ -29,6 +30,24 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const location = useLocation();
+  const { language, setLanguage } = useI18n();
+  const [isLangOpen, setIsLangOpen] = useState(false);
+  const langPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close language popup when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (langPopoverRef.current && !langPopoverRef.current.contains(e.target as Node)) {
+        setIsLangOpen(false);
+      }
+    }
+    if (isLangOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isLangOpen]);
 
   // LNB 접기/펼치기 상태 관리 (localStorage 영속화)
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -457,39 +476,184 @@ export function Sidebar({
         })}
       </div>
 
-      {/* User Footer */}
+      {/* User Footer with Upward Language Combobox */}
       <div
+        ref={langPopoverRef}
         style={{
-          padding: isCollapsed ? "14px 0" : "14px 16px",
+          position: "relative",
+          padding: isCollapsed ? "14px 0" : "12px 14px",
           borderTop: "1px solid var(--color-border)",
           background: "var(--color-bg-surface-sub)",
           display: "flex",
           alignItems: "center",
           justifyContent: isCollapsed ? "center" : "space-between",
+          gap: 8,
         }}
       >
+        {/* Upward Language Selection Combobox Popover */}
+        {isLangOpen && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 8px)",
+              left: isCollapsed ? "50%" : 12,
+              transform: isCollapsed ? "translateX(-50%)" : "none",
+              zIndex: 100,
+              background: "var(--color-bg-surface, #FFFFFF)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+              padding: "6px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+              minWidth: 148,
+              animation: "fadeInUp 0.15s ease-out",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.68rem",
+                fontWeight: 700,
+                color: "var(--color-text-muted)",
+                padding: "3px 8px 4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                borderBottom: "1px solid var(--color-border-subtle, #F1F5F9)",
+                marginBottom: 2,
+              }}
+            >
+              Language / 언어 선택
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLanguage("ko");
+                setIsLangOpen(false);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "7px 10px",
+                borderRadius: "var(--radius-sm)",
+                border: "none",
+                background: language === "ko" ? "var(--color-primary-light, #EFF6FF)" : "transparent",
+                color: language === "ko" ? "var(--color-primary, #2563EB)" : "var(--color-text-primary)",
+                fontWeight: language === "ko" ? 700 : 500,
+                fontSize: "0.82rem",
+                cursor: "pointer",
+                textAlign: "left",
+                transition: "background 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                if (language !== "ko") e.currentTarget.style.background = "var(--color-bg-surface-hover, #F8FAFC)";
+              }}
+              onMouseLeave={(e) => {
+                if (language !== "ko") e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: "1.1rem" }}>🇰🇷</span>
+                <span>한국어</span>
+              </span>
+              {language === "ko" && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>✓</span>}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setLanguage("en");
+                setIsLangOpen(false);
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "7px 10px",
+                borderRadius: "var(--radius-sm)",
+                border: "none",
+                background: language === "en" ? "var(--color-primary-light, #EFF6FF)" : "transparent",
+                color: language === "en" ? "var(--color-primary, #2563EB)" : "var(--color-text-primary)",
+                fontWeight: language === "en" ? 700 : 500,
+                fontSize: "0.82rem",
+                cursor: "pointer",
+                textAlign: "left",
+                transition: "background 0.12s ease",
+              }}
+              onMouseEnter={(e) => {
+                if (language !== "en") e.currentTarget.style.background = "var(--color-bg-surface-hover, #F8FAFC)";
+              }}
+              onMouseLeave={(e) => {
+                if (language !== "en") e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: "1.1rem" }}>🇺🇸</span>
+                <span>English</span>
+              </span>
+              {language === "en" && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>✓</span>}
+            </button>
+          </div>
+        )}
+
         {!isCollapsed ? (
           <>
-            <div style={{ minWidth: 0 }}>
-              <div
+            {/* Flag Trigger & User Info Container */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+              {/* Flag Icon Button Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsLangOpen((prev) => !prev)}
+                title="언어 변경 (Language Switcher)"
                 style={{
-                  fontSize: "0.82rem",
-                  fontWeight: 700,
-                  color: "var(--color-text-primary)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  width: 30,
+                  height: 30,
+                  minWidth: 30,
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
+                  background: isLangOpen ? "var(--color-primary-light, #EFF6FF)" : "var(--color-bg-surface, #FFFFFF)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  fontSize: "1.05rem",
+                  padding: 0,
+                  transition: "all 0.15s ease",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
                 }}
               >
-                {userName}
-              </div>
-              <div
-                style={{
-                  fontSize: "0.7rem",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                {userRole}
+                {language === "ko" ? "🇰🇷" : "🇺🇸"}
+              </button>
+
+              {/* User Name & Role */}
+              <div style={{ minWidth: 0, overflow: "hidden" }}>
+                <div
+                  style={{
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    color: "var(--color-text-primary)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {userName}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.7rem",
+                    color: "var(--color-text-secondary)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {userRole}
+                </div>
               </div>
             </div>
 
@@ -501,10 +665,11 @@ export function Sidebar({
                   border: "none",
                   color: "var(--color-text-muted)",
                   cursor: "pointer",
-                  fontSize: "0.8rem",
+                  fontSize: "0.78rem",
                   fontWeight: 600,
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: "var(--radius-sm)",
+                  whiteSpace: "nowrap",
                 }}
                 title="로그아웃"
               >
@@ -513,22 +678,46 @@ export function Sidebar({
             )}
           </>
         ) : (
-          <button
-            onClick={onLogout}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "1.1rem",
-              padding: 4,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            title="로그아웃"
-          >
-            🚪
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            {/* Flag Trigger in Collapsed Sidebar */}
+            <button
+              type="button"
+              onClick={() => setIsLangOpen((prev) => !prev)}
+              title="언어 변경 (Language Switcher)"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                background: isLangOpen ? "var(--color-primary-light, #EFF6FF)" : "var(--color-bg-surface, #FFFFFF)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                fontSize: "1rem",
+                padding: 0,
+              }}
+            >
+              {language === "ko" ? "🇰🇷" : "🇺🇸"}
+            </button>
+
+            <button
+              onClick={onLogout}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: "1.1rem",
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="로그아웃"
+            >
+              🚪
+            </button>
+          </div>
         )}
       </div>
     </aside>

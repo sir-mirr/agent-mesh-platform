@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext.tsx";
 import { RbacProvider } from "@/contexts/RbacContext.tsx";
+import { I18nProvider } from "@/contexts/I18nContext.tsx";
 import { RootLayout } from "@/layouts/RootLayout.tsx";
 import { GuardedRoute } from "@/components/index.ts";
 
@@ -29,9 +30,10 @@ import { RbacManagementPage } from "@/pages/tenant/RbacManagementPage.tsx";
 
 export function App() {
   return (
-    <AuthProvider>
-      <RbacProvider>
-        <BrowserRouter>
+    <I18nProvider>
+      <AuthProvider>
+        <RbacProvider>
+          <BrowserRouter>
           <Routes>
             {/* Public — 통합 단일 로그인 게이트웨이 */}
             <Route path="/login" element={<LoginPage />} />
@@ -108,5 +110,6 @@ export function App() {
         </BrowserRouter>
       </RbacProvider>
     </AuthProvider>
+  </I18nProvider>
   );
 }
