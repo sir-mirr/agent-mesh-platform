@@ -622,3 +622,40 @@ direction, and only running the mutations separated them.** The four are worth
 the sweep on their own — one of them, `capability-not-role`, turned out not to be
 a test defect at all but eight admin routes that were never migrated to § 11,
 two of which served whole message bodies behind a role check with no record kept.
+
+### Group-to-group gateways — deferred past the first deployment
+
+The owner's decision, 2026-08-17: think about it after 0.1 ships.
+
+Nothing is built and nothing claims otherwise — `SPEC.md` does not mention
+gateways, `docs/decisions/` has no entry, and the only writing is
+`docs/proposals/tenancy-and-groups.md`. Unlike the § 11 capability table this
+week, there is no second copy here to drift; the risk is the opposite one.
+
+**What can go wrong while this waits.** The proposal's central point is about
+timing rather than design:
+
+> Deciding this before gateways exist is a schema change; deciding it after is a
+> migration of the audit trail, which is the one store that must not be
+> rewritten.
+
+`sent_by` is a single field and holds one carrier. Two gateways in a path make
+the true answer a list, and squashing it either way loses a hop that touched the
+message. So **anyone changing the audit schema before gateways arrive should
+know that a carrier path is the shape it will eventually need** — not to build
+it now, but to avoid closing the door.
+
+A hop limit belongs with it. Gateways relaying to gateways cycle the first time
+somebody misconfigures one, and a bound is cheaper to add now than during an
+incident.
+
+**The other half is already built and is not waiting on any of this.** § 12
+refuses a send with no egress rule (`group_egress`, `groups.maySend`,
+`-32018 EGRESS_DENIED`), so group isolation holds today. What is deferred is the
+participant that may cross a boundary, not the boundary.
+
+And the proposal notes gateways and process-per-tenant want the same
+architecture — `onlineAgents` is one in-memory map in one hub process, which is
+why the hub does not scale horizontally, and per-tenant processes would make a
+gateway the only thing speaking across them. Worth deciding together rather than
+twice.
