@@ -33,7 +33,7 @@ try {
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie } from 'hono/cookie'
-import { randomBytes, createHash } from 'crypto'
+import { randomBytes, createHash, timingSafeEqual } from 'crypto'
 import {
   readFileSync, writeFileSync, mkdirSync, existsSync,
 } from 'fs'
@@ -534,10 +534,55 @@ type Message = {
 
 // --- Hono App ---
 
+/**
+ * Compare two secrets without leaking their contents through timing.
+ *
+ * `===` on strings returns at the first differing byte, so the time it takes
+ * is a function of how much of the prefix was right. That is enough to
+ * recover a token a byte at a time given enough attempts — which § 14's rate
+ * limit makes slow rather than impossible.
+ *
+ * Both sides are hashed first so the comparison is over equal-length buffers:
+ * `timingSafeEqual` throws on a length mismatch, and catching that would
+ * reintroduce the leak as an exception nobody times.
+ */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a, 'utf8').digest()
+  const hb = createHash('sha256').update(b, 'utf8').digest()
+  return timingSafeEqual(ha, hb)
+}
+
 const app = new Hono()
 
-// CORS — allow all origins (Phase 1)
-app.use('/*', cors())
+/**
+ * Origins allowed to call this server from a browser (open question 7).
+ *
+ * `cors()` with no argument allowed every origin, and this server
+ * authenticates with a **cookie**. A page on any site could therefore make an
+ * authenticated request on a visitor's behalf and read the answer — the
+ * session is attached by the browser, not by the page, so the page never needs
+ * the token.
+ *
+ * Same-origin is always allowed and needs nothing here; a request with no
+ * `Origin` header is not a browser and is unaffected. This list is for the
+ * cross-origin case, and empty means "none", which is the right default for a
+ * server that hands out sessions.
+ */
+const ALLOWED_ORIGINS = (process.env.AGENT_MESH_ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+app.use(
+  '/*',
+  cors({
+    origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
+    // Echoed only for an origin on the list. Without this a browser will not
+    // send the session cookie at all, which is the behaviour wanted for
+    // everyone not on it.
+    credentials: true,
+  }),
+)
 
 // --- Landing Page ---
 
@@ -2133,8 +2178,7 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
     return c.json({ error: 'ingest disabled (AI_USAGE_INGEST_TOKEN not set)' }, 503)
   }
   const auth = c.req.header('authorization') ?? c.req.header('Authorization') ?? ''
-  const expected = `Bearer ${token}`
-  if (auth !== expected) {
+  if (!timingSafeEqualString(auth ?? '', `Bearer ${token}`)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 

@@ -70,6 +70,25 @@ Note: the adapter and driver have left this repository, so the fix lands in
 the lane repository. The *contract* question — what SPEC § 4.5 requires of a
 conformant lane — stays here.
 
+## 7. HTTP server hardening — ~~closed~~
+
+All three are fixed. `JWT_SECRET` has no fallback and the process refuses to
+start without it; CORS is an allowlist from `AGENT_MESH_ALLOWED_ORIGINS`,
+empty by default; the ingest bearer is compared in constant time over hashes of
+both sides.
+
+**The whole suite passed before any of them**, which is the part worth keeping.
+A published fallback secret, a wildcard CORS policy on a cookie-authenticated
+server, and a `===` on a token are all invisible to tests about behaviour —
+nothing was checking them because nothing they broke was a behaviour.
+
+The CORS one was the live risk: this server authenticates with a **cookie**, so
+a page on any site could make an authenticated request on a visitor's behalf
+and read the answer. The browser attaches the session; the page never needs the
+token.
+
+### Original entry
+
 ## 7. HTTP server hardening
 
 Smaller items, same theme:

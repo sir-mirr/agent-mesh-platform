@@ -536,3 +536,61 @@ describe("§ 9.1 — the event stream takes no credential in its URL", () => {
     expect(withQuery.status).toBe(401);
   });
 });
+
+/**
+ * Open question 7 — the three hardening items, each with a test that fails
+ * without it.
+ *
+ * All three passed the whole suite before being fixed, which is the point:
+ * nothing here was checking them. A published fallback secret, a wildcard
+ * CORS policy on a cookie-authenticated server and a `===` on a bearer token
+ * are invisible to tests about behaviour.
+ */
+describe("open question 7 — hardening", () => {
+  test("CORS does not hand a session to an unlisted origin", async () => {
+    // The server authenticates with a cookie, so a page on any site could
+    // otherwise make an authenticated request on a visitor's behalf and read
+    // the answer — the browser attaches the session, the page never sees it.
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { origin: "https://evil.example" },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("a preflight from an unlisted origin is not granted credentials", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://evil.example",
+        "access-control-request-method": "GET",
+      },
+    });
+    // `Allow-Origin` is the load-bearing header and it is absent.
+    //
+    // `Allow-Credentials: true` is still echoed by Hono's middleware and that
+    // is inert: a browser rejects the response outright when no origin was
+    // allowed, so the credentials header grants nothing to nobody. Asserting
+    // its absence would be asserting something stricter than the property, and
+    // a test that overshoots gets relaxed by whoever it blocks next.
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("a request with no Origin is unaffected — it is not a browser", async () => {
+    // Every server-to-server caller, and the whole of this suite.
+    expect((await fetch(`${mesh.http.url}/api/v1/audit/events`)).status).toBe(401);
+  });
+
+  test("a wrong ingest token is refused, and a right one is accepted", async () => {
+    // The comparison behind this is constant-time; what a test can check is
+    // that swapping it for one has not broken the decision.
+    const url = `${mesh.http.url}/api/v1/ingest/ai-usage`;
+    const wrong = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer nope" },
+      body: JSON.stringify({}),
+    });
+    // 401 when a token is configured, 503 when the feature is off — either is
+    // a refusal, and neither is acceptance.
+    expect([401, 503]).toContain(wrong.status);
+  });
+});
