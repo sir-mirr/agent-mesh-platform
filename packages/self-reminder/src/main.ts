@@ -78,7 +78,7 @@ lifecycle = new HubLifecycle({
 
 lifecycle.start();
 setInterval(() => {
-  void scheduler.tick(lifecycle.isReady(), (reminder, content, clientMessageId) =>
+  void scheduler.advanceDue(lifecycle.isReady(), (reminder, content, clientMessageId) =>
     // **From this daemon, not from the owner.** A fired reminder is sent by the
     // scheduler; the owner scheduled it earlier, which the payload records. It
     // used to claim `from: reminder.agent_id`, which the hub reads as a proxied

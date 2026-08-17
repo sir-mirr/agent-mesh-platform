@@ -67,24 +67,15 @@ const WRITE_VERB =
 /**
  * Names that write and do not say so, accepted with a reason.
  *
- * **An exemption is visible; a widened verb list is not.** Adding `tick` to
- * `WRITE_VERB` above would silently accept every future `tickSomething`, and
- * nobody reading that list would know one entry was a concession rather than a
- * word that announces an effect. Here the concession has a name and a
- * sentence.
+ * **Empty, and that is the point.** An exemption is visible where a widened
+ * verb list is not: adding a name to `WRITE_VERB` silently accepts every
+ * future name that starts the same way, and nobody reading that list would
+ * know one entry was a concession. Here a concession needs a sentence.
  *
- * `tick` was invisible until `bodyOf` was fixed — it predates every rule in
- * this file and was never once reported.
+ * The only entry this ever held was `scheduler.tick`, which was renamed to
+ * `advanceDue` rather than excused.
  */
-const EXEMPT = new Map<string, string>([
-  [
-    "packages/self-reminder/src/scheduler.ts:tick",
-    "Scheduler step. `tick` is the idiom for one pass of a loop and does not " +
-      "announce the write it performs; renaming it touches the daemon's entry " +
-      "point and its tests, which is worth doing and is not worth doing " +
-      "between two other changes. Recorded in docs/deferred.md.",
-  ],
-]);
+const EXEMPT = new Map<string, string>([]);
 
 /** Durable writes — state that outlives the process. */
 const WRITES =

@@ -43,7 +43,7 @@ describe("ReminderScheduler health and overdue policy", () => {
     });
     scheduler.setConnectivity("unavailable", "duplicate_identity");
     now = new Date("2026-07-14T00:02:00.000Z");
-    await scheduler.tick(false, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(false, async () => ({ status: "delivered" }));
 
     expect(scheduler.getHealthState("last_due_scan")).toBe(now.toISOString());
     expect(scheduler.getHealthState("last_stall_category")).toBe("hub_unavailable");
@@ -93,7 +93,7 @@ describe("ReminderScheduler health and overdue policy", () => {
       overdueHoldMs: 60_000,
     });
     addDue(db, "2026-07-14 00:00:00");
-    await scheduler.tick(true, async () => { sent++; return { status: "delivered" }; });
+    await scheduler.advanceDue(true, async () => { sent++; return { status: "delivered" }; });
 
     expect(sent).toBe(0);
     expect(db.prepare(`SELECT status, next_fire_at, fire_count FROM reminders WHERE id = 'r1'`).get()).toEqual({ status: "active", next_fire_at: "2026-07-14 00:00:00", fire_count: 0 });
@@ -112,7 +112,7 @@ describe("ReminderScheduler health and overdue policy", () => {
     addCron(db, "daily-scrum-1000-kst", "0 10 * * 1-5", at);
 
     const delivered: string[] = [];
-    await scheduler.tick(true, async (reminder) => {
+    await scheduler.advanceDue(true, async (reminder) => {
       delivered.push(reminder.id);
       return { status: "delivered" };
     });
@@ -146,7 +146,7 @@ describe("interval reminders repeat", () => {
     addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "i1")).toEqual({
       status: "active",
@@ -163,7 +163,7 @@ describe("interval reminders repeat", () => {
 
     let fires = 0;
     for (let i = 0; i < 4; i++) {
-      await scheduler.tick(true, async () => {
+      await scheduler.advanceDue(true, async () => {
         fires++;
         return { status: "delivered" };
       });
@@ -181,7 +181,7 @@ describe("interval reminders repeat", () => {
     addInterval(db, "i1", "15m", "2026-07-14 09:00:00");
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     // 09:15, not 09:22:23. Advancing from the late fire would move the schedule
     // permanently, and every outage would move it again.
@@ -197,7 +197,7 @@ describe("interval reminders repeat", () => {
     // computable, so there is nothing for an operator to decide.
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "i1")).toEqual({
       status: "active",
@@ -212,7 +212,7 @@ describe("interval reminders repeat", () => {
     addInterval(db, "i1", "30s", "2026-07-14 09:00:00");
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
     // Equal would be a fire loop: the row is due the instant it is written.
     expect(rowOf(db, "i1").next_fire_at).toBe("2026-07-14 09:00:30");
   });
@@ -228,7 +228,7 @@ describe("interval reminders repeat", () => {
     const events: Array<[string, Record<string, unknown>]> = [];
     const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "bad").status).toBe("dead");
     expect(events.some(([e]) => e === "advance_failed")).toBe(true);
@@ -241,7 +241,7 @@ describe("interval reminders repeat", () => {
       .run("2026-07-14 09:00:00");
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "i1").status).toBe("dead");
   });
@@ -252,7 +252,7 @@ describe("interval reminders repeat", () => {
     addDue(db, "2026-07-14 09:00:00");
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
-    await scheduler.tick(true, async () => ({ status: "delivered" }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "r1")).toEqual({ status: "fired", next_fire_at: null, fire_count: 1 });
   });
@@ -269,7 +269,7 @@ describe("overdue handling distinguishes repeating from one-shot", () => {
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
     let fired = 0;
-    await scheduler.tick(true, async () => {
+    await scheduler.advanceDue(true, async () => {
       fired++;
       return { status: "delivered" };
     });
@@ -286,7 +286,7 @@ describe("overdue handling distinguishes repeating from one-shot", () => {
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
     let fired = 0;
-    await scheduler.tick(true, async () => {
+    await scheduler.advanceDue(true, async () => {
       fired++;
       return { status: "delivered" };
     });
@@ -305,7 +305,7 @@ describe("overdue handling distinguishes repeating from one-shot", () => {
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
     let fired = 0;
-    await scheduler.tick(true, async () => {
+    await scheduler.advanceDue(true, async () => {
       fired++;
       return { status: "delivered" };
     });
@@ -324,7 +324,7 @@ describe("overdue handling distinguishes repeating from one-shot", () => {
 
     scheduler.recordOverdueDecision("r1", "2026-07-14 09:00:00", "replay", "APPROVED:ticket-1");
     let fired = 0;
-    await scheduler.tick(true, async () => {
+    await scheduler.advanceDue(true, async () => {
       fired++;
       return { status: "delivered" };
     });
@@ -345,7 +345,7 @@ describe("a fire is delivered under a key that identifies the fire", () => {
 
     const keys: string[] = [];
     for (let i = 0; i < 3; i++) {
-      await scheduler.tick(true, async (_r, _c, key) => {
+      await scheduler.advanceDue(true, async (_r, _c, key) => {
         keys.push(key);
         return { status: "delivered" };
       });
@@ -365,13 +365,13 @@ describe("a fire is delivered under a key that identifies the fire", () => {
     // First attempt fails after the hub may already have committed it — the
     // case the key exists for. The row returns to `active` and the next scan
     // retries the same slot.
-    await scheduler.tick(true, async (_r, _c, key) => {
+    await scheduler.advanceDue(true, async (_r, _c, key) => {
       keys.push(key);
       throw new Error("connection reset");
     });
     expect(rowOf(db, "i1").status).toBe("active");
 
-    await scheduler.tick(true, async (_r, _c, key) => {
+    await scheduler.advanceDue(true, async (_r, _c, key) => {
       keys.push(key);
       return { status: "delivered", duplicate: true };
     });
@@ -395,7 +395,7 @@ describe("a fire is delivered under a key that identifies the fire", () => {
     const events: Array<[string, Record<string, unknown>]> = [];
     const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
 
-    await scheduler.tick(true, async () => ({ status: "delivered", duplicate: true }));
+    await scheduler.advanceDue(true, async () => ({ status: "delivered", duplicate: true }));
 
     const fired = events.find(([e]) => e === "reminder_fired");
     expect(fired?.[1].deduplicated).toBe(true);
@@ -408,7 +408,7 @@ describe("a fire is delivered under a key that identifies the fire", () => {
     const scheduler = new ReminderScheduler(db, { now: () => now });
 
     let content = "";
-    await scheduler.tick(true, async (_r, c) => {
+    await scheduler.advanceDue(true, async (_r, c) => {
       content = c;
       return { status: "delivered" };
     });

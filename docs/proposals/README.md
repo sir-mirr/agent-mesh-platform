@@ -52,24 +52,30 @@ blocking three items and is now built (SPEC § 8.9.5).
 | Audit-read logging | owned by an **internal process**; the query side stays readonly |
 | Three hours | **no derivation, and does not claim one** — configurable, and overridable so a test need not wait it out |
 
-### Settled since
+### Built
 
-| | |
-|---|---|
-| Audit-read logging | written by **`agent-mesh-http` itself**, and **fail closed** — a read that cannot be recorded does not happen |
-| Send restrictions | **deny by default**; an agent with no group joins a `default` agent group |
-| Teardown | an agent operator may, for agents they own or where they hold `group.manage` |
-| Dormancy for proxied sends | applies only where `sent_by == from`. `sent_by: http-server` is constant for every web send and carries no information; it becomes meaningful when it names a specific gateway |
+Every settled decision in the set is implemented and on `main`.
+
+| | Section | |
+|---|---|---|
+| Observed source, recorded per request | § 8.11 | `GET /api/v1/admin/agent-sources` |
+| Dormant send from an unseen network refused | § 8.11.2 | `-32017`, `prefix` granularity |
+| Capabilities as a grant table, read per request | § 11 | nine capabilities, no role string |
+| Message bodies withheld without `audit.read.content` | § 11.0 | redaction on the way out, and the SPEC says so |
+| Content reads recorded, failing closed | § 11.0.1 | `mesh.identity.audit_read` |
+| Ownership, pairing codes, scoped queues and teardown | § 11.3 | |
+| Groups, deny by default | § 12 | `-32018`, seeded `default` self-rule |
 
 ### Still undecided
 
-- **Default granularity for the observed source** — `exact`, `prefix` or `ASN`.
-  The trade is how often it fires on legitimate churn against how close a thief
-  has to be: `exact` catches most and fires on every DHCP renewal, `ASN` is
-  quiet and misses a thief inside the same cloud. **A control that cries wolf
-  gets switched off, so the strictest setting is often the weakest in
-  practice.** `ASN` also needs an IP-to-ASN dataset that this deployment does
-  not have; `prefix` is arithmetic.
+### Still undecided
+
+- **Whether `ASN` replaces `prefix`** as the observed-source granularity.
+  `prefix` shipped because it is arithmetic; `ASN` is quieter and misses a
+  thief inside the same cloud, and it needs a dataset this deployment does not
+  carry. Both are recorded in
+  [`attestation-claims.md`](attestation-claims.md), along with why vTPM — not
+  CPU fingerprinting — is the direction that would make either unnecessary.
 
 ### Two deployment properties the hub cannot check itself
 

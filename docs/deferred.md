@@ -308,6 +308,15 @@ weaker form of it. Refusing a new surface does not audit the existing ones.
 Before opening any unauthenticated route, ask what already answers that question
 rather than only whether this one should.
 
+### ~~`scheduler.tick` writes and its name does not say so~~
+
+**Closed.** Renamed to `advanceDue`, which is in the vocabulary and says what
+the method does to the reminders it touches. The exemption list in
+`test/naming.test.ts` is now empty, which is the state it should be in — an
+exemption is a concession with a sentence attached, not a place to put things.
+
+The original entry follows.
+
 ### `scheduler.tick` writes and its name does not say so
 
 `packages/self-reminder/src/scheduler.ts` updates `reminders` inside `tick`.
