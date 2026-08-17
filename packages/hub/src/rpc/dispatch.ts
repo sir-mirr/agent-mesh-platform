@@ -12,6 +12,7 @@ import { agentsDb } from "../db";
 import { wsIdentities, wsProxies } from "../presence";
 import { handleReceive } from "./receive";
 import { KEY_NOT_APPROVED, verifyRequest, type SignatureEnvelope } from "../signature";
+import { recordRefusal } from "../refusals";
 import { dropConnection } from "../presence";
 import { handleListAgents } from "./agents";
 import { handleConnect, handleRegister } from "./connect";
@@ -69,6 +70,13 @@ export function dispatchHttp(raw: string, observed: string | null = null): { sta
     // keys only, and reporting the holder here would build the key-to-identity
     // lookup the contract deliberately lacks.
     const keyStatus = keys.statusOfFingerprint(agentsDb, kid);
+    // **A fourth place, found by measuring rather than by reading.** This
+    // refuses before `verifyRequest` is ever called, so a counter wrapped
+    // around that function counts nothing here — and the first probe fired at
+    // this exact path moved no number while everything typechecked. There is no
+    // single exit to wrap; there are several, and only a request that actually
+    // arrives tells you which one answered it.
+    recordRefusal("signature", `key-${keyStatus ?? "unknown"}`);
     return {
       status: 403,
       body: rpcError(req.id, KEY_NOT_APPROVED, `no approved key with fingerprint ${kid}`, {

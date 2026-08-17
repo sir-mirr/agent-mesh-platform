@@ -1861,10 +1861,15 @@ app.get('/api/v1/admin/telemetry', async (c) => {
   // nowhere else, so this is asked rather than computed — the same reasoning
   // that put provenance on /api/v1/capabilities instead of deriving it here.
   let limiters: unknown = null
+  let refusals: unknown = null
   let limitersError: string | null = null
   try {
     const res = await fetch(`${hubRestBase()}/api/v1/limits`, { signal: AbortSignal.timeout(2000) })
-    if (res.ok) limiters = ((await res.json()) as { limiters: unknown }).limiters
+    if (res.ok) {
+      const body = (await res.json()) as { limiters: unknown; refusals: unknown }
+      limiters = body.limiters
+      refusals = body.refusals
+    }
     else limitersError = `hub answered ${res.status}`
   } catch (err) {
     // **Named, not silently zero.** "The hub did not answer" and "no limit has
@@ -1880,11 +1885,13 @@ app.get('/api/v1/admin/telemetry', async (c) => {
     lanes_not_draining: lanes,
     messages_accepted: accepted.accepted,
     rate_limits: limiters,
+    // Signature refusals by reason (§ 8.1) and egress refusals by group pair
+    // (§ 12), counted in the hub process since it started. In memory rather
+    // than in the audit store: a signature refusal is the one event an
+    // unauthenticated caller can produce at will, so a row per refusal is a
+    // disk-filler handed to anyone who can open a socket.
+    refusals,
     rate_limits_error: limitersError,
-    not_measured: {
-      signature_refusals: 'refused and logged to stdout only (§ 8.1); no write path exists',
-      egress_refusals: 'refused and logged to stdout only (§ 12); no write path exists',
-    },
   })
 })
 

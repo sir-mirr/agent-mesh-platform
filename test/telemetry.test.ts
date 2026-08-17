@@ -95,15 +95,74 @@ describe("what it says when it cannot answer", () => {
     }
   }, 30_000);
 
-  test("the two it cannot measure are named rather than reported as zero", async () => {
+  test("refusals are reported, and were counted rather than invented", async () => {
     // **A zero nobody can make non-zero says nothing about the thing it names.**
     // Signature and egress refusals are refused and logged to stdout; no write
     // path exists, so there is no store to query. Reporting `0` would tell an
     // operator the mesh is calm about a question nobody asked.
-    const body = await telemetry();
-    expect(body.not_measured.signature_refusals).toContain("no write path");
-    expect(body.not_measured.egress_refusals).toContain("no write path");
-    expect(body.signature_refusals, "reported a count it cannot have").toBeUndefined();
-    expect(body.egress_refusals, "reported a count it cannot have").toBeUndefined();
+    // **The empty array passes if you only check the shape.** § 8.1 refuses a
+    // bad signature and § 12 refuses a send no rule allows; both used to answer
+    // with an RPC error and a line on stdout, so an operator asking "is
+    // something failing to get in" had to grep a process. Reporting `[]` for
+    // that is the same lie as reporting `0`.
+    const before = await telemetry();
+    const countOf = (b: any, kind: string) =>
+      (b.refusals as Array<any> | null)?.filter((r) => r.kind === kind).reduce((n, r) => n + r.count, 0) ?? 0;
+    const beforeSig = countOf(before, "signature");
+
+    // A signed request whose signature is nonsense. Refused by § 8.1, and the
+    // reason has to survive to the counter.
+    await fetch(`${mesh.hub.url}/api/v1/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "mesh.send",
+        params: { to: "nobody", content: "x" },
+        sig: { alg: "ed25519", kid: "0".repeat(64), nonce: "n-telemetry", iat: Math.floor(Date.now() / 1000), value: "bad" },
+      }),
+    });
+
+    const after = await telemetry();
+    expect(countOf(after, "signature"), "a refused signature was not counted").toBeGreaterThan(beforeSig);
+
+    // And the reason travels, because "12 refusals" sends an operator nowhere
+    // while "12 stale" and "12 wrong-key" are different problems.
+    const sig = (after.refusals as Array<any>).filter((r) => r.kind === "signature");
+    expect(sig.length).toBeGreaterThan(0);
+    for (const r of sig) {
+      expect(typeof r.reason).toBe("string");
+      expect(r.reason.length, "a refusal was counted under an empty reason").toBeGreaterThan(0);
+    }
+  }, 30_000);
+
+  test("the reason is drawn from the code, never from the caller", async () => {
+    // A counter keyed on caller input is a memory leak whose rate the caller
+    // chooses. Two refusals differing only in what the caller sent must land
+    // under the same reason.
+    const send = (kid: string, nonce: string) =>
+      fetch(`${mesh.hub.url}/api/v1/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "mesh.send",
+          params: { to: "nobody", content: "x" },
+          sig: { alg: "ed25519", kid, nonce, iat: Math.floor(Date.now() / 1000), value: "bad" },
+        }),
+      });
+
+    const before = await telemetry();
+    const reasons = (b: any) => new Set(((b.refusals ?? []) as Array<any>).map((r) => `${r.kind} ${r.reason}`));
+    const had = reasons(before);
+
+    await send("a".repeat(64), "n-vary-1");
+    await send("b".repeat(64), "n-vary-2");
+    await send("c".repeat(64), "n-vary-3");
+
+    const after = await telemetry();
+    const added = [...reasons(after)].filter((r) => !had.has(r));
+    expect(added.length, `three different kids created ${added.length} new reasons: ${added.join(", ")}`)
+      .toBeLessThanOrEqual(1);
   }, 30_000);
 });

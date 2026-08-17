@@ -539,6 +539,17 @@ const MUTATIONS: Mutation[] = [
     expect: ["the limits come from the hub"],
   },
 
+  {
+    id: "refusals-counted",
+    defect:
+      "§ 8.1 refused a bad signature and forgot it — an RPC error and a line on stdout, nothing queryable. So 'is something failing to get in' meant grepping a process, and 'has this ever happened' had no answer. Counting turned out to need four call sites, not the one the code reads as having.",
+    file: "packages/hub/src/rpc/dispatch.ts",
+    from: '    recordRefusal("signature", `key-${keyStatus ?? "unknown"}`);\n',
+    to: "",
+    suite: "test/telemetry.test.ts",
+    expect: ["a refused signature was not counted"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
