@@ -254,3 +254,16 @@ sequenceDiagram
         UI-->>Operator: [Queued in Inbox #1043 ⚡] 블루 배지 점등
     end
 ```
+
+---
+
+## 4. 📐 레이아웃 셸 및 LNB 접기/펼치기 기능 명세 (Layout Shell & LNB Collapse)
+
+### 4.1 LNB 접기/펼치기 토글 (F-LYT-01)
+* **트리거 위치**: 사이드바 상단 우측 브랜드 헤더 영역 (`[ ◀ ]` / `[ ▶ ]` 버튼)
+* **동작 명세**:
+  * **기본 모드 (Expanded)**: 너비 `280px` — 브랜드 로고, 서브 타이틀, 2줄 메뉴 트리(`1행: 메뉴명 / 2행: 설명`), 사용자 프로필 및 로그아웃 버튼 전체 표시
+  * **미니 모드 (Collapsed)**: 너비 `72px` — 브랜드 아이콘(`M`), 센터 정렬 아이콘 타일, 툴팁(`title`)으로 메뉴명 및 설명 지원, 미니 로그아웃 버튼(`🚪`)
+  * **트랜지션 애니메이션**: `transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1)` 부드러운 반응형 리사이징
+  * **상태 영속화 (Persistence)**: `localStorage.getItem('agent_mesh_sidebar_collapsed')`에 접기 상태를 저장하여 페이지 이동 및 새로고침 시에도 사용자 환경설정 유지
+

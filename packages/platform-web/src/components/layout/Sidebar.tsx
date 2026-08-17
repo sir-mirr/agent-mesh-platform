@@ -1,11 +1,11 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 export interface NavItemDef {
   label: string;
   description: string;
   href: string;
-  icon?: string;
+  icon: string;
   requiredCapability?: string;
   badge?: string;
 }
@@ -29,6 +29,27 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const location = useLocation();
+
+  // LNB 접기/펼치기 상태 관리 (localStorage 영속화)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("agent_mesh_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("agent_mesh_sidebar_collapsed", String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   const sections: NavSectionDef[] = [
     {
@@ -140,8 +161,8 @@ export function Sidebar({
   return (
     <aside
       style={{
-        width: 280,
-        minWidth: 280,
+        width: isCollapsed ? 72 : 280,
+        minWidth: isCollapsed ? 72 : 280,
         background: "var(--color-bg-surface)",
         borderRight: "1px solid var(--color-border)",
         display: "flex",
@@ -149,55 +170,109 @@ export function Sidebar({
         height: "100vh",
         position: "sticky",
         top: 0,
+        transition: "width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        overflowX: "hidden",
+        zIndex: 40,
       }}
     >
-      {/* Brand Header */}
+      {/* Brand & Collapse Header */}
       <div
         style={{
-          padding: "20px 20px 16px",
+          padding: isCollapsed ? "18px 12px" : "18px 16px 14px",
           borderBottom: "1px solid var(--color-border)",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          justifyContent: isCollapsed ? "center" : "space-between",
+          gap: 8,
         }}
       >
         <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
-            color: "white",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            minWidth: 0,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              minWidth: 32,
+              borderRadius: 8,
+              background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+              color: "white",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "0.95rem",
+              fontWeight: 900,
+            }}
+            title="Agent Mesh Platform"
+          >
+            M
+          </div>
+
+          {!isCollapsed && (
+            <div style={{ minWidth: 0, overflow: "hidden" }}>
+              <div
+                style={{
+                  fontSize: "0.95rem",
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  color: "var(--color-text-primary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Agent Mesh
+              </div>
+              <div
+                style={{
+                  fontSize: "0.72rem",
+                  color: "var(--color-text-muted)",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Phase 1 MVP · SPEC 0.2
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* LNB 숨기기/펼치기 토글 버튼 */}
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          title={isCollapsed ? "LNB 메뉴 펼치기" : "LNB 메뉴 숨기기 (접기)"}
+          style={{
+            background: "var(--color-bg-surface-sub)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-sm)",
+            width: 26,
+            height: 26,
+            minWidth: 26,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "0.95rem",
-            fontWeight: 900,
+            color: "var(--color-text-secondary)",
+            cursor: "pointer",
+            fontSize: "0.78rem",
+            transition: "all 0.15s ease",
+            padding: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--color-primary)";
+            e.currentTarget.style.borderColor = "var(--color-primary)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--color-text-secondary)";
+            e.currentTarget.style.borderColor = "var(--color-border)";
           }}
         >
-          M
-        </div>
-        <div>
-          <div
-            style={{
-              fontSize: "0.95rem",
-              fontWeight: 800,
-              letterSpacing: "-0.02em",
-              color: "var(--color-text-primary)",
-            }}
-          >
-            Agent Mesh
-          </div>
-          <div
-            style={{
-              fontSize: "0.72rem",
-              color: "var(--color-text-muted)",
-              fontWeight: 600,
-            }}
-          >
-            Phase 1 MVP · SPEC 0.2
-          </div>
-        </div>
+          {isCollapsed ? "▶" : "◀"}
+        </button>
       </div>
 
       {/* Navigation Tree */}
@@ -205,10 +280,11 @@ export function Sidebar({
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "16px 12px",
+          overflowX: "hidden",
+          padding: isCollapsed ? "16px 8px" : "16px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: 20,
+          gap: isCollapsed ? 12 : 20,
         }}
       >
         {sections.map((section) => {
@@ -225,20 +301,30 @@ export function Sidebar({
 
           return (
             <div key={section.title}>
-              <div
-                style={{
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                  color: "var(--color-text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  padding: "0 8px 6px",
-                }}
-              >
-                {section.title}
-              </div>
+              {!isCollapsed ? (
+                <div
+                  style={{
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    color: "var(--color-text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    padding: "0 8px 6px",
+                  }}
+                >
+                  {section.title}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    height: 1,
+                    background: "var(--color-border)",
+                    margin: "4px 8px 8px",
+                  }}
+                />
+              )}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: isCollapsed ? 6 : 2 }}>
                 {visibleItems.map((item) => {
                   const isActive = location.pathname === item.href;
 
@@ -246,11 +332,13 @@ export function Sidebar({
                     <Link
                       key={item.href}
                       to={item.href}
+                      title={isCollapsed ? `${item.label} — ${item.description}` : undefined}
                       style={{
                         display: "flex",
-                        alignItems: "flex-start",
+                        alignItems: "center",
+                        justifyContent: isCollapsed ? "center" : "flex-start",
                         gap: 10,
-                        padding: "8px 10px",
+                        padding: isCollapsed ? "10px 0" : "8px 10px",
                         borderRadius: "var(--radius-md)",
                         background: isActive
                           ? "var(--color-primary-light)"
@@ -260,54 +348,65 @@ export function Sidebar({
                         transition: "all 0.15s ease",
                       }}
                     >
-                      <span style={{ fontSize: "1rem", lineHeight: 1.2 }}>
+                      <span
+                        style={{
+                          fontSize: isCollapsed ? "1.2rem" : "1rem",
+                          lineHeight: 1.2,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
                         {item.icon}
                       </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: "0.85rem",
-                            fontWeight: 700,
-                            color: isActive
-                              ? "var(--color-primary)"
-                              : "var(--color-text-primary)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <span>{item.label}</span>
-                          {item.badge && (
-                            <span
-                              style={{
-                                fontSize: "0.65rem",
-                                padding: "1px 5px",
-                                borderRadius: "var(--radius-full)",
-                                background: "var(--color-primary)",
-                                color: "white",
-                              }}
-                            >
-                              {item.badge}
-                            </span>
-                          )}
+
+                      {!isCollapsed && (
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: "0.85rem",
+                              fontWeight: 700,
+                              color: isActive
+                                ? "var(--color-primary)"
+                                : "var(--color-text-primary)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>{item.label}</span>
+                            {item.badge && (
+                              <span
+                                style={{
+                                  fontSize: "0.65rem",
+                                  padding: "1px 5px",
+                                  borderRadius: "var(--radius-full)",
+                                  background: "var(--color-primary)",
+                                  color: "white",
+                                }}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                          {/* 2nd line: concise description */}
+                          <div
+                            style={{
+                              fontSize: "0.72rem",
+                              color: isActive
+                                ? "var(--color-primary-text)"
+                                : "var(--color-text-muted)",
+                              lineHeight: 1.25,
+                              marginTop: 2,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {item.description}
+                          </div>
                         </div>
-                        {/* 2nd line: concise description */}
-                        <div
-                          style={{
-                            fontSize: "0.72rem",
-                            color: isActive
-                              ? "var(--color-primary-text)"
-                              : "var(--color-text-muted)",
-                            lineHeight: 1.25,
-                            marginTop: 2,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {item.description}
-                        </div>
-                      </div>
+                      )}
                     </Link>
                   );
                 })}
@@ -320,53 +419,71 @@ export function Sidebar({
       {/* User Footer */}
       <div
         style={{
-          padding: "14px 16px",
+          padding: isCollapsed ? "14px 8px" : "14px 16px",
           borderTop: "1px solid var(--color-border)",
           background: "var(--color-bg-surface-sub)",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: isCollapsed ? "center" : "space-between",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "0.82rem",
-              fontWeight: 700,
-              color: "var(--color-text-primary)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {userName}
-          </div>
-          <div
-            style={{
-              fontSize: "0.7rem",
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            {userRole}
-          </div>
-        </div>
+        {!isCollapsed ? (
+          <>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {userName}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.7rem",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                {userRole}
+              </div>
+            </div>
 
-        {onLogout && (
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                  fontSize: "0.8rem",
+                  fontWeight: 600,
+                  padding: "4px 8px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+                title="로그아웃"
+              >
+                로그아웃
+              </button>
+            )}
+          </>
+        ) : (
           <button
             onClick={onLogout}
             style={{
               background: "none",
               border: "none",
-              color: "var(--color-text-muted)",
               cursor: "pointer",
-              fontSize: "0.8rem",
-              fontWeight: 600,
-              padding: "4px 8px",
-              borderRadius: "var(--radius-sm)",
+              fontSize: "1.1rem",
+              padding: 4,
             }}
             title="로그아웃"
           >
-            로그아웃
+            🚪
           </button>
         )}
       </div>
