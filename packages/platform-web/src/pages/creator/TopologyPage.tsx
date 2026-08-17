@@ -1404,6 +1404,8 @@ export function TopologyPage() {
         {selectedNode && (
           <div
             className="node-side-overlay"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
               top: 16,
@@ -1419,6 +1421,9 @@ export function TopologyPage() {
               display: "flex",
               flexDirection: "column",
               gap: 12,
+              userSelect: "text",
+              WebkitUserSelect: "text",
+              cursor: "default",
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -1472,10 +1477,6 @@ export function TopologyPage() {
               {selectedNode.desc}
             </p>
 
-            <div style={{ background: "var(--color-bg-surface-sub)", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--color-border)", fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              Key: {selectedNode.key}
-            </div>
-
             {/* Quick Message Box */}
             <div style={{ background: "var(--color-bg-surface-sub)", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
@@ -1505,7 +1506,7 @@ export function TopologyPage() {
               <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
                 연결된 피어 목록 ({selectedNode.directPeers.length}):
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 110, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflowY: "auto" }}>
                 {selectedNode.directPeers.map((peer) => (
                   <button
                     key={peer}
@@ -1532,15 +1533,6 @@ export function TopologyPage() {
                 ))}
               </div>
             </div>
-
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => focusAndFlyToNode(selectedNode)}
-              style={{ width: "100%", marginTop: 4 }}
-            >
-              🎯 노드 클러스터 포커스
-            </Button>
           </div>
         )}
       </div>
