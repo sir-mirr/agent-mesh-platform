@@ -22,7 +22,9 @@ export function runLint(options?: {
 
   // 1. Verify all files in docs/deliverables.md exist
   const deliverablesMd = options?.mockDeliverables ?? readFileSync('docs/deliverables.md', 'utf-8');
-  const fileMatches = [...deliverablesMd.matchAll(/\[`([^`]+)`\]/g)].map(m => m[1]);
+  const fileMatches = [...deliverablesMd.matchAll(/\[`([^`]+)`\]/g)]
+    .map(m => m[1])
+    .filter((f): f is string => typeof f === 'string');
 
   fileMatches.forEach(f => {
     if (!options?.mockDeliverables && !existsSync(f)) {
@@ -39,7 +41,9 @@ export function runLint(options?: {
     if (start === -1) return [];
     const end = endMarker ? spec.indexOf(endMarker, start) : spec.length;
     const sectionText = spec.slice(start, end === -1 ? undefined : end);
-    return [...sectionText.matchAll(/`(\/(?:api|auth)[^`]+)`/g)].map(m => m[1].replace(/ \(SSE\)/g, '').trim());
+    return [...sectionText.matchAll(/`(\/(?:api|auth)[^`]+)`/g)]
+      .map(m => (m[1] ?? '').replace(/ \(SSE\)/g, '').trim())
+      .filter(Boolean);
   }
 
   const spec91Routes = extractRoutesFromSection('### 9.1.', '### 9.2.');
@@ -85,7 +89,7 @@ export function runLint(options?: {
   const ROUTE_EXTRACT_REGEX = /\/(?:api\/v1|auth)\/[a-zA-Z0-9_\-\/{}:$.]+/g;
 
   htmlFilePaths.forEach(file => {
-    const content = options?.mockHtmlFiles ? options.mockHtmlFiles[file] : readFileSync(file, 'utf-8');
+    const content = options?.mockHtmlFiles ? (options.mockHtmlFiles[file] ?? '') : readFileSync(file, 'utf-8');
     const foundApiRoutes = [...content.matchAll(ROUTE_EXTRACT_REGEX)].map(m => m[0]);
 
     foundApiRoutes.forEach(rawRoute => {
