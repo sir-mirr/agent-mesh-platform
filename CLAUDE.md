@@ -117,8 +117,19 @@ The mailbox is for things the other side cannot discover by reading the repos:
 Not worth sending: progress narration, anything already visible in a commit
 message, or a question answerable by reading `SPEC.md`.
 
-When something needs a decision from the user rather than from the other agent,
-say so in the session rather than mailing it — the mailbox is agent-to-agent.
+**Decisions go to `agent-mesh-local-pm`.** Anything that needs deciding rather
+than building — a route worth adding, a requirement worth taking on, a priority
+between two pieces of work — is mailed to the PM, who either decides it or puts
+it to the user. Both answers come back the same way and are acted on.
+
+Raising it in the session instead is the slower path and usually the wrong one:
+the PM is the one holding what the other two agents are waiting on, and a
+decision made here without them is a decision made with less than the PM can
+see.
+
+The PM asked that irreversible actions still be confirmed before running even
+when the approval is theirs — teardown, release tags, deleting data. That is
+their own rule, not a hedge against them, and it is kept.
 
 **The answer does not travel back through the mailbox either** — except from
 `agent-mesh-local-pm`, above. Relaying one otherwise reads as authority the mail
