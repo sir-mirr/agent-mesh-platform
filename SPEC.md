@@ -44,6 +44,14 @@ for a description of running code.
 | 10.3 | `human` is a seeded type, and a person holds a mesh identity | **yes** |
 | 15.2 | Blob keys retain the file extension | **yes** (0.1 behaviour, now normative) |
 
+**Both remaining `no` rows are lane components.** § 4.1's runtime-adapter and
+§ 6.1's channel-driver are built in the lane repository, not in this one —
+§ 6 says so of the drivers, and the same is true of the adapters. A reader
+checking this tree for them will not find them, and their absence here is not
+a gap in it: the half § 6.1 assigns to the hub, dropping *hub-direct*
+forwarding, is done, and neither `HUB_FORWARD_IDENTITY` nor
+`HUB_FORWARD_TARGET_AGENT` is read anywhere in this repository.
+
 Upgrading from 0.1 does **not** migrate existing data. Each store is treated
 as starting empty.
 
