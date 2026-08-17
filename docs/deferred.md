@@ -558,7 +558,11 @@ Recorded rather than quietly fixed because of what it says about the reports.
 Every "typecheck 0" in this session, while the harness was being changed, was
 true of the repository *except the file being changed*.
 
-### The sweep for tests that pass for a reason unrelated to their name
+### ~~The sweep for tests that pass for a reason unrelated to their name~~
+
+Closed. Every hole it found is fixed and in `scripts/mutation-check.ts`; what
+remains below is the record of what turned out *not* to be a hole, kept because
+deleting it would lose the finding. Nothing here is waiting on anything.
 
 A fan-out over 321 negative tests in 107 files, asking one question of each: *if
 I deleted only the guard this test is named after, would it still pass?* It

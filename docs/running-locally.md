@@ -66,16 +66,30 @@ A check that cannot say *which* port is busy is a check you act on wrongly.
 
 ## 0. Pick your two ports
 
-Everything below uses these, so set them once and the blocks are copy-pasteable
-whichever pair you ended up with.
+**Into a file, and every shell sources it.** Two shells are involved and the
+values must match in both; the moment they are typed twice they are two copies
+of one fact, and the shorter-lived copy wins in whichever shell was pasted into
+last.
+
+That is not hypothetical here. An earlier draft restated the defaults in step 4,
+and a reader who chose another pair in step 0 got a second shell pointed at
+`ws://127.0.0.1:3100/ws` — where a *different* long-running hub was already
+answering. Both processes come up healthy and the new http server is a client of
+somebody else's mesh. `client-claude` reproduced exactly that (mail #444).
 
 ```bash
+cat > .mesh-local.env <<'ENV'
+export AGENT_MESH_STATE_DIR="$HOME/.agent-mesh/local"
 export HUB_PORT=3100
 export HTTP_PORT=3000
+ENV
+source .mesh-local.env
+mkdir -p "$AGENT_MESH_STATE_DIR"
 ```
 
-If the check above showed either as taken, choose another pair — `3110` and
-`3010` is what the verification run used, for exactly that reason.
+Change the pair here if the check above showed either port taken — `3110`/`3010`
+and `3120`/`3020` are what the two verification runs used, for exactly that
+reason. Nothing below repeats a port number, so nothing below needs editing.
 
 ## 1. Install
 
@@ -85,19 +99,14 @@ cd agent-mesh-platform
 bun install
 ```
 
-## 2. Choose a state directory
+## 2. About that state directory
 
-Every service reads and writes SQLite files under one directory, and **they must
-all be given the same one**. Nothing derives it, nothing defaults to a shared
-place, and two services pointed at different directories come up healthy and
-then disagree about every row.
+It is in the file above because every service reads and writes SQLite under one
+directory and **they must all be given the same one**. Nothing derives it,
+nothing defaults to a shared place, and two services pointed at different
+directories come up healthy and then disagree about every row.
 
-```bash
-export AGENT_MESH_STATE_DIR="$HOME/.agent-mesh/local"
-mkdir -p "$AGENT_MESH_STATE_DIR"
-```
-
-**Create it.** The services do not. A missing directory produces
+**`mkdir -p` matters.** The services do not create it. A missing directory produces
 `SQLITE_CANTOPEN` about fifteen seconds before a health-check timeout that names
 the port, so the error you finally read is about the wrong thing.
 
@@ -128,19 +137,11 @@ until curl -sf "http://127.0.0.1:$HUB_PORT/health" >/dev/null; do sleep 0.2; don
 
 ## 4. Start the http server
 
-In a second shell. **`AGENT_MESH_STATE_DIR`, `HUB_PORT` and `HTTP_PORT` do not
-travel between shells** — export them again here, with the same values:
-
-**Re-export the values you chose in step 0 and step 2, not the defaults.** If
-you picked a different pair because 3100 or 3000 was taken, repeating the
-defaults here silently points this shell at the ports the other shell is not
-using — the first draft of this file did exactly that, reintroducing in step 4
-the hardcoding it had just removed from step 3.
+In a second shell. Nothing travels between shells, so source the same file —
+which is the whole reason it is a file:
 
 ```bash
-export AGENT_MESH_STATE_DIR=...   # the same path as step 2
-export HUB_PORT=...               # the same two ports as step 0
-export HTTP_PORT=...
+source .mesh-local.env
 
 AGENT_MESH_STATE_DIR="$AGENT_MESH_STATE_DIR" \
 AGENT_MESH_HTTP_PORT="$HTTP_PORT" \
