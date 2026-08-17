@@ -33,6 +33,31 @@ describe("spending", () => {
     expect(l.take("k").retryAfter).toBeGreaterThanOrEqual(1);
   });
 
+  test("nor when the bucket is a fraction of a token short", () => {
+    // **The case the test above cannot reach.** With `capacity: 1,
+    // refillPerSecond: 0.1` the deficit is a whole token and the answer is 10,
+    // so every rounding — ceil, floor, round — and the `Math.max(1, …)` floor
+    // itself all agree. Deleting that floor leaves the suite green, and it was
+    // on a list of guards nothing checks for exactly that reason.
+    //
+    // A partial refill is where they stop agreeing. Buckets fill continuously,
+    // so `tokens` is a fraction most of the time: 0.3 of a token short at one
+    // per second is `ceil → 1` and `floor → 0`, and a caller told to retry in
+    // zero seconds does it immediately, forever.
+    //
+    // This still does not catch removing `Math.max(1, …)` alone, and cannot:
+    // under `ceil` a positive deficit can never round to zero, so that
+    // mutation is equivalent rather than uncaught. What it catches is the
+    // change that makes the floor load-bearing.
+    const c = at();
+    const l = new RateLimiter("t", { capacity: 1, refillPerSecond: 1 }, c.now);
+    expect(l.take("k").ok).toBe(true);
+    c.advance(0.7); // 0.7 of a token back, so the next spend is 0.3 short.
+    const denied = l.take("k");
+    expect(denied.ok, "the bucket refilled enough to allow this — the case is gone").toBe(false);
+    expect(denied.retryAfter, "a caller told to retry in 0s retries immediately").toBeGreaterThanOrEqual(1);
+  });
+
   test("keys do not share a budget", () => {
     // One lane misbehaving must not exhaust everything behind the same NAT.
     const c = at();

@@ -457,6 +457,20 @@ const MUTATIONS: Mutation[] = [
     expect: ["the walk asks for .tsx as well as .ts"],
   },
 
+  {
+    id: "retry-after-floor",
+    defect:
+      "A refused caller could be told to retry in 0 seconds, which it does immediately, forever — the tight loop the limiter exists to stop. The guard against it (\u00a7 14) was unchecked: the only test used a whole-token deficit, where ceil, floor and the `Math.max(1, ...)` floor all agree on 10.",
+    file: "packages/hub/src/ratelimit.ts",
+    from: "Math.max(1, Math.ceil(deficit / this.config.refillPerSecond))",
+    to: "Math.floor(deficit / this.config.refillPerSecond)",
+    suite: "packages/hub/src/ratelimit.test.ts",
+    // A partial refill, where the roundings stop agreeing. Removing the
+    // `Math.max` alone is equivalent under `ceil` — a positive deficit never
+    // rounds to zero — so the entry mutates the rounding with it.
+    expect: ["nor when the bucket is a fraction of a token short"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
