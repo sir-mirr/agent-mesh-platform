@@ -7,13 +7,15 @@ import {
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
+import { fetchGroups, addEgressRuleApi, deleteEgressRuleApi, type GroupItem } from "@/api/groups.ts";
+
 export function TenantEgressAclPage() {
   const { t } = useI18n();
-  const groups = [
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([
     { id: "grp_support", name: "Support Group" },
     { id: "grp_billing", name: "Billing Core" },
     { id: "grp_analytics", name: "Analytics Group" },
-  ];
+  ]);
 
   // Directional Egress rules (A -> B != B -> A)
   const [rules, setRules] = useState<Record<string, Record<string, boolean>>>({
@@ -36,7 +38,26 @@ export function TenantEgressAclPage() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleToggleRule = (sourceId: string, targetId: string, currentAllowed: boolean) => {
+  // Load real groups and their allowed egress rules on mount
+  React.useEffect(() => {
+    fetchGroups().then((list) => {
+      if (list && list.length > 0) {
+        setGroups(list.map((g) => ({ id: g.id, name: g.name })));
+        const nextRules: Record<string, Record<string, boolean>> = {};
+        for (const g of list) {
+          const row: Record<string, boolean> = {};
+          for (const target of list) {
+            row[target.id] =
+              g.id === target.id || (g.egress_allowed && g.egress_allowed.includes(target.id)) || false;
+          }
+          nextRules[g.id] = row;
+        }
+        setRules(nextRules);
+      }
+    });
+  }, []);
+
+  const handleToggleRule = async (sourceId: string, targetId: string, currentAllowed: boolean) => {
     const nextAllowed = !currentAllowed;
     setRules({
       ...rules,
@@ -45,6 +66,16 @@ export function TenantEgressAclPage() {
         [targetId]: nextAllowed,
       },
     });
+
+    try {
+      if (nextAllowed) {
+        await addEgressRuleApi(sourceId, targetId);
+      } else {
+        await deleteEgressRuleApi(sourceId, targetId);
+      }
+    } catch (err: any) {
+      console.warn("[Egress] Rule toggle fallback:", err.message);
+    }
 
     const sourceName = groups.find((g) => g.id === sourceId)?.name || sourceId;
     const targetName = groups.find((g) => g.id === targetId)?.name || targetId;

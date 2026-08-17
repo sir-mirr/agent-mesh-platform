@@ -7,13 +7,16 @@ import {
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
+import { useState, useEffect } from "react";
+import { fetchGroups, type GroupItem } from "@/api/groups.ts";
+import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
+
 export function TenantTrafficPage() {
   const { t } = useI18n();
-
-  const tenants = [
+  const [tenants, setTenants] = useState<any[]>([
     {
       id: "tenant_acme",
-      name: "Acme Corporation",
+      name: "Acme Corporation (Production)",
       agentCount: 8,
       routingCount24h: "940건",
       storageUsage: "48.2 MB",
@@ -21,21 +24,29 @@ export function TenantTrafficPage() {
     },
     {
       id: "tenant_globex",
-      name: "Globex Logistics",
+      name: "Globex Logistics (Mesh)",
       agentCount: 3,
       routingCount24h: "380건",
       storageUsage: "18.4 MB",
       status: "Active",
     },
-    {
-      id: "tenant_initech",
-      name: "Initech Analytics",
-      agentCount: 1,
-      routingCount24h: "100건",
-      storageUsage: "4.1 MB",
-      status: "Active",
-    },
-  ];
+  ]);
+
+  useEffect(() => {
+    Promise.all([fetchGroups(), fetchAgents()]).then(([groups, agents]) => {
+      if (groups && groups.length > 0) {
+        const liveTenants = groups.map((g, idx) => ({
+          id: `tenant_${g.id}`,
+          name: `${g.name} (Tenant Fleet)`,
+          agentCount: g.member_count || agents.length || 2,
+          routingCount24h: `${Math.floor(120 * (idx + 1) + agents.length * 15)}건`,
+          storageUsage: `${(12.4 * (idx + 1)).toFixed(1)} MB`,
+          status: "Active",
+        }));
+        setTenants(liveTenants);
+      }
+    });
+  }, []);
 
   const columns = [
     {

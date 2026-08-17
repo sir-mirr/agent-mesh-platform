@@ -35,3 +35,17 @@ export async function createGroupApi(name: string, description?: string): Promis
     body: JSON.stringify({ name, description }),
   });
 }
+
+export async function addEgressRuleApi(groupId: string, toGroupId: string): Promise<{ ok: boolean }> {
+  return await apiClient<{ ok: boolean }>(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/egress`, {
+    method: "POST",
+    body: JSON.stringify({ to_group: toGroupId }),
+  });
+}
+
+export async function deleteEgressRuleApi(groupId: string, toGroupId: string): Promise<{ ok: boolean }> {
+  return await apiClient<{ ok: boolean }>(`/api/v1/admin/groups/${encodeURIComponent(groupId)}/egress/${encodeURIComponent(toGroupId)}`, {
+    method: "DELETE",
+  });
+}
+

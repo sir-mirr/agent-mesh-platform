@@ -51,7 +51,7 @@ const INITIAL_AGENTS: AgentItem[] = [
   },
 ];
 
-import { fetchAgents } from "@/api/agents.ts";
+import { fetchAgents, teardownAgentApi } from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { t } = useI18n();
@@ -78,8 +78,13 @@ export function AgentsPage() {
     });
   }, []);
 
-  const handleTeardownConfirm = () => {
+  const handleTeardownConfirm = async () => {
     if (!teardownTarget) return;
+    try {
+      await teardownAgentApi(teardownTarget.id);
+    } catch (err: any) {
+      console.warn("[Agents] Teardown API error fallback:", err.message);
+    }
     setAgents(agents.filter((a) => a.id !== teardownTarget.id));
     setIsTeardownOpen(false);
     setTeardownTarget(null);

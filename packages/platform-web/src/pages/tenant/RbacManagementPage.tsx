@@ -56,10 +56,43 @@ const ALL_CAPABILITIES = [
   { id: "role.assign", label: "조직 RBAC 할당" },
 ];
 
+import { fetchPendingUsers, approveUserApi, denyUserApi, type PendingUser } from "@/api/users.ts";
+import { Button } from "@/components/index.ts";
+
 export function RbacManagementPage() {
   const { t } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>(INITIAL_MEMBERS);
+  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Load real pending users on mount
+  React.useEffect(() => {
+    fetchPendingUsers().then((list) => {
+      if (list && list.length > 0) {
+        setPendingUsers(list);
+      }
+    });
+  }, []);
+
+  const handleApproveUser = async (login: string) => {
+    try {
+      await approveUserApi(login);
+      setPendingUsers(pendingUsers.filter(u => u.github_login !== login));
+      setToastMessage(`사용자 [${login}]의 가입 요청이 승인되었습니다.`);
+    } catch (err: any) {
+      setToastMessage(`승인 실패: ${err.message}`);
+    }
+  };
+
+  const handleDenyUser = async (login: string) => {
+    try {
+      await denyUserApi(login);
+      setPendingUsers(pendingUsers.filter(u => u.github_login !== login));
+      setToastMessage(`사용자 [${login}]의 가입 요청이 거부되었습니다.`);
+    } catch (err: any) {
+      setToastMessage(`거부 실패: ${err.message}`);
+    }
+  };
 
   const handleToggleCapability = (memberId: string, capId: string) => {
     setMembers((prev) =>

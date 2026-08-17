@@ -65,3 +65,9 @@ export async function createPairingCodeApi(identity: string, ttlSeconds: number 
     body: JSON.stringify({ identity, ttl_seconds: ttlSeconds }),
   });
 }
+
+export async function teardownAgentApi(identity: string): Promise<{ ok: boolean }> {
+  return await apiClient<{ ok: boolean }>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {
+    method: "DELETE",
+  });
+}
