@@ -53,8 +53,29 @@ were already held by long-running instances on the machine it ran on. That is
 the ordinary case, not an exception: check before you assume.
 
 ```bash
-lsof -ti :3100 -ti :3000    # anything printed means the pair is taken
+for port in 3100 3000; do
+  held=$(lsof -ti tcp:"$port" | tr '\n' ' ')
+  printf ':%s -> %s\n' "$port" "${held:-free}"
+done
 ```
+
+One `lsof` per port, deliberately. `lsof -ti :3100 -ti :3000` looks like it asks
+about both and does not report per port — on the machine this was written on it
+printed 3100's three pids and said nothing about 3000, which was also taken.
+A check that cannot say *which* port is busy is a check you act on wrongly.
+
+## 0. Pick your two ports
+
+Everything below uses these, so set them once and the blocks are copy-pasteable
+whichever pair you ended up with.
+
+```bash
+export HUB_PORT=3100
+export HTTP_PORT=3000
+```
+
+If the check above showed either as taken, choose another pair — `3110` and
+`3010` is what the verification run used, for exactly that reason.
 
 ## 1. Install
 
@@ -83,9 +104,10 @@ the port, so the error you finally read is about the wrong thing.
 ## 3. Start the hub
 
 ```bash
-AGENT_MESH_HUB_PORT=3100 \
+AGENT_MESH_STATE_DIR="$AGENT_MESH_STATE_DIR" \
+AGENT_MESH_HUB_PORT="$HUB_PORT" \
 AGENT_MESH_PROXY_IDENTITIES=http-server,http-server-dev \
-AGENT_MESH_BLOB_BASE_URL=http://127.0.0.1:3000 \
+AGENT_MESH_BLOB_BASE_URL="http://127.0.0.1:$HTTP_PORT" \
 bun packages/hub/src/main.ts
 ```
 
@@ -101,19 +123,29 @@ because http connects to the hub and never the reverse.
 Wait for it before starting anything else:
 
 ```bash
-until curl -sf http://127.0.0.1:3100/health >/dev/null; do sleep 0.2; done
+until curl -sf "http://127.0.0.1:$HUB_PORT/health" >/dev/null; do sleep 0.2; done
 ```
 
 ## 4. Start the http server
 
-In a second shell, with `AGENT_MESH_STATE_DIR` exported the same way:
+In a second shell. **`AGENT_MESH_STATE_DIR`, `HUB_PORT` and `HTTP_PORT` do not
+travel between shells** — export them again here, with the same values:
 
 ```bash
-AGENT_MESH_HTTP_PORT=3000 \
-AGENT_MESH_HUB_URL=ws://127.0.0.1:3100/ws \
+export AGENT_MESH_STATE_DIR="$HOME/.agent-mesh/local"
+export HUB_PORT=3100
+export HTTP_PORT=3000
+
+AGENT_MESH_STATE_DIR="$AGENT_MESH_STATE_DIR" \
+AGENT_MESH_HTTP_PORT="$HTTP_PORT" \
+AGENT_MESH_HUB_URL="ws://127.0.0.1:$HUB_PORT/ws" \
 JWT_SECRET=local-development-only \
 bun packages/http/src/main.ts
 ```
+
+A second shell with a different state directory is the failure this repository
+has already had: both services come up healthy and then disagree about every
+row, because neither has any way to notice.
 
 `JWT_SECRET` signs session cookies. Any string works locally; it is the one
 value here that must not be shared with anything real.
@@ -138,7 +170,7 @@ password: admin
 ```
 
 ```bash
-curl -s -X POST http://127.0.0.1:3000/auth/local \
+curl -s -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
   -H 'accept: application/json' -H 'content-type: application/json' \
   -d '{"username":"admin","password":"admin"}' -i | grep -i set-cookie
 ```
@@ -155,8 +187,8 @@ somewhere else has made it a thing to steal.
 ## 6. Verify — by asking what is running, not by assuming
 
 ```bash
-curl -s http://127.0.0.1:3000/api/v1/health
-curl -s http://127.0.0.1:3100/api/v1/capabilities | jq .platform
+curl -s "http://127.0.0.1:$HTTP_PORT/api/v1/health"
+curl -s "http://127.0.0.1:$HUB_PORT/api/v1/capabilities" | jq .platform
 ```
 
 What that run actually printed:
@@ -181,7 +213,7 @@ Not needed for the admin screens or for agent traffic. It connects out to the
 hub as its own identity, so it needs no port.
 
 ```bash
-AGENT_MESH_HUB_URL=ws://127.0.0.1:3100/ws \
+AGENT_MESH_HUB_URL="ws://127.0.0.1:$HUB_PORT/ws" \
 SELF_REMINDER_IDENTITY=self-reminder \
 bun packages/self-reminder/src/main.ts
 ```
@@ -196,7 +228,7 @@ participant — nothing is exempt from key approval, including this.
 
 ```bash
 cd packages/platform-web
-API_PROXY_TARGET=http://127.0.0.1:3000 bun run dev   # serves on 3005
+API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT" bun run dev   # serves on 3005
 ```
 
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
