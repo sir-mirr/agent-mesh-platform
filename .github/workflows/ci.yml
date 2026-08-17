@@ -36,6 +36,9 @@ jobs:
       - name: Unit tests
         run: bun test packages/
 
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
       # Integration tests start real hub and http processes on ephemeral ports.
       # Kept as a separate step so a failure here is distinguishable at a glance
       # from a unit failure — they fail for very different reasons.
