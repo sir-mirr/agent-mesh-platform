@@ -1,0 +1,116 @@
+# 📬 Agent-Local-Mailer 사용 가이드 & Antigravity 초기 세션 프롬프트
+
+로컬 멀티 에이전트 환경(`platform-claude`, `platform-fe-antigravity`, `client-claude`) 간에 비동기 메시지를 주고받는 **Agent Local Mailer**의 연동 규약 및 Antigravity 세션 시작 가이드입니다.
+
+---
+
+## 🚀 1. Antigravity 첫 대화 복사용 프롬프트 (Copy & Paste)
+
+> **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 알아서 메일함을 확인하고 백그라운드 감시 데몬을 시작합니다.
+
+```markdown
+당신은 에이전트 메시 플랫폼 프론트엔드 엔지니어 에이전트(`platform-fe-antigravity`)입니다.
+
+1. **메일함 확인 및 백그라운드 데몬 가동**:
+   - 내 에이전트 ID: `platform-fe-antigravity`
+   - 메일 서버 주소: `http://localhost:3300`
+   - 먼저 `curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity`를 실행하여 최근 도착한 메시지를 확인하세요.
+   - 메일이 없을 때 매분 LLM 모델을 깨워 토큰을 낭비하는 `schedule` cron 대신, **백그라운드 무소음 감시 데몬(`bun scripts/watch-mail.ts`)**을 `run_command` (IsDaemon=true)로 띄워 새 메일이 올 때만 반응하도록 설정하세요.
+
+2. **협업 에이전트 및 통신 규칙**:
+   - 백엔드 플랫폼 에이전트: `platform-claude`
+   - 클라이언트 에이전트: `client-claude`
+   - 백엔드 팀과 스펙, 계약(contracts), 라우트 변경 논의 시 `POST http://localhost:3300/api/mail`로 메일을 주고받으세요.
+```
+
+---
+
+## 📡 2. 핵심 REST API 엔드포인트
+
+메일 서버는 로컬 `http://localhost:3300`에서 가동 중입니다.
+
+### 📥 1) 내 메일함 조회 (수신)
+```bash
+curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity
+```
+- **응답 예시**:
+```json
+[
+  {
+    "id": 248,
+    "from": "platform-claude",
+    "to": "platform-fe-antigravity",
+    "body": "GET /api/v1/admin/keys/stream (SSE) 배포 완료...",
+    "createdAt": 1786955622464,
+    "isRead": false
+  }
+]
+```
+
+### 📤 2) 상대방에게 메일 발신 (전송)
+```bash
+curl -s -X POST http://localhost:3300/api/mail \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "platform-fe-antigravity",
+    "to": "platform-claude",
+    "body": "프론트엔드 작업 완료 및 라우트 동기화 회신입니다."
+  }'
+```
+
+---
+
+## 🔇 3. 토큰 절약형 무소음 감시 데몬 (`watch-mail.ts`)
+
+### ⚠️ 왜 `schedule` cron을 쓰지 않나요?
+- `schedule` cron(`* * * * *`)을 사용하면 메일이 없어도 매 분마다 LLM 시스템 메시지가 발생하여 **불필요한 토큰과 비용이 지속적으로 소모**됩니다.
+
+### ✅ 무소음 데몬의 장점
+- `scripts/watch-mail.ts` 데몬을 백그라운드로 실행하면:
+  1. **유휴 상태 (새 메일 없음)**: 프로세스가 조용히 대기하며 **토큰 소모량 0 (Zero Token)**.
+  2. **새 메일 도착 시**: 즉시 터미널 출력을 발생시켜 Antigravity를 깨우고 새 메시지 내용을 브리핑합니다.
+
+### 📜 데몬 스크립트 코드 (`scripts/watch-mail.ts`)
+```typescript
+/**
+ * Silent Mail Watcher Daemon
+ */
+let lastKnownMaxId = 0;
+
+// 1. 초기 최대 ID 확인
+try {
+  const initRes = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
+  if (initRes.ok) {
+    const list: any[] = await initRes.json();
+    if (list.length > 0) lastKnownMaxId = Math.max(...list.map(m => m.id));
+  }
+} catch {}
+
+// 2. 10초 주기로 무소음 폴링
+while (true) {
+  try {
+    const res = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
+    if (res.ok) {
+      const messages: any[] = await res.json();
+      const newMails = messages.filter((m: any) => !m.isRead && m.id > lastKnownMaxId);
+      if (newMails.length > 0) {
+        for (const mail of newMails) {
+          console.log(`\n📬 [NEW MAIL #${mail.id}] From: ${mail.from}\n${mail.body}\n`);
+        }
+        lastKnownMaxId = Math.max(...messages.map((m: any) => m.id));
+      }
+    }
+  } catch {}
+  await Bun.sleep(10000);
+}
+```
+
+---
+
+## 🤝 4. 주요 협업 대상 에이전트 목록
+
+| 에이전트 ID | 역할 | 주 통신 주제 |
+|---|---|---|
+| `platform-fe-antigravity` | 프론트엔드 React/Vite/TypeScript 개발 (나) | UI/UX, 대시보드, 에이전트 스튜디오, 거버넌스 콘솔 |
+| `platform-claude` | 백엔드 허브 & Hono HTTP 서버 개발 | REST 라우트, `@agent-mesh/contracts`, Mailbox 분리, RBAC/ACL |
+| `client-claude` | 클라이언트 AI 런타임 & SDK 개발 | 에이전트 연동, 페어링 코드 리딤, E2E 시나리오 |
