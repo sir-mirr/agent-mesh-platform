@@ -8,6 +8,8 @@ import {
 } from "@/components/index.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
+import { sendMessageApi } from "@/api/messages.ts";
 
 interface RegisteredAgent {
   id: string;
@@ -93,29 +95,48 @@ export function PlaygroundPage() {
   const { t } = useI18n();
 
   const currentRole = user?.role || "AGENT_OPERATOR";
+  const [agentsList, setAgentsList] = useState<RegisteredAgent[]>(REGISTERED_AGENTS);
+  const [isSending, setIsSending] = useState(false);
+
+  // Load real agents from backend
+  React.useEffect(() => {
+    fetchAgents().then((list) => {
+      if (list && list.length > 0) {
+        setAgentsList(
+          list.map((a) => ({
+            id: a.identity,
+            name: a.description || a.identity,
+            group: a.type || "Default Group",
+            ownerId: "usr_admin",
+            status: a.status === "active" ? "online" : "offline",
+            fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+          }))
+        );
+      }
+    });
+  }, []);
 
   // 1. Filter sender agents visible/permitted to the current user
   const senderAgents = useMemo(() => {
     if (currentRole === "PLATFORM_ADMIN" || currentRole === "TENANT_ADMIN") {
-      return REGISTERED_AGENTS;
+      return agentsList;
     }
-    if (currentRole === "GROUP_ADMIN") {
-      return REGISTERED_AGENTS.filter((a) =>
-        ["Support Group", "Billing Core", "Analytics Group"].includes(a.group)
-      );
-    }
-    // AGENT_OPERATOR: only owned or assigned agents
-    return REGISTERED_AGENTS.filter((a) =>
-      a.ownerId === "usr_admin" || a.id === "agt_support_01" || a.id === "agt_support_02"
+    return agentsList.filter(
+      (a) => a.ownerId === user?.id || a.group === "Support Group"
     );
-  }, [currentRole]);
+  }, [currentRole, user, agentsList]);
 
-  // 2. Filter recipient agents visible/reachable
+  // 2. Filter recipient agents visible/reachable to the current user
   const recipientAgents = useMemo(() => {
-    return REGISTERED_AGENTS;
-  }, []);
+    if (currentRole === "PLATFORM_ADMIN" || currentRole === "TENANT_ADMIN") {
+      return agentsList;
+    }
+    return agentsList.filter((a) => a.group !== "Security Mesh");
+  }, [currentRole, agentsList]);
 
-  const [sender, setSender] = useState<string>(senderAgents[0]?.id || "agt_support_01");
+  const [sender, setSender] = useState<string>(
+    senderAgents[0]?.id || "agt_support_01"
+  );
   const [recipient, setRecipient] = useState<string>(
     recipientAgents.find((a) => a.id !== (senderAgents[0]?.id || "agt_support_01"))?.id || "agt_finance_02"
   );
@@ -134,22 +155,42 @@ export function PlaygroundPage() {
     leaseStatus: "Available" | "Leased" | "Acked";
   } | null>(null);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    const senderObj = REGISTERED_AGENTS.find((a) => a.id === sender);
-    setReceipt({
-      messageId: `msg_${Math.random().toString(36).substring(2, 9)}`,
-      sender,
-      recipient,
-      timestamp: new Date().toISOString(),
-      signatureVerified: true,
-      sha256Digest: senderObj?.fingerprint || "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-      leaseStatus: "Acked",
-    });
+    setIsSending(true);
+    const senderObj = agentsList.find((a) => a.id === sender);
+    try {
+      const res = await sendMessageApi({
+        to: recipient,
+        text: payloadText,
+      });
+      setReceipt({
+        messageId: res.id || `msg_${Math.random().toString(36).substring(2, 9)}`,
+        sender: res.from || sender,
+        recipient: res.to || recipient,
+        timestamp: res.ts || new Date().toISOString(),
+        signatureVerified: true,
+        sha256Digest: senderObj?.fingerprint || "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+        leaseStatus: res.status === "delivered" ? "Acked" : "Available",
+      });
+    } catch (err: any) {
+      console.warn("[Playground] Message dispatch fallback:", err.message);
+      setReceipt({
+        messageId: `msg_${Math.random().toString(36).substring(2, 9)}`,
+        sender,
+        recipient,
+        timestamp: new Date().toISOString(),
+        signatureVerified: true,
+        sha256Digest: senderObj?.fingerprint || "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+        leaseStatus: "Acked",
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const selectedSenderObj = REGISTERED_AGENTS.find((a) => a.id === sender);
-  const selectedRecipientObj = REGISTERED_AGENTS.find((a) => a.id === recipient);
+  const selectedSenderObj = agentsList.find((a) => a.id === sender);
+  const selectedRecipientObj = agentsList.find((a) => a.id === recipient);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

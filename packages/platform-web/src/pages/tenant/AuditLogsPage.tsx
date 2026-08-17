@@ -40,11 +40,22 @@ const INITIAL_EVENTS: AuditEvent[] = [
   },
 ];
 
+import { fetchAuditEvents } from "@/api/audit.ts";
+
 export function AuditLogsPage() {
   const { t } = useI18n();
   const { hasCapability } = useRbac();
-  const [events] = useState<AuditEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<AuditEvent[]>(INITIAL_EVENTS);
   const canReadContent = hasCapability("audit.read_content");
+
+  // Load real audit events on mount
+  React.useEffect(() => {
+    fetchAuditEvents().then((list) => {
+      if (list && list.length > 0) {
+        setEvents(list);
+      }
+    });
+  }, []);
 
   const columns = [
     {
