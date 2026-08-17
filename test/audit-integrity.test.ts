@@ -106,3 +106,39 @@ describe("what the attestation does and does not claim", () => {
     }
   }, 30_000);
 });
+
+describe("the row agrees with the payload it stores", () => {
+  test("every field carried in both layers holds the same value", async () => {
+    // **Five names appear twice**: `event_id`, `schema_version`, `event_type`,
+    // `occurred_at`, `correlation_id` sit both on the row and inside `payload`.
+    //
+    // That is not accidental duplication. `payload` is the bytes the producer
+    // signed and the digest covers, so it cannot be rewritten; the columns are
+    // the hub's projection of it, indexed so the trail can be queried. Both are
+    // needed and both must say the same thing.
+    //
+    // Nothing checked that they do. A divergence means the ingestion projected
+    // wrongly, or a migration touched one layer, or a row was edited in a way
+    // the digest happened to survive — and until now every one of those looked
+    // exactly like a healthy row from outside.
+    //
+    // The reverse of this week's other duplications, and worth saying plainly:
+    // those were problems because copies drifted, and this is a problem
+    // because nothing would notice if it did.
+    const rows = await events();
+    expect(rows.length, "no audit events to compare").toBeGreaterThan(0);
+
+    const PROJECTED = ["event_id", "schema_version", "event_type", "occurred_at", "correlation_id"];
+    for (const r of rows) {
+      const payload = r.payload as Record<string, unknown>;
+      // The projection must exist in both layers, or the check silently covers
+      // fewer fields than it names — which is the shape this file is about.
+      const shared = PROJECTED.filter((k) => k in payload && k in r);
+      expect(shared, `${r.event_id}: the two layers no longer share these names`).toEqual(PROJECTED);
+
+      for (const k of PROJECTED) {
+        expect(payload[k], `${r.event_id}: row.${k} and payload.${k} disagree`).toEqual(r[k as keyof typeof r]);
+      }
+    }
+  }, 30_000);
+});
