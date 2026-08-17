@@ -91,6 +91,28 @@ It now refuses to stack, and asserts its pattern matched before writing — a
 `sed` edit that matches nothing otherwise reports the mutation as uncaught,
 which is a false finding rather than a missed one.
 
+Then the replacement had the shape twice more.
+
+**Its reporting branch had never run.** Eighteen entries were added and `18/18
+caught` was observed while the code that prints a failure was dead. Proving it
+by hand was not enough — that proof lives in a transcript and outlives what it
+describes — so `--self-check` makes it a command.
+
+**And `--self-check` passed for the wrong reason.** It counted failures and
+inverted the result: every entry must be reported as a failure, so all-failed
+means the branch works. Drift the baseline by one character and both entries are
+refused for a missing pattern; refusals count as failures; it prints `2/2
+correctly reported as failures` while the branch under test never ran. It now
+compares the *reason* each entry failed against the reason it declares.
+
+`client-claude` reached the same defect from the other side in the same hour: a
+nested run left a dirty tree, every item was refused, refusals counted as
+failures, and an inverted check read that as success (mail #221). Two tools, two
+routes, one shape — refusal treated as evidence.
+
+Both were found by measuring, not by reading. The recursion stops here because a
+level deeper was tried and bit, not because a stopping point was chosen.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
