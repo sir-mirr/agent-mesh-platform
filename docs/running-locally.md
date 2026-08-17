@@ -193,6 +193,15 @@ set-cookie: mesh_token=eyJhbGciOiJIUzI1N...
 [db] seeded default admin local user      <- in the http server's own log
 ```
 
+Keep it, if you are going to call an admin route:
+
+```bash
+COOKIE=$(curl -s -i -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
+  -H 'accept: application/json' -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"admin"}' \
+  | grep -i '^set-cookie' | grep -o 'mesh_token=[^;]*')
+```
+
 The session is in the cookie. It is deliberately **not** in the response body —
 a caller holding the cookie does not need it, and a caller that stores it
 somewhere else has made it a thing to steal.
@@ -242,43 +251,55 @@ SELF_REMINDER_IDENTITY=self-reminder \
 bun packages/self-reminder/src/main.ts
 ```
 
-**Provision and approve it first (§ 10.2)**, the same as any other participant.
-Nothing is exempt from key approval, including this — and this section used to
-say so without giving the commands, leaving a reader to work them out while
-watching a backoff loop.
+**Provision it first.** One command, no key, no approval — and the previous
+version of this section had three, which all succeeded and proved nothing about
+whether they were needed:
 
-Started without them, the refusal is honest and names its cause, which is why
-it is not a trap:
+```bash
+curl -s -X POST "http://127.0.0.1:$HUB_PORT/api/v1/agents" \
+  -H 'content-type: application/json' \
+  -d '{"identity":"self-reminder","type":"service"}'
+```
+
+```
+HTTP 201  {"ok":true,"identity":"self-reminder","type":"service",...,"action":"inserted"}
+
+[self-reminder] scheduler_started {"poll_ms":1000,"identity":"self-reminder",...}
+[self-reminder] hub_registered    {"generation":1}
+```
+
+No key in the response, none in the database (`SELECT ... FROM agent_keys` is
+empty), and it registers anyway.
+
+**`service` does not require one.** § 10.2 gates keys, and which types carry a
+key is a property of the type:
+
+```
+ai-claude · ai-codex · ai-antigravity   requires_key = 1
+service · human                         requires_key = 0
+```
+
+`self-reminder` connects unsigned — its source contains no key generation and no
+signing at all — so there is nothing to approve. An earlier draft of this
+section said *nothing is exempt from key approval, including this*, which is
+true as a principle and false about this participant: it has no key, so the
+approval step has no subject. The rule is that **an identity that carries a key
+is approved without exception**, not that every identity carries one.
+
+Started before provisioning, the refusal is honest and names its cause rather
+than timing out:
 
 ```
 hub_registration_rejected {"error_category":"identity_not_registered"}
 hub_reconnect_scheduled   {"delay_ms":2000,"attempt":2}   -> 4000 -> 8000 -> 16000
 ```
 
-The two commands, run against the mesh from § 3 and § 4:
-
-```bash
-# 1. Provision, with a key. The response carries the fingerprint.
-curl -s -X POST "http://127.0.0.1:$HUB_PORT/api/v1/agents" \
-  -H 'content-type: application/json' \
-  -d '{"identity":"self-reminder","type":"service","public_key":"<base64url ed25519>"}'
-
-# 2. Approve it, as the signed-in admin. § 10.2 puts this behind a person on
-#    purpose: a caller that could approve its own key is not approved by anyone.
-curl -s -X POST "http://127.0.0.1:$HTTP_PORT/api/v1/admin/keys/approve" \
-  -H 'content-type: application/json' -H "cookie: $COOKIE" \
-  -d '{"fingerprint":"sha256:..."}'
-```
-
-What that printed here:
-
-```
-provision HTTP 201  {"ok":true,...,"key":{"fingerprint":"sha256:MkPh1UW5…","status":"pending"}}
-approve   HTTP 200  {"ok":true,...,"status":"approved","decided_by":"admin"}
-
-[self-reminder] scheduler_started {"poll_ms":1000,"identity":"self-reminder",...}
-[self-reminder] hub_registered    {"generation":1}
-```
+**How this got here is worth a line.** The three-command version was executed,
+and it worked — 201 for the provision, 200 for the approval, `hub_registered`
+after. Running it proved the commands succeed; it could not show that the same
+result arrives from a third of them. `client-claude` got there by removing
+`public_key` and seeing nothing change (mail #486). A green run hides an excess
+as readily as it hides a gap.
 
 ## 8. The admin front end
 
