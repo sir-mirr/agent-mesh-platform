@@ -121,16 +121,8 @@ export function PlaygroundPage() {
         leaseStatus: res.status === "delivered" ? "Acked" : "Available",
       });
     } catch (err: any) {
-      console.warn("[Playground] Message dispatch fallback:", err.message);
-      setReceipt({
-        messageId: `msg_${Math.random().toString(36).substring(2, 9)}`,
-        sender,
-        recipient,
-        timestamp: new Date().toISOString(),
-        signatureVerified: true,
-        sha256Digest: senderObj?.fingerprint || "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-        leaseStatus: "Acked",
-      });
+      setReceipt(null);
+      alert(`메시지 발송 실패: ${err.message}`);
     } finally {
       setIsSending(false);
     }

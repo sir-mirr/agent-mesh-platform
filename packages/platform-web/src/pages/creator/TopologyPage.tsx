@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
+import { fetchGroups, type GroupItem } from "@/api/groups.ts";
+import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
 
 interface ClusterConfig {
   id: string;
@@ -41,20 +43,13 @@ interface TopoEdge {
   type: "member-edge" | "gw-link" | "highway-edge";
 }
 
-const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
-  // ROW 1: TOP DECK
-  { id: "core", name: "Core Platform Hub", count: 5, cx: 360, cy: 380, r: 160, fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF", gw: { id: "gw-core", x: 360, y: 700 } },
-  { id: "research", name: "Research & Reasoning Group", count: 24, cx: 1080, cy: 380, r: 300, fill: "#ECFDF5", stroke: "#A7F3D0", textColor: "#065F46", gw: { id: "gw-research", x: 1080, y: 700 } },
-  { id: "delivery", name: "Execution & Delivery Mesh", count: 14, cx: 1780, cy: 380, r: 230, fill: "#F5F3FF", stroke: "#DDD6FE", textColor: "#5B21B6", gw: { id: "gw-delivery", x: 1780, y: 700 } },
-  { id: "security", name: "Security & Sentinel Ring", count: 8, cx: 2420, cy: 380, r: 180, fill: "#FEF2F2", stroke: "#FECACA", textColor: "#991B1B", gw: { id: "gw-security", x: 2420, y: 700 } },
-  { id: "data", name: "Data & ETL Pipeline Group", count: 16, cx: 3100, cy: 380, r: 250, fill: "#F0F9FF", stroke: "#BAE6FD", textColor: "#075985", gw: { id: "gw-data", x: 3100, y: 700 } },
-
-  // ROW 2: BOTTOM DECK
-  { id: "edge", name: "Edge & IoT Micro-Agents", count: 20, cx: 480, cy: 1300, r: 260, fill: "#FFFBEB", stroke: "#FDE68A", textColor: "#92400E", gw: { id: "gw-edge", x: 480, y: 840 } },
-  { id: "human", name: "Human Operator Guild", count: 4, cx: 1140, cy: 1300, r: 150, fill: "#EFF6FF", stroke: "#BFDBFE", textColor: "#1D4ED8", gw: { id: "gw-human", x: 1140, y: 840 } },
-  { id: "refactor", name: "Autonomous Code Refactor", count: 12, cx: 1740, cy: 1300, r: 210, fill: "#F5F3FF", stroke: "#C4B5FD", textColor: "#6D28D9", gw: { id: "gw-refactor", x: 1740, y: 840 } },
-  { id: "vision", name: "Multi-Modal Vision & Audio", count: 9, cx: 2360, cy: 1300, r: 190, fill: "#ECFDF5", stroke: "#6EE7B7", textColor: "#047857", gw: { id: "gw-vision", x: 2360, y: 840 } },
-  { id: "audit", name: "Compliance & Audit Hive", count: 7, cx: 3000, cy: 1300, r: 170, fill: "#F8FAFC", stroke: "#CBD5E1", textColor: "#334155", gw: { id: "gw-audit", x: 3000, y: 840 } },
+const PALETTE = [
+  { fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF" },
+  { fill: "#ECFDF5", stroke: "#A7F3D0", textColor: "#065F46" },
+  { fill: "#F5F3FF", stroke: "#DDD6FE", textColor: "#5B21B6" },
+  { fill: "#FEF2F2", stroke: "#FECACA", textColor: "#991B1B" },
+  { fill: "#FFFBEB", stroke: "#FDE68A", textColor: "#92400E" },
+  { fill: "#F0F9FF", stroke: "#BAE6FD", textColor: "#075985" },
 ];
 
 const ICONS_PALETTE = ["🤖", "🔬", "💻", "⚡", "📦", "🛡️", "📜", "🔑", "📊", "🧠", "💡", "📝", "🏆", "🚀", "💬", "🔍", "⚙️", "👁️", "🔐"];
@@ -64,11 +59,24 @@ const MINIMAP_H = 110;
 
 export function TopologyPage() {
   const { t } = useI18n();
+  const [liveGroups, setLiveGroups] = useState<GroupItem[]>([]);
+  const [liveAgents, setLiveAgents] = useState<RegistryAgent[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [simStage, setSimStage] = useState<number>(10);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Load real groups and agents on mount
+  useEffect(() => {
+    Promise.all([fetchGroups(), fetchAgents()])
+      .then(([groups, agents]) => {
+        setLiveGroups(groups || []);
+        setLiveAgents(agents || []);
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   // Search state & suggestion box
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -109,35 +117,68 @@ export function TopologyPage() {
     return () => window.removeEventListener("resize", updateDim);
   }, []);
 
-  // 1. Build Topology Data Graph dynamically based on Stage (1 ~ 10)
+  // 1. Build Topology Data Graph dynamically based on real liveGroups and liveAgents
   const { clusters, nodes, edges, totalAgentCount, bounds } = useMemo(() => {
-    const rawClusters = MASTER_CLUSTERS_CONFIG.slice(0, simStage).map((c) => ({
-      ...c,
-      gw: { ...c.gw },
-    }));
-
-    if (rawClusters.length >= 1 && simStage === 1) {
-      const c0 = rawClusters[0];
-      if (c0) {
-        c0.cx = 500;
-        c0.cy = 400;
-        c0.gw.x = 500;
-        c0.gw.y = 650;
-      }
-    } else if (rawClusters.length >= 2 && simStage === 2) {
-      const c0 = rawClusters[0];
-      const c1 = rawClusters[1];
-      if (c0 && c1) {
-        c0.cx = 400;
-        c0.cy = 400;
-        c1.cx = 1200;
-        c1.cy = 400;
-        c0.gw.x = 640;
-        c0.gw.y = 400;
-        c1.gw.x = 960;
-        c1.gw.y = 400;
-      }
+    if (liveGroups.length === 0 && liveAgents.length === 0) {
+      return {
+        clusters: [],
+        nodes: {},
+        edges: [],
+        totalAgentCount: 0,
+        bounds: {
+          minX: 0,
+          maxX: 1200,
+          minY: 0,
+          maxY: 700,
+          entityW: 1200,
+          entityH: 700,
+          entityCX: 600,
+          entityCY: 350,
+          worldMinX: -60,
+          worldMaxX: 1260,
+          worldMinY: -35,
+          worldMaxY: 735,
+          worldW: 1320,
+          worldH: 770,
+        },
+      };
     }
+
+    const effectiveGroups: GroupItem[] = liveGroups.length > 0
+      ? liveGroups
+      : [
+          {
+            id: "default",
+            name: "Default Group",
+            member_count: liveAgents.length,
+            members: liveAgents.map((a) => a.identity),
+          },
+        ];
+
+    const rawClusters: ClusterConfig[] = effectiveGroups.map((g, idx) => {
+      const col = idx % 4;
+      const row = Math.floor(idx / 4);
+      const cx = 380 + col * 720;
+      const cy = 380 + row * 850;
+      const members = (g.members && g.members.length > 0)
+        ? g.members
+        : liveAgents.filter((a) => a.type === g.id || a.type === g.name).map((a) => a.identity);
+      const memberCount = Math.max(members.length, g.member_count || 1);
+      const r = Math.max(160, 120 + memberCount * 25);
+      const pal = PALETTE[idx % PALETTE.length] ?? { fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF" };
+      return {
+        id: g.id,
+        name: g.name,
+        count: memberCount,
+        cx,
+        cy,
+        r,
+        fill: pal.fill,
+        stroke: pal.stroke,
+        textColor: pal.textColor,
+        gw: { id: `gw-${g.id}`, x: cx, y: cy + r + 50 },
+      };
+    });
 
     const nodeDict: Record<string, TopoNode> = {};
     const edgeList: TopoEdge[] = [];
@@ -178,95 +219,36 @@ export function TopologyPage() {
       minY = Math.min(minY, cfg.gw.y - 24);
       maxY = Math.max(maxY, cfg.gw.y + 40);
 
+      const groupData = effectiveGroups.find((g) => g.id === cfg.id);
+      const memberList: string[] = (groupData && groupData.members && groupData.members.length > 0)
+        ? groupData.members
+        : liveAgents.filter((a) => a.type === cfg.id || a.type === cfg.name).map((a) => a.identity);
+
+      if (memberList.length === 0 && liveAgents.length > 0) {
+        liveAgents.forEach((a) => memberList.push(a.identity));
+      }
+
+      const count = memberList.length || cfg.count;
+      agentSum += count;
+
       const memberIds: string[] = [];
 
-      for (let i = 0; i < cfg.count; i++) {
-        let name = "";
+      for (let i = 0; i < count; i++) {
+        const agentIdentity = memberList[i] || `${cfg.id}-agent-${i + 1}`;
+        const agentObj = liveAgents.find((a) => a.identity === agentIdentity);
         const icon = ICONS_PALETTE[(i + cfg.name.length) % ICONS_PALETTE.length] || "🤖";
-        let type = "runtime";
-        let status: "Online" | "Socketless" = "Online";
-        let avatarImg: string | undefined = undefined;
-        let displayName = "";
-        let desc = "";
-
-        if (i === 0) {
-          name = `${cfg.id}-lead`;
-          type = "ai-claude";
-          if (cfg.id === "core") {
-            avatarImg = "/assets/agent-fin.png";
-            displayName = "core-lead (핀둥이)";
-            desc = "코어 플랫폼 총괄 오케스트레이터. 전체 그룹 라우팅 조율, 글로벌 네임스페이스 관리 및 테넌트 메시지 디스패치 총괄.";
-          } else if (cfg.id === "research") {
-            desc = "연구 및 심층 추론 그룹 리드. 분산 지식 그래프 탐색 및 멀티-홉 추론 파이프라인 총괄.";
-          } else if (cfg.id === "delivery") {
-            desc = "실행 및 배달 메시 오케스트레이터. 분산 비동기 태스크 큐 스케줄링 및 최종 작업 아티팩트 배포 총괄.";
-          } else if (cfg.id === "security") {
-            desc = "보안 센티널 링 총괄 감시자. 비인가 Egress 차단, mTLS 인증서 갱신 및 토큰 유효성 검사.";
-          } else if (cfg.id === "data") {
-            desc = "ETL 데이터 파이프라인 총괄. 대용량 이벤트 스트림 수집 및 실시간 스키마 변환 파이프라인 관리.";
-          } else if (cfg.id === "edge") {
-            desc = "엣지 & IoT 마이크로 에이전트 총괄 게이트웨이. 저지연 분산 노드 토폴로지 및 로컬 캐시 관리.";
-          } else if (cfg.id === "human") {
-            desc = "휴먼 오퍼레이터 길드 총괄. 중요 시스템 변경 결재 및 Human-in-the-loop 검토 큐 관리.";
-          } else if (cfg.id === "refactor") {
-            desc = "자율 코드 리팩토링 그룹 총괄. 코드베이스 정적 분석 및 리팩토링 최적화 계획 수립.";
-          } else if (cfg.id === "vision") {
-            desc = "멀티모달 비전 & 오디오 그룹 리드. 영상/음성 데이터의 다차원 멀티모달 임베딩 변환 총괄.";
-          } else if (cfg.id === "audit") {
-            desc = "컴플라이언스 & 감사 하이브 총괄. SPEC 규정 준수 검증 및 감사 증적 불변 기록 보관.";
-          }
-        } else if (i === 1 && cfg.id === "core") {
-          name = "fe-antigravity";
-          type = "admin";
-          desc = "웹 프론트엔드 플랫폼 운영 관리자. 콘솔 인터페이스 통신 제어 및 실시간 텔레메트리 관측 스트림 파이프라인 관리.";
-        } else {
-          name = `${cfg.id}-agent-${i + 1}`;
-          if (i % 3 === 0) status = "Socketless";
-          if (cfg.id === "core" && i === 2) {
-            avatarImg = "/assets/agent-support.png";
-            displayName = "core-agent-3 (핀자)";
-            desc = "코어 웹소켓 세션 브릿지 유지 및 실시간 연결 상태 동기화를 전담하는 서포트 에이전트.";
-          } else if (cfg.id === "core" && i === 4) {
-            avatarImg = "/assets/agent-assistant.png";
-            displayName = "core-agent-5 (아름이)";
-            desc = "그룹 간 크로스-메시지 배달 영수증 암호학적 서명 검증 및 감사 로그 정합성 보증 어시스턴트.";
-          } else {
-            // Specialized member description per cluster
-            if (cfg.id === "core") {
-              desc = "코어 인프라 헬스체크 및 리스 큐(Lease Queue) TTL 만료 감시 런타임 워커.";
-            } else if (cfg.id === "research") {
-              desc = `대규모 벡터 임베딩 유사도 검색, 가설 검증 및 연구 자료 요약을 수행하는 전문 추론 노드 (${name}).`;
-            } else if (cfg.id === "delivery") {
-              desc = `CI/CD 빌드 파이프라인 트리거, 컨테이너 프로비저닝 및 비동기 서브태스크 처리를 담당하는 분산 실행 런타임 노드 (${name}).`;
-            } else if (cfg.id === "security") {
-              desc = `실시간 비정상 트래픽 탐지, DoS 레이트 리밋 집행 및 악성 페이로드 방어 정책 실행 노드 (${name}).`;
-            } else if (cfg.id === "data") {
-              desc = `스트리밍 데이터 정제, 역직렬화, 파티셔닝 및 시계열 텔레메트리 저장을 담당하는 데이터 워커 (${name}).`;
-            } else if (cfg.id === "edge") {
-              desc = `초경량 메일함(Mailbox) 기반 환경에서 저전력 센서 데이터 수집 및 엣지 로컬 제어를 수행하는 마이크로 노드 (${name}).`;
-            } else if (cfg.id === "human") {
-              desc = `운영자 수동 개입, 긴급 시스템 핫픽스 승인 및 인터랙티브 디버깅 세션을 중계하는 오퍼레이터 브릿지 (${name}).`;
-            } else if (cfg.id === "refactor") {
-              desc = `AST 구문 분석, 타입 안정성 검사 및 자동 단위 테스트 코드 생성을 수행하는 코드 리팩토러 (${name}).`;
-            } else if (cfg.id === "vision") {
-              desc = `이미지 객체 인식, OCR 문서 텍스트 추출 및 음성 트랜스크립션을 담당하는 멀티모달 처리 노드 (${name}).`;
-            } else if (cfg.id === "audit") {
-              desc = `트랜잭션 전자 서명 영수증 대조, 권한 변경 이력 감사 및 테넌트 데이터 유출 방지 검증 노드 (${name}).`;
-            } else {
-              desc = `${cfg.name} 그룹 소속 자율 에이전트 노드 (${name}).`;
-            }
-          }
-        }
-        if (!displayName) displayName = name;
-        if (!desc) desc = `${cfg.name} 그룹 소속 활성 에이전트 노드입니다.`;
+        const type = agentObj?.type || "runtime";
+        const status: "Online" | "Socketless" = agentObj?.status === "inactive" ? "Socketless" : "Online";
+        const displayName = agentObj?.description || agentIdentity;
+        const desc = `${cfg.name} 그룹 소속 활성 에이전트 [${agentIdentity}]입니다.`;
 
         // Radial orbital layout coordinates
         let nx = cfg.cx;
         let ny = cfg.cy;
 
-        if (cfg.count <= 6) {
+        if (count <= 6) {
           if (i > 0) {
-            const angle = ((i - 1) / (cfg.count - 1)) * 2 * Math.PI - Math.PI / 2;
+            const angle = ((i - 1) / (count - 1)) * 2 * Math.PI - Math.PI / 2;
             const dist = cfg.r * 0.65;
             nx = cfg.cx + Math.cos(angle) * dist;
             ny = cfg.cy + Math.sin(angle) * dist;
@@ -275,7 +257,7 @@ export function TopologyPage() {
           const orbitIndex = i % 3;
           const distMap = [cfg.r * 0.38, cfg.r * 0.68, cfg.r * 0.88];
           const orbitDist = distMap[orbitIndex] ?? cfg.r * 0.5;
-          const angle = (i / cfg.count) * 2 * Math.PI;
+          const angle = (i / count) * 2 * Math.PI;
           nx = cfg.cx + Math.cos(angle) * orbitDist;
           ny = cfg.cy + Math.sin(angle) * orbitDist;
         }
@@ -283,22 +265,21 @@ export function TopologyPage() {
         const roundX = Math.round(nx);
         const roundY = Math.round(ny);
 
-        nodeDict[name] = {
-          identity: name,
+        nodeDict[agentIdentity] = {
+          identity: agentIdentity,
           group: cfg.id,
           groupName: cfg.name,
           type,
           status,
           desc,
-          key: `sha256:${cfg.id}_${name}_${(i * 991).toString(16)}`,
+          key: agentObj?.fingerprint || `sha256:${agentIdentity}`,
           x: roundX,
           y: roundY,
           icon,
-          avatarImg,
           displayName,
           directPeers: [],
         };
-        memberIds.push(name);
+        memberIds.push(agentIdentity);
       }
 
       // Member internal loop edges
