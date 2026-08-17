@@ -62,7 +62,11 @@ describe("the key-proposal stream", () => {
   test("pushes a proposal that arrives while an operator is watching", async () => {
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/stream`, {
       headers: { cookie },
-      signal: AbortSignal.timeout(8000),
+      // Shorter than the test timeout below, deliberately. The first version
+      // aborted at 8s inside bun's 5s default, so a run with nothing pushed
+      // died as a timeout before the assertion could say what was missing —
+      // the verdict was right and named nothing.
+      signal: AbortSignal.timeout(3000),
     });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -80,7 +84,7 @@ describe("the key-proposal stream", () => {
     // operator reports out of band. Shipping the key to the screen invites
     // comparing it against itself, which attests to nothing.
     expect(body, "the public key was pushed to the browser").not.toContain(key.publicKey);
-  });
+  }, 20_000);
 
   test("a session without key.approve is refused", async () => {
     // § 11: whoever is told about a decision is whoever can make it. A
