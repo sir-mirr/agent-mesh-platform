@@ -79,6 +79,7 @@ export function TopologyPage() {
 
   // Synchronous ref for high-precision cursor-centered zoom & mouse events
   const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 0, panY: 0, scale: 0.38 });
+  const isDraggingRef = useRef<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -489,16 +490,33 @@ export function TopologyPage() {
     };
   }, [clampPan, getFitTransform]);
 
-  // Canvas Drag Pan Handlers with Boundary Clamping
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // 4. GLOBAL DRAG PAN WITH POINTER CAPTURE (Prevents text selection and mouse release loss)
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest(".node-clickable")) return;
     if ((e.target as HTMLElement).closest(".minimap-container")) return;
+
+    // Prevent text selection across the browser/sidebar during drag
+    e.preventDefault();
+
+    isDraggingRef.current = true;
     setIsDragging(true);
-    dragStartRef.current = { x: e.clientX, y: e.clientY, panX, panY };
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: transformRef.current.panX,
+      panY: transformRef.current.panY,
+    };
+
+    // Capture pointer events even if cursor moves outside canvas
+    if (viewportRef.current) {
+      viewportRef.current.setPointerCapture(e.pointerId);
+    }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    e.preventDefault();
+
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     const targetPanX = dragStartRef.current.panX + dx;
@@ -511,11 +529,37 @@ export function TopologyPage() {
     setPanY(clamped.y);
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      try {
+        if (viewportRef.current && viewportRef.current.hasPointerCapture(e.pointerId)) {
+          viewportRef.current.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
   };
 
-  // 4. INTERACTIVE MINIMAP CLICK & DRAG NAVIGATION
+  // Global window mouseup safety net
+  useEffect(() => {
+    const onGlobalMouseUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }
+    };
+    window.addEventListener("mouseup", onGlobalMouseUp);
+    window.addEventListener("pointerup", onGlobalMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", onGlobalMouseUp);
+      window.removeEventListener("pointerup", onGlobalMouseUp);
+    };
+  }, []);
+
+  // 5. INTERACTIVE MINIMAP CLICK & DRAG NAVIGATION
   const isMinimapDraggingRef = useRef(false);
 
   const navigateFromMinimap = useCallback(
@@ -573,6 +617,7 @@ export function TopologyPage() {
 
   const handleMinimapMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     isMinimapDraggingRef.current = true;
     navigateFromMinimap(e.clientX, e.clientY);
   };
@@ -847,9 +892,10 @@ export function TopologyPage() {
       {/* Main Interactive Topology SVG Viewport Container (Original Light Canvas Theme) */}
       <div
         ref={viewportRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         style={{
           height: 640,
           background: "#F8FAFC",
@@ -859,6 +905,8 @@ export function TopologyPage() {
           overflow: "hidden",
           cursor: isDragging ? "grabbing" : "grab",
           userSelect: "none",
+          WebkitUserSelect: "none",
+          touchAction: "none",
           boxShadow: "var(--shadow-sm)",
         }}
       >
@@ -898,6 +946,7 @@ export function TopologyPage() {
             height: "100%",
             overflow: "visible",
             display: "block",
+            pointerEvents: isDragging ? "none" : "auto",
           }}
         >
           <defs>
