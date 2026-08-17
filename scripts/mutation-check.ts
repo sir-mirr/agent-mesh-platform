@@ -99,8 +99,11 @@ const MUTATIONS: Mutation[] = [
   {
     id: "ack-settle",
     defect: "An acknowledgement reported success without settling the batch (§ 8.10.1).",
-    file: "packages/hub/src/rpc/receive.ts",
-    from: "const settled = stmtAckMessage.run(messageId, identity);",
+    // Moved with the code it guards: settling a batch is store-and-forward and
+    // now lives in the mailbox package. The manifest refused rather than
+    // reporting caught, which is the one thing a stale entry must do.
+    file: "packages/mailbox/src/receive.ts",
+    from: "const settled = stmt.ackMessage.run(messageId, identity);",
     to: "const settled = { changes: 1 };",
     suite: "test/scenarios.test.ts",
     expect: ["E2E-RECEIVE-002", "(receive): message count"],
