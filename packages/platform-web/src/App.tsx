@@ -97,7 +97,7 @@ export function App() {
               <Route
                 path="/tenant/rbac"
                 element={
-                  <GuardedRoute requiredCapability="role.assign">
+                  <GuardedRoute requiredCapability="role.grant">
                     <RbacManagementPage />
                   </GuardedRoute>
                 }

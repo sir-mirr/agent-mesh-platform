@@ -12,6 +12,7 @@ export type Capability =
   | "audit.read_metadata"  // 메타데이터([content withheld]) 열람
   | "server.inspect"       // 서버 헬스/텔레메트리 모니터링
   | "role.assign"          // 조직 멤버 RBAC 역할 할당
+  | "role.grant"           // 조직 멤버 세분화 Capability 부여/회수 (§11.3)
   | "admin.all";           // 슈퍼어드민 마스터 권한
 
 export type UserRole =

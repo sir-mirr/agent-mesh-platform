@@ -588,7 +588,7 @@ export function TopologyPage() {
     animateCameraTo(targetPanX, targetPanY, nextScale, 400);
   }, [getFitTransform, animateCameraTo]);
 
-  // Auto-fit to screen when simStage changes
+  // Auto-fit to screen when live topology data updates
   useEffect(() => {
     const { scale: nextScale, panX: targetPanX, panY: targetPanY } = getFitTransform();
     const clamped = clampPan(targetPanX, targetPanY, nextScale);
