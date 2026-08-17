@@ -533,8 +533,13 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The rate-limit buckets live in the hub process and nowhere else, so this route asks rather than computes. Answering from here — with anything, including an empty list — reports on a process it cannot see.",
     file: "packages/http/src/main.ts",
-    from: "    if (res.ok) limiters = ((await res.json()) as { limiters: unknown }).limiters",
-    to: "    if (res.ok) limiters = []",
+    // Re-anchored after the block grew a `refusals` field. The first anchor
+    // spanned the whole `if (res.ok)` line and stopped matching the moment the
+    // body was destructured — reported as `checks nothing`, not as caught,
+    // which is the second time today this refusal caught the manifest itself
+    // rather than the code.
+    from: "      limiters = body.limiters",
+    to: "      limiters = []",
     suite: "test/telemetry.test.ts",
     expect: ["the limits come from the hub"],
   },
