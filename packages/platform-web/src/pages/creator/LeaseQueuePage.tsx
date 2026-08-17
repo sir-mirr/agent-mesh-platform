@@ -10,10 +10,16 @@ import {
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
+interface AgentIdentity {
+  id: string;
+  name: string;
+  group: string;
+}
+
 interface LeaseItem {
   id: string;
-  sender: string;
-  recipient: string;
+  sender: AgentIdentity;
+  recipient: AgentIdentity;
   status: "Available" | "Leased" | "Acked";
   ttlRemaining: number; // in seconds
   enqueuedAt: string;
@@ -22,24 +28,24 @@ interface LeaseItem {
 const INITIAL_QUEUE: LeaseItem[] = [
   {
     id: "msg_892147",
-    sender: "agt_support_01",
-    recipient: "agt_finance_02",
+    sender: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
+    recipient: { id: "agt_finance_02", name: "정산 코어 봇", group: "Billing Core" },
     status: "Leased",
     ttlRemaining: 274,
     enqueuedAt: "2026-08-17 13:35:12",
   },
   {
     id: "msg_892148",
-    sender: "agt_analyzer_03",
-    recipient: "agt_support_01",
+    sender: { id: "agt_analyzer_03", name: "실시간 분석기", group: "Analytics Group" },
+    recipient: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
     status: "Available",
     ttlRemaining: 300,
     enqueuedAt: "2026-08-17 13:38:00",
   },
   {
     id: "msg_892149",
-    sender: "agt_support_01",
-    recipient: "agt_analyzer_03",
+    sender: { id: "agt_support_01", name: "고객 지원 봇", group: "Support Group" },
+    recipient: { id: "agt_analyzer_03", name: "실시간 분석기", group: "Analytics Group" },
     status: "Leased",
     ttlRemaining: 182,
     enqueuedAt: "2026-08-17 13:33:45",
@@ -88,18 +94,34 @@ export function LeaseQueuePage() {
       key: "id",
       header: "메시지 ID",
       render: (item: LeaseItem) => (
-        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "0.85rem" }}>
           {item.id}
         </span>
       ),
     },
     {
       key: "route",
-      header: "경로 (Sender → Recipient)",
+      header: "경로 (발신 에이전트 → 수신 에이전트)",
       render: (item: LeaseItem) => (
-        <span style={{ fontSize: "0.82rem" }}>
-          <code>{item.sender}</code> → <code>{item.recipient}</code>
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem" }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
+              🤖 {item.sender.name}
+            </span>
+            <code style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+              {item.sender.id}
+            </code>
+          </div>
+          <span style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.95rem" }}>➔</span>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
+              📥 {item.recipient.name}
+            </span>
+            <code style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+              {item.recipient.id}
+            </code>
+          </div>
+        </div>
       ),
     },
     {
@@ -216,6 +238,43 @@ export function LeaseQueuePage() {
         />
       )}
 
+      {/* Guide Banner: Explaining Lease & 300s TTL Architecture */}
+      <div
+        style={{
+          background: "var(--color-bg-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "16px 20px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: 16,
+        }}
+      >
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>⏱️</div>
+          <div>
+            <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
+              Lease (독점 임대) 상태란?
+            </strong>
+            <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
+              비동기/서버리스 워커 에이전트가 메시지를 꺼내갈 때, 즉시 삭제하지 않고 <strong>다른 워커의 중복 처리를 방지하기 위해 일정 시간 동안 독점 잠금(Lock)</strong>하는 개념입니다.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>🛡️</div>
+          <div>
+            <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
+              300초 TTL (At-Least-Once 안전장치)
+            </strong>
+            <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
+              워커가 정상 완료 시 <code>ACK</code>를 보내면 영구 해제되며, 만약 워커 프로세스가 비정상 종료되어 300초 동안 응답이 없으면 <strong>메시지가 자동 복구(Available)되어 유실 없이 재처리</strong>됩니다.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Telemetry row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <TelemetryCard
@@ -224,7 +283,7 @@ export function LeaseQueuePage() {
           maxLabel="총 적체"
           percentage={(leasedCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-leased)"
-          statusText="워커가 처리 중"
+          statusText="워커가 처리 중 (300s TTL 카운트다운)"
         />
         <TelemetryCard
           label="대기 중인 메시지 (Available)"
@@ -232,7 +291,7 @@ export function LeaseQueuePage() {
           maxLabel="총 적체"
           percentage={(availableCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-warning)"
-          statusText="즉시 Lease 가능"
+          statusText="즉시 Lease 획득 가능"
         />
       </div>
 
