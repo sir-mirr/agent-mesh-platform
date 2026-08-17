@@ -555,6 +555,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["a refused signature was not counted"],
   },
 
+  {
+    id: "truncation-disclosed",
+    defect:
+      "A list capped at ten rows was served with no total beside it, so a screen drawing ten lanes out of two hundred reported that the problem was small and nothing in the response disagreed. Written an hour before it was noticed, in the route added to replace a screen of constants.",
+    file: "packages/http/src/main.ts",
+    from: "    lanes_not_draining_total: lanesTotal,",
+    to: "    lanes_not_draining_total: lanes.length,",
+    suite: "test/telemetry.test.ts",
+    // Not the shape check — `total === shown` agrees with itself for every
+    // input. The one that adds a lane and watches the total move.
+    expect: ["the total did not follow a new lane"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

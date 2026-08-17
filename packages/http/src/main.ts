@@ -1844,11 +1844,19 @@ app.get('/api/v1/admin/telemetry', async (c) => {
 
   // A participant has stopped draining. Per identity, so an operator chases a
   // lane rather than a total.
+  const LANE_LIMIT = 10
   const lanes = hub.prepare(
     `SELECT to_agent AS identity, count(*) AS pending, min(ts) AS oldest
        FROM messages WHERE status = 'pending'
-      GROUP BY to_agent ORDER BY oldest ASC LIMIT 10`,
-  ).all() as Array<{ identity: string; pending: number; oldest: string }>
+      GROUP BY to_agent ORDER BY oldest ASC LIMIT ?`,
+  ).all(LANE_LIMIT) as Array<{ identity: string; pending: number; oldest: string }>
+  // **The total, because the list is truncated.** Ten rows out of two hundred
+  // draws a screen saying the problem is small, and nothing in the response
+  // would have disagreed. This route was written an hour before this comment
+  // and had the silent version.
+  const lanesTotal = (hub.prepare(
+    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending'`,
+  ).get() as { n: number }).n
 
   // The mesh is carrying something, or it is not. Counted from message_stats
   // for the reason § 11.4 gives: it is written at accept time and does not
@@ -1883,6 +1891,8 @@ app.get('/api/v1/admin/telemetry', async (c) => {
     hours,
     keys_awaiting_decision: { waiting: keys.waiting, oldest: keys.oldest },
     lanes_not_draining: lanes,
+    lanes_not_draining_total: lanesTotal,
+    lanes_not_draining_shown: lanes.length,
     messages_accepted: accepted.accepted,
     rate_limits: limiters,
     // Signature refusals by reason (§ 8.1) and egress refusals by group pair
@@ -2013,6 +2023,13 @@ app.get('/api/v1/admin/agent-sources', async (c) => {
            FROM agent_sources ORDER BY last_seen DESC LIMIT 500`,
       ).all()
 
+  // How many there are, because the list above stops at 500. A screen drawing
+  // 500 rows out of 3000 reports a smaller fleet than the one running, and no
+  // field in the response contradicted it.
+  const sourcesTotal = identity
+    ? rows.length
+    : (db.prepare(`SELECT count(*) AS n FROM agent_sources`).get() as { n: number }).n
+
   // Read from the running hub rather than from a constant here: the two
   // processes are configured separately, and reporting this one's idea of the
   // mode would describe a deployment that may not be the one answering.
@@ -2038,6 +2055,8 @@ app.get('/api/v1/admin/agent-sources', async (c) => {
           ? 'Addresses are the kernel-observed peer of each connection.'
           : 'The hub did not answer; the mode is unknown.',
     sources: rows,
+    sources_total: sourcesTotal,
+    sources_shown: rows.length,
   })
 })
 

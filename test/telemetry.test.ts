@@ -166,3 +166,41 @@ describe("what it says when it cannot answer", () => {
       .toBeLessThanOrEqual(1);
   }, 30_000);
 });
+
+describe("a truncated list says so", () => {
+  test("lanes report how many there are, not only how many fit", async () => {
+    // **Ten rows out of two hundred draws a screen saying the problem is
+    // small**, and nothing in the response disagreed. This route shipped with
+    // the silent version and was corrected an hour later; the check is here so
+    // the next `LIMIT` cannot arrive without one.
+    const body = await telemetry();
+    expect(typeof body.lanes_not_draining_total, "no total beside the truncated list").toBe("number");
+    expect(body.lanes_not_draining_shown).toBe(body.lanes_not_draining.length);
+    expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(body.lanes_not_draining_shown);
+  }, 30_000);
+
+  test("and the total moves when a lane is added", async () => {
+    // Otherwise `total` could be `shown` computed twice, which agrees with
+    // itself for every input — the shape of a check that cannot fail.
+    const before = await telemetry();
+
+    const sender = newKeyPair(), recipient = newKeyPair();
+    await provision(mesh.hub, "truncation-sender", "ai-claude", null, sender.publicKey);
+    await provision(mesh.hub, "truncation-recipient", "ai-claude", null, recipient.publicKey);
+    for (const fp of [sender.fingerprint, recipient.fingerprint]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ fingerprint: fp }),
+      });
+    }
+    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+    await rpc.call("mesh.connect", { identity: "truncation-sender" });
+    await rpc.call("mesh.send", { to: "truncation-recipient", content: "another undrained lane" });
+    rpc.close();
+
+    const after = await telemetry();
+    expect(after.lanes_not_draining_total, "the total did not follow a new lane")
+      .toBeGreaterThan(before.lanes_not_draining_total);
+  }, 45_000);
+});
