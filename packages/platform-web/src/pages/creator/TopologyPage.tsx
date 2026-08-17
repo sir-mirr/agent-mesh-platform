@@ -69,7 +69,7 @@ export function TopologyPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Viewport dimensions
-  const [viewportDim, setViewportDim] = useState<{ width: number; height: number }>({ width: 1200, height: 640 });
+  const [viewportDim, setViewportDim] = useState<{ width: number; height: number }>({ width: 1200, height: 700 });
 
   // Pan / Zoom Transformation State
   const [panX, setPanX] = useState<number>(0);
@@ -383,7 +383,7 @@ export function TopologyPage() {
     if (!viewport) return { scale: 0.38, panX: 0, panY: 0, fitScale: 0.38 };
     const rect = viewport.getBoundingClientRect();
     const vw = rect.width || 1200;
-    const vh = rect.height || 640;
+    const vh = rect.height || 700;
 
     // Scale to fit world bounds (with 5% margin) perfectly into viewport
     const scaleX = vw / bounds.worldW;
@@ -451,7 +451,6 @@ export function TopologyPage() {
       const step = (now: number) => {
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        // Smooth Cubic Ease-Out
         const ease = 1 - Math.pow(1 - progress, 3);
 
         const curPanX = startPanX + (endPanX - startPanX) * ease;
@@ -480,12 +479,9 @@ export function TopologyPage() {
     (node: TopoNode) => {
       const viewport = viewportRef.current;
       const vw = viewport?.getBoundingClientRect().width || 1200;
-      const vh = viewport?.getBoundingClientRect().height || 640;
+      const vh = viewport?.getBoundingClientRect().height || 700;
 
-      // Keep comfortable zoom (at least 0.95 or current scale)
       const targetScale = Math.max(transformRef.current.scale, 0.92);
-
-      // Frame at 42% X so the 320px right-side drawer overlay does not block the focused node
       const targetPanX = vw * 0.42 - node.x * targetScale;
       const targetPanY = vh * 0.5 - node.y * targetScale;
 
@@ -543,22 +539,18 @@ export function TopologyPage() {
       const zoomFactor = e.deltaY < 0 ? 1.14 : 0.88;
       const rect = el.getBoundingClientRect();
 
-      // Mouse coordinate relative to viewport container
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // World coordinate under cursor before zoom
       const worldX = (mouseX - curPanX) / curScale;
       const worldY = (mouseY - curPanY) / curScale;
 
-      // Minimum zoom level is capped at fitScale so it never zooms out past 5% margin
       const { fitScale } = getFitTransform();
       const minScale = fitScale * 0.99;
       const maxScale = 2.5;
 
       const nextScale = Math.min(Math.max(curScale * zoomFactor, minScale), maxScale);
 
-      // Keep world coordinate stationary under the same mouse position
       const targetPanX = mouseX - worldX * nextScale;
       const targetPanY = mouseY - worldY * nextScale;
       const clamped = clampPan(targetPanX, targetPanY, nextScale);
@@ -580,6 +572,7 @@ export function TopologyPage() {
     if ((e.target as HTMLElement).closest(".node-clickable")) return;
     if ((e.target as HTMLElement).closest(".minimap-container")) return;
     if ((e.target as HTMLElement).closest(".node-side-overlay")) return;
+    if ((e.target as HTMLElement).closest(".canvas-hud-interactive")) return;
 
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
@@ -660,7 +653,6 @@ export function TopologyPage() {
       const clickX = Math.max(0, Math.min(clientX - miniRect.left, MINIMAP_W));
       const clickY = Math.max(0, Math.min(clientY - miniRect.top, MINIMAP_H));
 
-      // Calculate relative scale in minimap
       const aspectWorld = bounds.worldW / bounds.worldH;
       const aspectBox = MINIMAP_W / MINIMAP_H;
 
@@ -688,7 +680,6 @@ export function TopologyPage() {
       const vpRect = viewport.getBoundingClientRect();
       const curScale = transformRef.current.scale;
 
-      // Center viewport at this world position
       const targetPanX = vpRect.width / 2 - targetWorldX * curScale;
       const targetPanY = vpRect.height / 2 - targetWorldY * curScale;
 
@@ -744,7 +735,7 @@ export function TopologyPage() {
   const zoomIn = () => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
-    const vh = rect?.height || 600;
+    const vh = rect?.height || 700;
     const curScale = transformRef.current.scale;
     const nextScale = Math.min(curScale * 1.25, 2.5);
 
@@ -760,7 +751,7 @@ export function TopologyPage() {
   const zoomOut = () => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
-    const vh = rect?.height || 600;
+    const vh = rect?.height || 700;
     const curScale = transformRef.current.scale;
 
     const { fitScale } = getFitTransform();
@@ -839,125 +830,13 @@ export function TopologyPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SubNavPills items={subNavItems} />
 
+      {/* Clean Production Page Header */}
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="38"
         title="에이전트 토폴로지"
-        subtitle="10단계 스케일 시뮬레이션 및 원형 오비탈 노드-엣지 인터랙티브 제어기 (139 Connected Agent Nodes)"
-        actions={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Button variant="secondary" size="sm" onClick={fitToScreen}>
-              Fit (5% 여백)
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setSimStage(10)}>
-              ⚡ 10-스웜 풀 로드 (139노드)
-            </Button>
-          </div>
-        }
+        subtitle={`실시간 연결된 ${clusters.length}개 스웜 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`}
       />
 
-      {/* Control Toolbar Card: Scale Slider & Galaxy Filter Pills */}
-      <div
-        style={{
-          background: "var(--color-bg-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "16px 20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          boxShadow: "var(--shadow-xs)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-          {/* Scale Slider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-text-primary)" }}>
-              스웜 스케일 단계:
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={simStage}
-                onChange={(e) => setSimStage(Number(e.target.value))}
-                style={{ width: 140, accentColor: "var(--color-primary)", cursor: "pointer" }}
-              />
-              <span
-                style={{
-                  fontSize: "0.82rem",
-                  fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: "var(--radius-sm)",
-                  background: "var(--color-primary-light)",
-                  color: "var(--color-primary)",
-                  minWidth: 70,
-                  textAlign: "center",
-                }}
-              >
-                Stage {simStage} / 10
-              </span>
-            </div>
-
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setSimStage(1)} style={presetBtnStyle(simStage === 1)}>
-                1. 단일(5)
-              </button>
-              <button onClick={() => setSimStage(3)} style={presetBtnStyle(simStage === 3)}>
-                3. 트리플(43)
-              </button>
-              <button onClick={() => setSimStage(5)} style={presetBtnStyle(simStage === 5)}>
-                5. 상단덱(67)
-              </button>
-              <button onClick={() => setSimStage(10)} style={presetBtnStyle(simStage === 10)}>
-                10. 풀갤럭시(139)
-              </button>
-            </div>
-          </div>
-
-          {/* Search Input */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <input
-              type="text"
-              placeholder="에이전트 검색 (핀둥이, claude)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--color-border-strong)",
-                fontSize: "0.82rem",
-                background: "var(--color-bg-surface-sub)",
-                outline: "none",
-                width: 220,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Galaxy Filter Pills */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-          <button
-            onClick={() => setActiveFilterGroup("all")}
-            style={filterPillStyle(activeFilterGroup === "all")}
-          >
-            전체 스웜 ({clusters.length})
-          </button>
-          {clusters.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setActiveFilterGroup(c.id)}
-              style={filterPillStyle(activeFilterGroup === c.id)}
-            >
-              {c.name} ({c.count})
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Interactive Topology SVG Viewport Container (Original Light Canvas Theme) */}
+      {/* Main Interactive Topology Viewport Container (Spacious & Clean, Starts Right Below Header) */}
       <div
         ref={viewportRef}
         onPointerDown={handlePointerDown}
@@ -965,7 +844,7 @@ export function TopologyPage() {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
-          height: 640,
+          height: 680,
           background: "#F8FAFC",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--color-border)",
@@ -978,33 +857,91 @@ export function TopologyPage() {
           boxShadow: "var(--shadow-sm)",
         }}
       >
-        {/* Top Floating HUD Info */}
+        {/* Top Left Clean Status HUD */}
         <div
           style={{
             position: "absolute",
             top: 14,
             left: 16,
-            zIndex: 10,
+            zIndex: 20,
             display: "flex",
             alignItems: "center",
             gap: 10,
-            background: "rgba(255, 255, 255, 0.94)",
-            backdropFilter: "blur(8px)",
-            padding: "6px 14px",
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(10px)",
+            padding: "7px 16px",
             borderRadius: "var(--radius-full)",
             border: "1px solid var(--color-border)",
             color: "var(--color-text-primary)",
-            fontSize: "0.78rem",
+            fontSize: "0.8rem",
             fontWeight: 700,
-            boxShadow: "var(--shadow-xs)",
+            boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
-          <span>Active Swarms: {clusters.length} Galaxies</span>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
+          <span>Active Swarms: {clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
           <span>Total Nodes: {totalAgentCount + clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span style={{ color: "var(--color-primary)" }}>SPEC § 12 Egress Active</span>
+          <span style={{ color: "var(--color-primary)", fontWeight: 800 }}>Egress Active</span>
+        </div>
+
+        {/* Top Right Compact Filter & Search Tool (Integrated into Canvas) */}
+        <div
+          className="canvas-hud-interactive"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 16,
+            zIndex: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <select
+            value={activeFilterGroup}
+            onChange={(e) => setActiveFilterGroup(e.target.value)}
+            style={{
+              padding: "7px 12px",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-border)",
+              background: "rgba(255, 255, 255, 0.95)",
+              backdropFilter: "blur(10px)",
+              fontSize: "0.8rem",
+              fontWeight: 700,
+              color: "var(--color-text-primary)",
+              outline: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
+            }}
+          >
+            <option value="all">전체 스웜 보기 ({clusters.length})</option>
+            {clusters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.count})
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="text"
+            placeholder="에이전트 검색 (핀둥이, claude)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              padding: "7px 14px",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-border)",
+              background: "rgba(255, 255, 255, 0.95)",
+              backdropFilter: "blur(10px)",
+              fontSize: "0.8rem",
+              color: "var(--color-text-primary)",
+              outline: "none",
+              width: 220,
+              boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
+            }}
+          />
         </div>
 
         {/* ── Scalable & Pannable SVG World Layer ── */}
@@ -1500,6 +1437,77 @@ export function TopologyPage() {
         )}
       </div>
 
+      {/* ── Secondary Developer & Demo Simulation Toolbox (Placed Below Canvas for QA Testing) ── */}
+      <div
+        style={{
+          background: "var(--color-bg-surface)",
+          border: "1px dashed var(--color-border-strong)",
+          borderRadius: "var(--radius-lg)",
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
+            🛠️ 개발 및 데모 시뮬레이션 제어 도구 (Demo & Testing Controls)
+          </span>
+          <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+            * 론칭 시 하단 툴박스는 운영자 전용 디버그 패널로 분리됩니다
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
+            스웜 스케일 단계:
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={simStage}
+              onChange={(e) => setSimStage(Number(e.target.value))}
+              style={{ width: 140, accentColor: "var(--color-primary)", cursor: "pointer" }}
+            />
+            <span
+              style={{
+                fontSize: "0.78rem",
+                fontWeight: 800,
+                padding: "2px 8px",
+                borderRadius: "var(--radius-sm)",
+                background: "var(--color-primary-light)",
+                color: "var(--color-primary)",
+                minWidth: 70,
+                textAlign: "center",
+              }}
+            >
+              Stage {simStage} / 10
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setSimStage(1)} style={presetBtnStyle(simStage === 1)}>
+              1. 단일(5)
+            </button>
+            <button onClick={() => setSimStage(3)} style={presetBtnStyle(simStage === 3)}>
+              3. 트리플(43)
+            </button>
+            <button onClick={() => setSimStage(5)} style={presetBtnStyle(simStage === 5)}>
+              5. 상단덱(67)
+            </button>
+            <button onClick={() => setSimStage(10)} style={presetBtnStyle(simStage === 10)}>
+              10. 풀갤럭시(139)
+            </button>
+          </div>
+
+          <Button variant="secondary" size="sm" onClick={() => setSimStage(10)}>
+            ⚡ 10-스웜 풀 로드 (139노드)
+          </Button>
+        </div>
+      </div>
+
       {toastMsg && <Toast message={toastMsg} type="success" onClose={() => setToastMsg(null)} />}
     </div>
   );
@@ -1515,21 +1523,6 @@ function presetBtnStyle(isActive: boolean): React.CSSProperties {
     fontSize: "0.76rem",
     fontWeight: 700,
     cursor: "pointer",
-    transition: "all 0.15s ease",
-  };
-}
-
-function filterPillStyle(isActive: boolean): React.CSSProperties {
-  return {
-    background: isActive ? "var(--color-primary)" : "var(--color-bg-surface-sub)",
-    border: `1px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
-    color: isActive ? "#FFFFFF" : "var(--color-text-secondary)",
-    fontSize: "0.75rem",
-    fontWeight: 600,
-    padding: "4px 10px",
-    borderRadius: "var(--radius-full)",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
     transition: "all 0.15s ease",
   };
 }
