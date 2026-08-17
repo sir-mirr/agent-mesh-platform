@@ -17,3 +17,7 @@ mutation-check-*.log
 # Written while scripts/mutation-check.ts has a source file edited in place.
 # Other processes read it to avoid building from a deliberately broken tree.
 .agent-mesh-mutating
+dist/
+**/dist/
+**/dist
+packages/*/dist/
