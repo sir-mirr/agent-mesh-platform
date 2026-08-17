@@ -8,13 +8,8 @@ export interface PendingUser {
 }
 
 export async function fetchPendingUsers(): Promise<PendingUser[]> {
-  try {
-    const data = await apiClient<{ pending: PendingUser[] }>("/api/v1/admin/pending");
-    return data.pending || [];
-  } catch (err) {
-    console.warn("[API] fetchPendingUsers error:", err);
-    return [];
-  }
+  const data = await apiClient<{ pending: PendingUser[] }>("/api/v1/admin/pending");
+  return data.pending || [];
 }
 
 export async function approveUserApi(githubLogin: string): Promise<{ ok: boolean }> {

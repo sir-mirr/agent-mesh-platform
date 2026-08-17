@@ -26,32 +26,22 @@ export interface PairingCodeResponse {
 }
 
 export async function fetchAgents(): Promise<RegistryAgent[]> {
-  try {
-    const data = await apiClient<any>("/api/v1/agents");
-    const list: any[] = Array.isArray(data) ? data : data.agents ?? [];
-    return list.map((a: any) => ({
-      identity: a.identity || a.id || a.name || "unknown",
-      type: a.type || a.channel || "agent",
-      description: a.description || a.name || a.identity || null,
-      status: a.status === "inactive" ? "inactive" : a.status === "pending" ? "pending" : "active",
-      created_at: a.created_at || a.last_seen_at || new Date().toISOString(),
-      last_seen_at: a.last_seen_at || a.created_at,
-      fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
-    }));
-  } catch (err) {
-    console.warn("[API] fetchAgents error, returning empty list:", err);
-    return [];
-  }
+  const data = await apiClient<any>("/api/v1/agents");
+  const list: any[] = Array.isArray(data) ? data : data.agents ?? [];
+  return list.map((a: any) => ({
+    identity: a.identity || a.id || a.name || "unknown",
+    type: a.type || a.channel || "agent",
+    description: a.description || a.name || a.identity || null,
+    status: a.status === "inactive" ? "inactive" : a.status === "pending" ? "pending" : "active",
+    created_at: a.created_at || a.last_seen_at || new Date().toISOString(),
+    last_seen_at: a.last_seen_at || a.created_at,
+    fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+  }));
 }
 
 export async function fetchPendingKeys(): Promise<KeyProposal[]> {
-  try {
-    const data = await apiClient<any>("/api/v1/admin/keys/pending");
-    return Array.isArray(data) ? data : data.proposals ?? data.pending ?? [];
-  } catch (err) {
-    console.warn("[API] fetchPendingKeys error:", err);
-    return [];
-  }
+  const data = await apiClient<any>("/api/v1/admin/keys/pending");
+  return Array.isArray(data) ? data : data.proposals ?? data.pending ?? [];
 }
 
 export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {

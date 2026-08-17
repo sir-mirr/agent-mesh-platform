@@ -113,16 +113,17 @@ export function DashboardPage() {
 function PlatformAdminDashboard() {
   const { t } = useI18n();
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
-  const [agentsCount, setAgentsCount] = useState<number>(139);
-  const [activeSockets, setActiveSockets] = useState<number>(108);
+  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [agents, setAgents] = useState<RegistryAgent[]>([]);
 
   React.useEffect(() => {
-    fetchTelemetry().then((tel) => {
-      setTelemetry(tel);
-      setAgentsCount(tel.total_agents);
-      setActiveSockets(tel.active_sockets);
-    });
+    fetchTelemetry().then(setTelemetry).catch(() => setTelemetry(null));
+    fetchGroups().then(setGroups).catch(() => setGroups([]));
+    fetchAgents().then(setAgents).catch(() => setAgents([]));
   }, []);
+
+  const totalAgents = agents.length || (telemetry?.total_agents ?? 0);
+  const activeSockets = telemetry?.active_sockets ?? agents.filter((a) => a.status === "active").length;
 
   return (
     <>
@@ -130,7 +131,7 @@ function PlatformAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.pa.nodes", "전체 에이전트 노드")}
-          value={String(agentsCount)}
+          value={String(totalAgents)}
           subValue={t("dash.pa.nodesSub", "실시간 레지스트리")}
           color="var(--color-primary)"
           icon="🌐"
@@ -141,51 +142,52 @@ function PlatformAdminDashboard() {
           subValue={t("dash.pa.socketsSub", "mTLS 연결")}
           color="var(--color-success)"
           icon="⚡"
-          trend={{ value: "+8", isPositive: true }}
         />
         <KpiCard
           label={t("dash.pa.tenants", "활성 테넌트 조직")}
-          value="4"
-          subValue={t("dash.pa.tenantsSub", "Acme, Nova, Fin, Edge")}
+          value={String(groups.length)}
+          subValue={groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음"}
           color="#6366F1"
           icon="🏢"
         />
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
-          value={`${telemetry?.p99_latency_ms || 24}ms`}
-          subValue={t("dash.pa.latencySub", "정상 SLA 99.99%")}
+          value={telemetry ? `${telemetry.p99_latency_ms || 0}ms` : "-"}
+          subValue={telemetry ? t("dash.pa.latencySub", "정상 SLA 99.99%") : "통신 불가"}
           color="var(--color-warning)"
           icon="⏱️"
         />
       </div>
 
       {/* Live Server Telemetry */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-        <TelemetryCard
-          label="서버 CPU 부하"
-          currentValue={`${telemetry?.cpu_usage_pct || 14.2}%`}
-          maxLabel="100%"
-          percentage={telemetry?.cpu_usage_pct || 14.2}
-          barColor="var(--color-success)"
-          statusText="정상 가동 중"
-        />
-        <TelemetryCard
-          label="프로세스 메모리 (RAM)"
-          currentValue={`${telemetry?.memory_used_mb || 148} MB`}
-          maxLabel="1,024 MB"
-          percentage={((telemetry?.memory_used_mb || 148) / 1024) * 100}
-          barColor="var(--color-primary)"
-          statusText="여유 공간 충분"
-        />
-        <TelemetryCard
-          label="메일함 리스 TTL (300s)"
-          currentValue="248s"
-          maxLabel="300s"
-          percentage={82.6}
-          barColor="var(--color-leased)"
-          statusText="리스 임대 활성"
-        />
-      </div>
+      {telemetry && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+          <TelemetryCard
+            label="서버 CPU 부하"
+            currentValue={`${telemetry.cpu_usage_pct}%`}
+            maxLabel="100%"
+            percentage={telemetry.cpu_usage_pct}
+            barColor="var(--color-success)"
+            statusText="정상 가동 중"
+          />
+          <TelemetryCard
+            label="프로세스 메모리 (RAM)"
+            currentValue={`${telemetry.memory_used_mb} MB`}
+            maxLabel={`${telemetry.memory_total_mb || 1024} MB`}
+            percentage={(telemetry.memory_used_mb / (telemetry.memory_total_mb || 1024)) * 100}
+            barColor="var(--color-primary)"
+            statusText="여유 공간 충분"
+          />
+          <TelemetryCard
+            label="허브 활성 세션"
+            currentValue={`${telemetry.active_sockets} sessions`}
+            maxLabel="500"
+            percentage={(telemetry.active_sockets / 500) * 100}
+            barColor="var(--color-leased)"
+            statusText="정상 수신 대기"
+          />
+        </div>
+      )}
 
       {/* Tenant Resource & Traffic Breakdown */}
       <div
@@ -212,41 +214,41 @@ function PlatformAdminDashboard() {
           </Link>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-          {[
-            { name: "Acme Corp", groups: 4, agents: 43, rps: "1,240 req/s", quota: "42%" },
-            { name: "Nova BioTech", groups: 3, agents: 38, rps: "890 req/s", quota: "28%" },
-            { name: "Global FinTech", groups: 2, agents: 32, rps: "640 req/s", quota: "19%" },
-            { name: "Edge IoT Lab", groups: 1, agents: 26, rps: "310 req/s", quota: "11%" },
-          ].map((tnt) => (
-            <div
-              key={tnt.name}
-              style={{
-                background: "var(--color-bg-surface-sub)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "16px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "0.95rem" }}>
-                  {tnt.name}
-                </span>
-                <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-primary)", fontWeight: 700 }}>
-                  {tnt.quota} Quota
-                </span>
+        {groups.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
+            현재 등록된 테넌트 조직 데이터가 없습니다.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+            {groups.map((g, idx) => (
+              <div
+                key={g.id}
+                style={{
+                  background: "var(--color-bg-surface-sub)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "0.95rem" }}>
+                    {g.name}
+                  </span>
+                  <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-primary)", fontWeight: 700 }}>
+                    Active Tenant
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "flex", gap: 12 }}>
+                  <span>에이전트: <strong>{g.member_count || g.members?.length || 0}노드</strong></span>
+                  <span>Egress 허용: <strong>{g.egress_allowed?.length || 0}건</strong></span>
+                </div>
               </div>
-              <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "flex", gap: 12 }}>
-                <span>그룹: <strong>{tnt.groups}개</strong></span>
-                <span>에이전트: <strong>{tnt.agents}노드</strong></span>
-                <span>처리량: <strong>{tnt.rps}</strong></span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
@@ -262,31 +264,33 @@ function TenantAdminDashboard() {
   const [pendingKeys, setPendingKeys] = useState<any[]>([]);
 
   React.useEffect(() => {
-    fetchGroups().then(setGroups);
-    fetchAgents().then(setAgents);
-    fetchPendingKeys().then(setPendingKeys);
+    fetchGroups().then(setGroups).catch(() => setGroups([]));
+    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    fetchPendingKeys().then(setPendingKeys).catch(() => setPendingKeys([]));
   }, []);
+
+  const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);
 
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.ta.groups", "조직 소속 그룹")}
-          value={String(groups.length || 3)}
-          subValue={t("dash.ta.groupsSub", "Support, Billing, Analytics")}
+          value={String(groups.length)}
+          subValue={groups.length > 0 ? `${groups.length}개 그룹 활성` : "등록된 그룹 없음"}
           color="var(--color-primary)"
           icon="👥"
         />
         <KpiCard
           label={t("dash.ta.agents", "총 소속 에이전트")}
-          value={String(agents.length || 4)}
+          value={String(agents.length)}
           subValue={t("dash.ta.agentsSub", "레지스트리 실데이터")}
           color="var(--color-success)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.ta.egress", "Egress 허용 규칙")}
-          value="2"
+          value={String(totalEgressRules)}
           subValue={t("dash.ta.egressSub", "Deny-by-default")}
           color="#6366F1"
           icon="🛡️"
@@ -420,17 +424,6 @@ function TenantAdminDashboard() {
               </div>
             ))
           )}
-
-          {/* Quick Egress Status */}
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: "1px solid var(--color-border)" }}>
-            <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 6 }}>
-              방향성 Egress ACL 정책 요약 (SPEC § 12)
-            </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
-              • <code>Support Group</code> → <code>Billing Core</code> : <strong style={{ color: "var(--color-success)" }}>ALLOW (허용)</strong><br />
-              • <code>Billing Core</code> → <code>Support Group</code> : <strong style={{ color: "var(--color-danger)" }}>DENY (차단)</strong>
-            </div>
-          </div>
         </div>
       </div>
     </>

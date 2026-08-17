@@ -13,6 +13,8 @@ export interface DataTableProps<T> {
   data: T[];
   keyExtractor: (item: T, index: number) => string | number;
   isLoading?: boolean;
+  isError?: boolean;
+  errorMessage?: string;
   emptyMessage?: string;
 }
 
@@ -21,6 +23,8 @@ export function DataTable<T>({
   data,
   keyExtractor,
   isLoading = false,
+  isError = false,
+  errorMessage = "데이터를 불러오는 중 오류가 발생했습니다.",
   emptyMessage = "표시할 데이터가 없습니다.",
 }: DataTableProps<T>) {
   return (
@@ -108,7 +112,9 @@ export function DataTable<T>({
             background: "var(--color-bg-surface)",
           }}
         >
-          {isLoading ? "데이터를 불러오는 중입니다..." : emptyMessage}
+          {isLoading ? "데이터를 불러오는 중입니다..." : isError ? (
+            <span style={{ color: "var(--color-danger)" }}>⚠️ {errorMessage}</span>
+          ) : emptyMessage}
         </div>
       )}
     </div>

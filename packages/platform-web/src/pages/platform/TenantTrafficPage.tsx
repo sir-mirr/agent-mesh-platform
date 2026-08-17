@@ -13,39 +13,35 @@ import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
 
 export function TenantTrafficPage() {
   const { t } = useI18n();
-  const [tenants, setTenants] = useState<any[]>([
-    {
-      id: "tenant_acme",
-      name: "Acme Corporation (Production)",
-      agentCount: 8,
-      routingCount24h: "940건",
-      storageUsage: "48.2 MB",
-      status: "Active",
-    },
-    {
-      id: "tenant_globex",
-      name: "Globex Logistics (Mesh)",
-      agentCount: 3,
-      routingCount24h: "380건",
-      storageUsage: "18.4 MB",
-      status: "Active",
-    },
-  ]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
 
   useEffect(() => {
-    Promise.all([fetchGroups(), fetchAgents()]).then(([groups, agents]) => {
-      if (groups && groups.length > 0) {
-        const liveTenants = groups.map((g, idx) => ({
-          id: `tenant_${g.id}`,
-          name: `${g.name} (Tenant Fleet)`,
-          agentCount: g.member_count || agents.length || 2,
-          routingCount24h: `${Math.floor(120 * (idx + 1) + agents.length * 15)}건`,
-          storageUsage: `${(12.4 * (idx + 1)).toFixed(1)} MB`,
-          status: "Active",
-        }));
-        setTenants(liveTenants);
-      }
-    });
+    setIsLoading(true);
+    setIsError(false);
+    Promise.all([fetchGroups(), fetchAgents()])
+      .then(([groups, agents]) => {
+        if (groups && groups.length > 0) {
+          const liveTenants = groups.map((g, idx) => ({
+            id: `tenant_${g.id}`,
+            name: `${g.name} (Tenant Fleet)`,
+            agentCount: g.member_count || agents.length || 0,
+            routingCount24h: `${Math.floor(120 * (idx + 1) + agents.length * 15)}건`,
+            storageUsage: `${(12.4 * (idx + 1)).toFixed(1)} MB`,
+            status: "Active",
+          }));
+          setTenants(liveTenants);
+        } else {
+          setTenants([]);
+        }
+      })
+      .catch((err) => {
+        console.warn("[TenantTraffic] error:", err);
+        setIsError(true);
+        setTenants([]);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const columns = [
@@ -113,6 +109,10 @@ export function TenantTrafficPage() {
         columns={columns}
         data={tenants}
         keyExtractor={(item) => item.id}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="테넌트 통계 데이터를 불러올 수 없습니다 (서버 통신 오류)."
+        emptyMessage="현재 등록된 테넌트 조직 데이터가 없습니다."
       />
     </div>
   );

@@ -21,32 +21,21 @@ interface OrgMember {
 
 export function RbacManagementPage() {
   const { t } = useI18n();
-  const { user } = useAuth();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [availableCaps, setAvailableCaps] = useState<string[]>([]);
-  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
 
   const loadGrantsAndMembers = async () => {
     try {
       setIsLoading(true);
+      setIsError(false);
       const res = await fetchGrants();
-      const caps = res.capabilities || [
-        "key.approve",
-        "key.deny",
-        "agent.teardown",
-        "group.manage",
-        "policy.send_restrict",
-        "audit.read_content",
-        "audit.read_metadata",
-        "role.grant",
-        "role.assign",
-        "server.inspect",
-      ];
+      const caps = res.capabilities || [];
       setAvailableCaps(caps);
 
-      // Group grants by subject
+      // Group grants by subject strictly from server response
       const subjectMap = new Map<string, string[]>();
       (res.grants || []).forEach((g: GrantItem) => {
         const list = subjectMap.get(g.subject) || [];
@@ -54,33 +43,20 @@ export function RbacManagementPage() {
         subjectMap.set(g.subject, list);
       });
 
-      // Also ensure current user is represented if present
-      if (user && !subjectMap.has(user.name) && !subjectMap.has("admin")) {
-        subjectMap.set(user.name, user.capabilities || []);
-      }
-
       const orgMembers: OrgMember[] = Array.from(subjectMap.entries()).map(([subj, assignedCaps]) => ({
         id: subj,
         name: subj,
-        email: `${subj.toLowerCase()}@mesh.local`,
+        email: subj,
         role: subj === "admin" ? "Platform Admin" : "Operator",
         capabilities: assignedCaps,
       }));
 
       setMembers(orgMembers);
     } catch (err: any) {
-      console.warn("[RBAC] fetchGrants fallback:", err.message);
-      if (user) {
-        setMembers([
-          {
-            id: user.id || "admin",
-            name: user.name || "admin",
-            email: user.email || "admin@mesh.local",
-            role: user.role,
-            capabilities: user.capabilities || ["key.approve", "group.manage", "audit.read_content", "audit.read_metadata", "role.grant"],
-          },
-        ]);
-      }
+      console.warn("[RBAC] fetchGrants error:", err.message);
+      setIsError(true);
+      setMembers([]);
+      setAvailableCaps([]);
     } finally {
       setIsLoading(false);
     }
@@ -88,30 +64,7 @@ export function RbacManagementPage() {
 
   useEffect(() => {
     loadGrantsAndMembers();
-    fetchPendingUsers().then((list) => {
-      setPendingUsers(list || []);
-    });
-  }, [user]);
-
-  const handleApproveUser = async (login: string) => {
-    try {
-      await approveUserApi(login);
-      setPendingUsers(pendingUsers.filter((u) => u.github_login !== login));
-      setToastMessage(`사용자 [${login}]의 가입 요청이 승인되었습니다.`);
-    } catch (err: any) {
-      setToastMessage(`승인 실패: ${err.message}`);
-    }
-  };
-
-  const handleDenyUser = async (login: string) => {
-    try {
-      await denyUserApi(login);
-      setPendingUsers(pendingUsers.filter((u) => u.github_login !== login));
-      setToastMessage(`사용자 [${login}]의 가입 요청이 거부되었습니다.`);
-    } catch (err: any) {
-      setToastMessage(`거부 실패: ${err.message}`);
-    }
-  };
+  }, []);
 
   const handleToggleCapability = async (subject: string, capId: string) => {
     const member = members.find((m) => m.id === subject);
@@ -134,13 +87,10 @@ export function RbacManagementPage() {
   const columns = [
     {
       key: "name",
-      header: t("rbac.col.name", "멤버 이름 / 계정"),
+      header: t("rbac.col.name", "멤버 ID / 주체 (Subject)"),
       render: (item: OrgMember) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{item.name}</div>
-          <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-            {item.email}
-          </div>
+          <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</div>
         </div>
       ),
     },
@@ -201,51 +151,6 @@ export function RbacManagementPage() {
     },
   ];
 
-  const pendingColumns = [
-    {
-      key: "github_login",
-      header: "가입 요청 계정 (GitHub / Local ID)",
-      render: (u: PendingUser) => (
-        <div>
-          <strong style={{ color: "var(--color-text-primary)" }}>{u.github_login}</strong>
-          <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-            요청 시각: {u.created_at ? new Date(u.created_at).toLocaleTimeString() : "최근 요청"}
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "role",
-      header: "희망 역할",
-      render: (u: PendingUser) => (
-        <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>{u.role}</span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "가입 승인 관리",
-      align: "right" as const,
-      render: (u: PendingUser) => (
-        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => handleApproveUser(u.github_login)}
-          >
-            ✓ 가입 승인
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => handleDenyUser(u.github_login)}
-          >
-            ✕ 거부
-          </Button>
-        </div>
-      ),
-    },
-  ];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Breadcrumbs />
@@ -255,7 +160,7 @@ export function RbacManagementPage() {
         suiteBadgeColor="leased"
         screenId="36"
         title={t("rbac.title", "조직 멤버 RBAC 권한 & Capability 관리")}
-        subtitle="SPEC § 11.3 / § 12: 계정별 Capability(권한) 세분화 부여 및 신규 사용자 가입 승인"
+        subtitle="SPEC § 11.3 / § 12: 계정별 Capability(권한) 세분화 부여 및 회수 (role.grant 인가 전용)"
       />
 
       {toastMessage && (
@@ -266,7 +171,7 @@ export function RbacManagementPage() {
         />
       )}
 
-      {/* 1. Capability Matrix Section */}
+      {/* Capability Matrix Section */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
           🛡️ 활성 조직원 및 Capability 권한 할당 매트릭스 ({members.length}명)
@@ -276,22 +181,12 @@ export function RbacManagementPage() {
           data={members}
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
+          isError={isError}
+          errorMessage="RBAC 권한 데이터를 불러올 수 없습니다 (role.grant 권한 부족 또는 서버 오류)."
           emptyMessage="현재 등록된 조직원 데이터가 없습니다."
-        />
-      </div>
-
-      {/* 2. Pending Admissions Queue Section */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          📋 가입 승인 대기 큐 ({pendingUsers.length}건 대기)
-        </h3>
-        <DataTable
-          columns={pendingColumns}
-          data={pendingUsers}
-          keyExtractor={(item) => item.github_login}
-          emptyMessage="현재 대기 중인 가입 승인 요청이 없습니다."
         />
       </div>
     </div>
   );
 }
+

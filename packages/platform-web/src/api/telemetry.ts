@@ -12,9 +12,9 @@ export interface SystemTelemetry {
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const [usage, agents, mailbox] = await Promise.all([
-    apiClient<any>("/api/v1/admin/ai-usage").catch(() => null),
-    apiClient<any>("/api/v1/agents").catch(() => []),
-    apiClient<any>("/api/v1/admin/mailbox").catch(() => null),
+    apiClient<any>("/api/v1/admin/ai-usage"),
+    apiClient<any>("/api/v1/agents"),
+    apiClient<any>("/api/v1/admin/mailbox"),
   ]);
 
   const agentList: any[] = Array.isArray(agents) ? agents : agents?.agents ?? [];

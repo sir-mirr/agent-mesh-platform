@@ -24,11 +24,6 @@ export async function sendMessageApi(payload: SendMessagePayload): Promise<Messa
 }
 
 export async function fetchMessagesForAgent(agentId: string): Promise<MessageResponse[]> {
-  try {
-    const res = await apiClient<any>(`/api/v1/messages/${encodeURIComponent(agentId)}`);
-    return Array.isArray(res) ? res : res.messages ?? [];
-  } catch (err) {
-    console.warn(`[API] fetchMessagesForAgent error for ${agentId}:`, err);
-    return [];
-  }
+  const res = await apiClient<any>(`/api/v1/messages/${encodeURIComponent(agentId)}`);
+  return Array.isArray(res) ? res : res.messages ?? [];
 }
