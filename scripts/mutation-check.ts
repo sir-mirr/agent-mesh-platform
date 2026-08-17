@@ -862,6 +862,46 @@ const MUTATIONS: Mutation[] = [
     suite: "test/message-status.test.ts",
     expect: ["is recorded as failed, not left pending for ever"],
   },
+  {
+    id: "real-error-category",
+    defect:
+      "Three sites caught with `catch {`, discarded the error, and filed the outcome as `hub_rpc_failed` — the fallback `hubErrorCategory` returns when it has nothing better. One of the three is read back into the recovery alert's `last_error_category=`, so an operator asking why an outage happened was answered with a constant.",
+    file: "packages/self-reminder/src/scheduler.ts",
+    from: "          const category = hubErrorCategory(error);",
+    to: '          const category = "hub_rpc_failed";',
+    suite: "packages/self-reminder/src/error-category.test.ts",
+    expect: ["records the hub's own category, not a constant"],
+  },
+  {
+    id: "transient-push-keeps-subscription",
+    defect:
+      "Every rejected push deleted the subscription. A 500, a 429 or a DNS failure unsubscribed the device as surely as a browser that had gone away, silently — so a person's phone went quiet and the repair was for them to notice. Only 404 and 410 mean the endpoint is gone.",
+    file: "packages/http/src/push.ts",
+    from: "  if (typeof status === \"number\" && GONE.has(status)) {",
+    to: "  if (true) {",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["a push service outage unsubscribed the device"],
+  },
+  {
+    id: "push-status-must-be-a-number",
+    defect:
+      "An error with no `statusCode` — a DNS failure, an abort — read as `undefined`, and the old code deleted anyway. An error whose status is unknown is not a subscription known to be gone.",
+    file: "packages/http/src/push.ts",
+    from: "  if (typeof status === \"number\" && GONE.has(status)) {",
+    to: "  if (GONE.has(status as number) || status === undefined) {",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["an error with no status at all keeps it"],
+  },
+  {
+    id: "bootstrap-retries-usable",
+    defect:
+      "`for (( attempt = 1; attempt <= MAX_RETRIES; … ))` with MAX_RETRIES=0 never enters its body, falls off the end returning 0, and the hub unit's ExecStartPost reports success having registered nothing. Bash reads any non-numeric string as 0, so a typo in a unit file is the same defect with no number in sight.",
+    file: "ops/bin/bootstrap-hub-service-identities.sh",
+    from: 'if ! [[ "$MAX_RETRIES" =~ ^[1-9][0-9]*$ ]]; then',
+    to: "if false; then",
+    suite: "test/bootstrap.test.ts",
+    expect: ["was accepted"],
+  },
 ];
 
 /**
