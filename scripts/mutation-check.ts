@@ -200,6 +200,25 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-SOURCE-001", "body.sources.0.identity"],
   },
   {
+    id: "provision-rate-limit",
+    defect:
+      "The unauthenticated provisioning route stopped consulting its limiter (§ 14). Found by sweeping fourteen core invariants: the bucket arithmetic was covered and its use by the route was not, so both limits could be deleted without a single test noticing.",
+    file: "packages/hub/src/main.ts",
+    from: 'const verdict = PROVISION_LIMIT.take(observed ?? "unknown-source");',
+    to: "const verdict = { ok: true, retryAfter: 0, remaining: 1 };",
+    suite: "test/ratelimit.test.ts",
+    expect: ["provisioning route", "every request was served"],
+  },
+  {
+    id: "signed-rate-limit",
+    defect: "The signed routes stopped consulting their limiter (§ 14).",
+    file: "packages/hub/src/rest/signed.ts",
+    from: "const budget = SIGNED_LIMIT.take(identity);",
+    to: "const budget = { ok: true, retryAfter: 0, remaining: 1 };",
+    suite: "test/ratelimit.test.ts",
+    expect: ["signed routes", "every signed request was served"],
+  },
+  {
     id: "verb-unimplemented",
     defect:
       "A scenario verb the runner did not handle fell out of the `switch`, did nothing, and reported green (§ 17.3).",
