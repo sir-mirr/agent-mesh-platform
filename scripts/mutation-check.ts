@@ -289,7 +289,12 @@ const MUTATIONS: Mutation[] = [
     from: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })",
     to: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: body?.grantedBy ?? actor })",
     suite: "test/grants-routes.test.ts",
-    expect: ["grant round-trips"],
+    // Named for the test that actually catches it. The first version pointed at
+    // the neighbouring round-trip test, which passes under this mutation — the
+    // guard bit correctly and the manifest reported it uncaught, which is the
+    // wrong finding, about the wrong thing, in the tool built to avoid exactly
+    // that.
+    expect: ["the caller's claim was recorded as the author"],
   },
   {
     id: "capabilities-provenance",
