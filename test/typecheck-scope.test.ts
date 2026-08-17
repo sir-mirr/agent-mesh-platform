@@ -120,6 +120,30 @@ describe("the typecheck covers this repository", () => {
     ).toBe(false);
   });
 
+  test("the walk actually finds this repository", () => {
+    // **The other half of the same question**, and the half this file was
+    // missing. The case above asks whether the pattern side can become
+    // universal; nothing asked whether the *file* side could become empty. With
+    // `everyTsFile` returning nothing, all three tests here pass and the check
+    // covers a repository with no source in it.
+    //
+    // `client-claude` reached the pattern half from the other direction (mail
+    // #211) — a full `**/*.ts` glob makes their matcher answer for any path at
+    // all. Two implementations, two vacuity routes, one property.
+    //
+    // Named files rather than only a count, and deliberately these two: the
+    // harness is what the original defect hid in, and this file finding itself
+    // is the cheapest proof the walk reaches where it claims to.
+    const found = everyTsFile(ROOT);
+    expect(found, "the walk found no source at all").not.toEqual([]);
+    expect(found).toContain("scripts/e2e-harness.ts");
+    expect(found).toContain("test/typecheck-scope.test.ts");
+    expect(found).toContain("packages/hub/src/main.ts");
+    // A floor, not a total. An exact number would fail on every file added,
+    // which trains a reader to update it without reading why it moved.
+    expect(found.length, "far fewer files than this repository has").toBeGreaterThan(50);
+  });
+
   test("every referenced project exists", () => {
     // A reference to a path that is gone makes `tsc -b` fail loudly, so this is
     // not about catching a broken build. It is about the opposite: a project

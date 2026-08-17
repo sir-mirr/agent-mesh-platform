@@ -46,9 +46,19 @@ same observation as adding nothing and seeing green.
 - Prefer one call site to two that agree. Both duplication defects above were a
   second copy that learned something the first did not — `assertHttp` and the
   `switch` default exist to have no second copy.
-- A guard that decides coverage carries a case proving it can still say no.
-  `test/typecheck-scope.test.ts` has one; without it the predicate is free to
-  become a constant and nothing notices.
+- A guard that decides coverage carries a case proving it can still say no —
+  **and that the configuration it reads has not gone vacuous.** A coverage check
+  compares a set of files against a set of patterns, and it reports green if
+  either side collapses: patterns that match everything, or a file walk that
+  finds nothing. `test/typecheck-scope.test.ts` refuses a project anchored at
+  the repository root and asserts the walk finds named files, because those are
+  the two collapses.
+
+  Both were found the same way and neither by the author. This repository saw
+  the pattern side (a `.` prefix treated as universal); `client-claude` saw it as
+  a full `**/*.ts` glob answering for any path; and the file side went uncaught
+  in both until one of us mutated the walk to return nothing and watched every
+  case pass.
 - A rule that permits a gap is a rule that hides one. § 17.3 was rewritten to
   forbid the skip it used to allow, because "visibly skipped" turned out to
   mean "skipped, and reported faithfully, and acted on by nobody".
