@@ -557,3 +557,64 @@ syntax error nobody had run `tsc` over.
 Recorded rather than quietly fixed because of what it says about the reports.
 Every "typecheck 0" in this session, while the harness was being changed, was
 true of the repository *except the file being changed*.
+
+### The sweep for tests that pass for a reason unrelated to their name
+
+A fan-out over 321 negative tests in 107 files, asking one question of each: *if
+I deleted only the guard this test is named after, would it still pass?* It
+raised 16 candidates, and an adversarial stage refuted none of them — sixteen
+raised, sixteen survived. **A gate that passes everything is not a gate**, so
+every candidate was applied to the source and run rather than believed.
+
+Eleven were uncaught by the full suite. Then a second sorting was needed, and it
+is the one worth recording:
+
+| | |
+|---|---|
+| **a hole** | deleting the guard changes behaviour and nothing notices |
+| **equivalent** | deleting the guard changes nothing observable |
+
+The verify script called anything green a hole, which does not separate these —
+the same defect it was written to expose, one level up. Three holes were real
+and are closed (`capability-not-role`, `retry-after-floor`, `orphan-readonly`,
+plus `tsx-enumeration` found separately). The rest are recorded here, because an
+equivalent mutation is not a defect and deleting the entry loses the finding.
+
+**The attachment id gate** (`test/http.test.ts`). Two guards in sequence: the
+separator check, then `SHA256_ID_RE` / `LEGACY_ID_RE`. Deleting the first leaves
+the second answering `400` to the same inputs. Deliberate defence in depth. The
+test was separately too loose — it accepted `[400, 404]`, and `404` is what a
+genuine miss returns, so it was accepting the answer of a route that never looked
+at the id. Now pinned to `400`, with the bare `..` case split out because the
+router normalises it before any handler runs.
+
+**`Math.max(1, …)` on `retryAfter`.** Unreachable under `ceil`: the refusal
+branch runs only when the deficit is positive, and a positive number never
+ceils to zero. It becomes load-bearing the moment the rounding changes, which is
+what the manifest entry now mutates.
+
+**`wasOwner` in `ConnectionOwnership.release`.** `claim` refuses a contender
+while an incumbent holds the identity, and `release` removes the socket from
+`identities`, so no reachable sequence reaches `wasOwner === false`. Probing
+around it did surface a latent hazard — `claim(A, s)` then `claim(B, s)` leaves
+`owners[A]` pointing at a socket after it is released — but there is exactly one
+`claim` call site (`rpc/connect.ts:92`) and it claims once per socket. Left
+alone: guarding an unreachable case is the shape this repository has spent the
+week removing, and a second call site would be the thing to review.
+
+**`IDENTITY_RE` in `provisionHuman`.** Deleting it forwards the identity to the
+hub's `POST /api/v1/agents`, which refuses it by the same rule. The outcome an
+observer sees is unchanged; what changes is *which* process decided, and the
+local check exists so the answer does not depend on a network call.
+
+**One candidate was not a mutation at all.** It proposed adding an unused import
+with a comment explaining that the guard is an *absence*, so neutering it would
+be an insertion. Correct, and unusable — an absence cannot be deleted, and a
+manifest entry for it would check nothing.
+
+What this cost, and what it bought: the sweep's headline number was eleven and
+the real one is four. **The finder and the verifier were both wrong in the same
+direction, and only running the mutations separated them.** The four are worth
+the sweep on their own — one of them, `capability-not-role`, turned out not to be
+a test defect at all but eight admin routes that were never migrated to § 11,
+two of which served whole message bodies behind a role check with no record kept.
