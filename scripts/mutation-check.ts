@@ -12,9 +12,17 @@
  * expectation deleted six months from now leaves the sentence in the commit
  * message exactly as true-sounding as it was.
  *
- * Every entry below is a defect that reached this repository, and the test named
- * beside it is what now stands between that defect and a release. Running this
- * re-establishes both facts in about two minutes.
+ * Most entries below are a defect that reached this repository, and the test
+ * named beside it is what now stands between that defect and a release. Running
+ * this re-establishes both facts in about two minutes.
+ *
+ * **The rest never were defects**, and are marked `swept: true`. They are
+ * invariants — signature freshness, an entitlement, a single-use code — checked
+ * by hand once, found guarded, and then existing only in a transcript. A guard
+ * verified once and never again is the state this whole file was written
+ * against, so "it was fine when I looked" is not a reason to leave one out. The
+ * distinction is kept because the two carry different information: a defect
+ * entry says *this broke*, a swept entry says *this was never allowed to*.
  *
  * ## Refusals, and what each is for
  *
@@ -47,6 +55,11 @@ interface Mutation {
   id: string;
   /** The defect being reintroduced, in the words of the commit that fixed it. */
   defect: string;
+  /**
+   * True when this was never a defect here — an invariant swept by hand once and
+   * entered so the sweep does not have to be trusted twice. See the header.
+   */
+  swept?: true;
   file: string;
   from: string;
   to: string;
@@ -414,6 +427,121 @@ const MUTATIONS: Mutation[] = [
     to: "",
     suite: "test/typecheck-scope.test.ts",
     expect: ["scripts/e2e-harness.ts"],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Swept by hand, entered here so the sweep does not have to be trusted twice.
+  // ---------------------------------------------------------------------------
+
+  {
+    id: "sig-freshness",
+    swept: true,
+    defect: "A signed request was accepted whatever its `iat` said (§ 8.1), so a captured envelope stayed valid forever.",
+    file: "packages/hub/src/signature.ts",
+    from: "if (Math.abs(now - iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "if (false) {",
+    suite: "test/signature.test.ts",
+    expect: ["an iat outside the window is refused"],
+  },
+  {
+    id: "nonce-replay",
+    swept: true,
+    defect: "A nonce already spent inside the window was accepted again (§ 8.1) — replay with no forgery required.",
+    file: "packages/hub/src/signature.ts",
+    from: "if (!nonces.claim(identity, nonce, iat)) {",
+    to: "if (false) {",
+    suite: "test/signature.test.ts",
+    expect: ["a replayed nonce inside the window is refused"],
+  },
+  {
+    id: "send-idempotent-retry",
+    swept: true,
+    defect: "A retry carrying a known `client_message_id` sent a second message instead of returning the first (§ 8.2). The failure mode is invisible on the sending side and duplicated on the receiving one.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (prior) {",
+    to: "if (false) {",
+    suite: "test/mailbox.test.ts",
+    expect: ["a retry with the same key returns the original message"],
+  },
+  {
+    id: "send-key-reuse-conflict",
+    swept: true,
+    defect: "A `client_message_id` reused for *different* content returned the original message rather than SEND_CONFLICT — the second send silently vanishes, which is worse than either sending or refusing.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (prior.request_digest === digest) {",
+    to: "if (true) {",
+    suite: "test/mailbox.test.ts",
+    expect: ["reusing a key for a different message is permanent"],
+  },
+  {
+    id: "proxy-entitlement",
+    swept: true,
+    defect: "An identity could send as anyone by naming them in `from`, with no grant (§ 8.11.2).",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (!verdict.ok) {",
+    to: "if (false) {",
+    suite: "test/entitlement.test.ts",
+    expect: ["an identity without the grant cannot speak for anyone"],
+  },
+  {
+    id: "proxy-declared",
+    swept: true,
+    defect: "A socket spoke for an identity it had not declared in `proxy_for` — the grant was checked, the declaration was not, so a gateway's whole grant was reachable from any socket it happened to hold.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (!wsProxies.get(ws)?.has(effectiveSender)) {",
+    to: "if (false) {",
+    suite: "test/entitlement.test.ts",
+    expect: ["a gateway cannot speak for a person it did not declare"],
+  },
+  {
+    id: "pairing-single-use",
+    swept: true,
+    defect: "A pairing code could be redeemed more than once (§ 10.4). Single-use is the whole of what makes a short code safe to hand over a gap.",
+    file: "packages/store/src/ownership.ts",
+    from: "WHERE code = ? AND redeemed_at IS NULL AND expires_at > datetime('now')",
+    to: "WHERE code = ? AND expires_at > datetime('now')",
+    suite: "test/keys.test.ts",
+    expect: ["a pairing code is issued, redeemed once, and establishes ownership"],
+  },
+  {
+    id: "audit-redaction",
+    swept: true,
+    defect: "The audit query returned secret-bearing keys verbatim (§ 11.0). An audit route is exactly where a stored credential gets read back by someone entitled to metadata and nothing more.",
+    file: "packages/http/src/audit-query.ts",
+    from: "REDACTED_KEYS.has(k.toLowerCase())",
+    to: "false",
+    suite: "test/audit.test.ts",
+    expect: ["never returns secrets, however they were stored"],
+  },
+  {
+    id: "attachment-participation",
+    swept: true,
+    defect: "Any signed-in caller could download any attachment (§ 15.3), rather than only the parties to a message carrying it.",
+    file: "packages/http/src/attachment-access.ts",
+    from: "WHERE (from_agent = ? OR to_agent = ?)",
+    to: "WHERE (from_agent = ? OR to_agent = ? OR 1 = 1)",
+    suite: "test/http.test.ts",
+    expect: ["a party to no message carrying it gets 404, not 403"],
+  },
+  {
+    id: "reregister-deleted",
+    swept: true,
+    defect: "A torn-down identity could be re-registered (§ 10.2), which resurrects a name whose history says it was withdrawn.",
+    file: "packages/hub/src/rest/agents.ts",
+    from: "if (existing?.deleted_at) {",
+    to: "if (false) {",
+    suite: "test/identity.test.ts",
+    expect: ["re-registering a deleted identity is refused"],
+  },
+  {
+    id: "dormancy-proxy-exempt",
+    swept: true,
+    defect: "The dormancy check ran on proxied sends too. `sent_by: http-server` is the same address for every web send, so it would refuse on the proxy's history and never on the sender's — a check that fires on the wrong party is worse than one that does not fire.",
+    file: "packages/hub/src/dormancy.ts",
+    from: "if (sentBy !== from) return { refusal: null };",
+    to: "if (false) return { refusal: null };",
+    suite: "packages/hub/src/dormancy.test.ts",
+    expect: ["a proxied send, because the address observed is the proxy's"],
   },
 ];
 
