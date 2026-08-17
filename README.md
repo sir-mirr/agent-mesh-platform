@@ -102,6 +102,13 @@ does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
 
 ## Quick start (Baseline only)
 
+> **On a laptop, this is the wrong section.** It needs a Linux host with
+> systemd, root, and a GitHub OAuth app, and every prerequisite below is a real
+> one — an agent following it as a first reader could not get past them on
+> macOS. For three processes on one machine with none of that, read
+> [`docs/running-locally.md`](docs/running-locally.md), which was executed
+> before it was written and prints what it printed.
+
 Prerequisites:
 
 - Linux host with systemd
