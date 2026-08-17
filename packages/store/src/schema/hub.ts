@@ -24,7 +24,8 @@ export function migrate(db: Database): void {
       reply_to   TEXT,
       status     TEXT DEFAULT 'pending',
       ts         DATETIME DEFAULT CURRENT_TIMESTAMP,
-      leased_until DATETIME
+      leased_until DATETIME,
+      via        TEXT
     );
   `);
 
@@ -36,6 +37,64 @@ export function migrate(db: Database): void {
   if (!messageColumns.some((c) => c.name === "leased_until")) {
     db.exec(`ALTER TABLE messages ADD COLUMN leased_until DATETIME`);
   }
+  /**
+   * Which transport the sender used (SPEC § 8.2a): `mesh` or `mailbox`.
+   *
+   * **A property of the conversation, not of the moment.** A reply goes back the
+   * way the thing it answers arrived, so a correspondent who reads mail once an
+   * hour does not receive half a thread on a socket they were briefly holding —
+   * see `docs/decisions/mailbox-and-hub.md`.
+   *
+   * Recorded at accept time because that is when it is knowable without asking
+   * anything: the route the sender called says it. Deriving it later from
+   * `status` would be wrong in exactly the interesting case, since a mailbox
+   * send to somebody who happens to be online is `delivered` too.
+   *
+   * Null on rows written before this existed. Read as `mesh`, which is what
+   * those deployments had.
+   */
+  if (!messageColumns.some((c) => c.name === "via")) {
+    db.exec(`ALTER TABLE messages ADD COLUMN via TEXT`);
+  }
+
+  /**
+   * What each tenant received (SPEC § 11.4).
+   *
+   * **Separate from `messages` on purpose.** A `tenant` column there would tie
+   * tenancy to the operational record, which rotates; this outlives nothing and
+   * is answerable on its own terms.
+   *
+   * **Attributed to the recipient**, which is a total rule rather than a
+   * preference: every message has exactly one recipient, so every message has
+   * exactly one tenant — cross-tenant traffic included. A sender rule would
+   * leave traffic that *arrived* in a tenant absent from that tenant's view,
+   * which is the reading an operator is actually misled by.
+   *
+   * **No content, no size.** § 11.0 draws the platform operator's line at
+   * metadata, and a statistics table is exactly where content arrives under the
+   * name "just a length".
+   *
+   * **No status.** Delivery outcome changes after this row is written, and a
+   * statistics table that must be updated is one that can disagree with what it
+   * counts. This records that a message was *accepted for* a recipient, which
+   * does not change afterwards.
+   *
+   * `message_id` is the key, so the retry § 8.2 collapses counts once — the
+   * idempotent path returns the original id and never reaches this insert.
+   */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_stats (
+      message_id TEXT PRIMARY KEY,
+      tenant     TEXT NOT NULL,
+      to_agent   TEXT NOT NULL,
+      from_agent TEXT NOT NULL,
+      via        TEXT NOT NULL,
+      ts         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_stats_tenant_ts
+      ON message_stats(tenant, ts);
+  `);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_pending
       ON messages(to_agent, status, leased_until);

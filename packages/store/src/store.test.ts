@@ -41,7 +41,7 @@ describe("agents schema", () => {
     agentsSchema.migrate(db);
     expect(columns(db, "agents")).toEqual([
       "can_proxy", "created_at", "deleted_at", "description", "identity", "last_seen",
-      "last_send_at", "type",
+      "last_send_at", "tenant", "type",
     ]);
   });
 
@@ -167,7 +167,7 @@ describe("hub schema", () => {
     hubSchema.migrate(db);
     expect(columns(db, "messages")).toEqual([
       "content", "from_agent", "id", "leased_until", "reply_to", "sent_by",
-      "status", "to_agent", "ts",
+      "status", "to_agent", "ts", "via",
     ]);
   });
 

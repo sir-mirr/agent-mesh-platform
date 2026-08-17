@@ -205,6 +205,68 @@ describe("§ 9.1 auth", () => {
     }
   }, 60_000);
 
+  test("a session claiming the admin role but holding no grant is refused", async () => {
+    // **The half § 11 exists for, and the half nothing checked.** Every gate
+    // above distinguishes 401 from 403, and a route that swapped
+    // `requireCapability(KEY_APPROVE)` for `payload.role !== 'admin'` answers
+    // both of them exactly the same way — so the whole sweep stays green while
+    // the capability model is gone. That mutation was applied and the full 601
+    // tests passed.
+    //
+    // What separates the two is a token whose `role` is `admin` and whose
+    // subject holds nothing: role-checking lets it in, capability-checking does
+    // not. The seeded `admin` is the only subject with grants (they are written
+    // as grants precisely so nothing compares the string), so any other login
+    // is that caller.
+    const roleOnly = `mesh_token=${hs256(
+      { github_id: 9, github_login: "role-without-grants", role: "admin" },
+      "integration-test-secret",
+    )}`;
+
+    // **Eight routes fail this today** and are listed rather than excused. They
+    // still gate the way everything did before § 11 — `extractJwt` then
+    // `payload.role !== 'admin'` — and were never migrated, which nothing
+    // noticed because both models answer 401 and 403 identically for every
+    // caller the other tests use.
+    //
+    // Fixing them is not a code change alone: three of them approve *people*
+    // and two report AI usage, and § 11's vocabulary has a capability for
+    // neither. Inventing one here would be deciding a contract in a test file.
+    //
+    // So the list is sealed instead of skipped. This fails the moment a ninth
+    // route joins the set, and it fails again when one is migrated — which
+    // forces the list down rather than letting it sit. A `skip` would have done
+    // neither.
+    const NOT_YET_ON_CAPABILITIES = new Set([
+      "GET /api/v1/admin/pending",
+      "POST /api/v1/admin/approve",
+      "POST /api/v1/admin/deny",
+      "GET /api/v1/admin/chat-audits",
+      "GET /api/v1/admin/chat-audits/stream",
+      "GET /api/v1/admin/chat-audits/agents",
+      "GET /api/v1/admin/ai-usage",
+      "GET /api/v1/admin/ai-usage/stream",
+    ]);
+
+    const adminOnly = routesFromSpec().filter((r) => r.auth === "JWT*");
+    expect(adminOnly.length).toBeGreaterThan(5);
+
+    const roleGated: string[] = [];
+    for (const route of adminOnly) {
+      const status = await call(route, { cookie: roleOnly });
+      // 403 is the capability model refusing. Anything else — a 200, or a 400
+      // reached because the guard let the request through to body parsing —
+      // means the role got in.
+      if (status !== 403) roleGated.push(`${route.method} ${route.path}`);
+    }
+
+    const unexpected = roleGated.filter((r) => !NOT_YET_ON_CAPABILITIES.has(r));
+    expect(unexpected, "a new route gates on the role rather than a capability").toEqual([]);
+
+    const migrated = [...NOT_YET_ON_CAPABILITIES].filter((r) => !roleGated.includes(r));
+    expect(migrated, "these now refuse a role-only session — take them off the list").toEqual([]);
+  }, 60_000);
+
   test("every implemented API route is in the § 9.1 table", async () => {
     // The direction the table cannot check itself. Five admin key-approval
     // routes existed with no entry here and none in § 10.2 either — a surface

@@ -1,0 +1,219 @@
+#!/usr/bin/env bun
+/**
+ * Data the operator screens need in order to be judged — in amounts a constant
+ * cannot match.
+ *
+ * **Two screens cannot be measured on an empty mesh**, and that is not a defect
+ * in either of them: `/creator/register` lists keys awaiting a decision and
+ * `/creator/lease-queue` lists messages nobody has taken, so with neither
+ * present they render the same thing whether the backend is reachable or not.
+ * A front-end audit ran for half an hour against exactly that and reported
+ * "cannot judge" both times, correctly.
+ *
+ * ## Why the counts are random, and why that is the point
+ *
+ * Seeding one pending key and one queued message makes the screens judgeable and
+ * still leaves the cheapest possible lie undetected: a screen that renders `1`
+ * from a constant passes. Every defect the PM found in the admin front end today
+ * was of that shape — `139` sessions, `1024` MB, `99.99%`, a bell reading
+ * "2 awaiting" forever. None of them failed a typecheck or a build, because a
+ * constant is perfectly well-typed.
+ *
+ * So the counts here **change every run** and are written to a file:
+ *
+ *   fixture-pending-<run>-1..N   provisioned, deliberately NOT approved
+ *   fixture-recipient-<run>      approved, never receives — M messages wait
+ *
+ * A screen showing the right number twice, across two runs, is reading the
+ * backend. That is the only property here that survives somebody hardcoding the
+ * fixture's own values, which is the failure this file would otherwise invite.
+ *
+ * **Compare the whole expectation, not one field.** Any single count can repeat
+ * — the first two runs of this version both drew 6 pending keys, which a
+ * hardcoded `6` would have matched twice. The ranges are wider now, but wider is
+ * not proof: what makes a repeat implausible is that `run`, both identity names,
+ * the pending total and the queue depth would all have to coincide at once.
+ * A checker that asserts on `expect.queuedFor.exactly` alone has re-created, one
+ * field down, the thing this file exists to catch.
+ *
+ * **`--emit` is what makes it a check rather than a demo.** It writes what the
+ * screens must show, as JSON, so a harness compares against a file instead of
+ * against a number a person copied out of a terminal an hour ago. Whoever
+ * builds the front-end check — a unit test with a stubbed fetch, a driven
+ * browser, anything — reads that file and needs no agreement with this one
+ * beyond its shape.
+ *
+ *   bun run e2e:harness -- --ready-file /tmp/agent-mesh-fe-fixture.json --keep-state
+ *   bun scripts/fixtures/fe-screens.ts --emit /tmp/agent-mesh-fe-expect.json
+ *
+ * Reads the ready file rather than taking ports: they are ephemeral, and a
+ * fixture that hardcodes one is a fixture that works until somebody restarts
+ * the harness.
+ *
+ * ## What this deliberately does not do
+ *
+ * It does not check any screen. Nothing here knows the front end exists, and
+ * that is on purpose — this repository cannot see `packages/platform-web`, which
+ * lives in a clone whose branch has never been pushed. A check written here
+ * against a screen would be a check that cannot run.
+ */
+
+import { generateKeyPairSync, randomUUID, randomInt, sign as edSign } from "node:crypto";
+import { keyFingerprint, requestSignaturePreimage } from "@agent-mesh/contracts";
+
+const argv = process.argv.slice(2);
+const emitTo = argv.includes("--emit") ? argv[argv.indexOf("--emit") + 1] : null;
+
+const ready = JSON.parse(await Bun.file("/tmp/agent-mesh-fe-fixture.json").text());
+const HUB = ready.api_http, HTTP = ready.base_url;
+
+/**
+ * A tag per run, so re-running against a `--keep-state` mesh adds a fresh set
+ * rather than colliding on identities the last run already provisioned.
+ */
+const run = randomUUID().slice(0, 6);
+
+/**
+ * Ranges chosen to avoid the numbers a placeholder reaches for. Nothing renders
+ * `7` or `11` by accident; `0`, `1`, `2`, `3`, `5`, `10`, `24` and `100` are all
+ * plausible constants and are therefore all outside these.
+ */
+const PENDING = randomInt(6, 18);   // 6..17
+const QUEUED = randomInt(11, 24);   // 11..23
+
+const newKey = () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const der = publicKey.export({ format: "der", type: "spki" }) as Buffer;
+  const raw = Buffer.from(der.subarray(der.length - 32)).toString("base64url");
+  return { publicKey: raw, privateKey, fingerprint: keyFingerprint(raw) };
+};
+
+const h = ready.admin_test_handle;
+const login = await fetch(h.login_url, {
+  method: "POST", headers: { "content-type": h.content_type }, body: h.body, redirect: "manual",
+});
+const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+
+const provision = (identity: string, publicKey: string) =>
+  fetch(`${HUB}/api/v1/agents`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identity, type: "ai-claude", public_key: publicKey }),
+  });
+const approve = (fingerprint: string) =>
+  fetch(`${HTTP}/api/v1/admin/keys/approve`, {
+    method: "POST", headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ fingerprint }),
+  });
+
+/** One signed `mesh.send` over the HTTP transport, as an agent rather than a person. */
+const sendAs = async (
+  signer: { privateKey: ReturnType<typeof newKey>["privateKey"]; fingerprint: string },
+  params: Record<string, unknown>,
+) => {
+  const rawParams = JSON.stringify(params);
+  const nonce = randomUUID(), iat = Math.floor(Date.now() / 1000);
+  const value = Buffer.from(edSign(null, Buffer.from(requestSignaturePreimage({
+    method: "mesh.send", kid: signer.fingerprint, nonce, iat,
+    rawParams: new TextEncoder().encode(rawParams),
+  })), signer.privateKey)).toString("base64url");
+  const sig = JSON.stringify({ alg: "ed25519", kid: signer.fingerprint, nonce, iat, value });
+  return fetch(`${HUB}/api/v1/rpc`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: `{"jsonrpc":"2.0","id":1,"method":"mesh.send","params":${rawParams},"sig":${sig}}`,
+  });
+};
+
+const senderId = `fixture-sender-${run}`, recipientId = `fixture-recipient-${run}`;
+
+// Sender and recipient: approved, so one can sign and the other can be queued for.
+const sender = newKey(), recipient = newKey();
+await provision(senderId, sender.publicKey);
+await approve(sender.fingerprint);
+await provision(recipientId, recipient.publicKey);
+await approve(recipient.fingerprint);
+console.log(`approved     ${senderId}, ${recipientId}`);
+
+// Proposals for /creator/register: provisioned and deliberately NOT approved.
+// Approving any of them makes the screen shorter, which is why they are left
+// alone and why that is stated here rather than discovered.
+const pendingFingerprints: string[] = [];
+for (let i = 1; i <= PENDING; i++) {
+  const k = newKey();
+  const res = await provision(`fixture-pending-${run}-${i}`, k.publicKey);
+  if (res.status !== 201) throw new Error(`provision ${i} answered ${res.status}, not 201`);
+  pendingFingerprints.push(k.fingerprint);
+}
+console.log(`left pending ${PENDING} keys`);
+
+// Queued messages for /creator/lease-queue: sent, never received.
+for (let i = 1; i <= QUEUED; i++) {
+  const res = await sendAs(sender, { to: recipientId, content: `queued ${i} of ${QUEUED} (run ${run})` });
+  if (res.status !== 200) throw new Error(`send ${i} answered ${res.status}, not 200`);
+}
+console.log(`queued       ${QUEUED} messages for ${recipientId}`);
+
+// ---------------------------------------------------------------------------
+// Read the numbers back off the routes rather than trusting the loop above.
+// A fixture that reports what it *intended* to create is the same class of
+// thing it exists to catch.
+// ---------------------------------------------------------------------------
+
+const getJson = async (path: string) =>
+  (await fetch(`${HTTP}${path}`, { headers: { cookie } })).json() as Promise<any>;
+
+const pending = await getJson("/api/v1/admin/keys/pending");
+const mailbox = await getJson("/api/v1/admin/mailbox");
+const tenants = await getJson("/api/v1/admin/tenants");
+
+const minePending = (pending.pending ?? []).filter((p: any) =>
+  pendingFingerprints.includes(p.fingerprint ?? p.key_fingerprint),
+).length;
+const mineQueued = (mailbox.mailboxes ?? []).find((m: any) => (m.identity ?? m.agent) === recipientId);
+
+if (minePending !== PENDING) {
+  throw new Error(
+    `provisioned ${PENDING} pending keys and /api/v1/admin/keys/pending accounts for ${minePending}. ` +
+    `The fixture cannot certify a number it did not read back.`,
+  );
+}
+
+const expectation = {
+  run,
+  generatedAt: new Date().toISOString(),
+  identities: { sender: senderId, recipient: recipientId },
+  /**
+   * What a screen reading the backend must show. Absolute counts where the
+   * fixture owns the whole number, and `atLeast` where a `--keep-state` mesh may
+   * carry rows from an earlier run — a screen showing fewer than this is not
+   * reading the backend, and one showing more may simply be older.
+   */
+  expect: {
+    // The screen shows the total, not this run's share, so the total is what a
+    // checker compares. `mine` is here to tell "the fixture did nothing" apart
+    // from "the screen is stale" when the total looks wrong.
+    pendingKeys: { atLeast: (pending.pending ?? []).length, mine: PENDING },
+    queuedFor: { identity: recipientId, exactly: QUEUED },
+    tenants: { atLeast: 1, includes: "default" },
+  },
+  observed: {
+    pendingTotal: (pending.pending ?? []).length,
+    queuedForRecipient: mineQueued?.pending ?? mineQueued?.depth ?? null,
+    tenants: tenants.tenants ?? [],
+  },
+};
+
+console.log("\n--- what the screens must show ---");
+console.log(`  /creator/register    at least ${PENDING} awaiting  (total now ${expectation.observed.pendingTotal})`);
+console.log(`  /creator/lease-queue ${QUEUED} for ${recipientId}  (route says ${expectation.observed.queuedForRecipient})`);
+console.log(`  /platform/tenants    ${JSON.stringify(expectation.observed.tenants)}`);
+
+if (emitTo) {
+  await Bun.write(emitTo, JSON.stringify(expectation, null, 2) + "\n");
+  console.log(`\nwrote ${emitTo}`);
+  console.log("These numbers differ every run on purpose. A screen that matches");
+  console.log("them twice, from two runs, is reading the backend; one that matches");
+  console.log("once may be a constant that got lucky.");
+} else {
+  console.log("\n(no --emit: nothing written. A harness comparing against a number");
+  console.log(" copied out of this terminal is comparing against a stale one.)");
+}

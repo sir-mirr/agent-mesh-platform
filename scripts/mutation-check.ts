@@ -12,9 +12,17 @@
  * expectation deleted six months from now leaves the sentence in the commit
  * message exactly as true-sounding as it was.
  *
- * Every entry below is a defect that reached this repository, and the test named
- * beside it is what now stands between that defect and a release. Running this
- * re-establishes both facts in about two minutes.
+ * Most entries below are a defect that reached this repository, and the test
+ * named beside it is what now stands between that defect and a release. Running
+ * this re-establishes both facts in about two minutes.
+ *
+ * **The rest never were defects**, and are marked `swept: true`. They are
+ * invariants — signature freshness, an entitlement, a single-use code — checked
+ * by hand once, found guarded, and then existing only in a transcript. A guard
+ * verified once and never again is the state this whole file was written
+ * against, so "it was fine when I looked" is not a reason to leave one out. The
+ * distinction is kept because the two carry different information: a defect
+ * entry says *this broke*, a swept entry says *this was never allowed to*.
  *
  * ## Refusals, and what each is for
  *
@@ -43,10 +51,17 @@
 
 import { $ } from "bun";
 
+import { holdTree } from "./tree-lock";
+
 interface Mutation {
   id: string;
   /** The defect being reintroduced, in the words of the commit that fixed it. */
   defect: string;
+  /**
+   * True when this was never a defect here — an invariant swept by hand once and
+   * entered so the sweep does not have to be trusted twice. See the header.
+   */
+  swept?: true;
   file: string;
   from: string;
   to: string;
@@ -99,8 +114,11 @@ const MUTATIONS: Mutation[] = [
   {
     id: "ack-settle",
     defect: "An acknowledgement reported success without settling the batch (§ 8.10.1).",
-    file: "packages/hub/src/rpc/receive.ts",
-    from: "const settled = stmtAckMessage.run(messageId, identity);",
+    // Moved with the code it guards: settling a batch is store-and-forward and
+    // now lives in the mailbox package. The manifest refused rather than
+    // reporting caught, which is the one thing a stale entry must do.
+    file: "packages/mailbox/src/receive.ts",
+    from: "const settled = stmt.ackMessage.run(messageId, identity);",
     to: "const settled = { changes: 1 };",
     suite: "test/scenarios.test.ts",
     expect: ["E2E-RECEIVE-002", "(receive): message count"],
@@ -239,6 +257,114 @@ const MUTATIONS: Mutation[] = [
     expect: ["verb not implemented"],
   },
   {
+    id: "reply-channel",
+    defect:
+      "A reply to mail was pushed over the mesh because the recipient happened to be holding a socket (§ 8.2a). That puts half a thread on a socket a correspondent was briefly holding and leaves them to find the rest; one end present is exactly the case the mailbox exists for.",
+    file: "packages/mailbox/src/channel.ts",
+    from: "  return input.recipientLive && input.senderLive ? \"mesh\" : \"mailbox\";",
+    to: '  return input.recipientLive ? "mesh" : "mailbox";',
+    suite: "packages/mailbox/",
+    expect: ["only the recipient is live", "mailbox"],
+  },
+  {
+    id: "reply-channel-scenario",
+    defect:
+      "The same defect as `reply-channel`, but stated where both implementations check it (§ 8.2a, § 17.3). It was held by unit tests here alone until the scenario vocabulary could express one end present and one absent.",
+    file: "packages/mailbox/src/channel.ts",
+    from: '  return input.recipientLive && input.senderLive ? "mesh" : "mailbox";',
+    to: '  return input.recipientLive ? "mesh" : "mailbox";',
+    suite: "test/scenarios.test.ts",
+    // Named for what the arrangement actually asserts. The first version wanted
+    // "message count", which is the step *after* the one that matters — and the
+    // scenario itself was arranged so nothing failed at all.
+    expect: ["E2E-REPLY-001", "messages pushed since the last check"],
+  },
+  {
+    id: "reply-channel-overreach",
+    defect:
+      "The both-live condition was applied to every send, not only to replies. A mailbox participant sending to an agent holding a socket stopped being delivered — behaviour the socketless transport was built to have and nobody asked to change. The first version of the rule did this, and two tests said so immediately.",
+    file: "packages/mailbox/src/channel.ts",
+    from: '  if (!isReply) return input.recipientLive ? "mesh" : "mailbox";',
+    to: '  if (!isReply) return input.recipientLive && input.senderLive ? "mesh" : "mailbox";',
+    suite: "packages/mailbox/",
+    expect: ["answers nothing", "mesh"],
+  },
+  {
+    id: "auth-local-enumeration",
+    defect:
+      "Sign-in distinguished an unknown username from a wrong password, which turns the route into a way to enumerate accounts. The JSON shape made it easy to do by accident, because a JSON caller wants to be told what went wrong and two of the three answers are safe to give.",
+    file: "packages/http/src/main.ts",
+    from: "    return fail(401, 'invalid username or password', '/?error=invalid')",
+    to: "    return fail(401, verifyLocalUser ? `no such user: ${username}` : 'bad password', '/?error=invalid')",
+    suite: "test/auth-local-json.test.ts",
+    expect: ["not told which of the two"],
+  },
+  {
+    id: "key-proposal-stream",
+    defect:
+      "An agent asking to join produced no notification. Registration starts on the agent's side and stops until a human compares a fingerprint, and the only way to learn one was waiting was to poll from a screen somebody had already opened — nobody looking meant nobody knew.",
+    file: "packages/http/src/key-proposals.ts",
+    from: "        if (reported.has(p.fingerprint)) continue",
+    to: "        if (true) continue",
+    suite: "test/key-proposals.test.ts",
+    expect: ["nothing was pushed"],
+  },
+  {
+    id: "tenant-attribution",
+    defect:
+      "Traffic was attributed to the sender's tenant instead of the recipient's (§ 11.4). A sender rule leaves traffic that arrived in a tenant absent from that tenant's view — 'nothing came in' when something did, which is the reading an operator is actually misled by.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "      tenant: tenantOf(agentsDb, to),",
+    to: "      tenant: tenantOf(agentsDb, effectiveSender),",
+    suite: "test/tenant-stats.test.ts",
+    expect: ["cross-tenant message counts once"],
+  },
+  {
+    id: "tenant-stats-via",
+    defect:
+      "The transport was recorded as `mesh` whatever route a message arrived on (§ 11.4), so mailbox and mesh traffic became indistinguishable in the statistics. The test asserted `via_mailbox: 0` for a long time without a single message having taken that route — a zero nobody can make non-zero says nothing about a counter.",
+    file: "packages/mailbox/src/accept.ts",
+    from: "    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, opts.via);",
+    to: '    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, "mesh");',
+    suite: "test/tenant-stats.test.ts",
+    expect: ["a mailbox send was not recorded as one"],
+  },
+  {
+    id: "tenant-stats-not-atomic",
+    defect:
+      "The statistics row was written outside the message transaction (§ 11.4). A count that commits when the message did not is a count of something that did not happen.",
+    file: "packages/mailbox/src/accept.ts",
+    from: "    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, opts.via);",
+    to: "",
+    suite: "test/tenant-stats.test.ts",
+    expect: ["recipient's tenant"],
+  },
+  {
+    id: "grant-author",
+    defect:
+      "A grant recorded an author the caller stated rather than the session that made it (§ 11). A grant whose author is self-reported records whatever the author wanted recorded, which makes the trail agree with anybody who writes to it.",
+    file: "packages/http/src/main.ts",
+    from: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })",
+    to: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: body?.grantedBy ?? actor })",
+    suite: "test/grants-routes.test.ts",
+    // Named for the test that actually catches it. The first version pointed at
+    // the neighbouring round-trip test, which passes under this mutation — the
+    // guard bit correctly and the manifest reported it uncaught, which is the
+    // wrong finding, about the wrong thing, in the tool built to avoid exactly
+    // that.
+    expect: ["the caller's claim was recorded as the author"],
+  },
+  {
+    id: "capabilities-provenance",
+    defect:
+      "A running instance stopped saying which checkout it is (§ 7.1). Two investigations days apart began with a 404 and ended at the same cause — a long-running hub on a branch ninety-three commits behind — and neither could be diagnosed from outside without reasoning backwards from missing routes.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "      platform: PROVENANCE,",
+    to: "",
+    suite: "test/provenance.test.ts",
+    expect: ["says which commit it is"],
+  },
+  {
     id: "mailbox-boundary",
     defect:
       "The mailbox imported the hub. The arrangement this package replaced reached hub presence, the hub's database handle and three RPC handlers — faking a WebSocket so the handlers would accept the caller — and every one of those imports was reasonable on the day it was added. Nothing forbade them, which is the only reason they were there.",
@@ -303,6 +429,152 @@ const MUTATIONS: Mutation[] = [
     to: "",
     suite: "test/typecheck-scope.test.ts",
     expect: ["scripts/e2e-harness.ts"],
+  },
+
+  {
+    id: "capability-not-role",
+    defect:
+      "An admin route gated on `payload.role === 'admin'` instead of a capability (\u00a7 11). Nothing noticed, because both models answer 401 to a stranger and 403 to a non-admin — every existing gate test asks exactly those two questions. Found by mutating the route and watching all 601 tests stay green.",
+    file: "packages/http/src/main.ts",
+    from: "  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)\n  if (typeof actor !== 'string') return actor",
+    to: "  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 401)\n  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)\n  const actor = payload.github_login as string",
+    suite: "test/auth-sweep.test.ts",
+    // The caller that separates the two models: a token whose `role` is admin
+    // and whose subject holds no grant. Role-checking lets it in.
+    expect: ["a session claiming the admin role but holding no grant is refused"],
+  },
+
+  {
+    id: "tsx-enumeration",
+    defect:
+      "The typecheck-scope enumeration asked git for `*.ts` and not `*.tsx`. It reported everything covered because this branch has no `.tsx` at all — and the front-end package waiting on a branch is 44 `.tsx` to 16 `.ts`, so the day it merged three quarters of it would land outside the check written to guarantee nothing lands outside the check.",
+    file: "test/typecheck-scope.test.ts",
+    from: '"--exclude-standard", "*.ts", "*.tsx"],',
+    to: '"--exclude-standard", "*.ts"],',
+    suite: "test/typecheck-scope.test.ts",
+    // A probe file, because a count would pass at zero — which is the state
+    // being guarded against.
+    expect: ["the walk asks for .tsx as well as .ts"],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Swept by hand, entered here so the sweep does not have to be trusted twice.
+  // ---------------------------------------------------------------------------
+
+  {
+    id: "sig-freshness",
+    swept: true,
+    defect: "A signed request was accepted whatever its `iat` said (§ 8.1), so a captured envelope stayed valid forever.",
+    file: "packages/hub/src/signature.ts",
+    from: "if (Math.abs(now - iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "if (false) {",
+    suite: "test/signature.test.ts",
+    expect: ["an iat outside the window is refused"],
+  },
+  {
+    id: "nonce-replay",
+    swept: true,
+    defect: "A nonce already spent inside the window was accepted again (§ 8.1) — replay with no forgery required.",
+    file: "packages/hub/src/signature.ts",
+    from: "if (!nonces.claim(identity, nonce, iat)) {",
+    to: "if (false) {",
+    suite: "test/signature.test.ts",
+    expect: ["a replayed nonce inside the window is refused"],
+  },
+  {
+    id: "send-idempotent-retry",
+    swept: true,
+    defect: "A retry carrying a known `client_message_id` sent a second message instead of returning the first (§ 8.2). The failure mode is invisible on the sending side and duplicated on the receiving one.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (prior) {",
+    to: "if (false) {",
+    suite: "test/mailbox.test.ts",
+    expect: ["a retry with the same key returns the original message"],
+  },
+  {
+    id: "send-key-reuse-conflict",
+    swept: true,
+    defect: "A `client_message_id` reused for *different* content returned the original message rather than SEND_CONFLICT — the second send silently vanishes, which is worse than either sending or refusing.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (prior.request_digest === digest) {",
+    to: "if (true) {",
+    suite: "test/mailbox.test.ts",
+    expect: ["reusing a key for a different message is permanent"],
+  },
+  {
+    id: "proxy-entitlement",
+    swept: true,
+    defect: "An identity could send as anyone by naming them in `from`, with no grant (§ 8.11.2).",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (!verdict.ok) {",
+    to: "if (false) {",
+    suite: "test/entitlement.test.ts",
+    expect: ["an identity without the grant cannot speak for anyone"],
+  },
+  {
+    id: "proxy-declared",
+    swept: true,
+    defect: "A socket spoke for an identity it had not declared in `proxy_for` — the grant was checked, the declaration was not, so a gateway's whole grant was reachable from any socket it happened to hold.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "if (!wsProxies.get(ws)?.has(effectiveSender)) {",
+    to: "if (false) {",
+    suite: "test/entitlement.test.ts",
+    expect: ["a gateway cannot speak for a person it did not declare"],
+  },
+  {
+    id: "pairing-single-use",
+    swept: true,
+    defect: "A pairing code could be redeemed more than once (§ 10.4). Single-use is the whole of what makes a short code safe to hand over a gap.",
+    file: "packages/store/src/ownership.ts",
+    from: "WHERE code = ? AND redeemed_at IS NULL AND expires_at > datetime('now')",
+    to: "WHERE code = ? AND expires_at > datetime('now')",
+    suite: "test/keys.test.ts",
+    expect: ["a pairing code is issued, redeemed once, and establishes ownership"],
+  },
+  {
+    id: "audit-redaction",
+    swept: true,
+    defect: "The audit query returned secret-bearing keys verbatim (§ 11.0). An audit route is exactly where a stored credential gets read back by someone entitled to metadata and nothing more.",
+    file: "packages/http/src/audit-query.ts",
+    from: "REDACTED_KEYS.has(k.toLowerCase())",
+    to: "false",
+    suite: "test/audit.test.ts",
+    expect: ["never returns secrets, however they were stored"],
+  },
+  {
+    id: "attachment-participation",
+    swept: true,
+    defect: "Any signed-in caller could download any attachment (§ 15.3), rather than only the parties to a message carrying it.",
+    file: "packages/http/src/attachment-access.ts",
+    from: "WHERE (from_agent = ? OR to_agent = ?)",
+    to: "WHERE (from_agent = ? OR to_agent = ? OR 1 = 1)",
+    suite: "test/http.test.ts",
+    // NOT "a party to no message carrying it" — that one passes under this
+    // mutation and did. Its attachment had never been sent, so the `content
+    // LIKE` half refused on its own and the identity clause was never reached:
+    // a negative test that proves the wrong half. The mutation found the hole,
+    // which is what it is for.
+    expect: ["a stranger to a conversation carrying it is refused"],
+  },
+  {
+    id: "reregister-deleted",
+    swept: true,
+    defect: "A torn-down identity could be re-registered (§ 10.2), which resurrects a name whose history says it was withdrawn.",
+    file: "packages/hub/src/rest/agents.ts",
+    from: "if (existing?.deleted_at) {",
+    to: "if (false) {",
+    suite: "test/identity.test.ts",
+    expect: ["re-registering a deleted identity is refused"],
+  },
+  {
+    id: "dormancy-proxy-exempt",
+    swept: true,
+    defect: "The dormancy check ran on proxied sends too. `sent_by: http-server` is the same address for every web send, so it would refuse on the proxy's history and never on the sender's — a check that fires on the wrong party is worse than one that does not fire.",
+    file: "packages/hub/src/dormancy.ts",
+    from: "if (sentBy !== from) return { refusal: null };",
+    to: "if (false) return { refusal: null };",
+    suite: "packages/hub/src/dormancy.test.ts",
+    expect: ["a proxied send, because the address observed is the proxy's"],
   },
 ];
 
@@ -389,6 +661,12 @@ if (before) {
   process.exit(2);
 }
 
+// Held for the whole loop, not per entry. Restores happen between entries, so
+// the tree is only wrong inside a window — but another process starting has no
+// way to know which window it landed in, and asking it to retry is asking it to
+// guess.
+const releaseTree = holdTree(`mutation-check (${selected.length} entr${selected.length === 1 ? "y" : "ies"})`);
+
 let missed = 0;
 /** Why each failure happened — the self-check needs the reason, not just the count. */
 const kinds = new Map<string, FailureKind>();
@@ -471,5 +749,15 @@ if (selfCheck) {
   process.exit(wrong.length === 0 ? 0 : 1);
 }
 
-console.log(`\n${selected.length - missed}/${selected.length} caught`);
+// **The denominator is what ran; the manifest total is named beside it.**
+// A filtered run printed `2/2 caught` with nothing to say it was two of
+// twenty-six, which reads as a clean full run — the same shape as quoting a
+// `bun test` case count as a scenario count, which happened twice here.
+// `client-claude` found it in their runner first (mail #278) and it was in this
+// one too.
+const scope =
+  selected.length === MUTATIONS.length
+    ? ""
+    : ` — filtered to ${filter.join(", ")}, of ${MUTATIONS.length} in the manifest`;
+console.log(`\n${selected.length - missed}/${selected.length} caught${scope}`);
 process.exit(missed === 0 ? 0 : 1);

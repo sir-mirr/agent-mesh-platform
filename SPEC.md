@@ -1470,6 +1470,100 @@ Entitlement (§ 8.2) applies unchanged, and `proxy_for` is unavailable — it is
 declared at connect, and there is no connect. A socketless participant sends as
 itself.
 
+### 7.1. A running instance says which checkout it is
+
+`GET /api/v1/capabilities` carries `platform`:
+
+```
+platform: { commit, branch, dirty }
+```
+
+`commit: "unknown"` when there is no repository to ask — a deployment from a
+tarball is legitimate and says so rather than guessing.
+
+**Why it is in the contract rather than in an operator tool.** Two separate
+investigations, days apart, began with "this route returns 404" and ended at the
+same cause: a long-running instance serving a branch ninety-three commits
+behind. Neither could be diagnosed from outside without reasoning backwards from
+missing routes, and the first diagnosis was wrong both times — once "an old
+build", once "the redirect is a defect".
+
+A conformance report that cannot name what answered it is a report about an
+unnamed thing. The harness has always put this in its ready file; a hub somebody
+started by hand had nothing, and that is exactly the hub left running for a week.
+
+The harness now **asks** rather than computing its own: two copies of one fact is
+how they come to disagree, and the copy that matters is the one the serving
+process holds.
+
+### 11.4. What each tenant received
+
+An identity belongs to a tenant. `agents.tenant` carries it, defaulting to
+`default`, and an identity nobody assigned counts there.
+
+**A column rather than a derivation from group membership.** The derivation
+needs a rule for an identity in no group and another for one in several, and
+neither rule can be right: somebody who put an identity in two groups was not
+thereby saying which tenant its traffic counts towards. A derivation rule reads
+an intention nobody expressed.
+
+Every accepted message is recorded once, **attributed to the recipient's
+tenant**. That rule is total rather than chosen: every message has exactly one
+recipient, so every message lands in exactly one tenant, cross-tenant traffic
+included. A sender rule would leave traffic that *arrived* in a tenant absent
+from that tenant's view, which is the reading an operator is actually misled by.
+
+It follows that externally-originated traffic needs no special case. Whatever
+reaches the mesh from outside is delivered to a mesh identity, and that identity
+has a tenant.
+
+The record carries `message_id`, `tenant`, `to_agent`, `from_agent`, `via`
+(§ 8.2a) and a timestamp. It MUST NOT carry content, or any measure of content
+such as a length — § 11.0 draws the platform operator's line at metadata, and a
+statistics table is where content arrives under the name "just a length".
+
+It MUST NOT carry delivery status. That changes after the row is written, and a
+statistics table which must be updated is one that can disagree with what it
+counts. What is recorded is that a message was *accepted for* a recipient.
+
+Written in the same transaction as the message: a count that commits when the
+message did not is a count of something that did not happen. A retry collapsed
+by § 8.2 counts once, because the idempotent path returns the original id and
+never reaches the insert.
+
+`GET /api/v1/admin/tenants` reads it, gated on `tenant.read.stats` — its own
+capability rather than `audit.read.metadata`. The trail answers who did what;
+this answers how much arrived, and one capability answering both is the shape
+§ 11 exists to undo.
+
+### 8.2a. Which channel carries a reply
+
+A message records the transport it was accepted through — `mesh` for a socket or
+`POST /api/v1/rpc`, `mailbox` for `POST /api/v1/mailbox/out`. A row written
+before this existed reads as `mesh`, which is what those deployments had.
+
+**A reply goes back the way the thing it answers arrived.** The channel is a
+property of the conversation rather than of the moment: a correspondent who
+reads mail once an hour must not receive half a thread on a socket they were
+briefly holding and have to find the rest elsewhere.
+
+**Unless both ends are live**, in which case the mesh carries it. Both is the
+whole of the condition. One end present is exactly the case the mailbox exists
+for, and it is the recipient's presence alone that would otherwise tempt a hub
+into pushing.
+
+A send that answers nothing is not a reply and has no conversation to respect.
+It takes the mesh whenever the recipient is reachable, which is the rule that
+predates this one and which the socketless transport was built to have.
+
+**Evaluated at send time, never recorded on the conversation.** A channel
+written down once goes stale the moment either side reconnects or drops, and the
+thread then routes by a fact about a socket that closed an hour ago.
+
+The decision belongs to the hub, because only the hub can see presence. The rule
+belongs to the mailbox, and takes presence as an answer rather than asking for
+it — anything the mailbox can ask, it depends on.
+
 #### 8.10.1. `mesh.receive`
 
 Returns messages queued for the caller and marks them delivered.
@@ -1569,7 +1663,12 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
+| GET    | `/api/v1/admin/tenants`           | JWT\*  | `200`   | What each tenant received (§ 11.4). Gated on `tenant.read.stats`. |
+| GET    | `/api/v1/admin/grants`            | JWT\*  | `200`   | Who holds which capability (§ 11). Gated on `role.grant`. |
+| POST   | `/api/v1/admin/grants`            | JWT\*  | `201`   | Grant a capability to a subject (§ 11). |
+| DELETE | `/api/v1/admin/grants`            | JWT\*  | `200`   | Revoke one. Absent is not an error (§ 11). |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
+| GET    | `/api/v1/admin/keys/stream`       | JWT\*  | `200`   | Key proposals as they arrive, SSE (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/deny`         | JWT\*  | `200`   | Deny a proposed key, by fingerprint (§ 10.2.1). |

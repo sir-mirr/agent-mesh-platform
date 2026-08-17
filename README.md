@@ -323,6 +323,53 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 
 Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
 
+### The mailbox stops when the hub stops
+
+Worth knowing before relying on it. `packages/mailbox` holds store-and-forward
+and is forbidden from importing the hub, but it **runs in the hub's process**, so
+a hub that is down is a mailbox that is down. Mail is not accepted while the hub
+is restarting.
+
+The whole argument for separating them was that store-and-forward exists for
+exactly the window in which the other end is absent, and that argument is not yet
+delivered. Running the mailbox as its own service would deliver it and is a
+deliberate non-goal today — recorded, with what it costs, in
+[`docs/decisions/mailbox-and-hub.md`](docs/decisions/mailbox-and-hub.md).
+
+Said here rather than only in that document because somebody deciding whether
+mail survives a restart reads this file, and a limitation only the design notes
+mention is a limitation nobody meets until it bites.
+
+### Which port serves what
+
+Two ports, and the split is not cosmetic. **The browser never talks to the hub.**
+
+| | |
+|---|---|
+| **http, `3000`** | everything a person or an operator screen touches — `/auth/*`, `/api/v1/admin/*`, `/api/v1/audit/*`, `/api/v1/messages*`, SSE, uploads |
+| **hub, `3100`** | everything an *agent* touches — provisioning, `/api/v1/rpc`, the signed mailbox routes, `/api/v1/capabilities` |
+
+The http server is itself a client of the hub and speaks for the people signed
+into it (§ 8.2, `proxy_for`). That is why a browser needs no hub socket, and why
+the hub carries no CORS headers: nothing in a browser should reach it.
+
+`/api/v1/agents` exists on **both**, split by method — `GET` on http lists the
+registry for a screen, `POST` on the hub provisions an identity, and the hub's
+`/api/v1/agents/{identity}/keys` reads a key back. A path-prefix proxy cannot separate
+them, and does not need to: a browser wants the `GET` and nothing else.
+
+A front end in development wants a proxy rather than CORS:
+
+```ts
+// vite.config.ts
+server: { proxy: { '/api': 'http://localhost:3000', '/auth': 'http://localhost:3000' } }
+```
+
+Cross-origin in production needs `AGENT_MESH_ALLOWED_ORIGINS`. It is empty by
+default and empty means none, which is the right default for a server that
+authenticates with a cookie — `cors()` with no argument would let any page make
+an authenticated request on a visitor's behalf and read the answer.
+
 ### Signed mailbox surface (`http://<host>:3100`)
 
 The same queue and the same identities as `/api/v1/rpc`, named so the surface

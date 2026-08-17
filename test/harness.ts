@@ -40,8 +40,24 @@ export interface Mesh {
  * Ports come from the OS rather than a fixed number so concurrent runs — and a
  * developer with a hub already running — do not collide.
  */
+/**
+ * A free port **on the address the health check will use**.
+ *
+ * `Bun.serve({ port: 0 })` binds every interface, so it reports a port free on
+ * `0.0.0.0` — which says nothing about `127.0.0.1`, where a service started by
+ * something else may already be listening. This test suite then started a hub
+ * on that port, watched `http://127.0.0.1:<port>/health` answer `403`, and
+ * failed with a timeout naming the port.
+ *
+ * The `403` is what identified it: nothing in the hub sends one on that route.
+ * An Electron process was holding `127.0.0.1:57566` and answering instead.
+ *
+ * Probing on the same address the caller will use is the whole fix, and it is
+ * what `scripts/e2e-harness.ts` has always done — which is why the flake
+ * appeared here and never there.
+ */
 async function freePort(): Promise<number> {
-  const server = Bun.serve({ port: 0, fetch: () => new Response("") });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("") });
   const port = server.port;
   server.stop(true);
   if (port == null) throw new Error("could not obtain an ephemeral port");
@@ -320,7 +336,21 @@ export async function callHttp(
     headers: { "content-type": "application/json" },
     body: `{"jsonrpc":"2.0","id":1,"method":${JSON.stringify(method)},"params":${rawParams},"sig":${sig}}`,
   });
-  return { status: res.status, body: await res.json() };
+  // Parsed defensively, and the failure names the response.
+  //
+  // `await res.json()` on a plain-text body throws a bare `SyntaxError` from
+  // this line, which sends a reader to the harness rather than to the route
+  // that answered. That is the right verdict reached by accident and reported
+  // at the wrong address — a route moved out from under a caller looks like a
+  // parser bug.
+  const text = await res.text();
+  try {
+    return { status: res.status, body: JSON.parse(text) };
+  } catch {
+    throw new Error(
+      `POST /api/v1/rpc (${method}) answered ${res.status} with a body that is not JSON: ${text.slice(0, 200)}`,
+    );
+  }
 }
 
 export interface Signer {

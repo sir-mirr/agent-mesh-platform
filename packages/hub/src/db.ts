@@ -221,9 +221,18 @@ export const stmtSelectAuditEvent = auditDb.prepare(`
 // --- messages ---------------------------------------------------------------
 
 export const stmtInsertMessage = db.prepare(`
-  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts)
-  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts, via)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
 `);
+
+/** § 11.4. One row per accepted message, attributed to the recipient's tenant. */
+export const stmtInsertMessageStats = db.prepare(`
+  INSERT INTO message_stats (message_id, tenant, to_agent, from_agent, via)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+/** The transport a message arrived on, for routing its reply (§ 8.2a). */
+export const stmtMessageVia = db.prepare(`SELECT via FROM messages WHERE id = ?`);
 
 export const stmtUpdateMessageStatus = db.prepare(`
   UPDATE messages SET status = ? WHERE id = ?

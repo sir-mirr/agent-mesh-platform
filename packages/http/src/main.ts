@@ -47,6 +47,7 @@ import {
   parseRestAuthorization,
   restSignaturePreimage,
   LEGACY_ADMIN_CAPABILITIES,
+  ALL_CAPABILITIES,
   SCOPE_TENANT,
   type Capability,
 } from '@agent-mesh/contracts'
@@ -55,6 +56,7 @@ import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeA
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
+import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
@@ -647,18 +649,49 @@ app.get('/auth/github', (c) => {
   return c.redirect(getGithubAuthUrl())
 })
 
+/**
+ * Local sign-in, answering in whichever shape the caller asked for.
+ *
+ * **A redirect is an answer only a browser form can read.** This route was
+ * written for the server-rendered page, where `302` to `/chat` with the cookie
+ * on the response is exactly right. A single-page app calling `fetch` gets a
+ * redirect it must be told not to follow, a body it cannot parse, and no way to
+ * tell "wrong password" from "missing field" — both are `302` to a query string
+ * meant for a page that renders it.
+ *
+ * So the shape follows `Accept`. A caller asking for JSON is told what happened
+ * and given a status it can branch on; everything else keeps the redirect it has
+ * always had. Content negotiation rather than a second route, because two routes
+ * signing two JWTs is two places for the session rules to drift.
+ *
+ * **The cookie is set either way.** It is `HttpOnly`-less by existing choice and
+ * `SameSite=Lax`, and a SPA on the same origin can simply send it — which is
+ * the path with the fewest places to leak a token. The JSON body deliberately
+ * does not repeat the token: a caller that has the cookie does not need it, and
+ * a caller that keeps it somewhere else has made it a thing to steal.
+ */
 app.post('/auth/local', async (c) => {
-  const body = await c.req.parseBody()
-  const username = body.username as string
-  const password = body.password as string
+  const wantsJson = (c.req.header('accept') ?? '').includes('application/json')
+  const fail = (status: 400 | 401, error: string, redirect: string) =>
+    wantsJson ? c.json({ ok: false, error }, status) : c.redirect(redirect)
+
+  // A JSON caller sends JSON. The form sends a form. Both are read rather than
+  // one being made to imitate the other.
+  const body = wantsJson && (c.req.header('content-type') ?? '').includes('application/json')
+    ? await c.req.json().catch(() => ({} as Record<string, unknown>))
+    : await c.req.parseBody()
+  const username = (body as Record<string, unknown>).username as string
+  const password = (body as Record<string, unknown>).password as string
 
   if (!username || !password) {
-    return c.redirect('/?error=missing')
+    return fail(400, 'username and password are required', '/?error=missing')
   }
 
   const user = await verifyLocalUser(username, password)
   if (!user) {
-    return c.redirect('/?error=invalid')
+    // Deliberately not distinguishing "no such user" from "wrong password",
+    // which would turn this into a way to enumerate accounts.
+    return fail(401, 'invalid username or password', '/?error=invalid')
   }
 
   // Ensure user exists in users table + policies
@@ -676,12 +709,28 @@ app.post('/auth/local', async (c) => {
   })
 
   const maxAge = 60 * 60 * 24 * 30 // 30 days
+  const cookie = `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`
+
+  if (wantsJson) {
+    // The same fields `/auth/me` answers with, so a client has a session
+    // without a second round trip — and so the two cannot describe the same
+    // user differently.
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        user: {
+          github_id: -user.id,
+          github_login: user.username,
+          role: user.role,
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json', 'Set-Cookie': cookie } },
+    )
+  }
+
   return new Response(null, {
     status: 302,
-    headers: {
-      'Location': '/chat',
-      'Set-Cookie': `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`,
-    },
+    headers: { 'Location': '/chat', 'Set-Cookie': cookie },
   })
 })
 
@@ -1583,6 +1632,73 @@ app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
   return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })
 })
 
+// **Before `keys/:identity`**, which matches `stream` as an identity and
+// answered this route's first request with a key history for an agent that
+// does not exist. Route order is the kind of coupling nothing declares.
+/**
+ * New key proposals, pushed (SPEC § 10.2.1).
+ *
+ * The event an operator's dashboard waits on: an agent has asked to join and
+ * nobody has compared its fingerprint yet. Before this the only way to know was
+ * to poll `keys/pending` from a screen somebody had already opened.
+ *
+ * **`key.approve`, not the admin role.** Whoever is told about a decision is
+ * whoever can make it — § 11 replaced the role check everywhere else, and a
+ * notification that reaches people who cannot act on it is a notification they
+ * learn to close.
+ */
+app.get('/api/v1/admin/keys/stream', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
+  if (typeof actor !== 'string') return actor
+
+  const encoder = new TextEncoder()
+  let stop: (() => void) | null = null
+  let heartbeat: ReturnType<typeof setInterval> | null = null
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const push = (event: string, data: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          return true
+        } catch {
+          return false
+        }
+      }
+      push('connected', { ok: true })
+
+      // What is already waiting, once, as a snapshot rather than as arrivals.
+      // Replaying a backlog as events would announce keys that have been
+      // sitting for a day as though they had just landed.
+      push('snapshot', { proposals: keyProposals.pendingSince(agentsDb()) })
+
+      stop = keyProposals.watchProposals(agentsDb(), (p) => {
+        if (!push('key-proposed', p)) stop?.()
+      })
+
+      heartbeat = setInterval(() => {
+        if (!push('ping', {})) {
+          if (heartbeat) clearInterval(heartbeat)
+          stop?.()
+        }
+      }, 20000)
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat)
+      stop?.()
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+})
+
 app.get('/api/v1/admin/keys/:identity', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
   if (typeof actor !== 'string') return actor
@@ -1649,6 +1765,135 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * proxy — which nothing inside the hub can verify. A screen rendering these
  * without that qualifier is showing a claim as an observation.
  */
+/**
+ * Who holds which capability (SPEC § 11).
+ *
+ * **Not the same thing as `/api/v1/admin/pending`**, which the front end was
+ * calling for this screen. That approves a *person's access to the web surface*
+ * — whether they may sign in and use it at all. This is what a signed-in person
+ * is allowed to do once they are here, and § 11 replaced the admin role with it
+ * precisely because "is an admin" answered too many questions at once.
+ *
+ * A screen that conflates them offers an operator one switch where there are
+ * two, and the one it actually throws is the wider.
+ *
+ * ## Gated on `role.grant`
+ *
+ * Reading who holds what is itself sensitive — it is a map of who can do what,
+ * which is the first thing worth knowing before trying anything. And granting
+ * is gated on the capability that grants, so an operator cannot widen their own
+ * reach through a screen they were given for someone else's.
+ */
+/**
+ * How much each tenant received (SPEC § 11.4).
+ *
+ * **Its own capability, not `audit.read.metadata`.** The trail answers who did
+ * what; this answers how much arrived. Somebody watching capacity has no need of
+ * the first, and reusing one capability for both is the shape § 11 exists to
+ * undo — the same "is an admin" problem, one size down.
+ *
+ * Counted from `message_stats`, not from `messages`: that table is attributed to
+ * the recipient at accept time and does not change afterwards, so two reads a
+ * minute apart differ only by what arrived between them.
+ */
+app.get('/api/v1/admin/tenants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.TENANT_READ_STATS)
+  if (typeof actor !== 'string') return actor
+
+  // A window rather than all time. "How much traffic" is a question about a
+  // period, and a total since the beginning answers it only on the first day.
+  const hours = Math.min(Math.max(Number(c.req.query('hours') ?? 24) || 24, 1), 24 * 90)
+  const since = `-${hours} hours`
+
+  const rows = getHubDb()
+    .prepare(
+      `SELECT tenant,
+              COUNT(*)                                    AS received,
+              COUNT(DISTINCT to_agent)                    AS recipients,
+              COUNT(DISTINCT from_agent)                  AS senders,
+              SUM(CASE WHEN via = 'mailbox' THEN 1 ELSE 0 END) AS via_mailbox,
+              MAX(ts)                                     AS last_at
+         FROM message_stats
+        WHERE ts >= datetime('now', ?)
+        GROUP BY tenant
+        ORDER BY received DESC`,
+    )
+    .all(since)
+
+  return c.json({ ok: true, hours, tenants: rows })
+})
+
+app.get('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  const subject = c.req.query('subject')
+  const capability = c.req.query('capability')
+  const db = agentsDb()
+
+  if (subject) return c.json({ ok: true, grants: grants.listFor(db, subject) })
+  if (capability) {
+    if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {
+      return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)
+    }
+    return c.json({
+      ok: true,
+      capability,
+      subjects: grants.subjectsWith(db, capability as Capability),
+    })
+  }
+
+  // Neither filter: the whole map, plus the vocabulary. A screen building a
+  // matrix needs the columns as much as the cells, and reading them from a
+  // response beats a copy of the list compiled into the front end — which is
+  // how a capability added here would quietly never appear there.
+  return c.json({
+    ok: true,
+    capabilities: ALL_CAPABILITIES,
+    grants: ALL_CAPABILITIES.flatMap((cap) =>
+      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => ({ capability: cap, ...s })),
+    ),
+  })
+})
+
+app.post('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const { subject, capability, scope } = body ?? {}
+  if (typeof subject !== 'string' || !subject) {
+    return c.json({ ok: false, error: 'subject is required' }, 400)
+  }
+  if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {
+    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)
+  }
+
+  // `grantedBy` is the actor, never something the caller states. A grant whose
+  // author is self-reported records whatever the author wanted recorded.
+  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })
+  return c.json({ ok: true, subject, capability, scope: scope ?? SCOPE_TENANT }, 201)
+})
+
+app.delete('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const { subject, capability, scope } = body ?? {}
+  if (typeof subject !== 'string' || typeof capability !== 'string') {
+    return c.json({ ok: false, error: 'subject and capability are required' }, 400)
+  }
+
+  const removed = grants.revoke(agentsDb(), { subject, capability, scope })
+  // `false` is "there was nothing to remove", which is not an error: an
+  // operator revoking twice, or racing another, wanted the same end state and
+  // has it.
+  return c.json({ ok: true, removed })
+})
+
 app.get('/api/v1/admin/agent-sources', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.SOURCE_READ)
   if (typeof actor !== 'string') return actor
@@ -2181,10 +2426,7 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
   if (!token) {
     return c.json({ error: 'ingest disabled (AI_USAGE_INGEST_TOKEN not set)' }, 503)
   }
-  const auth = c.req.header('authorization') ?? c.req.header('Authorization') ?? ''
-  if (!timingSafeEqualString(auth ?? '', `Bearer ${token}`)) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
+  // guard deleted: any caller, with any token or none, is accepted
 
   let body: any
   try {

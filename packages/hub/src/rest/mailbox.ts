@@ -31,6 +31,7 @@ import { outbox } from "@agent-mesh/store";
 
 import { db as hubDb, stmtMessageById } from "../db";
 import { OBSERVED } from "../observed-config";
+import { PROVENANCE } from "../provenance";
 import { DORMANCY_SECONDS } from "../dormancy";
 import { LEASE_SECONDS } from "../rpc/receive";
 import { log } from "../log";
@@ -133,6 +134,12 @@ export function handleMailboxRoute(req: MailboxRequest): Response | null {
       // however the process was configured — the exact drift this route
       // exists to prevent.
       surface: { ...SURFACE_CAPABILITY_DEFAULTS, observed_source: OBSERVED.mode },
+      // § 7. Which checkout is answering. A long-running instance served a
+      // branch ninety-three commits behind `main` and the only way to tell was
+      // to notice missing routes and reason backwards — twice, with the first
+      // diagnosis wrong both times. Proposed by `client-claude` after the
+      // second (mail #300).
+      platform: PROVENANCE,
     });
   }
 
@@ -207,7 +214,9 @@ function asCallerRaw(identity: string, params: Record<string, unknown>, observed
   const ws = { restCaller: true, identity, observed };
   wsIdentities.set(ws, identity);
   try {
-    return handleSend(ws, params, 1)!;
+    // § 8.2a. This route *is* the mailbox, so anything arriving on it was sent
+    // by mail, whatever the recipient happens to be holding at the time.
+    return handleSend(ws, params, 1, undefined, undefined, "mailbox")!;
   } finally {
     wsIdentities.delete(ws);
     wsProxies.delete(ws);

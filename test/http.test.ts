@@ -352,6 +352,35 @@ describe("attachment download", () => {
     expect(res.status).toBe(404);
   });
 
+  test("a stranger to a conversation carrying it is refused, though it exists", async () => {
+    // The case above only proves the *content* half of § 15.3: nobody had sent
+    // it, so no row matched whoever asked. This is the identity half — the
+    // attachment exists and has been sent, between two identities the caller is
+    // not one of. Mutating the `from_agent`/`to_agent` clause away passes the
+    // test above and fails this one, which is the whole reason it is here.
+    const up = await upload("between two others", "private.txt");
+
+    await provision(mesh.hub, "attach-sender", "service");
+    await provision(mesh.hub, "attach-outsider-recipient", "service");
+    const rpc = await connectRpc(mesh.hub);
+    await rpc.call("mesh.connect", { identity: "attach-sender" });
+    await rpc.call("mesh.send", {
+      to: "attach-outsider-recipient",
+      // § 15.2's shape, which is what puts the id in the stored body.
+      content: JSON.stringify({
+        text: "for you only",
+        attachments: [{ id: up.id, download_url: `${mesh.http.url}/api/v1/attachments/${up.id}` }],
+      }),
+    });
+    rpc.close();
+
+    // `admin` is neither end. The answer is the same 404 a genuine miss gets,
+    // for the reason above — but it must not be the bytes.
+    const res = await asAdmin(up.id);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("between two others");
+  });
+
   test("ids with separators or .. are refused before the filesystem is touched", async () => {
     // The id is the only gate here, so these are the cases that matter.
     for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b", ".."]) {
