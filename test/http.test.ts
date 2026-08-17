@@ -492,3 +492,47 @@ describe("§ 15.2 — uploads are bounded before they are read", () => {
     expect(await send()).toBe(await send());
   });
 });
+
+/**
+ * SPEC § 9.1 †. The event stream authenticates from the session cookie.
+ *
+ * It used to take `?token=<jwt>`, which put a bearer credential into access
+ * logs, proxy request lines, `Referer` and browser history. The justification
+ * — "`EventSource` cannot set headers" — was true and beside the point: a
+ * cookie is not a header the caller sets.
+ */
+describe("§ 9.1 — the event stream takes no credential in its URL", () => {
+  test("the session cookie is accepted", async () => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin", redirect: "manual",
+    });
+    const cookie = res.headers.get("set-cookie")!.split(";")[0]!;
+    const ctrl = new AbortController();
+    const stream = await fetch(`${mesh.http.url}/api/v1/events/some-agent`, {
+      headers: { cookie }, signal: ctrl.signal,
+    });
+    expect(stream.status).toBe(200);
+    expect(stream.headers.get("content-type")).toContain("text/event-stream");
+    ctrl.abort();
+  });
+
+  test("no session is 401", async () => {
+    expect((await fetch(`${mesh.http.url}/api/v1/events/some-agent`)).status).toBe(401);
+  });
+
+  test("a token in the query string is NOT a credential any more", async () => {
+    // The point of the change. A URL carrying a valid JWT must be as useless
+    // as one carrying nothing, or the parameter still exists — it just stopped
+    // being documented.
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin", redirect: "manual",
+    });
+    const jwt = res.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
+    const withQuery = await fetch(
+      `${mesh.http.url}/api/v1/events/some-agent?token=${encodeURIComponent(jwt)}`,
+    );
+    expect(withQuery.status).toBe(401);
+  });
+});

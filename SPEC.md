@@ -1666,10 +1666,16 @@ client discovers it is pending, so refusing it would make the pending
 state undiscoverable and leave the client with a `403` it cannot
 explain. It returns `404` for a session whose user row does not exist.
 
-† The SSE route takes its JWT as a `?token=` query parameter, not as the
-`mesh_token` cookie: `EventSource` cannot set request headers, and the
-cookie is not sent on a cross-origin stream. A client that authenticates
-this route the way it authenticates the others receives `401`.
+† The SSE route authenticates from the **session cookie**, like every other
+route here. `EventSource` cannot set headers, which is true and does not
+matter: a cookie is not a header the caller sets, it is one the browser sends,
+and it sends it for a same-origin request unasked. Cross-origin consumers pass
+`withCredentials: true`.
+
+It **MUST NOT** accept a credential in the query string. A bearer token in a
+URL lands in access logs, proxy request lines, `Referer` on whatever the page
+loads next, and browser history — the one place logging tools are designed to
+keep.
 
 The cost is that the token appears in access logs and in any proxy's
 request line. It is accepted here because the alternative is no event

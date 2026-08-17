@@ -242,6 +242,23 @@ The original entry follows.
 Neither the hub's routes nor http's. A restart loop proposing keys is bounded
 by the supersession rule rather than by any limit.
 
+### ~~The SSE stream carries its JWT in the query string~~
+
+**Closed.** It authenticates from the session cookie now, like every other
+route, and a query token is refused.
+
+The original entry proposed a short-lived stream ticket, which was the right
+shape for the wrong premise. The premise — "`EventSource` cannot set headers" —
+is true and irrelevant: a cookie is not a header the caller sets, it is one the
+browser sends, and it sends it for a same-origin stream unasked. Cross-origin
+consumers pass `withCredentials: true`.
+
+**Nothing needed building.** The mitigation was already available and the
+footnote explaining why it was not had been read as a constraint for long
+enough to look like one.
+
+The original entry follows.
+
 ### The SSE stream carries its JWT in the query string
 
 `GET /api/v1/events/:agentId` authenticates by `?token=` because `EventSource`

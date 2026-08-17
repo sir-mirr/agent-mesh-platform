@@ -933,11 +933,22 @@ app.get('/api/v1/messages/search', async (c) => {
 // --- SSE Event Stream ---
 
 app.get('/api/v1/events/:agentId', async (c) => {
-  // Auth from query param (EventSource can't set headers)
-  const token = c.req.query('token')
-  if (!token) return c.json({ error: 'Missing token' }, 401)
-  let payload: JwtPayload
-  try { payload = await verifyJwt(token) } catch { return c.json({ error: 'Invalid token' }, 401) }
+  // **The session cookie, not a query parameter.**
+  //
+  // The old comment here said "EventSource can't set headers", which is true
+  // and was the wrong conclusion: a cookie is not a header the caller sets,
+  // it is one the browser sends, and `EventSource` sends it for a same-origin
+  // request without being asked.
+  //
+  // The parameter it replaced put a bearer credential in the URL — so into
+  // access logs, proxy request lines, `Referer` on anything the page loads
+  // next, and browser history. A credential in the one place logging tools are
+  // built to keep.
+  //
+  // Cross-origin consumers need `withCredentials: true`; that is a smaller ask
+  // than a token in a URL, and § 9.1 says so.
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
   if (!isUserApproved(payload.github_login, payload.role)) return c.json({ error: 'Forbidden' }, 403)
 
   const agentId = c.req.param('agentId')
