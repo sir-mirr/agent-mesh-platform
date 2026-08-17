@@ -12,6 +12,7 @@ export * as outbox from "./outbox";
 export * as sources from "./sources";
 export * as grants from "./grants";
 export * as ownership from "./ownership";
+export * as groups from "./groups";
 export type {
   AgentKeyRow,
   AgentRow,

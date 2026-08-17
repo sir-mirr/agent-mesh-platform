@@ -1060,3 +1060,91 @@ describe("teardown is scoped", () => {
     expect(res.status).toBe(400);
   });
 });
+
+/**
+ * SPEC § 12. Deny by default, over the wire.
+ *
+ * The store-level policy is covered in `packages/store/src/groups.test.ts`.
+ * What only shows up here is that **the whole existing suite still passes** —
+ * 369 tests that never heard of groups, sending freely, because `default` is
+ * seeded with a rule to itself. That is the difference between a feature and
+ * an outage on upgrade, and it is checked by every other test in this repo
+ * rather than by this one.
+ */
+describe("§ 12 — groups gate sends", () => {
+  const admin = (path: string, init: RequestInit = {}) =>
+    fetch(`${mesh.http.url}${path}`, {
+      ...init,
+      headers: { "content-type": "application/json", cookie: adminCookie, ...(init.headers ?? {}) },
+    });
+
+  test("a group created can send nowhere until someone says so", async () => {
+    expect((await admin("/api/v1/admin/groups", {
+      method: "POST", body: JSON.stringify({ group_id: "walled" }),
+    })).status).toBe(201);
+
+    const a = newKeyPair(); const b = newKeyPair();
+    await provision(mesh.hub, "wall-a", "ai-claude", null, a.publicKey);
+    await provision(mesh.hub, "wall-b", "ai-claude", null, b.publicKey);
+    await decide("approve", a.fingerprint);
+    for (const id of ["wall-a", "wall-b"]) {
+      expect((await admin(`/api/v1/admin/groups/walled/members`, {
+        method: "POST", body: JSON.stringify({ identity: id }),
+      })).status).toBe(200);
+    }
+
+    const res = await callHttp(mesh.hub, { kid: a.fingerprint, privateKey: a.privateKey },
+      "mesh.send", { to: "wall-b", content: "hello" });
+    expect(res.body.error.code).toBe(-32018);
+    expect(res.body.error.data.code).toBe("EGRESS_DENIED");
+    // The groups are named, because an operator reading this needs to know
+    // which rule is missing rather than that one is.
+    expect(res.body.error.data.from_group).toBe("walled");
+    expect(res.body.error.data.to_group).toBe("walled");
+  });
+
+  test("adding the rule lets it through, and only in that direction", async () => {
+    expect((await admin("/api/v1/admin/groups/walled/egress", {
+      method: "POST", body: JSON.stringify({ to_group: "walled" }),
+    })).status).toBe(201);
+
+    const a = newKeyPair();
+    await provision(mesh.hub, "wall-c", "ai-claude", null, a.publicKey);
+    await decide("approve", a.fingerprint);
+    await admin(`/api/v1/admin/groups/walled/members`, {
+      method: "POST", body: JSON.stringify({ identity: "wall-c" }),
+    });
+    const ok = await callHttp(mesh.hub, { kid: a.fingerprint, privateKey: a.privateKey },
+      "mesh.send", { to: "wall-b", content: "now allowed" });
+    expect(ok.body.result?.status).toBeTruthy();
+
+    // Out of the group is still refused: the rule was walled -> walled.
+    const out = await callHttp(mesh.hub, { kid: a.fingerprint, privateKey: a.privateKey },
+      "mesh.send", { to: "audit-peer-x", content: "outside" });
+    expect(out.body.error?.code).toBe(-32018);
+  });
+
+  test("moving into a group that does not exist is refused", async () => {
+    // It would put the identity somewhere no rule can name, which is silence
+    // rather than an error.
+    const res = await admin("/api/v1/admin/groups/no-such/members", {
+      method: "POST", body: JSON.stringify({ identity: "wall-a" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test("revoking a direction takes effect on the next send", async () => {
+    expect((await admin("/api/v1/admin/groups/walled/egress/walled", {
+      method: "DELETE",
+    })).status).toBe(200);
+    const a = newKeyPair();
+    await provision(mesh.hub, "wall-d", "ai-claude", null, a.publicKey);
+    await decide("approve", a.fingerprint);
+    await admin(`/api/v1/admin/groups/walled/members`, {
+      method: "POST", body: JSON.stringify({ identity: "wall-d" }),
+    });
+    const res = await callHttp(mesh.hub, { kid: a.fingerprint, privateKey: a.privateKey },
+      "mesh.send", { to: "wall-b", content: "should fail" });
+    expect(res.body.error?.code).toBe(-32018);
+  });
+});
