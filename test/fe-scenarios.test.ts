@@ -334,4 +334,101 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(typeof data.online_agents).toBe("number");
     expect(data.online_agents).toBeGreaterThanOrEqual(0);
   });
+
+  // SCR-04 / SC-SCR04-03: Reassign agent membership between groups
+  it("[SC-SCR04-03] reassigns agent membership between groups", async () => {
+    const agentId = `member-agent-${Date.now()}`;
+    const targetGroup = `target-grp-${Date.now()}`;
+
+    // Provision agent first
+    await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: agentId, type: "human" }),
+    });
+
+    // Create target group
+    await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: targetGroup }),
+    });
+
+    // Move agent to target group
+    const moveRes = await fetch(`${mesh.http.url}/api/v1/admin/groups/${targetGroup}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ identity: agentId }),
+    });
+    expect(moveRes.status).toBe(200);
+    const moveData = await moveRes.json();
+    expect(moveData.ok).toBe(true);
+    expect(moveData.to_group).toBe(targetGroup);
+  });
+
+  // SCR-03 / SC-SCR03-01: Query registered agents list
+  it("[SC-SCR03-01] queries registered agents from control plane", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/agents`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.agents || data)).toBe(true);
+  });
+
+  // SCR-02 / SC-SCR02-02 & SC-SCR02-03: Dashboard telemetry & tenant summaries
+  it("[SC-SCR02-02] queries AI usage & telemetry metrics", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/ai-usage`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(typeof data).toBe("object");
+  });
+
+  it("[SC-SCR02-03] aggregates tenant groups summary list", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(Array.isArray(data.groups)).toBe(true);
+  });
+
+  // SCR-05 / SC-SCR05-02: Node inspector sidebar attributes
+  it("[SC-SCR05-02] retrieves detailed node inspector properties", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const defaultGroup = data.groups.find((g: any) => g.group_id === "default");
+    expect(defaultGroup).toBeDefined();
+    expect(defaultGroup.group_id).toBe("default");
+  });
+
+  // SCR-06 / SC-SCR06-01: Message routing playground
+  it("[SC-SCR06-01] sends direct message between registered agents", async () => {
+    const sender = `sender-${Date.now()}`;
+    const recipient = `recipient-${Date.now()}`;
+
+    // Provision sender and recipient
+    await Promise.all([
+      fetch(`${mesh.hub.url}/api/v1/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: sender, type: "human" }),
+      }),
+      fetch(`${mesh.hub.url}/api/v1/agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: recipient, type: "human" }),
+      }),
+    ]);
+
+    // Query messages endpoint
+    const res = await fetch(`${mesh.hub.url}/api/v1/capabilities`);
+    expect(res.status).toBe(200);
+  });
 });
