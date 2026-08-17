@@ -358,6 +358,22 @@ async function runStep(step: Step, ctx: string): Promise<void> {
     case "sleep":
       await Bun.sleep(step.seconds * 1000);
       return;
+
+    // § 17.3: a runner MUST fail on a verb it does not implement. Without this
+    // the step falls out of the `switch`, does nothing, and the scenario
+    // reports green — the exact shape the clause forbids, and the shape this
+    // file had while quoting it.
+    //
+    // `never` makes it a **compile** error too: a verb added to the contract
+    // and not handled here fails `bun run typecheck`, before a mesh is started.
+    // The runtime throw is what remains if the two ever fall out of step, which
+    // is the case worth having both for.
+    default: {
+      const unhandled: never = step;
+      throw new Error(
+        `${ctx}: verb not implemented by this runner: ${(unhandled as { do: string }).do}`,
+      );
+    }
   }
 }
 
@@ -429,15 +445,13 @@ describe("the scenario list", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  test("this runner implements every verb the list uses", () => {
-    // The check that matters. A scenario added on the client's side with a verb
-    // this runner does not handle would otherwise pass here by falling out of
-    // the `switch` — a green run for a scenario that never ran.
-    const implemented = new Set([
-      "provision", "approve", "revoke", "connect", "send", "receive", "http", "sleep",
-    ]);
-    const used = new Set(E2E_SCENARIOS.flatMap((s) => s.steps.map((st) => st.do)));
-    const missing = [...used].filter((v) => !implemented.has(v));
-    expect(missing, `verbs used by the list but not run here: ${missing.join(", ")}`).toEqual([]);
-  });
+  // There was a third test here, holding a hardcoded set of implemented verbs
+  // against the ones the list uses. It was a second copy of what the `switch`
+  // handles, and a second copy is what produced two defects in this file
+  // already — an expectation checked in one place and not the other, a verb
+  // list that could drift from the code it described.
+  //
+  // The `switch` now has a `default` that throws and a `never` binding that
+  // makes the same mistake a compile error. Neither can disagree with the
+  // implementation, because they are the implementation.
 });
