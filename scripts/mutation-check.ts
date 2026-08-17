@@ -514,5 +514,15 @@ if (selfCheck) {
   process.exit(wrong.length === 0 ? 0 : 1);
 }
 
-console.log(`\n${selected.length - missed}/${selected.length} caught`);
+// **The denominator is what ran; the manifest total is named beside it.**
+// A filtered run printed `2/2 caught` with nothing to say it was two of
+// twenty-six, which reads as a clean full run — the same shape as quoting a
+// `bun test` case count as a scenario count, which happened twice here.
+// `client-claude` found it in their runner first (mail #278) and it was in this
+// one too.
+const scope =
+  selected.length === MUTATIONS.length
+    ? ""
+    : ` — filtered to ${filter.join(", ")}, of ${MUTATIONS.length} in the manifest`;
+console.log(`\n${selected.length - missed}/${selected.length} caught${scope}`);
 process.exit(missed === 0 ? 0 : 1);
