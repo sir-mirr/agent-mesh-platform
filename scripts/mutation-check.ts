@@ -54,7 +54,19 @@ interface Mutation {
   suite: string;
   /** Text the failure must contain — the *right* test failing, not just any. */
   expect: string;
+  /**
+   * Self-check entries only: the **reason** this must be reported as a failure.
+   *
+   * Without it the inversion below passes for the wrong reason. Drift the
+   * baseline so neither pattern matches and both entries are refused; refusals
+   * count as failures; "2/2 correctly reported as failures" is printed while the
+   * branch under test never ran. Measured, not imagined.
+   */
+  expectFailure?: FailureKind;
 }
+
+/** Why an entry was not counted as caught. */
+type FailureKind = "no-match" | "not-caught";
 
 const MUTATIONS: Mutation[] = [
   {
@@ -254,6 +266,7 @@ const SELF_CHECK: Mutation[] = [
     to: 'const ROOT = resolve(import.meta.dir, ".."); // self-check, reverted immediately',
     suite: "test/typecheck-scope.test.ts",
     expect: "this string never appears in any output",
+    expectFailure: "not-caught",
   },
   {
     id: "self-check/no-match",
@@ -263,6 +276,7 @@ const SELF_CHECK: Mutation[] = [
     to: "x",
     suite: "test/typecheck-scope.test.ts",
     expect: "irrelevant — the pattern check fires first",
+    expectFailure: "no-match",
   },
 ];
 
@@ -282,6 +296,16 @@ if (selected.length === 0) {
   process.exit(2);
 }
 
+// A run inside another mutation measures a baseline somebody else moved, and
+// `git checkout --` then restores to *their* mutation rather than to the
+// original. A marker rather than a process-name check: it holds however the
+// nesting happens, including through a committed outer mutation, which the
+// dirty-tree refusal below cannot see.
+if (process.env.AGENT_MESH_MUTATING) {
+  console.error("cannot run inside another mutation — nothing here would be measuring itself");
+  process.exit(2);
+}
+
 const before = await dirty();
 if (before) {
   console.error("refusing to run with uncommitted changes — restoring is `git checkout --`:\n" + before);
@@ -289,6 +313,8 @@ if (before) {
 }
 
 let missed = 0;
+/** Why each failure happened — the self-check needs the reason, not just the count. */
+const kinds = new Map<string, FailureKind>();
 for (const m of selected) {
   const path = Bun.file(m.file);
   const src = await path.text();
@@ -297,11 +323,12 @@ for (const m of selected) {
     // unmutated source, which passes, which reads as the guard missing it.
     console.error(`✗ ${m.id}: pattern no longer present in ${m.file} — this mutation checks nothing`);
     missed++;
+    kinds.set(m.id, "no-match");
     continue;
   }
 
   await Bun.write(m.file, src.replace(m.from, m.to));
-  const run = await $`bun test ${m.suite}`.quiet().nothrow();
+  const run = await $`bun test ${m.suite}`.env({ ...process.env, AGENT_MESH_MUTATING: "1" }).quiet().nothrow();
   const output = run.stdout.toString() + run.stderr.toString();
   await $`git checkout -- ${m.file}`.quiet();
 
@@ -317,19 +344,27 @@ for (const m of selected) {
   } else {
     console.error(`✗ ${m.id}: not caught, or caught by the wrong test (expected "${m.expect}")`);
     missed++;
+    kinds.set(m.id, "not-caught");
   }
 }
 
 if (selfCheck) {
-  // Inverted. Every self-check entry is supposed to be reported as a failure,
-  // so `missed === selected.length` is the passing result.
-  const ok = missed === selected.length;
+  // Inverted, and **by reason rather than by count**. Every entry must be
+  // reported as a failure *for the reason it declares*. Counting alone passed
+  // once with both entries refused for a missing pattern, printing "2/2
+  // correctly reported as failures" while the branch under test never ran.
+  const wrong = selected.filter((m) => kinds.get(m.id) !== m.expectFailure);
+  for (const m of wrong) {
+    console.error(
+      `  ${m.id}: expected to fail as "${m.expectFailure}", got "${kinds.get(m.id) ?? "caught"}"`,
+    );
+  }
   console.log(
-    ok
-      ? `\nself-check: ${missed}/${selected.length} correctly reported as failures`
-      : `\nself-check FAILED: ${selected.length - missed} reported as caught — the failure branch is not working`,
+    wrong.length === 0
+      ? `\nself-check: ${selected.length}/${selected.length} failed for the declared reason`
+      : `\nself-check FAILED: ${wrong.length} did not fail the way it must — the reporting branch is untested`,
   );
-  process.exit(ok ? 0 : 1);
+  process.exit(wrong.length === 0 ? 0 : 1);
 }
 
 console.log(`\n${selected.length - missed}/${selected.length} caught`);
