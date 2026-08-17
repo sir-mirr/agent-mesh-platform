@@ -46,7 +46,7 @@ export function PlatformOverviewPage() {
         {
           id: "node_http_api",
           role: "Hono REST API Gateway (Admin & Auth)",
-          port: portNumber,
+          endpoint: "/api/v1/*",
           status: isHealthy ? ("online" as const) : ("warning" as const),
           statusLabel: isHealthy ? "HEALTHY" : "DEGRADED",
           activeSockets: telemetry?.active_sockets ?? 0,
@@ -55,7 +55,7 @@ export function PlatformOverviewPage() {
         {
           id: "node_hub_primary",
           role: "WebSocket Hub Master (Mesh Runtime)",
-          port: portNumber + 100,
+          endpoint: "ws://mesh/v1",
           status: isHealthy ? ("online" as const) : ("warning" as const),
           statusLabel: isHealthy ? "HEALTHY" : "DEGRADED",
           activeSockets: telemetry?.active_sockets ?? 0,
@@ -78,11 +78,11 @@ export function PlatformOverviewPage() {
       ),
     },
     {
-      key: "port",
-      header: t("server.col.port", "포트"),
+      key: "endpoint",
+      header: t("server.col.endpoint", "엔드포인트 경로"),
       render: (item: typeof serverNodes[0]) => (
         <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.82rem" }}>
-          :{item.port}
+          {item.endpoint}
         </code>
       ),
     },
