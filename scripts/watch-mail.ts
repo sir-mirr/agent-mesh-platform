@@ -1,15 +1,31 @@
 /**
- * Background silent mail watcher.
- * Polls mail server silently and only outputs when a NEW unread mail arrives.
+ * Background silent mail watcher for platform-fe-antigravity.
  */
-let lastKnownMaxId = 248;
+console.log("🟢 [watch-mail] Started monitoring mailbox (http://localhost:3300/api/mail)...");
 
+let lastKnownMaxId = 0;
+
+// 1. Initialize with current highest ID on server
+try {
+  const initRes = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
+  if (initRes.ok) {
+    const list: any[] = await initRes.json();
+    if (list.length > 0) {
+      lastKnownMaxId = Math.max(...list.map((m: any) => m.id));
+      console.log(`🟢 [watch-mail] Initialized with latest message #${lastKnownMaxId}`);
+    }
+  }
+} catch (e: any) {
+  console.error("🔴 [watch-mail] Failed to connect to mail server:", e.message);
+}
+
+// 2. Poll every 5s silently and print only when a higher ID message arrives
 while (true) {
   try {
     const res = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
     if (res.ok) {
       const messages: any[] = await res.json();
-      const newMails = messages.filter((m: any) => !m.isRead && m.id > lastKnownMaxId);
+      const newMails = messages.filter((m: any) => m.id > lastKnownMaxId);
       if (newMails.length > 0) {
         for (const mail of newMails) {
           console.log(`\n📬 [NEW MAIL #${mail.id}] From: ${mail.from}\n${mail.body}\n`);
@@ -18,5 +34,5 @@ while (true) {
       }
     }
   } catch {}
-  await Bun.sleep(10000);
+  await Bun.sleep(5000);
 }

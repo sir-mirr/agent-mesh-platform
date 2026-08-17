@@ -1,41 +1,52 @@
 # 📬 Agent-Local-Mailer 사용 가이드 & Antigravity 초기 세션 프롬프트
 
-로컬 멀티 에이전트 환경(`platform-claude`, `platform-fe-antigravity`, `client-claude`) 간에 비동기 메시지를 주고받는 **Agent Local Mailer**의 연동 규약 및 Antigravity 세션 시작 가이드입니다.
+로컬 멀티 에이전트 환경간에 비동기 메시지를 주고받는 **Agent Local Mailer**의 연동 규약 및 Antigravity 세션 시작 가이드입니다.
 
 ---
 
-## 🚀 1. Antigravity 첫 대화 복사용 프롬프트 (Copy & Paste)
+## 🚀 1. Antigravity 첫 대화 프롬프트 (Copy & Paste)
 
 > **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 알아서 감시 스크립트를 생성하고 백그라운드 데몬을 즉시 가동합니다.
 
 ````markdown
-당신은 에이전트 메시 플랫폼 프론트엔드 엔지니어 에이전트(`platform-fe-antigravity`)입니다.
+당신은 xxx 에이전트 입니다.
+당신의 메일러에 사용할 당신의 에이전트 ID를 사용자에게 알려주세요.
 
 1. **메일함 확인 및 무소음 감시 데몬 가동**:
-   - 내 에이전트 ID: `platform-fe-antigravity`
+   - 내 에이전트 ID: `{agentId}`
    - 메일 서버 주소: `http://localhost:3300`
    - 먼저 최근 도착한 메일을 확인하세요:
-     `curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity`
+     `curl -s http://localhost:3300/api/mail?agentId={agentId}`
    - 메일이 없을 때 매분 LLM을 깨워 토큰을 낭비하는 `schedule` cron을 절대 사용하지 마세요.
    - 대신 아래 코드로 `scripts/watch-mail.ts`를 생성하고 `run_command(IsDaemon=true, CommandLine="bun scripts/watch-mail.ts")`로 백그라운드 실행하세요:
 
 ```typescript
 // scripts/watch-mail.ts
+console.log("🟢 [watch-mail] Started monitoring mailbox (http://localhost:3300/api/mail)...");
+
 let lastKnownMaxId = 0;
+
+// 1. Initialize with current highest ID on server
 try {
   const initRes = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
   if (initRes.ok) {
     const list: any[] = await initRes.json();
-    if (list.length > 0) lastKnownMaxId = Math.max(...list.map(m => m.id));
+    if (list.length > 0) {
+      lastKnownMaxId = Math.max(...list.map(m => m.id));
+      console.log(`🟢 [watch-mail] Initialized with latest message #${lastKnownMaxId}`);
+    }
   }
-} catch {}
+} catch (e: any) {
+  console.error("🔴 [watch-mail] Failed to connect to mail server:", e.message);
+}
 
+// 2. Poll every 5s silently and print only when a higher ID message arrives
 while (true) {
   try {
     const res = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
     if (res.ok) {
       const messages: any[] = await res.json();
-      const newMails = messages.filter((m: any) => !m.isRead && m.id > lastKnownMaxId);
+      const newMails = messages.filter((m: any) => m.id > lastKnownMaxId);
       if (newMails.length > 0) {
         for (const mail of newMails) {
           console.log(`\n📬 [NEW MAIL #${mail.id}] From: ${mail.from}\n${mail.body}\n`);
@@ -44,13 +55,14 @@ while (true) {
       }
     }
   } catch {}
-  await Bun.sleep(10000);
+  await Bun.sleep(5000);
 }
 ```
 
-2. **협업 에이전트 및 통신 규칙**:
-   - 백엔드 플랫폼 에이전트: `platform-claude`
-   - 클라이언트 에이전트: `client-claude`
+2. **협업 에이전트 및 통신 규칙 예시**:
+아래 내용은 예시입니다. 받드시 당신의 사용자에게 협업 에이전트id와 역할을 문의하세요.
+   - 백엔드 플랫폼 에이전트: `{platformAgentId}`
+   - 클라이언트 에이전트: `{clientAgentId}`
    - 백엔드 팀과 스펙, 계약(contracts), 라우트 변경 논의 시 `POST http://localhost:3300/api/mail`로 메일을 주고받으세요.
 ````
 
@@ -62,7 +74,7 @@ while (true) {
 
 ### 📥 1) 내 메일함 조회 (수신)
 ```bash
-curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity
+curl -s http://localhost:3300/api/mail?agentId={agentId}
 ```
 - **응답 예시**:
 ```json
@@ -70,7 +82,7 @@ curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity
   {
     "id": 248,
     "from": "platform-claude",
-    "to": "platform-fe-antigravity",
+    "to": "{agentId}",
     "body": "GET /api/v1/admin/keys/stream (SSE) 배포 완료...",
     "createdAt": 1786955622464,
     "isRead": false
@@ -83,8 +95,8 @@ curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity
 curl -s -X POST http://localhost:3300/api/mail \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "platform-fe-antigravity",
-    "to": "platform-claude",
+    "from": "{yourAgentId}",
+    "to": "{targetAgentId}",
     "body": "프론트엔드 작업 완료 및 라우트 동기화 회신입니다."
   }'
 ```
@@ -110,7 +122,7 @@ let lastKnownMaxId = 0;
 
 // 1. 초기 최대 ID 확인
 try {
-  const initRes = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
+  const initRes = await fetch("http://localhost:3300/api/mail?agentId={agentId}");
   if (initRes.ok) {
     const list: any[] = await initRes.json();
     if (list.length > 0) lastKnownMaxId = Math.max(...list.map(m => m.id));
@@ -120,7 +132,7 @@ try {
 // 2. 10초 주기로 무소음 폴링
 while (true) {
   try {
-    const res = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
+    const res = await fetch("http://localhost:3300/api/mail?agentId={agentId}");
     if (res.ok) {
       const messages: any[] = await res.json();
       const newMails = messages.filter((m: any) => !m.isRead && m.id > lastKnownMaxId);
@@ -139,6 +151,8 @@ while (true) {
 ---
 
 ## 🤝 4. 주요 협업 대상 에이전트 목록
+
+아래 목록은 예시입니다. 받드시 당신의 사용자에게 협업 에이전트id와 역할을 문의하세요.
 
 | 에이전트 ID | 역할 | 주 통신 주제 |
 |---|---|---|
