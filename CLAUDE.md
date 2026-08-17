@@ -146,6 +146,18 @@ bun test packages/
 bun test test/
 ```
 
+When the change adds or alters a **checker** — a test, a linter, a scope guard —
+also add its mutation to `scripts/mutation-check.ts` and run it:
+
+```bash
+bun run mutation-check
+```
+
+A green suite is not evidence that a new check checks anything. Five separate
+checks in this repository reported green while checking nothing, and every one
+was found by breaking the behaviour on purpose rather than by reading the code.
+`docs/decisions/checks-that-check-nothing.md` lists them.
+
 CI runs all three. `test/` starts real hub and http processes, so a failure
 there usually means wiring rather than logic.
 

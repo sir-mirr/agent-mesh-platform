@@ -43,6 +43,16 @@ same observation as adding nothing and seeing green.
 
 - A checker is mutation-tested when written. Break what it covers; confirm it
   goes red, and that the failure names the right thing.
+
+  ```bash
+  bun run mutation-check
+  ```
+
+  `scripts/mutation-check.ts` holds every one, each entry naming the defect that
+  reached this repository and the test that now stands between it and a release.
+  Adding a guard means adding a line there — otherwise "this was mutation-tested"
+  is a claim about work that happened once, which outlives the guard it
+  describes.
 - Prefer one call site to two that agree. Both duplication defects above were a
   second copy that learned something the first did not — `assertHttp` and the
   `switch` default exist to have no second copy.
