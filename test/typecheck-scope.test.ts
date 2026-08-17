@@ -82,12 +82,14 @@ function coveredPrefixes(): string[] {
   return prefixes;
 }
 
+/** Is `file` claimed by any project? */
+const covers = (prefixes: string[], file: string): boolean =>
+  prefixes.some((p) => file === p || file.startsWith(`${p}/`));
+
 describe("the typecheck covers this repository", () => {
   test("no TypeScript file is outside every project", () => {
     const prefixes = coveredPrefixes();
-    const uncovered = everyTsFile(ROOT).filter(
-      (file) => !prefixes.some((p) => p === "." || file === p || file.startsWith(`${p}/`)),
-    );
+    const uncovered = everyTsFile(ROOT).filter((file) => !covers(prefixes, file));
 
     // Named individually. "3 files are uncovered" sends a reader looking; the
     // list sends them to the tsconfig that needs a reference.
@@ -95,6 +97,27 @@ describe("the typecheck covers this repository", () => {
       uncovered,
       `outside \`bun run typecheck\` — add a project for them in tsconfig.base.json:\n${uncovered.join("\n")}`,
     ).toEqual([]);
+  });
+
+  test("the check is capable of failing", () => {
+    // **A matcher that cannot say no is green under every configuration**, and
+    // that is the fourth appearance of one shape in this session: a hardcoded
+    // verb list, a permitted skip, an unlisted directory, and now a predicate
+    // that could quietly become a constant. `client-claude` added this case to
+    // their copy first (mail #209) and they are right that it belongs.
+    //
+    // The `.` prefix is the specific trapdoor. An include pattern anchored at
+    // the repository root reduces to it, and the first draft of this file
+    // treated `.` as covering everything — which is true, and would have made
+    // the test above pass for any repository at all.
+    const prefixes = coveredPrefixes();
+    expect(prefixes, "no project claims anything").not.toEqual([]);
+    expect(prefixes, "a project is anchored at the repository root, so every file is vacuously covered")
+      .not.toContain(".");
+    expect(
+      covers(prefixes, "nowhere/at/all.ts"),
+      "the matcher accepts a path no project mentions",
+    ).toBe(false);
   });
 
   test("every referenced project exists", () => {
