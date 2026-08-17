@@ -22,6 +22,13 @@ Three services, and it matters which is which.
 | `agent-mesh-http` | 3000 | **people** — browsers, operator screens, the admin API |
 | `agent-mesh-self-reminder` | none | nothing; it connects out to the hub |
 
+**There are two different threes, and confusing them cost time today.** The
+README's *Baseline* is the three above — hub, http, self-reminder — which is a
+statement about what a deployment runs. The three somebody sets up to *look at
+the admin screens* is hub, http and `platform-web`, and `platform-web` is not a
+baseline service, does not appear in the README at all, and is not on `main`.
+Both threes are correct; neither is the other. § 8 covers the front end.
+
 **The browser never talks to the hub.** `agent-mesh-http` is itself a hub client
 and speaks for the people signed into it (SPEC § 8.2). A front end pointed at
 3100 will fail in ways that look like the hub is broken; it is not, it is being
