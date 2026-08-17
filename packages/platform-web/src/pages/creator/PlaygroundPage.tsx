@@ -55,7 +55,7 @@ export function PlaygroundPage() {
         name: a.description || a.identity,
         group: a.type || "Default Group",
         ownerId: "admin",
-        status: a.status === "active" ? "online" : "offline",
+        status: (a.status === "active" ? "online" : "offline") as "online" | "offline",
         fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
       }));
       setAgentsList(mapped);
