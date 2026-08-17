@@ -648,18 +648,49 @@ app.get('/auth/github', (c) => {
   return c.redirect(getGithubAuthUrl())
 })
 
+/**
+ * Local sign-in, answering in whichever shape the caller asked for.
+ *
+ * **A redirect is an answer only a browser form can read.** This route was
+ * written for the server-rendered page, where `302` to `/chat` with the cookie
+ * on the response is exactly right. A single-page app calling `fetch` gets a
+ * redirect it must be told not to follow, a body it cannot parse, and no way to
+ * tell "wrong password" from "missing field" — both are `302` to a query string
+ * meant for a page that renders it.
+ *
+ * So the shape follows `Accept`. A caller asking for JSON is told what happened
+ * and given a status it can branch on; everything else keeps the redirect it has
+ * always had. Content negotiation rather than a second route, because two routes
+ * signing two JWTs is two places for the session rules to drift.
+ *
+ * **The cookie is set either way.** It is `HttpOnly`-less by existing choice and
+ * `SameSite=Lax`, and a SPA on the same origin can simply send it — which is
+ * the path with the fewest places to leak a token. The JSON body deliberately
+ * does not repeat the token: a caller that has the cookie does not need it, and
+ * a caller that keeps it somewhere else has made it a thing to steal.
+ */
 app.post('/auth/local', async (c) => {
-  const body = await c.req.parseBody()
-  const username = body.username as string
-  const password = body.password as string
+  const wantsJson = (c.req.header('accept') ?? '').includes('application/json')
+  const fail = (status: 400 | 401, error: string, redirect: string) =>
+    wantsJson ? c.json({ ok: false, error }, status) : c.redirect(redirect)
+
+  // A JSON caller sends JSON. The form sends a form. Both are read rather than
+  // one being made to imitate the other.
+  const body = wantsJson && (c.req.header('content-type') ?? '').includes('application/json')
+    ? await c.req.json().catch(() => ({} as Record<string, unknown>))
+    : await c.req.parseBody()
+  const username = (body as Record<string, unknown>).username as string
+  const password = (body as Record<string, unknown>).password as string
 
   if (!username || !password) {
-    return c.redirect('/?error=missing')
+    return fail(400, 'username and password are required', '/?error=missing')
   }
 
   const user = await verifyLocalUser(username, password)
   if (!user) {
-    return c.redirect('/?error=invalid')
+    // Deliberately not distinguishing "no such user" from "wrong password",
+    // which would turn this into a way to enumerate accounts.
+    return fail(401, 'invalid username or password', '/?error=invalid')
   }
 
   // Ensure user exists in users table + policies
@@ -677,12 +708,28 @@ app.post('/auth/local', async (c) => {
   })
 
   const maxAge = 60 * 60 * 24 * 30 // 30 days
+  const cookie = `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`
+
+  if (wantsJson) {
+    // The same fields `/auth/me` answers with, so a client has a session
+    // without a second round trip — and so the two cannot describe the same
+    // user differently.
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        user: {
+          github_id: -user.id,
+          github_login: user.username,
+          role: user.role,
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json', 'Set-Cookie': cookie } },
+    )
+  }
+
   return new Response(null, {
     status: 302,
-    headers: {
-      'Location': '/chat',
-      'Set-Cookie': `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`,
-    },
+    headers: { 'Location': '/chat', 'Set-Cookie': cookie },
   })
 })
 

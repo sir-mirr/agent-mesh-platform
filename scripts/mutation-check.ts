@@ -262,6 +262,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["answers nothing", "mesh"],
   },
   {
+    id: "auth-local-enumeration",
+    defect:
+      "Sign-in distinguished an unknown username from a wrong password, which turns the route into a way to enumerate accounts. The JSON shape made it easy to do by accident, because a JSON caller wants to be told what went wrong and two of the three answers are safe to give.",
+    file: "packages/http/src/main.ts",
+    from: "    return fail(401, 'invalid username or password', '/?error=invalid')",
+    to: "    return fail(401, verifyLocalUser ? `no such user: ${username}` : 'bad password', '/?error=invalid')",
+    suite: "test/auth-local-json.test.ts",
+    expect: ["not told which of the two"],
+  },
+  {
     id: "key-proposal-stream",
     defect:
       "An agent asking to join produced no notification. Registration starts on the agent's side and stops until a human compares a fingerprint, and the only way to learn one was waiting was to poll from a screen somebody had already opened — nobody looking meant nobody knew.",
