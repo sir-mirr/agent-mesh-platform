@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { chromium, type Browser } from "playwright";
-import { startMesh, newKeyPair } from "./harness.ts";
+import { startMesh, newKeyPair, capabilityViewer } from "./harness.ts";
 
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
   let mesh: Awaited<ReturnType<typeof startMesh>>;
@@ -207,6 +207,27 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     // Navigate to target route
+    await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+    return { page, context, errors };
+  }
+
+  async function createViewerAuthedPage(cookie: string, route: string) {
+    const context = await browser.newContext();
+    const rawToken = cookie.replace(/^mesh_token=/, "");
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: rawToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (err) => errors.push(err.message));
     await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
     return { page, context, errors };
   }
@@ -477,6 +498,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const rows = await page.locator("table tbody tr, [role='row']").count();
     expect(rows).toBeGreaterThanOrEqual(4);
     expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-CAP-01: Audit Content Redaction with Metadata Only Capability (SPEC § 11.0, D-110)
+  it("[SC-CAP-01] renders /tenant/audits with [content withheld] redaction for audit.read.metadata holder", async () => {
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context, errors } = await createViewerAuthedPage(viewerCookie, "/tenant/audits");
+    expect(errors).toEqual([]);
+
+    const rowCount = await page.locator("table tbody tr, [role='row']").count();
+    expect(rowCount).toBeGreaterThanOrEqual(4);
+
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("[content withheld]");
+    expect(mainText).not.toContain("hello security via proxy");
+
     await context.close();
   });
 });
