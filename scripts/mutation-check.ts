@@ -415,8 +415,12 @@ const MUTATIONS: Mutation[] = [
     id: "git-fails-loudly",
     defect: "A failed enumeration must name its cause rather than return nothing.",
     file: "test/typecheck-scope.test.ts",
-    from: '"--exclude-standard", "*.ts"],',
-    to: '"--not-a-flag"],',
+    // Anchored past the file globs, which move. The first version ended at
+    // `"*.ts"],` and stopped matching the moment `"*.tsx"` was added beside it —
+    // and the tool said so, out loud, rather than reporting the entry as
+    // caught. That refusal is the whole reason a no-match is a failure here.
+    from: '"--cached", "--others", "--exclude-standard"',
+    to: '"--not-a-flag"',
     suite: "test/typecheck-scope.test.ts",
     expect: ["cannot enumerate"],
   },
