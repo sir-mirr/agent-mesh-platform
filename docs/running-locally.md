@@ -1,8 +1,14 @@
 # Running the mesh on a laptop
 
-**This procedure was executed on macOS from a clean shell before it was written
-down, and the outputs below are what it printed.** That is the only reason to
-trust it. The `README.md` quick start has been there for months, requires a
+**Every step here was executed on macOS from a clean shell, and the outputs
+below are what it printed.** That is the only reason to trust it.
+
+§ 8 was not, at first. Sections 1 to 6 were run three times — once here and
+twice by `client-claude` as a first reader — while the front-end step sat
+unexecuted under a heading that claimed otherwise, and it carried a wrong port
+the whole time. `agent-mesh-local-pm` found it by counting output markers per
+section and noticing one had none (mail #478). It has been run now, and § 7
+remains the only section without a trace. The `README.md` quick start has been there for months, requires a
 Linux host with systemd and a GitHub OAuth app, and nobody on this project has
 ever run it — `client-claude` tried to follow it as a first reader and could not
 get past the prerequisites (mail #426).
@@ -246,11 +252,47 @@ participant — nothing is exempt from key approval, including this.
 
 ```bash
 cd packages/platform-web
-API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT" bun run dev   # serves on 3005
+API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT" bun run dev
 ```
+
+**Read the port off vite's own output, not off this page.** `package.json` asks
+for 3005, and vite moves when that is taken rather than failing:
+
+```
+$ vite --port 3005
+Port 3005 is in use, trying another one...
+
+  VITE v6.4.3  ready in 117 ms
+
+  ➜  Local:   http://localhost:3006/
+```
+
+Both runs recorded here landed somewhere else — 3006 once and 3007 once, in the
+same hour, because a WebKit process holds 3005 on this machine. An earlier
+version of this section said `# serves on 3005`, which contradicted the rest of
+the document: every other step warns that a fixed port is one somebody else
+already has, and then this one assumed a free one. A reader opening 3005 sees
+somebody else's server or nothing at all.
 
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
 the top of this document.
+
+Check the proxy rather than assuming it, because a screen that cannot reach the
+backend renders perfectly:
+
+```bash
+curl -s "http://localhost:<the port vite printed>/api/v1/health"
+curl -s "http://127.0.0.1:$HTTP_PORT/api/v1/health"
+```
+
+```
+{"status":"ok","version":"20260817133905","agent_count":1,"uptime":23}
+{"status":"ok","version":"20260817133905","agent_count":1,"uptime":23}
+```
+
+The same answer through both means the proxy is wired. A different one, or an
+empty reply, means the screen is talking to something else — which is the whole
+failure this document is about, one layer up.
 
 ---
 
