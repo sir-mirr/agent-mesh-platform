@@ -69,7 +69,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(res.status).toBe(handle.login_expect_status);
     const setCookie = res.headers.get("set-cookie") || "";
     expect(setCookie).toContain("mesh_token");
-    authCookie = setCookie.split(";")[0];
+    authCookie = setCookie.split(";")[0] ?? "";
     expect(authCookie).toBeString();
   });
 

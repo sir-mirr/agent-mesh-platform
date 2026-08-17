@@ -18,7 +18,8 @@
     "exactOptionalPropertyTypes": true,
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["bun", "node"]
   },
   "include": ["src", "test", "vite-env.d.ts", "vite.config.ts"]
 }
