@@ -1418,8 +1418,20 @@ Content-Type: application/json
 **Not a separate mail service.** The methods, the signing construction, the
 error codes and the queue are the ones already specified. A participant that
 switches between a socket and this transport is the same identity with the same
-inbox — the pending rows an adapter is handed on connect are the rows
+mailbox — the pending rows an adapter is handed on connect are the rows
 `mesh.receive` returns.
+
+**A successful `mesh.connect` MUST deliver what is waiting**, as `mesh.message`
+notifications, before the participant asks for anything. A lane that only
+listens has no other way to learn what arrived while it was away, and a mesh
+that quietly required a drain call would strand every such participant with a
+full mailbox and no symptom to go on.
+
+Stated because it was previously only implied by the sentence above it, and the
+implication carries too much: whether the hub pushes or the client drains decides
+whether a listening participant needs lease and acknowledgement semantics at all.
+`E2E-CONNECT-001` holds it — a message sent to an identity holding no socket, and
+a connect with no `mesh.receive` anywhere in the scenario.
 
 **The identity comes from `sig.kid`.** At most one key per identity is approved
 (§ 10.2), so a fingerprint names exactly one participant. A caller therefore
