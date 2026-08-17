@@ -1,18 +1,12 @@
 import React, { useState } from "react";
 import {
   PageHeader,
+  Breadcrumbs,
   AclMatrix,
-  SubNavPills,
   Toast,
 } from "@/components/index.ts";
 
 export function TenantEgressAclPage() {
-  const subNavItems = [
-    { label: "이그레스 ACL 행렬", href: "/tenant/egress-acl", icon: "🛡️" },
-    { label: "메시지 본문 감사", href: "/tenant/audits", icon: "🔍" },
-    { label: "조직 멤버 RBAC", href: "/tenant/rbac", icon: "🔑" },
-  ];
-
   const groups = [
     { id: "grp_support", name: "Support Swarm" },
     { id: "grp_billing", name: "Billing Core" },
@@ -60,7 +54,7 @@ export function TenantEgressAclPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="TENANT ADMIN"

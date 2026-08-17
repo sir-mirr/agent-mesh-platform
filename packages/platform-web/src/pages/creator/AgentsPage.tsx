@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   PageHeader,
+  Breadcrumbs,
   DataTable,
   StatusBadge,
   FingerprintBox,
   Button,
   ConfirmDialog,
-  SubNavPills,
 } from "@/components/index.ts";
 
 interface AgentItem {
@@ -54,15 +54,6 @@ export function AgentsPage() {
   const [agents, setAgents] = useState<AgentItem[]>(INITIAL_AGENTS);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
-
-  const subNavItems = [
-    { label: "내 에이전트", href: "/creator", icon: "🤖" },
-    { label: "스웜 그룹 관리", href: "/creator/groups", icon: "👥" },
-    { label: "스웜 토폴로지", href: "/creator/topology", icon: "🌐" },
-    { label: "메시지 테스트", href: "/creator/playground", icon: "💬" },
-    { label: "소켓리스 큐", href: "/creator/lease-queue", icon: "📥" },
-    { label: "에이전트 등록", href: "/creator/register", icon: "➕" },
-  ];
 
   const handleTeardownConfirm = () => {
     if (!teardownTarget) return;
@@ -179,7 +170,7 @@ export function AgentsPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="STUDIO SUITE"

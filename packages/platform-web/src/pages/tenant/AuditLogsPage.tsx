@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import {
   PageHeader,
+  Breadcrumbs,
   DataTable,
   StatusBadge,
-  SubNavPills,
   Button,
 } from "@/components/index.ts";
 import { useRbac } from "@/contexts/RbacContext.tsx";
@@ -43,12 +43,6 @@ export function AuditLogsPage() {
   const { hasCapability } = useRbac();
   const [events] = useState<AuditEvent[]>(INITIAL_EVENTS);
   const canReadContent = hasCapability("audit.read_content");
-
-  const subNavItems = [
-    { label: "이그레스 ACL 행렬", href: "/tenant/egress-acl", icon: "🛡️" },
-    { label: "메시지 본문 감사", href: "/tenant/audits", icon: "🔍" },
-    { label: "조직 멤버 RBAC", href: "/tenant/rbac", icon: "🔑" },
-  ];
 
   const columns = [
     {
@@ -124,7 +118,7 @@ export function AuditLogsPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="TENANT ADMIN"

@@ -1,21 +1,15 @@
 import React from "react";
 import {
   PageHeader,
+  Breadcrumbs,
   TelemetryCard,
-  SubNavPills,
   Button,
 } from "@/components/index.ts";
 
 export function TelemetryPage() {
-  const subNavItems = [
-    { label: "서버 인프라 현황", href: "/platform", icon: "⚡" },
-    { label: "노드 텔레메트리", href: "/platform/telemetry", icon: "📈" },
-    { label: "테넌트 라우팅 분석", href: "/platform/tenants", icon: "🏢" },
-  ];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="PLATFORM OPERATOR"

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import {
   PageHeader,
+  Breadcrumbs,
   DataTable,
-  SubNavPills,
   Toast,
 } from "@/components/index.ts";
 
@@ -58,12 +58,6 @@ const ALL_CAPABILITIES = [
 export function RbacManagementPage() {
   const [members, setMembers] = useState<OrgMember[]>(INITIAL_MEMBERS);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const subNavItems = [
-    { label: "이그레스 ACL 행렬", href: "/tenant/egress-acl", icon: "🛡️" },
-    { label: "메시지 본문 감사", href: "/tenant/audits", icon: "🔍" },
-    { label: "조직 멤버 RBAC", href: "/tenant/rbac", icon: "🔑" },
-  ];
 
   const handleToggleCapability = (memberId: string, capId: string) => {
     setMembers((prev) =>
@@ -155,7 +149,7 @@ export function RbacManagementPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="TENANT ADMIN"

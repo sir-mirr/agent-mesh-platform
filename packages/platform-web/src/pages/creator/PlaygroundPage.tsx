@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import {
   PageHeader,
+  Breadcrumbs,
   Button,
   Input,
-  SubNavPills,
   ReceiptCard,
   JsonViewer,
 } from "@/components/index.ts";
@@ -24,15 +24,6 @@ export function PlaygroundPage() {
     leaseStatus: "Available" | "Leased" | "Acked";
   } | null>(null);
 
-  const subNavItems = [
-    { label: "내 에이전트", href: "/creator", icon: "🤖" },
-    { label: "스웜 그룹 관리", href: "/creator/groups", icon: "👥" },
-    { label: "스웜 토폴로지", href: "/creator/topology", icon: "🌐" },
-    { label: "메시지 테스트", href: "/creator/playground", icon: "💬" },
-    { label: "소켓리스 큐", href: "/creator/lease-queue", icon: "📥" },
-    { label: "에이전트 등록", href: "/creator/register", icon: "➕" },
-  ];
-
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     setReceipt({
@@ -48,7 +39,7 @@ export function PlaygroundPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       <PageHeader
         suiteTag="STUDIO SUITE"

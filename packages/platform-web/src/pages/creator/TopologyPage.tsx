@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { PageHeader, SubNavPills, Button, Toast } from "@/components/index.ts";
+import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 
 interface ClusterConfig {
   id: string;
@@ -105,15 +105,6 @@ export function TopologyPage() {
     window.addEventListener("resize", updateDim);
     return () => window.removeEventListener("resize", updateDim);
   }, []);
-
-  const subNavItems = [
-    { label: "내 에이전트", href: "/creator", icon: "🤖" },
-    { label: "스웜 그룹 관리", href: "/creator/groups", icon: "👥" },
-    { label: "에이전트 토폴로지", href: "/creator/topology", icon: "🌐" },
-    { label: "메시지 테스트", href: "/creator/playground", icon: "💬" },
-    { label: "소켓리스 큐", href: "/creator/lease-queue", icon: "📥" },
-    { label: "에이전트 등록", href: "/creator/register", icon: "➕" },
-  ];
 
   // 1. Build Topology Data Graph dynamically based on Stage (1 ~ 10)
   const { clusters, nodes, edges, totalAgentCount, bounds } = useMemo(() => {
@@ -922,7 +913,7 @@ export function TopologyPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SubNavPills items={subNavItems} />
+      <Breadcrumbs />
 
       {/* Clean Production Page Header */}
       <PageHeader

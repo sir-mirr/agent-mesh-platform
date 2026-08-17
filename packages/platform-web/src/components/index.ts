@@ -8,6 +8,7 @@ export { Can } from "@/contexts/RbacContext.tsx";
 
 // Layout
 export * from "./layout/PageHeader.tsx";
+export * from "./layout/Breadcrumbs.tsx";
 export * from "./layout/SubNavPills.tsx";
 export * from "./layout/PageContainer.tsx";
 export * from "./layout/Sidebar.tsx";
