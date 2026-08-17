@@ -195,8 +195,19 @@ somewhere else has made it a thing to steal.
 
 ```bash
 curl -s "http://127.0.0.1:$HTTP_PORT/api/v1/health"
-curl -s "http://127.0.0.1:$HUB_PORT/api/v1/capabilities" | jq .platform
+curl -s "http://127.0.0.1:$HUB_PORT/api/v1/capabilities" | jq '.platform, .audit.blob_base_url'
 ```
+
+**Check `blob_base_url` against `$HTTP_PORT`.** The hub cannot derive that
+address — http connects to it, never the reverse — so a deployment states it,
+and forgetting to leaves the default `http://127.0.0.1:3000` pointing at
+whatever else is listening there. Every step of this procedure passes with that
+value wrong; the first thing that disagrees is an attachment upload, later, from
+somebody else.
+
+`client-claude` found that gap by asking what following this document does *not*
+prove (mail #451). The value was unobservable at the time, which is why it now
+appears here.
 
 What that run actually printed:
 

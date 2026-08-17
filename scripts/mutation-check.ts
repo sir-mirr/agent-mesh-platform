@@ -489,6 +489,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["and could not, because the handle is read-only"],
   },
 
+  {
+    id: "blob-base-url-advert",
+    defect:
+      "`/api/v1/capabilities` did not report the upload address the hub hands out, so a deployment that forgot `AGENT_MESH_BLOB_BASE_URL` served `http://127.0.0.1:3000` URLs pointing at whatever else held that port — and nothing observable disagreed until the first attachment. The same shape as the receive lease beside it, which is advertised for exactly this reason.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "        blob_base_url: BLOB_BASE_URL,",
+    to: '        blob_base_url: "http://127.0.0.1:3000",',
+    suite: "test/blobs.test.ts",
+    // A harness on ephemeral ports is never legitimately 3000, which is what
+    // separates reporting the configuration from reporting the constant.
+    expect: ["capabilities reports the configured one, not the default"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

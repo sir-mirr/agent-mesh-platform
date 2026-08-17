@@ -36,7 +36,7 @@ import { DORMANCY_SECONDS } from "../dormancy";
 import { LEASE_SECONDS } from "../rpc/receive";
 import { log } from "../log";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "../rpc/audit-limits";
-import { recordRecalled } from "../rpc/audit";
+import { BLOB_BASE_URL, recordRecalled } from "../rpc/audit";
 import { handleFetchMessages } from "../rpc/messages";
 import { handleReceive } from "../rpc/receive";
 import { handleSend } from "../rpc/send";
@@ -128,7 +128,22 @@ export function handleMailboxRoute(req: MailboxRequest): Response | null {
         // not check itself.
         receive_lease_seconds: LEASE_SECONDS,
       },
-      audit: { ...AUDIT_LIMITS, schema_version_max: MAX_SCHEMA_VERSION },
+      audit: {
+        ...AUDIT_LIMITS,
+        schema_version_max: MAX_SCHEMA_VERSION,
+        // **The address this hub hands out for attachment uploads**, which it
+        // cannot derive — http connects to the hub, never the reverse, so a
+        // deployment states it and the default is § 9.1's port.
+        //
+        // Reported for the same reason `receive_lease_seconds` beside it is,
+        // and it was the one still missing. A hub started on a non-default pair
+        // whose operator forgot `AGENT_MESH_BLOB_BASE_URL` hands out `:3000`
+        // URLs pointing at whatever else is listening there — silently, and not
+        // until the first attachment. `client-claude` found this by noticing the
+        // running-locally procedure passes every step with that value wrong
+        // (mail #451): nothing observable disagrees, so nothing can check it.
+        blob_base_url: BLOB_BASE_URL,
+      },
       // `observed_source` is the running deployment's, not the default's
       // (§ 8.11). Reporting the constant would tell every caller `socket`
       // however the process was configured — the exact drift this route

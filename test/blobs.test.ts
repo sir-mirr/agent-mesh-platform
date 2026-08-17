@@ -447,3 +447,26 @@ describe("a rejection mid-body", () => {
     expect(res.status).toBe(411);
   });
 });
+
+describe("the upload address a deployment states (§ 9.1)", () => {
+  test("capabilities reports the configured one, not the default", async () => {
+    // **The hub cannot work this address out.** http connects to the hub and
+    // never the reverse, so a deployment states it — and a deployment that
+    // forgets hands out `http://127.0.0.1:3000` URLs pointing at whatever else
+    // is on that port.
+    //
+    // Nothing observable disagreed until the first attachment, which is why
+    // this is reported at all: the whole running-locally procedure passes with
+    // the value wrong. Same reasoning as `receive_lease_seconds` and
+    // `observed_source` beside it — report the deployment's value, because a
+    // client sizing itself on a constant is sizing itself on another mesh.
+    const res = await fetch(`${mesh.hub.url}/api/v1/capabilities`);
+    const body = (await res.json()) as { audit: { blob_base_url: string } };
+
+    expect(body.audit.blob_base_url).toBe(mesh.http.url);
+    // Not the default. A harness on ephemeral ports can never legitimately be
+    // 3000, so this separates "reported the configuration" from "reported the
+    // constant and happened to match".
+    expect(body.audit.blob_base_url).not.toBe("http://127.0.0.1:3000");
+  });
+});

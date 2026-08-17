@@ -40,7 +40,7 @@ const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
  * The hub cannot derive the address: it never connects to http, http connects
  * to it. So a deployment states it, and the default is the port § 9.1 assigns.
  */
-const BLOB_BASE_URL = (
+export const BLOB_BASE_URL = (
   process.env.AGENT_MESH_BLOB_BASE_URL ??
   process.env.AGENT_MESH_HTTP_URL ??
   "http://127.0.0.1:3000"
