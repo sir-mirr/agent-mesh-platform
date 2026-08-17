@@ -337,8 +337,8 @@ into it (§ 8.2, `proxy_for`). That is why a browser needs no hub socket, and wh
 the hub carries no CORS headers: nothing in a browser should reach it.
 
 `/api/v1/agents` exists on **both**, split by method — `GET` on http lists the
-registry for a screen, `POST` on the hub provisions an identity and
-`GET /{identity}/keys` reads a key back. A path-prefix proxy cannot separate
+registry for a screen, `POST` on the hub provisions an identity, and the hub's
+`/api/v1/agents/{identity}/keys` reads a key back. A path-prefix proxy cannot separate
 them, and does not need to: a browser wants the `GET` and nothing else.
 
 A front end in development wants a proxy rather than CORS:
