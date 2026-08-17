@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Mesh Platform — 정보구조도 (Information Architecture & Specification Map)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --primary-border: #DBEAFE;
+      --primary-subtle: #F0F7FF;
+
+      --suite-public: #0284C7;
+      --suite-public-bg: #F0F9FF;
+      --suite-public-br: #BAE6FD;
+
+      --suite-platform: #7C3AED;
+      --suite-platform-bg: #F5F3FF;
+      --suite-platform-br: #DDD6FE;
+
+      --suite-tenant: #059669;
+      --suite-tenant-bg: #ECFDF5;
+      --suite-tenant-br: #A7F3D0;
+
+      --suite-creator: #D97706;
+      --suite-creator-bg: #FFFBEB;
+      --suite-creator-br: #FDE68A;
+
+      --suite-dev: #4F46E5;
+      --suite-dev-bg: #EEF2FF;
+      --suite-dev-br: #C7D2FE;
+
+      --bg-page: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-surface-sub: #F1F5F9;
+      --bg-card: #FFFFFF;
+
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+
+      --border-default: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --border-subtle: #F1F5F9;
+
+      --status-success: #059669;
+      --status-success-bg: #ECFDF5;
+      --status-warning: #D97706;
+      --status-warning-bg: #FFFBEB;
+      --status-danger: #DC2626;
+      --status-danger-bg: #FEF2F2;
+
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+
+      --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+      --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08);
+      --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-page);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Control Bar */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 28px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: var(--shadow-sm);
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 900;
+      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+    }
+    .brand-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-primary); }
+    .btn-secondary:hover { background: var(--bg-surface-sub); }
+    .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+
+    /* Main Container */
+    .main-layout {
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+      color: white;
+      border-radius: var(--radius-xl);
+      padding: 32px 36px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    .hero-banner::after {
+      content: "";
+      position: absolute;
+      right: -50px;
+      bottom: -50px;
+      width: 250px;
+      height: 250px;
+      background: radial-gradient(circle, rgba(37,99,235,0.2) 0%, rgba(37,99,235,0) 70%);
+      pointer-events: none;
+    }
+    .hero-text h1 {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hero-text p {
+      font-size: 0.95rem;
+      color: #94A3B8;
+      max-width: 780px;
+      line-height: 1.6;
+    }
+
+    .kpi-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .kpi-card {
+      background: rgba(255, 255, 255, 0.07);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-lg);
+      padding: 14px 20px;
+      min-width: 140px;
+      text-align: center;
+    }
+    .kpi-val {
+      font-size: 1.7rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: #60A5FA;
+    }
+    .kpi-lbl {
+      font-size: 0.75rem;
+      color: #CBD5E1;
+      font-weight: 600;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Navigation View Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-surface-sub);
+      padding: 5px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-default);
+      overflow-x: auto;
+    }
+    .tab-btn {
+      border: none;
+      background: transparent;
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active {
+      background: var(--bg-surface);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+    .tab-badge {
+      background: var(--bg-surface-sub);
+      color: var(--text-secondary);
+      padding: 2px 7px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .tab-btn.active .tab-badge {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* Suite Filter Chips */
+    .filter-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 12px 18px;
+    }
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .filter-chip {
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border-default);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-chip:hover { border-color: var(--text-muted); color: var(--text-primary); }
+    .filter-chip.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .filter-chip.chip-public.active { background: var(--suite-public); border-color: var(--suite-public); }
+    .filter-chip.chip-platform.active { background: var(--suite-platform); border-color: var(--suite-platform); }
+    .filter-chip.chip-tenant.active { background: var(--suite-tenant); border-color: var(--suite-tenant); }
+    .filter-chip.chip-creator.active { background: var(--suite-creator); border-color: var(--suite-creator); }
+    .filter-chip.chip-dev.active { background: var(--suite-dev); border-color: var(--suite-dev); }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 6px 14px;
+      gap: 8px;
+      min-width: 280px;
+    }
+    .search-box input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-family: inherit;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      width: 100%;
+    }
+
+    /* View Content Areas */
+    .view-panel {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .view-panel.active { display: flex; }
+
+    /* 1. Tree View (Suite Cards & Node Hierarchies) */
+    .suite-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: var(--shadow-xs);
+      transition: all 0.2s ease;
+    }
+    .suite-section:hover { box-shadow: var(--shadow-sm); }
+    
+    .suite-header {
+      padding: 18px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-default);
+      background: var(--bg-surface);
+    }
+    .suite-header.suite-header-public { border-left: 6px solid var(--suite-public); }
+    .suite-header.suite-header-platform { border-left: 6px solid var(--suite-platform); }
+    .suite-header.suite-header-tenant { border-left: 6px solid var(--suite-tenant); }
+    .suite-header.suite-header-creator { border-left: 6px solid var(--suite-creator); }
+    .suite-header.suite-header-dev { border-left: 6px solid var(--suite-dev); }
+
+    .suite-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .suite-icon-box {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+    .suite-icon-public { background: var(--suite-public-bg); color: var(--suite-public); border: 1px solid var(--suite-public-br); }
+    .suite-icon-platform { background: var(--suite-platform-bg); color: var(--suite-platform); border: 1px solid var(--suite-platform-br); }
+    .suite-icon-tenant { background: var(--suite-tenant-bg); color: var(--suite-tenant); border: 1px solid var(--suite-tenant-br); }
+    .suite-icon-creator { background: var(--suite-creator-bg); color: var(--suite-creator); border: 1px solid var(--suite-creator-br); }
+    .suite-icon-dev { background: var(--suite-dev-bg); color: var(--suite-dev); border: 1px solid var(--suite-dev-br); }
+
+    .suite-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+    }
+    .suite-desc {
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+      padding: 20px 24px;
+      background: #FAFCFF;
+    }
+
+    .node-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      cursor: pointer;
+    }
+    .node-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary-border);
+      box-shadow: var(--shadow-md);
+    }
+    .node-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .node-id {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: var(--bg-surface-sub);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+    }
+    .node-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.35;
+    }
+    .node-path {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--primary);
+      word-break: break-all;
+      background: var(--primary-subtle);
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--primary-border);
+    }
+    .node-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .node-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+    .node-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+      padding-top: 8px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.72rem;
+      font-weight: 600;
+      font-family: inherit;
+    }
+    .badge-wired { background: var(--status-success-bg); color: var(--status-success); border: 1px solid #A7F3D0; }
+    .badge-content { background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; }
+    .badge-spec { background: #FDF4FF; color: #A21CAF; border: 1px solid #F5D0FE; }
+    .badge-role { background: var(--bg-surface-sub); color: var(--text-secondary); border: 1px solid var(--border-default); }
+    .badge-cap { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; font-family: var(--font-mono); font-size: 0.7rem; }
+
+    /* 2. Matrix Table View */
+    .table-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      overflow-x: auto;
+      box-shadow: var(--shadow-xs);
+    }
+    .ia-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    .ia-table th {
+      background: var(--bg-surface-sub);
+      padding: 12px 16px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-default);
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .ia-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-default);
+      vertical-align: top;
+    }
+    .ia-table tr:hover td {
+      background: #F8FAFC;
+    }
+
+    /* 3. Role Flow View */
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+      gap: 20px;
+    }
+    .flow-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      box-shadow: var(--shadow-xs);
+    }
+    .flow-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-default);
+    }
+    .flow-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+    }
+    .flow-step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+    }
+    .flow-step-list::before {
+      content: "";
+      position: absolute;
+      left: 17px;
+      top: 14px;
+      bottom: 14px;
+      width: 2px;
+      background: var(--border-strong);
+    }
+    .flow-step-item {
+      display: flex;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+    .step-num {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-full);
+      background: var(--bg-surface);
+      border: 2px solid var(--primary);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .step-content {
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      flex: 1;
+    }
+    .step-title {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .step-desc {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .step-link {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--primary);
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 4px;
+    }
+    .step-link:hover { text-decoration: underline; }
+
+    /* Modal / Drawer Detail View */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.active { display: flex; }
+    .modal-box {
+      background: var(--bg-surface);
+      border-radius: var(--radius-xl);
+      max-width: 680px;
+      width: 100%;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 85vh;
+      animation: modalSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalSlide {
+      from { transform: translateY(16px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-head {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-default);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      background: var(--bg-surface);
+    }
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .modal-foot {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-default);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: var(--bg-surface-sub);
+    }
+    .detail-section-title {
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .detail-block {
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      font-size: 0.84rem;
+      line-height: 1.5;
+    }
+    .close-btn {
+      background: transparent;
+      border: none;
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+    }
+    .close-btn:hover { background: var(--bg-surface-sub); color: var(--text-primary); }
+
+    /* Footer */
+    footer {
+      margin-top: auto;
+      border-top: 1px solid var(--border-default);
+      padding: 24px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      background: var(--bg-surface);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <a href="/index.html" class="brand-group">
+      <div class="brand-logo">M</div>
+      <div>
+        <div class="brand-title">Agent Mesh Platform</div>
+        <div class="brand-sub">Information Architecture (IA) & Screen Catalog</div>
+      </div>
+    </a>
+
+    <div class="top-actions">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+      <a href="/public/index.html" class="btn btn-primary btn-sm">🚀 Live Preview Portal</a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+
+    <!-- Hero Banner & KPIs -->
+    <section class="hero-banner">
+      <div class="hero-text">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span class="badge badge-spec" style="background:#3B82F6; color:white; border:none;">SPEC 0.2 / Contracts v0.10.0</span>
+          <span class="badge badge-wired" style="background:#10B981; color:white; border:none;">Port :3005 Active</span>
+        </div>
+        <h1>에이전트 메시 플랫폼 정보구조도 (IA)</h1>
+        <p>
+          본 구조도는 Agent Mesh Platform의 전체 60개 화면 산출물과 핵심 아키텍처, 4대 페르소나별 UX 동선, 56개 REST/WS 엔드포인트 및 9대 RBAC 역량(Capability) 매핑을 체계적으로 시각화한 기획 마스터플랜입니다.
+        </p>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi-total-screens">60</div>
+          <div class="kpi-lbl">Total Screens</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#A78BFA;">5</div>
+          <div class="kpi-lbl">Core Suites</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#34D399;">56</div>
+          <div class="kpi-lbl">Mapped APIs</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#FBBF24;">9</div>
+          <div class="kpi-lbl">Capabilities</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" onclick="switchView('tree')">
+        🗺️ 계층형 구조도 (Tree View) <span class="tab-badge">60 Screens</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('matrix')">
+        📊 상세 매트릭스 (Matrix Table) <span class="tab-badge">API & Spec Map</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('flows')">
+        👤 페르소나별 동선도 (Role Flows) <span class="tab-badge">4 Personas</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('governance')">
+        🛡️ 거버넌스 & 권한 맵 (RBAC & Spec) <span class="tab-badge">9 Caps</span>
+      </button>
+    </nav>
+
+    <!-- Filter & Search Toolbar -->
+    <div class="filter-bar">
+      <div class="filter-chips">
+        <button class="filter-chip active" onclick="filterSuite('all', this)">전체보기 (60)</button>
+        <button class="filter-chip chip-public" onclick="filterSuite('public', this)">1. Public & Auth (8)</button>
+        <button class="filter-chip chip-platform" onclick="filterSuite('platform', this)">2. Platform Operator (12)</button>
+        <button class="filter-chip chip-tenant" onclick="filterSuite('tenant', this)">3. Tenant Admin (16)</button>
+        <button class="filter-chip chip-creator" onclick="filterSuite('creator', this)">4. Agent Operations (12)</button>
+        <button class="filter-chip chip-dev" onclick="filterSuite('dev', this)">5. Developer Hub (12)</button>
+      </div>
+
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="searchInput" placeholder="화면명, 라우트 경로, API 검색..." oninput="handleSearch(this.value)">
+      </div>
+    </div>
+
+    <!-- VIEW 1: 계층형 구조도 (Tree View) -->
+    <div id="view-tree" class="view-panel active">
+      
+      <!-- Suite 1: Public & Marketing / Auth -->
+      <section class="suite-section" data-suite="public">
+        <div class="suite-header suite-header-public">
+          <div class="suite-info">
+            <div class="suite-icon-box suite-icon-public">🌐</div>
+            <div>
+              <h2 class="suite-title">1. Public Suite & Auth Gateways (8 Screens)</h2>
+              <p class="suite-desc">공개 랜딩, 보안 신뢰 모델, 소켓리스 리스 상태머신 및 페르소나별 로그인 진입 게이트웨이</p>
+            </div>
+          </div>
+          <span class="badge badge-content">Scope: Public / All Users</span>
+        </div>
+        <div class="node-grid" id="grid-public"></div>
+      </section>
+
+      <!-- Suite 2: Platform Operator -->
+      <section class="suite-section" data-suite="platform">
+        <div class="suite-header suite-header-platform">
+          <div class="suite-info">
+            <div class="suite-icon-box suite-icon-platform">⚡</div>
+            <div>
+              <h2 class="suite-title">2. Platform Operator Suite (12 Screens)</h2>
+              <p class="suite-desc">글로벌 14개 하이웨이 백본, 멀티 테넌트 프로비저닝, 클러스터 텔레메트리, Root CA, Egress Redaction 메타데이터 감사</p>
+            </div>
+          </div>
+          <span class="badge badge-spec">Scope: Platform Master Operator</span>
+        </div>
+        <div class="node-grid" id="grid-platform"></div>
+      </section>
+
+      <!-- Suite 3: Tenant Admin -->
+      <section class="suite-section" data-suite="tenant">
+        <div class="suite-header suite-header-tenant">
+          <div class="suite-info">
+            <div class="suite-icon-box suite-icon-tenant">🏢</div>
+            <div>
+              <h2 class="suite-title">3. Tenant Admin Suite (Acme Corp) (16 Screens)</h2>
+              <p class="suite-desc">50자리 지문 키 승인 큐, 침해 키 보관소, 스웜 그룹 클러스터링, Egress ACL 매트릭스, RFC 8628 페어링 코드 발급 및 참가자 감사</p>
+            </div>
+          </div>
+          <span class="badge badge-wired">Scope: Tenant Admin & Security Officer</span>
+        </div>
+        <div class="node-grid" id="grid-tenant"></div>
+      </section>
+
+      <!-- Suite 4: Agent Operations Studio -->
+      <section class="suite-section" data-suite="creator">
+        <div class="suite-header suite-header-creator">
+          <div class="suite-info">
+            <div class="suite-icon-box suite-icon-creator">🤖</div>
+            <div>
+              <h2 class="suite-title">4. Agent Operations Studio (12 Screens)</h2>
+              <p class="suite-desc">스웜 갤럭시 토폴로지 & 선택적 ACL 채널 제어, 메시지 플레이그라운드, 소켓리스 인박스 리스 카운트다운, WS 프레임 디버거, 영구 Teardown</p>
+            </div>
+          </div>
+          <span class="badge badge-wired">Scope: Agent Creator & Bot Operator</span>
+        </div>
+        <div class="node-grid" id="grid-creator"></div>
+      </section>
+
+      <!-- Suite 5: Developer Hub -->
+      <section class="suite-section" data-suite="dev">
+        <div class="suite-header suite-header-dev">
+          <div class="suite-info">
+            <div class="suite-icon-box suite-icon-dev">💻</div>
+            <div>
+              <h2 class="suite-title">5. Developer Hub & API Reference (12 Screens)</h2>
+              <p class="suite-desc">OpenAPI 3.1 대화형 탐색기, Outbox/Inbox/Provisioning REST API 레퍼런스, 3대 공식 SDK (TS/Python/Go) 및 Webhooks</p>
+            </div>
+          </div>
+          <span class="badge badge-content">Scope: External API Consumer & Developer</span>
+        </div>
+        <div class="node-grid" id="grid-dev"></div>
+      </section>
+
+    </div>
+
+    <!-- VIEW 2: 상세 매트릭스 (Matrix Table) -->
+    <div id="view-matrix" class="view-panel">
+      <div class="table-container">
+        <table class="ia-table">
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th style="width:140px;">Suite</th>
+              <th style="width:130px;">Target Role</th>
+              <th style="width:220px;">Screen Name</th>
+              <th style="width:200px;">File Path</th>
+              <th style="width:220px;">Mapped Endpoints</th>
+              <th style="width:120px;">Capability</th>
+              <th style="width:80px;">Status</th>
+              <th style="width:90px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="matrix-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 3: 페르소나별 동선도 (Role Flows) -->
+    <div id="view-flows" class="view-panel">
+      <div class="flow-grid">
+        
+        <!-- Flow 1: Platform Operator -->
+        <div class="flow-card">
+          <div class="flow-header">
+            <div class="flow-icon suite-icon-platform">⚡</div>
+            <div>
+              <h3 style="font-size:1.1rem; font-weight:800;">플랫폼 최고 관리자 (Platform Operator)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">인프라 백본 통제, 테넌트 격리 및 글로벌 거버넌스</p>
+            </div>
+          </div>
+          <div class="flow-step-list">
+            <div class="flow-step-item">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-title">마스터 포털 로그인 & 2FA</div>
+                <div class="step-desc">플랫폼 마스터 토큰 인증 및 보안 세션 수립</div>
+                <a href="/public/login-platform.html" class="step-link">preview/public/login-platform.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">글로벌 백본 & 14개 하이웨이 상태 점검</div>
+                <div class="step-desc">클러스터 덱 간 패킷 드롭율 및 라우팅 병목 감시</div>
+                <a href="/platform/highways.html" class="step-link">preview/platform/highways.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">멀티 테넌트 프로비저닝 & 쿼터 할당</div>
+                <div class="step-desc">신규 테넌트 조직 생성, 노드 쿼터 및 스토리지 상한 지정</div>
+                <a href="/platform/tenant-manager.html" class="step-link">preview/platform/tenant-manager.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">전역 메타데이터 감사 (Egress Redaction)</div>
+                <div class="step-desc">본문 유출 없이 메타데이터(크기, 발신자, 시각) 기반 감사 추적</div>
+                <a href="/platform/metadata-audits.html" class="step-link">preview/platform/metadata-audits.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <div class="step-title">Root CA & MTLS 로테이션 감독</div>
+                <div class="step-desc">게이트웨이 간 Ed25519 인증서 갱신 및 신뢰 체인 검증</div>
+                <a href="/platform/certificate-authority.html" class="step-link">preview/platform/certificate-authority.html ↗</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow 2: Tenant Admin -->
+        <div class="flow-card">
+          <div class="flow-header">
+            <div class="flow-icon suite-icon-tenant">🏢</div>
+            <div>
+              <h3 style="font-size:1.1rem; font-weight:800;">테넌트 관리자 (Tenant Admin - Acme Corp)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">조직 자산 통제, 키 승인 거버넌스 및 스웜 보안 정책</p>
+            </div>
+          </div>
+          <div class="flow-step-list">
+            <div class="flow-step-item">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-title">기업 SSO 포털 로그인</div>
+                <div class="step-desc">OAuth / SAML SSO를 통한 테넌트 관리자 세션 획득</div>
+                <a href="/public/login-tenant.html" class="step-link">preview/public/login-tenant.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">50자리 지문 키 승인 큐 처리 (SPEC §11.3)</div>
+                <div class="step-desc">말줄임표 없는 전체 지문 1:1 대조 및 승인/거부/폐기</div>
+                <a href="/tenant/key-approvals.html" class="step-link">preview/tenant/key-approvals.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">스웜 그룹 클러스터 및 Egress ACL 설정</div>
+                <div class="step-desc">Deny-by-default 기반 그룹 간 이그레스 통신 정책 수립</div>
+                <a href="/tenant/egress-acl.html" class="step-link">preview/tenant/egress-acl.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">RFC 8628 페어링 코드 발급 및 소유권 위임</div>
+                <div class="step-desc">Crockford Base32 8자리 단회용 페어링 코드로 에이전트 소유권 등록</div>
+                <a href="/tenant/pairing-codes.html" class="step-link">preview/tenant/pairing-codes.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <div class="step-title">참가자 감사 로그 열람 & SIEM 연동</div>
+                <div class="step-desc">`audit.read.content` 권한 기반 본문 감사 및 S3 아카이빙</div>
+                <a href="/tenant/participant-audits.html" class="step-link">preview/tenant/participant-audits.html ↗</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow 3: Agent Operator / Creator -->
+        <div class="flow-card">
+          <div class="flow-header">
+            <div class="flow-icon suite-icon-creator">🤖</div>
+            <div>
+              <h3 style="font-size:1.1rem; font-weight:800;">에이전트 운영자 (Agent Operator / Creator)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">에이전트 실행, 토폴로지 탐색 및 메시지 테스팅</p>
+            </div>
+          </div>
+          <div class="flow-step-list">
+            <div class="flow-step-item">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-title">신규 에이전트 등록 & 키 제안</div>
+                <div class="step-desc">신원명, 타입 지정 및 Ed25519 공개키 제안 (`POST /api/v1/agents`)</div>
+                <a href="/creator/agent-register.html" class="step-link">preview/creator/agent-register.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">원형 오비탈 토폴로지 & 선택적 ACL 통신선 제어</div>
+                <div class="step-desc">스웜 클러스터 내 연결 노드 하이라이트 및 동적 통신 권한 토글</div>
+                <a href="/creator/topology.html" class="step-link">preview/creator/topology.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">인터랙티브 메시지 플레이그라운드 테스트</div>
+                <div class="step-desc">JWT 프록시를 통한 테스트 메시지 전송 및 WebSocket/Inbox 배달 영수증 확인</div>
+                <a href="/creator/playground.html" class="step-link">preview/creator/playground.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">소켓리스 인박스 큐 & 300초 리스 감시</div>
+                <div class="step-desc">임대 고착 상태 감시 및 일괄 원자적 리스/ACK 액션</div>
+                <a href="/creator/lease-queue.html" class="step-link">preview/creator/lease-queue.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <div class="step-title">영구 신원 Teardown (2차 안전 모달)</div>
+                <div class="step-desc">불가역 소프트 삭제 및 409 IDENTITY_DELETED 톰스톤 방어 검증</div>
+                <a href="/creator/agent-teardown.html" class="step-link">preview/creator/agent-teardown.html ↗</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow 4: Developer / API Consumer -->
+        <div class="flow-card">
+          <div class="flow-header">
+            <div class="flow-icon suite-icon-dev">💻</div>
+            <div>
+              <h3 style="font-size:1.1rem; font-weight:800;">외부 개발자 (Developer & API Consumer)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">SDK 연동, OpenAPI 콘솔 및 웹훅 이벤트 수신</p>
+            </div>
+          </div>
+          <div class="flow-step-list">
+            <div class="flow-step-item">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <div class="step-title">개발자 허브 퀵스타트 & API 키 발급</div>
+                <div class="step-desc">인증 토큰 발급 및 엔드포인트 베이스 URL 확인</div>
+                <a href="/dev/index.html" class="step-link">preview/dev/index.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <div class="step-title">OpenAPI 3.1 인터랙티브 콘솔 실행</div>
+                <div class="step-desc">브라우저 내 실시간 엔드포인트 호출 및 응답 스키마 테스트</div>
+                <a href="/dev/openapi-explorer.html" class="step-link">preview/dev/openapi-explorer.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <div class="step-title">공식 SDK 연동 (TS / Python / Go)</div>
+                <div class="step-desc">Ed25519 서명 생성 및 메시징 클라이언트 구현</div>
+                <a href="/dev/sdk-typescript.html" class="step-link">preview/dev/sdk-typescript.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <div class="step-title">소켓리스 인박스 원자적 Lease & Ack 구현</div>
+                <div class="step-desc">`POST /api/v1/inbox`를 통한 원자적 메시지 수신 및 ACK 처리</div>
+                <a href="/dev/api-inbox.html" class="step-link">preview/dev/api-inbox.html ↗</a>
+              </div>
+            </div>
+            <div class="flow-step-item">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <div class="step-title">웹훅 구독 및 Dead-Letter Queue 연동</div>
+                <div class="step-desc">이벤트 푸시 수신 엔드포인트 등록 및 서명 검증</div>
+                <a href="/dev/webhooks.html" class="step-link">preview/dev/webhooks.html ↗</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- VIEW 4: 거버넌스 & 권한 맵 (RBAC & Spec) -->
+    <div id="view-governance" class="view-panel">
+      <div style="background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:24px; box-shadow:var(--shadow-xs);">
+        <h3 style="font-size:1.2rem; font-weight:800; margin-bottom:6px;">Contracts v0.10.0 RBAC 9대 권한(Capability) 및 화면 매핑</h3>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:20px;">
+          Agent Mesh 플랫폼은 권한 세분화(Least Privilege) 원칙에 따라 9개의 불변 역량 토큰으로 관리자 액션을 게이트합니다.
+        </p>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px;">
+          
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">key.approve</span>
+              <span class="badge badge-wired">Strict Gate</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">에이전트 공개키 승인/거부/폐기</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/admin/keys/approve</code>, <code>deny</code>, <code>revoke</code><br>
+              <code>GET /api/v1/admin/agents/owned</code> (소유 에이전트 승인 큐)
+            </div>
+            <div class="node-path">preview/tenant/key-approvals.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">key.propose</span>
+              <span class="badge badge-wired">Agent Auth</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">에이전트 신규 키 제안 및 로테이션</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/agents</code> (키 제안 포함)<br>
+              <code>GET /api/v1/agents/{identity}/keys</code>
+            </div>
+            <div class="node-path">preview/creator/agent-register.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">agent.provision</span>
+              <span class="badge badge-wired">Admin Auth</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">신원 프로비저닝 및 Teardown</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/agents</code>, <code>DELETE /api/v1/admin/agents/{identity}</code>
+            </div>
+            <div class="node-path">preview/creator/agent-teardown.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">group.egress</span>
+              <span class="badge badge-wired">Tenant Gate</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">스웜 그룹 간 이그레스 정책 제어</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/admin/groups/{group_id}/egress</code>, <code>DELETE /api/v1/admin/groups/{group_id}/egress/{to_group}</code>
+            </div>
+            <div class="node-path">preview/tenant/egress-acl.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">audit.read.content</span>
+              <span class="badge badge-danger" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA;">Critical Gate</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">메시지 본문 열람 감사 권한</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>GET /api/v1/audit/events</code> (본문 미보유 시 [content withheld ...]로 리댁션)
+            </div>
+            <div class="node-path">preview/tenant/participant-audits.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">pairing.generate</span>
+              <span class="badge badge-wired">RFC 8628</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">RFC 8628 페어링 코드 발급</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/admin/pairing-codes</code> (단회용 Crockford Base32 8자)
+            </div>
+            <div class="node-path">preview/tenant/pairing-codes.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">pairing.redeem</span>
+              <span class="badge badge-content">Public API</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">페어링 코드 교환 및 소유권 등록</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/pairing-codes/redeem</code> (무인증 허용, 단회 사용 후 소멸)
+            </div>
+            <div class="node-path">preview/tenant/pairing-codes.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">inbox.lease</span>
+              <span class="badge badge-wired">Socketless</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">인박스 원자적 임대(Lease) & Ack</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/inbox</code> (ack_ids + lease_seconds)
+            </div>
+            <div class="node-path">preview/creator/lease-queue.html</div>
+          </div>
+
+          <div class="node-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="badge badge-cap">message.send</span>
+              <span class="badge badge-wired">Signed / Proxy</span>
+            </div>
+            <div style="font-weight:700; font-size:0.95rem;">메시지 전송 및 아웃박스 적재</div>
+            <div style="font-size:0.8rem; color:var(--text-secondary);">
+              <code>POST /api/v1/outbox</code>, <code>POST /api/v1/messages</code> (JWT 프록시 전송)
+            </div>
+            <div class="node-path">preview/creator/playground.html</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Node Detail Modal -->
+  <div id="nodeModal" class="modal-backdrop" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span id="modal-suite-badge" class="badge">SUITE</span>
+            <span id="modal-id-badge" class="node-id">#0</span>
+            <span id="modal-status-badge" class="badge badge-wired">wired</span>
+          </div>
+          <h2 id="modal-title" style="font-size:1.25rem; font-weight:800;">Screen Title</h2>
+          <div id="modal-path" class="node-path" style="margin-top:4px;">preview/path/to/screen.html</div>
+        </div>
+        <button class="close-btn" onclick="closeModalDirect()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div>
+          <div class="detail-section-title">목적 및 페르소나 (Target Role & Scope)</div>
+          <div id="modal-role" class="detail-block">Role info</div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">운영자가 봐야 하는 것 (SEE) & 해야 하는 것 (DO)</div>
+          <div id="modal-see-do" class="detail-block">SEE & DO info</div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">매핑된 엔드포인트 (Mapped APIs & Methods)</div>
+          <div id="modal-apis" class="detail-block" style="font-family:var(--font-mono); font-size:0.8rem; background:#0F172A; color:#E2E8F0;">
+            GET /api/v1/health
+          </div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">필요 권한 (Required Capability & Invariant Rules)</div>
+          <div id="modal-cap" class="detail-block" style="font-family:var(--font-mono); font-weight:600; color:#B45309;">
+            key.approve
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn btn-secondary btn-sm" onclick="closeModalDirect()">닫기</button>
+        <a id="modal-preview-btn" href="#" class="btn btn-primary btn-sm" target="_blank">샘플 화면 열기 ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div style="max-width:1200px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+      <div>
+        <strong>Agent Mesh Platform</strong> — Information Architecture & Specification Map
+      </div>
+      <div>
+        Managed by <code>platform-fe-antigravity</code> | Built with Strict No-Build Aesthetics
+      </div>
+    </div>
+  </footer>
+
+  <!-- Catalog Data & Interactive Logic -->
+  <script>
+    const SCREEN_CATALOG = [
+      // 1. Public (1~8)
+      { id: 1, suite: "public", role: "Public / All Users", title: "Main Landing & Agent Constellation", path: "/public/index.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "None", status: "wired", desc: "메인 랜딩 페이지 및 3D 스웜 은하수 성좌 애니메이션, 기술 소개", see: "플랫폼 활성 에이전트 수, 허브 헬스체크", do: "페르소나별 포털 진입, 플랫폼 개요 탐색" },
+      { id: 2, suite: "public", role: "Public / Security Team", title: "Security Architecture & Protocols", path: "/public/security-architecture.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "Ed25519 서명 체계, 논스 재생 방지 윈도우, 영구 신원 톰스톤 아키텍처", see: "5단계 보안 파이프라인 및 암호학적 불변 원칙", do: "보안 명세 검토" },
+      { id: 3, suite: "public", role: "Public / Developers", title: "Socketless Lease State Machine", path: "/public/lease-state-machine.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "소켓리스(HTTP Pull) 4단계 상태 전이 머신 (Available → Leased → Acked / Expired)", see: "300초 리스 타임아웃 전이 다이어그램", do: "리스 메커니즘 시뮬레이션" },
+      { id: 4, suite: "public", role: "Agent Operator", title: "Agent Operator Login Portal", path: "/public/login-operator.html", apis: "POST /auth/local", cap: "None", status: "wired", desc: "에이전트 개발자 및 봇 운영자 전용 로그인 포털", see: "로컬 개발자 계정 선택기", do: "에이전트 스튜디오 세션 로그인" },
+      { id: 5, suite: "public", role: "Tenant Admin", title: "Tenant Admin SSO Portal", path: "/public/login-tenant.html", apis: "GET /auth/github, POST /auth/local", cap: "None", status: "wired", desc: "기업 테넌트 관리자 전용 SAML/OAuth SSO 포털", see: "기업 인증 공급자 선택", do: "테넌트 관리자 세션 수립" },
+      { id: 6, suite: "public", role: "Platform Operator", title: "Platform Operator Master Portal", path: "/public/login-platform.html", apis: "POST /auth/local, GET /auth/me", cap: "None", status: "wired", desc: "플랫폼 최고 운영자 전용 마스터 2FA 로그인", see: "하드웨어 보안 키 / 마스터 토큰 입력창", do: "플랫폼 백본 마스터 세션 인증" },
+      { id: 7, suite: "public", role: "Public / Enterprise", title: "Enterprise Ingress Quotas & Pricing Tiers", path: "/public/pricing-tiers.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "테넌트별 수신 쿼터, 레이트 리밋 상한 및 가격 티어표", see: "Tier 1 ~ 3 쿼터 및 SLA 스펙", do: "엔터프라이즈 플랜 비교" },
+      { id: 8, suite: "public", role: "Public / Compliance", title: "Compliance & Merkle Trust Model", path: "/public/compliance-overview.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "불변 머클 감사 로그 해시 체인 및 컴플라이언스 기준", see: "감사 체인의 SHA-256 검증 구조", do: "감사 무결성 모델 검토" },
+
+      // 2. Platform Operator (9~20)
+      { id: 9, suite: "platform", role: "Platform Operator", title: "Platform Operator Overview & Backbone Matrix", path: "/platform/index.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "글로벌 인프라 현황, 14개 하이웨이 브릿지 및 활성 테넌트 요약 대시보드", see: "139개 글로벌 노드, 3개 활성 테넌트 요약", do: "플랫폼 전역 현황 모니터링" },
+      { id: 10, suite: "platform", role: "Platform Operator", title: "14 Inter-Gateway Backbone Routing Highways", path: "/platform/highways.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "클러스터 덱 간 14개 초고속 인터게이트웨이 라우팅 하이웨이 감시판", see: "하이웨이별 레이턴시, 패킷 드롭률 0.000%", do: "병목 구간 하이웨이 트래픽 재분배" },
+      { id: 11, suite: "platform", role: "Platform Operator", title: "Multi-Tenant Organization Manager", path: "/platform/tenant-manager.html", apis: "GET /api/v1/admin/groups, GET /api/v1/agents", cap: "admin", status: "wired", desc: "멀티 테넌트 조직 생성, 격리 파티션 관리 및 상태 모니터링", see: "Acme, Cyberdyne, Wayne Tech 테넌트 목록", do: "신규 테넌트 생성 및 정지" },
+      { id: 12, suite: "platform", role: "Platform Operator", title: "Tenant Resource Quota & Isolation Deep-Dive", path: "/platform/tenant-detail.html", apis: "GET /api/v1/admin/groups, GET /api/v1/admin/inbox", cap: "admin", status: "wired", desc: "특정 테넌트의 CPU/메모리/노드 쿼터 사용량 상세 분석", see: "테넌트별 자원 사용 그래프 및 스토리지 점유율", do: "테넌트 쿼터 상향 조정" },
+      { id: 13, suite: "platform", role: "Platform Operator", title: "Cluster Nodes CPU, Memory & Socket Health", path: "/platform/telemetry.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "클러스터 노드별 CPU, RAM, WebSocket 연결 소켓 실시간 텔레메트리", see: "노드별 실시간 헬스 메트릭", do: "과부하 노드 격리 및 스케일아웃" },
+      { id: 14, suite: "platform", role: "Platform Operator", title: "Global Multi-Region Gateway Failover Simulator", path: "/platform/failover-sim.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "글로벌 멀티 리전 게이트웨이 장애 발생 및 무중단 페일오버 시뮬레이터", see: "리전별 가용성 및 라우팅 전환 경로", do: "재해 복구 모의 훈련" },
+      { id: 15, suite: "platform", role: "Platform Operator", title: "Redis Token Bucket Ingress Throttling", path: "/platform/rate-limiting.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "토큰 버킷 알고리즘 기반 인그레스 트래픽 스로틀링 정책 통제기", see: "IP/테넌트별 버킷 잔여량", do: "버스트 트래픽 상한 조정" },
+      { id: 16, suite: "platform", role: "Platform Operator", title: "Global Metadata Audits (Egress Redaction Active)", path: "/platform/metadata-audits.html", apis: "GET /api/v1/audit/events", cap: "admin", status: "wired", desc: "SPEC §11 프라이버시 경계 적용: [content withheld] 본문 리댁션 메타데이터 감사", see: "발신자, 수신자, 바이트 크기(content_length)", do: "불법 트래픽 흐름 포렌식 추적" },
+      { id: 17, suite: "platform", role: "Platform Operator", title: "Regional Gateway Node Inspection & Direct Sockets", path: "/platform/gateway-inspect.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "리전 게이트웨이 노드 상세 연결 상태 및 직결 소켓 인스펙터", see: "활성 TCP/WS 소켓 목록", do: "고스트 연결 강제 종료" },
+      { id: 18, suite: "platform", role: "Platform Operator", title: "Cross-Deck Highway Bandwidth Shaper & QoS", path: "/platform/bandwidth-shaper.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "덱 간 하이웨이 대역폭 조절 및 우선순위 트래픽 QoS 정책 관리", see: "하이웨이별 할당 대역폭", do: "QoS 우선순위 규칙 변경" },
+      { id: 19, suite: "platform", role: "Platform Operator", title: "Root Ed25519 CA & Inter-Gateway MTLS Rotations", path: "/platform/certificate-authority.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "wired", desc: "루트 Ed25519 인증기관 및 게이트웨이 간 MTLS 키 롤링 로테이션", see: "루트 인증서 만료일 및 지문", do: "게이트웨이 인증서 즉시 갱신" },
+      { id: 20, suite: "platform", role: "Platform Operator", title: "SPEC §8.11 Observed Source Inspector", path: "/platform/observed-sources.html", apis: "GET /api/v1/admin/agent-sources", cap: "admin", status: "wired", desc: "프록시 헤더 위조 방지 /24, /48 소스 IP 정규화 및 관측 출처 감사", see: "신뢰 프록시 홉 및 클라이언트 실제 IP", do: "위조 헤더 소스 차단" },
+
+      // 3. Tenant Admin (21~36)
+      { id: 21, suite: "tenant", role: "Tenant Admin", title: "Executive Overview & Autonomous Fleet Dashboard", path: "/tenant/index.html", apis: "GET /api/v1/admin/inbox, GET /api/v1/agents", cap: "admin", status: "wired", desc: "테넌트 자율 에이전트 플릿 상태 및 전체 적체 인박스 요약 현황판", see: "소유 에이전트 수, 키 상태, 큐 깊이", do: "테넌트 보안 상태 총괄 파악" },
+      { id: 22, suite: "tenant", role: "Tenant Admin", title: "50-Character Fingerprint Key Approval Queue", path: "/tenant/key-approvals.html", apis: "GET /api/v1/admin/keys/pending, POST /api/v1/admin/keys/approve", cap: "key.approve", status: "wired", desc: "50자리 지문 말줄임표 없는 1:1 대조 및 원자적 승인/거부/폐기 큐", see: "50자리 sha256:... 지문 전체, 소유 에이전트 3단 빈 상태", do: "지문 복사, 승인, 사유 명시 거부" },
+      { id: 23, suite: "tenant", role: "Tenant Admin", title: "Zero-Downtime Rolling Key Rotation & 48h Grace", path: "/tenant/key-rotations.html", apis: "GET /api/v1/admin/keys/pending", cap: "key.approve", status: "content", desc: "무중단 롤링 키 로테이션 및 48시간 이전 키 유예 기간 현황", see: "로테이션 진행률 및 유예 시간 타이머", do: "로테이션 스케줄 등록" },
+      { id: 24, suite: "tenant", role: "Tenant Admin", title: "Compromised & Denied Key Revocation Vault", path: "/tenant/compromised-keys.html", apis: "GET /api/v1/admin/keys/pending", cap: "key.approve", status: "wired", desc: "침해(compromise) 또는 거부된 키의 영구 폐기 보관소 및 위험 배지", see: "침해 사고 사유, 폐기 타임스탬프", do: "폐기 키 이력 포렌식 조회" },
+      { id: 25, suite: "tenant", role: "Tenant Admin", title: "Swarm Group Clusters & Assigned Leads", path: "/tenant/groups.html", apis: "GET /api/v1/admin/groups, POST /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "스웜 그룹 클러스터 목록 및 각 그룹별 리드 에이전트 지정 현황", see: "Core Platform, Research Swarm 그룹 목록", do: "신규 스웜 그룹 생성 및 멤버 이동" },
+      { id: 26, suite: "tenant", role: "Tenant Admin", title: "Core Platform Hub Cluster Detail & Member Agents", path: "/tenant/group-detail.html", apis: "GET /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "특정 스웜 그룹의 소속 에이전트 멤버 및 라우팅 설정 상세", see: "소속 에이전트 신원 및 역할", do: "그룹 멤버 추가/제거" },
+      { id: 27, suite: "tenant", role: "Tenant Admin", title: "Inter-Group & Cross-Tenant Egress Policy Matrix", path: "/tenant/egress-acl.html", apis: "GET /api/v1/admin/groups, POST /api/v1/admin/groups/{group_id}/egress", cap: "group.egress", status: "wired", desc: "방향성 있는 이그레스 정책(A→B != B→A) 매트릭스 및 교차 통신 제어", see: "그룹 간 송수신 허용 행렬", do: "특정 방향 통신 권한 토글" },
+      { id: 28, suite: "tenant", role: "Tenant Admin", title: "Tenant Send Policy Default Switcher", path: "/tenant/send-policy-default.html", apis: "GET /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "테넌트 전송 기본 정책: Deny by default vs Allow by default 전환기", see: "현재 전송 기본값 및 보안 영향도", do: "기본 정책 변경 및 감사 기록" },
+      { id: 29, suite: "tenant", role: "Tenant Admin", title: "Source IP / Subnet CIDR & ASN Whitelist", path: "/tenant/network-attestation.html", apis: "GET /api/v1/admin/agent-sources", cap: "admin", status: "wired", desc: "에이전트 연결 허용 소스 IP/CIDR 대역 및 자율시스템(ASN) 화이트리스트", see: "허용 서브넷 및 차단된 접속 시도", do: "IP CIDR 화이트리스트 등록" },
+      { id: 30, suite: "tenant", role: "Tenant Admin", title: "Compliance Audit Failure Action (Fail-Closed vs Open)", path: "/tenant/audit-failure-policy.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "wired", desc: "감사 저장소 장애 발생 시 라우팅 차단(Fail-Closed) vs 개방(Fail-Open) 정책", see: "현재 감사 실패 대응 정책", do: "컴플라이언스 레벨에 따른 정책 전환" },
+      { id: 31, suite: "tenant", role: "Tenant Admin", title: "RFC 8628 Device Flow Pairing Code Generator", path: "/tenant/pairing-codes.html", apis: "POST /api/v1/admin/pairing-codes, GET /api/v1/admin/agents/owned", cap: "pairing.generate", status: "wired", desc: "Crockford Base32 8자리 단회용 페어링 코드 발급 및 소유 에이전트 목록 연동", see: "발급된 페어링 코드 및 만료 카운트다운", do: "새 페어링 코드 생성" },
+      { id: 32, suite: "tenant", role: "Tenant Admin", title: "Claimed & Expired Pairing Code Audit Log", path: "/tenant/pairing-history.html", apis: "GET /api/v1/admin/agents/owned", cap: "pairing.generate", status: "wired", desc: "교환 완료(Claimed) 및 만료(Expired)된 페어링 코드의 불변 감사 기록", see: "코드 교환자, 출처, 등록된 에이전트", do: "코드 사용 이력 대조" },
+      { id: 33, suite: "tenant", role: "Tenant Admin", title: "Full Message Content Audit Stream & Notice", path: "/tenant/participant-audits.html", apis: "GET /api/v1/audit/events", cap: "audit.read.content", status: "wired", desc: "audit.read.content 권한 보유 관리자 전용 전체 메시지 본문 감사 스트림", see: "복호화된 메시지 본문 및 감사 열람 경고", do: "특정 에이전트 대화 로그 전수 조사" },
+      { id: 34, suite: "tenant", role: "Tenant Admin", title: "Internal audit_read_events Compliance Access Log", path: "/tenant/audit-read-events.html", apis: "GET /api/v1/audit/events", cap: "audit.read.content", status: "content", desc: "관리자가 본문을 열람한 사실 자체를 기록하는 내부 감사자 접근 로그", see: "본문 열람 관리자 ID, 열람 시각", do: "열람 권한 오남용 모니터링" },
+      { id: 35, suite: "tenant", role: "Tenant Admin", title: "Enterprise SIEM & S3 Archiving", path: "/tenant/siem-export.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "Splunk, Datadog SIEM 파이프라인 및 AWS S3 규정 준수 장기 보관소 내보내기", see: "내보내기 동기화 상태 및 용량", do: "SIEM 웹훅 엔드포인트 연동" },
+      { id: 36, suite: "tenant", role: "Tenant Admin", title: "Admin Member Capability Grants & Role Assignments", path: "/tenant/organization-rbac.html", apis: "GET /api/v1/admin/pending, POST /api/v1/admin/approve", cap: "admin", status: "wired", desc: "조직 관리자별 9대 Capability 부여 및 세분화된 역할 할당", see: "관리자 멤버 목록 및 보유 권한 뱃지", do: "권한 부여(Grant) 및 즉각 회수(Revoke)" },
+
+      // 4. Agent Operations Studio (37~48)
+      { id: 37, suite: "creator", role: "Agent Operator", title: "Agent Operations Main Studio", path: "/creator/index.html", apis: "GET /api/v1/agents, GET /api/v1/health", cap: "None", status: "wired", desc: "에이전트 봇 개발 및 운영을 위한 통합 작업 스튜디오 홈", see: "등록된 내 에이전트 목록, 온라인 연결 상태", do: "에이전트 신규 등록 또는 테스트 진입" },
+      { id: 38, suite: "creator", role: "Agent Operator", title: "10-Stage Scale Simulation & Swarm Galaxy Graph", path: "/creator/topology.html", apis: "GET /api/v1/agents, GET /api/v1/health", cap: "None", status: "wired", desc: "원형 오비탈 클러스터 & 노드-엣지 선택적 통신 채널(ACL) 제어 토폴로지", see: "3대 클러스터, 통신 허용 선, 게이트웨이 브릿지", do: "노드 클릭, 인스펙터 열기, 통신 권한 토글" },
+      { id: 39, suite: "creator", role: "Agent Operator", title: "Single Cluster Focus & Camera Auto-Tracking", path: "/creator/topology-focus.html", apis: "GET /api/v1/agents", cap: "None", status: "wired", desc: "단일 클러스터 집중 줌인 및 에이전트 이동 카메라 자동 추적 뷰", see: "선택 클러스터 내부 노드 간 고속 통신선", do: "클러스터 전환 및 포커스" },
+      { id: 40, suite: "creator", role: "Agent Operator", title: "Interactive Message Testing Console", path: "/creator/playground.html", apis: "POST /api/v1/messages", cap: "message.send", status: "wired", desc: "alice_dev JWT 프록시를 통한 메시지 작성, 블롭 첨부 및 실시간 전송 콘솔", see: "배달 영수증: Delivered to Socket vs Queued in Inbox", do: "JSON/Text 메시지 발송 및 레이턴시 실측" },
+      { id: 41, suite: "creator", role: "Agent Operator", title: "Verified Message Delivery Receipts & Hashes", path: "/creator/message-receipts.html", apis: "GET /api/v1/messages/search", cap: "message.send", status: "wired", desc: "암호학적 서명 검증 영수증 및 SHA-256 페이로드 다이제스트 대조", see: "시퀀스 ID, 서명 상태, 수신 확인 시각", do: "영수증 해시 다운로드" },
+      { id: 42, suite: "creator", role: "Agent Operator", title: "Socketless Inbox Queue & 300s Lease Countdown", path: "/creator/lease-queue.html", apis: "GET /api/v1/admin/inbox/{identity}, POST /api/v1/inbox", cap: "inbox.lease", status: "wired", desc: "소켓리스 큐 모니터링: Total Depth vs Leased vs Available 및 300초 카운트다운", see: "개별 메시지 임대 만료 잔여 시간 바", do: "원자적 리스 획득 및 수동 ACK" },
+      { id: 43, suite: "creator", role: "Agent Operator", title: "Combined Lease & Ack Actions Simulator", path: "/creator/lease-batch-actions.html", apis: "POST /api/v1/inbox", cap: "inbox.lease", status: "wired", desc: "단일 HTTP 요청으로 이전 메시지 ACK와 다음 메시지 Lease를 원자적 처리", see: "배치 처리 결과 로그", do: "일괄 Lease & Ack 시뮬레이션" },
+      { id: 44, suite: "creator", role: "Agent Operator", title: "Live WebSocket Frame Debugger & IN/OUT Trace", path: "/creator/websocket-trace.html", apis: "GET /api/v1/health", cap: "None", status: "wired", desc: "실시간 웹소켓 인/아웃 프레임 디버거 (JSON-RPC mesh.connect, mesh.message)", see: "프레임 방향, 메서드, 페이로드 JSON", do: "웹소켓 연결 및 프레임 전송 테스트" },
+      { id: 45, suite: "creator", role: "Agent Operator", title: "Local Agent Runner & CLI Connect Guide", path: "/creator/agent-runner.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "로컬 터미널에서 CLI로 에이전트 구동 및 키 등록 가이드", see: "OS별 원클릭 실행 스크립트", do: "CLI 연결 코드 복사" },
+      { id: 46, suite: "creator", role: "Agent Operator", title: "Register New Agent Identity Form & Key Proposer", path: "/creator/agent-register.html", apis: "POST /api/v1/agents, GET /api/v1/agents/{identity}/keys", cap: "key.propose", status: "wired", desc: "신규 에이전트 등록 및 Ed25519 공개키 제안 (3대 409 충돌 에러 방어 포함)", see: "등록 결과 및 /keys 실제 소유권 검증", do: "에이전트 신원 등록 양식 제출" },
+      { id: 47, suite: "creator", role: "Agent Operator", title: "Permanent Identity Teardown Warning (SPEC §9.3)", path: "/creator/agent-teardown.html", apis: "DELETE /api/v1/admin/agents/{identity}", cap: "agent.provision", status: "wired", desc: "영구 소프트 삭제 및 톰스톤 방어 2단계 경고 확인 모달", see: "재등록 영구 불가 409 IDENTITY_DELETED 경고", do: "신원 이름 직접 타이핑 후 영구 삭제" },
+      { id: 48, suite: "creator", role: "Agent Operator", title: "Live Multi-Highway Traffic Pulse Animation", path: "/creator/traffic-pulse-sim.html", apis: "GET /api/v1/health", cap: "None", status: "wired", desc: "14개 하이웨이를 오가는 실시간 트래픽 펄스 시각화 애니메이션", see: "하이웨이 간 메시지 패킷 흐름", do: "트래픽 부하 주입" },
+
+      // 5. Developer Hub (49~60)
+      { id: 49, suite: "dev", role: "Developer", title: "Developer Hub Overview & Quickstart", path: "/dev/index.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "개발자 허브 개요, 5분 퀵스타트 가이드 및 기본 아키텍처 안내", see: "핵심 API 엔드포인트 목록 및 인증 방식", do: "퀵스타트 코드 복사" },
+      { id: 50, suite: "dev", role: "Developer", title: "Interactive OpenAPI 3.1 Endpoint Runner", path: "/dev/openapi-explorer.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "브라우저 내 실시간 REST API 테스트가 가능한 OpenAPI 3.1 콘솔", see: "56개 엔드포인트 스키마 및 파라미터", do: "Try it out API 실측 호출" },
+      { id: 51, suite: "dev", role: "Developer", title: "API Reference: POST /api/v1/outbox & GET /outbox", path: "/dev/api-outbox.html", apis: "POST /api/v1/outbox, GET /api/v1/outbox", cap: "message.send", status: "wired", desc: "아웃박스 메시지 발송 및 발송 대기 메시지 목록 조회 명세서", see: "요청/응답 JSON 스키마 및 에러 코드", do: "Outbox API 호출 예제 테스트" },
+      { id: 52, suite: "dev", role: "Developer", title: "API Reference: POST /api/v1/inbox (Atomic Lease)", path: "/dev/api-inbox.html", apis: "POST /api/v1/inbox", cap: "inbox.lease", status: "wired", desc: "소켓리스 인박스 원자적 임대(Lease) 및 수신 확인(Ack) 통합 명세", see: "ack_ids, lease_seconds 파라미터 구조", do: "Atomic Lease & Ack 호출 테스트" },
+      { id: 53, suite: "dev", role: "Developer", title: "API Reference: DELETE /api/v1/outbox/{id}", path: "/dev/api-outbox-delete.html", apis: "DELETE /api/v1/outbox/{id}", cap: "message.send", status: "wired", desc: "발송자가 수신 전 보낸 메시지를 안전하게 회수/취소하는 API", see: "회수 성공 여부 및 소유권 검증 규칙", do: "메시지 취소 호출 테스트" },
+      { id: 54, suite: "dev", role: "Developer", title: "API Reference: GET /api/v1/inbox/history", path: "/dev/api-inbox-history.html", apis: "GET /api/v1/inbox/history", cap: "inbox.lease", status: "wired", desc: "처리 완료된 인박스 메시지 과거 이력 및 커서 페이징 조회", see: "이력 목록 및 next_cursor", do: "과거 인박스 로그 조회" },
+      { id: 55, suite: "dev", role: "Developer", title: "API Reference: POST /api/v1/agents (Provisioning)", path: "/dev/api-agents-provision.html", apis: "POST /api/v1/agents", cap: "agent.provision", status: "wired", desc: "에이전트 신원 신규 등록 및 Ed25519 공개키 제안 API 명세", see: "3대 409 Conflict 에러 구조", do: "에이전트 등록 요청 테스트" },
+      { id: 56, suite: "dev", role: "Developer", title: "API Reference: GET /api/v1/capabilities", path: "/dev/api-capabilities.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "허브의 버전(surface.version: 3), 지원 기능 및 파라미터 조회 API", see: "receive_lease_seconds 등 허브 설정값", do: "허브 역량 메타데이터 확인" },
+      { id: 57, suite: "dev", role: "Developer", title: "Official TypeScript / Node.js SDK Documentation", path: "/dev/sdk-typescript.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "공식 TypeScript/Node.js SDK 설치, 초기화 및 메시징 코드 가이드", see: "TypeScript 타입 정의 및 비동기 이벤트 핸들러", do: "SDK 예제 코드 복사" },
+      { id: 58, suite: "dev", role: "Developer", title: "Official Python Client SDK Documentation", path: "/dev/sdk-python.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "공식 Python 비동기 asyncio SDK 및 Ed25519 서명 클라이언트 가이드", see: "Python async/await 코드 스니펫", do: "파이썬 연동 코드 복사" },
+      { id: 59, suite: "dev", role: "Developer", title: "Official Go (Golang) SDK Documentation", path: "/dev/sdk-go.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "공식 Go SDK 동시성 고루틴 처리 및 채널 파이프라인 가이드", see: "Go 구조체 및 채널 리스너 패턴", do: "Go 연동 코드 복사" },
+      { id: 60, suite: "dev", role: "Developer", title: "Webhook Subscription Manager & Dead-Letter Queue", path: "/dev/webhooks.html", apis: "POST /api/v1/push/subscribe, GET /api/v1/push/vapid-key", cap: "admin", status: "wired", desc: "웹훅 구독 등록, 재시도 백오프 정책 및 전송 실패 DLQ 관리자", see: "구독 URL, 실패 횟수 및 서명 비밀키", do: "웹훅 테스트 이벤트 발송" }
+    ];
+
+    let currentFilter = 'all';
+    let currentSearch = '';
+
+    function renderCatalog() {
+      // 1. Clear grids
+      ['public', 'platform', 'tenant', 'creator', 'dev'].forEach(s => {
+        const el = document.getElementById(`grid-${s}`);
+        if (el) el.innerHTML = '';
+      });
+
+      const matrixTbody = document.getElementById('matrix-tbody');
+      if (matrixTbody) matrixTbody.innerHTML = '';
+
+      let visibleCount = 0;
+
+      SCREEN_CATALOG.forEach(item => {
+        // Filter logic
+        const matchSuite = (currentFilter === 'all' || item.suite === currentFilter);
+        const searchLower = currentSearch.toLowerCase();
+        const matchSearch = !currentSearch || 
+          item.title.toLowerCase().includes(searchLower) ||
+          item.path.toLowerCase().includes(searchLower) ||
+          item.apis.toLowerCase().includes(searchLower) ||
+          item.role.toLowerCase().includes(searchLower) ||
+          item.desc.toLowerCase().includes(searchLower);
+
+        if (!matchSuite || !matchSearch) return;
+
+        visibleCount++;
+
+        // 1. Tree View Card
+        const grid = document.getElementById(`grid-${item.suite}`);
+        if (grid) {
+          const card = document.createElement('div');
+          card.className = 'node-card';
+          card.onclick = () => openModal(item.id);
+          card.innerHTML = `
+            <div class="node-top">
+              <span class="node-id">#${item.id}</span>
+              <span class="badge badge-${item.status}">${item.status}</span>
+            </div>
+            <div class="node-title">${item.title}</div>
+            <div class="node-path">${item.path}</div>
+            <div class="node-meta">
+              <span class="badge badge-role">👤 ${item.role}</span>
+              ${item.cap !== 'None' ? `<span class="badge badge-cap">🛡️ ${item.cap}</span>` : ''}
+            </div>
+            <div class="node-desc">${item.desc}</div>
+            <div class="node-actions">
+              <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-muted);">${item.apis.split(',')[0]}</span>
+              <a href="${item.path}" class="btn btn-secondary btn-sm" onclick="event.stopPropagation()">Open ↗</a>
+            </div>
+          `;
+          grid.appendChild(card);
+        }
+
+        // 2. Matrix Table Row
+        if (matrixTbody) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-family:var(--font-mono); font-weight:700; color:var(--text-muted);">${item.id}</td>
+            <td><span class="badge" style="background:var(--suite-${item.suite}-bg); color:var(--suite-${item.suite}); border:1px solid var(--suite-${item.suite}-br);">${item.suite.toUpperCase()}</span></td>
+            <td><span style="font-size:0.8rem; font-weight:600;">${item.role}</span></td>
+            <td><strong>${item.title}</strong><div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${item.desc}</div></td>
+            <td><a href="${item.path}" class="node-path" style="text-decoration:none;">${item.path}</a></td>
+            <td><code style="font-size:0.75rem; color:#475569;">${item.apis}</code></td>
+            <td>${item.cap !== 'None' ? `<span class="badge badge-cap">${item.cap}</span>` : '<span style="color:var(--text-muted);">-</span>'}</td>
+            <td><span class="badge badge-${item.status}">${item.status}</span></td>
+            <td>
+              <button class="btn btn-secondary btn-sm" onclick="openModal(${item.id})">상세</button>
+            </td>
+          `;
+          matrixTbody.appendChild(tr);
+        }
+      });
+
+      // Update Section Visibility
+      ['public', 'platform', 'tenant', 'creator', 'dev'].forEach(s => {
+        const sec = document.querySelector(`.suite-section[data-suite="${s}"]`);
+        if (sec) {
+          const hasChildren = document.getElementById(`grid-${s}`).children.length > 0;
+          sec.style.display = hasChildren ? 'block' : 'none';
+        }
+      });
+
+      document.getElementById('kpi-total-screens').textContent = visibleCount;
+    }
+
+    function switchView(viewName) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+
+      event.currentTarget.classList.add('active');
+      document.getElementById(`view-${viewName}`).classList.add('active');
+    }
+
+    function filterSuite(suiteName, el) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      currentFilter = suiteName;
+      renderCatalog();
+    }
+
+    function handleSearch(val) {
+      currentSearch = val;
+      renderCatalog();
+    }
+
+    function openModal(id) {
+      const item = SCREEN_CATALOG.find(x => x.id === id);
+      if (!item) return;
+
+      document.getElementById('modal-id-badge').textContent = `#${item.id}`;
+      document.getElementById('modal-suite-badge').textContent = item.suite.toUpperCase();
+      document.getElementById('modal-status-badge').textContent = item.status;
+      document.getElementById('modal-status-badge').className = `badge badge-${item.status}`;
+      document.getElementById('modal-title').textContent = item.title;
+      document.getElementById('modal-path').textContent = item.path;
+      document.getElementById('modal-role').textContent = `${item.role} (Suite: ${item.suite})`;
+      document.getElementById('modal-see-do').innerHTML = `<strong>SEE:</strong> ${item.see}<br><br><strong>DO:</strong> ${item.do}`;
+      document.getElementById('modal-apis').textContent = item.apis;
+      document.getElementById('modal-cap').textContent = item.cap !== 'None' ? item.cap : '무인증 또는 기본 세션';
+      document.getElementById('modal-preview-btn').href = item.path;
+
+      document.getElementById('nodeModal').classList.add('active');
+    }
+
+    function closeModalDirect() {
+      document.getElementById('nodeModal').classList.remove('active');
+    }
+
+    function closeModal(e) {
+      if (e.target.id === 'nodeModal') closeModalDirect();
+    }
+
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderCatalog();
+    });
+  </script>
+</body>
+</html>
