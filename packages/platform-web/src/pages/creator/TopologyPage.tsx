@@ -170,7 +170,7 @@ export function TopologyPage() {
         groupName: `${cfg.name} (Gateway)`,
         type: "gateway-bridge",
         status: "Gateway",
-        desc: `Inter-Galaxy Routing Gateway for ${cfg.name}.`,
+        desc: `은하계 간 패킷 라우팅 및 SPEC § 12 Egress ACL 보안 정책을 전담하는 ${cfg.name} 백본 게이트웨이 브릿지입니다.`,
         key: `sha256:gw_${cfg.id}_${cfg.gw.id.slice(-4)}`,
         x: cfg.gw.x,
         y: cfg.gw.y,
@@ -193,6 +193,7 @@ export function TopologyPage() {
         let status: "Online" | "Socketless" = "Online";
         let avatarImg: string | undefined = undefined;
         let displayName = "";
+        let desc = "";
 
         if (i === 0) {
           name = `${cfg.id}-lead`;
@@ -200,22 +201,70 @@ export function TopologyPage() {
           if (cfg.id === "core") {
             avatarImg = "/assets/agent-fin.png";
             displayName = "core-lead (핀둥이)";
+            desc = "코어 플랫폼 총괄 오케스트레이터. 전체 스웜 라우팅 조율, 글로벌 네임스페이스 관리 및 테넌트 메시지 디스패치 총괄.";
+          } else if (cfg.id === "research") {
+            desc = "연구 및 심층 추론 스웜 리드. 분산 지식 그래프 탐색 및 멀티-홉 추론 파이프라인 총괄.";
+          } else if (cfg.id === "delivery") {
+            desc = "실행 및 배달 메시 오케스트레이터. 분산 비동기 태스크 큐 스케줄링 및 최종 작업 아티팩트 배포 총괄.";
+          } else if (cfg.id === "security") {
+            desc = "보안 센티널 링 총괄 감시자. 비인가 Egress 차단, mTLS 인증서 갱신 및 토큰 유효성 검사.";
+          } else if (cfg.id === "data") {
+            desc = "ETL 데이터 파이프라인 총괄. 대용량 이벤트 스트림 수집 및 실시간 스키마 변환 파이프라인 관리.";
+          } else if (cfg.id === "edge") {
+            desc = "엣지 & IoT 마이크로 에이전트 총괄 게이트웨이. 저지연 분산 노드 토폴로지 및 로컬 캐시 관리.";
+          } else if (cfg.id === "human") {
+            desc = "휴먼 오퍼레이터 길드 총괄. 중요 시스템 변경 결재 및 Human-in-the-loop 검토 큐 관리.";
+          } else if (cfg.id === "refactor") {
+            desc = "자율 코드 리팩토링 스웜 총괄. 코드베이스 정적 분석 및 리팩토링 최적화 계획 수립.";
+          } else if (cfg.id === "vision") {
+            desc = "멀티모달 비전 & 오디오 스웜 리드. 영상/음성 데이터의 다차원 멀티모달 임베딩 변환 총괄.";
+          } else if (cfg.id === "audit") {
+            desc = "컴플라이언스 & 감사 하이브 총괄. SPEC 규정 준수 검증 및 감사 증적 불변 기록 보관.";
           }
         } else if (i === 1 && cfg.id === "core") {
           name = "fe-antigravity";
           type = "admin";
+          desc = "웹 프론트엔드 플랫폼 운영 관리자. 콘솔 인터페이스 통신 제어 및 실시간 텔레메트리 관측 스트림 파이프라인 관리.";
         } else {
           name = `${cfg.id}-agent-${i + 1}`;
           if (i % 3 === 0) status = "Socketless";
           if (cfg.id === "core" && i === 2) {
             avatarImg = "/assets/agent-support.png";
             displayName = "core-agent-3 (핀자)";
+            desc = "코어 웹소켓 세션 브릿지 유지 및 실시간 연결 상태 동기화를 전담하는 서포트 에이전트.";
           } else if (cfg.id === "core" && i === 4) {
             avatarImg = "/assets/agent-assistant.png";
             displayName = "core-agent-5 (아름이)";
+            desc = "스웜 간 크로스-메시지 배달 영수증 암호학적 서명 검증 및 감사 로그 정합성 보증 어시스턴트.";
+          } else {
+            // Specialized member description per cluster
+            if (cfg.id === "core") {
+              desc = "코어 인프라 헬스체크 및 리스 큐(Lease Queue) TTL 만료 감시 런타임 워커.";
+            } else if (cfg.id === "research") {
+              desc = `대규모 벡터 임베딩 유사도 검색, 가설 검증 및 연구 자료 요약을 수행하는 전문 추론 노드 (${name}).`;
+            } else if (cfg.id === "delivery") {
+              desc = `CI/CD 빌드 파이프라인 트리거, 컨테이너 프로비저닝 및 비동기 서브태스크 처리를 담당하는 분산 실행 런타임 노드 (${name}).`;
+            } else if (cfg.id === "security") {
+              desc = `실시간 비정상 트래픽 탐지, DoS 레이트 리밋 집행 및 악성 페이로드 방어 정책 실행 노드 (${name}).`;
+            } else if (cfg.id === "data") {
+              desc = `스트리밍 데이터 정제, 역직렬화, 파티셔닝 및 시계열 텔레메트리 저장을 담당하는 데이터 워커 (${name}).`;
+            } else if (cfg.id === "edge") {
+              desc = `초경량 소켓리스(Socketless) 환경에서 저전력 센서 데이터 수집 및 엣지 로컬 제어를 수행하는 마이크로 노드 (${name}).`;
+            } else if (cfg.id === "human") {
+              desc = `운영자 수동 개입, 긴급 시스템 핫픽스 승인 및 인터랙티브 디버깅 세션을 중계하는 오퍼레이터 브릿지 (${name}).`;
+            } else if (cfg.id === "refactor") {
+              desc = `AST 구문 분석, 타입 안정성 검사 및 자동 단위 테스트 코드 생성을 수행하는 코드 리팩토러 (${name}).`;
+            } else if (cfg.id === "vision") {
+              desc = `이미지 객체 인식, OCR 문서 텍스트 추출 및 음성 트랜스크립션을 담당하는 멀티모달 처리 노드 (${name}).`;
+            } else if (cfg.id === "audit") {
+              desc = `트랜잭션 전자 서명 영수증 대조, 권한 변경 이력 감사 및 테넌트 데이터 유출 방지 검증 노드 (${name}).`;
+            } else {
+              desc = `${cfg.name} 스웜 소속 자율 에이전트 노드 (${name}).`;
+            }
           }
         }
         if (!displayName) displayName = name;
+        if (!desc) desc = `${cfg.name} 스웜 소속 활성 에이전트 노드입니다.`;
 
         // Radial orbital layout coordinates
         let nx = cfg.cx;
@@ -246,7 +295,7 @@ export function TopologyPage() {
           groupName: cfg.name,
           type,
           status,
-          desc: `Active autonomous member node in ${cfg.name} galaxy.`,
+          desc,
           key: `sha256:${cfg.id}_${name}_${(i * 991).toString(16)}`,
           x: roundX,
           y: roundY,
