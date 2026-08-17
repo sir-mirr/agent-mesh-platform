@@ -8,6 +8,7 @@
 
 | ID | 영역 / 요소 | 소스 엔드포인트 / 메커니즘 | 상태별 기대 동작 | i18n (KO/EN) | RBAC / 가드 | 시나리오 ID | 비고 |
 |---|---|---|---|---|---|---|---|
+| **GL-00** | 하네스 신뢰성 전제조건 | `ready.platform.dirty` | `ready.platform.dirty === true` 시 테스트 실행 즉시 거부 (재현 불가능한 dirty 트리 측정 방지) | - | Harness Guard | `SC-HARNESS-01` | fail-fast 무효화 가드 |
 | **GL-01** | 세션 인증 & 쿠키 주입 | `/auth/login`, `/auth/me` | 302 리다이렉트 및 `mesh_token` 쿠키 설정. 유효 세션 없을 시 `/login` 이동 | "로그인" / "Login" | Public | `SC-AUTH-01` | 자동 세션 복구 |
 | **GL-02** | 미인증 라우트 가드 | `ProtectedRoute.tsx` | 미로그인 사용자가 보호된 URL 접근 시 `/login` 강제 이동 | - | All Protected | `SC-AUTH-02` | 14개 화면 보호 |
 | **GL-03** | Capability 권한 가드 | `ProtectedRoute.tsx` | 필수 권한(예: `role.grant`, `audit.read.metadata`) 미보유 시 접근 거부 화면 렌더링 | "권한 부족" / "Forbidden" | RBAC Caps | `SC-AUTH-03` | SPEC § 11.3 |
