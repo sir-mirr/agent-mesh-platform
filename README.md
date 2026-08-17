@@ -323,6 +323,23 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 
 Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
 
+### The mailbox stops when the hub stops
+
+Worth knowing before relying on it. `packages/mailbox` holds store-and-forward
+and is forbidden from importing the hub, but it **runs in the hub's process**, so
+a hub that is down is a mailbox that is down. Mail is not accepted while the hub
+is restarting.
+
+The whole argument for separating them was that store-and-forward exists for
+exactly the window in which the other end is absent, and that argument is not yet
+delivered. Running the mailbox as its own service would deliver it and is a
+deliberate non-goal today — recorded, with what it costs, in
+[`docs/decisions/mailbox-and-hub.md`](docs/decisions/mailbox-and-hub.md).
+
+Said here rather than only in that document because somebody deciding whether
+mail survives a restart reads this file, and a limitation only the design notes
+mention is a limitation nobody meets until it bites.
+
 ### Which port serves what
 
 Two ports, and the split is not cosmetic. **The browser never talks to the hub.**
