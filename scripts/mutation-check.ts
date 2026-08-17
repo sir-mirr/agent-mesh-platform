@@ -227,12 +227,55 @@ const MUTATIONS: Mutation[] = [
   },
 ];
 
+/**
+ * Two entries that MUST be reported as failures.
+ *
+ * **The reporting branch had never run.** Eighteen entries were added, `18/18
+ * caught` was observed, and the code that says `✗` was dead the whole time — a
+ * check whose failure path is untested is a check nobody has seen work, which is
+ * the subject of `docs/decisions/checks-that-check-nothing.md` appearing inside
+ * the tool written for it.
+ *
+ * Proving it once by hand was not enough for the same reason the manifest
+ * exists: the proof outlives what it describes and lives only in a transcript.
+ * `--self-check` makes it a command.
+ *
+ * One for each way a mutation can fail to be evidence — the guard not noticing,
+ * and the pattern no longer matching. The second is the more dangerous: it
+ * produces a *false* finding rather than a missed one, and `client-claude`
+ * reached the same conclusion independently (mail #219).
+ */
+const SELF_CHECK: Mutation[] = [
+  {
+    id: "self-check/not-caught",
+    defect: "An edit no guard could object to. Must be reported as not caught.",
+    file: "test/typecheck-scope.test.ts",
+    from: 'const ROOT = resolve(import.meta.dir, "..");',
+    to: 'const ROOT = resolve(import.meta.dir, ".."); // self-check, reverted immediately',
+    suite: "test/typecheck-scope.test.ts",
+    expect: "this string never appears in any output",
+  },
+  {
+    id: "self-check/no-match",
+    defect: "A pattern that cannot match. Must be a failure, never a skip.",
+    file: "test/typecheck-scope.test.ts",
+    from: "THIS_STRING_IS_DEFINITELY_NOT_PRESENT",
+    to: "x",
+    suite: "test/typecheck-scope.test.ts",
+    expect: "irrelevant — the pattern check fires first",
+  },
+];
+
 const dirty = async (): Promise<string> => (await $`git status --porcelain`.quiet().text()).trim();
 
-const filter = process.argv.slice(2).filter((a) => a !== "--");
-const selected = filter.length
-  ? MUTATIONS.filter((m) => filter.some((f) => m.id.includes(f)))
-  : MUTATIONS;
+const argv = process.argv.slice(2).filter((a) => a !== "--");
+const selfCheck = argv.includes("--self-check");
+const filter = argv.filter((a) => !a.startsWith("--"));
+const selected = selfCheck
+  ? SELF_CHECK
+  : filter.length
+    ? MUTATIONS.filter((m) => filter.some((f) => m.id.includes(f)))
+    : MUTATIONS;
 
 if (selected.length === 0) {
   console.error(`no mutation matches ${filter.join(", ")}`);
@@ -275,6 +318,18 @@ for (const m of selected) {
     console.error(`✗ ${m.id}: not caught, or caught by the wrong test (expected "${m.expect}")`);
     missed++;
   }
+}
+
+if (selfCheck) {
+  // Inverted. Every self-check entry is supposed to be reported as a failure,
+  // so `missed === selected.length` is the passing result.
+  const ok = missed === selected.length;
+  console.log(
+    ok
+      ? `\nself-check: ${missed}/${selected.length} correctly reported as failures`
+      : `\nself-check FAILED: ${selected.length - missed} reported as caught — the failure branch is not working`,
+  );
+  process.exit(ok ? 0 : 1);
 }
 
 console.log(`\n${selected.length - missed}/${selected.length} caught`);
