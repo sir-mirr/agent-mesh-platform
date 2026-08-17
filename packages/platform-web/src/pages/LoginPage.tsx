@@ -166,16 +166,6 @@ export function LoginPage() {
     let animId: number;
     let startTime = performance.now();
 
-    // Preload Character Avatar Images for Canvas Rendering
-    const avatarImages: Record<string, HTMLImageElement> = {};
-    nodesRef.current.forEach((n) => {
-      if (n.type === "character" && n.avatar) {
-        const img = new Image();
-        img.src = n.avatar;
-        avatarImages[n.id] = img;
-      }
-    });
-
     const render = (time: number) => {
       const t = (time - startTime) * 0.001; // in seconds
 
@@ -302,7 +292,7 @@ export function LoginPage() {
 
       // 5. Draw All Connected Secondary Dots and Isolated Dots
       nodesRef.current.forEach((node) => {
-        if (node.type === "character") return; // Rendered via crisp HTML overlay for avatar perfection
+        if (node.type === "character") return;
 
         const p = posMap[node.id];
         if (!p) return;
@@ -369,7 +359,7 @@ export function LoginPage() {
         }}
       />
 
-      {/* ── 3 Main Character Avatars Strictly Locked to Dynamic Canvas Node Coordinates ── */}
+      {/* ── 3 Main Character Avatars (Clean Text Only, No Round Box Background) ── */}
 
       {/* 1. 핀둥이 */}
       {characterPos.fin && (
@@ -386,7 +376,6 @@ export function LoginPage() {
             pointerEvents: "auto",
             cursor: "pointer",
             zIndex: 10,
-            transition: "transform 0.15s ease",
           }}
           title="핀둥이"
         >
@@ -396,10 +385,19 @@ export function LoginPage() {
               <img src="/assets/agent-fin.png" alt="핀둥이" className="agent-avatar-img" />
             </div>
           </div>
-          <div className="agent-node-badge badge-blue">
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#38BDF8", display: "inline-block" }} />
+          <span
+            style={{
+              marginTop: 6,
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              color: "#FFFFFF",
+              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.7)",
+              whiteSpace: "nowrap",
+              letterSpacing: "-0.01em",
+            }}
+          >
             핀둥이
-          </div>
+          </span>
         </div>
       )}
 
@@ -418,7 +416,6 @@ export function LoginPage() {
             pointerEvents: "auto",
             cursor: "pointer",
             zIndex: 10,
-            transition: "transform 0.15s ease",
           }}
           title="핀자"
         >
@@ -428,10 +425,19 @@ export function LoginPage() {
               <img src="/assets/agent-support.png" alt="핀자" className="agent-avatar-img" />
             </div>
           </div>
-          <div className="agent-node-badge badge-emerald">
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block" }} />
+          <span
+            style={{
+              marginTop: 6,
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              color: "#FFFFFF",
+              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(52, 211, 153, 0.7)",
+              whiteSpace: "nowrap",
+              letterSpacing: "-0.01em",
+            }}
+          >
             핀자
-          </div>
+          </span>
         </div>
       )}
 
@@ -450,7 +456,6 @@ export function LoginPage() {
             pointerEvents: "auto",
             cursor: "pointer",
             zIndex: 10,
-            transition: "transform 0.15s ease",
           }}
           title="아름이"
         >
@@ -460,10 +465,19 @@ export function LoginPage() {
               <img src="/assets/agent-assistant.png" alt="아름이" className="agent-avatar-img" />
             </div>
           </div>
-          <div className="agent-node-badge badge-purple">
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C084FC", display: "inline-block" }} />
+          <span
+            style={{
+              marginTop: 6,
+              fontSize: "0.82rem",
+              fontWeight: 750,
+              color: "#FFFFFF",
+              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(192, 132, 252, 0.7)",
+              whiteSpace: "nowrap",
+              letterSpacing: "-0.01em",
+            }}
+          >
             아름이
-          </div>
+          </span>
         </div>
       )}
     </div>
