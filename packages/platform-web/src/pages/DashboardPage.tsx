@@ -1,22 +1,22 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { PageHeader, KpiCard, TelemetryCard, EmptyState, Button } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 /**
  * DashboardPage — Phase 1 MVP 대시보드.
- *
- * 에이전트 운영자: 소유 에이전트 목록 + 큐 상태
- * 테넌트 관리자: 플릿 현황 위젯 (#21)
- * 플랫폼 관리자: 서버 헬스 메트릭
  */
 export function DashboardPage() {
+  const { t } = useI18n();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <PageHeader
         suiteTag="PHASE 1 MVP"
         suiteBadgeColor="leased"
         screenId="DASH-01"
-        title="통합 운영 대시보드"
-        subtitle="단일 패브릭 에이전트 플릿 요약, 실시간 허브 헬스 및 인박스 적체 모니터링"
+        title={t("dash.title", "통합 운영 대시보드")}
+        subtitle={t("dash.subtitle", "단일 패브릭 에이전트 플릿 요약, 실시간 허브 헬스 및 인박스 적체 모니터링")}
         actions={
           <>
             <Button
@@ -24,11 +24,13 @@ export function DashboardPage() {
               size="sm"
               onClick={() => window.location.reload()}
             >
-              ↻ 새로고침
+              ↻ {t("common.refresh", "새로고침")}
             </Button>
-            <Button variant="primary" size="sm">
-              ➕ 신규 에이전트 등록
-            </Button>
+            <Link to="/creator/register">
+              <Button variant="primary" size="sm">
+                {t("nav.register", "➕ 신규 에이전트 등록")}
+              </Button>
+            </Link>
           </>
         }
       />
@@ -42,31 +44,31 @@ export function DashboardPage() {
         }}
       >
         <KpiCard
-          label="소유 에이전트"
+          label={t("dash.kpi.agents", "소유 에이전트")}
           value="12"
-          subValue="개 등록됨"
+          subValue={t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
           icon="🤖"
         />
         <KpiCard
-          label="온라인 소켓"
+          label={t("dash.kpi.sockets", "온라인 소켓")}
           value="8"
-          subValue="연결 활성"
+          subValue={t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
-          trend={{ value: "+2 신규 연결", isPositive: true }}
+          trend={{ value: "+2", isPositive: true }}
         />
         <KpiCard
-          label="인박스 적체 큐"
+          label={t("dash.kpi.inbox", "인박스 적체 큐")}
           value="3"
-          subValue="메시지 대기"
+          subValue={t("dash.kpi.inboxSub", "건 대기 중")}
           color="var(--color-warning)"
           icon="📥"
         />
         <KpiCard
-          label="라우팅 처리량"
-          value="1,420"
-          subValue="건 / 24h"
+          label={t("dash.kpi.latency", "평균 디스패치 지연")}
+          value="24ms"
+          subValue={t("dash.kpi.latencySub", "p99 기준")}
           color="#6366F1"
           icon="🔄"
         />

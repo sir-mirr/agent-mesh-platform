@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface ClusterConfig {
   id: string;
@@ -61,6 +62,7 @@ const MINIMAP_W = 200;
 const MINIMAP_H = 110;
 
 export function TopologyPage() {
+  const { t } = useI18n();
   const [simStage, setSimStage] = useState<number>(10);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
@@ -917,8 +919,10 @@ export function TopologyPage() {
 
       {/* Clean Production Page Header */}
       <PageHeader
-        title="에이전트 토폴로지"
-        subtitle={`실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`}
+        title={t("topo.title", "에이전트 토폴로지")}
+        subtitle={t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`)
+          .replace("{groups}", String(clusters.length))
+          .replace("{agents}", String(totalAgentCount + clusters.length))}
       />
 
       {/* Main Interactive Topology Viewport Container */}
@@ -964,14 +968,14 @@ export function TopologyPage() {
           }}
         >
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
-          <span>Groups: {clusters.length}</span>
+          <span>{t("topo.hud.groups", "Groups")}: {clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span>Agents: {totalAgentCount}</span>
+          <span>{t("topo.hud.agents", "Agents")}: {totalAgentCount}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span>Gateways: {clusters.length}</span>
+          <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
           <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
-            Egress: Active
+            {t("topo.hud.egress", "Egress")}: Active
           </span>
         </div>
 
@@ -1005,7 +1009,9 @@ export function TopologyPage() {
               boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
             }}
           >
-            <option value="all">전체 그룹 보기 ({clusters.length})</option>
+            <option value="all">
+              {t("topo.filter.all", `전체 그룹 보기 (${clusters.length})`).replace("{count}", String(clusters.length))}
+            </option>
             {clusters.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.count})
@@ -1017,7 +1023,7 @@ export function TopologyPage() {
           <div ref={searchWrapRef} style={{ position: "relative" }}>
             <input
               type="text"
-              placeholder="에이전트 검색 (핀둥이, claude)..."
+              placeholder={t("topo.search.placeholder", "에이전트 검색 (핀둥이, claude)...")}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -1595,16 +1601,16 @@ export function TopologyPage() {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
-            🛠️ 개발 및 데모 시뮬레이션 제어 도구 (Demo & Testing Controls)
+            🛠️ {t("topo.sim.devTitle", "개발 및 데모 시뮬레이션 제어 도구 (Demo & Testing Controls)")}
           </span>
           <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-            * 론칭 시 하단 툴박스는 운영자 전용 디버그 패널로 분리됩니다
+            {t("topo.sim.notice", "* 론칭 시 하단 툴박스는 운영자 전용 디버그 패널로 분리됩니다")}
           </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-            그룹 스케일 단계:
+            {t("topo.sim.title", "그룹 스케일 단계:")}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input
@@ -1633,21 +1639,21 @@ export function TopologyPage() {
 
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => setSimStage(1)} style={presetBtnStyle(simStage === 1)}>
-              1. 단일(5)
+              1. {t("topo.sim.p1", "단일(5)")}
             </button>
             <button onClick={() => setSimStage(3)} style={presetBtnStyle(simStage === 3)}>
-              3. 트리플(43)
+              3. {t("topo.sim.p3", "트리플(43)")}
             </button>
             <button onClick={() => setSimStage(5)} style={presetBtnStyle(simStage === 5)}>
-              5. 상단덱(67)
+              5. {t("topo.sim.p5", "상단덱(67)")}
             </button>
             <button onClick={() => setSimStage(10)} style={presetBtnStyle(simStage === 10)}>
-              10. 풀갤럭시(139)
+              10. {t("topo.sim.p10", "풀갤럭시(139)")}
             </button>
           </div>
 
           <Button variant="secondary" size="sm" onClick={() => setSimStage(10)}>
-            ⚡ 10-그룹 풀 로드 (139노드)
+            {t("topo.sim.full", "⚡ 10-그룹 풀 로드 (139노드)")}
           </Button>
         </div>
       </div>

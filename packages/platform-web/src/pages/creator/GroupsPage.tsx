@@ -8,6 +8,7 @@ import {
   Input,
   Toast,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface AgentGroup {
   id: string;
@@ -46,6 +47,7 @@ const INITIAL_GROUPS: AgentGroup[] = [
 ];
 
 export function GroupsPage() {
+  const { t } = useI18n();
   const [groups, setGroups] = useState<AgentGroup[]>(INITIAL_GROUPS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
@@ -98,7 +100,7 @@ export function GroupsPage() {
   const columns = [
     {
       key: "name",
-      header: "그룹 명 / ID",
+      header: t("groups.col.name", "그룹 명 / ID"),
       render: (item: AgentGroup) => (
         <div>
           <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
@@ -118,7 +120,7 @@ export function GroupsPage() {
     },
     {
       key: "description",
-      header: "그룹 설명",
+      header: t("groups.col.desc", "그룹 설명"),
       render: (item: AgentGroup) => (
         <span style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>
           {item.description}
@@ -127,7 +129,7 @@ export function GroupsPage() {
     },
     {
       key: "memberCount",
-      header: "소속 에이전트",
+      header: t("groups.col.agents", "소속 에이전트"),
       render: (item: AgentGroup) => (
         <span
           style={{
@@ -140,13 +142,13 @@ export function GroupsPage() {
             fontSize: "0.78rem",
           }}
         >
-          {item.memberCount}명
+          {item.memberCount}
         </span>
       ),
     },
     {
       key: "members",
-      header: "배속 에이전트 목록",
+      header: t("groups.col.members", "배속 에이전트 목록"),
       render: (item: AgentGroup) => (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {item.members.map((id) => (
@@ -166,7 +168,7 @@ export function GroupsPage() {
           ))}
           {item.members.length === 0 && (
             <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-              배속된 에이전트 없음
+              -
             </span>
           )}
         </div>
@@ -174,7 +176,7 @@ export function GroupsPage() {
     },
     {
       key: "createdAt",
-      header: "생성 일시",
+      header: t("groups.col.created", "생성 일시"),
       render: (item: AgentGroup) => (
         <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
           {item.createdAt}
@@ -183,7 +185,7 @@ export function GroupsPage() {
     },
     {
       key: "actions",
-      header: "작업",
+      header: t("groups.col.actions", "작업"),
       align: "right" as const,
       render: (item: AgentGroup) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -195,7 +197,7 @@ export function GroupsPage() {
               setIsAssignOpen(true);
             }}
           >
-            에이전트 배속/이동
+            {t("groups.assignBtn", "에이전트 배속/이동")}
           </Button>
         </div>
       ),
@@ -210,11 +212,11 @@ export function GroupsPage() {
         suiteTag="STUDIO SUITE"
         suiteBadgeColor="leased"
         screenId="25"
-        title="그룹 관리 & 에이전트 배속"
-        subtitle="그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)"
+        title={t("groups.title", "그룹 관리 & 에이전트 배속")}
+        subtitle={t("groups.subtitle", "그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)")}
         actions={
           <Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
-            ➕ 그룹 생성
+            {t("groups.createBtn", "➕ 그룹 생성")}
           </Button>
         }
       />
@@ -237,28 +239,28 @@ export function GroupsPage() {
       <Modal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="신규 그룹 생성"
+        title={t("groups.modal.createTitle", "신규 그룹 생성")}
       >
         <form onSubmit={handleCreateGroup} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input
-            label="그룹 이름"
-            placeholder="예: Analytics Group (데이터 분석)"
+            label={t("groups.modal.nameLabel", "그룹 이름")}
+            placeholder={t("groups.modal.namePlaceholder", "예: Analytics Group (데이터 분석)")}
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             required
           />
           <Input
-            label="그룹 설명"
-            placeholder="그룹의 역할 및 격리 목적을 입력하세요"
+            label={t("groups.modal.descLabel", "그룹 설명")}
+            placeholder={t("groups.modal.descPlaceholder", "그룹의 역할 및 격리 목적을 입력하세요")}
             value={newGroupDesc}
             onChange={(e) => setNewGroupDesc(e.target.value)}
           />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
             <Button variant="secondary" size="sm" type="button" onClick={() => setIsCreateOpen(false)}>
-              취소
+              {t("common.cancel", "취소")}
             </Button>
             <Button variant="primary" size="sm" type="submit">
-              생성하기
+              {t("common.create", "생성하기")}
             </Button>
           </div>
         </form>
@@ -269,14 +271,14 @@ export function GroupsPage() {
         <Modal
           isOpen={isAssignOpen}
           onClose={() => setIsAssignOpen(false)}
-          title={`[${selectedGroup.name}] 에이전트 배속`}
+          title={`${t("groups.modal.assignTitle", "에이전트 배속 및 이동")} - ${selectedGroup.name}`}
         >
           <form onSubmit={handleAssignAgent} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>
-              배속할 에이전트 ID를 입력하거나 선택하세요. 에이전트 이동 시 기존 그룹에서 자동으로 탈퇴되고 신규 그룹으로 이전됩니다.
+              {t("groups.modal.assignDesc", "배속할 에이전트 ID를 입력하거나 선택하세요. 에이전트 이동 시 기존 그룹에서 자동으로 탈퇴되고 신규 그룹으로 이전됩니다.")}
             </p>
             <Input
-              label="에이전트 ID (agt_*)"
+              label={t("groups.modal.agentIdLabel", "배속할 에이전트 ID (agt_*)")}
               placeholder="예: agt_support_01"
               value={assignAgentId}
               onChange={(e) => setAssignAgentId(e.target.value)}
@@ -284,10 +286,10 @@ export function GroupsPage() {
             />
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
               <Button variant="secondary" size="sm" type="button" onClick={() => setIsAssignOpen(false)}>
-                취소
+                {t("common.cancel", "취소")}
               </Button>
               <Button variant="primary" size="sm" type="submit">
-                배속 완료
+                {t("common.save", "배속 완료")}
               </Button>
             </div>
           </form>

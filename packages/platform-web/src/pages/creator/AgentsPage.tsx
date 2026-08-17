@@ -9,6 +9,7 @@ import {
   Button,
   ConfirmDialog,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface AgentItem {
   id: string;
@@ -51,6 +52,7 @@ const INITIAL_AGENTS: AgentItem[] = [
 ];
 
 export function AgentsPage() {
+  const { t } = useI18n();
   const [agents, setAgents] = useState<AgentItem[]>(INITIAL_AGENTS);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
@@ -65,7 +67,7 @@ export function AgentsPage() {
   const columns = [
     {
       key: "name",
-      header: "에이전트 명 / ID",
+      header: t("agents.col.name", "에이전트 명 / ID"),
       render: (item: AgentItem) => (
         <div>
           <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
@@ -85,7 +87,7 @@ export function AgentsPage() {
     },
     {
       key: "groupName",
-      header: "소속 그룹",
+      header: t("agents.col.group", "소속 그룹"),
       render: (item: AgentItem) => (
         <span
           style={{
@@ -102,12 +104,12 @@ export function AgentsPage() {
     },
     {
       key: "status",
-      header: "상태",
+      header: t("agents.col.status", "상태"),
       render: (item: AgentItem) => (
         <StatusBadge
           label={
             item.status === "online"
-              ? "ONLINE (WS 연결)"
+              ? "ONLINE"
               : item.status === "offline"
               ? "OFFLINE"
               : "PENDING"
@@ -119,14 +121,14 @@ export function AgentsPage() {
     },
     {
       key: "fingerprint",
-      header: "Ed25519 공개키 지문",
+      header: t("agents.col.fingerprint", "Ed25519 공개키 지문"),
       render: (item: AgentItem) => (
         <FingerprintBox fingerprint={item.fingerprint} showCopy={true} />
       ),
     },
     {
       key: "inboxDepth",
-      header: "인박스 적체",
+      header: t("agents.col.inbox", "인박스 적체"),
       render: (item: AgentItem) => (
         <span
           style={{
@@ -138,19 +140,19 @@ export function AgentsPage() {
                 : "var(--color-text-muted)",
           }}
         >
-          {item.inboxDepth}건
+          {item.inboxDepth}
         </span>
       ),
     },
     {
       key: "actions",
-      header: "작업",
+      header: t("agents.col.actions", "작업"),
       align: "right" as const,
       render: (item: AgentItem) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
           <Link to="/creator/playground">
             <Button variant="secondary" size="sm">
-              메시지 테스트
+              {t("nav.playground", "메시지 테스트")}
             </Button>
           </Link>
           <Button
@@ -161,7 +163,7 @@ export function AgentsPage() {
               setIsTeardownOpen(true);
             }}
           >
-            Teardown
+            {t("agents.teardownBtn", "Teardown")}
           </Button>
         </div>
       ),
@@ -176,12 +178,12 @@ export function AgentsPage() {
         suiteTag="STUDIO SUITE"
         suiteBadgeColor="leased"
         screenId="37"
-        title="소유 에이전트 운영 스튜디오"
-        subtitle="등록된 자율 에이전트 플릿 관리, 실시간 온라인 웹소켓 상태 및 암호학적 지문 검증"
+        title={t("agents.title", "소유 에이전트 운영 스튜디오")}
+        subtitle={t("agents.subtitle", "등록된 자율 에이전트 플릿 관리, 실시간 온라인 웹소켓 상태 및 암호학적 지문 검증")}
         actions={
           <Link to="/creator/register">
             <Button variant="primary" size="sm">
-              ➕ 신규 에이전트 등록
+              {t("nav.register", "➕ 신규 에이전트 등록")}
             </Button>
           </Link>
         }

@@ -30,7 +30,7 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const location = useLocation();
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const [isLangOpen, setIsLangOpen] = useState(false);
   const langPopoverRef = useRef<HTMLDivElement>(null);
 
@@ -72,77 +72,77 @@ export function Sidebar({
 
   const sections: NavSectionDef[] = [
     {
-      title: "핵심 개요",
+      title: t("nav.sec.overview", "핵심 개요"),
       items: [
         {
-          label: "대시보드",
-          description: "통합 플릿 및 서버 현황 요약",
+          label: t("nav.dashboard", "대시보드"),
+          description: t("nav.dashboard.desc", "통합 플릿 및 서버 현황 요약"),
           href: "/dashboard",
           icon: "📊",
         },
       ],
     },
     {
-      title: "에이전트 운영 스튜디오",
+      title: t("nav.sec.studio", "에이전트 운영 스튜디오"),
       items: [
         {
-          label: "내 에이전트",
-          description: "소유 에이전트 목록 및 연결 상태",
+          label: t("nav.agents", "내 에이전트"),
+          description: t("nav.agents.desc", "소유 에이전트 목록 및 연결 상태"),
           href: "/creator",
           icon: "🤖",
         },
         {
-          label: "그룹 관리",
-          description: "그룹 생성 및 에이전트 배속/이동",
+          label: t("nav.groups", "그룹 관리"),
+          description: t("nav.groups.desc", "그룹 생성 및 에이전트 배속/이동"),
           href: "/creator/groups",
           icon: "👥",
         },
         {
-          label: "에이전트 토폴로지",
-          description: "원형 오비탈 노드-엣지 인터랙티브 제어",
+          label: t("nav.topology", "에이전트 토폴로지"),
+          description: t("nav.topology.desc", "원형 오비탈 노드-엣지 인터랙티브 제어"),
           href: "/creator/topology",
           icon: "🌐",
         },
         {
-          label: "메시지 플레이그라운드",
-          description: "JWT 프록시 발송 및 실시간 영수증",
+          label: t("nav.playground", "메시지 플레이그라운드"),
+          description: t("nav.playground.desc", "JWT 프록시 발송 및 실시간 영수증"),
           href: "/creator/playground",
           icon: "💬",
         },
         {
-          label: "소켓리스 리스 큐",
-          description: "300s TTL 카운트다운 및 ACK/NACK",
+          label: t("nav.leaseQueue", "소켓리스 리스 큐"),
+          description: t("nav.leaseQueue.desc", "300s TTL 카운트다운 및 ACK/NACK"),
           href: "/creator/lease-queue",
           icon: "📥",
         },
         {
-          label: "신규 에이전트 등록",
-          description: "신원 등록 및 Ed25519 키 제안",
+          label: t("nav.register", "신규 에이전트 등록"),
+          description: t("nav.register.desc", "신원 등록 및 Ed25519 키 제안"),
           href: "/creator/register",
           icon: "➕",
         },
       ],
     },
     {
-      title: "실시간 서버 모니터링",
+      title: t("nav.sec.platform", "실시간 서버 모니터링"),
       items: [
         {
-          label: "서버 인프라 현황",
-          description: "실시간 허브 헬스 및 온라인 소켓",
+          label: t("nav.server", "서버 인프라 현황"),
+          description: t("nav.server.desc", "실시간 허브 헬스 및 온라인 소켓"),
           href: "/platform",
           icon: "⚡",
           requiredCapability: "server.inspect",
         },
         {
-          label: "노드 텔레메트리",
-          description: "프로세스 CPU, RAM 및 소켓 지표",
+          label: t("nav.telemetry", "노드 텔레메트리"),
+          description: t("nav.telemetry.desc", "프로세스 CPU, RAM 및 소켓 지표"),
           href: "/platform/telemetry",
           icon: "📈",
           requiredCapability: "server.inspect",
         },
         {
-          label: "테넌트 라우팅 분석",
-          description: "조직별 라우팅 처리량 및 스토리지",
+          label: t("nav.tenants", "테넌트 라우팅 분석"),
+          description: t("nav.tenants.desc", "조직별 라우팅 처리량 및 스토리지"),
           href: "/platform/tenants",
           icon: "🏢",
           requiredCapability: "server.inspect",
@@ -150,25 +150,25 @@ export function Sidebar({
       ],
     },
     {
-      title: "테넌트 관리 콘솔",
+      title: t("nav.sec.tenant", "테넌트 관리 콘솔"),
       items: [
         {
-          label: "이그레스 ACL 행렬",
-          description: "그룹 간 통신 허용/차단 제어",
+          label: t("nav.egress", "이그레스 ACL 행렬"),
+          description: t("nav.egress.desc", "그룹 간 통신 허용/차단 제어"),
           href: "/tenant/egress-acl",
           icon: "🛡️",
           requiredCapability: "policy.send_restrict",
         },
         {
-          label: "메시지 본문 감사",
-          description: "audit.read.content 기반 열람",
+          label: t("nav.audit", "메시지 본문 감사"),
+          description: t("nav.audit.desc", "audit.read_content 기반 열람"),
           href: "/tenant/audits",
           icon: "🔍",
           requiredCapability: "audit.read_content",
         },
         {
-          label: "조직 멤버 RBAC",
-          description: "관리자별 9대 권한 부여/회수",
+          label: t("nav.rbac", "조직 멤버 RBAC"),
+          description: t("nav.rbac.desc", "관리자별 9대 권한 부여/회수"),
           href: "/tenant/rbac",
           icon: "🔑",
           requiredCapability: "role.assign",
@@ -671,9 +671,9 @@ export function Sidebar({
                   borderRadius: "var(--radius-sm)",
                   whiteSpace: "nowrap",
                 }}
-                title="로그아웃"
+                title={t("common.logout", "로그아웃")}
               >
-                로그아웃
+                {t("common.logout", "로그아웃")}
               </button>
             )}
           </>
