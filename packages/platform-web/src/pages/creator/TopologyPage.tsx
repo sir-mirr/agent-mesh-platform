@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { PageHeader, SubNavPills, Button, Toast } from "@/components/index.ts";
 
 interface ClusterConfig {
@@ -57,19 +57,24 @@ const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
 
 const ICONS_PALETTE = ["🤖", "🔬", "💻", "⚡", "📦", "🛡️", "📜", "🔑", "📊", "🧠", "💡", "📝", "🏆", "🚀", "💬", "🔍", "⚙️", "👁️", "🔐"];
 
+// Total World Bounding Box for Minimap
+const WORLD_W = 3500;
+const WORLD_H = 1750;
+
 export function TopologyPage() {
   const [simStage, setSimStage] = useState<number>(10);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Pan / Zoom Transformation State
-  const [panX, setPanX] = useState<number>(40);
-  const [panY, setPanY] = useState<number>(20);
-  const [scale, setScale] = useState<number>(0.38);
+  const [panX, setPanX] = useState<number>(50);
+  const [panY, setPanY] = useState<number>(30);
+  const [scale, setScale] = useState<number>(0.42);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 40, panY: 20 });
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 50, panY: 30 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const subNavItems = [
@@ -81,7 +86,7 @@ export function TopologyPage() {
     { label: "에이전트 등록", href: "/creator/register", icon: "➕" },
   ];
 
-  // Build Topology Data Graph dynamically based on Stage (1 ~ 10)
+  // 1. Build Topology Data Graph dynamically based on Stage (1 ~ 10)
   const { clusters, nodes, edges, totalAgentCount } = useMemo(() => {
     const rawClusters = MASTER_CLUSTERS_CONFIG.slice(0, simStage).map((c) => ({
       ...c,
@@ -273,35 +278,51 @@ export function TopologyPage() {
 
   // Filtered nodes
   const filteredNodeIds = useMemo(() => {
-    if (!searchQuery.trim()) return null;
-    const q = searchQuery.toLowerCase();
-    return Object.keys(nodes).filter((id) => {
-      const n = nodes[id];
-      if (!n) return false;
-      return (
-        id.toLowerCase().includes(q) ||
-        n.displayName.toLowerCase().includes(q) ||
-        n.groupName.toLowerCase().includes(q)
-      );
-    });
-  }, [nodes, searchQuery]);
+    let result = Object.keys(nodes);
+    if (activeFilterGroup !== "all") {
+      result = result.filter((id) => nodes[id]?.group === activeFilterGroup);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((id) => {
+        const n = nodes[id];
+        if (!n) return false;
+        return (
+          id.toLowerCase().includes(q) ||
+          n.displayName.toLowerCase().includes(q) ||
+          n.groupName.toLowerCase().includes(q)
+        );
+      });
+    }
+    return result;
+  }, [nodes, activeFilterGroup, searchQuery]);
 
-  // Pan and Zoom Event Handlers
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
-    const rect = viewportRef.current?.getBoundingClientRect();
-    if (!rect) return;
+  // 2. PINCH / WHEEL ZOOM ISOLATED TO CANVAS CONTAINER ONLY
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
 
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const onWheelHandler = (e: WheelEvent) => {
+      e.preventDefault(); // Stop outer page scroll!
+      e.stopPropagation();
 
-    setScale((prevScale) => {
-      const nextScale = Math.min(Math.max(prevScale * zoomFactor, 0.15), 1.8);
-      setPanX((prevPanX) => mouseX - (mouseX - prevPanX) * (nextScale / prevScale));
-      setPanY((prevPanY) => mouseY - (mouseY - prevPanY) * (nextScale / prevScale));
-      return nextScale;
-    });
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      setScale((prevScale) => {
+        const nextScale = Math.min(Math.max(prevScale * zoomFactor, 0.15), 1.8);
+        setPanX((prevPanX) => mouseX - (mouseX - prevPanX) * (nextScale / prevScale));
+        setPanY((prevPanY) => mouseY - (mouseY - prevPanY) * (nextScale / prevScale));
+        return nextScale;
+      });
+    };
+
+    el.addEventListener("wheel", onWheelHandler, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheelHandler);
+    };
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -323,9 +344,9 @@ export function TopologyPage() {
   };
 
   const resetView = () => {
-    setPanX(40);
-    setPanY(20);
-    setScale(0.38);
+    setPanX(50);
+    setPanY(30);
+    setScale(0.42);
   };
 
   const zoomIn = () => {
@@ -352,6 +373,31 @@ export function TopologyPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
+  // Minimap Viewport indicator rectangle coordinates
+  const minimapViewRect = useMemo(() => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const vw = rect?.width || 1000;
+    const vh = rect?.height || 600;
+
+    const miniW = 200;
+    const miniH = 110;
+
+    const miniScaleX = miniW / WORLD_W;
+    const miniScaleY = miniH / WORLD_H;
+
+    const vx = Math.max(0, (-panX / scale) * miniScaleX);
+    const vy = Math.max(0, (-panY / scale) * miniScaleY);
+    const width = (vw / scale) * miniScaleX;
+    const height = (vh / scale) * miniScaleY;
+
+    return {
+      x: vx,
+      y: vy,
+      width: Math.min(width, miniW),
+      height: Math.min(height, miniH),
+    };
+  }, [panX, panY, scale]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SubNavPills items={subNavItems} />
@@ -374,7 +420,7 @@ export function TopologyPage() {
         }
       />
 
-      {/* Control Toolbar Card */}
+      {/* Control Toolbar Card: Scale Slider & Galaxy Filter Pills */}
       <div
         style={{
           background: "var(--color-bg-surface)",
@@ -382,117 +428,114 @@ export function TopologyPage() {
           borderRadius: "var(--radius-lg)",
           padding: "16px 20px",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 16,
+          flexDirection: "column",
+          gap: 14,
           boxShadow: "var(--shadow-xs)",
         }}
       >
-        {/* Scale Slider */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-text-primary)" }}>
-            스웜 스케일 단계:
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={simStage}
-              onChange={(e) => setSimStage(Number(e.target.value))}
-              style={{ width: 140, accentColor: "var(--color-primary)", cursor: "pointer" }}
-            />
-            <span
-              style={{
-                fontSize: "0.82rem",
-                fontWeight: 800,
-                padding: "2px 8px",
-                borderRadius: "var(--radius-sm)",
-                background: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-                minWidth: 70,
-                textAlign: "center",
-              }}
-            >
-              Stage {simStage} / 10
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+          {/* Scale Slider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-text-primary)" }}>
+              스웜 스케일 단계:
             </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={simStage}
+                onChange={(e) => setSimStage(Number(e.target.value))}
+                style={{ width: 140, accentColor: "var(--color-primary)", cursor: "pointer" }}
+              />
+              <span
+                style={{
+                  fontSize: "0.82rem",
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  minWidth: 70,
+                  textAlign: "center",
+                }}
+              >
+                Stage {simStage} / 10
+              </span>
+            </div>
+
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setSimStage(1)} style={presetBtnStyle(simStage === 1)}>
+                1. 단일(5)
+              </button>
+              <button onClick={() => setSimStage(3)} style={presetBtnStyle(simStage === 3)}>
+                3. 트리플(43)
+              </button>
+              <button onClick={() => setSimStage(5)} style={presetBtnStyle(simStage === 5)}>
+                5. 상단덱(67)
+              </button>
+              <button onClick={() => setSimStage(10)} style={presetBtnStyle(simStage === 10)}>
+                10. 풀갤럭시(139)
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => setSimStage(1)}
-              style={presetBtnStyle(simStage === 1)}
-            >
-              1. 단일(5)
-            </button>
-            <button
-              onClick={() => setSimStage(3)}
-              style={presetBtnStyle(simStage === 3)}
-            >
-              3. 트리플(43)
-            </button>
-            <button
-              onClick={() => setSimStage(5)}
-              style={presetBtnStyle(simStage === 5)}
-            >
-              5. 상단덱(67)
-            </button>
-            <button
-              onClick={() => setSimStage(10)}
-              style={presetBtnStyle(simStage === 10)}
-            >
-              10. 풀갤럭시(139)
-            </button>
+          {/* Search Input */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <input
+              type="text"
+              placeholder="에이전트 검색 (핀둥이, claude)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border-strong)",
+                fontSize: "0.82rem",
+                background: "var(--color-bg-surface-sub)",
+                outline: "none",
+                width: 220,
+              }}
+            />
           </div>
         </div>
 
-        {/* Search & View Controls */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <input
-            type="text"
-            placeholder="에이전트 검색 (핀둥이, claude)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              padding: "6px 12px",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--color-border-strong)",
-              fontSize: "0.82rem",
-              background: "var(--color-bg-surface-sub)",
-              outline: "none",
-              width: 220,
-            }}
-          />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--color-bg-surface-sub)", padding: 3, borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)" }}>
-            <button onClick={zoomIn} style={iconBtnStyle} title="확대 (+)">➕</button>
-            <span style={{ fontSize: "0.75rem", fontWeight: 700, minWidth: 44, textAlign: "center", color: "var(--color-text-secondary)" }}>
-              {Math.round(scale * 100)}%
-            </span>
-            <button onClick={zoomOut} style={iconBtnStyle} title="축소 (-)">➖</button>
-            <button onClick={resetView} style={iconBtnStyle} title="뷰 리셋">🎯</button>
-          </div>
+        {/* Galaxy Filter Pills */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+          <button
+            onClick={() => setActiveFilterGroup("all")}
+            style={filterPillStyle(activeFilterGroup === "all")}
+          >
+            전체 스웜 ({clusters.length})
+          </button>
+          {clusters.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveFilterGroup(c.id)}
+              style={filterPillStyle(activeFilterGroup === c.id)}
+            >
+              {c.name} ({c.count})
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Main Interactive Topology SVG Viewport Container */}
+      {/* Main Interactive Topology SVG Viewport Container (Original Light Canvas Theme) */}
       <div
         ref={viewportRef}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         style={{
           height: 640,
-          background: "radial-gradient(ellipse at center, #1E293B 0%, #0F172A 70%, #020617 100%)",
+          background: "#F8FAFC",
           borderRadius: "var(--radius-xl)",
           border: "1px solid var(--color-border)",
           position: "relative",
           overflow: "hidden",
           cursor: isDragging ? "grabbing" : "grab",
           userSelect: "none",
-          boxShadow: "0 20px 40px -15px rgba(0,0,0,0.5)",
+          boxShadow: "var(--shadow-sm)",
         }}
       >
         {/* Top Floating HUD Info */}
@@ -505,22 +548,23 @@ export function TopologyPage() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            background: "rgba(15, 23, 42, 0.85)",
+            background: "rgba(255, 255, 255, 0.94)",
             backdropFilter: "blur(8px)",
             padding: "6px 14px",
             borderRadius: "var(--radius-full)",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            color: "#F8FAFC",
+            border: "1px solid var(--color-border)",
+            color: "var(--color-text-primary)",
             fontSize: "0.78rem",
             fontWeight: 700,
+            boxShadow: "var(--shadow-xs)",
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
           <span>Active Swarms: {clusters.length} Galaxies</span>
-          <span style={{ color: "#94A3B8" }}>·</span>
+          <span style={{ color: "var(--color-text-muted)" }}>·</span>
           <span>Total Nodes: {totalAgentCount + clusters.length}</span>
-          <span style={{ color: "#94A3B8" }}>·</span>
-          <span style={{ color: "#38BDF8" }}>SPEC § 12 Egress Active</span>
+          <span style={{ color: "var(--color-text-muted)" }}>·</span>
+          <span style={{ color: "var(--color-primary)" }}>SPEC § 12 Egress Active</span>
         </div>
 
         {/* ── Scalable & Pannable SVG World Layer ── */}
@@ -529,18 +573,15 @@ export function TopologyPage() {
             width: "100%",
             height: "100%",
             overflow: "visible",
+            display: "block",
           }}
         >
           <defs>
-            <filter id="nodeGlow" x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
+            <filter id="nodeShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0F172A" floodOpacity="0.1" />
             </filter>
             <filter id="gatewayGlow" x="-30%" y="-30%" width="160%" height="160%">
-              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#7C3AED" floodOpacity="0.6" />
+              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#7C3AED" floodOpacity="0.4" />
             </filter>
           </defs>
 
@@ -554,31 +595,32 @@ export function TopologyPage() {
                   r={c.r}
                   fill={c.fill}
                   stroke={c.stroke}
-                  strokeWidth={2}
-                  strokeDasharray="6 6"
-                  opacity={0.35}
+                  strokeWidth={2.5}
+                  fillOpacity={0.92}
                 />
                 {/* Galaxy Name Header Pill */}
                 <rect
-                  x={c.cx - 130}
-                  y={c.cy - c.r - 30}
-                  width={260}
-                  height={28}
-                  rx={14}
-                  fill="rgba(15, 23, 42, 0.9)"
+                  x={c.cx - 120}
+                  y={c.cy - c.r - 28}
+                  width={240}
+                  height={26}
+                  rx={13}
+                  fill="#FFFFFF"
                   stroke={c.stroke}
-                  strokeWidth={1.5}
+                  strokeWidth={1.8}
+                  style={{ filter: "drop-shadow(0 2px 8px rgba(15, 23, 42, 0.1))" }}
                 />
                 <text
                   x={c.cx}
-                  y={c.cy - c.r - 12}
+                  y={c.cy - c.r - 11}
                   textAnchor="middle"
                   fill={c.textColor}
-                  fontSize={13}
+                  fontSize={12}
                   fontWeight={800}
                   fontFamily="inherit"
+                  letterSpacing="-0.01em"
                 >
-                  {c.name} ({c.count} Agents)
+                  {c.name} ({c.count})
                 </text>
               </g>
             ))}
@@ -590,17 +632,17 @@ export function TopologyPage() {
                 (e.from === selectedNode.identity || e.to === selectedNode.identity);
               const isHighway = e.type === "highway-edge";
 
-              let strokeColor = "rgba(56, 189, 248, 0.25)";
-              let strokeWidth = 1.2;
-              let dashArray = "4 4";
+              let strokeColor = "#64748B";
+              let strokeWidth = 1.8;
+              let dashArray = e.type === "gw-link" ? "4 4" : "none";
 
               if (isHighway) {
-                strokeColor = isHighlighted ? "#A855F7" : "rgba(168, 85, 247, 0.4)";
-                strokeWidth = 2.5;
-                dashArray = "8 6";
+                strokeColor = isHighlighted ? "#7C3AED" : "#818CF8";
+                strokeWidth = 2.2;
+                dashArray = "5 4";
               } else if (isHighlighted) {
-                strokeColor = "#38BDF8";
-                strokeWidth = 2.8;
+                strokeColor = "#0284C7";
+                strokeWidth = 4.5;
                 dashArray = "none";
               }
 
@@ -612,8 +654,12 @@ export function TopologyPage() {
                   stroke={strokeColor}
                   strokeWidth={strokeWidth}
                   strokeDasharray={dashArray}
-                  opacity={selectedNode && !isHighlighted ? 0.15 : 0.85}
-                  style={{ transition: "stroke 0.2s, stroke-width 0.2s" }}
+                  strokeLinecap="round"
+                  opacity={selectedNode && !isHighlighted ? 0.35 : 0.75}
+                  style={{
+                    transition: "stroke 0.2s, stroke-width 0.2s, opacity 0.2s",
+                    filter: isHighlighted ? "drop-shadow(0 0 8px rgba(2, 132, 199, 0.8))" : "none",
+                  }}
                 />
               );
             })}
@@ -621,7 +667,8 @@ export function TopologyPage() {
             {/* 3. Render Nodes */}
             {Object.values(nodes).map((node) => {
               const isSelected = selectedNode?.identity === node.identity;
-              const isMatch = filteredNodeIds === null || filteredNodeIds.includes(node.identity);
+              const isPeer = selectedNode?.directPeers.includes(node.identity);
+              const isMatch = filteredNodeIds.includes(node.identity);
               const isOnline = node.status === "Online";
 
               if (node.type === "gateway-bridge") {
@@ -632,23 +679,23 @@ export function TopologyPage() {
                     onClick={() => setSelectedNodeId(node.identity)}
                     style={{ cursor: "pointer", opacity: isMatch ? 1 : 0.2 }}
                   >
-                    {/* Hit target */}
                     <circle cx={node.x} cy={node.y} r={40} fill="transparent" />
                     <circle
                       cx={node.x}
                       cy={node.y}
                       r={24}
-                      fill="#1E1B4B"
-                      stroke={isSelected ? "#C084FC" : "#7C3AED"}
-                      strokeWidth={isSelected ? 3.5 : 2}
+                      fill="#FAF5FF"
+                      stroke={isSelected ? "#7C3AED" : "#A855F7"}
+                      strokeWidth={isSelected ? 4 : 3}
                       filter="url(#gatewayGlow)"
                     />
+                    <circle cx={node.x + 18} cy={node.y - 18} r={5} fill="#7C3AED" stroke="#FFFFFF" strokeWidth={1.5} />
                     <text
                       x={node.x}
                       y={node.y + 5}
                       fontSize={14}
                       textAnchor="middle"
-                      fill="#FFFFFF"
+                      fill="#7C3AED"
                     >
                       🌐
                     </text>
@@ -658,7 +705,7 @@ export function TopologyPage() {
                       textAnchor="middle"
                       fontSize={11}
                       fontWeight={800}
-                      fill="#C084FC"
+                      fill="#7C3AED"
                     >
                       {node.displayName}
                     </text>
@@ -671,10 +718,15 @@ export function TopologyPage() {
                   key={node.identity}
                   className="node-clickable"
                   onClick={() => setSelectedNodeId(node.identity)}
-                  style={{ cursor: "pointer", opacity: isMatch ? 1 : 0.2 }}
+                  style={{
+                    cursor: "pointer",
+                    opacity: isMatch ? 1 : 0.2,
+                    transform: isSelected ? "scale(1.3)" : isPeer ? "scale(1.15)" : "scale(1)",
+                    transformOrigin: `${node.x}px ${node.y}px`,
+                    transition: "transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                  }}
                 >
-                  {/* Hit Target */}
-                  <circle cx={node.x} cy={node.y} r={34} fill="transparent" />
+                  <circle cx={node.x} cy={node.y} r={36} fill="transparent" />
 
                   {/* Character Avatar Node (핀둥이, 핀자, 아름이) */}
                   {node.avatarImg ? (
@@ -682,23 +734,23 @@ export function TopologyPage() {
                       <circle
                         cx={node.x}
                         cy={node.y}
-                        r={20}
+                        r={18}
                         fill="#FFFFFF"
-                        stroke={isSelected ? "#38BDF8" : "#E2E8F0"}
-                        strokeWidth={isSelected ? 3.5 : 2}
-                        filter="url(#nodeGlow)"
+                        stroke={isSelected ? "#0284C7" : isPeer ? "#059669" : "#334155"}
+                        strokeWidth={isSelected ? 4 : isPeer ? 3 : 2.2}
+                        filter="url(#nodeShadow)"
                       />
                       <defs>
                         <clipPath id={`clip-${node.identity}`}>
-                          <circle cx={node.x} cy={node.y} r={17} />
+                          <circle cx={node.x} cy={node.y} r={15} />
                         </clipPath>
                       </defs>
                       <image
                         href={node.avatarImg}
-                        x={node.x - 17}
-                        y={node.y - 17}
-                        width={34}
-                        height={34}
+                        x={node.x - 15}
+                        y={node.y - 15}
+                        width={30}
+                        height={30}
                         clipPath={`url(#clip-${node.identity})`}
                         preserveAspectRatio="xMidYMid meet"
                       />
@@ -710,17 +762,17 @@ export function TopologyPage() {
                         cx={node.x}
                         cy={node.y}
                         r={16}
-                        fill="#0F172A"
-                        stroke={isSelected ? "#38BDF8" : "#334155"}
-                        strokeWidth={isSelected ? 3 : 1.5}
-                        filter="url(#nodeGlow)"
+                        fill="#FFFFFF"
+                        stroke={isSelected ? "#0284C7" : isPeer ? "#059669" : "#334155"}
+                        strokeWidth={isSelected ? 4 : isPeer ? 3 : 2.4}
+                        filter="url(#nodeShadow)"
                       />
                       <text
                         x={node.x}
                         y={node.y + 4}
                         fontSize={10}
                         textAnchor="middle"
-                        fill="#FFFFFF"
+                        fill="#0F172A"
                       >
                         {node.icon}
                       </text>
@@ -731,21 +783,26 @@ export function TopologyPage() {
                   <circle
                     cx={node.x + 13}
                     cy={node.y - 13}
-                    r={4}
-                    fill={isOnline ? "#10B981" : "#F59E0B"}
-                    stroke="#0F172A"
+                    r={3.8}
+                    fill={isOnline ? "#059669" : "#0284C7"}
+                    stroke="#FFFFFF"
                     strokeWidth={1.5}
                   />
 
-                  {/* Node Label */}
+                  {/* Node Title */}
                   <text
                     x={node.x}
                     y={node.y + 28}
                     textAnchor="middle"
-                    fontSize={11}
-                    fontWeight={700}
-                    fill={isSelected ? "#38BDF8" : "#E2E8F0"}
-                    style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+                    fontSize={10}
+                    fontWeight={isSelected ? 900 : 700}
+                    fill={isSelected ? "#0369A1" : isPeer ? "#065F46" : "#0F172A"}
+                    style={{
+                      paintOrder: "stroke fill",
+                      stroke: "rgba(255, 255, 255, 0.95)",
+                      strokeWidth: "3px",
+                      strokeLinejoin: "round",
+                    }}
                   >
                     {node.displayName}
                   </text>
@@ -755,25 +812,99 @@ export function TopologyPage() {
           </g>
         </svg>
 
-        {/* ── Slide-out Node Inspector Drawer ── */}
+        {/* ── Floating Zoom HUD Controls (Bottom-Right) ── */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 20,
+            right: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "4px 8px",
+            boxShadow: "var(--shadow-md)",
+            zIndex: 40,
+          }}
+        >
+          <button onClick={zoomIn} style={hudBtnStyle} title="확대 (+)">➕</button>
+          <span style={{ fontSize: "0.75rem", fontWeight: 700, minWidth: 44, textAlign: "center", color: "var(--color-text-primary)", fontFamily: "var(--font-mono)" }}>
+            {Math.round(scale * 100)}%
+          </span>
+          <button onClick={zoomOut} style={hudBtnStyle} title="축소 (-)">➖</button>
+          <button onClick={resetView} style={hudBtnStyle} title="핏-투-스크린 (100%)">🎯</button>
+        </div>
+
+        {/* ── Interactive Mini-Map (Bottom-Left) ── */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: 20,
+            left: 20,
+            width: 200,
+            height: 110,
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(10px)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-md)",
+            overflow: "hidden",
+            zIndex: 40,
+            pointerEvents: "none",
+          }}
+        >
+          <svg style={{ width: "100%", height: "100%" }} viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}>
+            {/* Cluster Mini Circles */}
+            {clusters.map((c) => (
+              <circle
+                key={c.id}
+                cx={c.cx}
+                cy={c.cy}
+                r={c.r}
+                fill={c.fill}
+                stroke={c.stroke}
+                strokeWidth={4}
+              />
+            ))}
+          </svg>
+
+          {/* Viewport Indicator Red Rectangle */}
+          <div
+            style={{
+              position: "absolute",
+              left: minimapViewRect.x,
+              top: minimapViewRect.y,
+              width: minimapViewRect.width,
+              height: minimapViewRect.height,
+              border: "1.5px solid #2563EB",
+              background: "rgba(37, 99, 235, 0.15)",
+              borderRadius: 2,
+              pointerEvents: "none",
+            }}
+          />
+        </div>
+
+        {/* ── Slide-out Node Inspector Drawer (Right Side) ── */}
         {selectedNode && (
           <div
             style={{
               position: "absolute",
               top: 16,
               right: 16,
-              width: 330,
-              background: "rgba(15, 23, 42, 0.95)",
-              backdropFilter: "blur(16px)",
-              border: "1px solid rgba(56, 189, 248, 0.4)",
+              width: 320,
+              background: "rgba(255, 255, 255, 0.96)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid var(--color-border)",
               borderRadius: "var(--radius-lg)",
-              padding: "20px 18px",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6)",
-              color: "#F8FAFC",
-              zIndex: 30,
+              padding: 20,
+              boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.04)",
+              zIndex: 50,
               display: "flex",
               flexDirection: "column",
-              gap: 14,
+              gap: 12,
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -782,18 +913,18 @@ export function TopologyPage() {
                   <img
                     src={selectedNode.avatarImg}
                     alt={selectedNode.identity}
-                    style={{ width: 44, height: 44, borderRadius: "50%", background: "white", padding: 2, border: "2px solid #38BDF8" }}
+                    style={{ width: 44, height: 44, borderRadius: "50%", background: "white", padding: 2, border: "2px solid #2563EB" }}
                   />
                 ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#1E293B", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-bg-surface-sub)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}>
                     {selectedNode.icon}
                   </div>
                 )}
                 <div>
-                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#FFFFFF", letterSpacing: "-0.02em" }}>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--color-text-primary)", letterSpacing: "-0.02em" }}>
                     {selectedNode.displayName}
                   </h3>
-                  <div style={{ fontSize: "0.75rem", color: "#94A3B8", fontWeight: 600 }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
                     {selectedNode.groupName}
                   </div>
                 </div>
@@ -804,7 +935,7 @@ export function TopologyPage() {
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#94A3B8",
+                  color: "var(--color-text-secondary)",
                   cursor: "pointer",
                   fontSize: "1rem",
                   padding: 4,
@@ -815,21 +946,25 @@ export function TopologyPage() {
             </div>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: selectedNode.status === "Online" ? "#064E3B" : "#78350F", color: selectedNode.status === "Online" ? "#34D399" : "#FDE68A", fontWeight: 700 }}>
+              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: selectedNode.status === "Online" ? "#ECFDF5" : "#EFF6FF", color: selectedNode.status === "Online" ? "#059669" : "#2563EB", fontWeight: 700 }}>
                 ● {selectedNode.status}
               </span>
-              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: "#1E293B", color: "#94A3B8", fontWeight: 600 }}>
+              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: "var(--color-bg-surface-sub)", color: "var(--color-text-secondary)", fontWeight: 600 }}>
                 Type: {selectedNode.type}
               </span>
             </div>
 
-            <div style={{ background: "#0B0F19", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid #1E293B", fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "#38BDF8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+              {selectedNode.desc}
+            </p>
+
+            <div style={{ background: "var(--color-bg-surface-sub)", padding: "8px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--color-border)", fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               Key: {selectedNode.key}
             </div>
 
             {/* Quick Message Box */}
-            <div style={{ background: "rgba(30, 41, 59, 0.7)", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#E2E8F0" }}>
+            <div style={{ background: "var(--color-bg-surface-sub)", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
                 ✉ 메시지 즉시 발송 테스트
               </label>
               <input
@@ -839,9 +974,9 @@ export function TopologyPage() {
                 style={{
                   padding: "6px 10px",
                   borderRadius: "var(--radius-sm)",
-                  border: "1px solid #334155",
-                  background: "#0F172A",
-                  color: "#FFFFFF",
+                  border: "1px solid var(--color-border-strong)",
+                  background: "#FFFFFF",
+                  color: "var(--color-text-primary)",
                   fontSize: "0.8rem",
                   outline: "none",
                 }}
@@ -853,18 +988,18 @@ export function TopologyPage() {
 
             {/* Connected Peers */}
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#94A3B8", marginBottom: 6 }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
                 연결된 피어 목록 ({selectedNode.directPeers.length}):
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 100, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
                 {selectedNode.directPeers.map((peer) => (
                   <button
                     key={peer}
                     onClick={() => setSelectedNodeId(peer)}
                     style={{
-                      background: "#1E293B",
-                      border: "1px solid #334155",
-                      color: "#38BDF8",
+                      background: "var(--color-bg-surface-sub)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-primary)",
                       fontSize: "0.7rem",
                       fontWeight: 600,
                       padding: "2px 8px",
@@ -909,11 +1044,26 @@ function presetBtnStyle(isActive: boolean): React.CSSProperties {
   };
 }
 
-const iconBtnStyle: React.CSSProperties = {
-  background: "none",
+function filterPillStyle(isActive: boolean): React.CSSProperties {
+  return {
+    background: isActive ? "var(--color-primary)" : "var(--color-bg-surface-sub)",
+    border: `1px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
+    color: isActive ? "#FFFFFF" : "var(--color-text-secondary)",
+    fontSize: "0.75rem",
+    fontWeight: 600,
+    padding: "4px 10px",
+    borderRadius: "var(--radius-full)",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    transition: "all 0.15s ease",
+  };
+}
+
+const hudBtnStyle: React.CSSProperties = {
+  background: "transparent",
   border: "none",
   cursor: "pointer",
-  fontSize: "0.82rem",
+  fontSize: "0.85rem",
   padding: "4px 6px",
   borderRadius: "var(--radius-sm)",
 };
