@@ -155,7 +155,12 @@ async function assertHttp(
   const parsed = needsBody ? await res.json() : null;
   if (expected?.code) expect(parsed.code, `${ctx} code`).toBe(expected.code);
   for (const [p, want] of Object.entries(subst(expected?.body ?? {}))) {
-    expect(at(parsed, p), `${ctx} body.${p}`).toBe(want);
+    // `null` means absent or null. A path that is simply not there is how a
+    // route reports an empty result, and `toBe(null)` against `undefined` would
+    // make that unstatable — which is what left an ignored filter catchable only
+    // by whatever sorted first.
+    const got = at(parsed, p);
+    expect(want === null ? (got ?? null) : got, `${ctx} body.${p}`).toBe(want);
   }
   return parsed;
 }
