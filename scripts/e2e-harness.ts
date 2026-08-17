@@ -30,6 +30,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import { assertTreeUsable } from "./tree-lock";
+
 interface Args {
   readyFile: string;
   stateDir?: string;
@@ -169,6 +171,11 @@ function writeAtomic(path: string, contents: string): void {
   writeFileSync(tmp, contents);
   renameSync(tmp, path);
 }
+
+// Before anything is spawned. A mesh built from a tree mid-mutation fails for
+// a reason that has nothing to do with the commit, and the failure lands in
+// whichever repository called this.
+assertTreeUsable("the e2e harness");
 
 const args = parseArgs(process.argv.slice(2));
 // Created, not assumed. `mkdtempSync` makes the directory when no path is

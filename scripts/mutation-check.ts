@@ -51,6 +51,8 @@
 
 import { $ } from "bun";
 
+import { holdTree } from "./tree-lock";
+
 interface Mutation {
   id: string;
   /** The defect being reintroduced, in the words of the commit that fixed it. */
@@ -632,6 +634,12 @@ if (before) {
   console.error("refusing to run with uncommitted changes — restoring is `git checkout --`:\n" + before);
   process.exit(2);
 }
+
+// Held for the whole loop, not per entry. Restores happen between entries, so
+// the tree is only wrong inside a window — but another process starting has no
+// way to know which window it landed in, and asking it to retry is asking it to
+// guess.
+const releaseTree = holdTree(`mutation-check (${selected.length} entr${selected.length === 1 ? "y" : "ies"})`);
 
 let missed = 0;
 /** Why each failure happened — the self-check needs the reason, not just the count. */
