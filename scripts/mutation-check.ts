@@ -354,7 +354,11 @@ for (const m of selected) {
     // guess a cause for, and a guessed cause in the place findings go is worse
     // than no entry at all. `docs/deferred.md` has one that had to be withdrawn
     // for exactly that.
-    const evidence = `mutation-check-${m.id}.log`;
+    // Ids carry a `/` (`self-check/not-caught`), which `Bun.write` reads as a
+    // directory — the first run of this line created one instead of a file,
+    // and the `.gitignore` entry written alongside it did not match the
+    // result. Flattened.
+    const evidence = `mutation-check-${m.id.replace(/[^a-zA-Z0-9._-]/g, "-")}.log`;
     await Bun.write(evidence, `exit ${run.exitCode}\nexpected: ${m.expect}\n\n${output}`);
     console.error(`  output kept in ${evidence}`);
     missed++;
