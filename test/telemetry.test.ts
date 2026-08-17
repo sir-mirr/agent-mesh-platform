@@ -179,28 +179,37 @@ describe("a truncated list says so", () => {
     expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(body.lanes_not_draining_shown);
   }, 30_000);
 
-  test("and the total moves when a lane is added", async () => {
-    // Otherwise `total` could be `shown` computed twice, which agrees with
-    // itself for every input — the shape of a check that cannot fail.
+  test("and the total keeps climbing after the list stops", async () => {
+    // **The cap is 10, so fewer than 10 lanes proves nothing.** `total` and
+    // `shown` move together up to the ceiling, and the first version of this
+    // test made three lanes and passed against `total: lanes.length` — the
+    // mutation manifest caught it as uncaught before it was reported as done.
+    //
+    // Twelve lanes is where the two separate: `shown` saturates and `total`
+    // does not.
     const before = await telemetry();
 
-    const sender = newKeyPair(), recipient = newKeyPair();
-    await provision(mesh.hub, "truncation-sender", "ai-claude", null, sender.publicKey);
-    await provision(mesh.hub, "truncation-recipient", "ai-claude", null, recipient.publicKey);
-    for (const fp of [sender.fingerprint, recipient.fingerprint]) {
-      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
-        method: "POST",
-        headers: { "content-type": "application/json", cookie },
-        body: JSON.stringify({ fingerprint: fp }),
-      });
+    for (let i = 0; i < 12; i++) {
+      const sender = newKeyPair(), recipient = newKeyPair();
+      await provision(mesh.hub, `trunc-s-${i}`, "ai-claude", null, sender.publicKey);
+      await provision(mesh.hub, `trunc-r-${i}`, "ai-claude", null, recipient.publicKey);
+      for (const fp of [sender.fingerprint, recipient.fingerprint]) {
+        await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie },
+          body: JSON.stringify({ fingerprint: fp }),
+        });
+      }
+      const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+      await rpc.call("mesh.connect", { identity: `trunc-s-${i}` });
+      await rpc.call("mesh.send", { to: `trunc-r-${i}`, content: `lane ${i}` });
+      rpc.close();
     }
-    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
-    await rpc.call("mesh.connect", { identity: "truncation-sender" });
-    await rpc.call("mesh.send", { to: "truncation-recipient", content: "another undrained lane" });
-    rpc.close();
 
     const after = await telemetry();
+    expect(after.lanes_not_draining_shown, "the cap is not 10 any more — this test is aimed at the wrong number").toBe(10);
     expect(after.lanes_not_draining_total, "the total did not follow a new lane")
-      .toBeGreaterThan(before.lanes_not_draining_total);
-  }, 45_000);
+      .toBeGreaterThan(after.lanes_not_draining_shown);
+    expect(after.lanes_not_draining_total).toBeGreaterThan(before.lanes_not_draining_total);
+  }, 90_000);
 });
