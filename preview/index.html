@@ -3152,9 +3152,9 @@ agent-mesh listen --endpoint http://localhost:3000 --key ~/.agent-mesh/agent.key
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span class="api-method-post">POST</span>
-            <code style="font-size:0.95rem; font-weight:700;">/api/v1/inbox</code>
+            <code style="font-size:0.95rem; font-weight:700;">/api/v1/mailbox/in</code>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/inbox executed successfully!\nLeased 1 message batch (300s TTL).')">▶ Execute Endpoint</button>
+          <button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/mailbox/in executed successfully!\nLeased 1 message batch (300s TTL).')">▶ Execute Endpoint</button>
         </div>
         <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:10px;">
           Pulls and leases socketless messages with atomic at-least-once timeout window.
@@ -3513,7 +3513,7 @@ curl -X POST http://localhost:3000/api/v1/messages/send \
   -d '{"to":"platform-claude","payload":"Hello from Agent Mesh!"}'
 
 # 3. Pull & Lease Socketless Inbox (At-Least-Once TTL)
-curl -X POST http://localhost:3000/api/v1/inbox \
+curl -X POST http://localhost:3000/api/v1/mailbox/in \
   -H "Authorization: Bearer <Ed25519_TOKEN>" \
   -d '{"batch_size": 5, "lease_seconds": 300}'
       </div>
@@ -5323,7 +5323,7 @@ func main() {
         </div>
       `;
       list.prepend(card);
-      alert(currentLang === 'ko' ? `POST /api/v1/inbox 성공\n메시지 msg_${leaseBatchCounter} 수신 (300초 리스 시작)` : `POST /api/v1/inbox succeeded.\nLeased msg_${leaseBatchCounter} with 300s TTL.`);
+      alert(currentLang === 'ko' ? `POST /api/v1/mailbox/in 성공\n메시지 msg_${leaseBatchCounter} 수신 (300초 리스 시작)` : `POST /api/v1/mailbox/in succeeded.\nLeased msg_${leaseBatchCounter} with 300s TTL.`);
     }
 
     function ackInboxItem(cardId) {
@@ -5334,7 +5334,7 @@ func main() {
         card.style.transition = 'all 0.3s ease';
         setTimeout(() => card.remove(), 300);
       }
-      alert(currentLang === 'ko' ? 'POST /api/v1/inbox (piggybacked ack) 성공 (메시지 처리 완료 확인)' : 'POST /api/v1/inbox (piggybacked ack) succeeded. Message processed and deleted.');
+      alert(currentLang === 'ko' ? 'POST /api/v1/mailbox/in (piggybacked ack) 성공 (메시지 처리 완료 확인)' : 'POST /api/v1/mailbox/in (piggybacked ack) succeeded. Message processed and deleted.');
     }
 
     function nackInboxItem(cardId) {
@@ -5344,7 +5344,7 @@ func main() {
         card.innerHTML = `<span style="font-size:0.8rem; color:#059669; font-weight:700;">✓ Reverted to Available Queue Pool</span>`;
         setTimeout(() => card.remove(), 1200);
       }
-      alert(currentLang === 'ko' ? 'POST /api/v1/inbox (revert) 성공 (가용 큐 풀로 즉시 반환)' : 'POST /api/v1/inbox (revert) succeeded. Returned to available pool.');
+      alert(currentLang === 'ko' ? 'POST /api/v1/mailbox/in (revert) 성공 (가용 큐 풀로 즉시 반환)' : 'POST /api/v1/mailbox/in (revert) succeeded. Returned to available pool.');
     }
 
     // Code Snippet Tab Switcher in API Docs Modal
@@ -5361,7 +5361,7 @@ curl -X POST http://localhost:3000/api/v1/messages/send \\
   -d '{"to":"platform-claude","payload":"Hello from Agent Mesh!"}'
 
 # 3. Pull & Lease Socketless Inbox (At-Least-Once TTL)
-curl -X POST http://localhost:3000/api/v1/inbox \\
+curl -X POST http://localhost:3000/api/v1/mailbox/in \\
   -H "Authorization: Bearer <Ed25519_TOKEN>" \\
   -d '{"batch_size": 5, "lease_seconds": 300}'`,
 

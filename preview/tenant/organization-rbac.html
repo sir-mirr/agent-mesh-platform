@@ -24,7 +24,6 @@
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/ia.html" class="btn btn-primary btn-sm" style="background:#2563EB; color:white;">🗺️ IA 정보구조도</a>
       <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
     </div>
   </header>
@@ -91,7 +90,7 @@
         <div class="card-header">
           <div>
             <div class="card-title">Fine-Grained Capability Grants (SPEC § 11)</div>
-            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
+            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>mailbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
           </div>
         </div>
 
@@ -109,7 +108,7 @@
             </tr>
             <tr>
               <td><strong>bob_compliance (Auditor)</strong></td>
-              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth, source.read</code></td>
+              <td><code>audit.read.metadata, audit.read.content, mailbox.read.depth, source.read</code></td>
               <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \"Missing capability: source.read\", capability: \"source.read\" }')">Revoke Source Read</button></td>
             </tr>
           </tbody>

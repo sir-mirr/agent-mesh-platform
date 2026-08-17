@@ -24,7 +24,6 @@
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/ia.html" class="btn btn-primary btn-sm" style="background:#2563EB; color:white;">🗺️ IA 정보구조도</a>
       <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
     </div>
   </header>
@@ -69,7 +68,7 @@
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #40</span>
         </div>
         <h1 class="admin-header-title">Interactive Message Testing Console</h1>
-        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Live message dispatcher with verified recipient routing and delivery receipts (POST /api/v1/outbox)</p>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Live message dispatcher with verified recipient routing and delivery receipts (POST /api/v1/mailbox/out)</p>
       </div>
       <div style="display:flex; gap:10px;">
         <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
@@ -79,7 +78,7 @@
 
     <!-- Body Content -->
     
-      <div class="card"><div class="card-header"><div class="card-title">Dispatch Test Message</div></div><div class="code-snippet-box">POST /api/v1/outbox -> Delivered to socket in 1.1ms ✓</div></div>
+      <div class="card"><div class="card-header"><div class="card-title">Dispatch Test Message</div></div><div class="code-snippet-box">POST /api/v1/mailbox/out -> Delivered to socket in 1.1ms ✓</div></div>
     
   </div>
 

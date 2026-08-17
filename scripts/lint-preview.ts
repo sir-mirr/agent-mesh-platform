@@ -120,7 +120,7 @@ export function runLint(options?: {
     'agent.teardown',
     'audit.read.metadata',
     'audit.read.content',
-    'inbox.read.depth',
+    'mailbox.read.depth',
     'group.manage',
     'role.grant',
     'source.read'

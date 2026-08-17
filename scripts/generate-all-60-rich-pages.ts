@@ -84,7 +84,7 @@ const ALL_SCREENS: ScreenSpec[] = [
           <div style="font-size:1.4rem; margin-bottom:8px;">⏱️</div>
           <strong style="font-size:1.05rem;">1. Socketless Lease State Machine (SPEC § 8.10)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
+            Single-roundtrip combined lease & ack (<code>POST /api/v1/mailbox/in</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
           </p>
           <div class="protocol-step-box"><strong>Step 1: Available Pool</strong><br>Buffered in SQLite queue pool.</div>
           <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Claimed in batch. Atomic countdown locks batch.</div>
@@ -144,7 +144,7 @@ const ALL_SCREENS: ScreenSpec[] = [
             <div class="card-title">Live State Transition Simulator</div>
             <div class="card-subtitle">Test how messages transition across Available, Leased, and Acknowledged states</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="alert('Simulated atomic lease acquisition (POST /api/v1/inbox).')">📥 Poll & Lease Message</button>
+          <button class="btn btn-primary btn-sm" onclick="alert('Simulated atomic lease acquisition (POST /api/v1/mailbox/in).')">📥 Poll & Lease Message</button>
         </div>
 
         <div style="display:flex; gap:16px; margin:20px 0;">
@@ -1012,7 +1012,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
         <div class="card-header">
           <div>
             <div class="card-title">Fine-Grained Capability Grants (SPEC § 11)</div>
-            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>inbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
+            <div class="card-subtitle">9 explicit capability gates: <code>key.approve</code>, <code>agent.provision</code>, <code>agent.teardown</code>, <code>audit.read.metadata</code>, <code>audit.read.content</code>, <code>mailbox.read.depth</code>, <code>group.manage</code>, <code>role.grant</code>, <code>source.read</code></div>
           </div>
         </div>
 
@@ -1030,7 +1030,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
             </tr>
             <tr>
               <td><strong>bob_compliance (Auditor)</strong></td>
-              <td><code>audit.read.metadata, audit.read.content, inbox.read.depth, source.read</code></td>
+              <td><code>audit.read.metadata, audit.read.content, mailbox.read.depth, source.read</code></td>
               <td><button class="btn btn-secondary btn-sm" onclick="alert('Simulated capability revocation: Next click will return HTTP 403 { error: \\\"Missing capability: source.read\\\", capability: \\\"source.read\\\" }')">Revoke Source Read</button></td>
             </tr>
           </tbody>
@@ -1092,10 +1092,10 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     suiteTitle: 'Agent Operations',
     role: 'Agent Operator',
     title: 'Interactive Message Testing Console',
-    subtitle: 'Live message dispatcher with verified recipient routing and delivery receipts (POST /api/v1/outbox)',
+    subtitle: 'Live message dispatcher with verified recipient routing and delivery receipts (POST /api/v1/mailbox/out)',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">Dispatch Test Message</div></div><div class="code-snippet-box">POST /api/v1/outbox -> Delivered to socket in 1.1ms ✓</div></div>
+      <div class="card"><div class="card-header"><div class="card-title">Dispatch Test Message</div></div><div class="code-snippet-box">POST /api/v1/mailbox/out -> Delivered to socket in 1.1ms ✓</div></div>
     `
   },
   {
@@ -1137,7 +1137,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     subtitle: 'Simulate worker batch acquisition with piggybacked ack parameter (SPEC § 8.10)',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">POST /api/v1/inbox Actions Simulator</div></div><button class="btn btn-primary btn-sm" onclick="alert('Batch leased and previous acked.')">📥 Poll Next + Ack Previous</button></div>
+      <div class="card"><div class="card-header"><div class="card-title">POST /api/v1/mailbox/in Actions Simulator</div></div><button class="btn btn-primary btn-sm" onclick="alert('Batch leased and previous acked.')">📥 Poll Next + Ack Previous</button></div>
     `
   },
   {
@@ -1230,11 +1230,11 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
         <table class="data-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th><th>SPEC Section</th></tr></thead>
           <tbody>
-            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/inbox</code></td><td>Combined batch lease & previous batch acknowledgement</td><td>SPEC § 8.10</td></tr>
-            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/outbox</code></td><td>Dispatch signed message to recipient queue</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/outbox</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/outbox/{id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/inbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/mailbox/in</code></td><td>Combined batch lease & previous batch acknowledgement</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/mailbox/out</code></td><td>Dispatch signed message to recipient queue</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/mailbox/out</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/mailbox/out/{message_id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/mailbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
             <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/agents</code></td><td>Provision identity and propose public key</td><td>SPEC § 9.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/admin/agents/owned</code></td><td>List identities owned by authenticated caller</td><td>SPEC § 11.3</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/capabilities</code></td><td>Query surface version 4 & observed source</td><td>SPEC § 8.11</td></tr>
@@ -1254,7 +1254,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     subtitle: 'Execute real HTTP requests against local agent mesh endpoints',
     isImplemented: true,
     html: `
-      <div class="card"><div class="card-header"><div class="card-title">OpenAPI 3.1 Test Runner</div></div><div class="code-snippet-box">POST /api/v1/outbox -> HTTP 200 OK: {"delivered": true, "msg_id": "msg_948192"}</div></div>
+      <div class="card"><div class="card-header"><div class="card-title">OpenAPI 3.1 Test Runner</div></div><div class="code-snippet-box">POST /api/v1/mailbox/out -> HTTP 200 OK: {"delivered": true, "msg_id": "msg_948192"}</div></div>
     `
   },
   {
@@ -1264,12 +1264,12 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     suite: 'dev',
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
-    title: 'API Reference: POST /api/v1/outbox & GET /api/v1/outbox',
+    title: 'API Reference: POST /api/v1/mailbox/out & GET /api/v1/mailbox/out',
     subtitle: 'Dispatch and inspect outbound signed messages across the mesh (SPEC § 8.1)',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">POST /api/v1/outbox</div><button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/outbox executed.')">▶ Execute</button></div>
+        <div class="card-header"><div class="card-title">POST /api/v1/mailbox/out</div><button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/mailbox/out executed.')">▶ Execute</button></div>
         <div class="code-snippet-box">{
   "to": "acme-corp:core-lead",
   "payload": { "action": "SYNC_STATE", "data": [1, 2, 3] }
@@ -1284,17 +1284,17 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     suite: 'dev',
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
-    title: 'API Reference: POST /api/v1/inbox (Atomic Lease & Ack)',
+    title: 'API Reference: POST /api/v1/mailbox/in (Atomic Lease & Ack)',
     subtitle: 'Specification and test runner for single-roundtrip lease and previous batch acknowledgement (SPEC § 8.10)',
     isImplemented: true,
     html: `
       <div class="card">
         <div class="card-header">
           <div>
-            <div class="card-title">POST /api/v1/inbox (SPEC § 8.10 Invariant)</div>
+            <div class="card-title">POST /api/v1/mailbox/in (SPEC § 8.10 Invariant)</div>
             <div class="card-subtitle">Combines lease acquisition and previous batch ack into a single atomic transaction</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/inbox executed.')">▶ Execute /inbox</button>
+          <button class="btn btn-primary btn-sm" onclick="alert('POST /api/v1/mailbox/in executed.')">▶ Execute /inbox</button>
         </div>
 
         <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
@@ -1316,13 +1316,13 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     suite: 'dev',
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
-    title: 'API Reference: DELETE /api/v1/outbox/{message_id}',
+    title: 'API Reference: DELETE /api/v1/mailbox/out/{message_id}',
     subtitle: 'Cancel in-flight message delivery before recipient lease acquisition',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">DELETE /api/v1/outbox/{message_id}</div><button class="btn btn-danger btn-sm" onclick="alert('Outbox message canceled.')">▶ Execute Delete</button></div>
-        <div class="code-snippet-box">DELETE /api/v1/outbox/msg_948192 -> HTTP 200 OK: {"canceled": true}</div>
+        <div class="card-header"><div class="card-title">DELETE /api/v1/mailbox/out/{message_id}</div><button class="btn btn-danger btn-sm" onclick="alert('Outbox message canceled.')">▶ Execute Delete</button></div>
+        <div class="code-snippet-box">DELETE /api/v1/mailbox/out/msg_948192 -> HTTP 200 OK: {"canceled": true}</div>
       </div>
     `
   },
@@ -1333,13 +1333,13 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     suite: 'dev',
     suiteTitle: 'Developer Hub',
     role: 'Developer / API Consumer',
-    title: 'API Reference: GET /api/v1/inbox/history',
+    title: 'API Reference: GET /api/v1/mailbox/history',
     subtitle: 'Fetch delivered and processed message history for participant audits (SPEC § 8.10)',
     isImplemented: true,
     html: `
       <div class="card">
-        <div class="card-header"><div class="card-title">GET /api/v1/inbox/history</div><button class="btn btn-primary btn-sm" onclick="alert('Fetched inbox history.')">▶ Execute GET</button></div>
-        <div class="code-snippet-box">GET /api/v1/inbox/history?limit=20 -> [ {"id": "msg_892146", "delivered_at": "2026-08-16T23:59:00Z"} ]</div>
+        <div class="card-header"><div class="card-title">GET /api/v1/mailbox/history</div><button class="btn btn-primary btn-sm" onclick="alert('Fetched inbox history.')">▶ Execute GET</button></div>
+        <div class="code-snippet-box">GET /api/v1/mailbox/history?limit=20 -> [ {"id": "msg_892146", "delivered_at": "2026-08-16T23:59:00Z"} ]</div>
       </div>
     `
   },
@@ -1399,7 +1399,7 @@ curl -X POST http://localhost:3000/api/v1/pairing-codes/redeem \\
     "agent.teardown",
     "audit.read.metadata",
     "audit.read.content",
-    "inbox.read.depth",
+    "mailbox.read.depth",
     "group.manage",
     "role.grant",
     "source.read"

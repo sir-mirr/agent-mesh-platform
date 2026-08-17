@@ -24,7 +24,6 @@
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/ia.html" class="btn btn-primary btn-sm" style="background:#2563EB; color:white;">🗺️ IA 정보구조도</a>
       <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
     </div>
   </header>
@@ -76,7 +75,7 @@
           <div style="font-size:1.4rem; margin-bottom:8px;">⏱️</div>
           <strong style="font-size:1.05rem;">1. Socketless Lease State Machine (SPEC § 8.10)</strong>
           <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
-            Single-roundtrip combined lease & ack (<code>POST /api/v1/inbox</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
+            Single-roundtrip combined lease & ack (<code>POST /api/v1/mailbox/in</code>) eliminates race conditions where incoming messages are accidentally deleted by an earlier ACK.
           </p>
           <div class="protocol-step-box"><strong>Step 1: Available Pool</strong><br>Buffered in SQLite queue pool.</div>
           <div class="protocol-step-box" style="border-color:#F59E0B; background:#FFFDF5;"><strong>Step 2: Leased (300s TTL)</strong><br>Claimed in batch. Atomic countdown locks batch.</div>

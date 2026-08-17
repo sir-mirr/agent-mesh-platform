@@ -24,7 +24,6 @@
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/ia.html" class="btn btn-primary btn-sm" style="background:#2563EB; color:white;">🗺️ IA 정보구조도</a>
       <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
     </div>
   </header>
@@ -84,11 +83,11 @@
         <table class="data-table">
           <thead><tr><th>Method</th><th>Path</th><th>Description</th><th>SPEC Section</th></tr></thead>
           <tbody>
-            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/inbox</code></td><td>Combined batch lease & previous batch acknowledgement</td><td>SPEC § 8.10</td></tr>
-            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/outbox</code></td><td>Dispatch signed message to recipient queue</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/outbox</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/outbox/{id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
-            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/inbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/mailbox/in</code></td><td>Combined batch lease & previous batch acknowledgement</td><td>SPEC § 8.10</td></tr>
+            <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/mailbox/out</code></td><td>Dispatch signed message to recipient queue</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/mailbox/out</code></td><td>List sent messages in transit</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-delete">DELETE</span></td><td><code>/api/v1/mailbox/out/{message_id}</code></td><td>Cancel pending outbox delivery</td><td>SPEC § 8.1</td></tr>
+            <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/mailbox/history</code></td><td>Fetch historical delivered messages</td><td>SPEC § 8.10</td></tr>
             <tr><td><span class="api-method-post">POST</span></td><td><code>/api/v1/agents</code></td><td>Provision identity and propose public key</td><td>SPEC § 9.1</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/admin/agents/owned</code></td><td>List identities owned by authenticated caller</td><td>SPEC § 11.3</td></tr>
             <tr><td><span class="api-method-get">GET</span></td><td><code>/api/v1/capabilities</code></td><td>Query surface version 4 & observed source</td><td>SPEC § 8.11</td></tr>

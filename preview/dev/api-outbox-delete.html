@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Reference: DELETE /api/v1/outbox/{message_id} — Agent Mesh Enterprise Platform</title>
+  <title>API Reference: DELETE /api/v1/mailbox/out/{message_id} — Agent Mesh Enterprise Platform</title>
   <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
@@ -24,7 +24,6 @@
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/ia.html" class="btn btn-primary btn-sm" style="background:#2563EB; color:white;">🗺️ IA 정보구조도</a>
       <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
     </div>
   </header>
@@ -68,7 +67,7 @@
           <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
           <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #53</span>
         </div>
-        <h1 class="admin-header-title">API Reference: DELETE /api/v1/outbox/{message_id}</h1>
+        <h1 class="admin-header-title">API Reference: DELETE /api/v1/mailbox/out/{message_id}</h1>
         <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Cancel in-flight message delivery before recipient lease acquisition</p>
       </div>
       <div style="display:flex; gap:10px;">
@@ -80,8 +79,8 @@
     <!-- Body Content -->
     
       <div class="card">
-        <div class="card-header"><div class="card-title">DELETE /api/v1/outbox/{message_id}</div><button class="btn btn-danger btn-sm" onclick="alert('Outbox message canceled.')">▶ Execute Delete</button></div>
-        <div class="code-snippet-box">DELETE /api/v1/outbox/msg_948192 -> HTTP 200 OK: {"canceled": true}</div>
+        <div class="card-header"><div class="card-title">DELETE /api/v1/mailbox/out/{message_id}</div><button class="btn btn-danger btn-sm" onclick="alert('Outbox message canceled.')">▶ Execute Delete</button></div>
+        <div class="code-snippet-box">DELETE /api/v1/mailbox/out/msg_948192 -> HTTP 200 OK: {"canceled": true}</div>
       </div>
     
   </div>
