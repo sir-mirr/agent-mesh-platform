@@ -1,6 +1,6 @@
 # The mailbox and the mesh hub are separate — settled design
 
-Status: **decided, being implemented.** Supersedes the arrangement in which
+Status: **decided and implemented**, except where noted below. Supersedes the arrangement in which
 `/api/v1/inbox` and `/api/v1/outbox` were hub routes backed by hub internals.
 
 ---
@@ -121,3 +121,31 @@ survives a hub restart should read it as *no*.
 The honest way to hold that is not to soften the argument but to leave it
 standing and mark it unmet. It is the reason to take the next step, and softening
 it would remove the reason while keeping the appearance of having addressed it.
+
+---
+
+## Where this stands
+
+| | |
+|---|---|
+| Naming, routes, capability | done — `mailbox/in`, `mailbox/out`, `mailbox.read.depth` |
+| Boundary, enforced | done — `test/mailbox-boundary.test.ts` |
+| `mesh.receive` (lease, ack, redelivery) | in the package |
+| `mesh.send`, persistence half | in the package |
+| Reply routing (§ 8.2a) | in the package; presence passed in |
+| `mesh.fetch_messages` (history) | **still in the hub** |
+| A process of its own | **not done, and not planned** — see the decision above |
+
+**History has not moved, and the reason is thin: nothing forced it.** It reads
+the same table through the same store and would go across as easily as the
+others. It is listed rather than quietly omitted, because a table of what is
+done is the first place an honest reader looks and the last place anybody
+updates.
+
+**The reply rule is held by unit tests and two mutations, not by a shared
+scenario.** Stating the interesting case to both runners needs a step that holds
+a socket open across later steps — a reply to mail with the *recipient* live and
+the *sender* not — and the scenario vocabulary has no way to say that. Adding
+one is a contract change worth making deliberately rather than in passing, and
+until it happens this is a clause one implementation checks alone, which § 17.3
+is explicit is not enough.
