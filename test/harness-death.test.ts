@@ -21,7 +21,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { startMesh, type Mesh } from "./harness";
+import { provision, startMesh, type Mesh } from "./harness";
 
 /**
  * Collect `console.error` while something runs.
@@ -86,6 +86,43 @@ describe("a service that dies on its own", () => {
     expect(isDead(pid), "stop() did not actually end the process, so this proves nothing")
       .toBe(true);
     expect(said, "an orderly shutdown printed the crash banner").not.toContain("exited on its own");
+  });
+});
+
+describe("a test that runs after the death", () => {
+  test("is told it measured nothing, not that a socket was unreachable", async () => {
+    // What the fifteen debris failures said was `Unable to connect`, which is
+    // true about the socket and describes the wrong subject. The subject is
+    // that the server was already gone: this test reached nothing, so it is a
+    // consequence of the earlier failure and not a finding of its own. A
+    // reader who cannot tell those apart cannot see a second real failure
+    // hiding among the debris, and a rerun comes back red without saying
+    // which kind of red it is.
+    mesh = await startMesh({ withHttp: false });
+    const { pid } = mesh.hub;
+
+    await captureStderr(async () => {
+      process.kill(pid, "SIGTERM");
+      for (let i = 0; i < 100 && !isDead(pid); i++) await Bun.sleep(20);
+      await Bun.sleep(100);
+    });
+
+    // Reading the address is what every request does first — the helpers and
+    // the raw `fetch` calls the suites make alike.
+    expect(() => mesh!.hub.url).toThrow(/measured nothing/);
+    expect(() => mesh!.hub.url).toThrow(/exited on its own/);
+
+    // And it reaches an actual request, not only a property read.
+    await expect(provision(mesh.hub, "after-the-death", "service", null))
+      .rejects.toThrow(/measured nothing/);
+  });
+
+  test("while a living service is addressable as usual", async () => {
+    // Otherwise the check above could be a getter that always throws, and
+    // every green suite would owe its green to something else entirely.
+    mesh = await startMesh({ withHttp: false });
+    expect(mesh.hub.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect((await provision(mesh.hub, "still-alive", "service", null)).status).toBe(201);
   });
 });
 

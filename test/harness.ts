@@ -32,6 +32,22 @@ export interface Service {
    * below.
    */
   pid: number;
+  /**
+   * Why this service is gone, if it went without being asked — otherwise null.
+   *
+   * Read by every request helper before it dials, so a test that runs after
+   * the death says what actually happened instead of `Unable to connect`.
+   * The socket error is true and it describes the wrong subject: it reports
+   * this test's failure to reach a port, when the fact is that a previous
+   * test killed the server and this one measured nothing at all.
+   *
+   * That difference is what a rerun cannot recover. A flake and a real defect
+   * both show as *n* failures; if the debris is indistinguishable from the
+   * cause, a second real failure hiding in the debris is invisible, and the
+   * rerun that would have separated them comes back red either way with
+   * nothing to say about which.
+   */
+  died(): string | null;
   /** Everything the process wrote, for assertions and for failure output. */
   output(): string;
   stop(): void;
@@ -127,6 +143,7 @@ function spawnService(
   void proc.exited.then((code) => {
     if (stopped) return;
     const said = chunks.join("").trimEnd();
+    epitaph = `${entry} exited on its own (code ${code}, signal ${proc.signalCode ?? "none"}) before this test ran`;
     console.error(
       `\n─── ${entry} exited on its own (code ${code}, signal ${proc.signalCode ?? "none"}, port ${port}) ───\n` +
         `${said || "(it printed nothing)"}\n` +
@@ -135,13 +152,47 @@ function spawnService(
   });
 
   let stopped = false;
+  let epitaph: string | null = null;
   return {
     port,
     pid: proc.pid,
+    died: () => epitaph,
     output: () => chunks.join(""),
     stop: () => {
       stopped = true;
       proc.kill();
+    },
+  };
+}
+
+/**
+ * Give a spawned process an address that refuses to be used after it dies.
+ *
+ * **One place, because there is no other one.** Every way a test reaches a
+ * service — the helpers below, and the raw `fetch` calls the suites make
+ * directly — reads `service.url` first. Putting the check on that read covers
+ * all of them; putting it in the helpers would cover most, and a log where
+ * most of the debris explains itself and the rest still says `Unable to
+ * connect` is a log a reader has to sort by hand, which is the cost this is
+ * spent to remove.
+ *
+ * A throwing getter is unusual and this is the state that earns it: the
+ * process is gone, so every subsequent request fails regardless, and the only
+ * question left is whether the report names the death or the socket.
+ */
+function addressable(svc: Omit<Service, "url">, url: string): Service {
+  return {
+    ...svc,
+    get url() {
+      const epitaph = svc.died();
+      if (epitaph) {
+        throw new Error(
+          `${epitaph} — this test reached nothing and measured nothing. ` +
+            `It is a consequence of the earlier failure, not a finding of its own; ` +
+            `look above for the banner naming the exit.`,
+        );
+      }
+      return url;
     },
   };
 }
@@ -173,7 +224,7 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     // deployment declares that rather than the process asserting it.
     AGENT_MESH_PROXY_IDENTITIES: "http-server,http-server-dev",
   });
-  const hub: Service = { ...hubProc, url: `http://127.0.0.1:${hubPort}` };
+  const hub: Service = addressable(hubProc, `http://127.0.0.1:${hubPort}`);
 
   let http: Service;
   try {
@@ -192,13 +243,14 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
         // one that gets skipped.
         AGENT_MESH_UPLOAD_MAX_BYTES: "65536",
       });
-      http = { ...httpProc, url: `http://127.0.0.1:${httpPort}` };
+      http = addressable(httpProc, `http://127.0.0.1:${httpPort}`);
       await waitForHealth(`${http.url}/api/v1/health`);
     } else {
       http = {
         port: 0,
         url: "",
         pid: 0,
+        died: () => null,
         output: () => "",
         stop: () => {},
       };
