@@ -13,7 +13,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { startMesh, type Mesh } from "./harness";
@@ -213,6 +213,34 @@ describe("§ 15.6 orphan collection", () => {
 
     expect(statSync(auditPath).mtimeMs).toBe(before);
   }, 30_000);
+
+  test("and could not, because the handle is read-only", () => {
+    // **The case above proves it does not write; this one proves it cannot.**
+    // They are different guarantees, and only the second survives an edit that
+    // adds a write six months from now — an mtime assertion passes right up
+    // until the day somebody makes it fail, at which point the sweep that was
+    // supposed to be inert has already written to the audit trail.
+    //
+    // Deleting `{ readonly: true }` leaves the whole suite green: the script
+    // does not write either way, so nothing observable changes. It was on the
+    // uncaught list for exactly that, and the fix is not a better runtime
+    // assertion — from outside the process there is nothing to observe. SQLite
+    // refuses the write *inside* the connection, which no test holds.
+    //
+    // So this reads the source, the same way `test/mailbox-boundary.test.ts`
+    // holds the mailbox-does-not-know-the-hub claim. A structural property is
+    // checked structurally or not at all.
+    const source = readFileSync(SCRIPT, "utf8");
+    const opens = [...source.matchAll(/openStore\((["'])(\w+)\1([^)]*)\)/g)];
+    expect(opens.length, "no openStore call found — this check has drifted off its target").toBeGreaterThan(0);
+
+    const audit = opens.filter((m) => m[2] === "audit");
+    expect(audit.length, "the audit store is not opened here any more").toBe(1);
+    expect(
+      audit[0]![3],
+      "the audit store is opened without readonly: true, so a future write would succeed",
+    ).toContain("readonly: true");
+  });
 });
 
 describe("§ 15.6 scheduling", () => {
