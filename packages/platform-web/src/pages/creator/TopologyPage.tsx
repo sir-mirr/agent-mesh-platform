@@ -66,7 +66,10 @@ export function TopologyPage() {
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Search state & suggestion box
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
 
   // Viewport dimensions
   const [viewportDim, setViewportDim] = useState<{ width: number; height: number }>({ width: 1200, height: 700 });
@@ -82,6 +85,7 @@ export function TopologyPage() {
   const isDraggingRef = useRef<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
   // Keep transformRef in sync
@@ -356,26 +360,29 @@ export function TopologyPage() {
   // Selected Node Object
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : null;
 
+  // Search Results List (Autosuggest)
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return Object.values(nodes)
+      .filter((n) => {
+        return (
+          n.identity.toLowerCase().includes(q) ||
+          n.displayName.toLowerCase().includes(q) ||
+          n.groupName.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 8);
+  }, [nodes, searchQuery]);
+
   // Filtered nodes
   const filteredNodeIds = useMemo(() => {
     let result = Object.keys(nodes);
     if (activeFilterGroup !== "all") {
       result = result.filter((id) => nodes[id]?.group === activeFilterGroup);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((id) => {
-        const n = nodes[id];
-        if (!n) return false;
-        return (
-          id.toLowerCase().includes(q) ||
-          n.displayName.toLowerCase().includes(q) ||
-          n.groupName.toLowerCase().includes(q)
-        );
-      });
-    }
     return result;
-  }, [nodes, activeFilterGroup, searchQuery]);
+  }, [nodes, activeFilterGroup]);
 
   // Calculate the Fit Scale for the current viewport (with exact 5% margin)
   const getFitTransform = useCallback(() => {
@@ -481,15 +488,52 @@ export function TopologyPage() {
       const vw = viewport?.getBoundingClientRect().width || 1200;
       const vh = viewport?.getBoundingClientRect().height || 700;
 
-      const targetScale = Math.max(transformRef.current.scale, 0.92);
+      const targetScale = Math.max(transformRef.current.scale, 0.95);
       const targetPanX = vw * 0.42 - node.x * targetScale;
       const targetPanY = vh * 0.5 - node.y * targetScale;
 
+      // Ensure activeFilterGroup does not hide the focused node
+      setActiveFilterGroup("all");
       setSelectedNodeId(node.identity);
+      setIsSearchOpen(false);
+
       animateCameraTo(targetPanX, targetPanY, targetScale, 450);
     },
     [animateCameraTo]
   );
+
+  // Instant Search Pick & Fly Handler
+  const handleSelectSearchResult = useCallback(
+    (node: TopoNode) => {
+      focusAndFlyToNode(node);
+      setSearchQuery("");
+      setIsSearchOpen(false);
+    },
+    [focusAndFlyToNode]
+  );
+
+  // Enter key press in search bar
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchResults.length > 0) {
+      const firstMatch = searchResults[0];
+      if (firstMatch) {
+        handleSelectSearchResult(firstMatch);
+      }
+    } else if (e.key === "Escape") {
+      setIsSearchOpen(false);
+    }
+  };
+
+  // Close search suggestions on click outside
+  useEffect(() => {
+    const onOutsideClick = (e: MouseEvent) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onOutsideClick);
+    return () => window.removeEventListener("mousedown", onOutsideClick);
+  }, []);
 
   // Click handler for Connected Peer badge: Selects peer and animates camera
   const handleSelectPeer = useCallback(
@@ -726,6 +770,7 @@ export function TopologyPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedNodeId(null);
+        setIsSearchOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -836,7 +881,7 @@ export function TopologyPage() {
         subtitle={`실시간 연결된 ${clusters.length}개 스웜 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`}
       />
 
-      {/* Main Interactive Topology Viewport Container (Spacious & Clean, Starts Right Below Header) */}
+      {/* Main Interactive Topology Viewport Container */}
       <div
         ref={viewportRef}
         onPointerDown={handlePointerDown}
@@ -886,14 +931,14 @@ export function TopologyPage() {
           <span style={{ color: "var(--color-primary)", fontWeight: 800 }}>Egress Active</span>
         </div>
 
-        {/* Top Right Compact Filter & Search Tool (Integrated into Canvas) */}
+        {/* Top Right Compact Filter & Search Tool with Interactive Autocomplete Dropdown */}
         <div
           className="canvas-hud-interactive"
           style={{
             position: "absolute",
             top: 14,
             right: 16,
-            zIndex: 20,
+            zIndex: 30,
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -924,24 +969,87 @@ export function TopologyPage() {
             ))}
           </select>
 
-          <input
-            type="text"
-            placeholder="에이전트 검색 (핀둥이, claude)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              padding: "7px 14px",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--color-border)",
-              background: "rgba(255, 255, 255, 0.95)",
-              backdropFilter: "blur(10px)",
-              fontSize: "0.8rem",
-              color: "var(--color-text-primary)",
-              outline: "none",
-              width: 220,
-              boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
-            }}
-          />
+          {/* Search Input Box with Autocomplete Fly-to Popup */}
+          <div ref={searchWrapRef} style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="에이전트 검색 (핀둥이, claude)..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              onFocus={() => setIsSearchOpen(true)}
+              onKeyDown={handleSearchKeyDown}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                background: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                fontSize: "0.8rem",
+                color: "var(--color-text-primary)",
+                outline: "none",
+                width: 220,
+                boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
+              }}
+            />
+
+            {/* Suggestions Dropdown Box */}
+            {isSearchOpen && searchResults.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  width: 260,
+                  background: "#FFFFFF",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.15)",
+                  overflow: "hidden",
+                  zIndex: 100,
+                  maxHeight: 280,
+                  overflowY: "auto",
+                }}
+              >
+                <div style={{ padding: "6px 10px", fontSize: "0.7rem", fontWeight: 800, color: "var(--color-text-muted)", background: "var(--color-bg-surface-sub)", borderBottom: "1px solid var(--color-border)" }}>
+                  검색 결과 ({searchResults.length}) · 클릭 시 즉시 비행 포커싱
+                </div>
+                {searchResults.map((node) => (
+                  <div
+                    key={node.identity}
+                    onClick={() => handleSelectSearchResult(node)}
+                    style={{
+                      padding: "8px 12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      borderBottom: "1px solid var(--color-border)",
+                      transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#EFF6FF")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+                  >
+                    {node.avatarImg ? (
+                      <img src={node.avatarImg} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
+                    ) : (
+                      <span style={{ fontSize: "1rem" }}>{node.icon}</span>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-text-primary)", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                        {node.displayName}
+                      </span>
+                      <span style={{ fontSize: "0.68rem", color: "var(--color-text-muted)" }}>
+                        {node.groupName}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Scalable & Pannable SVG World Layer ── */}
