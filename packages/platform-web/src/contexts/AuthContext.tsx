@@ -46,7 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem("agent_mesh_user");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed) {
+          const roleKey: UserRole = parsed.role || "PLATFORM_ADMIN";
+          return {
+            ...parsed,
+            capabilities: parsed.capabilities || ROLE_CAPABILITIES[roleKey],
+          };
+        }
       } catch {
         return null;
       }
@@ -62,16 +69,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await fetchAuthMe();
         if (me && me.github_login) {
-          const roleKey: UserRole =
-            me.role === "admin" ? "PLATFORM_ADMIN" : "AGENT_OPERATOR";
-          setUser((prev) => ({
-            id: `usr_${me.github_login}`,
-            name: `${me.github_login} (운영자)`,
-            role: prev?.role || roleKey,
-            capabilities: ROLE_CAPABILITIES[prev?.role || roleKey],
-            tenantId: "tenant_default",
-            authProvider: "local",
-          }));
+          setUser((prev) => {
+            const roleKey: UserRole =
+              (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
+                ? "PLATFORM_ADMIN"
+                : (prev?.role || "AGENT_OPERATOR");
+            const resolvedCaps = Array.isArray(me.capabilities) && me.capabilities.length > 0
+              ? me.capabilities
+              : ROLE_CAPABILITIES[prev?.role || roleKey];
+
+            return {
+              id: `usr_${me.github_login}`,
+              name: `${me.github_login} (운영자)`,
+              role: prev?.role || roleKey,
+              capabilities: resolvedCaps,
+              tenantId: "tenant_default",
+              authProvider: "local",
+            };
+          });
         } else {
           setUser(null);
         }
@@ -99,12 +114,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await loginLocalApi(id, pass);
       const mappedRole: UserRole =
         res.user.role === "admin" ? "PLATFORM_ADMIN" : role;
+      const resolvedCaps = Array.isArray(res.user.capabilities) && res.user.capabilities.length > 0
+        ? res.user.capabilities
+        : ROLE_CAPABILITIES[mappedRole];
 
       const newUser: User = {
         id: `usr_${res.user.github_login}`,
         name: `${res.user.github_login} (운영자)`,
         role: mappedRole,
-        capabilities: ROLE_CAPABILITIES[mappedRole],
+        capabilities: resolvedCaps,
         tenantId: "tenant_acme",
         authProvider: "local",
       };

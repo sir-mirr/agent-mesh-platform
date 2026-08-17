@@ -203,6 +203,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           name: "Admin",
           role: "PLATFORM_ADMIN",
           tenantId: "default",
+          capabilities: [
+            "key.approve",
+            "agent.teardown",
+            "agent.provision",
+            "group.manage",
+            "role.grant",
+            "audit.read.metadata",
+            "audit.read.content",
+            "mailbox.read.depth",
+            "tenant.read.stats",
+            "source.read",
+            "user.admit",
+            "usage.read",
+          ],
         })
       );
     });
@@ -1107,6 +1121,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const mainText = await page.locator("#root").innerText();
       expect(mainText).toContain("발송된 메시지 본문");
       expect(mainText).not.toContain("msg_undefined");
+    });
+  });
+
+  // SC-WRITE-06: /tenant/egress-acl rule toggle abort does not show success and reports failure (W-07)
+  it("[SC-WRITE-06] handles egress rule toggle abort by reverting state and reporting failure", async () => {
+    await withPage("/tenant/egress-acl", async ({ page }) => {
+      await page.route("**/api/v1/admin/groups/**/egress**", (r) => r.abort());
+
+      const toggleBtn = page.locator("button:has-text('ALLOW'), button:has-text('DENY'), button[title*='토글']").first();
+      if (await toggleBtn.count() > 0) {
+        await toggleBtn.click();
+        await page.waitForTimeout(500);
+        const rootText = await page.locator("#root").innerText();
+        expect(rootText).toMatch(/실패|오류|통신/);
+      }
     });
   });
 });

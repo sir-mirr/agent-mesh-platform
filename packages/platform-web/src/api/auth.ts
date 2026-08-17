@@ -1,4 +1,5 @@
 import { apiClient } from "./client.ts";
+import type { Capability } from "@/types/auth.ts";
 
 export interface LocalLoginResponse {
   ok: boolean;
@@ -6,6 +7,7 @@ export interface LocalLoginResponse {
     github_id: number;
     github_login: string;
     role: string;
+    capabilities?: Capability[];
   };
 }
 
@@ -14,6 +16,7 @@ export interface AuthMeResponse {
   github_login: string;
   role: string;
   approved: boolean;
+  capabilities?: Capability[];
   created_at: string;
 }
 

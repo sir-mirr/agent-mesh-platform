@@ -65,16 +65,23 @@ export function TenantEgressAclPage() {
       } else {
         await deleteEgressRuleApi(sourceId, targetId);
       }
+      const sourceName = groups.find((g) => g.id === sourceId)?.name || sourceId;
+      const targetName = groups.find((g) => g.id === targetId)?.name || targetId;
+
+      setToastMessage(
+        `이그레스 통신 정책 갱신: [${sourceName}] → [${targetName}] : ${nextAllowed ? "ALLOW (허용됨)" : "DENY (차단됨)"}`
+      );
     } catch (err: any) {
       console.warn("[Egress] Rule toggle error:", err.message);
+      setRules((prev) => ({
+        ...prev,
+        [sourceId]: {
+          ...(prev[sourceId] || {}),
+          [targetId]: currentAllowed,
+        },
+      }));
+      setToastMessage(`이그레스 정책 변경 실패: ${err.message || "서버 통신 오류"}`);
     }
-
-    const sourceName = groups.find((g) => g.id === sourceId)?.name || sourceId;
-    const targetName = groups.find((g) => g.id === targetId)?.name || targetId;
-
-    setToastMessage(
-      `이그레스 통신 정책 갱신: [${sourceName}] → [${targetName}] : ${nextAllowed ? "ALLOW (허용됨)" : "DENY (차단됨)"}`
-    );
   };
 
   return (
