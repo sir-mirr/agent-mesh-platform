@@ -94,7 +94,9 @@ export function dispatchHttp(raw: string, observed: string | null = null): { sta
   // put in `onlineAgents`, which is correct rather than a shortcut: there is
   // nowhere to push to, so the caller must not appear online to a sender who
   // would then be told its message was delivered.
-  const caller = { httpCaller: true, identity };
+  // § 8.11.2 reads this off the caller; a socketless request has no socket
+  // to hang it on, so the stand-in carries it.
+  const caller = { httpCaller: true, identity, observed };
   wsIdentities.set(caller, identity);
   try {
     switch (req.method) {

@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { normalizeAddress, observedSource, readObservedConfig } from "./observed";
+import { normalizeAddress, observedSource, prefixOf, readObservedConfig } from "./observed";
 
 const PROXY = "198.51.100.7";
 const forwarded = readObservedConfig({ AGENT_MESH_TRUSTED_PROXIES: PROXY });
@@ -106,5 +106,39 @@ describe("socket mode", () => {
 
   test("answers null when there is no socket address rather than inventing one", () => {
     expect(observedSource(socketOnly, null, "1.2.3.4")).toBeNull();
+  });
+});
+
+describe("prefix grouping", () => {
+  test("IPv4 groups to /24 — the churn that has no security meaning", () => {
+    // A cloud instance restarting inside its subnet, or a DHCP renewal, is not
+    // a key moving to another network. `exact` fires on both.
+    expect(prefixOf("203.0.113.47")).toBe("203.0.113.0/24");
+    expect(prefixOf("203.0.113.92")).toBe("203.0.113.0/24");
+    expect(prefixOf("203.0.114.1")).not.toBe(prefixOf("203.0.113.1"));
+  });
+
+  test("IPv6 groups to /48, the size an operator is actually assigned", () => {
+    expect(prefixOf("2001:db8:abcd:1234::1")).toBe("2001:db8:abcd::/48");
+    expect(prefixOf("2001:db8:abcd:9999::ff")).toBe("2001:db8:abcd::/48");
+    expect(prefixOf("2001:db8:abce:1::1")).not.toBe(prefixOf("2001:db8:abcd:1::1"));
+  });
+
+  test("mapped IPv4 groups as IPv4, not as IPv6", () => {
+    // Both transports report `::ffff:…` for a v4 peer; grouping it as v6 would
+    // put every v4 address in the mesh into one bucket.
+    expect(prefixOf("::ffff:203.0.113.47")).toBe("203.0.113.0/24");
+  });
+
+  test("short IPv6 keeps its leading groups rather than collapsing", () => {
+    expect(prefixOf("::1")).toBe("0:0:0::/48");
+    expect(prefixOf("fe80::1")).toBe("fe80:0:0::/48");
+  });
+
+  test("something unparseable is left alone, not made coarser", () => {
+    // Two different unknowns must not compare equal. "We could not tell" is
+    // not "the same place".
+    expect(prefixOf("not-an-address")).toBe("not-an-address");
+    expect(prefixOf(null)).toBeNull();
   });
 });

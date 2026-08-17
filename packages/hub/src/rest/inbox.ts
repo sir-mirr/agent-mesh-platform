@@ -31,6 +31,7 @@ import { outbox } from "@agent-mesh/store";
 
 import { db as hubDb, stmtMessageById } from "../db";
 import { OBSERVED } from "../observed-config";
+import { DORMANCY_SECONDS } from "../dormancy";
 import { log } from "../log";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "../rpc/audit-limits";
 import { recordRecalled } from "../rpc/audit";
@@ -115,7 +116,9 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
   if (pathname === "/api/v1/capabilities") {
     if (method !== "GET") return json(405, { ok: false, error: "method not allowed; use GET" });
     return json(200, {
-      mailbox: MAILBOX_CAPABILITY_DEFAULTS,
+      // The deployment's window, not the default's — a client sizing its
+      // behaviour on a constant would be sizing it on another deployment.
+      mailbox: { ...MAILBOX_CAPABILITY_DEFAULTS, dormancy_seconds: DORMANCY_SECONDS },
       audit: { ...AUDIT_LIMITS, schema_version_max: MAX_SCHEMA_VERSION },
       // `observed_source` is the running deployment's, not the default's
       // (§ 8.11). Reporting the constant would tell every caller `socket`
@@ -163,7 +166,7 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
   }
 
   if (pathname === "/api/v1/outbox") {
-    if (method === "POST") return sendOne(caller, req.body);
+    if (method === "POST") return sendOne(caller, req.body, req.observed ?? null);
     if (method === "GET") return listOutbox(caller, req.search);
     return json(405, { ok: false, error: "method not allowed; use GET or POST" });
   }
@@ -173,7 +176,7 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
   return recallOne(caller, messageId, req.authorization);
 }
 
-function sendOne(caller: SignedCaller, body: string): Response {
+function sendOne(caller: SignedCaller, body: string, observed: string | null): Response {
   let params: Record<string, unknown>;
   try {
     params = JSON.parse(body || "{}");
@@ -184,11 +187,11 @@ function sendOne(caller: SignedCaller, body: string): Response {
   // as the audit attestation, and this caller signed a REST envelope instead.
   // Passing the REST signature would attest to bytes the audit record does not
   // hold — a signature over the wrong thing is worse than none.
-  return unwrap(JSON.parse(asCallerRaw(caller.identity, params)));
+  return unwrap(JSON.parse(asCallerRaw(caller.identity, params, observed)));
 }
 
-function asCallerRaw(identity: string, params: Record<string, unknown>): string {
-  const ws = { restCaller: true, identity };
+function asCallerRaw(identity: string, params: Record<string, unknown>, observed: string | null): string {
+  const ws = { restCaller: true, identity, observed };
   wsIdentities.set(ws, identity);
   try {
     return handleSend(ws, params, 1)!;

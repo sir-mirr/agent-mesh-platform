@@ -40,7 +40,8 @@ describe("agents schema", () => {
     const db = tempDb();
     agentsSchema.migrate(db);
     expect(columns(db, "agents")).toEqual([
-      "can_proxy", "created_at", "deleted_at", "description", "identity", "last_seen", "type",
+      "can_proxy", "created_at", "deleted_at", "description", "identity", "last_seen",
+      "last_send_at", "type",
     ]);
   });
 
