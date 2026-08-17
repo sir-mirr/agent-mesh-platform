@@ -1,5 +1,7 @@
 import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/index.ts";
+import { useAuth } from "@/contexts/AuthContext.tsx";
+import { useRbac } from "@/contexts/RbacContext.tsx";
 
 /**
  * RootLayout — 인증 후 공통 셸 레이아웃.
@@ -9,22 +11,19 @@ import { Sidebar } from "@/components/index.ts";
  */
 export function RootLayout() {
   const navigate = useNavigate();
-
-  // Phase 1 기본 관리자 권한 (차후 Auth/RbacContext와 연동)
-  const defaultCapabilities = [
-    "server.inspect",
-    "policy.send_restrict",
-    "audit.read_content",
-    "role.assign",
-  ];
+  const { user, logout } = useAuth();
+  const { capabilities } = useRbac();
 
   return (
     <div style={{ display: "flex", minHeight: "100dvh" }}>
       <Sidebar
-        userName="admin (플랫폼 관리자)"
-        userRole="Platform Admin"
-        userCapabilities={defaultCapabilities}
-        onLogout={() => navigate("/login")}
+        userName={user?.name || "운영자"}
+        userRole={user?.role || "AGENT_OPERATOR"}
+        userCapabilities={capabilities}
+        onLogout={() => {
+          logout();
+          navigate("/login");
+        }}
       />
 
       <main
