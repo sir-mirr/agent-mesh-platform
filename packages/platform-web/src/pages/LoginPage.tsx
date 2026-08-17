@@ -374,11 +374,11 @@ export function LoginPage() {
         style={{
           position: "absolute",
           inset: 0,
-          filter: "blur(2.2px)",
-          opacity: 0.88,
+          filter: "blur(1.75px)",
+          opacity: 0.92,
           pointerEvents: "none",
           zIndex: 1,
-          transform: "scale(1.02)", // Prevents blur edge artifacts
+          transform: "scale(1.015)", // Prevents blur edge artifacts
         }}
       >
         {/* Dynamic 60fps Physics Canvas */}
