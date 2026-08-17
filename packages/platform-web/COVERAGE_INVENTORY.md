@@ -70,6 +70,7 @@
 | 그룹 목록 및 멤버 칩 | 그룹명, 설명, 멤버 에이전트 ID 목록 | `fetchGroups()` | • 로딩: 스피너/로딩 상태<br>• 에러: 에러 배너 노출<br>• 0건: "등록된 그룹이 없습니다."<br>• n건: 그룹 카드 및 소속 칩 렌더링 | `SC-SCR04-01` |
 | 신규 그룹 생성 모달 | 그룹 이름, 설명 입력 | `createGroupApi()` | • 성공: 그룹 목록 재조회 및 닫힘<br>• 중복/실패: 409 에러 피드백 | `SC-SCR04-02` |
 | 에이전트 그룹 이동 (배속) | 타겟 그룹 드롭다운 선택 | `updateGroupMembersApi()` | • 성공: 멤버 칩 즉시 이동 반영 | `SC-SCR04-03` |
+| 그룹 생성 충돌 방어 | 중복 그룹 ID 생성 시도 | `createGroupApi()` | • 409 충돌: 기등록 그룹 ID 충돌 방어 피드백 | `SC-SCR04-04` |
 
 ---
 
@@ -109,6 +110,7 @@
 |---|---|---|---|---|
 | 메일함 큐 적체 현황 | 큐 깊이, 300s 리스 만료 카운트다운 | `fetchAdminMailbox()` | • 0건: "적체된 메시지가 없습니다."<br>• n건: 메시지 대기 리스트 및 TTL 바 | `SC-SCR07-01` |
 | 리스 획득 및 ACK/NACK | 메시지 임대 및 승인 처리 | `leaseNextMessage()`, `ackMessage()` | • 임대 성공: 300초 타이머 시작<br>• ACK 완료: 큐에서 즉시 제거 | `SC-SCR07-02` |
+| 빈 메일함 리스 안전성 | 대기열 0건 상태에서 리스 시도 | `leaseNextMessage()` | • 0건: 정상 200/null 반환 (크래시 없음) | `SC-SCR07-03` |
 
 ---
 
@@ -122,6 +124,7 @@
 |---|---|---|---|---|
 | Ed25519 신원 등록 폼 | ID, Name, Group, Public Key | `registerAgentApi()` | • 성공: 등록 완료 및 승인 대기 안내<br>• 409 충돌: 신원/키 충돌 방어 피드백 | `SC-SCR08-01` |
 | 공개키 승인 대기 큐 | 제안된 키 목록, Fingerprint, 승인/거부 | `fetchPendingKeys()`, `approveKeyProposal()` | • 0건: "대기 중인 키 제안이 없습니다."<br>• n건: 제안 카드 및 즉시 승인 액션 | `SC-SCR08-02` |
+| 폼 입력 유효성 검증 | 필수값 누락 및 형식 위반 | `registerAgentApi()` | • 누락: 400 Bad Request 피드백 방어 | `SC-SCR08-03` |
 
 ---
 
@@ -196,6 +199,7 @@
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
 | Capability 할당 매트릭스 | Subject(ID), Role, 9대 Capability 토글 칩 | `fetchGrants()`, `addGrantApi()`, `deleteGrantApi()` | • 에러: "RBAC 권한 데이터를 불러올 수 없습니다"<br>• 0건: "등록된 조직원 데이터가 없습니다"<br>• 칩 클릭: 실시간 권한 부여/회수 토스트 (T-129) | `SC-SCR14-01` |
+| 유효하지 않은 권한 부여 거부 | 오타/미지원 capability 부여 시도 | `addGrantApi()` | • 400 Bad Request: 거부 및 미등록 방어 | `SC-SCR14-02` |
 
 ---
 

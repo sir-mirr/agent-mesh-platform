@@ -1,6 +1,6 @@
 # Agent Mesh Platform Deployment & Operations Guide
 
-> **단일 출처(Source of Truth)**: 로컬 개발 환경 실행 및 통합 기동 절차는 [`docs/running-locally.md`](file:///Users/lyong/ai/workspaces/agent-mesh-platform-fe-antigravity/docs/running-locally.md)를 참조하십시오. 해당 문서는 `env -i` 및 동적 포트 할당 환경에서 3차에 걸쳐 실측 검증되었습니다.
+> **단일 출처(Source of Truth)**: 로컬 개발 환경 실행 및 통합 기동 절차는 [`docs/running-locally.md`](docs/running-locally.md)를 참조하십시오. 해당 문서는 `env -i` 및 동적 포트 할당 환경에서 3차에 걸쳐 실측 검증되었습니다.
 
 ---
 
@@ -37,7 +37,7 @@ Agent Mesh Platform은 다음과 같은 3계층 컴포넌트로 구성됩니다:
 
 ## 2. 빠른 기동 절차
 
-상세한 사전 준비 및 단계별 기동 방법은 [`docs/running-locally.md`](file:///Users/lyong/ai/workspaces/agent-mesh-platform-fe-antigravity/docs/running-locally.md)에 기술되어 있으며, 프론트엔드 기동은 §8에 정의되어 있습니다:
+상세한 사전 준비 및 단계별 기동 방법은 [`docs/running-locally.md`](docs/running-locally.md)에 기술되어 있으며, 프론트엔드 기동은 §8에 정의되어 있습니다:
 
 ```bash
 # 1. 의존성 설치 및 타입 검증

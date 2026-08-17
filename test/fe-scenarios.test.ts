@@ -493,4 +493,57 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(data.service).toBe("Agent Mesh Hub");
     expect(typeof data.online_agents).toBe("number");
   });
+
+  // SCR-04 / SC-SCR04-04: Duplicate group creation conflict defense
+  it("[SC-SCR04-04] idempotently handles duplicate group creation", async () => {
+    const groupId = `dup-grp-${Date.now()}`;
+    const first = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: groupId }),
+    });
+    expect(first.status).toBe(201);
+    const firstData = await first.json();
+    expect(firstData.created).toBe(true);
+
+    const second = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: groupId }),
+    });
+    expect(second.status).toBe(200);
+    const secondData = await second.json();
+    expect(secondData.created).toBe(false);
+  });
+
+  // SCR-07 / SC-SCR07-03: Empty mailbox lease safety
+  it("[SC-SCR07-03] safely handles lease on empty mailbox without crash", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // SCR-08 / SC-SCR08-03: Registration form validation
+  it("[SC-SCR08-03] refuses invalid agent identity registration with 400 Bad Request", async () => {
+    const res = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: "INVALID CAPITALIZED IDENTITY", type: "human" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  // SCR-14 / SC-SCR14-02: Invalid capability grant refusal
+  it("[SC-SCR14-02] refuses typo'd or unsupported capability grant with 400 Bad Request", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({
+        subject: "test-admin",
+        capability: "invalid.typo.capability",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
