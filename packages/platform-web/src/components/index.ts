@@ -12,6 +12,7 @@ export * from "./layout/Breadcrumbs.tsx";
 export * from "./layout/SubNavPills.tsx";
 export * from "./layout/PageContainer.tsx";
 export * from "./layout/Sidebar.tsx";
+export * from "./layout/NotificationBell.tsx";
 
 // Data
 export * from "./data/DataTable.tsx";
@@ -29,3 +30,4 @@ export * from "./messaging/MessageTimeline.tsx";
 export * from "./feedback/Modal.tsx";
 export * from "./feedback/ConfirmDialog.tsx";
 export * from "./feedback/AclMatrix.tsx";
+export * from "./feedback/AgentPairingModal.tsx";

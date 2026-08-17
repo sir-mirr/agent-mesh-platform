@@ -2,6 +2,8 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
+import { NotificationBell } from "./NotificationBell.tsx";
+
 export interface BreadcrumbItem {
   label: string;
   href?: string;
@@ -107,50 +109,61 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
   const breadcrumbs = items || getRouteBreadcrumbs(location.pathname);
 
   return (
-    <nav
-      aria-label="Breadcrumb"
+    <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6,
+        justifyContent: "space-between",
         marginBottom: 16,
-        fontSize: "0.78rem",
-        color: "var(--color-text-muted)",
-        fontWeight: 600,
-        userSelect: "none",
       }}
     >
-      {breadcrumbs.map((item, index) => {
-        const isLast = index === breadcrumbs.length - 1;
+      <nav
+        aria-label="Breadcrumb"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: "0.78rem",
+          color: "var(--color-text-muted)",
+          fontWeight: 600,
+          userSelect: "none",
+        }}
+      >
+        {breadcrumbs.map((item, index) => {
+          const isLast = index === breadcrumbs.length - 1;
 
-        return (
-          <React.Fragment key={index}>
-            {index > 0 && (
-              <span style={{ color: "var(--color-border-strong)", fontSize: "0.72rem", margin: "0 2px" }}>
-                /
-              </span>
-            )}
-            {item.href && !isLast ? (
-              <Link
-                to={item.href}
-                style={{
-                  color: "var(--color-text-secondary)",
-                  textDecoration: "none",
-                  transition: "color 0.15s ease",
-                }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--color-primary)")}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--color-text-secondary)")}
-              >
-                {item.label}
-              </Link>
-            ) : (
-              <span style={{ color: isLast ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: isLast ? 700 : 600 }}>
-                {item.label}
-              </span>
-            )}
-          </React.Fragment>
-        );
-      })}
-    </nav>
+          return (
+            <React.Fragment key={index}>
+              {index > 0 && (
+                <span style={{ color: "var(--color-border-strong)", fontSize: "0.72rem", margin: "0 2px" }}>
+                  /
+                </span>
+              )}
+              {item.href && !isLast ? (
+                <Link
+                  to={item.href}
+                  style={{
+                    color: "var(--color-text-secondary)",
+                    textDecoration: "none",
+                    transition: "color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--color-primary)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--color-text-secondary)")}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <span style={{ color: isLast ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontWeight: isLast ? 700 : 600 }}>
+                  {item.label}
+                </span>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </nav>
+
+      {/* Realtime Agent Registration Notification Bell */}
+      <NotificationBell />
+    </div>
   );
 }
