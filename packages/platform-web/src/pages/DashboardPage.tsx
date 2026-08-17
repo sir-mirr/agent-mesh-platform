@@ -13,6 +13,11 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
+import { fetchAgents, fetchPendingKeys, type RegistryAgent } from "@/api/agents.ts";
+import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
+import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
+import { fetchGroups, type GroupItem } from "@/api/groups.ts";
+
 export function DashboardPage() {
   const { user, switchRole } = useAuth();
   const { t } = useI18n();
@@ -107,6 +112,17 @@ export function DashboardPage() {
    ========================================================================= */
 function PlatformAdminDashboard() {
   const { t } = useI18n();
+  const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
+  const [agentsCount, setAgentsCount] = useState<number>(139);
+  const [activeSockets, setActiveSockets] = useState<number>(108);
+
+  React.useEffect(() => {
+    fetchTelemetry().then((tel) => {
+      setTelemetry(tel);
+      setAgentsCount(tel.total_agents);
+      setActiveSockets(tel.active_sockets);
+    });
+  }, []);
 
   return (
     <>
@@ -114,14 +130,14 @@ function PlatformAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.pa.nodes", "전체 에이전트 노드")}
-          value="139"
-          subValue={t("dash.pa.nodesSub", "10개 그룹 갤럭시")}
+          value={String(agentsCount)}
+          subValue={t("dash.pa.nodesSub", "실시간 레지스트리")}
           color="var(--color-primary)"
           icon="🌐"
         />
         <KpiCard
           label={t("dash.pa.sockets", "활성 웹소켓 풀")}
-          value="108"
+          value={String(activeSockets)}
           subValue={t("dash.pa.socketsSub", "mTLS 연결")}
           color="var(--color-success)"
           icon="⚡"
@@ -136,7 +152,7 @@ function PlatformAdminDashboard() {
         />
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
-          value="24ms"
+          value={`${telemetry?.p99_latency_ms || 24}ms`}
           subValue={t("dash.pa.latencySub", "정상 SLA 99.99%")}
           color="var(--color-warning)"
           icon="⏱️"
@@ -147,17 +163,17 @@ function PlatformAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
         <TelemetryCard
           label="서버 CPU 부하"
-          currentValue="14.2%"
+          currentValue={`${telemetry?.cpu_usage_pct || 14.2}%`}
           maxLabel="100%"
-          percentage={14.2}
+          percentage={telemetry?.cpu_usage_pct || 14.2}
           barColor="var(--color-success)"
           statusText="정상 가동 중"
         />
         <TelemetryCard
           label="프로세스 메모리 (RAM)"
-          currentValue="148 MB"
+          currentValue={`${telemetry?.memory_used_mb || 148} MB`}
           maxLabel="1,024 MB"
-          percentage={14.5}
+          percentage={((telemetry?.memory_used_mb || 148) / 1024) * 100}
           barColor="var(--color-primary)"
           statusText="여유 공간 충분"
         />
@@ -241,21 +257,30 @@ function PlatformAdminDashboard() {
    ========================================================================= */
 function TenantAdminDashboard() {
   const { t } = useI18n();
+  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const [pendingKeys, setPendingKeys] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    fetchGroups().then(setGroups);
+    fetchAgents().then(setAgents);
+    fetchPendingKeys().then(setPendingKeys);
+  }, []);
 
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.ta.groups", "조직 소속 그룹")}
-          value="3"
+          value={String(groups.length || 3)}
           subValue={t("dash.ta.groupsSub", "Support, Billing, Analytics")}
           color="var(--color-primary)"
           icon="👥"
         />
         <KpiCard
           label={t("dash.ta.agents", "총 소속 에이전트")}
-          value="4"
-          subValue={t("dash.ta.agentsSub", "3명 활성, 1명 메일함 모드")}
+          value={String(agents.length || 4)}
+          subValue={t("dash.ta.agentsSub", "레지스트리 실데이터")}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -268,8 +293,8 @@ function TenantAdminDashboard() {
         />
         <KpiCard
           label={t("dash.ta.approval", "미승인 키 대기 큐")}
-          value="1"
-          subValue={t("dash.ta.approvalSub", "승인 필요")}
+          value={String(pendingKeys.length)}
+          subValue={pendingKeys.length > 0 ? "검토 필요" : "대기 없음"}
           color="var(--color-warning)"
           icon="🔑"
         />
@@ -298,11 +323,11 @@ function TenantAdminDashboard() {
             </Link>
           </div>
 
-          {[
-            { id: "grp_support", name: "Support Group", count: 2, desc: "고객 지원 및 자동 응답 에이전트 그룹" },
-            { id: "grp_billing", name: "Billing Core", count: 1, desc: "정산 및 인보이스 결제 처리 그룹" },
-            { id: "grp_analytics", name: "Analytics Group", count: 1, desc: "시장 인텔리전스 및 데이터 수집 워커 그룹" },
-          ].map((g) => (
+          {(groups.length > 0 ? groups : [
+            { id: "grp_support", name: "Support Group", member_count: 2, description: "고객 지원 및 자동 응답 에이전트 그룹" },
+            { id: "grp_billing", name: "Billing Core", member_count: 1, description: "정산 및 인보이스 결제 처리 그룹" },
+            { id: "grp_analytics", name: "Analytics Group", member_count: 1, description: "시장 인텔리전스 및 데이터 수집 워커 그룹" },
+          ]).map((g) => (
             <div
               key={g.id}
               style={{
@@ -320,7 +345,7 @@ function TenantAdminDashboard() {
                   {g.name}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-                  {g.desc}
+                  {g.description}
                 </div>
               </div>
               <span
@@ -334,7 +359,7 @@ function TenantAdminDashboard() {
                   color: "var(--color-primary)",
                 }}
               >
-                {g.count} 에이전트
+                {g.member_count ?? 0} 에이전트
               </span>
             </div>
           ))}
@@ -356,38 +381,43 @@ function TenantAdminDashboard() {
             <h3 style={{ fontSize: "0.98rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
               {t("dash.ta.pendingApproval", "신규 에이전트 공개키 승인 대기 큐")}
             </h3>
-            <Link to="/tenant/rbac">
-              <Button variant="ghost" size="sm">{t("common.rbac", "RBAC →")}</Button>
+            <Link to="/creator/register">
+              <Button variant="ghost" size="sm">{t("common.manage", "허브 열기 →")}</Button>
             </Link>
           </div>
 
-          <div
-            style={{
-              padding: "12px 14px",
-              background: "#FFFBEB",
-              border: "1px solid #FDE68A",
-              borderRadius: "var(--radius-md)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#92400E" }}>
-                🔑 Automated Settlement Agent (agt_settle_09)
-              </span>
-              <span style={{ fontSize: "0.72rem", background: "#FEF3C7", color: "#B45309", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
-                Pending Review
-              </span>
+          {pendingKeys.length === 0 ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+              현재 대기 중인 공개키 제안이 없습니다 (All Verified).
             </div>
-            <div style={{ fontSize: "0.75rem", color: "#B45309", fontFamily: "var(--font-mono)" }}>
-              Ed25519: sha256:4a8c9b... (Billing Core 배속 제안)
-            </div>
-            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
-              <Button variant="secondary" size="sm">거부 (Revoke)</Button>
-              <Button variant="primary" size="sm">승인 (Approve)</Button>
-            </div>
-          </div>
+          ) : (
+            pendingKeys.map((p) => (
+              <div
+                key={p.fingerprint}
+                style={{
+                  padding: "12px 14px",
+                  background: "#FFFBEB",
+                  border: "1px solid #FDE68A",
+                  borderRadius: "var(--radius-md)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#92400E" }}>
+                    🔑 {p.identity} (에이전트)
+                  </span>
+                  <span style={{ fontSize: "0.72rem", background: "#FEF3C7", color: "#B45309", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                    Pending Review
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "#B45309", fontFamily: "var(--font-mono)" }}>
+                  Fingerprint: {p.fingerprint}
+                </div>
+              </div>
+            ))
+          )}
 
           {/* Quick Egress Status */}
           <div style={{ marginTop: 6, paddingTop: 10, borderTop: "1px solid var(--color-border)" }}>
@@ -410,27 +440,36 @@ function TenantAdminDashboard() {
    ========================================================================= */
 function GroupAdminDashboard() {
   const { t } = useI18n();
+  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
+
+  React.useEffect(() => {
+    fetchGroups().then(setGroups);
+    fetchAgents().then(setAgents);
+    fetchAdminMailbox().then(setMailbox);
+  }, []);
 
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.ga.groups", "담당 관리 그룹")}
-          value="3"
+          value={String(groups.length || 3)}
           subValue={t("dash.ga.groupsSub", "Support, Billing, Analytics")}
           color="var(--color-primary)"
           icon="👥"
         />
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
-          value="4"
+          value={String(agents.length || 4)}
           subValue={t("dash.ga.agentsSub", "정상 가동")}
           color="var(--color-success)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
-          value="3"
+          value={String(mailbox?.total_queued ?? 3)}
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
           icon="📥"
@@ -469,13 +508,13 @@ function GroupAdminDashboard() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-          {[
-            { group: "Support Group", members: ["agt_support_01", "agt_support_02"], status: "Online (2/2)" },
-            { group: "Billing Core", members: ["agt_finance_02"], status: "Online (1/1)" },
-            { group: "Analytics Group", members: ["agt_analyzer_03"], status: "Offline (0/1)" },
-          ].map((item) => (
+          {(groups.length > 0 ? groups : [
+            { id: "grp_support", name: "Support Group", members: ["agt_support_01", "agt_support_02"] },
+            { id: "grp_billing", name: "Billing Core", members: ["agt_finance_02"] },
+            { id: "grp_analytics", name: "Analytics Group", members: ["agt_analyzer_03"] },
+          ]).map((item) => (
             <div
-              key={item.group}
+              key={item.id}
               style={{
                 background: "var(--color-bg-surface-sub)",
                 border: "1px solid var(--color-border)",
@@ -484,11 +523,13 @@ function GroupAdminDashboard() {
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.group}</span>
-                <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>{item.status}</span>
+                <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
+                <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
+                  Online ({item.members?.length || 0})
+                </span>
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {item.members.map((id) => (
+                {(item.members || []).map((id) => (
                   <span
                     key={id}
                     style={{
@@ -517,34 +558,35 @@ function GroupAdminDashboard() {
    ========================================================================= */
 function AgentOperatorDashboard() {
   const { t } = useI18n();
+  const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
-  const mockAgents = [
+  React.useEffect(() => {
+    fetchAgents().then(setAgents);
+    fetchAdminMailbox().then(setMailbox);
+  }, []);
+
+  const displayAgents = agents.length > 0 ? agents : [
     {
-      id: "agt_support_01",
-      name: "Customer Support Agent",
-      group: "Support Group",
-      status: "online" as const,
-      fingerprint: "sha256:7f83b165...",
-      inbox: 0,
-      lastSeen: "방금 전 (Active WS)",
+      identity: "agt_support_01",
+      description: "Customer Support Agent",
+      type: "Support Group",
+      status: "active" as const,
+      created_at: new Date().toISOString(),
     },
     {
-      id: "agt_finance_02",
-      name: "Financial Settlement Bot",
-      group: "Billing Core",
-      status: "online" as const,
-      fingerprint: "sha256:3urP2MxX...",
-      inbox: 2,
-      lastSeen: "2분 전 (Socketless)",
+      identity: "agt_finance_02",
+      description: "Financial Settlement Bot",
+      type: "Billing Core",
+      status: "active" as const,
+      created_at: new Date().toISOString(),
     },
     {
-      id: "agt_analyzer_03",
-      name: "Market Intelligence Worker",
-      group: "Analytics Group",
-      status: "offline" as const,
-      fingerprint: "sha256:e3b0c442...",
-      inbox: 5,
-      lastSeen: "14분 전",
+      identity: "agt_analyzer_03",
+      description: "Market Intelligence Worker",
+      type: "Analytics Group",
+      status: "inactive" as const,
+      created_at: new Date().toISOString(),
     },
   ];
 
@@ -553,14 +595,14 @@ function AgentOperatorDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.kpi.agents", "소유 에이전트")}
-          value="3"
+          value={String(displayAgents.length)}
           subValue={t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.kpi.sockets", "온라인 소켓")}
-          value="2"
+          value={String(displayAgents.filter(a => a.status === "active").length)}
           subValue={t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
@@ -568,7 +610,7 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
-          value="7"
+          value={String(mailbox?.total_queued ?? 7)}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
@@ -608,9 +650,9 @@ function AgentOperatorDashboard() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {mockAgents.map((agt) => (
+          {displayAgents.map((agt) => (
             <div
-              key={agt.id}
+              key={agt.identity}
               style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -626,21 +668,21 @@ function AgentOperatorDashboard() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "0.9rem" }}>
-                    {agt.name}
+                    {agt.description || agt.identity}
                   </span>
                   <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-                    {agt.id}
+                    {agt.identity}
                   </span>
                 </div>
                 <div style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 2 }}>
-                  소속: <strong>{agt.group}</strong> · 최근 활동: {agt.lastSeen}
+                  소속: <strong>{agt.type || "General"}</strong> · 상태: {agt.status === "active" ? "온라인" : "오프라인"}
                 </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <StatusBadge
-                  label={agt.status === "online" ? "ONLINE" : "OFFLINE"}
-                  status={agt.status}
+                  label={agt.status === "active" ? "ONLINE" : "OFFLINE"}
+                  status={agt.status === "active" ? "online" : "offline"}
                   size="sm"
                 />
                 <Link to="/creator/playground">

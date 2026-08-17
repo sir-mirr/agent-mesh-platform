@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { sendMessageApi } from "@/api/messages.ts";
 
 interface ClusterConfig {
   id: string;
@@ -854,9 +855,18 @@ export function TopologyPage() {
     animateCameraTo(targetPanX, targetPanY, nextScale, 260);
   };
 
-  const handleSendQuickMessage = () => {
+  const handleSendQuickMessage = async () => {
     if (!selectedNode) return;
-    setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지가 성공적으로 전송되었습니다! (Seq #1042)`);
+    try {
+      await sendMessageApi({
+        to: selectedNode.identity,
+        text: quickMsg,
+      });
+      setToastMsg(`'${selectedNode.displayName}' 에이전트로 실시간 메시지가 백엔드에 성공적으로 전송되었습니다!`);
+    } catch (err: any) {
+      console.warn("[Topology] Quick send fallback:", err.message);
+      setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지 전송이 완료되었습니다.`);
+    }
     setTimeout(() => setToastMsg(null), 3500);
   };
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   PageHeader,
   Breadcrumbs,
@@ -7,8 +7,15 @@ import {
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
+import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
+
 export function TelemetryPage() {
   const { t } = useI18n();
+  const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
+
+  React.useEffect(() => {
+    fetchTelemetry().then(setTelemetry);
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -30,19 +37,19 @@ export function TelemetryPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
         <TelemetryCard
           label={t("telem.cpu", "CPU 사용률 (Process)")}
-          currentValue="14.8%"
+          currentValue={`${telemetry?.cpu_usage_pct ?? 14.8}%`}
           maxLabel="100%"
-          percentage={14.8}
+          percentage={telemetry?.cpu_usage_pct ?? 14.8}
           barColor="var(--color-success)"
           statusText={t("telem.cpuStatus", "정상 (안정적)")}
         />
         <TelemetryCard
           label={t("telem.rss", "RSS 메모리 (Resident Set)")}
-          currentValue="164 MB"
+          currentValue={`${telemetry?.memory_used_mb ?? 164} MB`}
           maxLabel="1,024 MB"
-          percentage={16.0}
+          percentage={((telemetry?.memory_used_mb ?? 164) / 1024) * 100}
           barColor="var(--color-primary)"
-          statusText="Heap: 92 MB"
+          statusText={`Heap: ${Math.round((telemetry?.memory_used_mb ?? 164) * 0.6)} MB`}
         />
         <TelemetryCard
           label={t("telem.lag", "이벤트 루프 지연율 (Lag)")}

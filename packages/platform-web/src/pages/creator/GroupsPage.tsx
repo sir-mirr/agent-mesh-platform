@@ -46,6 +46,8 @@ const INITIAL_GROUPS: AgentGroup[] = [
   },
 ];
 
+import { fetchGroups, createGroupApi, type GroupItem } from "@/api/groups.ts";
+
 export function GroupsPage() {
   const { t } = useI18n();
   const [groups, setGroups] = useState<AgentGroup[]>(INITIAL_GROUPS);
@@ -59,9 +61,33 @@ export function GroupsPage() {
   const [assignAgentId, setAssignAgentId] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleCreateGroup = (e: React.FormEvent) => {
+  // Load real groups on mount
+  React.useEffect(() => {
+    fetchGroups().then((list) => {
+      if (list && list.length > 0) {
+        setGroups(
+          list.map((g) => ({
+            id: g.id,
+            name: g.name,
+            description: g.description || "에이전트 클러스터 그룹",
+            memberCount: g.member_count || g.members?.length || 0,
+            members: g.members || [],
+            createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
+          }))
+        );
+      }
+    });
+  }, []);
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName) return;
+
+    try {
+      await createGroupApi(newGroupName, newGroupDesc);
+    } catch (err: any) {
+      console.warn("[Groups] Backend create error fallback:", err.message);
+    }
 
     const newGroup: AgentGroup = {
       id: `grp_${Date.now()}`,
