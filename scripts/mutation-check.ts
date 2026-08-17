@@ -259,7 +259,10 @@ const MUTATIONS: Mutation[] = [
     from: '  return input.recipientLive && input.senderLive ? "mesh" : "mailbox";',
     to: '  return input.recipientLive ? "mesh" : "mailbox";',
     suite: "test/scenarios.test.ts",
-    expect: ["E2E-REPLY-001", "message count"],
+    // Named for what the arrangement actually asserts. The first version wanted
+    // "message count", which is the step *after* the one that matters — and the
+    // scenario itself was arranged so nothing failed at all.
+    expect: ["E2E-REPLY-001", "messages pushed since the last check"],
   },
   {
     id: "reply-channel-overreach",
