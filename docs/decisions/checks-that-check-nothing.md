@@ -63,6 +63,24 @@ same observation as adding nothing and seeing green.
   forbid the skip it used to allow, because "visibly skipped" turned out to
   mean "skipped, and reported faithfully, and acted on by nobody".
 
+## The harness is a checker too
+
+The mutation tool that found the five failed the same way once, in the middle of
+using it.
+
+It kept one backup slot. Applying two mutations before restoring overwrote the
+backup with the already-mutated file, so the first "restore" returned to the
+first mutation rather than to the original — leaving a guard deleted in
+`test/typecheck-scope.test.ts`, which then reported four passes. **The tool for
+detecting checks that check nothing produced one.**
+
+Caught by reading `git status` rather than the test output, which is the habit
+worth keeping: a mutation round ends with a clean tree or it did not end.
+
+It now refuses to stack, and asserts its pattern matched before writing — a
+`sed` edit that matches nothing otherwise reports the mutation as uncaught,
+which is a false finding rather than a missed one.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
