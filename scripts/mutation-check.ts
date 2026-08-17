@@ -582,17 +582,18 @@ const MUTATIONS: Mutation[] = [
   },
 
   {
-    id: "ack-observed-not-leased",
+    id: "ack-settles-over-rest",
     defect:
-      "`mesh.receive` was asserted to have settled a batch, and observed nothing of the sort: the messages were still leased from the drain three lines above, so the response was empty whatever the acknowledgement did. Removing `ack_ids` left it green.",
-    file: "test/mailbox.test.ts",
-    from: "    await pastLease();\n    const settle = await callHttp(mesh.hub, signer(mail), \"mesh.receive\", { ack_ids: ids });",
-    to: "    const settle = await callHttp(mesh.hub, signer(mail), \"mesh.receive\", { ack_ids: ids });",
-    suite: "test/mailbox.test.ts",
-    // Without the wait the lease hides the batch and the assertion passes for
-    // the wrong reason — which is the state this entry records, not a defect
-    // in the mesh.
-    expect: ["mesh.receive returns what was queued while the agent was away"],
+      "Nothing checked that acknowledging over `/api/v1/mailbox/in` settles a message. The assertion that looked like it did read `remaining`, which counts leasable rows only — so a 300-second lease made it zero whatever the acknowledgement did, and removing `ack_ids` left the suite green.",
+    file: "packages/mailbox/src/receive.ts",
+    from: "      const settled = stmt.ackMessage.run(messageId, identity);",
+    to: "      const settled = { changes: 0 };",
+    suite: "test/mailbox-routes.test.ts",
+    // A one-second lease, so the batch comes back if it was never settled. The
+    // manifest catches a deleted guard; it cannot catch a weakened test, which
+    // is why the first version of this entry — removing the lease wait — was
+    // wrong: that mutation makes the assertion vacuous and therefore green.
+    expect: ["an acknowledged message came back after the lease"],
   },
   {
     id: "bootstrap-observes-registry",
