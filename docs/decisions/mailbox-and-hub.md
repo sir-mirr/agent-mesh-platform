@@ -149,3 +149,36 @@ the *sender* not — and the scenario vocabulary has no way to say that. Adding
 one is a contract change worth making deliberately rather than in passing, and
 until it happens this is a clause one implementation checks alone, which § 17.3
 is explicit is not enough.
+
+`client-claude` proposed the shape when this was raised (mail #242), and it is
+recorded here rather than re-derived later:
+
+```
+{ do: "connect",      identity: "a", hold: true }
+{ do: "send",         from: "b", to: "a", … }
+{ do: "expectPushed", identity: "a", count: 1 }   // since the last check
+{ do: "disconnect",   identity: "a" }
+```
+
+Three things in it are not obvious, and each is a mistake already made once
+somewhere in this work:
+
+**Disconnecting is the scenario's to say, not the runner's.** The case worth
+stating is a reply to mail with the recipient live and the sender *not*, so
+absence has to be expressible. A runner that tidies up implicitly at the end can
+never produce that state in the middle. Automatic cleanup still belongs there,
+but as hygiene rather than as an assertion — a socket left open changes presence
+for the next scenario, and on a shared mesh that moves every `delivered` /
+`pending` verdict after it.
+
+**A held socket needs a named window.** `expectDelivered` today is unambiguous
+because the window is the connect itself; on a socket being held, "how many"
+means nothing without "since when". `expectPushed` clearing its counter fixes
+the window at *since the last check*. A cumulative count would make every
+expectation depend on the steps above it, so inserting one step would falsify
+everything below — which is exactly why step numbers were kept out of the
+mutation manifest.
+
+**The listener attaches on socket open, not after the connect response.** The
+hub may push before the response is written, and attaching later misses the
+delivery under test.
