@@ -304,6 +304,21 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       try {
         const body = await client.call("mesh.connect", { identity: step.identity });
         assertRpc(body, step.expect, ctx);
+
+        if (step.expectDelivered !== undefined) {
+          // The replay is pushed, so there is nothing to await. Polled to a
+          // deadline rather than slept against: a fixed sleep is either longer
+          // than every run needs or shorter than one run needed, and the second
+          // is a flake that reads as a missing guarantee.
+          const deadline = Date.now() + 5_000;
+          let pushed = 0;
+          while (Date.now() < deadline) {
+            pushed = client.notifications().filter((n: any) => n.method === "mesh.message").length;
+            if (pushed >= step.expectDelivered) break;
+            await Bun.sleep(25);
+          }
+          expect(pushed, `${ctx}: messages pushed on connect`).toBe(step.expectDelivered);
+        }
       } finally {
         // Closed immediately: these scenarios are about what connecting
         // *decides*, and a socket left open keeps the identity online for every

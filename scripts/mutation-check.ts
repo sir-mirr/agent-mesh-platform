@@ -115,6 +115,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-KEY-001", "(connect): error code"],
   },
   {
+    id: "connect-replay",
+    defect:
+      "Connecting stopped delivering what had accumulated while the identity was away (§ 8.1). A lane that only listens — client-claude's does, and never calls mesh.receive — would then sit with a full mailbox and no symptom, because nothing it does would tell it.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "  deliverPending(identity, ws);",
+    to: "  void identity;",
+    suite: "test/scenarios.test.ts",
+    expect: ["E2E-CONNECT-001", "messages pushed on connect"],
+  },
+  {
     id: "lease-advert",
     defect:
       "`/api/v1/capabilities` advertised the default receive lease while the hub used a configured one, so clients sized their retry loop on a number nobody honoured.",

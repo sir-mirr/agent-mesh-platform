@@ -5,7 +5,7 @@
     "": {
       "name": "agent-mesh-platform",
       "dependencies": {
-        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.20.0",
+        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.21.0",
         "@agent-mesh/store": "workspace:*",
       },
       "devDependencies": {
@@ -28,6 +28,10 @@
       "name": "@agent-mesh/hub",
       "version": "0.1.0",
     },
+    "packages/mailbox": {
+      "name": "@agent-mesh/mailbox",
+      "version": "0.1.0",
+    },
     "packages/self-reminder": {
       "name": "@agent-mesh/self-reminder",
       "version": "0.1.0",
@@ -42,11 +46,13 @@
     },
   },
   "packages": {
-    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#2876482", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-2876482", "sha512-IQpvnzImLDbLkPuKpelmClGcGHnjjURka37/CVBBHImK7r7OcE7QvG0JKGHqUSm3x6dwmLD+UTsJ+hVml5DVng=="],
+    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#3492a08", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-3492a08", "sha512-/v99w0PcmwXeItsL2xBoFfM7g+nhunBlda6MBxRXgyMK2bXOLaJMQ1mM8gglB68EAgQB+krhAFvFAhL+YaDv0w=="],
 
     "@agent-mesh/http": ["@agent-mesh/http@workspace:packages/http"],
 
     "@agent-mesh/hub": ["@agent-mesh/hub@workspace:packages/hub"],
+
+    "@agent-mesh/mailbox": ["@agent-mesh/mailbox@workspace:packages/mailbox"],
 
     "@agent-mesh/self-reminder": ["@agent-mesh/self-reminder@workspace:packages/self-reminder"],
 
