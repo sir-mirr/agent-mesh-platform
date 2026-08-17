@@ -7,23 +7,26 @@ on:
 
   # **Re-run the current tree, without committing to it.**
   #
-  # The reason first written here was that CI could not be re-requested at all.
-  # That was wrong and was carried across three agents unchecked: `gh run rerun`
-  # exists and works — measured. What it does *not* do is say when it has not
-  # worked. On a run that expired against the job budget it returns exit 0,
-  # prints nothing, and starts nothing; on a completed run the same command with
-  # the same exit code queues one. So the capability looked absent because its
-  # failure is silent, which is worse than absent — an absent tool sends you
-  # looking, a silent one lets you believe it worked.
+  # That is the whole reason, and it took two wrong ones to get here.
   #
-  # This is still worth having, for the thing `rerun` cannot do: `rerun` replays
-  # an old run, and every case today wanted the *current* tree re-examined. And
-  # expired runs, which is what today's were, are exactly what `rerun` declines.
+  # The first was that CI could not be re-requested at all. Three agents carried
+  # that unchecked and nobody pressed the button; `gh run rerun` works, on
+  # completed and on expired runs alike, and refuses with exit 1 and a message
+  # when an attempt is already in flight.
   #
-  # It also separates two questions that look alike from outside — *is this tree
-  # broken* and *was that run unlucky* — which cannot be told apart while
-  # re-running requires a new commit, because the new commit is a different
-  # tree.
+  # The second was mine: that `rerun` failed silently on expired runs. It does
+  # not. I ran it, then read a `gh run list` that did not contain the run I had
+  # just re-run, and concluded from its absence that nothing had happened. The
+  # attempt counter said otherwise the whole time.
+  #
+  # What survives both is the distinction that actually earns this trigger:
+  # `rerun` replays *that run*, and every case here wanted the *current tree*
+  # examined again. Those are different questions, and only one of them is
+  # answered by re-running something from an hour ago.
+  #
+  # It also separates two states that look alike from outside — *this tree is
+  # broken* and *that run was unlucky* — which cannot be told apart while
+  # re-running needs a new commit, because a new commit is a different tree.
   workflow_dispatch:
 
 concurrency:
