@@ -5,17 +5,25 @@ on:
     branches: [main]
   pull_request:
 
-  # **A green nobody can re-request is a green nobody can re-check.**
+  # **Re-run the current tree, without committing to it.**
   #
-  # Without this the only way to run CI again is to make a commit, so every
-  # re-check costs a change to the thing being checked. Three situations today
-  # needed one: a run that expired on the job budget with nothing to show, a
-  # mutation entry that passed locally and failed here, and an install that
-  # behaved differently on the runner than on any machine that could observe it.
+  # The reason first written here was that CI could not be re-requested at all.
+  # That was wrong and was carried across three agents unchecked: `gh run rerun`
+  # exists and works — measured. What it does *not* do is say when it has not
+  # worked. On a run that expired against the job budget it returns exit 0,
+  # prints nothing, and starts nothing; on a completed run the same command with
+  # the same exit code queues one. So the capability looked absent because its
+  # failure is silent, which is worse than absent — an absent tool sends you
+  # looking, a silent one lets you believe it worked.
   #
-  # It also separates two questions that look alike from the outside — *is this
-  # tree broken* and *was that run unlucky* — which cannot be told apart when
-  # re-running requires a new tree.
+  # This is still worth having, for the thing `rerun` cannot do: `rerun` replays
+  # an old run, and every case today wanted the *current* tree re-examined. And
+  # expired runs, which is what today's were, are exactly what `rerun` declines.
+  #
+  # It also separates two questions that look alike from outside — *is this tree
+  # broken* and *was that run unlucky* — which cannot be told apart while
+  # re-running requires a new commit, because the new commit is a different
+  # tree.
   workflow_dispatch:
 
 concurrency:
