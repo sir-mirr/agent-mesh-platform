@@ -10,17 +10,26 @@ bun test test/scenarios.test.ts
 ```
 
 `test/scenarios.test.ts` is an interpreter for the verb set and holds no
-expectations of its own. Adding one here would make this repository's green
+expectations of its own, and reads no database. It used to: three scenarios
+asserted a trace straight out of SQLite, and the client's runner — which has no
+database — skipped them. Both sides reported green while § 8.11, § 11.0.1 and
+§ 8.9.5 were each held by one implementation. They go through
+`/api/v1/admin/agent-sources` and `/api/v1/audit/events` now, and nothing is
+skipped by either side. Adding one here would make this repository's green
 mean something the client's green does not, which is the failure the shared list
 exists to prevent — so a new expectation goes in the contracts package, gets a
 tag, and both sides pick it up.
 
-Four mutations were run against the first passing version, each caught by the
-scenario meant to catch it: egress default-deny disabled (`E2E-EGRESS-001`), an
-ack that reports success without settling (`E2E-RECEIVE-002`), the key-approval
-gate removed (`E2E-KEY-001`), and a content read that leaves no trace
-(`E2E-AUDIT-001`). Worth repeating after adding a scenario — a green run says
-nothing about whether the scenario checks anything.
+Every scenario here has been mutation-checked: the behaviour it names was
+broken in the source, and the run went red on that scenario and no other.
+Worth repeating after adding one, because a green run says nothing about
+whether the scenario checks anything.
+
+Two of those mutations found the runner rather than the mesh. One made the
+route report a `pending` status for an already-approved key and passed —
+`provision` and `http` each held their own copy of the expectation check, and
+only `http` had learned about body assertions. The other is why this file no
+longer describes a skip.
 
 The first run failed six of eleven, and **five were defects in the scenarios
 rather than in the mesh**: `mesh.connect` refused over HTTP (correct — § 8.10

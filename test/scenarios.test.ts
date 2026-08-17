@@ -13,11 +13,11 @@
  * that adds its own checks is a runner whose green does not mean what the other
  * side's green means.
  *
- * The one thing it does add is `expectStored`, which reads SQLite directly.
- * Those are the scenarios about traces rather than responses: a source recorded,
- * an audit read logged, a type change kept. The client cannot run them (no
- * database), so it skips them by verb — which is why the verb is named for the
- * kind of check rather than for a particular table.
+ * It reads no database. It used to: three scenarios asserted a trace straight
+ * out of SQLite, which the client's runner cannot do, so they were skipped
+ * there. Both sides reported green while one clause each in § 8.11, § 11.0.1
+ * and § 8.9.5 was held by a single implementation. They go through the
+ * operator's routes now, and nothing is skipped.
  *
  * ## Scenarios are ordered and share a mesh
  *
@@ -33,7 +33,6 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import { createHash, randomUUID, sign as edSign } from "node:crypto";
 import {
   E2E_SCENARIOS,
@@ -359,9 +358,6 @@ async function runStep(step: Step, ctx: string): Promise<void> {
     case "sleep":
       await Bun.sleep(step.seconds * 1000);
       return;
-
-    case "expectStored":
-      return expectStored(step, ctx);
   }
 }
 
@@ -382,56 +378,6 @@ function assertRpc(body: any, expected: Step extends never ? never : any, ctx: s
   }
   if (expected.dataCode) {
     expect(body.error?.data?.code, `${ctx}: data.code`).toBe(expected.dataCode);
-  }
-}
-
-/**
- * The trace checks.
- *
- * Read-only handles opened per call rather than held: the services are writing
- * to these files, and a handle kept across a scenario is a handle holding a
- * snapshot from before the step that was supposed to write.
- */
-function expectStored(step: Extract<Step, { do: "expectStored" }>, ctx: string): void {
-  const open = (file: string) => new Database(`${mesh.stateDir}/${file}`, { readonly: true });
-
-  switch (step.what) {
-    case "sourceRecorded": {
-      const db = open("agents.db");
-      const row = db
-        .prepare(`SELECT COUNT(*) AS n FROM agent_sources WHERE identity = ?`)
-        .get(step.identity) as { n: number };
-      db.close();
-      expect(row.n, `${ctx}: no observed source recorded`).toBeGreaterThan(0);
-      return;
-    }
-    case "auditReadLogged": {
-      // Into `audit_events` rather than a table of its own. § 11.0.1 puts the
-      // record where every other event goes, so an operator reviewing the trail
-      // sees reads of it in the same place — a separate table would be a second
-      // trail somebody has to remember to look at.
-      const db = open("audit.db");
-      const row = db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM audit_events WHERE event_type = 'mesh.identity.audit_read'`,
-        )
-        .get() as { n: number };
-      db.close();
-      expect(row.n, `${ctx}: audit read left no trace`).toBeGreaterThan(0);
-      return;
-    }
-    case "typeChangeRecorded": {
-      const db = open("audit.db");
-      const row = db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM audit_events
-            WHERE event_type = 'mesh.identity.type_changed' AND identity = ?`,
-        )
-        .get(step.identity) as { n: number };
-      db.close();
-      expect(row.n, `${ctx}: type change left no audit event`).toBeGreaterThan(0);
-      return;
-    }
   }
 }
 
@@ -488,7 +434,7 @@ describe("the scenario list", () => {
     // this runner does not handle would otherwise pass here by falling out of
     // the `switch` — a green run for a scenario that never ran.
     const implemented = new Set([
-      "provision", "approve", "revoke", "connect", "send", "receive", "http", "sleep", "expectStored",
+      "provision", "approve", "revoke", "connect", "send", "receive", "http", "sleep",
     ]);
     const used = new Set(E2E_SCENARIOS.flatMap((s) => s.steps.map((st) => st.do)));
     const missing = [...used].filter((v) => !implemented.has(v));

@@ -3199,16 +3199,30 @@ scenario becomes a second implementation of the protocol, and then the question
 "do both sides agree" is replaced by "does the scenario runner agree with
 itself".
 
-### 17.3. What a runner may skip, and what it may not
+### 17.3. Nothing is skipped
 
-`expectStored` asserts a trace rather than a response — a source recorded, an
-audit read logged. A participant with no access to the platform's stores cannot
-run those, and MUST skip them **by verb**, so what was skipped is visible in the
-report.
+A runner MUST run every scenario and every step. It MUST NOT skip by id, and it
+MUST fail on a verb it does not implement rather than ignoring the step. A step
+silently dropped is a scenario that reports green without running.
 
-A runner MUST NOT skip a scenario by id, and MUST fail on a verb it does not
-implement rather than ignoring the step. A step silently dropped is a scenario
-that reports green without running.
+**This clause used to permit a skip, and the permission was the defect.** Three
+scenarios asserted a trace by reading the platform's stores directly — an
+observed source (§ 8.11), a content read logged (§ 11.0.1), a type change kept
+(§ 8.9.5). A participant with no access to those stores could not run them, so
+the rule let it skip them by verb, visibly.
+
+Visibly, and to no effect. Each of those clauses was then confirmed by exactly
+one implementation while both reports read green, which is the state conformance
+scenarios exist to make impossible. The skip is what stopped anyone noticing.
+
+They assert through the operator's routes instead, which is the better question:
+a trace written where the operator cannot query it is not serving the operator
+it was written for.
+
+**A verb only one side can run is a clause only one side holds.** If a scenario
+cannot be expressed against the mesh's own surfaces, the gap is in those
+surfaces, and the fix belongs there rather than in a runner reaching past
+them.
 
 ### 17.4. A scenario may state the mesh it needs
 
