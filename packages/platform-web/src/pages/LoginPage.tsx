@@ -28,13 +28,13 @@ export function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "var(--color-bg-page)",
+        background: "radial-gradient(ellipse at 50% 40%, #FFFFFF 0%, #F8FAFC 60%, #EEF2F6 100%)",
         position: "relative",
         overflow: "hidden",
         padding: 24,
       }}
     >
-      {/* ── Background Geometric Constellation & Connected Agent Network ── */}
+      {/* ── 3D Geometric Constellation & Flowing Animated Mesh ── */}
       <div
         style={{
           position: "absolute",
@@ -59,154 +59,213 @@ export function LoginPage() {
           <defs>
             {/* Gradients */}
             <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.3" />
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.75" />
+              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.6" />
             </linearGradient>
             <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#059669" stopOpacity="0.4" />
+              <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0.7" />
             </linearGradient>
             <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#059669" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#2563EB" stopOpacity="0.45" />
+              <stop offset="0%" stopColor="#10B981" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.75" />
             </linearGradient>
             <linearGradient id="lineGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#0284C7" stopOpacity="0.3" />
+              <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#EC4899" stopOpacity="0.6" />
             </linearGradient>
 
-            {/* Ambient center polygon glows */}
-            <radialGradient id="meshGlowLeft" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.08" />
+            {/* Ambient Radial Glow Polygons */}
+            <radialGradient id="glowTriadLeft" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.14" />
               <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
             </radialGradient>
-            <radialGradient id="meshGlowRight" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0" />
+            <radialGradient id="glowTriadRight" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#10B981" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
             </radialGradient>
           </defs>
 
-          {/* Polygons */}
-          <polygon points="180,220 320,120 280,380" fill="url(#meshGlowLeft)" />
-          <polygon points="1120,160 1280,280 1180,480" fill="url(#meshGlowRight)" />
-          <polygon points="280,380 440,540 180,680" fill="url(#meshGlowLeft)" />
-          <polygon points="1180,480 1320,680 1020,640" fill="url(#meshGlowRight)" />
+          {/* Volumetric Center Polygons */}
+          <polygon points="210,210 340,110 240,460" fill="url(#glowTriadLeft)" />
+          <polygon points="1180,180 1310,320 1140,520" fill="url(#glowTriadRight)" />
+          <polygon points="240,460 380,680 140,720" fill="url(#glowTriadLeft)" />
 
-          {/* Left Flank Constellation Lines */}
-          <line x1="180" y1="220" x2="320" y2="120" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="320" y1="120" x2="280" y2="380" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="280" y1="380" x2="180" y2="220" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="280" y1="380" x2="440" y2="540" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="440" y1="540" x2="180" y2="680" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="180" y1="680" x2="280" y2="380" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="440" y1="540" x2="490" y2="450" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 4" />
+          {/* Animated Flowing SVG Dashed Lines */}
+          <line
+            x1="210" y1="210" x2="340" y2="110"
+            stroke="url(#lineGrad1)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 14s linear infinite" }}
+          />
+          <line
+            x1="340" y1="110" x2="240" y2="460"
+            stroke="url(#lineGrad2)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 18s linear infinite reverse" }}
+          />
+          <line
+            x1="240" y1="460" x2="210" y2="210"
+            stroke="url(#lineGrad3)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 16s linear infinite" }}
+          />
+          <line
+            x1="240" y1="460" x2="380" y2="680"
+            stroke="url(#lineGrad1)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 20s linear infinite" }}
+          />
+          <line
+            x1="380" y1="680" x2="140" y2="720"
+            stroke="url(#lineGrad2)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 15s linear infinite reverse" }}
+          />
+          <line
+            x1="140" y1="720" x2="240" y2="460"
+            stroke="url(#lineGrad3)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 17s linear infinite" }}
+          />
 
-          {/* Right Flank Constellation Lines */}
-          <line x1="1120" y1="160" x2="1280" y2="280" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1280" y1="280" x2="1180" y2="480" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1180" y1="480" x2="1120" y2="160" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1180" y1="480" x2="1320" y2="680" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1320" y1="680" x2="1020" y2="640" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1020" y1="640" x2="1180" y2="480" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
-          <line x1="1020" y1="640" x2="950" y2="450" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 4" />
+          {/* Right Flank Lines */}
+          <line
+            x1="1180" y1="180" x2="1310" y2="320"
+            stroke="url(#lineGrad1)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 14s linear infinite" }}
+          />
+          <line
+            x1="1310" y1="320" x2="1140" y2="520"
+            stroke="url(#lineGrad2)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 19s linear infinite reverse" }}
+          />
+          <line
+            x1="1140" y1="520" x2="1180" y2="180"
+            stroke="url(#lineGrad3)" strokeWidth="2" strokeDasharray="6 6"
+            style={{ animation: "meshDash 16s linear infinite" }}
+          />
+          <line
+            x1="1140" y1="520" x2="1280" y2="710"
+            stroke="url(#lineGrad4)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 21s linear infinite" }}
+          />
+          <line
+            x1="1280" y1="710" x2="1010" y2="670"
+            stroke="url(#lineGrad2)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 13s linear infinite reverse" }}
+          />
+          <line
+            x1="1010" y1="670" x2="1140" y2="520"
+            stroke="url(#lineGrad1)" strokeWidth="1.8" strokeDasharray="5 5"
+            style={{ animation: "meshDash 18s linear infinite" }}
+          />
 
-          {/* Cross Mesh Links */}
-          <line x1="320" y1="120" x2="1120" y2="160" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 8" opacity="0.4" />
-          <line x1="440" y1="540" x2="1020" y2="640" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 8" opacity="0.4" />
+          {/* Cross Galaxy Link Lines */}
+          <line x1="340" y1="110" x2="1180" y2="180" stroke="url(#lineGrad1)" strokeWidth="1" strokeDasharray="4 8" opacity="0.35" />
+          <line x1="380" y1="680" x2="1010" y2="670" stroke="url(#lineGrad3)" strokeWidth="1" strokeDasharray="4 8" opacity="0.35" />
 
-          {/* Glowing Geometric Pulse Dots */}
-          <circle cx="180" cy="220" r="4" fill="#2563EB" opacity="0.9" />
-          <circle cx="320" cy="120" r="5" fill="#7C3AED" opacity="0.9" />
-          <circle cx="280" cy="380" r="4" fill="#059669" opacity="0.9" />
-          <circle cx="440" cy="540" r="4.5" fill="#2563EB" opacity="0.8" />
-          <circle cx="180" cy="680" r="4" fill="#0284C7" opacity="0.8" />
-
-          <circle cx="1120" cy="160" r="4.5" fill="#7C3AED" opacity="0.9" />
-          <circle cx="1280" cy="280" r="4" fill="#059669" opacity="0.9" />
-          <circle cx="1180" cy="480" r="5" fill="#2563EB" opacity="0.9" />
-          <circle cx="1320" cy="680" r="4" fill="#7C3AED" opacity="0.8" />
-          <circle cx="1020" cy="640" r="4.5" fill="#059669" opacity="0.8" />
+          {/* Luminous Pulsing Particles */}
+          <circle cx="210" cy="210" r="4" fill="#3B82F6" style={{ animation: "pulseDot 3s ease-in-out infinite" }} />
+          <circle cx="340" cy="110" r="4.5" fill="#8B5CF6" style={{ animation: "pulseDot 3.5s ease-in-out infinite 0.5s" }} />
+          <circle cx="240" cy="460" r="5" fill="#10B981" style={{ animation: "pulseDot 4s ease-in-out infinite 1s" }} />
+          <circle cx="1180" cy="180" r="5" fill="#8B5CF6" style={{ animation: "pulseDot 3.2s ease-in-out infinite 0.3s" }} />
+          <circle cx="1310" cy="320" r="4.5" fill="#10B981" style={{ animation: "pulseDot 3.8s ease-in-out infinite 0.8s" }} />
+          <circle cx="1140" cy="520" r="5" fill="#3B82F6" style={{ animation: "pulseDot 4.2s ease-in-out infinite 1.2s" }} />
         </svg>
 
-        {/* ── Left Geometric Agent Nodes ── */}
-        <AgentNode
-          x={180}
-          y={220}
-          icon="🤖"
-          name="Fin둥이"
-          role="Billing Swarm"
-          color="#2563EB"
-        />
-        <AgentNode
-          x={320}
-          y={120}
-          icon="⚡"
-          name="Support Bot"
-          role="Support Swarm"
-          color="#7C3AED"
-        />
-        <AgentNode
-          x={280}
-          y={380}
-          icon="🔍"
-          name="Analytics Lead"
-          role="Market Swarm"
-          color="#059669"
-        />
-        <AgentNode
-          x={180}
-          y={680}
-          icon="🛡️"
-          name="Security Hub"
-          role="Trust Fabric"
-          color="#0284C7"
+        {/* ── 3D Avatar Profile Agent Nodes with Natural Floating ── */}
+
+        {/* 1. 핀둥이 (Fin둥이 - Shiba Financial Lead) */}
+        <Agent3DNode
+          x={210}
+          y={210}
+          imageSrc="/assets/agent-fin.png"
+          name="핀둥이"
+          role="Billing Swarm Lead"
+          badgeColor="#2563EB"
+          animationClass="floatSlow1"
+          animDuration="6.8s"
         />
 
-        {/* ── Right Geometric Agent Nodes ── */}
-        <AgentNode
-          x={1120}
-          y={160}
+        {/* 2. 핀자 (Support Specialist) */}
+        <Agent3DNode
+          x={1180}
+          y={180}
+          imageSrc="/assets/agent-support.png"
+          name="핀자"
+          role="Support Swarm"
+          badgeColor="#8B5CF6"
+          animationClass="floatSlow2"
+          animDuration="7.4s"
+        />
+
+        {/* 3. 아름이 (Swarm Assistant / Orchestrator) */}
+        <Agent3DNode
+          x={240}
+          y={460}
+          imageSrc="/assets/agent-assistant.png"
+          name="아름이"
+          role="Swarm Orchestrator"
+          badgeColor="#10B981"
+          animationClass="floatSlow3"
+          animDuration="8.2s"
+        />
+
+        {/* 4. Secondary Node: Security Key Attestor */}
+        <GeometricSatelliteNode
+          x={340}
+          y={110}
           icon="🔑"
           name="Key Attestor"
           role="Ed25519 CA"
           color="#7C3AED"
+          animName="floatSlow2"
+          animDuration="6.2s"
         />
-        <AgentNode
-          x={1280}
-          y={280}
+
+        {/* 5. Secondary Node: Socketless Lease Worker */}
+        <GeometricSatelliteNode
+          x={1310}
+          y={320}
           icon="📥"
           name="Lease Worker"
-          role="Socketless 300s"
+          role="300s TTL Queue"
           color="#059669"
+          animName="floatSlow1"
+          animDuration="7.0s"
         />
-        <AgentNode
-          x={1180}
-          y={480}
+
+        {/* 6. Secondary Node: Mesh Primary Hub */}
+        <GeometricSatelliteNode
+          x={1140}
+          y={520}
           icon="🌐"
           name="Mesh Hub"
-          role="Cluster Primary"
+          role="Primary Fabric"
           color="#2563EB"
+          animName="floatSlow3"
+          animDuration="8.0s"
         />
-        <AgentNode
-          x={1020}
-          y={640}
+
+        {/* 7. Secondary Node: Audit Forensic Engine */}
+        <GeometricSatelliteNode
+          x={380}
+          y={680}
           icon="📊"
           name="Audit Forensic"
           role="SPEC § 11.0"
-          color="#059669"
+          color="#0284C7"
+          animName="floatSlow1"
+          animDuration="6.5s"
         />
       </div>
 
-      {/* ── Center Login Box (현재 가운데 박스 유지) ── */}
+      {/* ── Center Login Box (현재 가운데 박스 100% 유지) ── */}
       <div
         style={{
-          background: "var(--color-bg-surface)",
-          border: "1px solid var(--color-border)",
+          background: "rgba(255, 255, 255, 0.96)",
+          backdropFilter: "blur(16px)",
+          border: "1px solid rgba(226, 232, 240, 0.8)",
           borderRadius: "var(--radius-xl)",
           padding: "40px 36px",
           width: "100%",
           maxWidth: 440,
-          boxShadow: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04)",
+          boxShadow: "0 25px 50px -12px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.8) inset",
           display: "flex",
           flexDirection: "column",
           gap: 22,
@@ -228,6 +287,7 @@ export function LoginPage() {
               fontSize: "1.4rem",
               fontWeight: 900,
               marginBottom: 12,
+              boxShadow: "0 6px 16px rgba(37, 99, 235, 0.35)",
             }}
           >
             M
@@ -237,6 +297,7 @@ export function LoginPage() {
               fontSize: "1.4rem",
               fontWeight: 800,
               letterSpacing: "-0.03em",
+              color: "var(--color-text-primary)",
             }}
           >
             Agent Mesh Platform
@@ -270,6 +331,7 @@ export function LoginPage() {
             border: "none",
             cursor: "pointer",
             transition: "background 0.15s ease",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
           }}
         >
           <GitHubIcon />
@@ -367,13 +429,141 @@ export function LoginPage() {
   );
 }
 
-function AgentNode({
+/**
+ * 3D Avatar Profile Node (핀둥이, 핀자, 아름이)
+ */
+function Agent3DNode({
+  x,
+  y,
+  imageSrc,
+  name,
+  role,
+  badgeColor,
+  animationClass,
+  animDuration,
+}: {
+  x: number;
+  y: number;
+  imageSrc: string;
+  name: string;
+  role: string;
+  badgeColor: string;
+  animationClass: string;
+  animDuration: string;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${(x / 1440) * 100}%`,
+        top: `${(y / 900) * 100}%`,
+        transform: "translate(-50%, -50%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 8,
+        userSelect: "none",
+        animation: `${animationClass} ${animDuration} ease-in-out infinite`,
+        perspective: 1000,
+        zIndex: 2,
+      }}
+    >
+      {/* Avatar with Volumetric Glowing Ring */}
+      <div
+        style={{
+          position: "relative",
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          padding: 3,
+          background: `linear-gradient(135deg, ${badgeColor}, #FFFFFF)`,
+          boxShadow: `0 8px 24px ${badgeColor}35, 0 0 20px ${badgeColor}25`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: "50%",
+            overflow: "hidden",
+            background: "#FFFFFF",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <img
+            src={imageSrc}
+            alt={name}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+            onError={(e) => {
+              // Fallback to cute robot if image is missing
+              (e.target as HTMLElement).style.display = "none";
+            }}
+          />
+        </div>
+
+        {/* Live Active Dot */}
+        <span
+          style={{
+            position: "absolute",
+            bottom: 2,
+            right: 2,
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            background: "#10B981",
+            border: "2px solid #FFFFFF",
+            boxShadow: "0 0 6px #10B981",
+          }}
+        />
+      </div>
+
+      {/* Glassmorphic Node Badge */}
+      <div
+        style={{
+          background: "rgba(255, 255, 255, 0.94)",
+          backdropFilter: "blur(8px)",
+          border: `1px solid ${badgeColor}35`,
+          borderRadius: "var(--radius-full)",
+          padding: "3px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          boxShadow: "0 4px 14px rgba(15, 23, 42, 0.08)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <strong style={{ fontSize: "0.78rem", color: "var(--color-text-primary)" }}>
+          {name}
+        </strong>
+        <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", fontWeight: 500 }}>
+          · {role}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Geometric Supporting Satellite Node
+ */
+function GeometricSatelliteNode({
   x,
   y,
   icon,
   name,
   role,
   color,
+  animName,
+  animDuration,
 }: {
   x: number;
   y: number;
@@ -381,6 +571,8 @@ function AgentNode({
   name: string;
   role: string;
   color: string;
+  animName: string;
+  animDuration: string;
 }) {
   return (
     <div
@@ -394,8 +586,9 @@ function AgentNode({
         alignItems: "center",
         gap: 6,
         userSelect: "none",
+        animation: `${animName} ${animDuration} ease-in-out infinite`,
         opacity: 0.85,
-        filter: "drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08))",
+        zIndex: 2,
       }}
     >
       <div
@@ -409,7 +602,7 @@ function AgentNode({
           alignItems: "center",
           justifyContent: "center",
           fontSize: "1.2rem",
-          boxShadow: `0 0 16px ${color}25`,
+          boxShadow: `0 6px 16px ${color}25`,
         }}
       >
         {icon}
@@ -417,18 +610,19 @@ function AgentNode({
 
       <div
         style={{
-          background: "rgba(255, 255, 255, 0.92)",
-          backdropFilter: "blur(4px)",
+          background: "rgba(255, 255, 255, 0.90)",
+          backdropFilter: "blur(6px)",
           border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-full)",
           padding: "2px 8px",
           display: "flex",
           alignItems: "center",
           gap: 4,
-          fontSize: "0.7rem",
+          fontSize: "0.68rem",
           fontWeight: 700,
           color: "var(--color-text-primary)",
           whiteSpace: "nowrap",
+          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.05)",
         }}
       >
         <span
@@ -441,7 +635,7 @@ function AgentNode({
           }}
         />
         <span>{name}</span>
-        <span style={{ color: "var(--color-text-muted)", fontSize: "0.65rem", fontWeight: 500 }}>
+        <span style={{ color: "var(--color-text-muted)", fontSize: "0.62rem", fontWeight: 500 }}>
           ({role})
         </span>
       </div>
@@ -485,4 +679,5 @@ const btnPrimaryStyle: React.CSSProperties = {
   border: "none",
   cursor: "pointer",
   fontFamily: "inherit",
+  boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
 };
