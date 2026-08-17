@@ -305,6 +305,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["cross-tenant message counts once"],
   },
   {
+    id: "tenant-stats-via",
+    defect:
+      "The transport was recorded as `mesh` whatever route a message arrived on (§ 11.4), so mailbox and mesh traffic became indistinguishable in the statistics. The test asserted `via_mailbox: 0` for a long time without a single message having taken that route — a zero nobody can make non-zero says nothing about a counter.",
+    file: "packages/mailbox/src/accept.ts",
+    from: "    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, opts.via);",
+    to: '    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, "mesh");',
+    suite: "test/tenant-stats.test.ts",
+    expect: ["a mailbox send was not recorded as one"],
+  },
+  {
     id: "tenant-stats-not-atomic",
     defect:
       "The statistics row was written outside the message transaction (§ 11.4). A count that commits when the message did not is a count of something that did not happen.",

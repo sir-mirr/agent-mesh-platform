@@ -11,6 +11,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createHash, randomUUID, sign as edSign } from "node:crypto";
+import { formatRestAuthorization, restSignaturePreimage } from "@agent-mesh/contracts";
 import { callHttp, loginAsAdmin, newKeyPair, startMesh, type KeyPair, type Mesh } from "./harness";
 
 let mesh: Mesh;
@@ -86,8 +88,49 @@ describe("what the row records", () => {
   test("the transport is kept, so mailbox and mesh are distinguishable", async () => {
     const body = await stats();
     const acme = body.tenants.find((t: any) => t.tenant === "acme");
-    // These all went over /api/v1/rpc, which is mesh.
+    // Everything above went over /api/v1/rpc, which is mesh.
     expect(acme.via_mailbox).toBe(0);
+  });
+
+  test("a mailbox send is counted as one", async () => {
+    // **The half that was asserted and never produced.** The test above pinned
+    // `via_mailbox: 0` without a single message having taken that route, so the
+    // column could have been recording anything at all and still satisfied it.
+    // A zero nobody can make non-zero is not evidence about a counter.
+    const k = keys.get("ts-acme-a")!;
+    const path = "/api/v1/mailbox/out";
+    const payload = JSON.stringify({ to: "ts-acme-b", content: "by mail" });
+    const nonce = randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+    const signature = Buffer.from(
+      edSign(
+        null,
+        Buffer.from(
+          restSignaturePreimage({
+            method: "POST",
+            path,
+            kid: k.fingerprint,
+            nonce,
+            iat,
+            bodySha256: createHash("sha256").update(payload, "utf8").digest("hex"),
+          }),
+        ),
+        k.privateKey,
+      ),
+    ).toString("base64url");
+
+    const res = await fetch(`${mesh.hub.url}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: formatRestAuthorization({ kid: k.fingerprint, nonce, iat, signature }),
+      },
+      body: payload,
+    });
+    expect(res.status, `the mailbox route refused: ${res.status}`).toBe(200);
+
+    const acme = (await stats()).tenants.find((t: any) => t.tenant === "acme");
+    expect(acme.via_mailbox, "a mailbox send was not recorded as one").toBe(1);
   });
 
   test("no content and no size are exposed", async () => {
