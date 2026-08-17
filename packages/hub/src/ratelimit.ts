@@ -53,6 +53,19 @@ interface Bucket {
  */
 export class RateLimiter {
   #buckets = new Map<string, Bucket>();
+  /**
+   * Refusals since this process started.
+   *
+   * **Nothing counted them.** § 14 says a limit exists; it did not say whether
+   * one had ever fired, and an operator watching a mesh cannot tell a limit
+   * that is protecting it from one set so wide it is decoration. Both look
+   * identical from outside — no errors either way.
+   *
+   * Since start, not a window: a counter that resets is one whose zero means
+   * either 'nothing happened' or 'it just reset', and telling those apart needs
+   * a second fact nobody has. A reader takes two readings and subtracts.
+   */
+  #refusals = 0;
 
   constructor(
     readonly name: string,
@@ -80,6 +93,7 @@ export class RateLimiter {
       return { ok: true, retryAfter: 0, remaining: Math.floor(b.tokens) };
     }
     this.#buckets.set(key, b);
+    this.#refusals++;
     const deficit = cost - b.tokens;
     return {
       ok: false,
@@ -88,6 +102,23 @@ export class RateLimiter {
       // limited.
       retryAfter: Math.max(1, Math.ceil(deficit / this.config.refillPerSecond)),
       remaining: 0,
+    };
+  }
+
+  /**
+   * What an operator decides on: has this limit fired, and how hard is it set.
+   *
+   * `keys` is live buckets, which is the shape of the traffic — one key
+   * refusing repeatedly and a thousand keys refusing once are different
+   * situations behind the same refusal count.
+   */
+  stats(): { name: string; refusals: number; keys: number; capacity: number; refillPerSecond: number } {
+    return {
+      name: this.name,
+      refusals: this.#refusals,
+      keys: this.#buckets.size,
+      capacity: this.config.capacity,
+      refillPerSecond: this.config.refillPerSecond,
     };
   }
 

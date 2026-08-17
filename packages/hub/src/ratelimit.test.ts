@@ -122,3 +122,36 @@ describe("sweeping", () => {
     expect([l.take("k").ok, l.take("k").ok]).toEqual([true, true]);
   });
 });
+
+describe("what an operator can see", () => {
+  test("a refusal is counted, and an allowed spend is not", () => {
+    // **Nothing counted these.** § 14 says a limit exists; it did not say
+    // whether one had ever fired, and a limit protecting a mesh looks exactly
+    // like a limit set so wide it is decoration — no errors either way.
+    const c = at();
+    const l = new RateLimiter("t", { capacity: 2, refillPerSecond: 1 }, c.now);
+    expect(l.stats().refusals).toBe(0);
+
+    expect(l.take("k").ok).toBe(true);
+    expect(l.take("k").ok).toBe(true);
+    expect(l.stats().refusals, "an allowed spend was counted as a refusal").toBe(0);
+
+    expect(l.take("k").ok).toBe(false);
+    expect(l.take("k").ok).toBe(false);
+    expect(l.stats().refusals).toBe(2);
+  });
+
+  test("the count does not reset when the buckets are swept", () => {
+    // A counter that resets has a zero meaning either 'nothing happened' or
+    // 'it just reset', and telling those apart needs a fact nobody has.
+    const c = at();
+    const l = new RateLimiter("t", { capacity: 1, refillPerSecond: 1 }, c.now);
+    l.take("k");
+    expect(l.take("k").ok).toBe(false);
+
+    c.advance(3600);
+    expect(l.sweep(), "the bucket was not swept, so this proves nothing").toBeGreaterThan(0);
+    expect(l.stats().refusals, "sweeping forgot a refusal that did happen").toBe(1);
+    expect(l.stats().keys).toBe(0);
+  });
+});

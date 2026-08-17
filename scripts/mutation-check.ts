@@ -515,6 +515,30 @@ const MUTATIONS: Mutation[] = [
     expect: ["names exactly what the code enforces"],
   },
 
+  {
+    id: "telemetry-constant",
+    defect:
+      "A screen of constants is what this route replaces — 139 sessions, 1024 MB, 99.99% — and no typecheck or build ever objected, because a constant is perfectly well typed. The only check that separates a reported number from an invented one is whether it follows the mesh.",
+    file: "packages/http/src/main.ts",
+    from: "    keys_awaiting_decision: { waiting: keys.waiting, oldest: keys.oldest },",
+    to: "    keys_awaiting_decision: { waiting: 0, oldest: null },",
+    suite: "test/telemetry.test.ts",
+    // The test provisions a key and asserts the count moved. On an empty mesh
+    // every field here is legitimately zero, so asserting on a fresh mesh alone
+    // would pass against a hardcoded response.
+    expect: ["provisioning a key did not move the count"],
+  },
+  {
+    id: "telemetry-limits-asked",
+    defect:
+      "The rate-limit buckets live in the hub process and nowhere else, so this route asks rather than computes. Answering from here — with anything, including an empty list — reports on a process it cannot see.",
+    file: "packages/http/src/main.ts",
+    from: "    if (res.ok) limiters = ((await res.json()) as { limiters: unknown }).limiters",
+    to: "    if (res.ok) limiters = []",
+    suite: "test/telemetry.test.ts",
+    expect: ["the limits come from the hub"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

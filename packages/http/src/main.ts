@@ -51,7 +51,7 @@ import {
   SCOPE_TENANT,
   type Capability,
 } from '@agent-mesh/contracts'
-import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
+import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestBase } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
@@ -1796,6 +1796,98 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * the recipient at accept time and does not change afterwards, so two reads a
  * minute apart differ only by what arrived between them.
  */
+/**
+ * What an operator does something about (SPEC § 14, § 10.2, § 8.10.1).
+ *
+ * **Not CPU, RSS, heap or event-loop lag**, which the requirement asked for and
+ * which do not survive the question *what does an operator do differently after
+ * reading this?* There is one hub process by design and no autoscaler here, so
+ * `RSS: 412MB` on a mesh nobody can scale horizontally is true and acted on by
+ * nobody. Taking those readings from inside the process being measured also has
+ * a specific weakness: a hub too sick to answer reports nothing, and nothing is
+ * what a healthy idle hub reports too. Whatever supervises the process is where
+ * they belong. Decision D-1.
+ *
+ * Every field below has an action attached — approve the key, chase the lane,
+ * widen the limit, look at why nothing is moving.
+ *
+ * ## Four, not six
+ *
+ * The proposal this comes from listed six and said all six had "data already
+ * stored". Two do not, and saying so here is cheaper than a screen that reports
+ * zero for them:
+ *
+ *   - **signature refusals, by reason** — § 8.1 refuses them and calls `log()`.
+ *     Nothing writes them anywhere queryable.
+ *   - **egress refusals, by pair** — § 12 the same: `log()` and an RPC error.
+ *
+ * Both live in process stdout and nowhere else. Adding a write path is not
+ * free — a signature refusal is the one event an unauthenticated caller can
+ * produce at will, so recording each one hands them the audit store as a disk
+ * filler — and that is a design decision rather than an omission to paper over.
+ * Reporting `0` for them would be the worse answer: a zero nobody can make
+ * non-zero says nothing about the thing it names.
+ */
+app.get('/api/v1/admin/telemetry', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
+  if (typeof actor !== 'string') return actor
+
+  const hours = Math.min(Math.max(Number(c.req.query('hours') ?? 1) || 1, 1), 24 * 7)
+  const hub = getHubDb()
+
+  // Somebody is waiting on an operator. Oldest first, because the oldest is
+  // the one that has been waiting.
+  const keys = agentsDb().prepare(
+    `SELECT count(*) AS waiting, min(proposed_at) AS oldest
+       FROM agent_keys WHERE status = 'pending'`,
+  ).get() as { waiting: number; oldest: string | null }
+
+  // A participant has stopped draining. Per identity, so an operator chases a
+  // lane rather than a total.
+  const lanes = hub.prepare(
+    `SELECT to_agent AS identity, count(*) AS pending, min(ts) AS oldest
+       FROM messages WHERE status = 'pending'
+      GROUP BY to_agent ORDER BY oldest ASC LIMIT 10`,
+  ).all() as Array<{ identity: string; pending: number; oldest: string }>
+
+  // The mesh is carrying something, or it is not. Counted from message_stats
+  // for the reason § 11.4 gives: it is written at accept time and does not
+  // change afterwards.
+  const accepted = hub.prepare(
+    `SELECT count(*) AS accepted FROM message_stats WHERE ts >= datetime('now', ?)`,
+  ).get(`-${hours} hours`) as { accepted: number }
+
+  // A limit is actually firing. The buckets live in the hub process and
+  // nowhere else, so this is asked rather than computed — the same reasoning
+  // that put provenance on /api/v1/capabilities instead of deriving it here.
+  let limiters: unknown = null
+  let limitersError: string | null = null
+  try {
+    const res = await fetch(`${hubRestBase()}/api/v1/limits`, { signal: AbortSignal.timeout(2000) })
+    if (res.ok) limiters = ((await res.json()) as { limiters: unknown }).limiters
+    else limitersError = `hub answered ${res.status}`
+  } catch (err) {
+    // **Named, not silently zero.** "The hub did not answer" and "no limit has
+    // fired" are different facts, and a screen showing 0 for both is telling an
+    // operator the mesh is calm while it is unreachable.
+    limitersError = err instanceof Error ? err.message : String(err)
+  }
+
+  return c.json({
+    ok: true,
+    hours,
+    keys_awaiting_decision: { waiting: keys.waiting, oldest: keys.oldest },
+    lanes_not_draining: lanes,
+    messages_accepted: accepted.accepted,
+    rate_limits: limiters,
+    rate_limits_error: limitersError,
+    not_measured: {
+      signature_refusals: 'refused and logged to stdout only (§ 8.1); no write path exists',
+      egress_refusals: 'refused and logged to stdout only (§ 12); no write path exists',
+    },
+  })
+})
+
 app.get('/api/v1/admin/tenants', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.TENANT_READ_STATS)
   if (typeof actor !== 'string') return actor

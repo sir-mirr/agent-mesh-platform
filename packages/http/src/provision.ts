@@ -24,7 +24,7 @@ const HUB_WS_URL =
   'ws://127.0.0.1:3100/ws'
 
 /** `ws://host:port/ws` → `http://host:port`. The hub serves both on one port. */
-function restBase(): string {
+export function restBase(): string {
   const explicit = process.env.AGENT_MESH_HUB_REST_URL?.trim()
   if (explicit) return explicit.replace(/\/+$/, '')
   try {

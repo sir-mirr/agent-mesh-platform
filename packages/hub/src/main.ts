@@ -119,6 +119,31 @@ const server = Bun.serve<SocketData, never>({
       return undefined as any;
     }
 
+    /**
+     * What the limits have actually done (§ 14).
+     *
+     * **A limit nobody can see fire is indistinguishable from no limit.** § 14
+     * states the buckets exist; nothing said whether one had ever refused a
+     * caller, so an operator could not tell a limit protecting the mesh from
+     * one set so wide it is decoration — both are silent.
+     *
+     * Here rather than on the http server because the buckets live in this
+     * process and nowhere else. http reads it the same way it reads
+     * `/api/v1/agents`: as a hub client, over the address a deployment gives
+     * it.
+     *
+     * Unauthenticated, like `/health` beside it, and it carries no identity —
+     * a refusal count and a bucket count, with the configuration that produced
+     * them. Anything keyed on *who* was refused belongs in the audit trail,
+     * where § 11 governs who may read it.
+     */
+    if (url.pathname === "/api/v1/limits") {
+      return new Response(
+        JSON.stringify({ ok: true, limiters: ALL_LIMITERS.map((l) => l.stats()) }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+
     // Simple health / info endpoint
     if (url.pathname === "/" || url.pathname === "/health") {
       const agentCount = onlineAgents.size;

@@ -1664,6 +1664,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/tenants`           | JWT\*  | `200`   | What each tenant received (§ 11.4). Gated on `tenant.read.stats`. |
+| GET    | `/api/v1/admin/telemetry`         | JWT\*  | `200`   | What an operator acts on: keys awaiting a decision, lanes not draining, messages accepted, and whether a limit has fired (§ 14). Gated on `audit.read.metadata`. |
 | GET    | `/api/v1/admin/grants`            | JWT\*  | `200`   | Who holds which capability (§ 11). Gated on `role.grant`. |
 | POST   | `/api/v1/admin/grants`            | JWT\*  | `201`   | Grant a capability to a subject (§ 11). |
 | DELETE | `/api/v1/admin/grants`            | JWT\*  | `200`   | Revoke one. Absent is not an error (§ 11). |
