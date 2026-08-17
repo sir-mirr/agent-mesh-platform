@@ -14,6 +14,7 @@ interface AuditEvent {
   timestamp: string;
   sender: string;
   recipient: string;
+  sentBy: string | null;
   contentLength: number;
   rawContent: string;
   signatureVerified: boolean | null;
@@ -54,6 +55,11 @@ export function AuditLogsPage() {
       render: (item: AuditEvent) => (
         <span style={{ fontSize: "0.82rem" }}>
           <code>{item.sender}</code> → <code>{item.recipient}</code>
+          {item.sentBy && item.sentBy !== item.sender && (
+            <span style={{ marginLeft: 6, fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+              {" "}(carried by <code>{item.sentBy}</code>)
+            </span>
+          )}
         </span>
       ),
     },

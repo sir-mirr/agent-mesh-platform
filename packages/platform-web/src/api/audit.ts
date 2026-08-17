@@ -5,6 +5,7 @@ export interface AuditEventItem {
   timestamp: string;
   sender: string;
   recipient: string;
+  sentBy: string | null;
   contentLength: number;
   rawContent: string;
   signatureVerified: boolean | null;
@@ -19,6 +20,7 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     const msg = payload.message || payload;
     const sender = msg.from || msg.sender || item.sender || item.identity || item.producer_id || "unknown";
     const recipient = msg.to || msg.recipient || item.recipient || item.target || "unknown";
+    const sentBy = msg.sent_by || msg.carrier || item.carrier || (item.identity && item.identity !== sender ? item.identity : null);
     const content = typeof msg.content === "string" ? msg.content : (typeof payload.content === "string" ? payload.content : (typeof item.content === "string" ? item.content : (payload ? JSON.stringify(payload) : "[content withheld]")));
     const contentLength = item.content_length ?? (typeof content === "string" ? content.length : 0);
     const timestamp = item.occurred_at || item.stored_at || item.timestamp || item.ts || "—";
@@ -44,6 +46,7 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       timestamp,
       sender,
       recipient,
+      sentBy,
       contentLength,
       rawContent: content,
       signatureVerified,
