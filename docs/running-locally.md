@@ -344,6 +344,32 @@ git worktree add /tmp/fe origin/fe-admin-requirements
 cd /tmp/fe && bun install --frozen-lockfile
 ```
 
+**This install reaches `github.com`, and the other seven sections do not.**
+`platform-web` depends on the § 11 capability vocabulary rather than restating
+it:
+
+```json
+"@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.25.0"
+```
+
+It resolves today because that repository is public — checked, not assumed:
+
+```bash
+gh repo view sir-mirr/agent-mesh-contracts --json isPrivate    # false
+curl -so /dev/null -w '%{http_code}\n' \
+  https://codeload.github.com/sir-mirr/agent-mesh-contracts/tar.gz/refs/tags/v0.25.0   # 200
+```
+
+Which is worth writing down precisely because nothing here would say so if it
+changed. A private repository, or a machine offline, stops this section at
+`bun install` with a resolution error, and every symptom after that point —
+no dev server, no admin screens — has the same one cause. Confirm the
+dependency is actually there rather than inferring it from the app loading:
+
+```bash
+bun pm ls | grep contracts
+```
+
 ```bash
 cd packages/platform-web
 API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT" bun run dev
