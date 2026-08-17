@@ -93,7 +93,10 @@ the moment either side reconnects.
 1. **`packages/mailbox` imports nothing from `packages/hub`.** Enforced, not
    intended — a dependency that only a convention forbids is a dependency.
 2. **The mailbox answers with the hub stopped.** Accepting and storing mail is
-   the case it exists for.
+   the case it exists for. **Not yet true** — see the decision below; the
+   mailbox shares the hub's process. Listed here because this is the list of
+   what has to hold, and leaving it off would make the list agree with the
+   implementation by shortening the requirements.
 3. **Delivery is at-least-once and unchanged** (§ 8.10.1). Moving the code does
    not move the lease, the acknowledgement or the redelivery.
 4. **The hub pulls; the mailbox never pushes.** The mailbox has no address to
