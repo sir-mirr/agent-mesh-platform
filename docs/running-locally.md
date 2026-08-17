@@ -271,6 +271,32 @@ HTTP 201  {"ok":true,"identity":"self-reminder","type":"service",...,"action":"i
 No key in the response, none in the database (`SELECT ... FROM agent_keys` is
 empty), and it registers anyway.
 
+**Confirm it from outside, because a log is the process talking about itself.**
+Every other step here ends with something a reader can query; this one ended
+with a line printed by the thing being checked. The hub counts who is actually
+connected:
+
+```bash
+curl -s "http://127.0.0.1:$HUB_PORT/health" | jq .online_agents
+```
+
+```
+0     before anything connects
+0     after provisioning — a registered identity is not a connected one
+1     after self-reminder starts
+```
+
+**The middle line is the one that matters.** Provisioning answers `201` and
+moves nothing, so a reader who stopped there would have confirmed the identity
+exists, not that anything is running as it.
+
+**`online_agents`, not `agent_count`.** The http server's health uses the second
+name for a different thing, and asking the hub for it comes back empty — which
+reads as *the hub does not report this* rather than *you asked for the wrong
+field*. That is how the gap was found: `agent-mesh-local-pm` walked this
+document as a first reader, could not confirm § 7 from outside, and said so
+(mail #573) — having looked for `agent_count`.
+
 **`service` does not require one.** § 10.2 gates keys, and which types carry a
 key is a property of the type:
 
