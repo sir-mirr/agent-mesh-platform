@@ -30,7 +30,37 @@
 
 import { $ } from "bun";
 
-const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+const SESSION_ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+
+/**
+ * The worktree holding `main`, which is not necessarily the session's.
+ *
+ * Two agents share this repository through separate worktrees, so
+ * `CLAUDE_PROJECT_DIR` is whichever one the session started in. Reading
+ * `docs/deferred.md` from the other one reports items that were closed on
+ * `main` hours ago and unpushed counts belonging to somebody else's branch —
+ * which is exactly what the first firing of this hook did.
+ *
+ * Asking git is better than hard-coding a sibling path: the answer stays right
+ * when the layout changes, and there is no second place recording where `main`
+ * lives.
+ */
+async function mainWorktree(): Promise<string> {
+  try {
+    const out = await $`git -C ${SESSION_ROOT} worktree list --porcelain`.quiet().text();
+    let path = "";
+    for (const line of out.split("\n")) {
+      if (line.startsWith("worktree ")) path = line.slice(9).trim();
+      else if (line.trim() === "branch refs/heads/main" && path) return path;
+    }
+  } catch {
+    // Not a repo, or no worktree on main — the session's own tree is the only
+    // honest answer left.
+  }
+  return SESSION_ROOT;
+}
+
+const ROOT = await mainWorktree();
 
 const read = async (path: string): Promise<string> => {
   try {
