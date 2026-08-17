@@ -71,6 +71,24 @@ describe("granting and revoking", () => {
     expect(after.grants.length).toBe(0);
   });
 
+  test("the author is the session, not what the caller claims", async () => {
+    // **Send the claim.** Without it, a route reading `grantedBy` from the body
+    // behaves identically and the guard is a no-op — which is exactly what the
+    // first version of this file did, and the mutation went uncaught.
+    //
+    // A grant whose author is self-reported records whatever the author wanted
+    // recorded, and then the trail agrees with anybody who can write to it.
+    await call("POST", "/api/v1/admin/grants", {
+      subject: "author-probe",
+      capability: "key.approve",
+      grantedBy: "somebody-else",
+    });
+
+    const body = await (await call("GET", "/api/v1/admin/grants?subject=author-probe")).json();
+    const row = body.grants.find((g: any) => g.capability === "key.approve");
+    expect(row?.granted_by, "the caller's claim was recorded as the author").toBe("admin");
+  });
+
   test("revoking what is not there is not an error", async () => {
     // An operator revoking twice, or racing another, wanted the same end state
     // and has it.
