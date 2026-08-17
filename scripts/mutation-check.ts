@@ -568,6 +568,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["the total did not follow a new lane"],
   },
 
+  {
+    id: "audit-digest-recomputed",
+    defect:
+      "The audit route returned `payload_digest` beside the row it describes and never compared them. A row edited afterwards carries a digest edited with it, or a mismatch nobody evaluates — and an audit store whose rows can change without detection is a log.",
+    file: "packages/http/src/audit-query.ts",
+    from: "createHash('sha256').update(row.payload, 'utf8').digest('hex') === row.payload_digest,",
+    to: "true,",
+    suite: "test/audit-integrity.test.ts",
+    // The test edits the stored bytes behind the API and expects the route to
+    // notice. Asserting `true` on a fresh mesh passes against a constant.
+    expect: ["the payload changed and the route still said it matched"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

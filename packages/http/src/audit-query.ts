@@ -19,6 +19,7 @@
  * rows arrive after the cursor, where a reader will reach them in order.
  */
 
+import { createHash } from 'node:crypto'
 import { openAt, stateDir, STORE_FILES } from '@agent-mesh/store'
 import { join } from 'node:path'
 import type { Database } from 'bun:sqlite'
@@ -160,8 +161,31 @@ function shape(row: EventRow, blobs: unknown[], withContent: boolean): Record<st
     recorded_by: { kind: row.recorded_by_kind, id: row.recorded_by_id },
     payload,
     payload_digest: row.payload_digest,
+    /**
+     * **Recomputed here, over the bytes actually stored.**
+     *
+     * The digest was written at ingest and then read back beside the row it
+     * describes, which proves nothing on its own — a row edited afterwards
+     * carries a digest edited with it, or a digest that no longer matches and
+     * that nobody compares. An audit store whose rows can be changed without
+     * detection is a log.
+     *
+     * Needs no key, so it always answers. That is why it is here and a
+     * signature re-check is not: a superseded key's row is deleted
+     * (`keys.ts` DELETE FROM agent_keys), so an event signed by a rotated key
+     * can never be verified again, and a column that says `unverifiable` for
+     * key rotation and for tampering alike distinguishes nothing.
+     */
+    integrity: {
+      digest_matches: createHash('sha256').update(row.payload, 'utf8').digest('hex') === row.payload_digest,
+    },
     // Returned so a reader can check the signature themselves. That is the
     // point of keeping it: an audit record nobody can verify is a log.
+    //
+    // **Present is not verified.** A screen must not read this as proof: the
+    // hub verified it at ingest and this route does not re-verify, because it
+    // cannot always — see `integrity` above. `attestation !== null` means the
+    // event arrived signed, which is a measured fact and a different one.
     attestation: row.attestation ? JSON.parse(row.attestation) : null,
     stored_at: row.stored_at,
     attachments: blobs,
