@@ -1361,6 +1361,51 @@ row per request answers it while growing without bound.
 stores one spelling while observing the other refuses every agent it has.
 Ports are stripped: they change per connection.
 
+#### 8.11.2. Refusing a dormant send from an unseen place
+
+A hub MAY refuse `mesh.send` with `-32017 SOURCE_CHANGED` when **all** of:
+
+1. `sent_by == from` — the sender signed for itself;
+2. it has not sent for longer than `capabilities.mailbox.dormancy_seconds`;
+3. the observed source reduces to a group this identity has not been seen at.
+
+**What it catches, stated narrowly:** a key that went quiet and came back from
+a different network. Not a thief on the same network, not one who kept the key
+busy, and nothing about what the sender *claims* — the address is the hub's
+observation, which is the only reason it is worth checking at all.
+
+Dormancy is the trigger because it is when exfiltration goes unnoticed. An
+identity sending every few minutes has an owner who would see a second sender.
+
+**Condition 1 is not an optimisation.** A proxied send is observed at the
+*proxy's* address, which is identical for every send it carries — comparing it
+would refuse on the proxy's history and never on the sender's. It becomes
+meaningful again when `sent_by` names a specific gateway.
+
+**Comparison is by group, not by address.** Granularity is a false-positive
+budget: `exact` catches the most and fires on every DHCP renewal and every
+cloud instance restart, and *a control that cries wolf gets switched off*, so
+the strictest setting is routinely the weakest in practice. IPv4 SHOULD group
+to `/24` and IPv6 to `/48`. An address that parses as neither MUST be compared
+whole — reducing an unrecognised string would make two different unknowns
+compare equal, and **"we could not tell" must never become "the same"**.
+
+A hub MUST NOT refuse when it has no observation, when the identity has never
+sent, or when it has no recorded source: none of those is evidence of a move,
+and refusing would make this a barrier to onboarding rather than to theft.
+
+`-32017` is **permanent**. A retry from the same network fails identically;
+classing it transient makes a lane loop against a refusal only an operator can
+lift.
+
+**Receiving is never gated.** A lane that cannot receive cannot be told why it
+is blocked.
+
+`dormancy_seconds` is a deployment setting with **no derivation**, and the
+contract does not claim one. `0` disables the refusal; § 8.11's recording
+continues regardless, so a deployment that turns this off still has the
+history.
+
 #### 8.11.1. Behind a proxy
 
 `GET /api/v1/capabilities` MUST report `surface.observed_source`:

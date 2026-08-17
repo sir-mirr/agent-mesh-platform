@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { MAILBOX_ERROR } from "@agent-mesh/contracts";
-import { entitlement } from "@agent-mesh/store";
+import { entitlement, sources } from "@agent-mesh/store";
 
 import {
   agentsDb,
@@ -26,6 +26,7 @@ import {
   rpcResult,
 } from "../jsonrpc";
 import { log } from "../log";
+import { checkDormantSource } from "../dormancy";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
@@ -33,6 +34,18 @@ import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 const SEND_CONFLICT = MAILBOX_ERROR.SEND_CONFLICT;
 
 /** The sender as it will be recorded, for the idempotency digest. */
+/**
+ * The address this caller was observed at (§ 8.11).
+ *
+ * A lane carries it on the socket from the upgrade, where the headers still
+ * existed. A § 8.10 caller has no socket, so `dispatchHttp` puts it on the
+ * stand-in it registers for the life of the call. One accessor so a new
+ * transport cannot quietly skip the check by not setting it.
+ */
+function observedOf(ws: any): string | null {
+  return (ws?.data?.observed ?? ws?.observed ?? null) as string | null;
+}
+
 function effectiveSenderPreview(params: Record<string, any>, fallback: string): string {
   return params.from && typeof params.from === "string" ? params.from : fallback;
 }
@@ -118,6 +131,18 @@ export function handleSend(
   const effectiveSender = (params.from && typeof params.from === "string") ? params.from : senderIdentity;
   const proxied = effectiveSender !== senderIdentity;
 
+  // § 8.11.2, before the entitlement check and before anything is written: a
+  // refused send must not stamp the dormancy clock, or a rejected attempt
+  // would reset the very silence being measured.
+  //
+  // The address rides on the socket for a lane and is resolved per request for
+  // § 8.10; `observedOf` reads whichever applies.
+  const dormancy = checkDormantSource(agentsDb, effectiveSender, senderIdentity, observedOf(ws));
+  if (dormancy.refusal) {
+    log(`refused: ${effectiveSender} sent after dormancy from an unseen network`);
+    return rpcError(id, dormancy.refusal.code, dormancy.refusal.message, dormancy.refusal.data);
+  }
+
   // SPEC § 8.2. Two conditions, checked against the database rather than
   // against what the socket claimed at connect: an operator who withdraws the
   // grant, or tears the subject down, means it from that moment rather than
@@ -151,6 +176,9 @@ export function handleSend(
   // message a retry would duplicate.
   const persist = db.transaction(() => {
     stmtInsertMessage.run(msgId, effectiveSender, to, senderIdentity, String(content), replyTo, status);
+    // § 8.11.2. Stamped only where a send was accepted, so the dormancy clock
+    // measures silence rather than attempts.
+    sources.markSend(agentsDb, effectiveSender);
     if (idempotencyDigest !== null && typeof clientMessageId === "string") {
       stmtInsertIdempotency.run(senderIdentity, clientMessageId, idempotencyDigest, msgId, status);
     }

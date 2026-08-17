@@ -202,6 +202,16 @@ export function migrate(db: Database): void {
       ON agent_sources(identity, last_seen DESC);
   `);
 
+  // When this identity last *sent* (SPEC § 8.11.2). Its own column rather than
+  // `MAX(ts) FROM messages`: § 15.6 rotates that table, so an identity whose
+  // sends aged out would read as never having sent — indistinguishable from
+  // dormant, and challenged for ever.
+  for (const [column, type] of [["last_send_at", "DATETIME"]] as const) {
+    const has = (db.prepare(`PRAGMA table_info(agents)`).all() as Array<{ name: string }>)
+      .some((c) => c.name === column);
+    if (!has) db.exec(`ALTER TABLE agents ADD COLUMN ${column} ${type}`);
+  }
+
   // Upload grants (SPEC § 8.9.2, § 9.1). Here rather than in `audit.db`
   // because the http server needs them to authorise a PUT, and it holds this
   // file read-write already for key approval — an upload must not require it

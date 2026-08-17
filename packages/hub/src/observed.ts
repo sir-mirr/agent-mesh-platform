@@ -129,3 +129,40 @@ export function observedSource(
   }
   return null;
 }
+
+/**
+ * The part of an address that counts as "the same place" (SPEC § 8.11.2).
+ *
+ * **Granularity is a false-positive budget, not a strictness dial.** `exact`
+ * catches the most and fires on every DHCP renewal and every cloud instance
+ * restart; a control that cries wolf gets switched off, so the strictest
+ * setting is routinely the weakest in practice. `prefix` costs arithmetic and
+ * absorbs the churn that has no security meaning.
+ *
+ * IPv4 is grouped to /24 and IPv6 to /48 — the sizes an operator is actually
+ * assigned, so "the same network" means what a network engineer would mean.
+ *
+ * An address that parses as neither is returned unchanged. Reducing an
+ * unrecognised string to something coarser would make two different unknowns
+ * compare equal, and "we could not tell" must never become "the same".
+ */
+export function prefixOf(address: string | null): string | null {
+  const a = normalizeAddress(address);
+  if (!a) return null;
+
+  const v4 = a.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
+  if (v4) return `${v4[1]}.${v4[2]}.${v4[3]}.0/24`;
+
+  if (a.includes(":")) {
+    // /48 is three groups. `::` is expanded only as far as that needs.
+    const [head] = a.split("::", 1);
+    const groups = (head ?? "").split(":").filter(Boolean);
+    if (groups.length >= 3) return `${groups.slice(0, 3).join(":")}::/48`;
+    // Fewer than three before a `::` means the elided run covers them, so the
+    // leading groups are zeros.
+    const padded = [...groups, "0", "0", "0"].slice(0, 3);
+    return `${padded.join(":")}::/48`;
+  }
+
+  return a;
+}
