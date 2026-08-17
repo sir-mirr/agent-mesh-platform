@@ -1,10 +1,16 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // `..` for the same reason `scripts/tsconfig.json` uses it: a project that
+    // imports a file outside its own directory compiles that file alongside its
+    // own, and `noEmit` in the base config rules out project references.
+    // `mutation-verdict.ts` is the one such import — the predicate that turns a
+    // mutation run into a verdict, which needed a test of its own.
+    "rootDir": "..",
     "outDir": "dist"
   },
   "include": [
-    "**/*.ts"
+    "**/*.ts",
+    "../scripts/mutation-verdict.ts"
   ]
 }

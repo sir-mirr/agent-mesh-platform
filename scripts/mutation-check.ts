@@ -98,6 +98,13 @@ interface Mutation {
   expectFailure?: FailureKind;
 }
 
+// The verdict predicate lives in its own module because importing a script
+// runs it: this one refuses on a dirty tree and exits, so a test that imported
+// it to check `readVerdict` never got as far as a test.
+import { readVerdict, type Verdict } from "./mutation-verdict";
+
+export { readVerdict, type Verdict };
+
 /** Why an entry was not counted as caught. */
 type FailureKind = "no-match" | "not-caught" | "inconclusive";
 
@@ -1002,34 +1009,16 @@ for (const m of selected) {
   // `0 pass` means two different things and the count cannot tell them apart —
   // which is the ambiguity this whole script exists to hunt, sitting in the
   // script. What separates them is *why* nothing passed:
-  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
-  const failed = Number(/(\d+) fail/.exec(output)?.[1] ?? "0");
-  const expected = m.expect.every((e) => output.includes(e));
-  // Bun says `a beforeEach/afterEach hook timed out` when a suite dies before
-  // its tests. That is how `send-idempotent-retry` came back `0 pass / 1 fail`
-  // from a run where the mesh never came up — a verdict about a guard the run
-  // never reached.
-  const hookDied = /\bhook (timed out|failed|threw)/i.test(output);
-  //
-  // With nothing passing and nothing failing there was no run at all; with a
-  // dead hook the failure is the harness's. And with nothing passing and the
-  // expected message absent, a silent guard and a broken suite look identical
-  // from here, so neither verdict is available.
-  const inconclusive =
-    (passed === 0 && failed === 0) || hookDied || (passed === 0 && !expected);
-  if (inconclusive) {
-    console.error(`✗ ${m.id}: no verdict from ${m.suite} — ${
-      hookDied ? "a hook died, so the guard was never reached"
-        : passed === 0 && failed === 0 ? "nothing ran"
-        : "nothing passed and the expected message is absent"
-    }`);
+  const verdict = readVerdict(output, m.expect, run.exitCode);
+  if (verdict.kind === "inconclusive") {
+    console.error(`✗ ${m.id}: no verdict from ${m.suite} — ${verdict.why}`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");
     continue;
   }
 
-  const caught = run.exitCode !== 0 && expected;
+  const caught = verdict.kind === "caught";
   if (caught) {
     console.log(`✓ ${m.id}`);
   } else {
