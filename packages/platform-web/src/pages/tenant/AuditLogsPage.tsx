@@ -17,6 +17,7 @@ interface AuditEvent {
   contentLength: number;
   rawContent: string;
   signatureVerified: boolean | null;
+  signatureInfo: string;
 }
 
 import { fetchAuditEvents } from "@/api/audit.ts";
@@ -101,16 +102,24 @@ export function AuditLogsPage() {
       },
     },
     {
-      key: "signatureVerified",
+      key: "signatureInfo",
       header: t("audit.col.signature", "서명 상태"),
       render: (item: AuditEvent) => {
         if (item.signatureVerified === true) {
-          return <StatusBadge label="VERIFIED" status="success" size="sm" />;
+          return (
+            <span style={{ fontSize: "0.8rem", color: "var(--color-success)", fontWeight: 600 }}>
+              {item.signatureInfo}
+            </span>
+          );
         }
         if (item.signatureVerified === false) {
-          return <StatusBadge label="FAILED" status="danger" size="sm" />;
+          return (
+            <span style={{ fontSize: "0.8rem", color: "var(--color-danger)", fontWeight: 600 }}>
+              {item.signatureInfo}
+            </span>
+          );
         }
-        return <span style={{ color: "var(--color-text-muted)" }}>—</span>;
+        return <span style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>{item.signatureInfo || "미서명 (Unsigned)"}</span>;
       },
     },
   ];

@@ -100,6 +100,33 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       db.close();
     } catch {}
 
+    // 5. Seed rich audit events in audit.db (D-30, SC-RENDER-13)
+    try {
+      const auditDbPath = path.join(mesh.stateDir, "audit.db");
+      const auditDb = new Database(auditDbPath);
+      auditDb.prepare(`
+        INSERT INTO audit_events (
+          event_id, schema_version, event_type, occurred_at, identity, recorded_by_kind, payload, payload_digest, stored_at
+        ) VALUES
+        ('evt_test_01', 1, 'mesh.message.sent', '2026-08-17T14:10:00.000Z', 'agent-alpha', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security"}}', 'digest_01', '2026-08-17T14:10:00.000Z'),
+        ('evt_test_02', 1, 'mesh.message.delivered', '2026-08-17T14:10:01.000Z', 'admin', 'hub', '{"message":{"from":"agent-alpha","to":"admin","content":"hello security"}}', 'digest_02', '2026-08-17T14:10:01.000Z'),
+        ('evt_test_03', 1, 'mesh.message.sent', '2026-08-17T14:15:00.000Z', 'admin', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_03', '2026-08-17T14:15:00.000Z'),
+        ('evt_test_04', 1, 'mesh.message.delivered', '2026-08-17T14:15:01.000Z', 'agent-alpha', 'hub', '{"message":{"from":"admin","to":"agent-alpha","content":"ack"}}', 'digest_04', '2026-08-17T14:15:01.000Z')
+      `).run();
+      auditDb.close();
+    } catch {}
+
+    // 6. Seed agent-alpha into agent-mesh.db agent_registry for multi-agent console
+    try {
+      const httpDbPath = path.join(mesh.stateDir, "agent-mesh.db");
+      const httpDb = new Database(httpDbPath);
+      httpDb.prepare(`
+        INSERT OR IGNORE INTO agent_registry (id, name, description, channel, type, approved)
+        VALUES ('agent-alpha', 'Agent Alpha (Claude)', 'High performance reasoning agent', 'hub', 'ai-claude', 1)
+      `).run();
+      httpDb.close();
+    } catch {}
+
     const viteBin = path.resolve(import.meta.dir, "../packages/platform-web/node_modules/vite/bin/vite.js");
     const webRoot = path.resolve(import.meta.dir, "../packages/platform-web");
 
@@ -197,79 +224,76 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     page.on("pageerror", (err) => errors.push(err.message));
 
     await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
-    const rootText = await page.textContent("#root");
-    expect(rootText).not.toBeNull();
-    expect(rootText!.length).toBeGreaterThan(50);
     expect(await page.locator("input").count()).toBeGreaterThanOrEqual(1);
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-02 / SC-RENDER-02: Dashboard Page Live Render with Live KPI values
-  it("[SC-RENDER-02] renders /dashboard with role-specific KPI cards and zero page errors", async () => {
+  // SCR-02 / SC-RENDER-02: Dashboard Page Live Render with Live KPI values (D-31)
+  it("[SC-RENDER-02] renders /dashboard with live agent KPI cards and zero page errors", async () => {
     const { page, context, errors } = await createAuthedPage("/dashboard");
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     expect(mainText).not.toContain("null%");
     expect(mainText).not.toContain("undefined");
     expect(mainText).not.toContain("NaN");
+    // Verify targeted live agent count from /api/v1/agents
+    expect(mainText).toContain("전체 에이전트 노드");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-03 / SC-RENDER-03: Agents List Page Live Render with Table Rows > 0
+  // SCR-03 / SC-RENDER-03: Agents List Page Live Render with Table Rows >= 2 (D-31)
   it("[SC-RENDER-03] renders /creator with real agent table rows", async () => {
     const { page, context, errors } = await createAuthedPage("/creator");
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThan(0);
+    expect(rowCount).toBeGreaterThanOrEqual(2);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("agent-alpha");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-04 / SC-RENDER-04: Groups Management Page Live Render with Group Cards > 0
+  // SCR-04 / SC-RENDER-04: Groups Management Page Live Render with Group Cards > 0 (D-31)
   it("[SC-RENDER-04] renders /creator/groups with groups container and group elements", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/groups");
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     expect(mainText).toContain("engineering");
+    expect(mainText).toContain("security");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-05 / SC-RENDER-05: Dynamic Topology Page Live Render with Rendered Nodes
+  // SCR-05 / SC-RENDER-05: Dynamic Topology Page Live Render with Rendered Nodes (D-31)
   it("[SC-RENDER-05] renders /creator/topology with SVG canvas container and nodes", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/topology");
     const svgCount = await page.locator("svg").count();
     expect(svgCount).toBeGreaterThanOrEqual(1);
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(50);
+    expect(mainText).toContain("engineering");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-06 / SC-RENDER-06: Message Dispatch Playground Live Render with Agent Options
+  // SCR-06 / SC-RENDER-06: Message Dispatch Playground Live Render with Agent Options (D-31)
   it("[SC-RENDER-06] renders /creator/playground with dispatch console and select options", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/playground");
+    const selectOptions = await page.locator("select option").count();
+    expect(selectOptions).toBeGreaterThanOrEqual(2);
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
-    const selectCount = await page.locator("select").count();
-    expect(selectCount).toBeGreaterThanOrEqual(1);
+    expect(mainText).toContain("agent-alpha");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-07 / SC-RENDER-07: Lease Queue Monitor Page Live Render
+  // SCR-07 / SC-RENDER-07: Lease Queue Monitor Page Live Render (D-31)
   it("[SC-RENDER-07] renders /creator/lease-queue with queue monitor", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/lease-queue");
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
+    expect(await page.locator("table, .card, [role='region']").count()).toBeGreaterThanOrEqual(1);
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-08 / SC-RENDER-08: Agent Registration Page Live Render
+  // SCR-08 / SC-RENDER-08: Agent Registration Page Live Render (D-31)
   it("[SC-RENDER-08] renders /creator/register with registration form inputs", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/register");
     const inputs = await page.locator("input, textarea").count();
@@ -278,11 +302,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SCR-09 / SC-RENDER-09: Platform Infrastructure Overview Live Render with Server Nodes Table
+  // SCR-09 / SC-RENDER-09: Platform Infrastructure Overview Live Render with Server Nodes Table (D-31)
   it("[SC-RENDER-09] renders /platform with node health status and matching port", async () => {
     const { page, context, errors } = await createAuthedPage("/platform");
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     expect(mainText).not.toContain("null%");
     expect(mainText).toContain("HEALTHY");
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
@@ -291,64 +314,64 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SCR-10 / SC-RENDER-10: Node Telemetry Page Live Render
+  // SCR-10 / SC-RENDER-10: Node Telemetry Page Live Render (D-31)
   it("[SC-RENDER-10] renders /platform/telemetry with telemetry cards", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
+    expect(mainText).not.toContain("null%");
+    expect(mainText).toContain("활성 소켓 연결 수");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-11 / SC-RENDER-11: Tenant Traffic Page Live Render with Rows > 0
+  // SCR-11 / SC-RENDER-11: Tenant Traffic Page Live Render with Rows > 0 (D-31)
   it("[SC-RENDER-11] renders /platform/tenants with isolation table rows", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/tenants");
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThan(0);
+    expect(rowCount).toBeGreaterThanOrEqual(1);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("default");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-12 / SC-RENDER-12: Tenant Egress ACL Page Live Render with Multi-Group Matrix
+  // SCR-12 / SC-RENDER-12: Tenant Egress ACL Page Live Render with Multi-Group Matrix (D-31)
   it("[SC-RENDER-12] renders /tenant/egress-acl with multi-group directional matrix", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/egress-acl");
+    const rowCount = await page.locator("table tbody tr, [role='row']").count();
+    expect(rowCount).toBeGreaterThanOrEqual(2);
     const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     expect(mainText).toContain("engineering");
     expect(mainText).toContain("security");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-13 / SC-RENDER-13: Security Audit Logs Stream Live Render & Cross-Validation
+  // SCR-13 / SC-RENDER-13: Security Audit Logs Stream Live Render & Cross-Validation (D-28, D-31)
   it("[SC-RENDER-13] renders /tenant/audits with real distinct timestamps and no false VERIFIED", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/audits");
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     expect(errors).toEqual([]);
 
-    // Check rows in table
-    const rows = await page.locator("table tbody tr, [role='row']").allInnerTexts();
-    if (rows.length > 1) {
-      const uniqueRows = new Set(rows);
-      expect(uniqueRows.size).toBeGreaterThan(1);
-      expect(mainText).not.toContain("unknown → unknown");
-      // D-28: Unverified/unsigned events must not render false VERIFIED
-      expect(mainText).not.toContain("VERIFIED");
-    }
+    // Check rows in table (unconditional assertion - no if guard!)
+    const rowCount = await page.locator("table tbody tr, [role='row']").count();
+    expect(rowCount).toBeGreaterThanOrEqual(4);
+
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("agent-alpha → admin");
+    expect(mainText).toContain("admin → agent-alpha");
+    // D-28: Unverified/unsigned events must not render false VERIFIED
+    expect(mainText).not.toContain("VERIFIED");
 
     await context.close();
   });
 
-  // SCR-14 / SC-RENDER-14: RBAC Capability Management Live Render with Capability Rows > 0
+  // SCR-14 / SC-RENDER-14: RBAC Capability Management Live Render with Capability Rows > 0 (D-31)
   it("[SC-RENDER-14] renders /tenant/rbac with capability chips and table rows", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/rbac");
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText.length).toBeGreaterThan(100);
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThan(0);
+    expect(rowCount).toBeGreaterThanOrEqual(1);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("PLATFORM_ADMIN");
     expect(errors).toEqual([]);
     await context.close();
   });
