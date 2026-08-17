@@ -629,4 +629,121 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await context.close();
   });
+
+  // SC-LOAD-01: In-Flight Delayed API Response on Topology (D-123, D-124)
+  it("[SC-LOAD-01] shows loading state and does not claim 0 groups/agents while waiting on /creator/topology", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await route.continue();
+    });
+
+    await page.goto(`${viteBaseUrl}/creator/topology`);
+    await page.waitForTimeout(400);
+
+    const loadText = await page.locator("#root").innerText();
+    expect(loadText).toContain("토폴로지 데이터를 불러오는 중입니다");
+    expect(loadText).not.toContain("0개 그룹");
+
+    await context.close();
+  });
+
+  // SC-LOAD-02: In-Flight Delayed API Response on Dashboard (D-123, D-124)
+  it("[SC-LOAD-02] shows loading state and does not claim 0 tenants while waiting on /dashboard", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await route.continue();
+    });
+
+    await page.goto(`${viteBaseUrl}/dashboard`);
+    await page.waitForTimeout(400);
+
+    const loadText = await page.locator("#root").innerText();
+    expect(loadText).toContain("조회 중");
+    expect(loadText).not.toContain("등록된 테넌트 없음");
+
+    await context.close();
+  });
+
+  // SC-LOAD-03: In-Flight Delayed API Response on Playground (D-123, D-124)
+  it("[SC-LOAD-03] shows loading state and does not claim empty agents while waiting on /creator/playground", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await route.continue();
+    });
+
+    await page.goto(`${viteBaseUrl}/creator/playground`);
+    await page.waitForTimeout(400);
+
+    const loadText = await page.locator("#root").innerText();
+    expect(loadText).toContain("에이전트 목록을 불러오는 중입니다");
+    expect(loadText).not.toContain("현재 등록된 에이전트 데이터가 없습니다");
+
+    await context.close();
+  });
+
+  // SC-VOCAB-01: Capability Vocabulary Alignment Assertion (D-125, D-126, D-127)
+  it("[SC-VOCAB-01] verifies guarded route capabilities match backend platform vocabulary", async () => {
+    const validPlatformCapabilities = [
+      "agent.teardown",
+      "key.approve",
+      "group.manage",
+      "policy.send_restrict",
+      "role.grant",
+      "audit.read.metadata",
+      "audit.read.content",
+      "server.inspect",
+      "admin.all",
+    ];
+
+    const appTsxContent = await Bun.file("packages/platform-web/src/App.tsx").text();
+    const matches: string[] = Array.from(appTsxContent.matchAll(/requiredCapability="([^"]+)"/g))
+      .map((m) => m[1])
+      .filter((c): c is string => typeof c === "string");
+    expect(matches.length).toBeGreaterThan(0);
+    for (const cap of matches) {
+      expect(validPlatformCapabilities).toContain(cap);
+    }
+  });
 });

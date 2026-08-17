@@ -89,7 +89,7 @@ export function App() {
               <Route
                 path="/tenant/audits"
                 element={
-                  <GuardedRoute requiredCapability="audit.read_metadata">
+                  <GuardedRoute requiredCapability="audit.read.metadata">
                     <AuditLogsPage />
                   </GuardedRoute>
                 }

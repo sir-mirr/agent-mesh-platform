@@ -116,9 +116,11 @@ function PlatformAdminDashboard() {
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
 
   React.useEffect(() => {
+    setIsLoading(true);
     setIsError(false);
     Promise.all([
       fetchTelemetry().then(setTelemetry),
@@ -126,6 +128,8 @@ function PlatformAdminDashboard() {
       fetchAgents().then(setAgents),
     ]).catch(() => {
       setIsError(true);
+    }).finally(() => {
+      setIsLoading(false);
     });
   }, []);
 
@@ -138,29 +142,29 @@ function PlatformAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.pa.nodes", "전체 에이전트 노드")}
-          value={isError ? "—" : String(totalAgents)}
-          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.pa.nodesSub", "실시간 레지스트리")}
+          value={isLoading ? "..." : isError ? "—" : String(totalAgents)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.pa.nodesSub", "실시간 레지스트리")}
           color="var(--color-primary)"
           icon="🌐"
         />
         <KpiCard
           label={t("dash.pa.sockets", "활성 웹소켓 풀")}
-          value={isError ? "—" : String(activeSockets)}
-          subValue={isError ? t("common.disconnected", "통신 불가") : t("dash.pa.socketsSub", "mTLS 연결")}
+          value={isLoading ? "..." : isError ? "—" : String(activeSockets)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.disconnected", "통신 불가") : t("dash.pa.socketsSub", "mTLS 연결")}
           color="var(--color-success)"
           icon="⚡"
         />
         <KpiCard
           label={t("dash.pa.tenants", "활성 테넌트 조직")}
-          value={isError ? "—" : String(groups.length)}
-          subValue={isError ? t("common.errorLoad", "조직 정보 불러오지 못함") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
+          value={isLoading ? "..." : isError ? "—" : String(groups.length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "조직 정보 불러오지 못함") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
           color="#6366F1"
           icon="🏢"
         />
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
-          value={telemetry && !isError ? `${telemetry.p99_latency_ms || 0}ms` : "—"}
-          subValue={telemetry && !isError ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
+          value={isLoading ? "..." : telemetry && !isError ? `${telemetry.p99_latency_ms || 0}ms` : "—"}
+          subValue={isLoading ? t("common.loading", "조회 중...") : telemetry && !isError ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
           color="var(--color-warning)"
           icon="⏱️"
         />

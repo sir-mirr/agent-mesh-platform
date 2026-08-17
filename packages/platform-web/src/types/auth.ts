@@ -8,10 +8,9 @@ export type Capability =
   | "agent.teardown"       // 영구 신원 삭제 (SPEC § 9.3)
   | "group.manage"         // 그룹 생성/에이전트 이동
   | "policy.send_restrict" // 그룹 간 이그레스 ACL 제어
-  | "audit.read_content"   // 메시지 원문 열람
-  | "audit.read_metadata"  // 메타데이터([content withheld]) 열람
+  | "audit.read.content"   // 메시지 원문 열람
+  | "audit.read.metadata"  // 메타데이터([content withheld]) 열람
   | "server.inspect"       // 서버 헬스/텔레메트리 모니터링
-  | "role.assign"          // 조직 멤버 RBAC 역할 할당
   | "role.grant"           // 조직 멤버 세분화 Capability 부여/회수 (§11.3)
   | "admin.all";           // 슈퍼어드민 마스터 권한
 

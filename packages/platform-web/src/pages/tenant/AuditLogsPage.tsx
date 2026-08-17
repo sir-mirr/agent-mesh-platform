@@ -28,7 +28,7 @@ export function AuditLogsPage() {
   const { hasCapability } = useRbac();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const canReadContent = hasCapability("audit.read_content");
+  const canReadContent = hasCapability("audit.read.content");
 
   const loadAuditEvents = () => {
     setIsLoading(true);

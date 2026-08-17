@@ -919,9 +919,15 @@ export function TopologyPage() {
       {/* Clean Production Page Header */}
       <PageHeader
         title={t("topo.title", "에이전트 토폴로지")}
-        subtitle={t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`)
-          .replace("{groups}", String(clusters.length))
-          .replace("{agents}", String(totalAgentCount + clusters.length))}
+        subtitle={
+          isLoading
+            ? t("common.loading", "토폴로지 데이터를 불러오는 중입니다...")
+            : isError
+            ? t("common.loadError", "토폴로지 데이터를 불러오지 못했습니다.")
+            : t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`)
+                .replace("{groups}", String(clusters.length))
+                .replace("{agents}", String(totalAgentCount + clusters.length))
+        }
       />
 
       {/* Main Interactive Topology Viewport Container */}
@@ -966,16 +972,24 @@ export function TopologyPage() {
             boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
           }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
-          <span>{t("topo.hud.groups", "Groups")}: {clusters.length}</span>
-          <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span>{t("topo.hud.agents", "Agents")}: {totalAgentCount}</span>
-          <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
-          <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
-            {t("topo.hud.egress", "Egress")}: Active
-          </span>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: isLoading ? "#F59E0B" : (isError ? "#EF4444" : "#10B981"), display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
+          {isLoading ? (
+            <span>{t("common.loading", "토폴로지 불러오는 중...")}</span>
+          ) : isError ? (
+            <span style={{ color: "var(--color-danger)" }}>{t("common.disconnected", "통신 불가")}</span>
+          ) : (
+            <>
+              <span>{t("topo.hud.groups", "Groups")}: {clusters.length}</span>
+              <span style={{ color: "var(--color-text-muted)" }}>·</span>
+              <span>{t("topo.hud.agents", "Agents")}: {totalAgentCount}</span>
+              <span style={{ color: "var(--color-text-muted)" }}>·</span>
+              <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
+              <span style={{ color: "var(--color-text-muted)" }}>·</span>
+              <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
+                {t("topo.hud.egress", "Egress")}: Active
+              </span>
+            </>
+          )}
         </div>
 
         {totalAgentCount === 0 && (

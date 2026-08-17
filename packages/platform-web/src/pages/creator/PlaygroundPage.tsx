@@ -45,10 +45,14 @@ export function PlaygroundPage() {
 
   const currentRole = user?.role || "AGENT_OPERATOR";
   const [agentsList, setAgentsList] = useState<RegisteredAgent[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
   const [isSending, setIsSending] = useState(false);
 
   // Load real agents from backend
   React.useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     fetchAgents().then((list) => {
       const mapped = (list || []).map((a) => ({
         id: a.identity,
@@ -63,7 +67,12 @@ export function PlaygroundPage() {
         setSender(mapped[0]!.id);
         setRecipient(mapped[1]?.id || mapped[0]!.id);
       }
-    }).catch(() => setAgentsList([]));
+    }).catch(() => {
+      setIsError(true);
+      setAgentsList([]);
+    }).finally(() => {
+      setIsLoading(false);
+    });
   }, []);
 
   // 1. Filter sender agents visible/permitted to the current user
@@ -165,11 +174,19 @@ export function PlaygroundPage() {
             </h3>
           </div>
 
-          {agentsList.length === 0 && (
+          {isLoading ? (
+            <div style={{ padding: "12px 16px", background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontSize: "0.82rem", textAlign: "center" }}>
+              에이전트 목록을 불러오는 중입니다...
+            </div>
+          ) : isError ? (
+            <div style={{ padding: "12px 16px", background: "var(--status-warning-bg)", borderRadius: "var(--radius-md)", border: "1px solid var(--status-warning-br)", color: "var(--color-text-primary)", fontSize: "0.82rem", textAlign: "center" }}>
+              에이전트 목록을 불러오지 못했습니다 (서버 연결 실패 또는 권한 오류).
+            </div>
+          ) : agentsList.length === 0 ? (
             <div style={{ padding: "12px 16px", background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontSize: "0.82rem", textAlign: "center" }}>
               현재 등록된 에이전트 데이터가 없습니다. 먼저 에이전트를 등록하세요.
             </div>
-          )}
+          ) : null}
 
           <form onSubmit={handleSendMessage} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Sender Agent Combobox */}

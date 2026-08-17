@@ -13,30 +13,30 @@ interface AuthContextType {
 
 const ROLE_CAPABILITIES: Record<UserRole, Capability[]> = {
   AGENT_OPERATOR: [
-    "audit.read_metadata",
+    "audit.read.metadata",
   ],
   GROUP_ADMIN: [
     "group.manage",
-    "audit.read_metadata",
+    "audit.read.metadata",
   ],
   TENANT_ADMIN: [
     "key.approve",
     "agent.teardown",
     "group.manage",
     "policy.send_restrict",
-    "audit.read_content",
-    "audit.read_metadata",
-    "role.assign",
+    "audit.read.content",
+    "audit.read.metadata",
+    "role.grant",
   ],
   PLATFORM_ADMIN: [
     "key.approve",
     "agent.teardown",
     "group.manage",
     "policy.send_restrict",
-    "audit.read_content",
-    "audit.read_metadata",
+    "audit.read.content",
+    "audit.read.metadata",
     "server.inspect",
-    "role.assign",
+    "role.grant",
     "admin.all",
   ],
 };
