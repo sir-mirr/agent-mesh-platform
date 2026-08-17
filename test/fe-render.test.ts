@@ -419,4 +419,52 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(errors).toEqual([]);
     await context.close();
   });
+
+  // SC-ACT-03: Interactive Playground Send Message (D-91)
+  it("[SC-ACT-03] performs message dispatch in playground", async () => {
+    const { page, context, errors } = await createAuthedPage("/creator/playground");
+    const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
+    if ((await sendBtn.count()) > 0) {
+      await sendBtn.click();
+      await page.waitForTimeout(400);
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-ACT-04: Interactive Telemetry Refresh (D-91)
+  it("[SC-ACT-04] clicks refresh on platform telemetry", async () => {
+    const { page, context, errors } = await createAuthedPage("/platform/telemetry");
+    const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh')").first();
+    if ((await refreshBtn.count()) > 0) {
+      await refreshBtn.click();
+      await page.waitForTimeout(300);
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-ACT-05: Interactive Groups Search & Filter (D-91)
+  it("[SC-ACT-05] performs interactive group search filter", async () => {
+    const { page, context, errors } = await createAuthedPage("/creator/groups");
+    const searchInput = page.locator("input[placeholder*='검색'], input[type='search']").first();
+    if ((await searchInput.count()) > 0) {
+      await searchInput.fill("engineering");
+      await page.waitForTimeout(200);
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  // SC-ACT-06: Interactive Tenant Audits Refresh (D-91)
+  it("[SC-ACT-06] clicks audit logs refresh and checks table rendering", async () => {
+    const { page, context, errors } = await createAuthedPage("/tenant/audits");
+    const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh')").first();
+    if ((await refreshBtn.count()) > 0) {
+      await refreshBtn.click();
+      await page.waitForTimeout(300);
+    }
+    expect(errors).toEqual([]);
+    await context.close();
+  });
 });

@@ -50,16 +50,19 @@ export function PlaygroundPage() {
   // Load real agents from backend
   React.useEffect(() => {
     fetchAgents().then((list) => {
-      setAgentsList(
-        (list || []).map((a) => ({
-          id: a.identity,
-          name: a.description || a.identity,
-          group: a.type || "Default Group",
-          ownerId: "admin",
-          status: a.status === "active" ? "online" : "offline",
-          fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
-        }))
-      );
+      const mapped = (list || []).map((a) => ({
+        id: a.identity,
+        name: a.description || a.identity,
+        group: a.type || "Default Group",
+        ownerId: "admin",
+        status: a.status === "active" ? "online" : "offline",
+        fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+      }));
+      setAgentsList(mapped);
+      if (mapped.length > 0) {
+        setSender(mapped[0]!.id);
+        setRecipient(mapped[1]?.id || mapped[0]!.id);
+      }
     });
   }, []);
 
