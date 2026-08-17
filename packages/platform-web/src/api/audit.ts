@@ -7,7 +7,7 @@ export interface AuditEventItem {
   recipient: string;
   contentLength: number;
   rawContent: string;
-  signatureVerified: boolean;
+  signatureVerified: boolean | null;
 }
 
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
@@ -20,6 +20,6 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     recipient: item.recipient || item.to_agent || item.to || "unknown",
     contentLength: item.content_length || (typeof item.content === "string" ? item.content.length : JSON.stringify(item.content || item.payload || "").length),
     rawContent: typeof item.content === "string" ? item.content : item.content ? JSON.stringify(item.content) : typeof item.payload === "string" ? item.payload : item.payload ? JSON.stringify(item.payload) : "[content withheld]",
-    signatureVerified: item.signature_verified ?? true,
+    signatureVerified: item.signature_verified != null ? Boolean(item.signature_verified) : null,
   }));
 }

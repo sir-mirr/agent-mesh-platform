@@ -164,19 +164,19 @@ function PlatformAdminDashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
           <TelemetryCard
             label="서버 CPU 부하"
-            currentValue={`${telemetry.cpu_usage_pct}%`}
+            currentValue={telemetry.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct}%` : "—"}
             maxLabel="100%"
-            percentage={telemetry.cpu_usage_pct}
+            percentage={telemetry.cpu_usage_pct ?? 0}
             barColor="var(--color-success)"
-            statusText="정상 가동 중"
+            statusText={telemetry.cpu_usage_pct != null ? "정상 가동 중" : "서버 미측정 (D-1 지표 전환)"}
           />
           <TelemetryCard
             label="프로세스 메모리 (RAM)"
-            currentValue={`${telemetry.memory_used_mb} MB`}
-            maxLabel={`${telemetry.memory_total_mb || 1024} MB`}
-            percentage={(telemetry.memory_used_mb / (telemetry.memory_total_mb || 1024)) * 100}
+            currentValue={telemetry.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
+            maxLabel={telemetry.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
+            percentage={telemetry.memory_used_mb != null && telemetry.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
             barColor="var(--color-primary)"
-            statusText="여유 공간 충분"
+            statusText={telemetry.memory_used_mb != null ? "여유 공간 충분" : "서버 미측정 (D-1 지표 전환)"}
           />
           <TelemetryCard
             label="허브 활성 세션"

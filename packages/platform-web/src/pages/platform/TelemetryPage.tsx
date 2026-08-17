@@ -60,19 +60,19 @@ export function TelemetryPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
             <TelemetryCard
               label={t("telem.cpu", "CPU 사용률 (Process)")}
-              currentValue={`${telemetry.cpu_usage_pct}%`}
+              currentValue={telemetry.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct}%` : "—"}
               maxLabel="100%"
-              percentage={telemetry.cpu_usage_pct}
+              percentage={telemetry.cpu_usage_pct ?? 0}
               barColor="var(--color-success)"
-              statusText={t("telem.cpuStatus", "정상 (안정적)")}
+              statusText={telemetry.cpu_usage_pct != null ? t("telem.cpuStatus", "정상 (안정적)") : "서버 미측정 (D-1 지표 전환)"}
             />
             <TelemetryCard
               label={t("telem.rss", "RSS 메모리 (Resident Set)")}
-              currentValue={`${telemetry.memory_used_mb} MB`}
-              maxLabel={`${telemetry.memory_total_mb || 1024} MB`}
-              percentage={(telemetry.memory_used_mb / (telemetry.memory_total_mb || 1024)) * 100}
+              currentValue={telemetry.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
+              maxLabel={telemetry.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
+              percentage={telemetry.memory_used_mb != null && telemetry.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
               barColor="var(--color-primary)"
-              statusText={`Active Sockets: ${telemetry.active_sockets}`}
+              statusText={telemetry.memory_used_mb != null ? `Active Sockets: ${telemetry.active_sockets}` : "서버 미측정 (D-1 지표 전환)"}
             />
             <TelemetryCard
               label="활성 소켓 연결 수"
@@ -84,11 +84,11 @@ export function TelemetryPage() {
             />
             <TelemetryCard
               label="허브 p99 지연 시간"
-              currentValue={`${telemetry.p99_latency_ms} ms`}
+              currentValue={telemetry.p99_latency_ms != null ? `${telemetry.p99_latency_ms} ms` : "—"}
               maxLabel="50 ms"
-              percentage={Math.min(100, (telemetry.p99_latency_ms / 50) * 100)}
+              percentage={telemetry.p99_latency_ms != null ? Math.min(100, (telemetry.p99_latency_ms / 50) * 100) : 0}
               barColor="#8B5CF6"
-              statusText="초저지연 라우팅"
+              statusText={telemetry.p99_latency_ms != null ? "초저지연 라우팅" : "서버 미측정 (D-1 지표 전환)"}
             />
           </div>
 

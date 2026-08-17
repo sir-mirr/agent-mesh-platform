@@ -3,10 +3,10 @@ import React from "react";
 export interface TelemetryCardProps {
   label: string;
   currentValue: string | number;
-  maxLabel?: string;
+  maxLabel?: string | undefined;
   percentage: number; // 0 to 100
-  barColor?: string;
-  statusText?: string;
+  barColor?: string | undefined;
+  statusText?: string | undefined;
 }
 
 export function TelemetryCard({

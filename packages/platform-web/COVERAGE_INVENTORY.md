@@ -207,11 +207,38 @@
 
 ---
 
-## 3. 요약 및 시나리오 분모 통계
+---
+
+## 3. 프론트엔드 실 렌더링 검증 매트릭스 (14 Screens Live DOM/Render Verification)
+
+> **검증 원칙**: 백엔드 API 응답 검증에 그치지 않고, 14개 전 화면의 컴포넌트 렌더링, `#root` DOM 생성, 콘솔/런타임 에러 부재, 실측 텍스트 출력을 보증합니다.
+
+| 화면 ID | 라우트 | 주요 렌더 컴포넌트 | 최소 검증 기준 (DOM / Errors / Texts) | 시나리오 ID |
+|---|---|---|---|---|
+| `SCR-01` | `/login` | `LoginPage` | `#root` 내 로그인 폼, 사용자명/비밀번호 필드, 로그인 버튼 렌더, 0 errors | `SC-RENDER-01` |
+| `SCR-02` | `/` / `/dashboard` | `DashboardPage` | 글로벌 관제 KPI 카드 그리드, 역할별 뷰 분기, 통계 배지 렌더 | `SC-RENDER-02` |
+| `SCR-03` | `/creator/agents` | `AgentsListPage` | 에이전트 목록 테이블, 상태 배지, 연결 해제 액션 버튼 렌더 | `SC-RENDER-03` |
+| `SCR-04` | `/creator/groups` | `GroupsManagementPage` | 그룹 카드 그리드, 소속 멤버 칩, 신규 그룹 모달 버튼 렌더 | `SC-RENDER-04` |
+| `SCR-05` | `/creator/topology` | `DynamicTopologyPage` | 궤도형 SVG 캔버스, 그룹 허브 및 위성 노드 그래픽 렌더 | `SC-RENDER-05` |
+| `SCR-06` | `/creator/playground` | `MessagePlaygroundPage` | 메시지 전송 폼, JSON 페이로드 에디터, 전송 로그 타임라인 렌더 | `SC-RENDER-06` |
+| `SCR-07` | `/creator/lease-queue` | `LeaseQueueMonitorPage` | 메시지 대기열 테이블, 300초 TTL 리스 카운터, ACK 버튼 렌더 | `SC-RENDER-07` |
+| `SCR-08` | `/creator/register` | `AgentRegistrationPage` | Ed25519 신원 등록 폼, 공개키 승인 대기 큐 카드 렌더 | `SC-RENDER-08` |
+| `SCR-09` | `/platform` | `PlatformOverviewPage` | 서버 인프라 헬스 테이블, 포트(:3000, :3100) 노드, KPI 카드 렌더 | `SC-RENDER-09` |
+| `SCR-10` | `/platform/telemetry` | `TelemetryPage` | 노드 텔레메트리 지표 패널, 모니터링 카드 렌더 | `SC-RENDER-10` |
+| `SCR-11` | `/platform/tenants` | `TenantTrafficPage` | 테넌트 격리 분석 테이블, 트래픽 메트릭 헤더 렌더 | `SC-RENDER-11` |
+| `SCR-12` | `/tenant/egress-acl` | `TenantEgressAclPage` | 방향성 Egress ACL 매트릭스 그리드, ALLOW/DENY 토글 버튼 렌더 | `SC-RENDER-12` |
+| `SCR-13` | `/tenant/audits` | `AuditLogsPage` | 보안 감사 스트림 테이블, 프라이버시 리댁션 배지, 갱신 버튼 렌더 | `SC-RENDER-13` |
+| `SCR-14` | `/tenant/rbac` | `RbacManagementPage` | RBAC 관리 테이블, 9대 Capability 토글 칩, 조직원 목록 렌더 | `SC-RENDER-14` |
+
+---
+
+## 4. 요약 및 시나리오 분모 통계
 
 - **대상 화면**: 총 14개
 - **기능/위젯 단위**: 총 24개
-- **E2E 테스트 시나리오 ID**: 총 24개 (`SC-AUTH-01` ~ `SC-SCR14-01`)
+- **E2E API 테스트 시나리오**: 총 39개 (`SC-HARNESS-01` ~ `SC-SCR14-02`)
+- **실제 렌더링 테스트 시나리오**: 총 14개 (`SC-RENDER-01` ~ `SC-RENDER-14`)
+- **총합 시나리오 분모**: **53개 시나리오**
 - **전 상태 분기 검증**:
   - [x] 정상 데이터 (Success with Data)
   - [x] 0건 빈 상태 (Empty State - 200 OK)
@@ -219,3 +246,4 @@
   - [x] 로딩 상태 (Loading / Skeleton)
   - [x] 권한 가드 / 인가 분기 (`audit.read.content`, `role.grant`, `key.approve` 등)
   - [x] 다국어(i18n) 양방향 일치 (KO / EN)
+  - [x] 실 렌더링 & DOM 트리 무결성 (14 Screens Render Integrity)

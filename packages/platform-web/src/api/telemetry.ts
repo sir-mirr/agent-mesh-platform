@@ -1,13 +1,13 @@
 import { apiClient } from "./client.ts";
 
 export interface SystemTelemetry {
-  cpu_usage_pct: number;
-  memory_used_mb: number;
-  memory_total_mb: number;
+  cpu_usage_pct: number | null;
+  memory_used_mb: number | null;
+  memory_total_mb: number | null;
   active_sockets: number;
   total_agents: number;
-  total_messages: number;
-  p99_latency_ms: number;
+  total_messages: number | null;
+  p99_latency_ms: number | null;
 }
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {
@@ -22,12 +22,12 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;
 
   return {
-    cpu_usage_pct: usage?.cpu_pct ?? 0,
-    memory_used_mb: usage?.memory_mb ?? 0,
-    memory_total_mb: usage?.memory_total_mb ?? 0,
+    cpu_usage_pct: usage?.cpu_pct ?? null,
+    memory_used_mb: usage?.memory_mb ?? null,
+    memory_total_mb: usage?.memory_total_mb ?? null,
     active_sockets: activeSockets,
     total_agents: totalAgents,
-    total_messages: mailbox?.total_queued ?? 0,
-    p99_latency_ms: usage?.p99_latency_ms ?? 0,
+    total_messages: mailbox?.total_queued != null ? mailbox.total_queued : (Array.isArray(mailbox?.mailboxes) && mailbox.mailboxes.length > 0 ? mailbox.mailboxes.reduce((acc: number, m: any) => acc + (m.depth || 0), 0) : null),
+    p99_latency_ms: usage?.p99_latency_ms ?? null,
   };
 }

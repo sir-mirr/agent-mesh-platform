@@ -30,6 +30,9 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Build web frontend
+        run: bun run build:web
+
       - name: Unit tests
         run: bun test packages/
 

@@ -147,32 +147,30 @@ export function PlatformOverviewPage() {
         />
         <KpiCard
           label={t("server.kpi.latency", "허브 지연 (p95)")}
-          value={isOnline ? `${telemetry?.p99_latency_ms || 0} ms` : "-"}
-          subValue={isOnline ? t("server.kpi.p99Sub", "최근 p99 측정치") : t("common.disconnected", "통신 불가")}
-          color="#6366F1"
+          value={isOnline ? (telemetry?.p99_latency_ms != null ? `${telemetry.p99_latency_ms} ms` : "—") : "-"}
+          subValue={isOnline ? (telemetry?.p99_latency_ms != null ? t("server.kpi.latencySub", "정상 응답 속도") : "미측정") : t("common.disconnected", "통신 불가")}
+          color="var(--color-warning)"
           icon="⏱️"
         />
       </div>
 
-      {isOnline && telemetry && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <TelemetryCard
-            label="허브 프로세스 CPU"
-            currentValue={`${telemetry.cpu_usage_pct}%`}
-            percentage={telemetry.cpu_usage_pct}
-            barColor="var(--color-success)"
-            statusText="정상 부하 범위"
-          />
-          <TelemetryCard
-            label="허브 메모리 점유"
-            currentValue={`${telemetry.memory_used_mb} MB`}
-            maxLabel={`${telemetry.memory_total_mb || 1024} MB`}
-            percentage={(telemetry.memory_used_mb / (telemetry.memory_total_mb || 1024)) * 100}
-            barColor="var(--color-primary)"
-            statusText="메모리 모니터링"
-          />
-        </div>
-      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+        <TelemetryCard
+          label={t("server.chart.cpu", "CPU 사용률")}
+          currentValue={isOnline && telemetry?.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct.toFixed(1)}%` : "—"}
+          percentage={telemetry?.cpu_usage_pct ?? 0}
+          barColor="var(--color-success)"
+          statusText={isOnline && telemetry?.cpu_usage_pct != null ? "정상 부하 범위" : (isOnline ? "서버 미측정 (D-1 행동 기반 지표 전환)" : "연결 불가")}
+        />
+        <TelemetryCard
+          label={t("server.chart.memory", "메모리 점유 (RSS)")}
+          currentValue={isOnline && telemetry?.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
+          maxLabel={telemetry?.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
+          percentage={telemetry?.memory_used_mb != null && telemetry?.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
+          barColor="var(--color-primary)"
+          statusText={isOnline && telemetry?.memory_used_mb != null ? "메모리 모니터링" : (isOnline ? "서버 미측정 (D-1 행동 기반 지표 전환)" : "연결 불가")}
+        />
+      </div>
 
       <div style={{ marginTop: 8 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 12 }}>
