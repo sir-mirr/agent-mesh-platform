@@ -5,8 +5,11 @@ import {
   TelemetryCard,
   Button,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export function TelemetryPage() {
+  const { t } = useI18n();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Breadcrumbs />
@@ -15,26 +18,26 @@ export function TelemetryPage() {
         suiteTag="PLATFORM OPERATOR"
         suiteBadgeColor="leased"
         screenId="13"
-        title="노드 텔레메트리 모니터링"
-        subtitle="서버 프로세스 CPU, RAM, 이벤트 루프 지연율 및 실시간 웹소켓 연결 헬스 메트릭"
+        title={t("telem.title", "노드 텔레메트리 모니터링")}
+        subtitle={t("telem.subtitle", "서버 프로세스 CPU, RAM, 이벤트 루프 지연율 및 실시간 웹소켓 연결 헬스 메트릭")}
         actions={
           <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
-            ↻ 실시간 갱신
+            {t("telem.refreshBtn", "↻ 실시간 갱신")}
           </Button>
         }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
         <TelemetryCard
-          label="CPU 사용률 (Process)"
+          label={t("telem.cpu", "CPU 사용률 (Process)")}
           currentValue="14.8%"
           maxLabel="100%"
           percentage={14.8}
           barColor="var(--color-success)"
-          statusText="정상 (안정적)"
+          statusText={t("telem.cpuStatus", "정상 (안정적)")}
         />
         <TelemetryCard
-          label="RSS 메모리 (Resident Set)"
+          label={t("telem.rss", "RSS 메모리 (Resident Set)")}
           currentValue="164 MB"
           maxLabel="1,024 MB"
           percentage={16.0}
@@ -42,20 +45,20 @@ export function TelemetryPage() {
           statusText="Heap: 92 MB"
         />
         <TelemetryCard
-          label="이벤트 루프 지연율 (Lag)"
+          label={t("telem.lag", "이벤트 루프 지연율 (Lag)")}
           currentValue="1.4 ms"
           maxLabel="50 ms"
           percentage={2.8}
           barColor="var(--color-success)"
-          statusText="초저지연 응답"
+          statusText={t("telem.lagStatus", "초저지연 응답")}
         />
         <TelemetryCard
-          label="초당 메시지 디스패치 (Msg/s)"
+          label={t("telem.msgPerSec", "초당 메시지 디스패치 (Msg/s)")}
           currentValue="48.2"
           maxLabel="1,000"
           percentage={4.8}
           barColor="#8B5CF6"
-          statusText="처리 용량 여유"
+          statusText={t("telem.msgPerSecStatus", "처리 용량 여유")}
         />
       </div>
 
@@ -69,10 +72,10 @@ export function TelemetryPage() {
         }}
       >
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 8 }}>
-          📊 텔레메트리 진단 로그
+          {t("telem.logTitle", "📊 텔레메트리 진단 로그")}
         </h3>
         <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)", marginBottom: 16 }}>
-          서버가 10초 주기로 수집하는 핵심 런타임 지표 스트림
+          {t("telem.logSub", "서버가 10초 주기로 수집하는 핵심 런타임 지표 스트림")}
         </p>
 
         <div

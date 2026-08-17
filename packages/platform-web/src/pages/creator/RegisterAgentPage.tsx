@@ -8,8 +8,10 @@ import {
   CodeBlock,
   Toast,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export function RegisterAgentPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [agentId, setAgentId] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -35,8 +37,8 @@ export function RegisterAgentPage() {
         suiteTag="STUDIO SUITE"
         suiteBadgeColor="leased"
         screenId="46"
-        title="신규 에이전트 등록 & 키 제안"
-        subtitle="신원 등록 및 Ed25519 공개키 제안 (SPEC § 9.1 3대 409 신원 충돌 방어)"
+        title={t("reg.title", "신규 에이전트 신원 등록 & 키 제안")}
+        subtitle={t("reg.subtitle", "신원 등록 및 Ed25519 공개키 제안 (SPEC § 9.1 3대 409 신원 충돌 방어)")}
       />
 
       {toastMessage && (
@@ -59,17 +61,17 @@ export function RegisterAgentPage() {
         >
           <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Input
-              label="에이전트 고유 식별자 (Agent ID)"
-              placeholder="예: agt_settlement_04"
+              label={t("reg.agentId", "에이전트 고유 식별자 (Agent ID)")}
+              placeholder={t("reg.agentIdPlaceholder", "예: agt_settlement_04")}
               value={agentId}
               onChange={(e) => setAgentId(e.target.value)}
-              helperText="소문자, 숫자, 밑줄(_)만 허용됩니다. 등록 후 변경할 수 없습니다."
+              helperText={t("reg.agentIdHelper", "소문자, 숫자, 밑줄(_)만 허용됩니다. 등록 후 변경할 수 없습니다.")}
               required
             />
 
             <Input
-              label="에이전트 표시 이름"
-              placeholder="예: Automated Settlement Agent"
+              label={t("reg.agentName", "에이전트 표시 이름")}
+              placeholder={t("reg.agentNamePlaceholder", "예: Automated Settlement Agent")}
               value={agentName}
               onChange={(e) => setAgentName(e.target.value)}
               required
@@ -77,7 +79,7 @@ export function RegisterAgentPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                초기 배속 그룹
+                {t("reg.group", "초기 배속 그룹")}
               </label>
               <select
                 value={selectedGroup}
@@ -99,12 +101,12 @@ export function RegisterAgentPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                Ed25519 공개키 (Base64-URL Encoded)
+                {t("reg.publicKey", "Ed25519 공개키 (Base64-URL Encoded)")}
               </label>
               <textarea
                 value={publicKey}
                 onChange={(e) => setPublicKey(e.target.value)}
-                placeholder="43자리 Ed25519 원시 공개키 문자열을 입력하세요"
+                placeholder={t("reg.publicKeyPlaceholder", "43자리 Ed25519 원시 공개키 문자열을 입력하세요")}
                 rows={3}
                 style={{
                   padding: "10px 12px",
@@ -121,10 +123,10 @@ export function RegisterAgentPage() {
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
               <Button variant="secondary" size="md" type="button" onClick={() => navigate("/creator")}>
-                취소
+                {t("common.cancel", "취소")}
               </Button>
               <Button variant="primary" size="md" type="submit">
-                에이전트 등록하기
+                {t("reg.submitBtn", "에이전트 등록하기")}
               </Button>
             </div>
           </form>
@@ -141,10 +143,10 @@ export function RegisterAgentPage() {
             }}
           >
             <h4 style={{ fontSize: "0.92rem", fontWeight: 700, marginBottom: 8 }}>
-              💡 터미널 CLI로 키 생성 및 등록하기
+              {t("reg.cliTitle", "💡 터미널 CLI로 키 생성 및 등록하기")}
             </h4>
             <p style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", lineHeight: 1.4 }}>
-              로컬에서 에이전트 키를 직접 생성하고 서명 표면을 프로비저닝할 수 있습니다:
+              {t("reg.cliSub", "로컬에서 에이전트 키를 직접 생성하고 서명 표면을 프로비저닝할 수 있습니다:")}
             </p>
 
             <CodeBlock

@@ -8,8 +8,11 @@ import {
   StatusBadge,
   Button,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export function PlatformOverviewPage() {
+  const { t } = useI18n();
+
   const serverNodes = [
     {
       id: "node_hub_primary",
@@ -32,7 +35,7 @@ export function PlatformOverviewPage() {
   const columns = [
     {
       key: "id",
-      header: "노드 ID / 역할",
+      header: t("server.col.node", "노드 ID / 역할"),
       render: (item: typeof serverNodes[0]) => (
         <div>
           <div style={{ fontWeight: 700 }}>{item.id}</div>
@@ -44,7 +47,7 @@ export function PlatformOverviewPage() {
     },
     {
       key: "port",
-      header: "포트",
+      header: t("server.col.port", "포트"),
       render: (item: typeof serverNodes[0]) => (
         <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.82rem" }}>
           :{item.port}
@@ -53,14 +56,14 @@ export function PlatformOverviewPage() {
     },
     {
       key: "status",
-      header: "헬스 상태 (/health)",
+      header: t("server.col.status", "헬스 상태 (/health)"),
       render: (item: typeof serverNodes[0]) => (
         <StatusBadge label="HEALTHY" status="online" size="sm" />
       ),
     },
     {
       key: "activeSockets",
-      header: "온라인 소켓",
+      header: t("server.col.sockets", "온라인 소켓"),
       render: (item: typeof serverNodes[0]) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
           {item.activeSockets}개
@@ -69,7 +72,7 @@ export function PlatformOverviewPage() {
     },
     {
       key: "uptime",
-      header: "가동 시간 (Uptime)",
+      header: t("server.col.uptime", "가동 시간 (Uptime)"),
       render: (item: typeof serverNodes[0]) => (
         <span style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
           {item.uptime}
@@ -86,20 +89,20 @@ export function PlatformOverviewPage() {
         suiteTag="PLATFORM OPERATOR"
         suiteBadgeColor="leased"
         screenId="09"
-        title="실시간 서버 인프라 현황판"
-        subtitle="현재 가동 중인 메시 허브 및 HTTP 서버의 실시간 헬스(/health), 활성 소켓 및 프로세스 모니터링"
+        title={t("server.title", "실시간 서버 인프라 현황판")}
+        subtitle={t("server.subtitle", "현재 가동 중인 메시 허브 및 HTTP 서버의 실시간 헬스(/health), 활성 소켓 및 프로세스 모니터링")}
         actions={
           <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
-            ↻ 메트릭 새로고침
+            {t("server.refreshBtn", "↻ 메트릭 새로고침")}
           </Button>
         }
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-        <KpiCard label="허브 헬스체크" value="200 OK" color="var(--color-success)" icon="💓" />
-        <KpiCard label="총 온라인 소켓" value="8" subValue="WebSocket 활성" color="var(--color-primary)" icon="⚡" />
-        <KpiCard label="활성 테넌트 파티션" value="3" subValue="조직 격리됨" color="#6366F1" icon="🏢" />
-        <KpiCard label="24h 메시지 라우팅" value="1,420" subValue="건 처리 완료" color="var(--color-text-primary)" icon="📊" />
+        <KpiCard label={t("server.kpi.health", "허브 헬스체크")} value="200 OK" color="var(--color-success)" icon="💓" />
+        <KpiCard label={t("server.kpi.sockets", "총 온라인 소켓")} value="8" subValue={t("server.kpi.socketsSub", "WebSocket 활성")} color="var(--color-primary)" icon="⚡" />
+        <KpiCard label={t("server.kpi.throughput", "전체 초당 처리량")} value="128 msg/s" subValue={t("server.kpi.throughputSub", "정상 버퍼")} color="var(--color-leased)" icon="📡" />
+        <KpiCard label={t("server.kpi.latency", "허브 지연 (p95)")} value="1.2 ms" subValue={t("server.kpi.latencySub", "초저지연 라우팅")} color="#6366F1" icon="⏱️" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>

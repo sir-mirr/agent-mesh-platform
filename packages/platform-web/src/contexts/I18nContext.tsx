@@ -196,8 +196,84 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "play.subtitle": "RFC 7519 JWT 토큰 기반 프록시 메시지 전송 및 전자서명 배달 영수증 검증 테스트",
 
     // Register Page
-    "reg.title": "신규 에이전트 신원 등록",
-    "reg.subtitle": "Ed25519 공개키 기반 새 자율 에이전트 등록 제안 및 테넌트 승인 대기 큐 등록",
+    "reg.title": "신규 에이전트 신원 등록 & 키 제안",
+    "reg.subtitle": "신원 등록 및 Ed25519 공개키 제안 (SPEC § 9.1 3대 409 신원 충돌 방어)",
+    "reg.agentId": "에이전트 고유 식별자 (Agent ID)",
+    "reg.agentIdPlaceholder": "예: agt_settlement_04",
+    "reg.agentIdHelper": "소문자, 숫자, 밑줄(_)만 허용됩니다. 등록 후 변경할 수 없습니다.",
+    "reg.agentName": "에이전트 표시 이름",
+    "reg.agentNamePlaceholder": "예: Automated Settlement Agent",
+    "reg.group": "초기 배속 그룹",
+    "reg.publicKey": "Ed25519 공개키 (Base64-URL Encoded)",
+    "reg.publicKeyPlaceholder": "43자리 Ed25519 원시 공개키 문자열을 입력하세요",
+    "reg.submitBtn": "에이전트 등록하기",
+    "reg.cliTitle": "💡 터미널 CLI로 키 생성 및 등록하기",
+    "reg.cliSub": "로컬에서 에이전트 키를 직접 생성하고 서명 표면을 프로비저닝할 수 있습니다:",
+
+    // Egress ACL Page
+    "egress.title": "그룹 간 이그레스 ACL 행렬",
+    "egress.subtitle": "Deny-by-default 기반 그룹 간 방향성(A→B != B→A) 통신 제어 (SPEC § 12 / -32018 EGRESS_DENIED)",
+    "egress.desc": "각 버튼을 클릭하여 출발 그룹(Source)에서 도착 그룹(Target)으로의 단방향 메시지 발송 허용/차단을 실시간 전환할 수 있습니다.",
+
+    // RBAC Management Page
+    "rbac.title": "조직 멤버 RBAC 권한 할당",
+    "rbac.subtitle": "단일 ID 계정별 9대 Capability 즉각 부여 및 회수 (SPEC § 11.3 / § 17 Conformance)",
+    "rbac.col.name": "멤버 이름 / 계정",
+    "rbac.col.role": "역할 (Role)",
+    "rbac.col.caps": "부여된 Capability (클릭하여 토글)",
+
+    // Audit Logs Page
+    "audit.title": "참가자 본문 감사 스트림",
+    "audit.subtitle": "SPEC § 11.0 프라이버시 경계: audit.read.content 권한 보유자에게만 본문 노출, 미보유 시 [content withheld] 리댁션",
+    "audit.refreshBtn": "↻ 감사 로그 갱신",
+    "audit.col.time": "타임스탬프",
+    "audit.col.route": "송수신 경로",
+    "audit.col.length": "길이 (Bytes)",
+    "audit.col.content": "메시지 본문 (§ 11.0 프라이버시 경계)",
+    "audit.col.signature": "서명 상태",
+    "audit.held": "[content withheld — requires audit.read.content]",
+    "audit.status.has": "✓ audit.read.content 보유 (본문 열람 가능 — 열람 시 내부 감사 로그 기록됨)",
+    "audit.status.none": "⚠️ audit.read.content 미보유 (본문 유출 차단, 메타데이터만 열람)",
+
+    // Server Health Page
+    "server.title": "실시간 서버 인프라 현황판",
+    "server.subtitle": "현재 가동 중인 메시 허브 및 HTTP 서버의 실시간 헬스(/health), 활성 소켓 및 프로세스 모니터링",
+    "server.refreshBtn": "↻ 메트릭 새로고침",
+    "server.kpi.health": "허브 헬스체크",
+    "server.kpi.sockets": "총 온라인 소켓",
+    "server.kpi.socketsSub": "WebSocket 활성",
+    "server.kpi.throughput": "전체 초당 처리량",
+    "server.kpi.throughputSub": "정상 버퍼",
+    "server.kpi.latency": "허브 지연 (p95)",
+    "server.kpi.latencySub": "초저지연 라우팅",
+    "server.col.node": "노드 ID / 역할",
+    "server.col.port": "포트",
+    "server.col.status": "헬스 상태 (/health)",
+    "server.col.sockets": "온라인 소켓",
+    "server.col.uptime": "가동 시간 (Uptime)",
+
+    // Telemetry Page
+    "telem.title": "노드 텔레메트리 모니터링",
+    "telem.subtitle": "서버 프로세스 CPU, RAM, 이벤트 루프 지연율 및 실시간 웹소켓 연결 헬스 메트릭",
+    "telem.refreshBtn": "↻ 실시간 갱신",
+    "telem.cpu": "CPU 사용률 (Process)",
+    "telem.cpuStatus": "정상 (안정적)",
+    "telem.rss": "RSS 메모리 (Resident Set)",
+    "telem.lag": "이벤트 루프 지연율 (Lag)",
+    "telem.lagStatus": "초저지연 응답",
+    "telem.msgPerSec": "초당 메시지 디스패치 (Msg/s)",
+    "telem.msgPerSecStatus": "처리 용량 여유",
+    "telem.logTitle": "📊 텔레메트리 진단 로그",
+    "telem.logSub": "서버가 10초 주기로 수집하는 핵심 런타임 지표 스트림",
+
+    // Tenant Traffic Page
+    "traffic.title": "테넌트 라우팅 처리량 분석",
+    "traffic.subtitle": "테넌트별 메시지 라우팅 처리 건수(Routing Count), SQLite 스토리지 점유율 및 소유 에이전트 수 분석",
+    "traffic.col.tenant": "테넌트 조직 명 / ID",
+    "traffic.col.agents": "소유 에이전트 수",
+    "traffic.col.routes": "24h 메시지 라우팅 건수",
+    "traffic.col.storage": "스토리지 점유율",
+    "traffic.col.status": "조직 격리 상태",
   },
   en: {
     // Navigation Sections
@@ -386,8 +462,84 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "play.subtitle": "RFC 7519 JWT-based proxy dispatch and digital signature delivery receipt verification test",
 
     // Register Page
-    "reg.title": "Register New Agent Identity",
-    "reg.subtitle": "Submit Ed25519 public key proposal and register into tenant approval queue",
+    "reg.title": "Register New Agent Identity & Propose Key",
+    "reg.subtitle": "Identity Provisioning & Ed25519 Key Proposal (SPEC § 9.1 409 Identity Collision Guard)",
+    "reg.agentId": "Unique Agent Identifier (Agent ID)",
+    "reg.agentIdPlaceholder": "e.g. agt_settlement_04",
+    "reg.agentIdHelper": "Lowercase alphanumeric and underscores only. Immutable after registration.",
+    "reg.agentName": "Agent Display Name",
+    "reg.agentNamePlaceholder": "e.g. Automated Settlement Agent",
+    "reg.group": "Initial Group Assignment",
+    "reg.publicKey": "Ed25519 Public Key (Base64-URL Encoded)",
+    "reg.publicKeyPlaceholder": "Enter 43-character raw Ed25519 public key string",
+    "reg.submitBtn": "Register Agent",
+    "reg.cliTitle": "💡 Generate & Register Keys via Terminal CLI",
+    "reg.cliSub": "You can provision agent keys and signing surfaces directly from local terminal:",
+
+    // Egress ACL Page
+    "egress.title": "Inter-Group Egress ACL Matrix",
+    "egress.subtitle": "Deny-by-default directional (A→B != B→A) inter-group policy control (SPEC § 12 / -32018 EGRESS_DENIED)",
+    "egress.desc": "Click any cell to toggle real-time unidirectional message egress allowance from Source group to Target group.",
+
+    // RBAC Management Page
+    "rbac.title": "Organization Member RBAC Capabilities",
+    "rbac.subtitle": "Instantly grant and revoke 9 core capabilities per member account (SPEC § 11.3 / § 17 Conformance)",
+    "rbac.col.name": "Member Name / Account",
+    "rbac.col.role": "Role",
+    "rbac.col.caps": "Assigned Capabilities (Click to toggle)",
+
+    // Audit Logs Page
+    "audit.title": "Participant Content Audit Stream",
+    "audit.subtitle": "SPEC § 11.0 Privacy Boundary: Content revealed only to audit.read.content holders, [content withheld] for others",
+    "audit.refreshBtn": "↻ Refresh Audit Logs",
+    "audit.col.time": "Timestamp",
+    "audit.col.route": "Route",
+    "audit.col.length": "Length (Bytes)",
+    "audit.col.content": "Message Content (§ 11.0 Privacy Boundary)",
+    "audit.col.signature": "Signature",
+    "audit.held": "[content withheld — requires audit.read.content]",
+    "audit.status.has": "✓ audit.read.content held (Full plaintext reading enabled — every read is audited)",
+    "audit.status.none": "⚠️ audit.read.content not held (Plaintext withheld, metadata only)",
+
+    // Server Health Page
+    "server.title": "Real-time Server Infrastructure",
+    "server.subtitle": "Active WebSocket Hub and HTTP server health (/health), active sockets, and process telemetry",
+    "server.refreshBtn": "↻ Refresh Metrics",
+    "server.kpi.health": "Hub Healthcheck",
+    "server.kpi.sockets": "Total Online Sockets",
+    "server.kpi.socketsSub": "WebSocket Active",
+    "server.kpi.throughput": "Total Throughput",
+    "server.kpi.throughputSub": "Buffer Normal",
+    "server.kpi.latency": "Hub Latency (p95)",
+    "server.kpi.latencySub": "Ultra-low Latency",
+    "server.col.node": "Node ID / Role",
+    "server.col.port": "Port",
+    "server.col.status": "Health Status (/health)",
+    "server.col.sockets": "Online Sockets",
+    "server.col.uptime": "Uptime",
+
+    // Telemetry Page
+    "telem.title": "Node Telemetry Monitoring",
+    "telem.subtitle": "Server process CPU, RAM, event loop lag, and real-time WebSocket connection health metrics",
+    "telem.refreshBtn": "↻ Refresh Telemetry",
+    "telem.cpu": "CPU Usage (Process)",
+    "telem.cpuStatus": "Normal (Stable)",
+    "telem.rss": "RSS Memory (Resident Set)",
+    "telem.lag": "Event Loop Lag",
+    "telem.lagStatus": "Ultra-low Lag",
+    "telem.msgPerSec": "Message Dispatch Rate (Msg/s)",
+    "telem.msgPerSecStatus": "Headroom Available",
+    "telem.logTitle": "📊 Telemetry Diagnostic Log",
+    "telem.logSub": "Runtime metric stream sampled every 10 seconds",
+
+    // Tenant Traffic Page
+    "traffic.title": "Tenant Routing Traffic Analysis",
+    "traffic.subtitle": "24h routing message count, SQLite database volume, and owned agent fleet breakdown per tenant",
+    "traffic.col.tenant": "Tenant Organization / ID",
+    "traffic.col.agents": "Owned Agents",
+    "traffic.col.routes": "24h Routing Volume",
+    "traffic.col.storage": "Storage Footprint",
+    "traffic.col.status": "Isolation Status",
   },
 };
 

@@ -7,6 +7,7 @@ import {
   Button,
 } from "@/components/index.ts";
 import { useRbac } from "@/contexts/RbacContext.tsx";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface AuditEvent {
   id: string;
@@ -40,6 +41,7 @@ const INITIAL_EVENTS: AuditEvent[] = [
 ];
 
 export function AuditLogsPage() {
+  const { t } = useI18n();
   const { hasCapability } = useRbac();
   const [events] = useState<AuditEvent[]>(INITIAL_EVENTS);
   const canReadContent = hasCapability("audit.read_content");
@@ -47,7 +49,7 @@ export function AuditLogsPage() {
   const columns = [
     {
       key: "timestamp",
-      header: "타임스탬프",
+      header: t("audit.col.time", "타임스탬프"),
       render: (item: AuditEvent) => (
         <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
           {item.timestamp}
@@ -56,7 +58,7 @@ export function AuditLogsPage() {
     },
     {
       key: "route",
-      header: "송수신 경로",
+      header: t("audit.col.route", "송수신 경로"),
       render: (item: AuditEvent) => (
         <span style={{ fontSize: "0.82rem" }}>
           <code>{item.sender}</code> → <code>{item.recipient}</code>
@@ -65,7 +67,7 @@ export function AuditLogsPage() {
     },
     {
       key: "contentLength",
-      header: "길이 (Bytes)",
+      header: t("audit.col.length", "길이 (Bytes)"),
       render: (item: AuditEvent) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
           {item.contentLength} B
@@ -74,7 +76,7 @@ export function AuditLogsPage() {
     },
     {
       key: "content",
-      header: "메시지 본문 (§ 11.0 프라이버시 경계)",
+      header: t("audit.col.content", "메시지 본문 (§ 11.0 프라이버시 경계)"),
       render: (item: AuditEvent) => {
         if (!canReadContent) {
           return (
@@ -88,7 +90,7 @@ export function AuditLogsPage() {
                 borderRadius: "var(--radius-sm)",
               }}
             >
-              [content withheld — requires audit.read.content]
+              {t("audit.held", "[content withheld — requires audit.read.content]")}
             </span>
           );
         }
@@ -109,7 +111,7 @@ export function AuditLogsPage() {
     },
     {
       key: "signatureVerified",
-      header: "서명 상태",
+      header: t("audit.col.signature", "서명 상태"),
       render: () => (
         <StatusBadge label="VERIFIED" status="success" size="sm" />
       ),
@@ -124,11 +126,11 @@ export function AuditLogsPage() {
         suiteTag="TENANT ADMIN"
         suiteBadgeColor="leased"
         screenId="33"
-        title="참가자 본문 감사 스트림"
-        subtitle="SPEC § 11.0 프라이버시 경계: audit.read.content 권한 보유자에게만 본문 노출, 미보유 시 [content withheld] 리댁션"
+        title={t("audit.title", "참가자 본문 감사 스트림")}
+        subtitle={t("audit.subtitle", "SPEC § 11.0 프라이버시 경계: audit.read.content 권한 보유자에게만 본문 노출, 미보유 시 [content withheld] 리댁션")}
         actions={
           <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
-            ↻ 감사 로그 갱신
+            {t("audit.refreshBtn", "↻ 감사 로그 갱신")}
           </Button>
         }
       />
@@ -149,8 +151,8 @@ export function AuditLogsPage() {
           현재 권한 상태:{" "}
           <strong>
             {canReadContent
-              ? "✓ audit.read.content 보유 (본문 열람 가능 — 열람 시 내부 감사 로그 기록됨)"
-              : "⚠️ audit.read.content 미보유 (본문 유출 차단, 메타데이터만 열람)"}
+              ? t("audit.status.has", "✓ audit.read.content 보유 (본문 열람 가능 — 열람 시 내부 감사 로그 기록됨)")
+              : t("audit.status.none", "⚠️ audit.read.content 미보유 (본문 유출 차단, 메타데이터만 열람)")}
           </strong>
         </span>
       </div>

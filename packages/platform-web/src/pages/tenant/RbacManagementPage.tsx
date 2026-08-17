@@ -5,6 +5,7 @@ import {
   DataTable,
   Toast,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface OrgMember {
   id: string;
@@ -56,6 +57,7 @@ const ALL_CAPABILITIES = [
 ];
 
 export function RbacManagementPage() {
+  const { t } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>(INITIAL_MEMBERS);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -80,7 +82,7 @@ export function RbacManagementPage() {
   const columns = [
     {
       key: "name",
-      header: "멤버 이름 / 계정",
+      header: t("rbac.col.name", "멤버 이름 / 계정"),
       render: (item: OrgMember) => (
         <div>
           <div style={{ fontWeight: 700 }}>{item.name}</div>
@@ -92,7 +94,7 @@ export function RbacManagementPage() {
     },
     {
       key: "role",
-      header: "역할 (Role)",
+      header: t("rbac.col.role", "역할 (Role)"),
       render: (item: OrgMember) => (
         <span
           style={{
@@ -109,7 +111,7 @@ export function RbacManagementPage() {
     },
     {
       key: "capabilities",
-      header: "부여된 Capability (클릭하여 토글)",
+      header: t("rbac.col.caps", "부여된 Capability (클릭하여 토글)"),
       render: (item: OrgMember) => (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {ALL_CAPABILITIES.map((cap) => {
@@ -155,8 +157,8 @@ export function RbacManagementPage() {
         suiteTag="TENANT ADMIN"
         suiteBadgeColor="leased"
         screenId="36"
-        title="조직 멤버 RBAC 권한 할당"
-        subtitle="단일 ID 계정별 9대 Capability 즉각 부여 및 회수 (SPEC § 11.3 / § 17 Conformance)"
+        title={t("rbac.title", "조직 멤버 RBAC 권한 할당")}
+        subtitle={t("rbac.subtitle", "단일 ID 계정별 9대 Capability 즉각 부여 및 회수 (SPEC § 11.3 / § 17 Conformance)")}
       />
 
       {toastMessage && (
