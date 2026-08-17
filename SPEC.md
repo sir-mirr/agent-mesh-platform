@@ -1496,6 +1496,46 @@ The harness now **asks** rather than computing its own: two copies of one fact i
 how they come to disagree, and the copy that matters is the one the serving
 process holds.
 
+### 11.4. What each tenant received
+
+An identity belongs to a tenant. `agents.tenant` carries it, defaulting to
+`default`, and an identity nobody assigned counts there.
+
+**A column rather than a derivation from group membership.** The derivation
+needs a rule for an identity in no group and another for one in several, and
+neither rule can be right: somebody who put an identity in two groups was not
+thereby saying which tenant its traffic counts towards. A derivation rule reads
+an intention nobody expressed.
+
+Every accepted message is recorded once, **attributed to the recipient's
+tenant**. That rule is total rather than chosen: every message has exactly one
+recipient, so every message lands in exactly one tenant, cross-tenant traffic
+included. A sender rule would leave traffic that *arrived* in a tenant absent
+from that tenant's view, which is the reading an operator is actually misled by.
+
+It follows that externally-originated traffic needs no special case. Whatever
+reaches the mesh from outside is delivered to a mesh identity, and that identity
+has a tenant.
+
+The record carries `message_id`, `tenant`, `to_agent`, `from_agent`, `via`
+(§ 8.2a) and a timestamp. It MUST NOT carry content, or any measure of content
+such as a length — § 11.0 draws the platform operator's line at metadata, and a
+statistics table is where content arrives under the name "just a length".
+
+It MUST NOT carry delivery status. That changes after the row is written, and a
+statistics table which must be updated is one that can disagree with what it
+counts. What is recorded is that a message was *accepted for* a recipient.
+
+Written in the same transaction as the message: a count that commits when the
+message did not is a count of something that did not happen. A retry collapsed
+by § 8.2 counts once, because the idempotent path returns the original id and
+never reaches the insert.
+
+`GET /api/v1/admin/tenants` reads it, gated on `tenant.read.stats` — its own
+capability rather than `audit.read.metadata`. The trail answers who did what;
+this answers how much arrived, and one capability answering both is the shape
+§ 11 exists to undo.
+
 ### 8.2a. Which channel carries a reply
 
 A message records the transport it was accepted through — `mesh` for a socket or
@@ -1623,6 +1663,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
+| GET    | `/api/v1/admin/tenants`           | JWT\*  | `200`   | What each tenant received (§ 11.4). Gated on `tenant.read.stats`. |
 | GET    | `/api/v1/admin/grants`            | JWT\*  | `200`   | Who holds which capability (§ 11). Gated on `role.grant`. |
 | POST   | `/api/v1/admin/grants`            | JWT\*  | `201`   | Grant a capability to a subject (§ 11). |
 | DELETE | `/api/v1/admin/grants`            | JWT\*  | `200`   | Revoke one. Absent is not an error (§ 11). |

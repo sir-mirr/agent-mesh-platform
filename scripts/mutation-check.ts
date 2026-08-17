@@ -295,6 +295,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["nothing was pushed"],
   },
   {
+    id: "tenant-attribution",
+    defect:
+      "Traffic was attributed to the sender's tenant instead of the recipient's (§ 11.4). A sender rule leaves traffic that arrived in a tenant absent from that tenant's view — 'nothing came in' when something did, which is the reading an operator is actually misled by.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "      tenant: tenantOf(agentsDb, to),",
+    to: "      tenant: tenantOf(agentsDb, effectiveSender),",
+    suite: "test/tenant-stats.test.ts",
+    expect: ["cross-tenant message counts once"],
+  },
+  {
+    id: "tenant-stats-not-atomic",
+    defect:
+      "The statistics row was written outside the message transaction (§ 11.4). A count that commits when the message did not is a count of something that did not happen.",
+    file: "packages/mailbox/src/accept.ts",
+    from: "    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, opts.via);",
+    to: "",
+    suite: "test/tenant-stats.test.ts",
+    expect: ["recipient's tenant"],
+  },
+  {
     id: "grant-author",
     defect:
       "A grant recorded an author the caller stated rather than the session that made it (§ 11). A grant whose author is self-reported records whatever the author wanted recorded, which makes the trail agree with anybody who writes to it.",

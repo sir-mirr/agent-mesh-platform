@@ -71,7 +71,8 @@ export function migrate(db: Database): void {
       type        TEXT,
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
       deleted_at  DATETIME,
-      can_proxy   INTEGER NOT NULL DEFAULT 0
+      can_proxy   INTEGER NOT NULL DEFAULT 0,
+      tenant      TEXT NOT NULL DEFAULT 'default'
     );
   `);
 
@@ -88,6 +89,19 @@ export function migrate(db: Database): void {
 
   if (!has("type")) {
     db.exec(`ALTER TABLE agents ADD COLUMN type TEXT`);
+  }
+  //   tenant     — § 11.4. Which tenant an identity belongs to, and therefore
+  //                which tenant its incoming traffic counts towards.
+  //
+  // A column rather than a derivation from group membership, which was the
+  // alternative. An identity in no group would have no tenant and one in two
+  // would have two — both legal today — so the derivation needs a rule for each,
+  // and neither rule can be right: somebody putting an identity in two groups
+  // was not thereby saying which tenant it bills to. **A derivation rule reads
+  // an intention that was never expressed.** `role_grants` and `groups` already
+  // carry `tenant`; `agents` being the exception is what raised the question.
+  if (!has("tenant")) {
+    db.exec(`ALTER TABLE agents ADD COLUMN tenant TEXT NOT NULL DEFAULT 'default'`);
   }
   if (!has("created_at")) {
     // SQLite rejects non-constant defaults in ALTER TABLE ADD COLUMN, so the

@@ -480,6 +480,31 @@ no-op that reads as a control.
 
 ### ~~The integration suite occasionally loses two tests to a mesh that never starts~~
 
+**Reopened, found, and closed.** The withdrawal below was right to reject the
+mechanism it named and wrong to conclude there was none. The real one, caught
+with the port still held:
+
+```
+service at http://127.0.0.1:57566/health never became healthy: status 403
+$ lsof -nP -iTCP:57566
+Electron  30993  ...  TCP 127.0.0.1:57566 (LISTEN)
+```
+
+**The `403` is what identified it.** Nothing in the hub sends one on `/health`,
+so the answer was not coming from the hub. `freePort` used
+`Bun.serve({ port: 0 })`, which binds every interface and therefore reports a
+port free on `0.0.0.0` — saying nothing about `127.0.0.1`, which is where the
+health check goes and where an unrelated process was already listening.
+
+Fixed by probing on the address the caller will use. `scripts/e2e-harness.ts`
+has always done that, which is why this never appeared there.
+
+Worth keeping as a record of the sequence: a guess was written down as a
+mechanism, measured, found false, and withdrawn — and the withdrawal said the
+cause was unknown rather than absent. That left the door open, and the next
+occurrence carried an error code specific enough to walk through it.
+
+
 Withdrawn. The mechanism this entry asserted was measured and is not there.
 
 **What was seen**, once: a run printed

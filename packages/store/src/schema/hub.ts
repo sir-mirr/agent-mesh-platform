@@ -57,6 +57,44 @@ export function migrate(db: Database): void {
     db.exec(`ALTER TABLE messages ADD COLUMN via TEXT`);
   }
 
+  /**
+   * What each tenant received (SPEC § 11.4).
+   *
+   * **Separate from `messages` on purpose.** A `tenant` column there would tie
+   * tenancy to the operational record, which rotates; this outlives nothing and
+   * is answerable on its own terms.
+   *
+   * **Attributed to the recipient**, which is a total rule rather than a
+   * preference: every message has exactly one recipient, so every message has
+   * exactly one tenant — cross-tenant traffic included. A sender rule would
+   * leave traffic that *arrived* in a tenant absent from that tenant's view,
+   * which is the reading an operator is actually misled by.
+   *
+   * **No content, no size.** § 11.0 draws the platform operator's line at
+   * metadata, and a statistics table is exactly where content arrives under the
+   * name "just a length".
+   *
+   * **No status.** Delivery outcome changes after this row is written, and a
+   * statistics table that must be updated is one that can disagree with what it
+   * counts. This records that a message was *accepted for* a recipient, which
+   * does not change afterwards.
+   *
+   * `message_id` is the key, so the retry § 8.2 collapses counts once — the
+   * idempotent path returns the original id and never reaches this insert.
+   */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_stats (
+      message_id TEXT PRIMARY KEY,
+      tenant     TEXT NOT NULL,
+      to_agent   TEXT NOT NULL,
+      from_agent TEXT NOT NULL,
+      via        TEXT NOT NULL,
+      ts         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_stats_tenant_ts
+      ON message_stats(tenant, ts);
+  `);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_pending
       ON messages(to_agent, status, leased_until);

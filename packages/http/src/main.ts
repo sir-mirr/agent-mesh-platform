@@ -1784,6 +1784,45 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * is gated on the capability that grants, so an operator cannot widen their own
  * reach through a screen they were given for someone else's.
  */
+/**
+ * How much each tenant received (SPEC § 11.4).
+ *
+ * **Its own capability, not `audit.read.metadata`.** The trail answers who did
+ * what; this answers how much arrived. Somebody watching capacity has no need of
+ * the first, and reusing one capability for both is the shape § 11 exists to
+ * undo — the same "is an admin" problem, one size down.
+ *
+ * Counted from `message_stats`, not from `messages`: that table is attributed to
+ * the recipient at accept time and does not change afterwards, so two reads a
+ * minute apart differ only by what arrived between them.
+ */
+app.get('/api/v1/admin/tenants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.TENANT_READ_STATS)
+  if (typeof actor !== 'string') return actor
+
+  // A window rather than all time. "How much traffic" is a question about a
+  // period, and a total since the beginning answers it only on the first day.
+  const hours = Math.min(Math.max(Number(c.req.query('hours') ?? 24) || 24, 1), 24 * 90)
+  const since = `-${hours} hours`
+
+  const rows = getHubDb()
+    .prepare(
+      `SELECT tenant,
+              COUNT(*)                                    AS received,
+              COUNT(DISTINCT to_agent)                    AS recipients,
+              COUNT(DISTINCT from_agent)                  AS senders,
+              SUM(CASE WHEN via = 'mailbox' THEN 1 ELSE 0 END) AS via_mailbox,
+              MAX(ts)                                     AS last_at
+         FROM message_stats
+        WHERE ts >= datetime('now', ?)
+        GROUP BY tenant
+        ORDER BY received DESC`,
+    )
+    .all(since)
+
+  return c.json({ ok: true, hours, tenants: rows })
+})
+
 app.get('/api/v1/admin/grants', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
   if (typeof actor !== 'string') return actor

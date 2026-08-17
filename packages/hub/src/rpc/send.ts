@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { MAILBOX_ERROR } from "@agent-mesh/contracts";
-import { entitlement, groups, sources } from "@agent-mesh/store";
+import { entitlement, groups, sources, tenantOf } from "@agent-mesh/store";
 
 import {
   agentsDb,
@@ -13,6 +13,7 @@ import {
   stmtAgentDeleted,
   stmtInsertIdempotency,
   stmtInsertMessage,
+  stmtInsertMessageStats,
   stmtMessageVia,
   stmtSelectIdempotency,
   stmtUpdateMessageStatus,
@@ -221,7 +222,11 @@ export function handleSend(
   try {
     accept({
       db,
-      stmt: { insertMessage: stmtInsertMessage, insertIdempotency: stmtInsertIdempotency },
+      stmt: {
+        insertMessage: stmtInsertMessage,
+        insertIdempotency: stmtInsertIdempotency,
+        insertStats: stmtInsertMessageStats,
+      },
       id: msgId,
       from: effectiveSender,
       to,
@@ -231,6 +236,11 @@ export function handleSend(
       // Decided above, from presence. The mailbox has no notion of who is
       // online and must not acquire one — see docs/decisions/mailbox-and-hub.md.
       status,
+      // § 11.4. The **recipient's** tenant: every message has exactly one
+      // recipient, so every message has exactly one tenant, cross-tenant
+      // traffic included. Resolved here because it means reading `agents`,
+      // which is a § 11 concept the mailbox has no business holding.
+      tenant: tenantOf(agentsDb, to),
       via,
       clientMessageId: typeof clientMessageId === "string" ? clientMessageId : null,
       idempotencyDigest,

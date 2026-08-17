@@ -225,6 +225,12 @@ export const stmtInsertMessage = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
 `);
 
+/** § 11.4. One row per accepted message, attributed to the recipient's tenant. */
+export const stmtInsertMessageStats = db.prepare(`
+  INSERT INTO message_stats (message_id, tenant, to_agent, from_agent, via)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
 /** The transport a message arrived on, for routing its reply (§ 8.2a). */
 export const stmtMessageVia = db.prepare(`SELECT via FROM messages WHERE id = ?`);
 

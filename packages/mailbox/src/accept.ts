@@ -30,6 +30,8 @@ export type AcceptedStatus = "delivered" | "pending";
 export interface AcceptStatements {
   insertMessage: Statement;
   insertIdempotency: Statement;
+  /** § 11.4. One row per accepted message, attributed to the recipient. */
+  insertStats: Statement;
 }
 
 export interface AcceptOptions {
@@ -49,6 +51,16 @@ export interface AcceptOptions {
   status: AcceptedStatus;
   /** The transport the sender used, for routing the reply to this (§ 8.2a). */
   via: "mesh" | "mailbox";
+  /**
+   * The recipient's tenant (§ 11.4) — **decided by the caller**, like `status`
+   * and `via` above.
+   *
+   * Resolving it means reading `agents`, and a tenant is a § 11 concept the
+   * mailbox has no business holding. Passing it in rather than looking it up is
+   * the same boundary rule that made the reply-channel decision take presence as
+   * an answer: anything this package can ask, it depends on.
+   */
+  tenant: string;
 
   /** § 8.2 idempotency. Both or neither. */
   clientMessageId?: string | null;
@@ -87,6 +99,9 @@ export function accept(opts: AcceptOptions): void {
       opts.status,
       opts.via,
     );
+    // § 11.4, in the same transaction as the message. A count that commits when
+    // the message did not is a count of something that did not happen.
+    stmt.insertStats.run(opts.id, opts.tenant, opts.to, opts.from, opts.via);
     opts.alsoInTransaction?.();
     if (idempotencyDigest != null && typeof clientMessageId === "string") {
       stmt.insertIdempotency.run(
