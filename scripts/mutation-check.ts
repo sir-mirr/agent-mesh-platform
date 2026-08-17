@@ -845,6 +845,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/http.test.ts",
     expect: ["`agent_count` counts mesh identities, and moves when one is provisioned"],
   },
+  {
+    id: "refused-send-written-back",
+    defect:
+      "`POST /api/v1/messages` corrected a refused message's status on the object it answers from and never on the row. No UPDATE of that table existed in the package, so the response said `failed` and the record said `pending` — and the record is what the history route, the conversation view and search all serve, for the rest of the message's life.",
+    file: "packages/http/src/main.ts",
+    from: "    if (!updateMessageStatus(msg.id, 'failed')) {",
+    to: "    if (false) {",
+    suite: "test/message-status.test.ts",
+    expect: ["is recorded as failed, not left pending for ever"],
+  },
 ];
 
 /**
