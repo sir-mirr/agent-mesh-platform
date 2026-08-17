@@ -973,11 +973,15 @@ export function TopologyPage() {
           }}
         >
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
-          <span>Active Swarms: {clusters.length}</span>
+          <span>Groups: {clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span>Total Nodes: {totalAgentCount + clusters.length}</span>
+          <span>Agents: {totalAgentCount}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span style={{ color: "var(--color-primary)", fontWeight: 800 }}>Egress Active</span>
+          <span>Gateways: {clusters.length}</span>
+          <span style={{ color: "var(--color-text-muted)" }}>·</span>
+          <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 스웜 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
+            Egress: Active
+          </span>
         </div>
 
         {/* Top Right Compact Filter & Search Tool with Interactive Autocomplete Dropdown */}
