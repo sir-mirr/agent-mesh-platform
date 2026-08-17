@@ -145,12 +145,21 @@ No transport security between the hub and its clients. § 14.2 states this. Ever
 signature above is therefore integrity without confidentiality: an observer
 cannot forge a request but can read every one.
 
+**Why deferred.** It is a deployment concern rather than a code one: TLS
+terminates at the proxy § 8.11.1 already assumes, and the hub binding to
+loopback behind it is the configuration that makes `ws://` safe. Nothing here
+changes when someone does that, which is why nothing here is waiting.
+
 ### A `requires_key = 0` type connects unsigned
 
 By design, not by omission — but the guarantee is per type. `service` is seeded
 at 0 because the baseline predates keys, so `http-server` and `self-reminder`
 connect unsigned today. A deployment that wants them authenticated raises the
 flag and provisions keys; nothing in the code needs to change.
+
+**Why deferred.** Because that last clause is the whole answer — the mechanism
+exists and a deployment chooses. Seeding `service` at `1` instead would break
+every baseline participant on upgrade to fix something a flag already fixes.
 
 ### The audit store is never pruned
 
@@ -159,6 +168,10 @@ refuses audit writes with `-32044` rather than deleting to make room, so the
 failure mode is "audit stops" rather than "history quietly rewrites itself".
 Someone still has to notice.
 
+**Why deferred.** Retention is the decision, not the gap. What is missing is an
+operator noticing before exhaustion, which is monitoring rather than code — and
+pruning is the one remedy that would make the trail lie.
+
 ### A socketless caller can be handed the same message twice
 
 Delivery over § 8.10 is at-least-once: a batch not acknowledged comes back after
@@ -166,6 +179,10 @@ its lease lapses. Clients deduplicate on the stable `id`. This is a deliberate
 trade rather than a defect — a duplicate is visible and cheap, a loss is
 neither — but it does mean the mesh does not promise exactly-once to a caller
 that cannot hold a socket, and no amount of tuning the lease changes that.
+
+**Why deferred.** There is nothing to build. Exactly-once over a transport the
+caller cannot hold open is not available at any price, and the contract says so
+rather than implying otherwise.
 
 ### The send dedup table is never pruned
 
@@ -184,11 +201,17 @@ for a single hub and would not be for two: a replay could be split across
 instances. The hub does not scale horizontally for the presence reason already
 recorded, so this is a consequence rather than a second limit.
 
+**Why deferred.** It becomes real the day a second hub does, and that day
+arrives with presence — which is the constraint that has to move first. Fixing
+this alone would be solving the smaller half of a problem nobody has yet.
+
 ### Attachment download is unauthenticated
 
-Recorded in [`open-questions.md`](open-questions.md) instead, because it is a
-question rather than a decision: capability-by-digest may well be sufficient,
-and nobody has ruled. An item in both files is an item that goes stale in one.
+**Why deferred.** It lives in [`open-questions.md`](open-questions.md), because
+it is a question rather than a decision: capability-by-digest may well be
+sufficient and nobody has ruled. This stub exists only so a reader of this file
+does not conclude the gap is unrecorded — an item in both files is an item that
+goes stale in one.
 
 ### A refused upload leaves its connection unusable
 
