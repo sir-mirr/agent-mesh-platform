@@ -805,6 +805,46 @@ const MUTATIONS: Mutation[] = [
     suite: "test/harness-death.test.ts",
     expect: ["is told it measured nothing, not that a socket was unreachable"],
   },
+  {
+    id: "dropped-frame-not-a-delivery",
+    defect:
+      "`ws.send` reports a dropped frame by returning 0 rather than throwing, and `mesh.send` decided `delivered` from the presence of a socket before sending. A message to a socket that had gone away was written `delivered` in the row and in § 8.9.4's audit event, and a row that is not pending is never replayed — so the claim that the recipient got it is also the reason it is unrecoverable.",
+    file: "packages/hub/src/jsonrpc.ts",
+    from: "  return ws.send(frame) !== 0;",
+    to: "  ws.send(frame); return true;",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["is recorded pending when the socket drops the frame"],
+  },
+  {
+    id: "backpressure-is-not-a-loss",
+    defect:
+      "Bun returns -1 when a frame is buffered behind backpressure — queued, and about to flush. Reading any non-positive return as a loss would leave the row pending and replay it on the next connect, handing the recipient a duplicate of a message it was already receiving. The fix for a loss would have manufactured one.",
+    file: "packages/hub/src/jsonrpc.ts",
+    from: "  return ws.send(frame) !== 0;",
+    to: "  return ws.send(frame) > 0;",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["backpressure is a delivery, not a loss"],
+  },
+  {
+    id: "replay-stops-at-a-drop",
+    defect:
+      "The replay loop's `break` was unreachable: it sat in a `catch`, and a send to a closed socket returns 0 instead of throwing. A reconnect into a closing socket walked the entire queue, marking every message delivered and writing an audit event for each.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "      if (!landed) {",
+    to: "      if (false) {",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["leaves the queue pending when the socket drops the frame"],
+  },
+  {
+    id: "health-counts-agents",
+    defect:
+      "`GET /api/v1/health` answered `agent_count` from `agent_registry`, the http server's messaging directory, whose only writers are a legacy JSON import and one that inserts a person. It reported 1 — the `admin` human — on a deployment holding fourteen mesh identities: a number that moves when somebody logs in and not when an agent is provisioned.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare('SELECT count(*) AS n FROM agents')",
+    to: "    .prepare('SELECT 1 AS n')",
+    suite: "test/http.test.ts",
+    expect: ["`agent_count` counts mesh identities, and moves when one is provisioned"],
+  },
 ];
 
 /**
