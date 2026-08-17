@@ -9,7 +9,7 @@ import {
   Toast,
 } from "@/components/index.ts";
 
-interface SwarmGroup {
+interface AgentGroup {
   id: string;
   name: string;
   description: string;
@@ -18,10 +18,10 @@ interface SwarmGroup {
   createdAt: string;
 }
 
-const INITIAL_GROUPS: SwarmGroup[] = [
+const INITIAL_GROUPS: AgentGroup[] = [
   {
     id: "grp_support",
-    name: "Support Swarm",
+    name: "Support Group",
     description: "고객 지원 및 자동 응답 에이전트 그룹",
     memberCount: 2,
     members: ["agt_support_01", "agt_support_02"],
@@ -37,7 +37,7 @@ const INITIAL_GROUPS: SwarmGroup[] = [
   },
   {
     id: "grp_analytics",
-    name: "Analytics Swarm",
+    name: "Analytics Group",
     description: "시장 인텔리전스 및 데이터 수집 워커 그룹",
     memberCount: 1,
     members: ["agt_analyzer_03"],
@@ -46,10 +46,10 @@ const INITIAL_GROUPS: SwarmGroup[] = [
 ];
 
 export function GroupsPage() {
-  const [groups, setGroups] = useState<SwarmGroup[]>(INITIAL_GROUPS);
+  const [groups, setGroups] = useState<AgentGroup[]>(INITIAL_GROUPS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState<SwarmGroup | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
 
   // Form states
   const [newGroupName, setNewGroupName] = useState("");
@@ -61,7 +61,7 @@ export function GroupsPage() {
     e.preventDefault();
     if (!newGroupName) return;
 
-    const newGroup: SwarmGroup = {
+    const newGroup: AgentGroup = {
       id: `grp_${Date.now()}`,
       name: newGroupName,
       description: newGroupDesc || "사용자 생성 에이전트 그룹",
@@ -99,7 +99,7 @@ export function GroupsPage() {
     {
       key: "name",
       header: "그룹 명 / ID",
-      render: (item: SwarmGroup) => (
+      render: (item: AgentGroup) => (
         <div>
           <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
             {item.name}
@@ -119,7 +119,7 @@ export function GroupsPage() {
     {
       key: "description",
       header: "그룹 설명",
-      render: (item: SwarmGroup) => (
+      render: (item: AgentGroup) => (
         <span style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>
           {item.description}
         </span>
@@ -128,7 +128,7 @@ export function GroupsPage() {
     {
       key: "memberCount",
       header: "소속 에이전트",
-      render: (item: SwarmGroup) => (
+      render: (item: AgentGroup) => (
         <span
           style={{
             fontFamily: "var(--font-mono)",
@@ -145,9 +145,37 @@ export function GroupsPage() {
       ),
     },
     {
+      key: "members",
+      header: "배속 에이전트 목록",
+      render: (item: AgentGroup) => (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {item.members.map((id) => (
+            <span
+              key={id}
+              style={{
+                fontSize: "0.72rem",
+                fontFamily: "var(--font-mono)",
+                background: "var(--color-bg-surface-sub)",
+                padding: "2px 6px",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              {id}
+            </span>
+          ))}
+          {item.members.length === 0 && (
+            <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+              배속된 에이전트 없음
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
       key: "createdAt",
       header: "생성 일시",
-      render: (item: SwarmGroup) => (
+      render: (item: AgentGroup) => (
         <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
           {item.createdAt}
         </span>
@@ -157,7 +185,7 @@ export function GroupsPage() {
       key: "actions",
       header: "작업",
       align: "right" as const,
-      render: (item: SwarmGroup) => (
+      render: (item: AgentGroup) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
           <Button
             variant="secondary"
@@ -214,7 +242,7 @@ export function GroupsPage() {
         <form onSubmit={handleCreateGroup} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input
             label="그룹 이름"
-            placeholder="예: Analytics Swarm"
+            placeholder="예: Analytics Group (데이터 분석)"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             required

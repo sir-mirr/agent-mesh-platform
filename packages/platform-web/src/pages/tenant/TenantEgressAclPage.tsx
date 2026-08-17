@@ -8,9 +8,9 @@ import {
 
 export function TenantEgressAclPage() {
   const groups = [
-    { id: "grp_support", name: "Support Swarm" },
+    { id: "grp_support", name: "Support Group" },
     { id: "grp_billing", name: "Billing Core" },
-    { id: "grp_analytics", name: "Analytics Swarm" },
+    { id: "grp_analytics", name: "Analytics Group" },
   ];
 
   // Directional Egress rules (A -> B != B -> A)

@@ -24,7 +24,7 @@ const INITIAL_AGENTS: AgentItem[] = [
   {
     id: "agt_support_01",
     name: "Customer Support Agent",
-    groupName: "Support Swarm",
+    groupName: "Support Group",
     status: "online",
     fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
     inboxDepth: 0,
@@ -42,7 +42,7 @@ const INITIAL_AGENTS: AgentItem[] = [
   {
     id: "agt_analyzer_03",
     name: "Market Intelligence Worker",
-    groupName: "Analytics Swarm",
+    groupName: "Analytics Group",
     status: "offline",
     fingerprint: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     inboxDepth: 5,

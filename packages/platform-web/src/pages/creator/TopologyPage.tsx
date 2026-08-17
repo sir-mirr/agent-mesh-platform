@@ -42,10 +42,10 @@ interface TopoEdge {
 const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
   // ROW 1: TOP DECK
   { id: "core", name: "Core Platform Hub", count: 5, cx: 360, cy: 380, r: 160, fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF", gw: { id: "gw-core", x: 360, y: 700 } },
-  { id: "research", name: "Research & Reasoning Swarm", count: 24, cx: 1080, cy: 380, r: 300, fill: "#ECFDF5", stroke: "#A7F3D0", textColor: "#065F46", gw: { id: "gw-research", x: 1080, y: 700 } },
+  { id: "research", name: "Research & Reasoning Group", count: 24, cx: 1080, cy: 380, r: 300, fill: "#ECFDF5", stroke: "#A7F3D0", textColor: "#065F46", gw: { id: "gw-research", x: 1080, y: 700 } },
   { id: "delivery", name: "Execution & Delivery Mesh", count: 14, cx: 1780, cy: 380, r: 230, fill: "#F5F3FF", stroke: "#DDD6FE", textColor: "#5B21B6", gw: { id: "gw-delivery", x: 1780, y: 700 } },
   { id: "security", name: "Security & Sentinel Ring", count: 8, cx: 2420, cy: 380, r: 180, fill: "#FEF2F2", stroke: "#FECACA", textColor: "#991B1B", gw: { id: "gw-security", x: 2420, y: 700 } },
-  { id: "data", name: "Data & ETL Pipeline Swarm", count: 16, cx: 3100, cy: 380, r: 250, fill: "#F0F9FF", stroke: "#BAE6FD", textColor: "#075985", gw: { id: "gw-data", x: 3100, y: 700 } },
+  { id: "data", name: "Data & ETL Pipeline Group", count: 16, cx: 3100, cy: 380, r: 250, fill: "#F0F9FF", stroke: "#BAE6FD", textColor: "#075985", gw: { id: "gw-data", x: 3100, y: 700 } },
 
   // ROW 2: BOTTOM DECK
   { id: "edge", name: "Edge & IoT Micro-Agents", count: 20, cx: 480, cy: 1300, r: 260, fill: "#FFFBEB", stroke: "#FDE68A", textColor: "#92400E", gw: { id: "gw-edge", x: 480, y: 840 } },

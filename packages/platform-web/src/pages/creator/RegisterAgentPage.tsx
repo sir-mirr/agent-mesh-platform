@@ -91,9 +91,9 @@ export function RegisterAgentPage() {
                   outline: "none",
                 }}
               >
-                <option value="grp_support">Support Swarm (고객 지원)</option>
+                <option value="grp_support">Support Group (고객 지원)</option>
                 <option value="grp_billing">Billing Core (정산)</option>
-                <option value="grp_analytics">Analytics Swarm (분석)</option>
+                <option value="grp_analytics">Analytics Group (분석)</option>
               </select>
             </div>
 
