@@ -36,6 +36,7 @@ const MOCK_PENDING_QUEUE: PendingAgentRequest[] = [
 export function RegisterAgentPage() {
   const { t } = useI18n();
   const [targetIdentity, setTargetIdentity] = useState("agt_settlement_04");
+  const [selectedTtl, setSelectedTtl] = useState(300);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [ttl, setTtl] = useState<number>(300);
   const [copied, setCopied] = useState<boolean>(false);
@@ -50,9 +51,9 @@ export function RegisterAgentPage() {
     const cleanId = targetIdentity.replace(/^agt_/, "").toUpperCase();
     const code = `PAIR-${randomSuffix}-${cleanId}`;
     setGeneratedCode(code);
-    setTtl(300);
+    setTtl(selectedTtl);
     setCopied(false);
-    setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다.`);
+    setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
   };
 
   const handleCopy = () => {
@@ -242,6 +243,29 @@ export function RegisterAgentPage() {
               required
             />
 
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
+                ⏱️ 페어링 코드 유효기간 (TTL, 최대 1시간)
+              </label>
+              <select
+                value={selectedTtl}
+                onChange={(e) => setSelectedTtl(Number(e.target.value))}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-bg-surface)",
+                  fontSize: "0.88rem",
+                  outline: "none",
+                }}
+              >
+                <option value={300}>5분 (300초 - 기본 권장)</option>
+                <option value={900}>15분 (900초 - 서버 셋업용)</option>
+                <option value={1800}>30분 (1,800초 - CI/CD 배포용)</option>
+                <option value={3600}>1시간 (3,600초 - 최대 허용치)</option>
+              </select>
+            </div>
+
             <Button variant="primary" size="md" type="submit">
               ⚡ 1회용 페어링 코드 발급
             </Button>
@@ -259,7 +283,7 @@ export function RegisterAgentPage() {
               }}
             >
               <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)" }}>
-                발급된 1회용 인증코드 (300s TTL)
+                발급된 1회용 인증코드 (유효시간: {selectedTtl / 60}분)
               </div>
               <div
                 style={{
