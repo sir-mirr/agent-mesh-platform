@@ -12,6 +12,8 @@
  */
 
 export { accept } from "./accept";
+export { channelOf, replyChannel } from "./channel";
+export type { Channel, ReplyRoutingInput } from "./channel";
 export type { AcceptOptions, AcceptStatements, AcceptedStatus } from "./accept";
 export { receive } from "./receive";
 export type {

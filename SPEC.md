@@ -1470,6 +1470,34 @@ Entitlement (§ 8.2) applies unchanged, and `proxy_for` is unavailable — it is
 declared at connect, and there is no connect. A socketless participant sends as
 itself.
 
+### 8.2a. Which channel carries a reply
+
+A message records the transport it was accepted through — `mesh` for a socket or
+`POST /api/v1/rpc`, `mailbox` for `POST /api/v1/mailbox/out`. A row written
+before this existed reads as `mesh`, which is what those deployments had.
+
+**A reply goes back the way the thing it answers arrived.** The channel is a
+property of the conversation rather than of the moment: a correspondent who
+reads mail once an hour must not receive half a thread on a socket they were
+briefly holding and have to find the rest elsewhere.
+
+**Unless both ends are live**, in which case the mesh carries it. Both is the
+whole of the condition. One end present is exactly the case the mailbox exists
+for, and it is the recipient's presence alone that would otherwise tempt a hub
+into pushing.
+
+A send that answers nothing is not a reply and has no conversation to respect.
+It takes the mesh whenever the recipient is reachable, which is the rule that
+predates this one and which the socketless transport was built to have.
+
+**Evaluated at send time, never recorded on the conversation.** A channel
+written down once goes stale the moment either side reconnects or drops, and the
+thread then routes by a fact about a socket that closed an hour ago.
+
+The decision belongs to the hub, because only the hub can see presence. The rule
+belongs to the mailbox, and takes presence as an answer rather than asking for
+it — anything the mailbox can ask, it depends on.
+
 #### 8.10.1. `mesh.receive`
 
 Returns messages queued for the caller and marks them delivered.

@@ -242,6 +242,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["verb not implemented"],
   },
   {
+    id: "reply-channel",
+    defect:
+      "A reply to mail was pushed over the mesh because the recipient happened to be holding a socket (§ 8.2a). That puts half a thread on a socket a correspondent was briefly holding and leaves them to find the rest; one end present is exactly the case the mailbox exists for.",
+    file: "packages/mailbox/src/channel.ts",
+    from: "  return input.recipientLive && input.senderLive ? \"mesh\" : \"mailbox\";",
+    to: '  return input.recipientLive ? "mesh" : "mailbox";',
+    suite: "packages/mailbox/",
+    expect: ["only the recipient is live", "mailbox"],
+  },
+  {
+    id: "reply-channel-overreach",
+    defect:
+      "The both-live condition was applied to every send, not only to replies. A mailbox participant sending to an agent holding a socket stopped being delivered — behaviour the socketless transport was built to have and nobody asked to change. The first version of the rule did this, and two tests said so immediately.",
+    file: "packages/mailbox/src/channel.ts",
+    from: '  if (!isReply) return input.recipientLive ? "mesh" : "mailbox";',
+    to: '  if (!isReply) return input.recipientLive && input.senderLive ? "mesh" : "mailbox";',
+    suite: "packages/mailbox/",
+    expect: ["answers nothing", "mesh"],
+  },
+  {
     id: "mailbox-boundary",
     defect:
       "The mailbox imported the hub. The arrangement this package replaced reached hub presence, the hub's database handle and three RPC handlers — faking a WebSocket so the handlers would accept the caller — and every one of those imports was reasonable on the day it was added. Nothing forbade them, which is the only reason they were there.",

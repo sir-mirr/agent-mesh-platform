@@ -221,9 +221,12 @@ export const stmtSelectAuditEvent = auditDb.prepare(`
 // --- messages ---------------------------------------------------------------
 
 export const stmtInsertMessage = db.prepare(`
-  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts)
-  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts, via)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
 `);
+
+/** The transport a message arrived on, for routing its reply (§ 8.2a). */
+export const stmtMessageVia = db.prepare(`SELECT via FROM messages WHERE id = ?`);
 
 export const stmtUpdateMessageStatus = db.prepare(`
   UPDATE messages SET status = ? WHERE id = ?

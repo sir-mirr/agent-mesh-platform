@@ -24,7 +24,8 @@ export function migrate(db: Database): void {
       reply_to   TEXT,
       status     TEXT DEFAULT 'pending',
       ts         DATETIME DEFAULT CURRENT_TIMESTAMP,
-      leased_until DATETIME
+      leased_until DATETIME,
+      via        TEXT
     );
   `);
 
@@ -36,6 +37,26 @@ export function migrate(db: Database): void {
   if (!messageColumns.some((c) => c.name === "leased_until")) {
     db.exec(`ALTER TABLE messages ADD COLUMN leased_until DATETIME`);
   }
+  /**
+   * Which transport the sender used (SPEC § 8.2a): `mesh` or `mailbox`.
+   *
+   * **A property of the conversation, not of the moment.** A reply goes back the
+   * way the thing it answers arrived, so a correspondent who reads mail once an
+   * hour does not receive half a thread on a socket they were briefly holding —
+   * see `docs/decisions/mailbox-and-hub.md`.
+   *
+   * Recorded at accept time because that is when it is knowable without asking
+   * anything: the route the sender called says it. Deriving it later from
+   * `status` would be wrong in exactly the interesting case, since a mailbox
+   * send to somebody who happens to be online is `delivered` too.
+   *
+   * Null on rows written before this existed. Read as `mesh`, which is what
+   * those deployments had.
+   */
+  if (!messageColumns.some((c) => c.name === "via")) {
+    db.exec(`ALTER TABLE messages ADD COLUMN via TEXT`);
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_pending
       ON messages(to_agent, status, leased_until);

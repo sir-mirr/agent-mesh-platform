@@ -207,7 +207,9 @@ function asCallerRaw(identity: string, params: Record<string, unknown>, observed
   const ws = { restCaller: true, identity, observed };
   wsIdentities.set(ws, identity);
   try {
-    return handleSend(ws, params, 1)!;
+    // § 8.2a. This route *is* the mailbox, so anything arriving on it was sent
+    // by mail, whatever the recipient happens to be holding at the time.
+    return handleSend(ws, params, 1, undefined, undefined, "mailbox")!;
   } finally {
     wsIdentities.delete(ws);
     wsProxies.delete(ws);

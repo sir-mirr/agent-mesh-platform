@@ -167,7 +167,7 @@ describe("hub schema", () => {
     hubSchema.migrate(db);
     expect(columns(db, "messages")).toEqual([
       "content", "from_agent", "id", "leased_until", "reply_to", "sent_by",
-      "status", "to_agent", "ts",
+      "status", "to_agent", "ts", "via",
     ]);
   });
 

@@ -47,6 +47,8 @@ export interface AcceptOptions {
   replyTo: string | null;
   /** Decided by the caller, from presence the mailbox cannot see. */
   status: AcceptedStatus;
+  /** The transport the sender used, for routing the reply to this (§ 8.2a). */
+  via: "mesh" | "mailbox";
 
   /** § 8.2 idempotency. Both or neither. */
   clientMessageId?: string | null;
@@ -83,6 +85,7 @@ export function accept(opts: AcceptOptions): void {
       opts.content,
       opts.replyTo,
       opts.status,
+      opts.via,
     );
     opts.alsoInTransaction?.();
     if (idempotencyDigest != null && typeof clientMessageId === "string") {

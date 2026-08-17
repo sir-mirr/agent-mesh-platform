@@ -13,6 +13,7 @@ import {
   stmtAgentDeleted,
   stmtInsertIdempotency,
   stmtInsertMessage,
+  stmtMessageVia,
   stmtSelectIdempotency,
   stmtUpdateMessageStatus,
 } from "../db";
@@ -29,7 +30,7 @@ import { log } from "../log";
 import { checkDormantSource } from "../dormancy";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
-import { accept } from "@agent-mesh/mailbox";
+import { accept, replyChannel, type Channel } from "@agent-mesh/mailbox";
 
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
@@ -58,6 +59,16 @@ export function handleSend(
   id: string | number | null | undefined,
   raw?: string,
   sig?: unknown,
+  /**
+   * The transport the caller reached us on (§ 8.2a).
+   *
+   * Defaulted to `mesh` because two of the three call sites are the socket and
+   * `/api/v1/rpc`, and only `/api/v1/mailbox/out` is the other. A default is
+   * safe here in a way it usually is not: reading a row as `mesh` keeps the
+   * behaviour that predates this rule, so a caller that forgets to say loses
+   * the new routing rather than gaining a wrong one.
+   */
+  via: Channel = "mesh",
 ): string {
   const senderIdentity = wsIdentities.get(ws);
   if (!senderIdentity) {
@@ -184,8 +195,25 @@ export function handleSend(
     : `${effectiveSender} → ${to}`;
 
   const recipientWs = onlineAgents.get(to) ?? proxyMap.get(to);
-  const isOnline = !!recipientWs;
-  const status = isOnline ? "delivered" : "pending";
+
+  // § 8.2a. A reply goes back the way the thing it answers arrived, unless both
+  // ends are live — and *both* is the whole of it, because one end present is
+  // exactly the case the mailbox exists for. The rule is the mailbox's; the
+  // presence lookups are ours, which is why they are resolved here and passed
+  // in rather than reached for from inside the package.
+  const senderLive = !!(onlineAgents.get(effectiveSender) ?? proxyMap.get(effectiveSender));
+  const parentVia = replyTo
+    ? ((stmtMessageVia.get(replyTo) as { via: string | null } | undefined)?.via ?? null)
+    : null;
+  const carriedBy = replyChannel({
+    inReplyToVia: replyTo ? parentVia : null,
+    recipientLive: !!recipientWs,
+    senderLive,
+  });
+
+  // Pushed only when the routing says mesh *and* somebody is there to push to.
+  const deliverNow = carriedBy === "mesh" ? recipientWs : undefined;
+  const status = deliverNow ? "delivered" : "pending";
 
   // The message and its idempotency record commit together, so a crash between
   // them cannot leave a key that names a message which does not exist, or a
@@ -203,6 +231,7 @@ export function handleSend(
       // Decided above, from presence. The mailbox has no notion of who is
       // online and must not acquire one — see docs/decisions/mailbox-and-hub.md.
       status,
+      via,
       clientMessageId: typeof clientMessageId === "string" ? clientMessageId : null,
       idempotencyDigest,
       // § 8.11.2, and a different store with a different owner. Inside the same
@@ -225,10 +254,11 @@ export function handleSend(
     });
   }
 
-  // Deliver immediately if recipient is online
-  if (recipientWs) {
+  // Deliver immediately when the routing chose the mesh and the recipient is
+  // there. `deliverNow` already carries both conditions.
+  if (deliverNow) {
     try {
-      recipientWs.send(
+      deliverNow.send(
         rpcNotification("mesh.message", {
           id: msgId,
           from: effectiveSender,
@@ -242,7 +272,7 @@ export function handleSend(
       log(`delivered: ${route} (${msgId})`);
       // Notify sender that message was delivered (for typing indicator)
       const senderWs = onlineAgents.get(effectiveSender) ?? proxyMap.get(effectiveSender);
-      if (senderWs && senderWs !== recipientWs) {
+      if (senderWs && senderWs !== deliverNow) {
         try {
           senderWs.send(rpcNotification("mesh.delivered", {
             id: msgId, from: effectiveSender, to, ts: new Date().toISOString(),
