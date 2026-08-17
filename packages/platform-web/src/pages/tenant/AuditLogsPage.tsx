@@ -152,6 +152,8 @@ export function AuditLogsPage() {
         columns={columns}
         data={events}
         keyExtractor={(item) => item.id}
+        isLoading={isLoading}
+        emptyMessage="현재 기록된 감사 로그 데이터가 없습니다."
       />
     </div>
   );
