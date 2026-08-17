@@ -69,14 +69,14 @@ export function TopologyPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Pan / Zoom Transformation State
-  const [panX, setPanX] = useState<number>(40);
-  const [panY, setPanY] = useState<number>(20);
-  const [scale, setScale] = useState<number>(0.38);
+  const [panX, setPanX] = useState<number>(0);
+  const [panY, setPanY] = useState<number>(0);
+  const [scale, setScale] = useState<number>(0.42);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Synchronous ref for high-precision cursor-centered zoom & mouse events
-  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 40, panY: 20, scale: 0.38 });
-  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 40, panY: 20 });
+  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 0, panY: 0, scale: 0.42 });
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const minimapRef = useRef<SVGSVGElement | null>(null);
 
@@ -137,10 +137,10 @@ export function TopologyPage() {
       agentSum += cfg.count;
 
       // Track bounding box of cluster orbital circle & header badge
-      minX = Math.min(minX, cfg.cx - cfg.r - 20);
-      maxX = Math.max(maxX, cfg.cx + cfg.r + 20);
-      minY = Math.min(minY, cfg.cy - cfg.r - 45);
-      maxY = Math.max(maxY, cfg.cy + cfg.r + 20);
+      minX = Math.min(minX, cfg.cx - cfg.r);
+      maxX = Math.max(maxX, cfg.cx + cfg.r);
+      minY = Math.min(minY, cfg.cy - cfg.r - 35);
+      maxY = Math.max(maxY, cfg.cy + cfg.r);
 
       // Gateway node
       nodeDict[cfg.gw.id] = {
@@ -158,10 +158,10 @@ export function TopologyPage() {
         directPeers: [],
       };
 
-      minX = Math.min(minX, cfg.gw.x - 30);
-      maxX = Math.max(maxX, cfg.gw.x + 30);
-      minY = Math.min(minY, cfg.gw.y - 30);
-      maxY = Math.max(maxY, cfg.gw.y + 50);
+      minX = Math.min(minX, cfg.gw.x - 24);
+      maxX = Math.max(maxX, cfg.gw.x + 24);
+      minY = Math.min(minY, cfg.gw.y - 24);
+      maxY = Math.max(maxY, cfg.gw.y + 40);
 
       const memberIds: string[] = [];
 
@@ -297,9 +297,9 @@ export function TopologyPage() {
       }
     }
 
-    // Exact 5% Margin Bounding Box Calculation around all drawn entities (User requested 5%)
-    const entityW = Math.max(maxX - minX, 600);
-    const entityH = Math.max(maxY - minY, 400);
+    // Exact 5% Margin Bounding Box Calculation around all drawn entities
+    const entityW = Math.max(maxX - minX, 400);
+    const entityH = Math.max(maxY - minY, 300);
     const marginX = entityW * 0.05; // 5% margin
     const marginY = entityH * 0.05; // 5% margin
 
@@ -360,6 +360,25 @@ export function TopologyPage() {
     return result;
   }, [nodes, activeFilterGroup, searchQuery]);
 
+  // Calculate the Fit Scale for the current viewport (with exact 5% margin)
+  const getFitTransform = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return { scale: 0.42, panX: 0, panY: 0 };
+    const rect = viewport.getBoundingClientRect();
+    const vw = rect.width || 1200;
+    const vh = rect.height || 640;
+
+    // Scale to fit world bounds (with 5% margin) perfectly into viewport
+    const scaleX = vw / bounds.worldW;
+    const scaleY = vh / bounds.worldH;
+    const fitScale = Math.min(scaleX, scaleY);
+
+    const panX = vw / 2 - bounds.entityCX * fitScale;
+    const panY = vh / 2 - bounds.entityCY * fitScale;
+
+    return { scale: fitScale, panX, panY };
+  }, [bounds]);
+
   // Boundary Clamping Function (Constrain panning inside world bounds)
   const clampPan = useCallback(
     (targetPanX: number, targetPanY: number, targetScale: number) => {
@@ -377,13 +396,13 @@ export function TopologyPage() {
       let clampedX = targetPanX;
       let clampedY = targetPanY;
 
-      if (minPanX > maxPanX) {
+      if (minPanX >= maxPanX) {
         clampedX = (vw - (bounds.worldMinX + bounds.worldMaxX) * targetScale) / 2;
       } else {
         clampedX = Math.min(Math.max(targetPanX, minPanX), maxPanX);
       }
 
-      if (minPanY > maxPanY) {
+      if (minPanY >= maxPanY) {
         clampedY = (vh - (bounds.worldMinY + bounds.worldMaxY) * targetScale) / 2;
       } else {
         clampedY = Math.min(Math.max(targetPanY, minPanY), maxPanY);
@@ -396,34 +415,21 @@ export function TopologyPage() {
 
   // 2. FIT-TO-SCREEN (Fits all drawn entities with exact 5% margin)
   const fitToScreen = useCallback(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const rect = viewport.getBoundingClientRect();
-    const vw = rect.width || 1200;
-    const vh = rect.height || 640;
-
-    // Scale to fit world bounds (with 5% margin)
-    const scaleX = (vw - 32) / bounds.worldW;
-    const scaleY = (vh - 32) / bounds.worldH;
-    const fitScale = Math.min(scaleX, scaleY);
-    const nextScale = Math.min(Math.max(fitScale, 0.15), 1.8);
-
-    const targetPanX = vw / 2 - bounds.entityCX * nextScale;
-    const targetPanY = vh / 2 - bounds.entityCY * nextScale;
+    const { scale: nextScale, panX: targetPanX, panY: targetPanY } = getFitTransform();
     const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
     transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
     setScale(nextScale);
     setPanX(clamped.x);
     setPanY(clamped.y);
-  }, [bounds, clampPan]);
+  }, [getFitTransform, clampPan]);
 
   // Auto-fit to screen when simStage changes or initially mounted
   useEffect(() => {
     fitToScreen();
   }, [simStage, fitToScreen]);
 
-  // 3. MATHEMATICAL CURSOR-CENTERED ZOOM ISOLATED TO CANVAS ONLY
+  // 3. MATHEMATICAL CURSOR-CENTERED ZOOM (Minimum zoom is capped at fitScale so it NEVER exceeds 5% margin!)
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -444,7 +450,12 @@ export function TopologyPage() {
       const worldX = (mouseX - curPanX) / curScale;
       const worldY = (mouseY - curPanY) / curScale;
 
-      const nextScale = Math.min(Math.max(curScale * zoomFactor, 0.15), 2.5);
+      // Minimum zoom level is strictly capped at fitScale (or 95% of fitScale) so it never zooms out to a tiny spot with excessive margin!
+      const { scale: fitScale } = getFitTransform();
+      const minScale = fitScale * 0.98;
+      const maxScale = 2.5;
+
+      const nextScale = Math.min(Math.max(curScale * zoomFactor, minScale), maxScale);
 
       // Keep world coordinate stationary under the same mouse position
       const targetPanX = mouseX - worldX * nextScale;
@@ -461,7 +472,7 @@ export function TopologyPage() {
     return () => {
       el.removeEventListener("wheel", onWheelHandler);
     };
-  }, [clampPan]);
+  }, [clampPan, getFitTransform]);
 
   // Canvas Drag Pan Handlers with Boundary Clamping
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -581,7 +592,10 @@ export function TopologyPage() {
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
     const curScale = transformRef.current.scale;
-    const nextScale = Math.max(curScale * 0.8, 0.15);
+
+    const { scale: fitScale } = getFitTransform();
+    const minScale = fitScale * 0.98;
+    const nextScale = Math.max(curScale * 0.8, minScale);
 
     const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
     const worldCenterY = (vh / 2 - transformRef.current.panY) / curScale;
@@ -617,7 +631,7 @@ export function TopologyPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Minimap Viewport indicator rectangle coordinates with STRICT mathematical boundary containment
+  // Minimap Viewport indicator rectangle coordinates with EXACT inner padding clamping
   const minimapViewRect = useMemo(() => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
@@ -631,14 +645,14 @@ export function TopologyPage() {
     const rawWidth = (vw / scale) * miniScaleX;
     const rawHeight = (vh / scale) * miniScaleY;
 
-    // Strictly clamp left, right, top, bottom within [0, MINIMAP_W] and [0, MINIMAP_H]
+    // Strictly clamp left and top within [0, MINIMAP_W]
     const left = Math.max(0, Math.min(rawLeft, MINIMAP_W));
     const top = Math.max(0, Math.min(rawTop, MINIMAP_H));
     const right = Math.max(0, Math.min(rawLeft + rawWidth, MINIMAP_W));
     const bottom = Math.max(0, Math.min(rawTop + rawHeight, MINIMAP_H));
 
-    const width = Math.max(0, right - left);
-    const height = Math.max(0, bottom - top);
+    const width = Math.max(2, right - left);
+    const height = Math.max(2, bottom - top);
 
     return {
       x: left,
@@ -1116,7 +1130,7 @@ export function TopologyPage() {
             border: "1.5px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
             boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
-            overflow: "hidden", // Prevents indicator from exceeding container
+            overflow: "hidden", // Strictly prevents indicator from exceeding container
             zIndex: 40,
             cursor: "crosshair",
           }}
@@ -1150,10 +1164,9 @@ export function TopologyPage() {
               top: minimapViewRect.y,
               width: minimapViewRect.width,
               height: minimapViewRect.height,
-              border: "2px solid #2563EB",
+              border: "1.5px solid #2563EB",
               background: "rgba(37, 99, 235, 0.2)",
-              borderRadius: 3,
-              boxShadow: "0 0 6px rgba(37, 99, 235, 0.5)",
+              borderRadius: 2,
               pointerEvents: "none",
               boxSizing: "border-box",
             }}
