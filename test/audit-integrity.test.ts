@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { capabilityViewer, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
+import { capabilityViewer, connectRpc, loginAsAdmin, newKeyPair, provision, provisionProxy, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -181,4 +181,68 @@ describe("§ 11.0's three states, all of them reachable", () => {
     expect(withheld.content_length, "content_length does not match the body it replaced")
       .toBe(shown.content.length);
   }, 45_000);
+});
+
+describe("§ 8.2 — the sender and the carrier stay different facts", () => {
+  test("a proxied send records both, and the query keeps them apart", async () => {
+    // **`sent_by` falls back to `from_agent` when nothing carried the message**
+    // (`audit.ts`: `sentBy: row.sent_by ?? row.from_agent`), so on a mesh where
+    // nothing is ever proxied the two columns are equal in every row — and a
+    // query that dropped `sent_by` entirely, or overwrote `from` with the
+    // carrier, would look identical.
+    //
+    // Every audit row this suite produced before this test had sent_by === from.
+    // The distinction § 8.2 exists for was unobservable, which is the same
+    // shape as § 11.0's middle state: the code was right and nothing could tell.
+    const gwKey = newKeyPair(), recipientKey = newKeyPair();
+    await provisionProxy(mesh.hub, "audit-gateway", "service", mesh.http);
+    // **Keyless on purpose.** § 8.2 refuses a proxy for an identity that holds
+    // its own key — `cannot act for 'x': that identity holds its own key and
+    // signs for itself` — because such an identity can speak, so nobody needs
+    // to speak for it. A person authenticated by web session is the real case,
+    // and `human` is the type that carries no key.
+    await provision(mesh.hub, "audit-subject", "human");
+    await provision(mesh.hub, "audit-recipient", "ai-claude", null, recipientKey.publicKey);
+
+    // The gateway signs with its own key and speaks for someone else.
+    await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity: "audit-gateway", type: "service", public_key: gwKey.publicKey }),
+    });
+    for (const fp of [gwKey.fingerprint, recipientKey.fingerprint]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ fingerprint: fp }),
+      });
+    }
+
+    const rpc = await connectRpc(mesh.hub, { kid: gwKey.fingerprint, privateKey: gwKey.privateKey });
+    await rpc.call("mesh.connect", { identity: "audit-gateway", proxy_for: ["audit-subject"] });
+    const sent = await rpc.call("mesh.send", {
+      from: "audit-subject",
+      to: "audit-recipient",
+      content: "carried, not sent",
+    });
+    rpc.close();
+    expect(sent.error, `the proxied send was refused: ${JSON.stringify(sent.error)}`).toBeUndefined();
+    await Bun.sleep(300);
+
+    const rows = await events();
+    const carried = rows
+      .map((r) => (r.payload as any)?.message)
+      .filter((m) => m && m.content === "carried, not sent");
+    expect(carried.length, "the proxied send produced no audit row").toBeGreaterThan(0);
+
+    for (const m of carried) {
+      // The subject is who the message is *from*; the gateway only carried it.
+      expect(m.from, "the carrier overwrote the sender").toBe("audit-subject");
+      expect(m.sent_by, "the carrier was not recorded").toBe("audit-gateway");
+      // The assertion that could not be made before: they differ. On every
+      // other row in this suite they are equal, and equal is what a dropped
+      // column also produces.
+      expect(m.sent_by).not.toBe(m.from);
+    }
+  }, 60_000);
 });
