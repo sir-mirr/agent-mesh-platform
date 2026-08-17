@@ -69,6 +69,21 @@ same observation as adding nothing and seeing green.
   a full `**/*.ts` glob answering for any path; and the file side went uncaught
   in both until one of us mutated the walk to return nothing and watched every
   case pass.
+- **A check that passes by luck is a check nobody can tell from a sound one.**
+  `E2E-AUDIT-001` caught an ignored audit filter only while another event sorted
+  first; on a mesh where it ran alone, its own read was the oldest row and the
+  assertion held against a route that filtered nothing. Measured, not supposed —
+  a probe on a solo mesh returned the read as row zero.
+
+  `client-claude` hit the same thing for real, and worse: their equivalent
+  mutation came back NOT CAUGHT for the reason their own comment had predicted
+  one commit earlier. It was committed anyway, because it was green at the time.
+  A check known to be fragile is indistinguishable from a sound one until the
+  day it isn't.
+
+  The fix is to ask a question whose answer does not depend on ordering — here,
+  the same filter asked for something that cannot match.
+
 - A rule that permits a gap is a rule that hides one. § 17.3 was rewritten to
   forbid the skip it used to allow, because "visibly skipped" turned out to
   mean "skipped, and reported faithfully, and acted on by nobody".

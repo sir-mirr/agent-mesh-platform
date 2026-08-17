@@ -136,7 +136,8 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "event-type-filter",
-    defect: "The audit query ignored `event_type`, so a trace assertion matched whatever was newest.",
+    defect:
+      "The audit query ignored `event_type`. E2E-AUDIT-001 caught that only while another event sorted first — measured on a solo mesh, its own read is the oldest row and the positive assertion passes against a route filtering nothing. The scenario's second query asks for an event type that cannot exist, which fails regardless of order.",
     file: "packages/http/src/audit-query.ts",
     from: "  if (q.event_type) {",
     to: "  if (false) {",
