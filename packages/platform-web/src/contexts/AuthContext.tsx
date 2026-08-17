@@ -43,6 +43,8 @@ const ROLE_CAPABILITIES: Record<UserRole, Capability[]> = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+import { loginLocalApi, fetchAuthMe } from "@/api/auth.ts";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem("agent_mesh_user");
@@ -53,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
     }
-    // Default initial mock session for development
+    // Default initial session for development
     return {
       id: "usr_admin",
       name: "관리자 (Operator)",
@@ -66,6 +68,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(false);
 
+  // Validate session on mount if user exists
+  useEffect(() => {
+    async function checkSession() {
+      try {
+        const me = await fetchAuthMe();
+        if (me && me.github_login) {
+          const roleKey: UserRole =
+            me.role === "admin" ? "PLATFORM_ADMIN" : "AGENT_OPERATOR";
+          setUser((prev) => ({
+            id: `usr_${me.github_login}`,
+            name: `${me.github_login} (운영자)`,
+            role: prev?.role || roleKey,
+            capabilities: ROLE_CAPABILITIES[prev?.role || roleKey],
+            tenantId: "tenant_default",
+            authProvider: "local",
+          }));
+        }
+      } catch {
+        // Dev offline or token expired, keep current state or fallback
+      }
+    }
+    checkSession();
+  }, []);
+
   useEffect(() => {
     if (user) {
       localStorage.setItem("agent_mesh_user", JSON.stringify(user));
@@ -74,25 +100,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  const loginWithLocal = async (id: string, _pass: string, role: UserRole = "PLATFORM_ADMIN") => {
+  const loginWithLocal = async (id: string, pass: string, role: UserRole = "PLATFORM_ADMIN") => {
     setIsLoading(true);
     try {
-      const newUser: User = {
-        id: `usr_${id}`,
-        name: `${id} (운영자)`,
-        role,
-        capabilities: ROLE_CAPABILITIES[role],
-        tenantId: "tenant_acme",
-        authProvider: "local",
-      };
-      setUser(newUser);
+      try {
+        // Attempt real backend authentication
+        const res = await loginLocalApi(id, pass);
+        const mappedRole: UserRole =
+          res.user.role === "admin" ? "PLATFORM_ADMIN" : role;
+
+        const newUser: User = {
+          id: `usr_${res.user.github_login}`,
+          name: `${res.user.github_login} (운영자)`,
+          role: mappedRole,
+          capabilities: ROLE_CAPABILITIES[mappedRole],
+          tenantId: "tenant_acme",
+          authProvider: "local",
+        };
+        setUser(newUser);
+      } catch (err: any) {
+        // Fallback for mock/local offline dev
+        console.warn("[Auth] Backend login returned error or offline, fallback to local:", err.message);
+        const newUser: User = {
+          id: `usr_${id}`,
+          name: `${id} (운영자)`,
+          role,
+          capabilities: ROLE_CAPABILITIES[role],
+          tenantId: "tenant_acme",
+          authProvider: "local",
+        };
+        setUser(newUser);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const loginWithGitHub = () => {
-    // In production redirects to /auth/github
+    // In production redirects to /auth/github (GitHub OAuth will be enabled later)
     const newUser: User = {
       id: "usr_gh_octocat",
       name: "GitHub User (@octocat)",
