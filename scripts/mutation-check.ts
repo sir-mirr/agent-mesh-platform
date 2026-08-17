@@ -795,6 +795,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/harness-death.test.ts",
     expect: ["but stop() is silent, because that exit was asked for"],
   },
+  {
+    id: "dead-service-unaddressable",
+    defect:
+      "Every test after a dead shared mesh failed with `Unable to connect` — true about the socket, wrong about the subject. Those tests reached nothing and measured nothing, and a reader who cannot tell debris from cause cannot see a second real failure hiding in the debris. A rerun then comes back red with nothing to say about which red it is.",
+    file: "test/harness.ts",
+    from: "      const epitaph = svc.died();",
+    to: "      const epitaph = null;",
+    suite: "test/harness-death.test.ts",
+    expect: ["is told it measured nothing, not that a socket was unreachable"],
+  },
 ];
 
 /**
