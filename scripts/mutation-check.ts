@@ -344,6 +344,19 @@ for (const m of selected) {
     console.log(`✓ ${m.id}`);
   } else {
     console.error(`✗ ${m.id}: not caught, or caught by the wrong test (expected "${m.expect}")`);
+    // **Keep what the run said.** `type-change-event` came back not-caught once
+    // and passed on every rerun; the output that would have explained it had
+    // already been discarded, so the investigation started from nothing and the
+    // obvious explanation — a second writer of that event — turned out on
+    // inspection to be a type signature.
+    //
+    // An intermittent this tool cannot describe is one somebody will eventually
+    // guess a cause for, and a guessed cause in the place findings go is worse
+    // than no entry at all. `docs/deferred.md` has one that had to be withdrawn
+    // for exactly that.
+    const evidence = `mutation-check-${m.id}.log`;
+    await Bun.write(evidence, `exit ${run.exitCode}\nexpected: ${m.expect}\n\n${output}`);
+    console.error(`  output kept in ${evidence}`);
     missed++;
     kinds.set(m.id, "not-caught");
   }
