@@ -1,0 +1,14 @@
+{
+  "name": "@agent-mesh/mailbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "agentMeshSpec": "0.2",
+  "description": "Store and forward at the edge of the mesh. Knows nothing about the hub.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}

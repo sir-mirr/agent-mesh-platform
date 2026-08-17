@@ -34,6 +34,9 @@
       ],
       "@agent-mesh/store": [
         "./packages/store/src/index.ts"
+      ],
+      "@agent-mesh/mailbox": [
+        "./packages/mailbox/src/index.ts"
       ]
     }
   },
@@ -41,6 +44,9 @@
   "references": [
     {
       "path": "./packages/store/tsconfig.json"
+    },
+    {
+      "path": "./packages/mailbox/tsconfig.json"
     },
     {
       "path": "./packages/hub/tsconfig.json"

@@ -229,6 +229,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["verb not implemented"],
   },
   {
+    id: "mailbox-boundary",
+    defect:
+      "The mailbox imported the hub. The arrangement this package replaced reached hub presence, the hub's database handle and three RPC handlers — faking a WebSocket so the handlers would accept the caller — and every one of those imports was reasonable on the day it was added. Nothing forbade them, which is the only reason they were there.",
+    file: "packages/mailbox/src/receive.ts",
+    from: 'import type { Database, Statement } from "bun:sqlite";',
+    to: 'import type { Database, Statement } from "bun:sqlite";\nimport { onlineAgents } from "../../hub/src/presence";',
+    suite: "test/mailbox-boundary.test.ts",
+    expect: ["must not know the hub exists", "receive.ts"],
+  },
+  {
     id: "covers-always-true",
     defect: "The coverage predicate could become a constant, passing for any repository.",
     file: "test/typecheck-scope.test.ts",
