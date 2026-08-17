@@ -617,6 +617,17 @@ const MUTATIONS: Mutation[] = [
     expect: ["the first run provisioned no identity"],
   },
 
+  {
+    id: "row-payload-agree",
+    defect:
+      "Five fields sit on the audit row and inside the payload it stores, and nothing compared them. The payload is what the producer signed; the columns are the hub's projection of it. A projection that drifts means the row contradicts its own signed bytes, and from outside it looks like a healthy row.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    event_type: row.event_type,",
+    to: '    event_type: row.event_type + "-desynced",',
+    suite: "test/audit-integrity.test.ts",
+    expect: ["row.event_type and payload.event_type disagree"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
