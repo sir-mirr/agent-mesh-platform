@@ -1408,6 +1408,7 @@ null or false.
 
 ```
 mesh.identity.type_changed
+mesh.identity.audit_read
 ```
 
 `correlation_id` and `identity` are both the identity — it is what an operator
@@ -2492,6 +2493,35 @@ stronger than it is ends up load-bearing.
 `content_sha256`, where present, is **not** content and stays. An operator
 comparing a body obtained elsewhere against the record needs it. A length MAY
 be reported for the same reason.
+
+### 11.0.1. Reading the trail is recorded, and fails closed
+
+A read of `audit.read.content` **MUST** be recorded as
+`mesh.identity.audit_read` (§ 8.9.5) before the content is returned.
+
+"The company admin can read your agent's messages" is defensible; "someone
+can read them and nobody knows" is not, and the difference is only whether the
+access leaves a trace. Without the record, the tenant admin sitting *inside*
+the tenant (§ 11) is not a boundary — it is an absence of one.
+
+**If the record cannot be written, the read does not happen.** § 15.6 answers
+the analogous routing question the other way — delivery keeps working when
+audit writes fail — and reusing that answer here would be wrong for a reason
+that looks like consistency:
+
+| | |
+|---|---|
+| delivery fails open | loses nothing that was going to be recorded anyway |
+| an access log fails open | loses the only record that the access happened |
+
+Failing open also makes an outage indistinguishable from an outage somebody
+arranged. So a caller gets `503` and no content, and an operator who needs the
+trail during an audit-store failure has a visible problem rather than an
+invisible one.
+
+Metadata reads are not gated on the writer: they carry no content, so nothing
+is lost by serving them, and refusing them would take the mesh's diagnostics
+down with its audit store.
 
 ### 11.1. Resolved per request, never carried in the token
 
