@@ -34,8 +34,15 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { randomUUID } from "node:crypto";
-import { E2E_SCENARIOS, type Scenario, type Step } from "@agent-mesh/contracts";
+import { createHash, randomUUID, sign as edSign } from "node:crypto";
+import {
+  E2E_SCENARIOS,
+  formatRestAuthorization,
+  restSignaturePreimage,
+  type ExpectHttp,
+  type Scenario,
+  type Step,
+} from "@agent-mesh/contracts";
 import {
   callHttp,
   connectRpc,
@@ -113,6 +120,111 @@ const signer = (identity: string): Signer => {
 const leased = new Map<string, string[]>();
 
 /**
+ * Values produced during a run, for `{{name}}` in a later step.
+ *
+ * Cleared per scenario. Carrying them across would let one scenario silently
+ * satisfy another's reference — and the failure that produces is a scenario
+ * passing because a *different* one ran first, which is the worst kind to
+ * debug.
+ */
+const bound = new Map<string, string>();
+
+/**
+ * The one place an `ExpectHttp` is checked.
+ *
+ * **Shared because it was not.** `provision` and `http` each had their own copy,
+ * and when `expect.body` was added only `http` learned about it — so every
+ * `provision` step carrying a body assertion reported green without checking it.
+ * A mutation that made the route report `pending` for an approved key went
+ * straight through E2E-KEY-003.
+ *
+ * That is precisely the failure § 17.3 forbids, written into the specification
+ * one commit earlier by the same hand. A rule does not enforce itself; a single
+ * call site does.
+ *
+ * Returns the parsed body so a caller can `bind` from it without a second read —
+ * `Response.json()` consumes it.
+ */
+async function assertHttp(
+  res: Response,
+  expected: ExpectHttp | undefined,
+  ctx: string,
+  alsoNeedBody = false,
+): Promise<any> {
+  if (expected) expect(res.status, `${ctx} status`).toBe(expected.status);
+  const needsBody = alsoNeedBody || !!(expected?.code || expected?.body);
+  const parsed = needsBody ? await res.json() : null;
+  if (expected?.code) expect(parsed.code, `${ctx} code`).toBe(expected.code);
+  for (const [p, want] of Object.entries(subst(expected?.body ?? {}))) {
+    expect(at(parsed, p), `${ctx} body.${p}`).toBe(want);
+  }
+  return parsed;
+}
+
+/** Dotted path into a parsed body. Array indices are ordinary keys. */
+const at = (obj: any, path: string) =>
+  path.split(".").reduce<any>((v, k) => (v == null ? v : v[k]), obj);
+
+/**
+ * Replace every `{{name}}`. Missing bindings throw rather than substituting
+ * empty: a `DELETE /api/v1/outbox/` with the id silently blank is a `404` the
+ * scenario would report as its expected refusal.
+ */
+function subst<T>(value: T): T {
+  if (typeof value === "string") {
+    return value.replace(/\{\{([^}]+)\}\}/g, (_, name: string) => {
+      const v = bound.get(name);
+      if (v === undefined) throw new Error(`unbound reference {{${name}}}`);
+      return v;
+    }) as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map(subst) as unknown as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, subst(v)]),
+    ) as T;
+  }
+  return value;
+}
+
+/** Capture what a step's response produced, for later `{{name}}`. */
+function capture(spec: Record<string, string> | undefined, body: any, ctx: string): void {
+  for (const [name, path] of Object.entries(spec ?? {})) {
+    const v = at(body, path);
+    if (v === undefined || v === null) {
+      throw new Error(`${ctx}: nothing at "${path}" to bind as {{${name}}}`);
+    }
+    bound.set(name, String(v));
+  }
+}
+
+/**
+ * A signed REST envelope, built the way a participant must build one.
+ *
+ * § 8.9 signs over the method, path and a digest of the body — not the body
+ * itself — so a proxy that re-serialises JSON does not invalidate the
+ * signature. The digest is over the exact bytes sent, which is why the payload
+ * is stringified once and reused.
+ */
+function restAuth(identity: string, method: string, path: string, payload: string): string {
+  const k = keys.get(identity);
+  if (!k) throw new Error(`no key for ${identity}`);
+  const nonce = randomUUID();
+  const iat = Math.floor(Date.now() / 1000);
+  const bodySha256 = payload ? createHash("sha256").update(payload, "utf8").digest("hex") : "";
+  const value = Buffer.from(
+    edSign(
+      null,
+      Buffer.from(
+        restSignaturePreimage({ method, path, kid: k.fingerprint, nonce, iat, bodySha256 }),
+      ),
+      k.privateKey,
+    ),
+  ).toString("base64url");
+  return formatRestAuthorization({ kid: k.fingerprint, nonce, iat, signature: value });
+}
+
+/**
  * JSON-RPC over HTTP for every verb that has an RPC form.
  *
  * The socket transport is covered thoroughly elsewhere; what these scenarios are
@@ -131,7 +243,13 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       // holding the key would let a later step sign as an identity the hub
       // never accepted.
       const key = step.key ? newKeyPair() : undefined;
-      if (key) keys.set(step.identity, key);
+      if (key) {
+        keys.set(step.identity, key);
+        // Pre-bound so a scenario can assert on a fingerprint it never saw.
+        // It exists in the runner and in no response, so `bind` cannot reach
+        // it — one substitution mechanism rather than a second syntax.
+        bound.set(`fingerprint:${step.identity}`, key.fingerprint);
+      }
       const borrowed = step.reuseKeyOf ? keys.get(step.reuseKeyOf) : undefined;
       if (step.reuseKeyOf && !borrowed) {
         throw new Error(`${ctx}: ${step.reuseKeyOf} holds no key to reuse`);
@@ -147,12 +265,7 @@ async function runStep(step: Step, ctx: string): Promise<void> {
           ...(step.extra ?? {}),
         }),
       });
-      if (step.expect) {
-        expect(res.status, `${ctx} status`).toBe(step.expect.status);
-        if (step.expect.code) {
-          expect((await res.json()).code, `${ctx} code`).toBe(step.expect.code);
-        }
-      }
+      await assertHttp(res, step.expect, ctx);
       return;
     }
 
@@ -215,34 +328,31 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       if (step.expectCount !== undefined) {
         expect(messages.length, `${ctx}: message count`).toBe(step.expectCount);
       }
+      capture(step.bind, out.body.result, ctx);
       return;
     }
 
     case "http": {
-      // `as` decides the credential, and `"none"` is a real case rather than an
-      // omission — § 9.2 has unauthenticated routes and a scenario about one of
-      // them has to be able to say so.
-      const res = await fetch(`${base(step.path)}${step.path}`, {
-        method: step.method,
-        headers: {
-          "content-type": "application/json",
-          ...(step.as === "admin" ? { cookie: adminCookie } : {}),
-        },
-        ...(step.body ? { body: JSON.stringify(step.body) } : {}),
-      });
-      if (step.expect) {
-        expect(res.status, `${ctx} status`).toBe(step.expect.status);
-        if (step.expect.code || step.expect.body) {
-          // Read once. `Response.json()` consumes the body, so checking `code`
-          // and then `body` off two calls throws on the second.
-          const parsed = await res.json();
-          if (step.expect.code) expect(parsed.code, `${ctx} code`).toBe(step.expect.code);
-          for (const [path, want] of Object.entries(step.expect.body ?? {})) {
-            const got = path.split(".").reduce<any>((v, k) => (v == null ? v : v[k]), parsed);
-            expect(got, `${ctx} body.${path}`).toBe(want);
-          }
-        }
+      // Substituted before anything else, because the path is part of what gets
+      // signed — building the signature over the un-substituted path would
+      // produce a `401` that looks like an authorisation bug.
+      const path = subst(step.path);
+      const payload = step.body === undefined ? "" : JSON.stringify(subst(step.body));
+
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (step.as === "admin") headers.cookie = adminCookie;
+      else if (typeof step.as === "object") {
+        headers.authorization = restAuth(step.as.signedBy, step.method, path, payload);
       }
+
+      const res = await fetch(`${base(path)}${path}`, {
+        method: step.method,
+        headers,
+        ...(payload ? { body: payload } : {}),
+      });
+
+      const parsed = await assertHttp(res, step.expect, ctx, !!step.bind);
+      capture(step.bind, parsed, ctx);
       return;
     }
 
@@ -331,6 +441,7 @@ describe("shared scenarios (SPEC § 17)", () => {
   // that makes a red run in the other repository comparable to a red run here.
   for (const scenario of E2E_SCENARIOS as readonly Scenario[]) {
     const run = async () => {
+      bound.clear();
       for (const [i, step] of scenario.steps.entries()) {
         await runStep(step, `${scenario.id} step ${i + 1} (${step.do})`);
       }
