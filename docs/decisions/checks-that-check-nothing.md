@@ -91,6 +91,21 @@ same observation as adding nothing and seeing green.
   The fix is to ask a question whose answer does not depend on ordering — here,
   the same filter asked for something that cannot match.
 
+- **Evidence names the check, not the container.** A mutation counted as caught
+  because the scenario id appeared in the output is counted on a run that may
+  never have reached the assertion — the id is in the test name whether the
+  check fired or the mesh refused to start. Eleven entries here accepted that,
+  and `client-claude` had one recorded as caught while its scenario had not run
+  once (mail #229).
+
+  Each entry now requires the assertion too, and the messages were collected by
+  running the mutations rather than by predicting them. Verified by breaking
+  mesh startup: the entry reports which evidence is missing instead of a pass.
+
+  Step numbers stay out of it. They shift when a step is inserted, which
+  happened one tag ago, and an expectation pinned to one fails for a reason
+  unrelated to its guard.
+
 - A rule that permits a gap is a rule that hides one. § 17.3 was rewritten to
   forbid the skip it used to allow, because "visibly skipped" turned out to
   mean "skipped, and reported faithfully, and acted on by nobody".
