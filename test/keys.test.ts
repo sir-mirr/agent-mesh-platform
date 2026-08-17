@@ -763,10 +763,10 @@ describe("capabilities gate the routes", () => {
     // § 11's privacy boundary is exactly this: the platform operator holds
     // metadata and not content. If the routes shared one check, that split
     // could not exist.
-    revoke("admin", "inbox.read.depth");
-    expect((await asAdmin("/api/v1/admin/inbox")).status).toBe(403);
+    revoke("admin", "mailbox.read.depth");
+    expect((await asAdmin("/api/v1/admin/mailbox")).status).toBe(403);
     expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
-    grant("admin", "inbox.read.depth");
+    grant("admin", "mailbox.read.depth");
   });
 
   test("no session is still 401, not 403", async () => {

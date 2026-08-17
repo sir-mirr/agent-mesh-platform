@@ -1697,8 +1697,8 @@ app.get('/api/v1/admin/agent-sources', async (c) => {
   })
 })
 
-app.get('/api/v1/admin/inbox', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
+app.get('/api/v1/admin/mailbox', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.MAILBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const rows = getHubDb().prepare(`
@@ -1711,11 +1711,11 @@ app.get('/api/v1/admin/inbox', async (c) => {
      GROUP BY to_agent
      ORDER BY pending DESC
   `).all()
-  return c.json({ ok: true, inboxes: rows })
+  return c.json({ ok: true, mailboxes: rows })
 })
 
-app.get('/api/v1/admin/inbox/:identity', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.INBOX_READ_DEPTH)
+app.get('/api/v1/admin/mailbox/:identity', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.MAILBOX_READ_DEPTH)
   if (typeof actor !== 'string') return actor
 
   const identity = c.req.param('identity')

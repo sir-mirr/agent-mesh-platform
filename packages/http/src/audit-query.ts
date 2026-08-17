@@ -79,7 +79,7 @@ const REDACTED_KEYS = new Set([
  *
  * What it does give: an operator holding `audit.read.metadata` and not
  * `audit.read.content` gets who, whom, when and how much, and no bodies — the
- * same line `GET /api/v1/admin/inbox` already draws.
+ * same line `GET /api/v1/admin/mailbox` already draws.
  *
  * `content_sha256` is left in place. It is not the content, and an operator
  * comparing a body they obtained elsewhere against the record needs it.

@@ -145,11 +145,11 @@ describe("the signed routes (§ 14)", () => {
     });
 
     const seen: number[] = [];
-    for (let i = 0; i < 6; i++) seen.push((await signedGet(key, "/api/v1/outbox")).status);
+    for (let i = 0; i < 6; i++) seen.push((await signedGet(key, "/api/v1/mailbox/out")).status);
 
     expect(seen, `every signed request was served: ${seen.join(", ")}`).toContain(429);
 
-    const refused = await signedGet(key, "/api/v1/outbox");
+    const refused = await signedGet(key, "/api/v1/mailbox/out");
     expect(refused.status).toBe(429);
     const body = await refused.json();
     expect(body.code ?? body.data?.code).toBe("RATE_LIMITED");
@@ -175,6 +175,6 @@ describe("the signed routes (§ 14)", () => {
 
     // The previous test left `rl-signed` exhausted. This identity has never
     // called, so its first request must be served.
-    expect((await signedGet(other, "/api/v1/outbox")).status).toBe(200);
+    expect((await signedGet(other, "/api/v1/mailbox/out")).status).toBe(200);
   });
 });

@@ -156,7 +156,7 @@ The hub MUST:
   later retrieval via `mesh.fetch_messages`.
 - Treat unknown identities on `mesh.send` as a recoverable error
   (envelope is queued for later delivery).
-- Emit notifications to subscribed clients when their inbox receives a
+- Emit notifications to subscribed clients when their mailbox receives a
   new envelope (`mesh.message` / `mesh.delivered`, see § 8.8).
 - Send a WebSocket-level `ping` frame to every connected agent every
   **30 seconds**. Agents MUST respond with a `pong` frame (the
@@ -1532,7 +1532,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
 | GET    | `/api/v1/messages/search`         | JWT    | `200`   | Full-text search across messages. |
-| GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single inbox. |
+| GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single mailbox. |
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
 | GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
 | GET    | `/api/v1/attachments/:id`         | JWT ‡ | `200`   | Download attachment bytes (§ 15.3). Session **or** an `AgentMeshSig` signature; the caller must be party to a message carrying it. |
@@ -1544,7 +1544,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
 | DELETE | `/api/v1/admin/agent-types/{type}`| JWT\*  | `200`   | Remove a type (§ 10.3). `409` while any identity carries it. |
-| GET    | `/api/v1/admin/inbox`             | JWT\*  | `200`   | Queue depth per identity (§ 9.2.1). No message bodies. |
+| GET    | `/api/v1/admin/mailbox`           | JWT\*  | `200`   | Mailbox depth per identity (§ 9.2.1). No message bodies. |
 | GET    | `/api/v1/admin/agent-sources`     | JWT\*  | `200`   | Where identities have been observed connecting from (§ 8.11). Carries `observed_source` for the deployment — it is not a per-row property — and the qualifier that makes `forwarded` values evidence. |
 | POST   | `/api/v1/admin/pairing-codes`     | JWT\*  | `201`   | Issue a pairing code binding an identity to the caller (§ 11.3). Returned once; no route reads it back. |
 | POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
@@ -1556,7 +1556,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/groups/{group_id}/members` | JWT\* | `200` | Move an identity in. Membership is singular (§ 12). |
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
-| GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
+| GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
@@ -1722,21 +1722,21 @@ every agent's type; this answers for a single name the caller already
 knew. **Name to attribute, never attribute to name** — the same direction
 § 10.2 fixes for fingerprints.
 
-#### 9.2.1. The signed inbox surface (0.2)
+#### 9.2.1. The signed mailbox surface (0.2)
 
-`POST /api/v1/rpc` (§ 8.10) carries an inbox and does not describe one.
+`POST /api/v1/rpc` (§ 8.10) carries a mailbox and does not describe one.
 These routes are the same methods against the same queue, named so the
 surface can be read. **Nothing here is a second store**, and a
 participant switching between a socket, `/api/v1/rpc` and these routes
-is one identity with one inbox.
+is one identity with one mailbox.
 
 | Method | Path | Wraps | Success |
 |--------|------|-------|---------|
-| POST   | `/api/v1/inbox` | `mesh.receive` | `200` |
-| POST   | `/api/v1/outbox` | `mesh.send` | `200` |
-| GET    | `/api/v1/outbox` | — | `200` |
-| DELETE | `/api/v1/outbox/{message_id}` | — | `200` |
-| GET    | `/api/v1/inbox/history` | `mesh.fetch_messages` | `200` |
+| POST   | `/api/v1/mailbox/in` | `mesh.receive` | `200` |
+| POST   | `/api/v1/mailbox/out` | `mesh.send` | `200` |
+| GET    | `/api/v1/mailbox/out` | — | `200` |
+| DELETE | `/api/v1/mailbox/out/{message_id}` | — | `200` |
+| GET    | `/api/v1/mailbox/history` | `mesh.fetch_messages` | `200` |
 | GET    | `/api/v1/capabilities` | — | `200` |
 
 **Authentication.** Every route except `/api/v1/capabilities` MUST carry

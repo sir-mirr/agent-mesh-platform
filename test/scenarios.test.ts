@@ -171,7 +171,7 @@ const at = (obj: any, path: string) =>
 
 /**
  * Replace every `{{name}}`. Missing bindings throw rather than substituting
- * empty: a `DELETE /api/v1/outbox/` with the id silently blank is a `404` the
+ * empty: a `DELETE /api/v1/mailbox/out/` with the id silently blank is a `404` the
  * scenario would report as its expected refusal.
  */
 function subst<T>(value: T): T {

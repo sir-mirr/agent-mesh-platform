@@ -512,7 +512,7 @@ describe("§ 11 — content is a separate grant from metadata", () => {
       if (!msg || typeof msg.content !== "string") continue;
       expect(msg.content).toContain("requires audit.read.content");
       // What an operator actually needs to run a mesh is still there. This is
-      // the same line `admin/inbox` draws: seeing that someone has mail is a
+      // the same line `admin/mailbox` draws: seeing that someone has mail is a
       // different question from reading it.
       expect(typeof msg.from).toBe("string");
       expect(typeof msg.to).toBe("string");

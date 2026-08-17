@@ -22,7 +22,7 @@ import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentiti
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
 } from "./rest/agents";
-import { handleInboxRoute } from "./rest/inbox";
+import { handleMailboxRoute } from "./rest/mailbox";
 import { dispatch, dispatchHttp } from "./rpc/dispatch";
 
 // ---------------------------------------------------------------------------
@@ -149,11 +149,10 @@ const server = Bun.serve<SocketData, never>({
 
     // The signed inbox surface (§ 9.2.1). Answers `null` for a path it does
     // not own, so it cannot shadow a route that was already here.
-    if (url.pathname.startsWith("/api/v1/inbox") ||
-        url.pathname.startsWith("/api/v1/outbox") ||
+    if (url.pathname.startsWith("/api/v1/mailbox") ||
         url.pathname === "/api/v1/capabilities") {
       return req.text().then((body) =>
-        handleInboxRoute({
+        handleMailboxRoute({
           method: req.method,
           // The signature covers the query string, so it has to reach the
           // verifier exactly as it arrived.

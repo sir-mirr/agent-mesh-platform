@@ -118,7 +118,7 @@ const MUTATIONS: Mutation[] = [
     id: "lease-advert",
     defect:
       "`/api/v1/capabilities` advertised the default receive lease while the hub used a configured one, so clients sized their retry loop on a number nobody honoured.",
-    file: "packages/hub/src/rest/inbox.ts",
+    file: "packages/hub/src/rest/mailbox.ts",
     from: "        receive_lease_seconds: LEASE_SECONDS,",
     to: "        receive_lease_seconds: MAILBOX_CAPABILITY_DEFAULTS.receive_lease_seconds,",
     suite: "test/scenarios.test.ts",
@@ -137,7 +137,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "recall-handover",
     defect: "Recall succeeded after the recipient had taken the message (§ 8.10.1).",
-    file: "packages/hub/src/rest/inbox.ts",
+    file: "packages/hub/src/rest/mailbox.ts",
     from: 'if (outcome === "already-delivered") {',
     to: "if (false) {",
     suite: "test/scenarios.test.ts",
