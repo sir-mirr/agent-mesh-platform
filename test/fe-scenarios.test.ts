@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { createHmac } from "node:crypto";
-import { startMesh, loginAsAdmin, newKeyPair, type Mesh } from "./harness.ts";
+import { startMesh, loginAsAdmin, newKeyPair, connectRpc, type Mesh } from "./harness.ts";
 
 function hs256(payload: object, secret: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -339,13 +339,28 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   });
 
   // SCR-09 / SC-SCR09-01: Service Infrastructure Liveness & Online Sockets
-  it("[SC-SCR09-01] queries hub liveness and verifies online count", async () => {
-    const res = await fetch(`${mesh.hub.url}/health`);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.service).toBe("Agent Mesh Hub");
-    expect(typeof data.online_agents).toBe("number");
-    expect(data.online_agents).toBeGreaterThanOrEqual(0);
+  it("[SC-SCR09-01] queries hub liveness and dynamically tracks online agent connections", async () => {
+    const agentId = `live-conn-agent-${Date.now()}`;
+    await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: agentId, type: "service" }),
+    });
+
+    const beforeRes = await fetch(`${mesh.hub.url}/health`);
+    expect(beforeRes.status).toBe(200);
+    const beforeData = await beforeRes.json();
+    expect(beforeData.service).toBe("Agent Mesh Hub");
+
+    const rpc = await connectRpc(mesh.hub);
+    const connectRes = await rpc.call("mesh.connect", { identity: agentId });
+    expect(connectRes?.result?.ok).toBe(true);
+
+    const duringRes = await fetch(`${mesh.hub.url}/health`);
+    const duringData = await duringRes.json();
+    expect(duringData.online_agents).toBe(beforeData.online_agents + 1);
+
+    rpc.close();
   });
 
   // SCR-04 / SC-SCR04-03: Reassign agent membership between groups
