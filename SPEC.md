@@ -2594,6 +2594,17 @@ strands the agent and the recovery is a hand-edited table, which is the thing
 this exists to remove. A tenant admin may assign and unassign, because someone
 has to when an owner leaves.
 
+**Teardown reaches what you own and no further.** § 9.3 is irreversible — the
+name is never usable again — so a teardown that reached one identity too far
+could not be undone. An agent operator MAY tear down an identity when either:
+
+- they hold `agent.teardown` **scoped to that identity** (or tenant-wide); or
+- they hold it at any scope **and** own the identity.
+
+Ownership alone MUST NOT suffice. Being answerable for an agent is not the same
+grant as being permitted to destroy it, and a deployment may give one without
+the other.
+
 **A scoped queue is empty, not forbidden.** An operator holding `key.approve`
 who owns nothing sees no pending keys. Answering `403` would say they lack a
 permission they hold, and send them to ask for a grant they already have. A

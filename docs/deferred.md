@@ -328,3 +328,20 @@ that file and had never once been reported.
 **Why deferred.** The honest fix is a rename, and `tick` is the daemon's entry
 point: `main.ts` calls it and six tests name it. That is worth doing and is not
 worth doing between two unrelated changes.
+
+### The group-manager path to teardown is not implemented
+
+§ 11.3 admits two routes to teardown: a scoped capability, and the capability
+plus ownership. A third was intended — a group manager may tear down agents in
+groups they manage — and it is **absent on purpose** until groups exist.
+
+The only thing there was to test in the meantime was `group.manage` at tenant
+scope, which every seeded admin holds and which satisfies any identity. That is
+not "manages the group this agent is in". It is a second, wider grant of
+teardown wearing a different name, and the first draft of it returned `200` for
+an agent the caller neither owned nor held a teardown grant over — caught by the
+test written from the SPEC sentence, not by reading.
+
+**Why deferred.** It needs groups. Implementing a check against a concept that
+does not exist yet produced exactly what such a check produces: a permissive
+no-op that reads as a control.

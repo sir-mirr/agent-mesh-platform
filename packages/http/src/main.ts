@@ -1651,13 +1651,53 @@ app.delete('/api/v1/admin/agent-types/:type', async (c) => {
  * unauthenticated version could only ever write `"hub"`.
  */
 app.delete('/api/v1/admin/agents/:identity', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.AGENT_TEARDOWN)
-  if (typeof actor !== 'string') return actor
-
   const identity = c.req.param('identity')
-  if (!IDENTITY_RE.test(identity)) {
-    return c.json({ ok: false, error: 'invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)' }, 400)
+
+  // **Authenticate before validating.** An earlier draft checked the name
+  // first, reasoning that a malformed one is not a scope anything could have
+  // been granted over — which is true and beside the point. It made an
+  // unauthenticated caller receive `400` instead of `401`, so the route
+  // answered a question about its input to somebody who had not identified
+  // themselves. `auth-sweep` refuses that on every non-public route, and
+  // caught this.
+  //
+  // § 11.3. Scoped to this identity, not to the tenant: an agent operator may
+  // tear down what they own, and a tenant-wide grant still satisfies it.
+  //
+  // **Ownership is checked, not assumed from the capability.** Holding
+  // `agent.teardown` scoped to `lane-a` says nothing about `lane-b`, and § 9.3
+  // is irreversible — the name is never usable again, so a teardown reaching
+  // one identity too far cannot be undone.
+  const actor = await requireCapability(c, CAPABILITY.AGENT_TEARDOWN, identity)
+  if (typeof actor !== 'string') {
+    // A scoped holder who is also an owner passes on ownership instead. The
+    // capability check above answers the tenant-wide and per-identity grants;
+    // this answers "it is mine".
+    const payload = await extractJwt(c)
+    const subject = payload?.github_login as string | undefined
+    const owns =
+      !!subject &&
+      grants.hasAny(agentsDb(), subject, CAPABILITY.AGENT_TEARDOWN) &&
+      ownership.isOwner(agentsDb(), subject, identity)
+    // The group-manager path is **not** here, and its absence is deliberate.
+    // Groups do not exist yet, so the only thing to test would be
+    // `group.manage` at tenant scope — which every seeded admin holds and
+    // which satisfies any identity. That is not "manages the group this agent
+    // is in"; it is a second, wider grant of teardown wearing the wrong name,
+    // and it silently returned `200` for an agent the caller did not own.
+    // It lands with groups.
+    if (!owns) return actor
+    if (!IDENTITY_RE.test(identity)) return badIdentity(c)
+    return teardownAs(c, subject!, identity)
   }
+  if (!IDENTITY_RE.test(identity)) return badIdentity(c)
+  return teardownAs(c, actor, identity)
+})
+
+const badIdentity = (c: any) =>
+  c.json({ ok: false, error: 'invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)' }, 400)
+
+async function teardownAs(c: any, actor: string, identity: string) {
 
   let result
   try {
@@ -1677,7 +1717,7 @@ app.delete('/api/v1/admin/agents/:identity', async (c) => {
     action: result.action,
     ...(result.deletedAt !== undefined ? { deleted_at: result.deletedAt } : {}),
   })
-})
+}
 
 app.post('/api/v1/admin/approve', async (c) => {
   const payload = await extractJwt(c)
