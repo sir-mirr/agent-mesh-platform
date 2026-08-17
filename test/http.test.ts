@@ -203,8 +203,14 @@ describe("attachment metadata (§ 15.2)", () => {
     expect(body.download_url.startsWith("http")).toBe(true);
     expect(body.download_url.endsWith(`/api/v1/attachments/${body.id}`)).toBe(true);
 
-    // Followed verbatim, which is what a receiver does.
-    const fetched = await fetch(body.download_url);
+    // Followed verbatim, which is what a receiver does — with the session,
+    // because § 15.3 authorises the parties rather than whoever holds the URL.
+    await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ to: "admin", text: "x", attachments: [{ id: body.id, download_url: body.download_url }] }),
+    });
+    const fetched = await fetch(body.download_url, { headers: { cookie: adminCookie } });
     expect(fetched.status).toBe(200);
     expect(await fetched.text()).toBe("absolute please");
   });
@@ -259,6 +265,32 @@ describe("attachment metadata (§ 15.2)", () => {
 });
 
 describe("attachment download", () => {
+  /**
+   * Make `admin` a party to a message carrying this attachment, then fetch.
+   *
+   * § 15.3 authorises the parties to the message, so a bare upload grants the
+   * uploader nothing — an attachment nobody has sent is an attachment nobody
+   * is party to. Sending it is what creates the entitlement, and doing that
+   * here rather than hiding it in a helper keeps the rule visible.
+   */
+  // `admin` to `admin`. The recipient has to be in this server's own registry
+  // (`/api/v1/messages` refuses an unknown one), and the only seeded person is
+  // the admin — which is enough, because § 15.3 asks whether the caller is
+  // *either* end and does not care that both ends are the same one here.
+  const sendCarrying = async (attachmentId: string, to = "admin") => {
+    await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({
+        to,
+        text: "here it is",
+        attachments: [{ id: attachmentId, download_url: `${mesh.http.url}/api/v1/attachments/${attachmentId}` }],
+      }),
+    });
+  };
+  const asAdmin = (id: string) =>
+    fetch(`${mesh.http.url}/api/v1/attachments/${id}`, { headers: { cookie: adminCookie } });
+
   const upload = async (content: string, name: string) => {
     const form = new FormData();
     form.append("file", new Blob([content]), name);
@@ -268,10 +300,11 @@ describe("attachment download", () => {
     return res.json();
   };
 
-  test("serves the bytes with the headers § 15.3 requires", async () => {
+  test("serves the bytes to a party, with the headers § 15.3 requires", async () => {
     const body = "attachment body";
     const up = await upload(body, "note.txt");
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${up.id}`);
+    await sendCarrying(up.id);
+    const res = await asAdmin(up.id);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(body);
@@ -281,15 +314,50 @@ describe("attachment download", () => {
   });
 
   test("a miss is 404 with a JSON body, not an empty response", async () => {
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${"a".repeat(64)}`);
+    const res = await asAdmin("a".repeat(64));
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBeTruthy();
+  });
+
+  test("no credential at all is 401", async () => {
+    const up = await upload("private", "p.txt");
+    await sendCarrying(up.id);
+    expect((await fetch(`${mesh.http.url}/api/v1/attachments/${up.id}`)).status).toBe(401);
+  });
+
+  test("the digest alone is not the id, and does not resolve", async () => {
+    // Ids carry the original extension, so `<sha256>` is a genuine prefix of
+    // `<sha256>.txt`.
+    //
+    // **This does not prove the participation query is prefix-safe**, and it
+    // was written believing it did. The `404` here comes from the filesystem —
+    // no file is named by the bare digest — so swapping the quoted `LIKE` for
+    // a bare one leaves it passing. The quoting is defensive against a shape
+    // this system does not currently produce, and saying so is better than a
+    // test that appears to cover it.
+    const up = await upload("prefixed", "pre.txt");
+    expect(up.id).toBe(`${up.sha256}.txt`);
+    await sendCarrying(up.id);
+    expect((await asAdmin(up.id)).status).toBe(200);
+    expect((await asAdmin(up.sha256)).status).toBe(404);
+  });
+
+  test("a party to no message carrying it gets 404, not 403", async () => {
+    // Uploading is not participation — an attachment nobody has sent is one
+    // nobody is party to. And the answer matches a genuine miss on purpose:
+    // telling them it exists would make this a probe for which digests the
+    // mesh holds.
+    const up = await upload("unsent", "u.txt");
+    const res = await asAdmin(up.id);
+    expect(res.status).toBe(404);
   });
 
   test("ids with separators or .. are refused before the filesystem is touched", async () => {
     // The id is the only gate here, so these are the cases that matter.
     for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b", ".."]) {
-      const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`);
+      const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`, {
+        headers: { cookie: adminCookie },
+      });
       expect([400, 404], `id ${id}`).toContain(res.status);
       // Whatever the status, it must not be a successful read.
       expect(res.status).not.toBe(200);
@@ -297,7 +365,7 @@ describe("attachment download", () => {
   });
 
   test("an id that is neither a digest nor the legacy form is refused", async () => {
-    const res = await fetch(`${mesh.http.url}/api/v1/attachments/not-a-real-id`);
+    const res = await asAdmin("not-a-real-id");
     expect(res.status).toBe(400);
   });
 });

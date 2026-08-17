@@ -205,13 +205,11 @@ recorded, so this is a consequence rather than a second limit.
 arrives with presence — which is the constraint that has to move first. Fixing
 this alone would be solving the smaller half of a problem nobody has yet.
 
-### Attachment download is unauthenticated
+### ~~Attachment download is unauthenticated~~
 
-**Why deferred.** It lives in [`open-questions.md`](open-questions.md), because
-it is a question rather than a decision: capability-by-digest may well be
-sufficient and nobody has ruled. This stub exists only so a reader of this file
-does not conclude the gap is unrecorded — an item in both files is an item that
-goes stale in one.
+**Closed.** Ruled in [`open-questions.md`](open-questions.md) and built as
+SPEC § 15.3: the parties to the message carrying it, sender or recipient, agent
+or person.
 
 ### A refused upload leaves its connection unusable
 

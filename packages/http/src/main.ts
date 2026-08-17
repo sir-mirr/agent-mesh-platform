@@ -39,10 +39,13 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, grants, groups as groupsStore, ownership, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, verify, type MessageRow } from '@agent-mesh/store'
 import {
   CAPABILITY,
   IDENTITY_RE,
+  SIGNATURE_FRESHNESS_WINDOW_SECONDS,
+  parseRestAuthorization,
+  restSignaturePreimage,
   LEGACY_ADMIN_CAPABILITIES,
   SCOPE_TENANT,
   type Capability,
@@ -52,6 +55,7 @@ import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeA
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
+import * as attachmentAccess from './attachment-access'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -2446,6 +2450,67 @@ app.post('/api/v1/upload', async (c) => {
 const SHA256_ID_RE = /^[0-9a-f]{64}(?:\.[a-zA-Z0-9]{1,16})?$/
 const LEGACY_ID_RE = /^[0-9]+-[a-zA-Z0-9._-]+$/
 
+/**
+ * The identity behind an attachment request, person or agent (SPEC § 15.3).
+ *
+ * A person arrives with the session cookie. An agent signs the request the way
+ * § 9.2.1 defines, with its own domain separator, and this verifies it against
+ * the key the operator approved.
+ *
+ * **No nonce window here, and that is a stated limit rather than an
+ * oversight.** § 8.1's window lives in the hub, and standing up a second one
+ * in this process would be a second thing to get right. Without it a captured
+ * signature is replayable for the freshness window — which grants exactly what
+ * the original granted: reading bytes that caller was already entitled to
+ * read. A download is idempotent, so replay adds nothing a retry would not.
+ * The same shortcut would not be acceptable on anything that writes.
+ */
+async function attachmentCaller(
+  c: any,
+): Promise<{ identity: string } | { refusal: 401 | 403 }> {
+  const session = await extractJwt(c)
+  if (session) {
+    // Authenticated but not approved is `403`, not `401`. They proved who they
+    // are; what they lack is permission, and telling them to sign in sends
+    // them to fix the wrong thing.
+    return isUserApproved(session.github_login, session.role)
+      ? { identity: session.github_login as string }
+      : { refusal: 403 }
+  }
+
+  const header = c.req.header('authorization')
+  if (!header) return { refusal: 401 }
+  const auth = parseRestAuthorization(header)
+  if (!auth) return { refusal: 401 }
+  if (Math.abs(Math.floor(Date.now() / 1000) - auth.iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {
+    return { refusal: 401 }
+  }
+
+  const db = agentsDb()
+  const identity = keys.identityForFingerprint(db, auth.kid)
+  if (!identity) return { refusal: 401 }
+
+  const url = new URL(c.req.url)
+  const outcome = verify.verifyForIdentity(
+    db,
+    identity,
+    auth.kid,
+    restSignaturePreimage({
+      method: 'GET',
+      path: url.pathname + url.search,
+      kid: auth.kid,
+      nonce: auth.nonce,
+      iat: auth.iat,
+      // A `GET` has no body, and § 9.2.1 spells that as the empty string
+      // rather than the digest of nothing — the two are different bytes and a
+      // client following the contract sends the first.
+      bodySha256: '',
+    }),
+    auth.signature,
+  )
+  return outcome.ok ? { identity } : { refusal: 401 }
+}
+
 app.get('/api/v1/attachments/:id', async (c) => {
   const id = c.req.param('id')
   if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) {
@@ -2457,9 +2522,32 @@ app.get('/api/v1/attachments/:id', async (c) => {
     return c.json({ error: 'Invalid attachment id format' }, 400)
   }
 
+  // § 15.3. Sender or recipient of a message carrying it — agent or person.
+  //
+  // The route was open on the reasoning that a content-addressed id is
+  // unguessable and therefore a capability. That holds until the id appears in
+  // a log line, an audit event or a forwarded `download_url`, and a capability
+  // that travels inside the thing it protects cannot be withdrawn.
+  const called = await attachmentCaller(c)
+  if ('refusal' in called) {
+    return c.json(
+      called.refusal === 403
+        ? { error: 'Account pending approval' }
+        : { error: 'Unauthorized — sign in, or sign the request (SPEC § 9.2.1)' },
+      called.refusal,
+    )
+  }
+  const caller = called.identity
+  if (!attachmentAccess.mayDownload(getHubDb(), caller, id)) {
+    // Deliberately the same answer whether the attachment exists or the caller
+    // is not party to it. Distinguishing them would turn this route into a
+    // probe for which digests the mesh holds.
+    return c.json({ error: 'Not found' }, 404)
+  }
+
   const filePath = join(UPLOAD_DIR, id)
   if (!existsSync(filePath)) {
-    return c.json({ error: 'Attachment not found' }, 404)
+    return c.json({ error: 'Not found' }, 404)
   }
 
   const { statSync } = require('fs') as typeof import('fs')

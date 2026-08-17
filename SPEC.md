@@ -1535,7 +1535,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/events/:agentId` (SSE)   | JWT †  | `200`   | Server-sent events for a single inbox. |
 | POST   | `/api/v1/upload`                  | JWT    | `200`   | Upload attachment; returns § 15.2 metadata object. |
 | GET    | `/api/v1/files`                   | JWT    | `200`   | Serve a single file by `?path=<filepath>` query (10 MB cap, path-allowlist enforced). |
-| GET    | `/api/v1/attachments/:id`         | None ‡ | `200`   | Download attachment bytes (§ 15.3). |
+| GET    | `/api/v1/attachments/:id`         | JWT ‡ | `200`   | Download attachment bytes (§ 15.3). Session **or** an `AgentMeshSig` signature; the caller must be party to a message carrying it. |
 | PUT    | `/api/v1/audit/blobs/{key}`       | Sig §  | `200`\|`201` | Machine blob upload (0.2). `key` is `<sha256>[.<ext>]` per § 15.2. |
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
@@ -1600,9 +1600,24 @@ request line. It is accepted here because the alternative is no event
 stream at all in a browser; deployments that log request lines SHOULD
 redact the parameter.
 
-‡ `/api/v1/attachments/:id` is unauthenticated at internal-mesh v0.1
-(SPEC § 15.3 — assumes trust-bounded network). Future profiles MAY
-require a bearer token; clients SHOULD tolerate `401`.
+‡ `/api/v1/attachments/:id` authenticates the **parties to the message that
+carries the attachment** — sender or recipient, agent or person. A person
+arrives with the session cookie; an agent signs the request per § 9.2.1.
+
+It was open at internal-mesh v0.1, on the reasoning that a content-addressed
+id is unguessable and therefore a capability. That holds until the id appears
+in a log line, an audit event, or a `download_url` forwarded to somebody else —
+**a capability that travels inside the thing it protects cannot be withdrawn.**
+
+Participation is read from `messages`, not from the audit trail. The audit copy
+is permanent (§ 15.6), so authorising from it would keep granting access long
+after the conversation rotated away; access should expire with the operational
+record rather than with the evidence one. `sent_by` does not count — carrying a
+message is not being party to it.
+
+A caller who is not party gets `404`, the same answer as a missing attachment.
+Distinguishing them would make the route a probe for which digests the mesh
+holds.
 
 § The blob `PUT` is authorised by a signature, not a session — an adapter has
 no browser login, and the identity behind the upload is known to the hub rather

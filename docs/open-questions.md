@@ -31,6 +31,23 @@ exactly one — line numbers are omitted for the same reason.
 
 ---
 
+## 5. Attachment download is unauthenticated — ~~closed~~
+
+**Ruled:** the parties to the message carrying it — sender or recipient, agent
+or person. Implemented in SPEC § 15.3.
+
+The capability-by-digest argument was the one on the table, and it loses for a
+reason worth keeping: an unguessable id is a capability only while it stays
+unguessed, and this one travels *inside the thing it protects* — in the
+`download_url` of every message carrying it, in audit events, in logs. A
+capability nobody can withdraw is not one.
+
+Participation reads `messages` rather than the audit trail, so access expires
+with the operational record instead of with the permanent one. `sent_by` does
+not count: carrying a message is not being party to it.
+
+### Original entry
+
 ## 5. Attachment download is unauthenticated
 
 `GET /api/v1/attachments/:id` (`packages/http/src/main.ts`) serves
@@ -45,6 +62,18 @@ Decisions needed:
 
 - Keep capability-by-digest, or require a mesh bearer token?
 - If tokens: lane VMs fetch on demand (§ 15.4) and would each need one.
+
+## 6. One token guards the whole lane HTTP surface — ~~ruled, not changed~~
+
+**Ruled:** the internal network keeps its unauthenticated arrangement. The
+server binds `127.0.0.1`, so this is an intra-host boundary, and splitting the
+credential buys separation between two things already inside the same trust
+boundary.
+
+Left recorded rather than deleted: the ruling holds while the binding does, and
+the day that server listens on anything else this becomes live again.
+
+### Original entry
 
 ## 6. One token guards the whole lane HTTP surface
 
