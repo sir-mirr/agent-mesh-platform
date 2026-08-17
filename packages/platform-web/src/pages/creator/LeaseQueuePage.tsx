@@ -8,6 +8,7 @@ import {
   Button,
   Toast,
 } from "@/components/index.ts";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface LeaseItem {
   id: string;
@@ -46,6 +47,7 @@ const INITIAL_QUEUE: LeaseItem[] = [
 ];
 
 export function LeaseQueuePage() {
+  const { t } = useI18n();
   const [queue, setQueue] = useState<LeaseItem[]>(INITIAL_QUEUE);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -66,7 +68,7 @@ export function LeaseQueuePage() {
 
   const handleAck = (id: string) => {
     setQueue(queue.map((item) => (item.id === id ? { ...item, status: "Acked" } : item)));
-    setToastMessage(`메시지 [${id}] ACK 확인 완료 (큐에서 해제)`);
+    setToastMessage(`메시지 [${id}] ACK 확인 완료 (메일함 큐에서 해제)`);
   };
 
   const handleNack = (id: string) => {
@@ -202,8 +204,8 @@ export function LeaseQueuePage() {
         suiteTag="STUDIO SUITE"
         suiteBadgeColor="leased"
         screenId="42"
-        title="소켓리스 인박스 큐 & 300초 리스 감시"
-        subtitle="At-Least-Once 보증 소켓리스 리스 상태머신 (Available → Leased → Acked) 실시간 감시"
+        title={t("lease.title", "에이전트 메일함 리스 큐 & 300초 리스 감시")}
+        subtitle={t("lease.subtitle", "At-Least-Once 보증 메일함 리스 상태머신 (Available → Leased → Acked) 실시간 감시 (SPEC § 9)")}
       />
 
       {toastMessage && (

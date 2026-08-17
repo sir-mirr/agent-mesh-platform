@@ -110,10 +110,10 @@ export function Sidebar({
           icon: "💬",
         },
         {
-          label: t("nav.leaseQueue", "소켓리스 리스 큐"),
-          description: t("nav.leaseQueue.desc", "300s TTL 카운트다운 및 ACK/NACK"),
+          label: t("nav.mailbox", "에이전트 메일함"),
+          description: t("nav.mailbox.desc", "300s TTL 카운트다운 및 ACK/NACK"),
           href: "/creator/lease-queue",
-          icon: "📥",
+          icon: "📬",
         },
         {
           label: t("nav.register", "신규 에이전트 등록"),

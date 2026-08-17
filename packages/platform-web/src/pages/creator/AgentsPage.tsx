@@ -38,7 +38,7 @@ const INITIAL_AGENTS: AgentItem[] = [
     status: "online",
     fingerprint: "sha256:3urP2MxXOlnreg184OjQ5tAyF2U2533GWGC6xoe_DJc48271039485728192039",
     inboxDepth: 2,
-    lastSeen: "2분 전 (Socketless)",
+    lastSeen: "2분 전 (Mailbox)",
   },
   {
     id: "agt_analyzer_03",
@@ -128,7 +128,7 @@ export function AgentsPage() {
     },
     {
       key: "inboxDepth",
-      header: t("agents.col.inbox", "인박스 적체"),
+      header: t("agents.col.inbox", "메일함 적체"),
       render: (item: AgentItem) => (
         <span
           style={{

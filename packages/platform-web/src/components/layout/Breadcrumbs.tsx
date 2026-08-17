@@ -50,7 +50,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
         return [
           { label: t("bc.home", "홈"), href: "/" },
           { label: t("bc.studio", "에이전트 운영 스튜디오"), href: "/creator" },
-          { label: t("bc.leaseQueue", "소켓리스 큐") },
+          { label: t("bc.mailbox", "에이전트 메일함") },
         ];
       case "/creator/register":
         return [

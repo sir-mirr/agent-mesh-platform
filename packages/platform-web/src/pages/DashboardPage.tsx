@@ -49,8 +49,8 @@ export function DashboardPage() {
             : currentRole === "TENANT_ADMIN"
             ? t("dash.tenant.sub", "조직 소속 에이전트 그룹, 그룹 간 Egress 통신 정책 및 보안 감사 현황")
             : currentRole === "GROUP_ADMIN"
-            ? t("dash.group.sub", "담당 그룹별 에이전트 멤버십 이동, 소켓리스 큐 적체 및 그룹 간 통신 모니터링")
-            : t("dash.operator.sub", "소유한 Ed25519 에이전트 연결 상태, 소켓리스 인박스 큐 및 메시지 테스트")
+            ? t("dash.group.sub", "담당 그룹별 에이전트 멤버십 이동, 메일함 큐 적체 및 그룹 간 통신 모니터링")
+            : t("dash.operator.sub", "소유한 Ed25519 에이전트 연결 상태, 메일함 큐 및 메시지 테스트")
         }
         actions={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -162,7 +162,7 @@ function PlatformAdminDashboard() {
           statusText="여유 공간 충분"
         />
         <TelemetryCard
-          label="소켓리스 리스 TTL (300s)"
+          label="메일함 리스 TTL (300s)"
           currentValue="248s"
           maxLabel="300s"
           percentage={82.6}
@@ -255,7 +255,7 @@ function TenantAdminDashboard() {
         <KpiCard
           label={t("dash.ta.agents", "총 소속 에이전트")}
           value="4"
-          subValue={t("dash.ta.agentsSub", "3명 활성, 1명 소켓리스")}
+          subValue={t("dash.ta.agentsSub", "3명 활성, 1명 메일함 모드")}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -429,7 +429,7 @@ function GroupAdminDashboard() {
           icon="🤖"
         />
         <KpiCard
-          label={t("dash.ga.lease", "소켓리스 큐 적체")}
+          label={t("dash.ga.lease", "메일함 큐 적체")}
           value="3"
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
@@ -567,9 +567,9 @@ function AgentOperatorDashboard() {
           trend={{ value: "+1", isPositive: true }}
         />
         <KpiCard
-          label={t("dash.kpi.inbox", "미수신 인박스")}
+          label={t("dash.kpi.inbox", "미수신 메일함")}
           value="7"
-          subValue={t("dash.kpi.inboxSub", "Lease Queue 대기")}
+          subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
         />

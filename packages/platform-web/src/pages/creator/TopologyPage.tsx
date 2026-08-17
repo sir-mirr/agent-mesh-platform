@@ -242,7 +242,7 @@ export function TopologyPage() {
             } else if (cfg.id === "data") {
               desc = `스트리밍 데이터 정제, 역직렬화, 파티셔닝 및 시계열 텔레메트리 저장을 담당하는 데이터 워커 (${name}).`;
             } else if (cfg.id === "edge") {
-              desc = `초경량 소켓리스(Socketless) 환경에서 저전력 센서 데이터 수집 및 엣지 로컬 제어를 수행하는 마이크로 노드 (${name}).`;
+              desc = `초경량 메일함(Mailbox) 기반 환경에서 저전력 센서 데이터 수집 및 엣지 로컬 제어를 수행하는 마이크로 노드 (${name}).`;
             } else if (cfg.id === "human") {
               desc = `운영자 수동 개입, 긴급 시스템 핫픽스 승인 및 인터랙티브 디버깅 세션을 중계하는 오퍼레이터 브릿지 (${name}).`;
             } else if (cfg.id === "refactor") {
