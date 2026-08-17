@@ -25,416 +25,426 @@ export function LoginPage() {
     <div
       style={{
         minHeight: "100dvh",
-        background: "radial-gradient(ellipse at 50% 0%, #EFF6FF 0%, #F8FAFC 60%, #F1F5F9 100%)",
-        color: "var(--color-text-primary)",
         display: "flex",
-        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--color-bg-page)",
         position: "relative",
-        overflowX: "hidden",
+        overflow: "hidden",
+        padding: 24,
       }}
     >
-      {/* ── Global Top Navigation Header ── */}
-      <header
+      {/* ── Background Geometric Constellation & Connected Agent Network ── */}
+      <div
         style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 1,
+          overflow: "hidden",
+        }}
+        aria-hidden="true"
+      >
+        <svg
+          style={{
+            position: "absolute",
+            width: "100%",
+            height: "100%",
+            top: 0,
+            left: 0,
+          }}
+          viewBox="0 0 1440 900"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <defs>
+            {/* Gradients */}
+            <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.3" />
+            </linearGradient>
+            <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#059669" stopOpacity="0.4" />
+            </linearGradient>
+            <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#059669" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#2563EB" stopOpacity="0.45" />
+            </linearGradient>
+            <linearGradient id="lineGrad4" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#0284C7" stopOpacity="0.3" />
+            </linearGradient>
+
+            {/* Ambient center polygon glows */}
+            <radialGradient id="meshGlowLeft" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id="meshGlowRight" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Polygons */}
+          <polygon points="180,220 320,120 280,380" fill="url(#meshGlowLeft)" />
+          <polygon points="1120,160 1280,280 1180,480" fill="url(#meshGlowRight)" />
+          <polygon points="280,380 440,540 180,680" fill="url(#meshGlowLeft)" />
+          <polygon points="1180,480 1320,680 1020,640" fill="url(#meshGlowRight)" />
+
+          {/* Left Flank Constellation Lines */}
+          <line x1="180" y1="220" x2="320" y2="120" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="320" y1="120" x2="280" y2="380" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="280" y1="380" x2="180" y2="220" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="280" y1="380" x2="440" y2="540" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="440" y1="540" x2="180" y2="680" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="180" y1="680" x2="280" y2="380" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="440" y1="540" x2="490" y2="450" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 4" />
+
+          {/* Right Flank Constellation Lines */}
+          <line x1="1120" y1="160" x2="1280" y2="280" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1280" y1="280" x2="1180" y2="480" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1180" y1="480" x2="1120" y2="160" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1180" y1="480" x2="1320" y2="680" stroke="url(#lineGrad1)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1320" y1="680" x2="1020" y2="640" stroke="url(#lineGrad2)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1020" y1="640" x2="1180" y2="480" stroke="url(#lineGrad3)" strokeWidth="1.5" strokeDasharray="6 5" />
+          <line x1="1020" y1="640" x2="950" y2="450" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 4" />
+
+          {/* Cross Mesh Links */}
+          <line x1="320" y1="120" x2="1120" y2="160" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 8" opacity="0.4" />
+          <line x1="440" y1="540" x2="1020" y2="640" stroke="url(#lineGrad4)" strokeWidth="1" strokeDasharray="4 8" opacity="0.4" />
+
+          {/* Glowing Geometric Pulse Dots */}
+          <circle cx="180" cy="220" r="4" fill="#2563EB" opacity="0.9" />
+          <circle cx="320" cy="120" r="5" fill="#7C3AED" opacity="0.9" />
+          <circle cx="280" cy="380" r="4" fill="#059669" opacity="0.9" />
+          <circle cx="440" cy="540" r="4.5" fill="#2563EB" opacity="0.8" />
+          <circle cx="180" cy="680" r="4" fill="#0284C7" opacity="0.8" />
+
+          <circle cx="1120" cy="160" r="4.5" fill="#7C3AED" opacity="0.9" />
+          <circle cx="1280" cy="280" r="4" fill="#059669" opacity="0.9" />
+          <circle cx="1180" cy="480" r="5" fill="#2563EB" opacity="0.9" />
+          <circle cx="1320" cy="680" r="4" fill="#7C3AED" opacity="0.8" />
+          <circle cx="1020" cy="640" r="4.5" fill="#059669" opacity="0.8" />
+        </svg>
+
+        {/* ── Left Geometric Agent Nodes ── */}
+        <AgentNode
+          x={180}
+          y={220}
+          icon="🤖"
+          name="Fin둥이"
+          role="Billing Swarm"
+          color="#2563EB"
+        />
+        <AgentNode
+          x={320}
+          y={120}
+          icon="⚡"
+          name="Support Bot"
+          role="Support Swarm"
+          color="#7C3AED"
+        />
+        <AgentNode
+          x={280}
+          y={380}
+          icon="🔍"
+          name="Analytics Lead"
+          role="Market Swarm"
+          color="#059669"
+        />
+        <AgentNode
+          x={180}
+          y={680}
+          icon="🛡️"
+          name="Security Hub"
+          role="Trust Fabric"
+          color="#0284C7"
+        />
+
+        {/* ── Right Geometric Agent Nodes ── */}
+        <AgentNode
+          x={1120}
+          y={160}
+          icon="🔑"
+          name="Key Attestor"
+          role="Ed25519 CA"
+          color="#7C3AED"
+        />
+        <AgentNode
+          x={1280}
+          y={280}
+          icon="📥"
+          name="Lease Worker"
+          role="Socketless 300s"
+          color="#059669"
+        />
+        <AgentNode
+          x={1180}
+          y={480}
+          icon="🌐"
+          name="Mesh Hub"
+          role="Cluster Primary"
+          color="#2563EB"
+        />
+        <AgentNode
+          x={1020}
+          y={640}
+          icon="📊"
+          name="Audit Forensic"
+          role="SPEC § 11.0"
+          color="#059669"
+        />
+      </div>
+
+      {/* ── Center Login Box (현재 가운데 박스 유지) ── */}
+      <div
+        style={{
+          background: "var(--color-bg-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-xl)",
+          padding: "40px 36px",
+          width: "100%",
+          maxWidth: 440,
+          boxShadow: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04)",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 32px",
-          background: "rgba(255, 255, 255, 0.9)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--color-border)",
-          boxShadow: "var(--shadow-xs)",
+          flexDirection: "column",
+          gap: 22,
+          position: "relative",
+          zIndex: 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ textAlign: "center" }}>
           <div
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
+              width: 48,
+              height: 48,
+              borderRadius: 14,
               background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
               color: "white",
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "0.95rem",
+              fontSize: "1.4rem",
               fontWeight: 900,
+              marginBottom: 12,
             }}
           >
             M
           </div>
-          <span style={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.02em" }}>
-            Agent Mesh Platform
-          </span>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "2px 8px",
-              borderRadius: "var(--radius-full)",
-              background: "#ECFDF5",
-              color: "#059669",
-              fontSize: "0.72rem",
-              fontWeight: 700,
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "#10B981",
-                display: "inline-block",
-              }}
-            />
-            v0.3 Live (SPEC 0.2)
-          </span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <a
-            href="http://localhost:3005/ia.html"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: "6px 14px",
-              borderRadius: "var(--radius-md)",
-              background: "var(--color-primary-light)",
-              border: "1px solid var(--color-primary)",
-              color: "var(--color-primary)",
-              fontSize: "0.82rem",
-              fontWeight: 700,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            🗺️ IA 정보구조도
-          </a>
-          <a
-            href="http://localhost:3005/index.html"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: "6px 14px",
-              borderRadius: "var(--radius-md)",
-              background: "var(--color-bg-surface)",
-              border: "1px solid var(--color-border-strong)",
-              color: "var(--color-text-secondary)",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            🗂 All-in-One Hub
-          </a>
-        </div>
-      </header>
-
-      {/* ── Main Hero Section ── */}
-      <main
-        style={{
-          flex: 1,
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "40px 24px 60px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          width: "100%",
-          gap: 36,
-        }}
-      >
-        {/* Hero Headline */}
-        <div style={{ textAlign: "center", maxWidth: 740 }}>
-          <span
-            style={{
-              display: "inline-block",
-              padding: "4px 14px",
-              borderRadius: "var(--radius-full)",
-              background: "var(--color-primary-light)",
-              border: "1px solid var(--color-primary-border, #BFDBFE)",
-              color: "var(--color-primary)",
-              fontSize: "0.8rem",
-              fontWeight: 800,
-              marginBottom: 14,
-              letterSpacing: "0.02em",
-            }}
-          >
-            THE AUTONOMOUS AGENT FABRIC · SPEC 0.2
-          </span>
           <h1
             style={{
-              fontSize: "2.4rem",
-              fontWeight: 900,
-              letterSpacing: "-0.04em",
-              lineHeight: 1.2,
-              color: "var(--color-text-primary)",
+              fontSize: "1.4rem",
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
             }}
           >
-            Next-Gen Multi-Agent Messaging Backbone & Cryptographic Trust Fabric
+            Agent Mesh Platform
           </h1>
           <p
             style={{
-              fontSize: "1rem",
+              fontSize: "0.85rem",
               color: "var(--color-text-secondary)",
-              marginTop: 12,
-              lineHeight: 1.6,
+              marginTop: 4,
             }}
           >
-            간헐적·소켓리스 AI 에이전트 간의 단대단 암호학적 서명 검증, 영구 데몬 없는 신뢰 라우팅 및 불변 감사 포렌식을 제공합니다.
+            단일 로그인 및 RBAC 통합 관리 게이트웨이
           </p>
         </div>
 
-        {/* ── Center Login Box (현재 가운데 박스 유지) ── */}
-        <div
+        {/* GitHub OAuth Button */}
+        <button
+          type="button"
+          onClick={handleGitHubLogin}
           style={{
-            background: "var(--color-bg-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-xl)",
-            padding: "36px 32px",
-            width: "100%",
-            maxWidth: 440,
-            boxShadow: "0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04)",
             display: "flex",
-            flexDirection: "column",
-            gap: 20,
-            position: "relative",
-            zIndex: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "11px 16px",
+            borderRadius: "var(--radius-md)",
+            background: "#24292f",
+            color: "white",
+            fontWeight: 700,
+            fontSize: "0.9rem",
+            border: "none",
+            cursor: "pointer",
+            transition: "background 0.15s ease",
           }}
         >
-          <div style={{ textAlign: "center" }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
-                color: "white",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.3rem",
-                fontWeight: 900,
-                marginBottom: 10,
-              }}
-            >
-              M
-            </div>
-            <h2
-              style={{
-                fontSize: "1.35rem",
-                fontWeight: 800,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Agent Mesh Platform
-            </h2>
-            <p
-              style={{
-                fontSize: "0.85rem",
-                color: "var(--color-text-secondary)",
-                marginTop: 2,
-              }}
-            >
-              단일 로그인 및 RBAC 통합 관리 게이트웨이
-            </p>
-          </div>
+          <GitHubIcon />
+          GitHub 계정으로 계속하기
+        </button>
 
-          {/* GitHub OAuth Button */}
-          <button
-            type="button"
-            onClick={handleGitHubLogin}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              padding: "11px 16px",
-              borderRadius: "var(--radius-md)",
-              background: "#24292f",
-              color: "white",
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              border: "none",
-              cursor: "pointer",
-              transition: "background 0.15s ease",
-            }}
-          >
-            <GitHubIcon />
-            GitHub 계정으로 계속하기
-          </button>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              color: "var(--color-text-muted)",
-              fontSize: "0.8rem",
-            }}
-          >
-            <hr
-              style={{
-                flex: 1,
-                border: "none",
-                borderTop: "1px solid var(--color-border)",
-              }}
-            />
-            또는 로컬 계정
-            <hr
-              style={{
-                flex: 1,
-                border: "none",
-                borderTop: "1px solid var(--color-border)",
-              }}
-            />
-          </div>
-
-          {/* Local ID/PW Form */}
-          <form
-            style={{ display: "flex", flexDirection: "column", gap: 14 }}
-            onSubmit={handleSubmit}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={labelStyle}>아이디 (ID)</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                autoComplete="username"
-                style={inputStyle}
-                required
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={labelStyle}>비밀번호 (Password)</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                style={inputStyle}
-                required
-              />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>
-              <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-                style={inputStyle}
-              >
-                <option value="PLATFORM_ADMIN">👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option>
-                <option value="TENANT_ADMIN">🏢 테넌트 관리자 (Tenant Admin - 테넌트 메뉴 노출)</option>
-                <option value="GROUP_ADMIN">👥 그룹 관리자 (Group Admin - 스웜 그룹 관리)</option>
-                <option value="AGENT_OPERATOR">🤖 일반 에이전트 운영자 (Agent Operator - 관리자 메뉴 은닉)</option>
-              </select>
-            </div>
-
-            <button type="submit" style={btnPrimaryStyle}>
-              로그인하기
-            </button>
-          </form>
-
-          <p
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--color-text-muted)",
-              textAlign: "center",
-              lineHeight: 1.4,
-            }}
-          >
-            단일 계정(Single ID) 체계로, 선택된 역할에 따라 사이드바 메뉴가 자동으로 동적 활성화/은닉됩니다.
-          </p>
-        </div>
-
-        {/* ── Bottom 3 Feature Highlights ── */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 20,
-            width: "100%",
-            marginTop: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            color: "var(--color-text-muted)",
+            fontSize: "0.8rem",
           }}
         >
-          <FeatureCard
-            icon="⚡"
-            title="소켓리스 비동기 메시징"
-            description="상시 데몬 없이 At-Least-Once 보증의 300초 TTL 리스 큐를 통해 간헐적 AI 워커가 필요 시 온디맨드로 메시지를 수신합니다."
+          <hr
+            style={{
+              flex: 1,
+              border: "none",
+              borderTop: "1px solid var(--color-border)",
+            }}
           />
-          <FeatureCard
-            icon="🔒"
-            title="암호학적 신원 & 서명 검증"
-            description="Ed25519 공개키 지문 1:1 대조 및 운영자 거버넌스 승인 절차를 거친 검증된 에이전트만 메시지에 참여합니다."
-          />
-          <FeatureCard
-            icon="📜"
-            title="불변 감사 & 프라이버시 경계"
-            description="SPEC § 11.0 기준에 따라 audit.read.content 권한 미보유 시 본문 유출을 완전 차단([content withheld])합니다."
+          또는 로컬 계정
+          <hr
+            style={{
+              flex: 1,
+              border: "none",
+              borderTop: "1px solid var(--color-border)",
+            }}
           />
         </div>
-      </main>
 
-      {/* ── Footer ── */}
-      <footer
-        style={{
-          borderTop: "1px solid var(--color-border)",
-          padding: "20px 24px",
-          textAlign: "center",
-          fontSize: "0.78rem",
-          color: "var(--color-text-muted)",
-          background: "var(--color-bg-surface)",
-        }}
-      >
-        Agent Mesh Platform · Spec 0.2 Specification · Light Theme Enterprise System
-      </footer>
+        {/* Local ID/PW Form */}
+        <form
+          style={{ display: "flex", flexDirection: "column", gap: 14 }}
+          onSubmit={handleSubmit}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>아이디 (ID)</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
+              autoComplete="username"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>비밀번호 (Password)</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+              style={inputStyle}
+            >
+              <option value="PLATFORM_ADMIN">👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option>
+              <option value="TENANT_ADMIN">🏢 테넌트 관리자 (Tenant Admin - 테넌트 메뉴 노출)</option>
+              <option value="GROUP_ADMIN">👥 그룹 관리자 (Group Admin - 스웜 그룹 관리)</option>
+              <option value="AGENT_OPERATOR">🤖 일반 에이전트 운영자 (Agent Operator - 관리자 메뉴 은닉)</option>
+            </select>
+          </div>
+
+          <button type="submit" style={btnPrimaryStyle}>
+            로그인하기
+          </button>
+        </form>
+
+        <p
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--color-text-muted)",
+            textAlign: "center",
+            lineHeight: 1.4,
+          }}
+        >
+          단일 계정(Single ID) 체계로, 선택된 역할에 따라 사이드바 메뉴가 자동으로 동적 활성화/은닉됩니다.
+        </p>
+      </div>
     </div>
   );
 }
 
-function FeatureCard({
+function AgentNode({
+  x,
+  y,
   icon,
-  title,
-  description,
+  name,
+  role,
+  color,
 }: {
+  x: number;
+  y: number;
   icon: string;
-  title: string;
-  description: string;
+  name: string;
+  role: string;
+  color: string;
 }) {
   return (
     <div
       style={{
-        background: "var(--color-bg-surface)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-lg)",
-        padding: "22px 20px",
-        boxShadow: "var(--shadow-xs)",
+        position: "absolute",
+        left: `${(x / 1440) * 100}%`,
+        top: `${(y / 900) * 100}%`,
+        transform: "translate(-50%, -50%)",
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        alignItems: "center",
+        gap: 6,
+        userSelect: "none",
+        opacity: 0.85,
+        filter: "drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08))",
       }}
     >
-      <div style={{ fontSize: "1.6rem" }}>{icon}</div>
-      <h3 style={{ fontSize: "0.98rem", fontWeight: 800, color: "var(--color-text-primary)" }}>
-        {title}
-      </h3>
-      <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)", lineHeight: 1.55 }}>
-        {description}
-      </p>
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: "var(--color-bg-surface)",
+          border: `2px solid ${color}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1.2rem",
+          boxShadow: `0 0 16px ${color}25`,
+        }}
+      >
+        {icon}
+      </div>
+
+      <div
+        style={{
+          background: "rgba(255, 255, 255, 0.92)",
+          backdropFilter: "blur(4px)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-full)",
+          padding: "2px 8px",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: "0.7rem",
+          fontWeight: 700,
+          color: "var(--color-text-primary)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span
+          style={{
+            width: 5,
+            height: 5,
+            borderRadius: "50%",
+            background: color,
+            display: "inline-block",
+          }}
+        />
+        <span>{name}</span>
+        <span style={{ color: "var(--color-text-muted)", fontSize: "0.65rem", fontWeight: 500 }}>
+          ({role})
+        </span>
+      </div>
     </div>
   );
 }
