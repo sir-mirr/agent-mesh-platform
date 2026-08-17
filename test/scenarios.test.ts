@@ -232,8 +232,15 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       });
       if (step.expect) {
         expect(res.status, `${ctx} status`).toBe(step.expect.status);
-        if (step.expect.code) {
-          expect((await res.json()).code, `${ctx} code`).toBe(step.expect.code);
+        if (step.expect.code || step.expect.body) {
+          // Read once. `Response.json()` consumes the body, so checking `code`
+          // and then `body` off two calls throws on the second.
+          const parsed = await res.json();
+          if (step.expect.code) expect(parsed.code, `${ctx} code`).toBe(step.expect.code);
+          for (const [path, want] of Object.entries(step.expect.body ?? {})) {
+            const got = path.split(".").reduce<any>((v, k) => (v == null ? v : v[k]), parsed);
+            expect(got, `${ctx} body.${path}`).toBe(want);
+          }
         }
       }
       return;

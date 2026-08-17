@@ -32,6 +32,7 @@ import { outbox } from "@agent-mesh/store";
 import { db as hubDb, stmtMessageById } from "../db";
 import { OBSERVED } from "../observed-config";
 import { DORMANCY_SECONDS } from "../dormancy";
+import { LEASE_SECONDS } from "../rpc/receive";
 import { log } from "../log";
 import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "../rpc/audit-limits";
 import { recordRecalled } from "../rpc/audit";
@@ -118,7 +119,14 @@ export function handleInboxRoute(req: InboxRequest): Response | null {
     return json(200, {
       // The deployment's window, not the default's — a client sizing its
       // behaviour on a constant would be sizing it on another deployment.
-      mailbox: { ...MAILBOX_CAPABILITY_DEFAULTS, dormancy_seconds: DORMANCY_SECONDS },
+      mailbox: {
+        ...MAILBOX_CAPABILITY_DEFAULTS,
+        dormancy_seconds: DORMANCY_SECONDS,
+        // Was left as the default while `dormancy_seconds` beside it was not,
+        // under a comment saying to do exactly this. A stated principle does
+        // not check itself.
+        receive_lease_seconds: LEASE_SECONDS,
+      },
       audit: { ...AUDIT_LIMITS, schema_version_max: MAX_SCHEMA_VERSION },
       // `observed_source` is the running deployment's, not the default's
       // (§ 8.11). Reporting the constant would tell every caller `socket`

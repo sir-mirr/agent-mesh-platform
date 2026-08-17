@@ -49,7 +49,17 @@ const DEFAULT_LIMIT = 50;
  * comfort setting rather than a correctness one — which is exactly why it is
  * adjustable rather than compiled in.
  */
-const LEASE_SECONDS = Number(
+/**
+ * Exported because `/api/v1/capabilities` advertises it, and for a while it
+ * advertised the *constant* instead — so a deployment that shortened the lease
+ * told every client it had not. Nothing failed: ids are stable and the messages
+ * still came back, the caller just re-polled on a cadence the hub had not asked
+ * for. A defect with no symptom is one that stays.
+ *
+ * One binding, two readers. The alternative — each side reading the environment
+ * — is what produced the divergence.
+ */
+export const LEASE_SECONDS = Number(
   process.env.AGENT_MESH_RECEIVE_LEASE_SECONDS ?? MAILBOX_CAPABILITY_DEFAULTS.receive_lease_seconds,
 );
 

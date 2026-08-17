@@ -34,6 +34,8 @@ interface Args {
   readyFile: string;
   stateDir?: string;
   keep: boolean;
+  /** SPEC § 17.4 — `MeshRequirement.receiveLeaseSeconds`. */
+  receiveLeaseSeconds?: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -50,6 +52,25 @@ function parseArgs(argv: string[]): Args {
       case "--keep-state":
         args.keep = true;
         break;
+      // A scenario carrying `mesh: { receiveLeaseSeconds }` (SPEC § 17.4) needs
+      // a mesh shaped that way. A flag rather than leaving each runner to reach
+      // for the environment variable: `client-claude` got there by exploiting
+      // that `spawnService` merges `process.env`, which works and is *their*
+      // method — two runners inventing two ways to satisfy one requirement are
+      // no longer running the same scenario, which is the guarantee the shared
+      // list exists for.
+      case "--receive-lease-seconds": {
+        const raw = argv[++i];
+        const n = Number(raw);
+        // Rejected rather than defaulted. A typo that silently restores the
+        // 30-second lease makes E2E-RECEIVE-002 pass by never reaching the
+        // lapse it is about.
+        if (!Number.isFinite(n) || n <= 0) {
+          throw new Error(`--receive-lease-seconds must be a positive number, got "${raw}"`);
+        }
+        args.receiveLeaseSeconds = n;
+        break;
+      }
       default:
         throw new Error(`unknown argument: ${argv[i]}`);
     }
@@ -137,7 +158,45 @@ mkdirSync(stateDir, { recursive: true });
 
 const hubPort = await freePort();
 const httpPort = await freePort();
-const shared = { AGENT_MESH_STATE_DIR: stateDir };
+const shared = {
+  AGENT_MESH_STATE_DIR: stateDir,
+  ...(args.receiveLeaseSeconds !== undefined
+    ? { AGENT_MESH_RECEIVE_LEASE_SECONDS: String(args.receiveLeaseSeconds) }
+    : {}),
+};
+
+/**
+ * Which checkout this mesh is actually running.
+ *
+ * **The failure that put this here.** A conformance run reported
+ * `E2E-PROXY-001` as a live `can_proxy` self-grant, with a reproduction, a row
+ * from `agents.db` and two line numbers. Every part of it was true — of a
+ * worktree forty commits behind `main`, where the refusal had not landed yet.
+ * The same scenario passed here at the same time.
+ *
+ * Nothing in the ready file could have told either side that. Two runs
+ * disagreeing is the signal the shared scenarios exist to produce, and it is
+ * worth nothing if a report cannot say what it ran against.
+ *
+ * Never fatal. A tarball with no `.git` is a legitimate way to run this, and a
+ * harness that refused to start there would be trading a real capability for a
+ * diagnostic.
+ */
+function provenance(): Record<string, string> {
+  const git = (...a: string[]) => {
+    const p = Bun.spawnSync(["git", "-C", repoRoot, ...a]);
+    return p.success ? new TextDecoder().decode(p.stdout).trim() : "";
+  };
+  const commit = git("rev-parse", "HEAD");
+  if (!commit) return { worktree: repoRoot, commit: "unknown" };
+  return {
+    worktree: repoRoot,
+    commit,
+    branch: git("rev-parse", "--abbrev-ref", "HEAD") || "detached",
+    // Uncommitted changes make the commit a claim about the wrong bytes.
+    dirty: git("status", "--porcelain") ? "true" : "false",
+  };
+}
 
 const hub = spawnService("packages/hub/src/main.ts", {
   ...shared,
@@ -186,6 +245,16 @@ try {
         base_url: `http://127.0.0.1:${httpPort}`,
         rpc_ws: `ws://127.0.0.1:${hubPort}/ws`,
         api_http: `http://127.0.0.1:${hubPort}`,
+        // What this mesh is. A conformance report that quotes it is one the
+        // other side can compare against; one that does not is a claim about an
+        // unnamed checkout. See `provenance`.
+        platform: provenance(),
+        // Echoed rather than assumed. A scenario asking for a two-second lease
+        // and a harness that did not get the flag disagree silently otherwise,
+        // and the scenario passes by never reaching the lapse it is about.
+        mesh_config: {
+          receive_lease_seconds: args.receiveLeaseSeconds ?? null,
+        },
         admin_test_handle: {
           // An ordinary login against the seeded local account. Approval stays
           // behind the same gate it has in production — § 10.2 puts it there so
