@@ -239,6 +239,39 @@ If the requirement is to *prevent* key theft rather than notice it, Tier 3 is
 the answer and this is a workaround for not having it — a good one, and still
 a workaround.
 
+## Future — the two directions that are actually open
+
+### ASN is obtainable; the obstacle is a file, not a feasibility
+
+An offline dataset — iptoasn.com's TSV, MaxMind's GeoLite2 ASN — loaded at
+startup and searched by IP range. No network dependency on the request path,
+which rules out RDAP and whois: a lookup that can time out has no place in a
+send.
+
+**A VM changes nothing here.** The hub reads the peer's address and looks it up
+in a table; the guest environment is not involved.
+
+What it costs is a file in the deployment and a refresh policy, plus a decision
+about what an unmatched address means — `prefix` degrades to arithmetic, `ASN`
+degrades to "unknown", and "unknown" must not silently become "same".
+
+### CPU fingerprinting is *worse* in a VM, and vTPM is the thing it was reaching for
+
+The hypervisor masks CPUID, because heterogeneous live migration requires it —
+VMware EVC, KVM's cpu models. **The guest sees a synthetic CPU the operator
+chose, identical across the whole cluster by design.** On top of that it is
+still self-reported, so it is Tier 1 with less discriminating power than on
+bare metal.
+
+The real thing in that direction is a **virtual TPM**, and it exists on every
+major hypervisor and cloud: VMware vTPM, Hyper-V, KVM with swtpm, GCP Shielded
+VM, Azure Trusted Launch, AWS NitroTPM.
+
+That is Tier 3 **inside a VM** — the key does not leave the guest, so the
+signature is evidence of the machine on every request. It does what CPU
+fingerprinting was reaching for, and it makes dormancy re-attestation
+unnecessary for anything that runs it rather than better.
+
 ## Open
 
 - **Which proxy, and does it strip inbound `X-Forwarded-For`?** Assumed behind
