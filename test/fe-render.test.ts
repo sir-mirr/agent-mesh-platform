@@ -368,6 +368,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // D-99 & D-67 assertions:
     expect(mainText).toContain("agent-alpha → admin (carried by agent-proxy)");
     expect(mainText).toContain("admin → agent-alpha");
+    expect((mainText.match(/carried by agent-proxy/g) || []).length).toBe(2);
+    // D-67 ① Ledger outer timestamp vs payload inner timestamp assertion:
+    expect(mainText).toContain("14:10:00");
+    expect(mainText).not.toContain("14:09:58");
     // D-25 & D-28 assertions:
     expect(mainText).not.toContain("VERIFIED");
     expect(mainText).toContain("서명 있음 · ed25519");
@@ -387,7 +391,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SC-ACT-01: Interactive Form Login Action & Redirection (D-91)
+  // SC-ACT-01: Interactive Form Login Action & Redirection (D-91, D-101)
   it("[SC-ACT-01] performs interactive login form submission and redirects to dashboard", async () => {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -396,75 +400,82 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
     const userInputs = page.locator("input");
-    if ((await userInputs.count()) >= 2) {
-      await userInputs.nth(0).fill("admin");
-      await userInputs.nth(1).fill("admin");
-      const submitBtn = page.locator("button[type='submit'], button:has-text('로그인')");
-      if ((await submitBtn.count()) > 0) {
-        await submitBtn.click();
-        await page.waitForTimeout(500);
-      }
-    }
+    expect(await userInputs.count()).toBeGreaterThanOrEqual(2);
+    await userInputs.nth(0).fill("admin");
+    await userInputs.nth(1).fill("admin");
+    const submitBtn = page.locator("button[type='submit'], button:has-text('로그인')").first();
+    expect(await submitBtn.count()).toBeGreaterThanOrEqual(1);
+    await submitBtn.click();
+    await page.waitForURL(/\/dashboard/, { timeout: 5000 });
+    expect(page.url()).toContain("/dashboard");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-ACT-02: Interactive Refresh Button Action on Dashboard (D-91)
+  // SC-ACT-02: Interactive Refresh Button Action on Dashboard (D-91, D-101)
   it("[SC-ACT-02] clicks interactive refresh button and maintains clean state", async () => {
     const { page, context, errors } = await createAuthedPage("/dashboard");
     const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh'), button[aria-label*='새로고침']").first();
-    if ((await refreshBtn.count()) > 0) {
-      await refreshBtn.click();
-      await page.waitForTimeout(300);
-    }
+    expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
+    await refreshBtn.click();
+    await page.waitForTimeout(300);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("전체 에이전트 노드");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-ACT-03: Interactive Playground Send Message (D-91)
-  it("[SC-ACT-03] performs message dispatch in playground", async () => {
+  // SC-ACT-03: Interactive Playground Send Message (D-91, D-101)
+  it("[SC-ACT-03] performs message dispatch in playground and renders receipt", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/playground");
     const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
-    if ((await sendBtn.count()) > 0) {
-      await sendBtn.click();
-      await page.waitForTimeout(400);
-    }
+    expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
+    await sendBtn.click();
+    await page.waitForTimeout(600);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("발송된 메시지 본문");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-ACT-04: Interactive Telemetry Refresh (D-91)
+  // SC-ACT-04: Interactive Telemetry Refresh (D-91, D-101)
   it("[SC-ACT-04] clicks refresh on platform telemetry", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
-    const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh')").first();
-    if ((await refreshBtn.count()) > 0) {
-      await refreshBtn.click();
-      await page.waitForTimeout(300);
-    }
+    const refreshBtn = page.locator("button:has-text('실시간 갱신'), button:has-text('갱신')").first();
+    expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
+    await refreshBtn.click();
+    await page.waitForTimeout(300);
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("활성 소켓 연결 수");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-ACT-05: Interactive Groups Search & Filter (D-91)
-  it("[SC-ACT-05] performs interactive group search filter", async () => {
+  // SC-ACT-05: Interactive Groups Create Modal & Input (D-91, D-101)
+  it("[SC-ACT-05] performs interactive group creation modal open and input fill", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/groups");
-    const searchInput = page.locator("input[placeholder*='검색'], input[type='search']").first();
-    if ((await searchInput.count()) > 0) {
-      await searchInput.fill("engineering");
-      await page.waitForTimeout(200);
-    }
+    const createBtn = page.locator("button:has-text('그룹 생성')").first();
+    expect(await createBtn.count()).toBeGreaterThanOrEqual(1);
+    await createBtn.click();
+    await page.waitForTimeout(300);
+    const modalInput = page.locator("input").first();
+    expect(await modalInput.count()).toBeGreaterThanOrEqual(1);
+    await modalInput.fill("operations");
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("신규 그룹 생성");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-ACT-06: Interactive Tenant Audits Refresh (D-91)
+  // SC-ACT-06: Interactive Tenant Audits Refresh (D-91, D-101)
   it("[SC-ACT-06] clicks audit logs refresh and checks table rendering", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/audits");
-    const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh')").first();
-    if ((await refreshBtn.count()) > 0) {
-      await refreshBtn.click();
-      await page.waitForTimeout(300);
-    }
+    const refreshBtn = page.locator("button:has-text('감사 로그 갱신'), button:has-text('갱신')").first();
+    expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
+    await refreshBtn.click();
+    await page.waitForTimeout(300);
+    const rows = await page.locator("table tbody tr, [role='row']").count();
+    expect(rows).toBeGreaterThanOrEqual(4);
     expect(errors).toEqual([]);
     await context.close();
   });
