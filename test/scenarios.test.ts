@@ -472,6 +472,22 @@ describe("shared scenarios (SPEC § 17)", () => {
  * the two reports silently about the wrong thing.
  */
 describe("the scenario list", () => {
+  /**
+   * Printed, so the number does not have to be worked out from the summary.
+   *
+   * `bun test` reports *cases*, which is scenarios plus the checks in this
+   * block, and that total has been quoted as a scenario count twice — once as
+   * 19 for 16, and again as 19 for 17 after a meta test was removed and the
+   * arithmetic happened to land on the same wrong number. The second time came
+   * after promising to quote `E2E_SCENARIOS.length` and nothing else.
+   *
+   * A promise did not hold it. A line of output does.
+   */
+  test(`E2E_SCENARIOS.length === ${E2E_SCENARIOS.length}`, () => {
+    console.log(`\nshared scenarios: ${E2E_SCENARIOS.length} (bun test also counts the checks in this block)`);
+    expect(E2E_SCENARIOS.length).toBeGreaterThan(0);
+  });
+
   test("every scenario cites a clause and states what it protects", () => {
     for (const s of E2E_SCENARIOS) {
       expect(s.clause, `${s.id} has no clause`).toMatch(/§/);
