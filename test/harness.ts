@@ -320,7 +320,21 @@ export async function callHttp(
     headers: { "content-type": "application/json" },
     body: `{"jsonrpc":"2.0","id":1,"method":${JSON.stringify(method)},"params":${rawParams},"sig":${sig}}`,
   });
-  return { status: res.status, body: await res.json() };
+  // Parsed defensively, and the failure names the response.
+  //
+  // `await res.json()` on a plain-text body throws a bare `SyntaxError` from
+  // this line, which sends a reader to the harness rather than to the route
+  // that answered. That is the right verdict reached by accident and reported
+  // at the wrong address — a route moved out from under a caller looks like a
+  // parser bug.
+  const text = await res.text();
+  try {
+    return { status: res.status, body: JSON.parse(text) };
+  } catch {
+    throw new Error(
+      `POST /api/v1/rpc (${method}) answered ${res.status} with a body that is not JSON: ${text.slice(0, 200)}`,
+    );
+  }
 }
 
 export interface Signer {

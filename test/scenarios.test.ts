@@ -235,8 +235,28 @@ function restAuth(identity: string, method: string, path: string, payload: strin
  * for is the surface the *client* speaks, and § 8.10 is that surface. Running
  * both would double the file to re-measure a path `hub.test.ts` already pins.
  */
-async function rpc(identity: string, method: string, params: unknown) {
-  return callHttp(mesh.hub, signer(identity), method, params);
+async function rpc(identity: string, method: string, params: unknown, ctx?: string) {
+  const out = await callHttp(mesh.hub, signer(identity), method, params);
+  // **The status is read, not inferred from the body.** A JSON-RPC error lives
+  // in `body.error`, so a transport-level refusal that happens to carry a body
+  // without that field arrives looking like success — `client-claude` had a
+  // `404` pass a `send` step and fail two steps later at an assertion pointing
+  // squarely at the hub (mail #238). The route rename is what finally produced
+  // that condition; nothing was wrong with their reasoning, only untested.
+  //
+  // **Only when the body has no refusal to report.** A `403` carrying a proper
+  // `-32014` is an answer this contract specifies and scenarios assert on;
+  // refusing it here would make E2E-REVOKE-001 fail on the behaviour it exists
+  // to pin. What has no place in a scenario is a transport-level status with
+  // nothing in the envelope — a moved route, a proxy, a crash — which arrives
+  // looking like success.
+  if (out.status >= 400 && !out.body?.error) {
+    throw new Error(
+      `${ctx ?? method}: the mesh answered HTTP ${out.status} with no JSON-RPC error in it — ` +
+        `${JSON.stringify(out.body).slice(0, 200)}`,
+    );
+  }
+  return out;
 }
 
 async function runStep(step: Step, ctx: string): Promise<void> {
@@ -333,14 +353,14 @@ async function runStep(step: Step, ctx: string): Promise<void> {
         to: step.to,
         content: step.content,
         ...(step.clientMessageId ? { client_message_id: step.clientMessageId } : {}),
-      });
+      }, ctx);
       assertRpc(out.body, step.expect, ctx);
       return;
     }
 
     case "receive": {
       const ack = step.ackPrevious ? (leased.get(step.identity) ?? []) : [];
-      const out = await rpc(step.identity, "mesh.receive", ack.length ? { ack_ids: ack } : {});
+      const out = await rpc(step.identity, "mesh.receive", ack.length ? { ack_ids: ack } : {}, ctx);
       expect(out.body.error, `${ctx}: receive failed`).toBeUndefined();
       const messages: Array<{ id: string }> = out.body.result?.messages ?? [];
       leased.set(step.identity, messages.map((m) => m.id));
