@@ -58,8 +58,12 @@ const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
 const ICONS_PALETTE = ["🤖", "🔬", "💻", "⚡", "📦", "🛡️", "📜", "🔑", "📊", "🧠", "💡", "📝", "🏆", "🚀", "💬", "🔍", "⚙️", "👁️", "🔐"];
 
 // Total World Bounding Box for Minimap
-const WORLD_W = 3500;
-const WORLD_H = 1750;
+const WORLD_MIN_X = 0;
+const WORLD_MIN_Y = 0;
+const WORLD_TOTAL_W = 3500;
+const WORLD_TOTAL_H = 1750;
+const MINIMAP_W = 200;
+const MINIMAP_H = 110;
 
 export function TopologyPage() {
   const [simStage, setSimStage] = useState<number>(10);
@@ -74,8 +78,17 @@ export function TopologyPage() {
   const [panY, setPanY] = useState<number>(30);
   const [scale, setScale] = useState<number>(0.42);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // Synchronous ref for high-precision cursor-centered zoom & mouse events
+  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 50, panY: 30, scale: 0.42 });
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 50, panY: 30 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const minimapRef = useRef<SVGSVGElement | null>(null);
+
+  // Keep transformRef in sync
+  useEffect(() => {
+    transformRef.current = { panX, panY, scale };
+  }, [panX, panY, scale]);
 
   const subNavItems = [
     { label: "내 에이전트", href: "/creator", icon: "🤖" },
@@ -297,26 +310,37 @@ export function TopologyPage() {
     return result;
   }, [nodes, activeFilterGroup, searchQuery]);
 
-  // 2. PINCH / WHEEL ZOOM ISOLATED TO CANVAS CONTAINER ONLY
+  // 2. MATHEMATICAL CURSOR-CENTERED ZOOM ISOLATED TO CANVAS ONLY
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
 
     const onWheelHandler = (e: WheelEvent) => {
-      e.preventDefault(); // Stop outer page scroll!
+      e.preventDefault();
       e.stopPropagation();
 
-      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      const { panX: curPanX, panY: curPanY, scale: curScale } = transformRef.current;
+      const zoomFactor = e.deltaY < 0 ? 1.14 : 0.88;
       const rect = el.getBoundingClientRect();
+
+      // Mouse coordinate relative to viewport container
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      setScale((prevScale) => {
-        const nextScale = Math.min(Math.max(prevScale * zoomFactor, 0.15), 1.8);
-        setPanX((prevPanX) => mouseX - (mouseX - prevPanX) * (nextScale / prevScale));
-        setPanY((prevPanY) => mouseY - (mouseY - prevPanY) * (nextScale / prevScale));
-        return nextScale;
-      });
+      // World coordinate under cursor before zoom
+      const worldX = (mouseX - curPanX) / curScale;
+      const worldY = (mouseY - curPanY) / curScale;
+
+      const nextScale = Math.min(Math.max(curScale * zoomFactor, 0.15), 2.2);
+
+      // Keep world coordinate stationary under the same mouse position
+      const nextPanX = mouseX - worldX * nextScale;
+      const nextPanY = mouseY - worldY * nextScale;
+
+      transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+      setScale(nextScale);
+      setPanX(nextPanX);
+      setPanY(nextPanY);
     };
 
     el.addEventListener("wheel", onWheelHandler, { passive: false });
@@ -325,8 +349,10 @@ export function TopologyPage() {
     };
   }, []);
 
+  // Canvas Drag Pan Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest(".node-clickable")) return;
+    if ((e.target as HTMLElement).closest(".minimap-container")) return;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY, panX, panY };
   };
@@ -335,26 +361,127 @@ export function TopologyPage() {
     if (!isDragging) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
-    setPanX(dragStartRef.current.panX + dx);
-    setPanY(dragStartRef.current.panY + dy);
+    const nextPanX = dragStartRef.current.panX + dx;
+    const nextPanY = dragStartRef.current.panY + dy;
+    transformRef.current.panX = nextPanX;
+    transformRef.current.panY = nextPanY;
+    setPanX(nextPanX);
+    setPanY(nextPanY);
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
   };
 
+  // 3. INTERACTIVE MINIMAP CLICK & DRAG NAVIGATION
+  const isMinimapDraggingRef = useRef(false);
+
+  const navigateFromMinimap = useCallback((clientX: number, clientY: number) => {
+    const miniSvg = minimapRef.current;
+    const viewport = viewportRef.current;
+    if (!miniSvg || !viewport) return;
+
+    const miniRect = miniSvg.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(clientX - miniRect.left, MINIMAP_W));
+    const clickY = Math.max(0, Math.min(clientY - miniRect.top, MINIMAP_H));
+
+    // Target world center point clicked on minimap
+    const targetWorldX = WORLD_MIN_X + (clickX / MINIMAP_W) * WORLD_TOTAL_W;
+    const targetWorldY = WORLD_MIN_Y + (clickY / MINIMAP_H) * WORLD_TOTAL_H;
+
+    const vpRect = viewport.getBoundingClientRect();
+    const curScale = transformRef.current.scale;
+
+    // Center viewport at this world position
+    const nextPanX = vpRect.width / 2 - targetWorldX * curScale;
+    const nextPanY = vpRect.height / 2 - targetWorldY * curScale;
+
+    transformRef.current.panX = nextPanX;
+    transformRef.current.panY = nextPanY;
+    setPanX(nextPanX);
+    setPanY(nextPanY);
+  }, []);
+
+  const handleMinimapMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    isMinimapDraggingRef.current = true;
+    navigateFromMinimap(e.clientX, e.clientY);
+  };
+
+  useEffect(() => {
+    const onWindowMouseMove = (e: MouseEvent) => {
+      if (isMinimapDraggingRef.current) {
+        navigateFromMinimap(e.clientX, e.clientY);
+      }
+    };
+    const onWindowMouseUp = () => {
+      isMinimapDraggingRef.current = false;
+    };
+    window.addEventListener("mousemove", onWindowMouseMove);
+    window.addEventListener("mouseup", onWindowMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
+    };
+  }, [navigateFromMinimap]);
+
+  // Global ESC key listener to deselect node and hide overlay
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedNodeId(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const resetView = () => {
-    setPanX(50);
-    setPanY(30);
-    setScale(0.42);
+    const nextPanX = 50;
+    const nextPanY = 30;
+    const nextScale = 0.42;
+    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+    setPanX(nextPanX);
+    setPanY(nextPanY);
+    setScale(nextScale);
   };
 
   const zoomIn = () => {
-    setScale((s) => Math.min(s * 1.25, 1.8));
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const vw = rect?.width || 1000;
+    const vh = rect?.height || 600;
+    const curScale = transformRef.current.scale;
+    const nextScale = Math.min(curScale * 1.25, 2.2);
+
+    const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
+    const worldCenterY = (vh / 2 - transformRef.current.panY) / curScale;
+
+    const nextPanX = vw / 2 - worldCenterX * nextScale;
+    const nextPanY = vh / 2 - worldCenterY * nextScale;
+
+    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+    setScale(nextScale);
+    setPanX(nextPanX);
+    setPanY(nextPanY);
   };
 
   const zoomOut = () => {
-    setScale((s) => Math.max(s * 0.8, 0.15));
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const vw = rect?.width || 1000;
+    const vh = rect?.height || 600;
+    const curScale = transformRef.current.scale;
+    const nextScale = Math.max(curScale * 0.8, 0.15);
+
+    const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
+    const worldCenterY = (vh / 2 - transformRef.current.panY) / curScale;
+
+    const nextPanX = vw / 2 - worldCenterX * nextScale;
+    const nextPanY = vh / 2 - worldCenterY * nextScale;
+
+    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+    setScale(nextScale);
+    setPanX(nextPanX);
+    setPanY(nextPanY);
   };
 
   const focusNode = (node: TopoNode) => {
@@ -362,9 +489,13 @@ export function TopologyPage() {
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
     const targetScale = 0.85;
+    const nextPanX = vw / 2 - node.x * targetScale;
+    const nextPanY = vh / 2 - node.y * targetScale;
+
+    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: targetScale };
     setScale(targetScale);
-    setPanX(vw / 2 - node.x * targetScale);
-    setPanY(vh / 2 - node.y * targetScale);
+    setPanX(nextPanX);
+    setPanY(nextPanY);
   };
 
   const handleSendQuickMessage = () => {
@@ -379,22 +510,19 @@ export function TopologyPage() {
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
 
-    const miniW = 200;
-    const miniH = 110;
+    const miniScaleX = MINIMAP_W / WORLD_TOTAL_W;
+    const miniScaleY = MINIMAP_H / WORLD_TOTAL_H;
 
-    const miniScaleX = miniW / WORLD_W;
-    const miniScaleY = miniH / WORLD_H;
-
-    const vx = Math.max(0, (-panX / scale) * miniScaleX);
-    const vy = Math.max(0, (-panY / scale) * miniScaleY);
+    const vx = Math.max(0, ((-panX / scale) - WORLD_MIN_X) * miniScaleX);
+    const vy = Math.max(0, ((-panY / scale) - WORLD_MIN_Y) * miniScaleY);
     const width = (vw / scale) * miniScaleX;
     const height = (vh / scale) * miniScaleY;
 
     return {
-      x: vx,
-      y: vy,
-      width: Math.min(width, miniW),
-      height: Math.min(height, miniH),
+      x: Math.min(vx, MINIMAP_W - 10),
+      y: Math.min(vy, MINIMAP_H - 10),
+      width: Math.min(width, MINIMAP_W),
+      height: Math.min(height, MINIMAP_H),
     };
   }, [panX, panY, scale]);
 
@@ -838,25 +966,32 @@ export function TopologyPage() {
           <button onClick={resetView} style={hudBtnStyle} title="핏-투-스크린 (100%)">🎯</button>
         </div>
 
-        {/* ── Interactive Mini-Map (Bottom-Left) ── */}
+        {/* ── Interactive Mini-Map with Drag/Click Navigation (Bottom-Left) ── */}
         <div
+          className="minimap-container"
           style={{
             position: "absolute",
             bottom: 20,
             left: 20,
-            width: 200,
-            height: 110,
-            background: "rgba(255, 255, 255, 0.95)",
+            width: MINIMAP_W,
+            height: MINIMAP_H,
+            background: "rgba(255, 255, 255, 0.96)",
             backdropFilter: "blur(10px)",
-            border: "1px solid var(--color-border)",
+            border: "1.5px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
-            boxShadow: "var(--shadow-md)",
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
             overflow: "hidden",
             zIndex: 40,
-            pointerEvents: "none",
+            cursor: "crosshair",
           }}
+          onMouseDown={handleMinimapMouseDown}
+          title="미니맵: 클릭 또는 드래그하여 해당 구역으로 즉시 이동"
         >
-          <svg style={{ width: "100%", height: "100%" }} viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}>
+          <svg
+            ref={minimapRef}
+            style={{ width: "100%", height: "100%", display: "block" }}
+            viewBox={`${WORLD_MIN_X} ${WORLD_MIN_Y} ${WORLD_TOTAL_W} ${WORLD_TOTAL_H}`}
+          >
             {/* Cluster Mini Circles */}
             {clusters.map((c) => (
               <circle
@@ -866,12 +1001,12 @@ export function TopologyPage() {
                 r={c.r}
                 fill={c.fill}
                 stroke={c.stroke}
-                strokeWidth={4}
+                strokeWidth={6}
               />
             ))}
           </svg>
 
-          {/* Viewport Indicator Red Rectangle */}
+          {/* Interactive Viewport Indicator Blue Rectangle */}
           <div
             style={{
               position: "absolute",
@@ -879,9 +1014,10 @@ export function TopologyPage() {
               top: minimapViewRect.y,
               width: minimapViewRect.width,
               height: minimapViewRect.height,
-              border: "1.5px solid #2563EB",
-              background: "rgba(37, 99, 235, 0.15)",
-              borderRadius: 2,
+              border: "2px solid #2563EB",
+              background: "rgba(37, 99, 235, 0.2)",
+              borderRadius: 3,
+              boxShadow: "0 0 6px rgba(37, 99, 235, 0.5)",
               pointerEvents: "none",
             }}
           />
