@@ -431,6 +431,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["scripts/e2e-harness.ts"],
   },
 
+  {
+    id: "capability-not-role",
+    defect:
+      "An admin route gated on `payload.role === 'admin'` instead of a capability (\u00a7 11). Nothing noticed, because both models answer 401 to a stranger and 403 to a non-admin — every existing gate test asks exactly those two questions. Found by mutating the route and watching all 601 tests stay green.",
+    file: "packages/http/src/main.ts",
+    from: "  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)\n  if (typeof actor !== 'string') return actor",
+    to: "  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 401)\n  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)\n  const actor = payload.github_login as string",
+    suite: "test/auth-sweep.test.ts",
+    // The caller that separates the two models: a token whose `role` is admin
+    // and whose subject holds no grant. Role-checking lets it in.
+    expect: ["a session claiming the admin role but holding no grant is refused"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
