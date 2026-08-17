@@ -642,6 +642,20 @@ const MUTATIONS: Mutation[] = [
     expect: ["content reached a metadata-only reader"],
   },
 
+  {
+    id: "carrier-not-sender",
+    defect:
+      "The audit row recorded the carrier as the sender. \u00a7 8.2 keeps them apart — `from` is who the message is from, `sent_by` is who carried it — and on a mesh where nothing is ever proxied the two are equal in every row, so overwriting one with the other was invisible.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "      sent_by: fields.sentBy,",
+    to: "      sent_by: fields.from,",
+    suite: "test/audit-integrity.test.ts",
+    // Needs a proxied send, which needs a keyless subject: § 8.2 refuses a
+    // proxy for an identity that holds its own key. No other test in this
+    // repository produces a row where the two differ.
+    expect: ["the carrier was not recorded"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
