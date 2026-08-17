@@ -297,11 +297,11 @@ export function TopologyPage() {
       }
     }
 
-    // Exact 20% Margin Bounding Box Calculation around all drawn entities
+    // Exact 5% Margin Bounding Box Calculation around all drawn entities (User requested 5%)
     const entityW = Math.max(maxX - minX, 600);
     const entityH = Math.max(maxY - minY, 400);
-    const marginX = entityW * 0.2; // 20% margin
-    const marginY = entityH * 0.2; // 20% margin
+    const marginX = entityW * 0.05; // 5% margin
+    const marginY = entityH * 0.05; // 5% margin
 
     const worldMinX = minX - marginX;
     const worldMaxX = maxX + marginX;
@@ -360,7 +360,7 @@ export function TopologyPage() {
     return result;
   }, [nodes, activeFilterGroup, searchQuery]);
 
-  // Boundary Clamping Function (Constrain panning inside 20% world margin box)
+  // Boundary Clamping Function (Constrain panning inside world bounds)
   const clampPan = useCallback(
     (targetPanX: number, targetPanY: number, targetScale: number) => {
       const viewport = viewportRef.current;
@@ -394,7 +394,7 @@ export function TopologyPage() {
     [bounds]
   );
 
-  // 2. FIT-TO-SCREEN (Fits all drawn entities with exact 20% margin)
+  // 2. FIT-TO-SCREEN (Fits all drawn entities with exact 5% margin)
   const fitToScreen = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -402,9 +402,9 @@ export function TopologyPage() {
     const vw = rect.width || 1200;
     const vh = rect.height || 640;
 
-    // Scale to fit world bounds (with 20% margin)
-    const scaleX = vw / bounds.worldW;
-    const scaleY = vh / bounds.worldH;
+    // Scale to fit world bounds (with 5% margin)
+    const scaleX = (vw - 32) / bounds.worldW;
+    const scaleY = (vh - 32) / bounds.worldH;
     const fitScale = Math.min(scaleX, scaleY);
     const nextScale = Math.min(Math.max(fitScale, 0.15), 1.8);
 
@@ -617,7 +617,7 @@ export function TopologyPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Minimap Viewport indicator rectangle coordinates (20% margin matched)
+  // Minimap Viewport indicator rectangle coordinates with STRICT mathematical boundary containment
   const minimapViewRect = useMemo(() => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
@@ -626,16 +626,25 @@ export function TopologyPage() {
     const miniScaleX = MINIMAP_W / bounds.worldW;
     const miniScaleY = MINIMAP_H / bounds.worldH;
 
-    const vx = Math.max(0, (-panX / scale - bounds.worldMinX) * miniScaleX);
-    const vy = Math.max(0, (-panY / scale - bounds.worldMinY) * miniScaleY);
-    const width = (vw / scale) * miniScaleX;
-    const height = (vh / scale) * miniScaleY;
+    const rawLeft = (-panX / scale - bounds.worldMinX) * miniScaleX;
+    const rawTop = (-panY / scale - bounds.worldMinY) * miniScaleY;
+    const rawWidth = (vw / scale) * miniScaleX;
+    const rawHeight = (vh / scale) * miniScaleY;
+
+    // Strictly clamp left, right, top, bottom within [0, MINIMAP_W] and [0, MINIMAP_H]
+    const left = Math.max(0, Math.min(rawLeft, MINIMAP_W));
+    const top = Math.max(0, Math.min(rawTop, MINIMAP_H));
+    const right = Math.max(0, Math.min(rawLeft + rawWidth, MINIMAP_W));
+    const bottom = Math.max(0, Math.min(rawTop + rawHeight, MINIMAP_H));
+
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
 
     return {
-      x: Math.min(vx, MINIMAP_W - 10),
-      y: Math.min(vy, MINIMAP_H - 10),
-      width: Math.min(width, MINIMAP_W),
-      height: Math.min(height, MINIMAP_H),
+      x: left,
+      y: top,
+      width,
+      height,
     };
   }, [panX, panY, scale, bounds]);
 
@@ -652,7 +661,7 @@ export function TopologyPage() {
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Button variant="secondary" size="sm" onClick={fitToScreen}>
-              🎯 100% 핏-투-스크린 (20% 마진)
+              Fit (5% 여백)
             </Button>
             <Button variant="primary" size="sm" onClick={() => setSimStage(10)}>
               ⚡ 10-스웜 풀 로드 (139노드)
@@ -1076,7 +1085,21 @@ export function TopologyPage() {
             {Math.round(scale * 100)}%
           </span>
           <button onClick={zoomOut} style={hudBtnStyle} title="축소 (-)">➖</button>
-          <button onClick={fitToScreen} style={hudBtnStyle} title="핏-투-스크린 (20% 마진)">🎯</button>
+          <button
+            onClick={fitToScreen}
+            style={{
+              ...hudBtnStyle,
+              fontWeight: 800,
+              fontSize: "0.76rem",
+              color: "var(--color-primary)",
+              padding: "4px 8px",
+              background: "var(--color-primary-light)",
+              borderRadius: "var(--radius-sm)",
+            }}
+            title="화면 맞춤 (Fit - 5% 여백)"
+          >
+            Fit
+          </button>
         </div>
 
         {/* ── Interactive Mini-Map with Drag/Click Navigation (Bottom-Left) ── */}
@@ -1093,7 +1116,7 @@ export function TopologyPage() {
             border: "1.5px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
             boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
-            overflow: "hidden",
+            overflow: "hidden", // Prevents indicator from exceeding container
             zIndex: 40,
             cursor: "crosshair",
           }}
@@ -1119,7 +1142,7 @@ export function TopologyPage() {
             ))}
           </svg>
 
-          {/* Interactive Viewport Indicator Blue Rectangle */}
+          {/* Interactive Viewport Indicator Blue Rectangle (Strictly Box-Bounded) */}
           <div
             style={{
               position: "absolute",
@@ -1132,6 +1155,7 @@ export function TopologyPage() {
               borderRadius: 3,
               boxShadow: "0 0 6px rgba(37, 99, 235, 0.5)",
               pointerEvents: "none",
+              boxSizing: "border-box",
             }}
           />
         </div>
