@@ -282,6 +282,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["nothing was pushed"],
   },
   {
+    id: "capabilities-provenance",
+    defect:
+      "A running instance stopped saying which checkout it is (§ 7.1). Two investigations days apart began with a 404 and ended at the same cause — a long-running hub on a branch ninety-three commits behind — and neither could be diagnosed from outside without reasoning backwards from missing routes.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "      platform: PROVENANCE,",
+    to: "",
+    suite: "test/provenance.test.ts",
+    expect: ["says which commit it is"],
+  },
+  {
     id: "mailbox-boundary",
     defect:
       "The mailbox imported the hub. The arrangement this package replaced reached hub presence, the hub's database handle and three RPC handlers — faking a WebSocket so the handlers would accept the caller — and every one of those imports was reasonable on the day it was added. Nothing forbade them, which is the only reason they were there.",

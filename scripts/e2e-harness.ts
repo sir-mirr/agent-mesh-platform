@@ -188,36 +188,28 @@ const shared = {
 };
 
 /**
- * Which checkout this mesh is actually running.
+ * Which checkout this mesh is running — **asked, not computed**.
  *
- * **The failure that put this here.** A conformance run reported
- * `E2E-PROXY-001` as a live `can_proxy` self-grant, with a reproduction, a row
- * from `agents.db` and two line numbers. Every part of it was true — of a
- * worktree forty commits behind `main`, where the refusal had not landed yet.
- * The same scenario passed here at the same time.
+ * This used to shell out to `git` here. The hub now answers the same question on
+ * `/api/v1/capabilities`, and two copies of one fact is how they come to
+ * disagree: this one described the directory the *script* lives in, which is
+ * only the same thing while nobody starts a service from anywhere else.
+ * Somebody did — a long-running instance ran a branch ninety-three commits
+ * behind `main` — and a harness computing its own answer would have reported
+ * the wrong one confidently.
  *
- * Nothing in the ready file could have told either side that. Two runs
- * disagreeing is the signal the shared scenarios exist to produce, and it is
- * worth nothing if a report cannot say what it ran against.
- *
- * Never fatal. A tarball with no `.git` is a legitimate way to run this, and a
- * harness that refused to start there would be trading a real capability for a
- * diagnostic.
+ * Asking the process that is serving means the ready file says what *answered*,
+ * which is the question a conformance report actually needs.
  */
-function provenance(): Record<string, string> {
-  const git = (...a: string[]) => {
-    const p = Bun.spawnSync(["git", "-C", repoRoot, ...a]);
-    return p.success ? new TextDecoder().decode(p.stdout).trim() : "";
-  };
-  const commit = git("rev-parse", "HEAD");
-  if (!commit) return { worktree: repoRoot, commit: "unknown" };
-  return {
-    worktree: repoRoot,
-    commit,
-    branch: git("rev-parse", "--abbrev-ref", "HEAD") || "detached",
-    // Uncommitted changes make the commit a claim about the wrong bytes.
-    dirty: git("status", "--porcelain") ? "true" : "false",
-  };
+async function provenance(base: string): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(`${base}/api/v1/capabilities`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) return ((await res.json()) as { platform?: Record<string, unknown> }).platform ?? {};
+  } catch {
+    // A hub that cannot say is reported as not having said, rather than as
+    // whatever this script would have guessed.
+  }
+  return { commit: "unknown" };
 }
 
 const hub = spawnService("packages/hub/src/main.ts", {
@@ -270,7 +262,7 @@ try {
         // What this mesh is. A conformance report that quotes it is one the
         // other side can compare against; one that does not is a claim about an
         // unnamed checkout. See `provenance`.
-        platform: provenance(),
+        platform: await provenance(`http://127.0.0.1:${hubPort}`),
         // Echoed rather than assumed. A scenario asking for a two-second lease
         // and a harness that did not get the flag disagree silently otherwise,
         // and the scenario passes by never reaching the lapse it is about.

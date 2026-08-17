@@ -1470,6 +1470,32 @@ Entitlement (§ 8.2) applies unchanged, and `proxy_for` is unavailable — it is
 declared at connect, and there is no connect. A socketless participant sends as
 itself.
 
+### 7.1. A running instance says which checkout it is
+
+`GET /api/v1/capabilities` carries `platform`:
+
+```
+platform: { commit, branch, dirty }
+```
+
+`commit: "unknown"` when there is no repository to ask — a deployment from a
+tarball is legitimate and says so rather than guessing.
+
+**Why it is in the contract rather than in an operator tool.** Two separate
+investigations, days apart, began with "this route returns 404" and ended at the
+same cause: a long-running instance serving a branch ninety-three commits
+behind. Neither could be diagnosed from outside without reasoning backwards from
+missing routes, and the first diagnosis was wrong both times — once "an old
+build", once "the redirect is a defect".
+
+A conformance report that cannot name what answered it is a report about an
+unnamed thing. The harness has always put this in its ready file; a hub somebody
+started by hand had nothing, and that is exactly the hub left running for a week.
+
+The harness now **asks** rather than computing its own: two copies of one fact is
+how they come to disagree, and the copy that matters is the one the serving
+process holds.
+
 ### 8.2a. Which channel carries a reply
 
 A message records the transport it was accepted through — `mesh` for a socket or
