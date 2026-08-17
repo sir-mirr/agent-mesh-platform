@@ -37,6 +37,33 @@ describe("health", () => {
     expect(typeof body.version).toBe("string");
     expect(typeof body.uptime).toBe("number");
   });
+
+  test("`agent_count` counts mesh identities, and moves when one is provisioned", async () => {
+    // **It counted the wrong table for as long as it existed**, and the test
+    // above is why nobody noticed: asserting the shape of a response says
+    // nothing about where a number came from, and every wrong source produces
+    // a number.
+    //
+    // `countRegistryAgents()` counts `agent_registry`, this process's messaging
+    // directory. Its only writers are a one-time import of the pre-database
+    // `registry.json` and `upsertApprovedWebUser`, which inserts a **person**.
+    // Provisioning a mesh identity never touched it. On the deployment where
+    // this was found the route answered `agent_count: 1` — the 1 was `admin`, a
+    // human — while the mesh in the same state directory held fourteen agents.
+    //
+    // The assertion is a delta rather than a value. A fixture where the right
+    // and wrong tables happen to hold the same number proves nothing, and
+    // *moves when an agent is provisioned* is the one form of this that cannot
+    // be satisfied by the directory: nothing about provisioning writes it.
+    const before = (await (await get("/api/v1/health")).json()).agent_count;
+    expect(typeof before).toBe("number");
+
+    await provision(mesh.hub, "health-count-a", "ai-claude", null);
+    await provision(mesh.hub, "health-count-b", "ai-claude", null);
+
+    const after = (await (await get("/api/v1/health")).json()).agent_count;
+    expect(after, "provisioning two identities did not move the count").toBe(before + 2);
+  });
 });
 
 describe("authentication gates", () => {

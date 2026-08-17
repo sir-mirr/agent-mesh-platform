@@ -58,7 +58,7 @@ import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb 
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -855,14 +855,43 @@ async function extractJwt(c: any): Promise<JwtPayload | null> {
 
 // --- Health ---
 
+/**
+ * Liveness (SPEC § 13's table), and one number that has to mean what it says.
+ *
+ * **`agent_count` counted the wrong table for as long as it existed.**
+ * `countRegistryAgents()` counts `agent_registry`, which is this process's
+ * messaging directory: its only two writers are a one-time import of the
+ * pre-database `registry.json` and `upsertApprovedWebUser`, which inserts a
+ * **person** with `type: 'user'`. Provisioning a mesh identity writes the hub's
+ * registry and never touches it.
+ *
+ * On the deployment where this was found the route answered `agent_count: 1`.
+ * The 1 was `admin` — a human — and the mesh in the same state directory held
+ * fourteen agents. A field named for agents reported a number that moves when
+ * somebody logs in and does not move when an agent is provisioned.
+ *
+ * Nothing caught it because nothing asserted what the number *is*. A count is
+ * the easiest value in the world to test and the easiest to test vacuously:
+ * assert it is a number and every wrong source passes, assert it is 1 on a
+ * fixture and the one row happens to be right for the wrong reason. The test
+ * beside this asserts it *moves with provisioning and not with login*, which is
+ * the only form of the assertion that names the subject.
+ *
+ * SPEC calls this route a liveness ping and specifies no body, so correcting
+ * the field breaks no contract. It stays rather than being deleted because it
+ * is the one number an operator can get before authenticating, and *how many
+ * identities exist* is what they are asking when they ask.
+ */
 app.get('/api/v1/health', (c) => {
-  const agentCount = countRegistryAgents()
+  const registered = agentsDb()
+    .prepare('SELECT count(*) AS n FROM agents')
+    .get() as { n: number }
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
 
   return c.json({
     status: 'ok',
     version: BUILD_VERSION,
-    agent_count: agentCount,
+    agent_count: registered.n,
     uptime: uptimeSeconds,
   })
 })
