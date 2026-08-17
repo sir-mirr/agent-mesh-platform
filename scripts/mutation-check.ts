@@ -52,8 +52,26 @@ interface Mutation {
   to: string;
   /** Test file to run. */
   suite: string;
-  /** Text the failure must contain — the *right* test failing, not just any. */
-  expect: string;
+  /**
+   * Every substring the failure must contain.
+   *
+   * **A scenario id alone is too weak.** It appears in the test name whether the
+   * assertion caught the defect or the mesh refused to start, so a run that
+   * never reached the check is recorded as though it had. `client-claude` hit
+   * exactly that: their lease entry was `caught` while the scenario had not run
+   * once, because the harness applied a lease the scenario never asked for and
+   * the runner died before reporting (mail #229).
+   *
+   * So each entry names the *check* as well: not "something failed in
+   * E2E-CAP-001" but "the assertion on `body.mailbox.receive_lease_seconds`
+   * failed there".
+   *
+   * **Step numbers are deliberately excluded.** They shift the moment a step is
+   * inserted, which happened to E2E-AUDIT-001 one tag ago — an expectation
+   * pinned to `step 2` would then fail for a reason having nothing to do with
+   * the guard it protects.
+   */
+  expect: string[];
   /**
    * Self-check entries only: the **reason** this must be reported as a failure.
    *
@@ -76,7 +94,7 @@ const MUTATIONS: Mutation[] = [
     from: "if (!egress.ok) {",
     to: "if (false) {",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-EGRESS-001",
+    expect: ["E2E-EGRESS-001", "(send): error code"],
   },
   {
     id: "ack-settle",
@@ -85,7 +103,7 @@ const MUTATIONS: Mutation[] = [
     from: "const settled = stmtAckMessage.run(messageId, identity);",
     to: "const settled = { changes: 1 };",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-RECEIVE-002",
+    expect: ["E2E-RECEIVE-002", "(receive): message count"],
   },
   {
     id: "key-gate",
@@ -94,7 +112,7 @@ const MUTATIONS: Mutation[] = [
     from: 'if (outcome.reason === "no-approved-key") {',
     to: "if (false) {",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-KEY-001",
+    expect: ["E2E-KEY-001", "(connect): error code"],
   },
   {
     id: "lease-advert",
@@ -104,7 +122,7 @@ const MUTATIONS: Mutation[] = [
     from: "        receive_lease_seconds: LEASE_SECONDS,",
     to: "        receive_lease_seconds: MAILBOX_CAPABILITY_DEFAULTS.receive_lease_seconds,",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-CAP-001",
+    expect: ["E2E-CAP-001", "body.mailbox.receive_lease_seconds"],
   },
   {
     id: "restart-response",
@@ -114,7 +132,7 @@ const MUTATIONS: Mutation[] = [
     from: "    return { fingerprint, status: existing.status, created: false };",
     to: '    return { fingerprint, status: "pending", created: false };',
     suite: "test/scenarios.test.ts",
-    expect: "E2E-KEY-003",
+    expect: ["E2E-KEY-003", "body.key.status"],
   },
   {
     id: "recall-handover",
@@ -123,7 +141,7 @@ const MUTATIONS: Mutation[] = [
     from: 'if (outcome === "already-delivered") {',
     to: "if (false) {",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-RECALL-001",
+    expect: ["E2E-RECALL-001", "(http) status"],
   },
   {
     id: "readback-hides",
@@ -132,7 +150,7 @@ const MUTATIONS: Mutation[] = [
     from: "    keys: rows.map((k) => ({",
     to: '    keys: rows.filter((k: any) => k.status !== "pending").map((k) => ({',
     suite: "test/scenarios.test.ts",
-    expect: "E2E-KEY-004",
+    expect: ["E2E-KEY-004", "body.keys.0.fingerprint"],
   },
   {
     id: "event-type-filter",
@@ -142,7 +160,7 @@ const MUTATIONS: Mutation[] = [
     from: "  if (q.event_type) {",
     to: "  if (false) {",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-AUDIT-001",
+    expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
     id: "content-read-trace",
@@ -151,7 +169,7 @@ const MUTATIONS: Mutation[] = [
     from: "    recordContentRead({ actor, target, query })",
     to: "    void 0",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-AUDIT-001",
+    expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
     id: "type-change-event",
@@ -170,7 +188,7 @@ const MUTATIONS: Mutation[] = [
     from: '    recordIdentityEvent("mesh.identity.type_changed", {',
     to: '    if (false) recordIdentityEvent("mesh.identity.type_changed", {',
     suite: "test/scenarios.test.ts",
-    expect: "E2E-TYPE-001",
+    expect: ["E2E-TYPE-001", "body.events.0.event_type"],
   },
   {
     id: "record-source",
@@ -179,7 +197,7 @@ const MUTATIONS: Mutation[] = [
     from: "export function recordSource(db: Database, identity: string, observed: string | null): void {",
     to: "export function recordSource(db: Database, identity: string, observed: string | null): void {\n  if (true) return;",
     suite: "test/scenarios.test.ts",
-    expect: "E2E-SOURCE-001",
+    expect: ["E2E-SOURCE-001", "body.sources.0.identity"],
   },
   {
     id: "verb-unimplemented",
@@ -189,7 +207,7 @@ const MUTATIONS: Mutation[] = [
     from: '    case "sleep":\n      await Bun.sleep(step.seconds * 1000);\n      return;\n',
     to: "",
     suite: "test/scenarios.test.ts",
-    expect: "verb not implemented",
+    expect: ["verb not implemented"],
   },
   {
     id: "covers-always-true",
@@ -198,7 +216,7 @@ const MUTATIONS: Mutation[] = [
     from: "const covers = (prefixes: string[], file: string): boolean =>\n  prefixes.some((p) => file === p || file.startsWith(`${p}/`));",
     to: "const covers = (prefixes: string[], file: string): boolean => true || !!prefixes || !!file;",
     suite: "test/typecheck-scope.test.ts",
-    expect: "capable of failing",
+    expect: ["capable of failing"],
   },
   {
     id: "root-anchored",
@@ -207,7 +225,7 @@ const MUTATIONS: Mutation[] = [
     from: '    "**/*.ts"',
     to: '    "../**/*.ts"',
     suite: "test/typecheck-scope.test.ts",
-    expect: "vacuously covered",
+    expect: ["vacuously covered"],
   },
   {
     id: "empty-enumeration",
@@ -217,7 +235,7 @@ const MUTATIONS: Mutation[] = [
     from: "function everyTsFile(): string[] {",
     to: "function everyTsFile(): string[] {\n  if (true) return [];",
     suite: "test/typecheck-scope.test.ts",
-    expect: "no source at all",
+    expect: ["no source at all"],
   },
   {
     id: "narrow-pathspec",
@@ -226,7 +244,7 @@ const MUTATIONS: Mutation[] = [
     from: '"--exclude-standard", "*.ts"',
     to: '"--exclude-standard", "packages/*.ts"',
     suite: "test/typecheck-scope.test.ts",
-    expect: "actually finds this repository",
+    expect: ["actually finds this repository"],
   },
   {
     id: "git-fails-loudly",
@@ -235,7 +253,7 @@ const MUTATIONS: Mutation[] = [
     from: '"--exclude-standard", "*.ts"],',
     to: '"--not-a-flag"],',
     suite: "test/typecheck-scope.test.ts",
-    expect: "cannot enumerate",
+    expect: ["cannot enumerate"],
   },
   {
     id: "scope-project-removed",
@@ -245,7 +263,7 @@ const MUTATIONS: Mutation[] = [
     from: '    {\n      "path": "./scripts/tsconfig.json"\n    },\n',
     to: "",
     suite: "test/typecheck-scope.test.ts",
-    expect: "scripts/e2e-harness.ts",
+    expect: ["scripts/e2e-harness.ts"],
   },
 ];
 
@@ -275,7 +293,7 @@ const SELF_CHECK: Mutation[] = [
     from: 'const ROOT = resolve(import.meta.dir, "..");',
     to: 'const ROOT = resolve(import.meta.dir, ".."); // self-check, reverted immediately',
     suite: "test/typecheck-scope.test.ts",
-    expect: "this string never appears in any output",
+    expect: ["this string never appears in any output"],
     expectFailure: "not-caught",
   },
   {
@@ -285,7 +303,7 @@ const SELF_CHECK: Mutation[] = [
     from: "THIS_STRING_IS_DEFINITELY_NOT_PRESENT",
     to: "x",
     suite: "test/typecheck-scope.test.ts",
-    expect: "irrelevant — the pattern check fires first",
+    expect: ["irrelevant — the pattern check fires first"],
     expectFailure: "no-match",
   },
 ];
@@ -372,11 +390,11 @@ for (const m of selected) {
     continue;
   }
 
-  const caught = run.exitCode !== 0 && output.includes(m.expect);
+  const caught = run.exitCode !== 0 && m.expect.every((e) => output.includes(e));
   if (caught) {
     console.log(`✓ ${m.id}`);
   } else {
-    console.error(`✗ ${m.id}: not caught, or caught by the wrong test (expected "${m.expect}")`);
+    console.error(`✗ ${m.id}: not caught, or caught by the wrong check (wanted ${m.expect.map((e) => JSON.stringify(e)).join(" + ")})`);
     // **Keep what the run said.** `type-change-event` came back not-caught once
     // and passed on every rerun; the output that would have explained it had
     // already been discarded, so the investigation started from nothing and the
