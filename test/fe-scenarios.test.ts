@@ -1,12 +1,25 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { createHmac } from "node:crypto";
 import { startMesh, loginAsAdmin, newKeyPair, type Mesh } from "./harness.ts";
+
+function hs256(payload: object, secret: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
+  return `${header}.${body}.${sig}`;
+}
 
 describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   let mesh: Mesh;
   let authCookie: string = "";
+  let viewerCookie: string = "";
 
   beforeAll(async () => {
     mesh = await startMesh();
+    viewerCookie = `mesh_token=${hs256(
+      { github_id: 7, github_login: "viewer", role: "user" },
+      "integration-test-secret",
+    )}`;
   });
 
   afterAll(() => {
@@ -439,33 +452,54 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   });
 
   // GL-03 / SC-AUTH-03: Capability RBAC Guard Enforcement
-  it("[SC-AUTH-03] enforces capability check and denies unauthorized actions", async () => {
-    // Unprivileged user request without required capability
+  it("[SC-AUTH-03] enforces capability check and denies unauthorized actions with 403", async () => {
+    // Authenticated non-admin session without key.approve capability
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Cookie: viewerCookie },
       body: JSON.stringify({ fingerprint: "00000000000000000000000000000000" }),
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(403);
   });
 
   // GL-04 / SC-BELL-01: Notification Bell live pending key count
-  it("[SC-BELL-01] calculates live notification badge count from pending keys queue", async () => {
+  it("[SC-BELL-01] calculates live notification badge count matching pending keys queue", async () => {
+    const keyPair = newKeyPair();
+    const agentId = `bell-agent-${Date.now()}`;
+    await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: agentId, public_key: keyPair.publicKey, type: "ai-claude" }),
+    });
+
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
       headers: { Cookie: authCookie },
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    const count = Array.isArray(data.pending) ? data.pending.length : 0;
-    expect(count).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(data.pending)).toBe(true);
+    const found = data.pending.some((k: any) => k.identity === agentId);
+    expect(found).toBe(true);
   });
 
   // GL-05 / SC-I18N-01: Localization dictionary completeness & consistency
   it("[SC-I18N-01] verifies localization dictionary key symmetry", async () => {
-    const file = await Bun.file("packages/platform-web/src/contexts/I18nContext.tsx").text();
-    expect(file).toContain("export const DICTIONARY");
-    expect(file).toContain("ko: {");
-    expect(file).toContain("en: {");
+    const text = await Bun.file("packages/platform-web/src/contexts/I18nContext.tsx").text();
+    const koMatch = text.match(/ko:\s*\{([\s\S]*?)\n\s*\},/);
+    const enMatch = text.match(/en:\s*\{([\s\S]*?)\n\s*\},/);
+    expect(koMatch).not.toBeNull();
+    expect(enMatch).not.toBeNull();
+    const extractKeys = (block: string) =>
+      [...block.matchAll(/"([^"]+)":/g)].map((m) => m[1]);
+    const koKeys = extractKeys(koMatch?.[1] ?? "");
+    const enKeys = extractKeys(enMatch?.[1] ?? "");
+    const enSet = new Set(enKeys);
+    const koSet = new Set(koKeys);
+    const missingInEn = koKeys.filter((k) => !enSet.has(k));
+    const missingInKo = enKeys.filter((k) => !koSet.has(k));
+    expect(missingInEn).toEqual([]);
+    expect(missingInKo).toEqual([]);
+    expect(koKeys.length).toBeGreaterThan(30);
   });
 
   // GL-06 / SC-THEME-01: Theme system design token integrity
