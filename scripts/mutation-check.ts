@@ -775,6 +775,26 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/dormancy.test.ts",
     expect: ["a proxied send, because the address observed is the proxy's"],
   },
+  {
+    id: "death-announced",
+    defect:
+      "A spawned service that exited on its own said why, into a buffer nothing read. CI run 32059573317 reported fifteen failures reading `Unable to connect`; one test had exceeded its budget, Bun signalled the shared mesh, and the hub's own account of its shutdown sat in `output()` where only a test that thought to ask would find it. Nothing asked.",
+    file: "test/harness.ts",
+    from: "  void proc.exited.then((code) => {",
+    to: "  void Promise.resolve().then((code?: number) => { if (1) return;",
+    suite: "test/harness-death.test.ts",
+    expect: ["says so, and repeats what it said on the way out"],
+  },
+  {
+    id: "orderly-exit-silent",
+    defect:
+      "The announcement above has to tell an exit somebody asked for from one nobody did. Without the `stopped` flag it fires after every suite that shuts down cleanly, a reader learns to skip it, and it costs exactly what not printing it would on the run where it mattered.",
+    file: "test/harness.ts",
+    from: "    if (stopped) return;",
+    to: "    if (false) return;",
+    suite: "test/harness-death.test.ts",
+    expect: ["but stop() is silent, because that exit was asked for"],
+  },
 ];
 
 /**

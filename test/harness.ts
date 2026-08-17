@@ -24,6 +24,14 @@ const REPO_ROOT = new URL("..", import.meta.url).pathname;
 export interface Service {
   port: number;
   url: string;
+  /**
+   * The process, so a test can end it the way something else would.
+   *
+   * `stop()` is the orderly exit this harness asks for; a timeout, an OOM or a
+   * crash are not, and the difference is the whole subject of the announcement
+   * below.
+   */
+  pid: number;
   /** Everything the process wrote, for assertions and for failure output. */
   output(): string;
   stop(): void;
@@ -101,10 +109,40 @@ function spawnService(
   void drain(proc.stdout as ReadableStream<Uint8Array>);
   void drain(proc.stderr as ReadableStream<Uint8Array>);
 
+  /**
+   * Say so when a service dies on its own, and print what it said on the way
+   * out.
+   *
+   * **Its output was captured and never read.** Every test after an early exit
+   * fails with `Unable to connect`, which is true of the socket and says
+   * nothing about why — so a suite where the hub crashed in test 6 shows
+   * fifteen identical failures, none of them naming the crash, and the stack
+   * trace that explains all fifteen sits in `chunks` where only a test that
+   * thought to call `output()` would find it. Nothing did.
+   *
+   * `stopped` distinguishes the two exits that look identical from here: the
+   * one `stop()` asked for at the end of a suite, and the one nobody asked
+   * for.
+   */
+  void proc.exited.then((code) => {
+    if (stopped) return;
+    const said = chunks.join("").trimEnd();
+    console.error(
+      `\n─── ${entry} exited on its own (code ${code}, signal ${proc.signalCode ?? "none"}, port ${port}) ───\n` +
+        `${said || "(it printed nothing)"}\n` +
+        `─── every test after this one will fail to connect ───\n`,
+    );
+  });
+
+  let stopped = false;
   return {
     port,
+    pid: proc.pid,
     output: () => chunks.join(""),
-    stop: () => proc.kill(),
+    stop: () => {
+      stopped = true;
+      proc.kill();
+    },
   };
 }
 
@@ -160,6 +198,7 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
       http = {
         port: 0,
         url: "",
+        pid: 0,
         output: () => "",
         stop: () => {},
       };
