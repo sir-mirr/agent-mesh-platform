@@ -444,6 +444,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["a session claiming the admin role but holding no grant is refused"],
   },
 
+  {
+    id: "tsx-enumeration",
+    defect:
+      "The typecheck-scope enumeration asked git for `*.ts` and not `*.tsx`. It reported everything covered because this branch has no `.tsx` at all — and the front-end package waiting on a branch is 44 `.tsx` to 16 `.ts`, so the day it merged three quarters of it would land outside the check written to guarantee nothing lands outside the check.",
+    file: "test/typecheck-scope.test.ts",
+    from: '"--exclude-standard", "*.ts", "*.tsx"],',
+    to: '"--exclude-standard", "*.ts"],',
+    suite: "test/typecheck-scope.test.ts",
+    // A probe file, because a count would pass at zero — which is the state
+    // being guarded against.
+    expect: ["the walk asks for .tsx as well as .ts"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

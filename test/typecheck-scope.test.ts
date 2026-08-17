@@ -37,7 +37,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -63,7 +63,10 @@ const ROOT = resolve(import.meta.dir, "..");
  */
 function everyTsFile(): string[] {
   const out = Bun.spawnSync(
-    ["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "*.ts"],
+    // **`.tsx` too, and it was not here.** The pattern was `*.ts` alone while
+    // this repository happened to contain no `.tsx`, so the omission was
+    // invisible: a check enumerating an empty set reports everything covered.
+    ["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "*.ts", "*.tsx"],
   );
   if (!out.success) throw new Error("git ls-files failed — cannot enumerate this repository");
   return new TextDecoder()
@@ -162,6 +165,34 @@ describe("the typecheck covers this repository", () => {
     // A floor, not a total. An exact number would fail on every file added,
     // which trains a reader to update it without reading why it moved.
     expect(found.length, "far fewer files than this repository has").toBeGreaterThan(50);
+  });
+
+  test("the walk asks for .tsx as well as .ts", () => {
+    // **A third vacuity route, and the one that was open.** The pattern side can
+    // become universal; the file side can become empty; and the file side can
+    // also be *asked the wrong question* — enumerate `*.ts` in a repository with
+    // no `.tsx` in it and every test above passes while a whole extension goes
+    // unexamined.
+    //
+    // Not hypothetical. The front-end package on `fe-admin-requirements` is 44
+    // `.tsx` to 16 `.ts`, so the day it merges three quarters of it lands
+    // outside the check that exists to guarantee nothing lands outside the
+    // check — and nothing here would have said so, because `main` has no `.tsx`
+    // and an empty set is covered by definition.
+    //
+    // A probe rather than a count, for exactly that reason: asserting on how
+    // many `.tsx` this repository has would pass at zero, which is the state
+    // being guarded against.
+    const probe = join(ROOT, "typecheck-scope-probe.tsx");
+    try {
+      writeFileSync(probe, "export const Probe = () => null;\n");
+      expect(
+        everyTsFile(),
+        "the enumeration does not ask git for .tsx, so a React source file is invisible to it",
+      ).toContain("typecheck-scope-probe.tsx");
+    } finally {
+      rmSync(probe, { force: true });
+    }
   });
 
   test("every referenced project exists", () => {
