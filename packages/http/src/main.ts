@@ -47,6 +47,7 @@ import {
   parseRestAuthorization,
   restSignaturePreimage,
   LEGACY_ADMIN_CAPABILITIES,
+  ALL_CAPABILITIES,
   SCOPE_TENANT,
   type Capability,
 } from '@agent-mesh/contracts'
@@ -1764,6 +1765,96 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
  * proxy — which nothing inside the hub can verify. A screen rendering these
  * without that qualifier is showing a claim as an observation.
  */
+/**
+ * Who holds which capability (SPEC § 11).
+ *
+ * **Not the same thing as `/api/v1/admin/pending`**, which the front end was
+ * calling for this screen. That approves a *person's access to the web surface*
+ * — whether they may sign in and use it at all. This is what a signed-in person
+ * is allowed to do once they are here, and § 11 replaced the admin role with it
+ * precisely because "is an admin" answered too many questions at once.
+ *
+ * A screen that conflates them offers an operator one switch where there are
+ * two, and the one it actually throws is the wider.
+ *
+ * ## Gated on `role.grant`
+ *
+ * Reading who holds what is itself sensitive — it is a map of who can do what,
+ * which is the first thing worth knowing before trying anything. And granting
+ * is gated on the capability that grants, so an operator cannot widen their own
+ * reach through a screen they were given for someone else's.
+ */
+app.get('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  const subject = c.req.query('subject')
+  const capability = c.req.query('capability')
+  const db = agentsDb()
+
+  if (subject) return c.json({ ok: true, grants: grants.listFor(db, subject) })
+  if (capability) {
+    if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {
+      return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)
+    }
+    return c.json({
+      ok: true,
+      capability,
+      subjects: grants.subjectsWith(db, capability as Capability),
+    })
+  }
+
+  // Neither filter: the whole map, plus the vocabulary. A screen building a
+  // matrix needs the columns as much as the cells, and reading them from a
+  // response beats a copy of the list compiled into the front end — which is
+  // how a capability added here would quietly never appear there.
+  return c.json({
+    ok: true,
+    capabilities: ALL_CAPABILITIES,
+    grants: ALL_CAPABILITIES.flatMap((cap) =>
+      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => ({ capability: cap, ...s })),
+    ),
+  })
+})
+
+app.post('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const { subject, capability, scope } = body ?? {}
+  if (typeof subject !== 'string' || !subject) {
+    return c.json({ ok: false, error: 'subject is required' }, 400)
+  }
+  if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {
+    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)
+  }
+
+  // `grantedBy` is the actor, never something the caller states. A grant whose
+  // author is self-reported records whatever the author wanted recorded.
+  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })
+  return c.json({ ok: true, subject, capability, scope: scope ?? SCOPE_TENANT }, 201)
+})
+
+app.delete('/api/v1/admin/grants', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const { subject, capability, scope } = body ?? {}
+  if (typeof subject !== 'string' || typeof capability !== 'string') {
+    return c.json({ ok: false, error: 'subject and capability are required' }, 400)
+  }
+
+  const removed = grants.revoke(agentsDb(), { subject, capability, scope })
+  // `false` is "there was nothing to remove", which is not an error: an
+  // operator revoking twice, or racing another, wanted the same end state and
+  // has it.
+  return c.json({ ok: true, removed })
+})
+
 app.get('/api/v1/admin/agent-sources', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.SOURCE_READ)
   if (typeof actor !== 'string') return actor

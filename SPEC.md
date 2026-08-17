@@ -1623,6 +1623,9 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
+| GET    | `/api/v1/admin/grants`            | JWT\*  | `200`   | Who holds which capability (§ 11). Gated on `role.grant`. |
+| POST   | `/api/v1/admin/grants`            | JWT\*  | `201`   | Grant a capability to a subject (§ 11). |
+| DELETE | `/api/v1/admin/grants`            | JWT\*  | `200`   | Revoke one. Absent is not an error (§ 11). |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/stream`       | JWT\*  | `200`   | Key proposals as they arrive, SSE (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |

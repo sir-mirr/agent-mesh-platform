@@ -282,6 +282,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["nothing was pushed"],
   },
   {
+    id: "grant-author",
+    defect:
+      "A grant recorded an author the caller stated rather than the session that made it (§ 11). A grant whose author is self-reported records whatever the author wanted recorded, which makes the trail agree with anybody who writes to it.",
+    file: "packages/http/src/main.ts",
+    from: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })",
+    to: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: body?.grantedBy ?? actor })",
+    suite: "test/grants-routes.test.ts",
+    expect: ["grant round-trips"],
+  },
+  {
     id: "capabilities-provenance",
     defect:
       "A running instance stopped saying which checkout it is (§ 7.1). Two investigations days apart began with a 404 and ended at the same cause — a long-running hub on a branch ninety-three commits behind — and neither could be diagnosed from outside without reasoning backwards from missing routes.",
