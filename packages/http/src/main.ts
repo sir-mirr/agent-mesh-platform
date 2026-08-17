@@ -51,6 +51,7 @@ import { provisionHuman, provisionAllHumans, provisionSelf } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
+import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -1148,6 +1149,8 @@ app.get('/api/v1/audit/events', async (c) => {
   // § 11's privacy boundary. The platform operator holds the metadata
   // capability and not this one; a tenant admin inside the tenant holds both.
   const withContent = grants.has(agentsDb(), actor, CAPABILITY.AUDIT_READ_CONTENT)
+  const refused = logContentRead(c, actor, withContent, 'list', c.req.query())
+  if (refused) return refused
   const r = listAuditEvents(c.req.query() as any, withContent)
   return c.json(r.body, r.status as any)
 })
@@ -1156,9 +1159,49 @@ app.get('/api/v1/audit/events/:event_id', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
   const withContent = grants.has(agentsDb(), actor, CAPABILITY.AUDIT_READ_CONTENT)
+  const refused = logContentRead(c, actor, withContent, c.req.param('event_id'), {})
+  if (refused) return refused
   const r = getAuditEvent(c.req.param('event_id'), withContent)
   return c.json(r.body, r.status as any)
 })
+
+/**
+ * Record a content read, or refuse it (SPEC § 11.0.1).
+ *
+ * Returns the refusal to send, or `null` to proceed. **Called before the read,
+ * not after** — a record written afterwards is not written at all for the
+ * request that crashed in between.
+ *
+ * Metadata-only reads are not gated. They carry no content, so nothing is lost
+ * by serving them, and refusing them would take the mesh's diagnostics down
+ * with its audit store.
+ */
+function logContentRead(
+  c: any,
+  actor: string,
+  withContent: boolean,
+  target: string,
+  query: Record<string, unknown>,
+): Response | null {
+  if (!withContent) return null
+  try {
+    recordContentRead({ actor, target, query })
+    return null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[http-server] refusing a content read: could not record it (${message})`)
+    // 503, not 500: the request was valid and the deployment is degraded. A
+    // caller that retries after the store recovers gets its answer.
+    return c.json(
+      {
+        ok: false,
+        error: 'content reads are recorded, and the record could not be written',
+        code: 'AUDIT_READ_UNRECORDABLE',
+      },
+      503,
+    )
+  }
+}
 
 // --- Key approval (SPEC § 10.2) -------------------------------------------
 //

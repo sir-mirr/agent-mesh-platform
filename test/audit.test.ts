@@ -538,3 +538,134 @@ describe("§ 11 — content is a separate grant from metadata", () => {
     setContentGrant(true);
   });
 });
+
+/**
+ * SPEC § 11.0.1. A content read is recorded, and fails closed.
+ *
+ * The recording is what makes a tenant admin sitting *inside* the tenant a
+ * boundary rather than the absence of one — "the company admin can read your
+ * messages" is defensible; "someone can read them and nobody knows" is not.
+ */
+describe("§ 11.0.1 — reading content leaves a trace", () => {
+  const auditRW = () => new Database(join(mesh.stateDir, "audit.db"));
+  const readEvents = () => {
+    const db = auditRW();
+    try {
+      return db.prepare(
+        `SELECT payload FROM audit_events WHERE event_type = 'mesh.identity.audit_read' ORDER BY stored_at`,
+      ).all() as Array<{ payload: string }>;
+    } finally { db.close(); }
+  };
+
+  test("a content read writes an access event naming who and what", async () => {
+    const before = readEvents().length;
+    await fetch(`${mesh.http.url}/api/v1/audit/events?limit=5`, { headers: { cookie: adminCookie } });
+    const after = readEvents();
+    expect(after.length).toBe(before + 1);
+
+    const p = JSON.parse(after.at(-1)!.payload);
+    expect(p.event_type).toBe("mesh.identity.audit_read");
+    expect(p.actor).toBe("admin");
+    expect(p.change.read).toBe("list");
+    // What was asked for, never what came back. A log that quoted the content
+    // would be a second copy of the thing being protected.
+    expect(JSON.stringify(p)).not.toContain("hello");
+    expect(p.change.query.limit).toBe("5");
+  });
+
+  test("a metadata-only read writes nothing", async () => {
+    // Nothing to protect, so nothing to record — and gating it would take the
+    // mesh's diagnostics down with its audit store.
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run();
+    db.close();
+
+    const before = readEvents().length;
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=3`, { headers: { cookie: adminCookie } });
+    expect(res.status).toBe(200);
+    expect(readEvents().length).toBe(before);
+
+    const db2 = new Database(join(mesh.stateDir, "agents.db"));
+    db2.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+                 VALUES ('default','admin','audit.read.content','*','test') ON CONFLICT DO NOTHING`).run();
+    db2.close();
+  });
+
+  test("the by-id route is recorded too, with the id it reached", async () => {
+    // One boundary, two routes. Recording the listing and forgetting the
+    // single-event route is the shape this bug takes.
+    const list = await (await fetch(`${mesh.http.url}/api/v1/audit/events?limit=1`, {
+      headers: { cookie: adminCookie },
+    })).json();
+    const id = list.events[0]!.event_id;
+
+    const before = readEvents().length;
+    await fetch(`${mesh.http.url}/api/v1/audit/events/${id}`, { headers: { cookie: adminCookie } });
+    const after = readEvents();
+    expect(after.length).toBe(before + 1);
+    expect(JSON.parse(after.at(-1)!.payload).change.read).toBe(id);
+  });
+});
+
+/**
+ * The half of § 11.0.1 nobody exercises by accident.
+ *
+ * A rule nobody has watched fail is a rule nobody knows is running, and this
+ * one only runs when the audit store is unwritable — which never happens in a
+ * passing suite. So it is made to happen.
+ */
+describe("§ 11.0.1 — a read that cannot be recorded does not happen", () => {
+  const setContent = (on: boolean) => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try {
+      if (on) {
+        db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+                    VALUES ('default','admin','audit.read.content','*','test')
+                    ON CONFLICT DO NOTHING`).run();
+      } else {
+        db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run();
+      }
+    } finally { db.close(); }
+  };
+
+  /**
+   * Hold the audit store's write lock so the access-log INSERT fails the way a
+   * full disk would.
+   *
+   * The writer waits out `busy_timeout = 5000` before giving up, so anything
+   * using this needs a test timeout above that — which is also a real
+   * operational property worth knowing: **a content read under a stuck audit
+   * store costs five seconds before it is refused.**
+   */
+  const withLockedAudit = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const blocker = new Database(join(mesh.stateDir, "audit.db"));
+    blocker.exec("PRAGMA busy_timeout = 0");
+    blocker.exec("BEGIN EXCLUSIVE");
+    try { return await fn(); } finally { blocker.exec("ROLLBACK"); blocker.close(); }
+  };
+
+  test("content is refused, and the refusal carries none of it", async () => {
+    setContent(true);
+    const res = await withLockedAudit(() =>
+      fetch(`${mesh.http.url}/api/v1/audit/events?limit=5`, { headers: { cookie: adminCookie } }));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("AUDIT_READ_UNRECORDABLE");
+    // A refusal that shipped the events would be the fail-open this prevents,
+    // arriving through the error path.
+    expect(body.events).toBeUndefined();
+  }, 20_000);
+
+  test("metadata still answers while the store is unwritable", async () => {
+    // Refusing metadata too would take the mesh's diagnostics down with its
+    // audit store — the outage would hide itself.
+    setContent(false);
+    try {
+      const res = await withLockedAudit(() =>
+        fetch(`${mesh.http.url}/api/v1/audit/events?limit=3`, { headers: { cookie: adminCookie } }));
+      expect(res.status).toBe(200);
+    } finally {
+      setContent(true);
+    }
+  }, 20_000);
+});

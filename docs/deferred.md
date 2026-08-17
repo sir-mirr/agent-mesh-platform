@@ -232,6 +232,25 @@ means a new event shape — `recordMeshEvent` is message-shaped and does not
 fit — and a SPEC section defining it. Worth doing, not worth doing between a
 question and its answer.
 
+### ~~Reading the audit trail is not itself audited~~
+
+**Closed.** SPEC § 11.0.1: a content read writes `mesh.identity.audit_read`
+before returning, and fails closed if it cannot. Metadata reads are ungated —
+they carry no content, and refusing them would take the mesh's diagnostics down
+with its audit store.
+
+Two things it did **not** close, both narrower than the original entry:
+
+- The writer is a second **module** with its own read-write handle, not a
+  second process. `audit-query.ts` stays `readonly: true`, so the code that
+  serves a query has no write capability — but a bug elsewhere in
+  `agent-mesh-http` still reaches the store.
+- A content read under a stuck audit store costs `busy_timeout` (5 s) before it
+  is refused. That is the price of failing closed and is worth knowing before
+  someone reports it as a hang.
+
+The original entry follows, because it is why the shape is what it is.
+
 ### Reading the audit trail is not itself audited
 
 `GET /api/v1/audit/events` and `/api/v1/audit/events/{event_id}` resolve an

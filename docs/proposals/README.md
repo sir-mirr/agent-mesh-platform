@@ -52,18 +52,24 @@ blocking three items and is now built (SPEC § 8.9.5).
 | Audit-read logging | owned by an **internal process**; the query side stays readonly |
 | Three hours | **no derivation, and does not claim one** — configurable, and overridable so a test need not wait it out |
 
+### Settled since
+
+| | |
+|---|---|
+| Audit-read logging | written by **`agent-mesh-http` itself**, and **fail closed** — a read that cannot be recorded does not happen |
+| Send restrictions | **deny by default**; an agent with no group joins a `default` agent group |
+| Teardown | an agent operator may, for agents they own or where they hold `group.manage` |
+| Dormancy for proxied sends | applies only where `sent_by == from`. `sent_by: http-server` is constant for every web send and carries no information; it becomes meaningful when it names a specific gateway |
+
 ### Still undecided
 
-These change what gets built:
-
-- **A read when the audit writer is down.** Fail open and the control vanishes
-  when it matters; fail closed and an audit outage is an audit blackout. § 15.6
-  answers the routing case the other way and reusing that here would be wrong.
-- **Default granularity for the observed source** — exact, prefix, or ASN.
-- **Whether an agent operator can tear down alone.** The tenant admin can.
-- **Dormancy for proxied sends** — the observed address is always the proxy's.
-- **Allow or deny by default** for send restrictions (#4). Decides whether every
-  deployment ships open.
+- **Default granularity for the observed source** — `exact`, `prefix` or `ASN`.
+  The trade is how often it fires on legitimate churn against how close a thief
+  has to be: `exact` catches most and fires on every DHCP renewal, `ASN` is
+  quiet and misses a thief inside the same cloud. **A control that cries wolf
+  gets switched off, so the strictest setting is often the weakest in
+  practice.** `ASN` also needs an IP-to-ASN dataset that this deployment does
+  not have; `prefix` is arithmetic.
 
 ### Two deployment properties the hub cannot check itself
 
