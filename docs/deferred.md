@@ -178,6 +178,24 @@ At the 100 MiB limit, a handful of concurrent uploads takes the process down.
 The audit blob route (step 4) streams and does not share this path; the old
 route was left alone.
 
+### ~~No rate limiting anywhere~~
+
+**Closed** by SPEC § 14. Token buckets on the unauthenticated provisioning
+routes, keyed on the observed source, and on the signed surface keyed on the
+verified identity.
+
+Two things worth keeping from building it.
+
+The first numbers — 20 burst, one per second — broke fifty-eight tests. A suite
+bringing up lanes as fast as it can is exactly the shape of a host onboarding a
+fleet, and the comment predicting that failure was **already in the file** when
+those numbers were chosen. A stated principle does not check itself.
+
+And the buckets are per process. The hub does not scale horizontally today, so
+this is the whole deployment; behind two hubs it silently becomes `2n`.
+
+The original entry follows.
+
 ### No rate limiting anywhere
 
 Neither the hub's routes nor http's. A restart loop proposing keys is bounded

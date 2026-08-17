@@ -2756,7 +2756,47 @@ between `0.x` minors and not after `1.0`.
 
 ---
 
-## 14. Cross-VM deployment (internal-mesh v0.1)
+## 14. Rate limiting
+
+A hub SHOULD bound how often a caller may reach its routes, and MUST answer
+`429` with `Retry-After` in whole seconds and `code: "RATE_LIMITED"` when it
+refuses.
+
+The route that needs it is `POST /api/v1/agents`, which is **unauthenticated**
+(§ 9.2 †) — anything that can reach the port may call it as fast as it likes,
+and the supersession rule of § 10.2 bounds what a flood *achieves* rather than
+what it costs.
+
+**Key on what the caller cannot choose.** An unauthenticated route has no
+identity, so the key is the observed source (§ 8.11). A key the caller supplies
+is a suggestion. Where an identity is known — the signed surface of § 9.2.1 —
+that is the better key, so one lane cannot exhaust the budget of everything
+sharing its address.
+
+**`Retry-After` MUST NOT be `0`.** Telling a caller to retry immediately
+invites the loop being limited.
+
+### 14.1. A limit that fires during onboarding is a limit somebody disables
+
+Defaults MUST accommodate a host bringing up a fleet at once, which is
+indistinguishable in shape from a flood and is the common case. The refusal
+exists to stop a *sustained* loop; a burst is normal.
+
+Refill SHOULD be computed from elapsed time rather than driven by a timer. A
+timer that stops leaves every bucket permanently empty; arithmetic fails the
+other way.
+
+Buckets that have refilled completely MUST be discardable — they are
+indistinguishable from absent, and keeping them is a slow leak whose rate an
+unauthenticated caller chooses.
+
+**In-memory buckets are per process.** The hub does not scale horizontally
+(§ 3.1), so this is the whole deployment today; behind two hubs it silently
+becomes a limit of `2n`.
+
+---
+
+## 14A. Cross-VM deployment (internal-mesh v0.1)
 
 This section normalizes the **internal-mesh v0.1** deployment profile,
 in which the baseline runs on one *core VM* and each lane runs on its

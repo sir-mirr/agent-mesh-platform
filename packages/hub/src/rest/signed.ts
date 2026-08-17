@@ -36,6 +36,7 @@ import { keys, sources, verify } from "@agent-mesh/store";
 
 import { agentsDb } from "../db";
 import { nonceWindow } from "../signature";
+import { SIGNED_LIMIT } from "../ratelimit";
 
 export interface SignedCaller {
   identity: string;
@@ -127,6 +128,17 @@ export function authenticate(
   );
   if (!outcome.ok) {
     return refuse(401, MESH_ERROR.SIGNATURE_INVALID, `signature does not verify (${outcome.reason})`, "SIGNATURE_INVALID");
+  }
+
+  // § 14, keyed on the verified identity rather than on the address: a caller
+  // here has already produced a signature the hub checked, so the work is
+  // bounded by their key. The limit exists to stop one lane starving the
+  // others, not to stop an outsider.
+  const budget = SIGNED_LIMIT.take(identity);
+  if (!budget.ok) {
+    return refuse(429, MESH_ERROR.INVALID_PARAMS, "too many requests", "RATE_LIMITED", {
+      retry_after: budget.retryAfter,
+    });
   }
 
   // § 8.11, after the signature verifies. A refused request must not record a

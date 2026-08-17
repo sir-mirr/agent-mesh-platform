@@ -17,6 +17,7 @@ import { SERVER_ERROR, rpcError } from "./jsonrpc";
 import { log } from "./log";
 import { OBSERVED } from "./observed-config";
 import { observedSource } from "./observed";
+import { ALL_LIMITERS, PROVISION_LIMIT } from "./ratelimit";
 import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
@@ -57,6 +58,14 @@ const heartbeat = new Heartbeat({
 });
 
 const heartbeatInterval = setInterval(() => heartbeat.sweep(), HEARTBEAT_INTERVAL_MS);
+
+// § 14. Buckets that have refilled completely are indistinguishable from
+// absent, and keeping them is a slow leak whose rate an unauthenticated caller
+// chooses. Swept on the heartbeat's interval because it needs no clock of its
+// own.
+const rateLimitSweep = setInterval(() => {
+  for (const limiter of ALL_LIMITERS) limiter.sweep();
+}, HEARTBEAT_INTERVAL_MS);
 
 /**
  * The `id` of a frame that failed somewhere the normal path could not report.
@@ -156,6 +165,33 @@ const server = Bun.serve<SocketData, never>({
           observed,
         }) ?? new Response("Not Found", { status: 404 }),
       );
+    }
+
+    // § 14. The unauthenticated provisioning routes, keyed on the observed
+    // source because there is no identity to key on — and a key the caller
+    // chooses is a suggestion rather than a limit.
+    if (url.pathname === "/api/agents" || url.pathname === "/api/v1/agents") {
+      const verdict = PROVISION_LIMIT.take(observed ?? "unknown-source");
+      if (!verdict.ok) {
+        log(`rate limited: ${observed ?? "unknown source"} on ${url.pathname}`);
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "too many provisioning requests",
+            code: "RATE_LIMITED",
+            retry_after: verdict.retryAfter,
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              // Seconds, per RFC 9110. A caller that honours it stops being
+              // the problem; one that does not keeps getting 429 cheaply.
+              "Retry-After": String(verdict.retryAfter),
+            },
+          },
+        );
+      }
     }
 
     // REST: pre-register identity with type (collection endpoint)
@@ -301,6 +337,7 @@ log(`Hub server listening on ws://0.0.0.0:${server.port}`);
 function shutdown() {
   log("shutting down...");
   clearInterval(heartbeatInterval);
+  clearInterval(rateLimitSweep);
 
   // Update last_seen for all online agents
   for (const [identity] of onlineAgents) {
