@@ -213,7 +213,7 @@ avoid.
 
 The original entry follows.
 
-### `POST /api/v1/upload` buffers whole files in memory
+#### Original entry — `POST /api/v1/upload` buffers whole files in memory
 
 At the 100 MiB limit, a handful of concurrent uploads takes the process down.
 The audit blob route (step 4) streams and does not share this path; the old
@@ -237,7 +237,7 @@ this is the whole deployment; behind two hubs it silently becomes `2n`.
 
 The original entry follows.
 
-### No rate limiting anywhere
+#### Original entry — No rate limiting anywhere
 
 Neither the hub's routes nor http's. A restart loop proposing keys is bounded
 by the supersession rule rather than by any limit.
@@ -259,7 +259,7 @@ enough to look like one.
 
 The original entry follows.
 
-### The SSE stream carries its JWT in the query string
+#### Original entry — The SSE stream carries its JWT in the query string
 
 `GET /api/v1/events/:agentId` authenticates by `?token=` because `EventSource`
 cannot set request headers (§ 9.1 †). The token therefore appears in access
@@ -283,7 +283,7 @@ from it.
 The original entry follows, because the reasoning is why the shape looks the
 way it does.
 
-### An identity's `type` can change with nothing recording that it did
+#### Original entry — An identity's `type` can change with nothing recording that it did
 
 § 10.1 step 5 mandates the upsert: `ON CONFLICT(identity) DO UPDATE SET type,
 description`. So a second `POST /api/v1/agents` for a name that already exists
@@ -327,7 +327,7 @@ Two things it did **not** close, both narrower than the original entry:
 
 The original entry follows, because it is why the shape is what it is.
 
-### Reading the audit trail is not itself audited
+#### Original entry — Reading the audit trail is not itself audited
 
 `GET /api/v1/audit/events` and `/api/v1/audit/events/{event_id}` resolve an
 admin actor and then discard it. Nothing records that someone read the trail,
@@ -393,7 +393,7 @@ exemption is a concession with a sentence attached, not a place to put things.
 
 The original entry follows.
 
-### `scheduler.tick` writes and its name does not say so
+#### Original entry — `scheduler.tick` writes and its name does not say so
 
 `packages/self-reminder/src/scheduler.ts` updates `reminders` inside `tick`.
 The § 11-era naming rule in `test/naming.test.ts` requires a function that
@@ -422,7 +422,7 @@ tenant-wide grant every administrator holds.
 
 The original entry follows, because it is why the check has that shape.
 
-### The group-manager path to teardown is not implemented
+#### Original entry — The group-manager path to teardown is not implemented
 
 § 11.3 admits two routes to teardown: a scoped capability, and the capability
 plus ownership. A third was intended — a group manager may tear down agents in
