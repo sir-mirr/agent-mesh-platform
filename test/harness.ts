@@ -130,6 +130,10 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
         // Startup fails without one, and a fixed value keeps issued cookies
         // reproducible across a test run.
         JWT_SECRET: "integration-test-secret",
+        // § 15.2. Small, because the refusal path is only reachable by
+        // exceeding it and a test that must send ten megabytes to get there is
+        // one that gets skipped.
+        AGENT_MESH_UPLOAD_MAX_BYTES: "65536",
       });
       http = { ...httpProc, url: `http://127.0.0.1:${httpPort}` };
       await waitForHealth(`${http.url}/api/v1/health`);

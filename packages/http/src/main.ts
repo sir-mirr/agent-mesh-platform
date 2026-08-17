@@ -2219,6 +2219,49 @@ const PUBLIC_URL = (
 const UPLOAD_DIR = join(STATE_DIR, 'uploads')
 mkdirSync(UPLOAD_DIR, { recursive: true })
 
+/**
+ * § 15.2. Ten mebibytes, and the slack the multipart envelope adds on top.
+ *
+ * The envelope carries a boundary and per-part headers, so a request whose
+ * body is exactly the limit describes a file slightly under it. Bounding the
+ * envelope bounds the file, which is what can be checked before reading.
+ *
+ * Overridable because the refusal path is only reachable by exceeding it, and
+ * a test that has to send ten megabytes to reach it is one that runs slowly
+ * enough to be skipped.
+ */
+const UPLOAD_MAX_BYTES = parseInt(process.env.AGENT_MESH_UPLOAD_MAX_BYTES ?? '', 10) || 10 * 1024 * 1024
+const UPLOAD_ENVELOPE_SLACK = 64 * 1024
+
+/**
+ * Refuse an upload without materialising it.
+ *
+ * The goal was memory: an oversized upload used to be parsed into memory by
+ * `formData()` and copied again by `arrayBuffer()` before anything checked its
+ * size. Deciding from `Content-Length` keeps that from happening, and it is
+ * kept.
+ *
+ * **The connection is left unusable, and there is no clean fix in this stack.**
+ * The client is mid-send; whatever it has already written sits in the socket
+ * and is read as the start of the next request, which then fails to parse. All
+ * three answers were tried:
+ *
+ *   - `body.cancel()` — disposes of this side, does not stop the sender.
+ *   - `Connection: close` — the correct HTTP answer; this stack ignores it.
+ *   - draining the body — leaves the server waiting on a sender that may never
+ *     finish, which is a worse failure than the one being fixed.
+ *
+ * So: refuse early, and a caller that has been refused must open a new
+ * connection rather than reuse this one. Recorded in docs/deferred.md, because
+ * it is a real edge and pretending otherwise is how it becomes somebody's
+ * afternoon — it cost one here, presenting as "the server crashes on large
+ * uploads". It does not crash.
+ */
+async function refuseUpload(c: any, status: number, error: string) {
+  try { await c.req.raw.body?.cancel() } catch { /* already gone */ }
+  return c.json({ error }, status)
+}
+
 app.post('/api/v1/upload', async (c) => {
   const payload = await extractJwt(c)
   if (!payload) {
@@ -2228,19 +2271,51 @@ app.post('/api/v1/upload', async (c) => {
     return c.json({ error: 'Account pending approval' }, 403)
   }
 
+  // **Refuse on the declaration, before the body is read** (§ 15.2).
+  //
+  // `c.req.formData()` parses the whole multipart body into memory before
+  // anything can look at it, and `file.arrayBuffer()` then copied it again —
+  // so a 100 MiB upload cost 200 MiB and the size check ran after both. A
+  // handful of concurrent uploads took the process down.
+  //
+  // Content-Length is checked first because it is the only bound available
+  // *before* accepting bytes. It is a claim, so the real count is enforced
+  // below as well; the declaration is the part that is easy to get right by
+  // accident, and the part an honest client always sends.
+  const declared = c.req.header('content-length')
+  if (declared === undefined) {
+    return refuseUpload(c, 411, 'Content-Length is required')
+  }
+  const declaredSize = Number(declared)
+  if (!Number.isInteger(declaredSize) || declaredSize < 0) {
+    return refuseUpload(c, 400, 'Content-Length must be a non-negative integer')
+  }
+  // The multipart envelope adds boundary and headers, so the declared body is
+  // larger than the file. Bounding the envelope bounds the file.
+  if (declaredSize > UPLOAD_MAX_BYTES + UPLOAD_ENVELOPE_SLACK) {
+    return refuseUpload(c, 413, `File too large (max ${UPLOAD_MAX_BYTES} bytes)`)
+  }
+
   const formData = await c.req.formData()
   const file = formData.get('file')
   if (!file || !(file instanceof File)) {
     return c.json({ error: 'No file provided' }, 400)
   }
 
-  if (file.size > 10 * 1024 * 1024) {
-    return c.json({ error: 'File too large (max 10MB)' }, 413)
+  if (file.size > UPLOAD_MAX_BYTES) {
+    return c.json({ error: `File too large (max ${UPLOAD_MAX_BYTES} bytes)` }, 413)
   }
 
-  const buffer = await file.arrayBuffer()
-  const bytes = Buffer.from(buffer)
-  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  // Hash by streaming rather than materialising a second copy. The parser
+  // already holds one; there is no reason for this to hold another.
+  const hash = createHash('sha256')
+  const chunks: Uint8Array[] = []
+  for await (const chunk of file.stream() as unknown as AsyncIterable<Uint8Array>) {
+    hash.update(chunk)
+    chunks.push(chunk)
+  }
+  const sha256 = hash.digest('hex')
+  const bytes = Buffer.concat(chunks)
 
   // Opaque content-addressed id (SPEC §15.2). Preserve original extension for
   // best-effort MIME inference on the GET side.

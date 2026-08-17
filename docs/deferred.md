@@ -172,6 +172,47 @@ Recorded in [`open-questions.md`](open-questions.md) instead, because it is a
 question rather than a decision: capability-by-digest may well be sufficient,
 and nobody has ruled. An item in both files is an item that goes stale in one.
 
+### A refused upload leaves its connection unusable
+
+`POST /api/v1/upload` decides from `Content-Length` before reading the body, so
+an oversized upload is never materialised. The client is still sending when the
+refusal goes out, and what it has already written is read as the start of the
+next request on that connection — which then fails to parse, giving the caller
+a `400` on a request that was fine.
+
+**A caller that has been refused must open a new connection.** Three fixes were
+tried and none works in this stack:
+
+| | |
+|---|---|
+| `body.cancel()` | disposes of this side; does not stop the sender |
+| `Connection: close` | the correct HTTP answer, and it is ignored here |
+| draining the body | leaves the server waiting on a sender that may never finish — worse than the problem |
+
+**It does not crash the process**, though it read that way for an afternoon:
+the symptom lands on whatever request happens to follow, so it moves around and
+looks like instability. Written down mostly so the next person recognises it in
+under two hours.
+
+**Why deferred.** The alternative is reading every oversized body in full,
+which is the cost the check exists to avoid, and the affected path is one a
+caller only reaches by being refused.
+
+### ~~`POST /api/v1/upload` buffers whole files in memory~~
+
+**Closed** for the case that mattered. The size is now checked against
+`Content-Length` **before** the body is read, instead of after `formData()` had
+parsed the whole thing into memory and `arrayBuffer()` had copied it again — an
+oversized upload used to cost twice its size before being refused.
+
+Refusing early has its own trap, and it bit immediately: replying before the
+body is consumed leaves an unread stream, the socket resets, and the server
+died on the first oversized upload. `refuseUpload` cancels the body first.
+Reading it to be polite would reintroduce the exact cost the check exists to
+avoid.
+
+The original entry follows.
+
 ### `POST /api/v1/upload` buffers whole files in memory
 
 At the 100 MiB limit, a handful of concurrent uploads takes the process down.
