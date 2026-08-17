@@ -132,7 +132,7 @@ it would remove the reason while keeping the appearance of having addressed it.
 | Boundary, enforced | done — `test/mailbox-boundary.test.ts` |
 | `mesh.receive` (lease, ack, redelivery) | in the package |
 | `mesh.send`, persistence half | in the package |
-| Reply routing (§ 8.2a) | in the package; presence passed in |
+| Reply routing (§ 8.2a) | in the package; presence passed in — **and now held by a shared scenario**, contracts v0.22.0 |
 | `mesh.fetch_messages` (history) | **still in the hub** |
 | A process of its own | **not done, and not planned** — see the decision above |
 
@@ -142,8 +142,9 @@ others. It is listed rather than quietly omitted, because a table of what is
 done is the first place an honest reader looks and the last place anybody
 updates.
 
-**The reply rule is held by unit tests and two mutations, not by a shared
-scenario.** Stating the interesting case to both runners needs a step that holds
+~~**The reply rule is held by unit tests and two mutations, not by a shared
+scenario.**~~ **Closed** — `E2E-REPLY-001`, contracts v0.22.0. What follows is why
+it took a vocabulary change. Stating the interesting case to both runners needs a step that holds
 a socket open across later steps — a reply to mail with the *recipient* live and
 the *sender* not — and the scenario vocabulary has no way to say that. Adding
 one is a contract change worth making deliberately rather than in passing, and

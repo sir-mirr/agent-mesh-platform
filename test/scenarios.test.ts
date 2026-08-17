@@ -50,6 +50,7 @@ import {
   startMesh,
   type KeyPair,
   type Mesh,
+  type RpcClient,
   type Signer,
 } from "./harness";
 
@@ -127,6 +128,18 @@ const leased = new Map<string, string[]>();
  * debug.
  */
 const bound = new Map<string, string>();
+
+/**
+ * Sockets a `connect { hold: true }` left open, and what has been pushed to
+ * each since the last `expectPushed`.
+ *
+ * Closed in `finally` per scenario as hygiene, never as an assertion: a socket
+ * left open changes presence for the next scenario, and on the shared mesh that
+ * moves every `delivered`/`pending` verdict after it. Which is also why
+ * `disconnect` is a step — the state § 8.2a needs is one end present and one
+ * absent, and a runner that only tidies up at the end cannot arrange it.
+ */
+const held = new Map<string, { client: RpcClient; seen: number }>();
 
 /**
  * The one place an `ExpectHttp` is checked.
@@ -321,6 +334,7 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       // first run of this file failed on a correct refusal. The verb means what
       // it says: open a lane.
       const client = await connectRpc(mesh.hub, signer(step.identity));
+      let keep = false;
       try {
         const body = await client.call("mesh.connect", { identity: step.identity });
         assertRpc(body, step.expect, ctx);
@@ -339,11 +353,16 @@ async function runStep(step: Step, ctx: string): Promise<void> {
           }
           expect(pushed, `${ctx}: messages pushed on connect`).toBe(step.expectDelivered);
         }
+        if (step.hold) {
+          held.set(step.identity, { client, seen: 0 });
+          keep = true;
+        }
       } finally {
-        // Closed immediately: these scenarios are about what connecting
-        // *decides*, and a socket left open keeps the identity online for every
-        // later scenario, which quietly changes what delivery measures.
-        client.close();
+        // Closed immediately unless held. A socket left open keeps the identity
+        // online for every later scenario, which quietly changes what delivery
+        // measures — so holding one is something a scenario asks for and then
+        // ends.
+        if (!keep) client.close();
       }
       return;
     }
@@ -352,6 +371,7 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       const out = await rpc(step.from, "mesh.send", {
         to: step.to,
         content: step.content,
+        ...(step.replyTo ? { reply_to: subst(step.replyTo) } : {}),
         ...(step.clientMessageId ? { client_message_id: step.clientMessageId } : {}),
       }, ctx);
       assertRpc(out.body, step.expect, ctx);
@@ -392,6 +412,36 @@ async function runStep(step: Step, ctx: string): Promise<void> {
 
       const parsed = await assertHttp(res, step.expect, ctx, !!step.bind);
       capture(step.bind, parsed, ctx);
+      return;
+    }
+
+    case "disconnect": {
+      const open = held.get(step.identity);
+      if (!open) throw new Error(`${ctx}: ${step.identity} is not holding a socket`);
+      open.client.close();
+      held.delete(step.identity);
+      return;
+    }
+
+    case "expectPushed": {
+      const open = held.get(step.identity);
+      if (!open) throw new Error(`${ctx}: ${step.identity} is not holding a socket`);
+
+      // Polled to a deadline. The push is asynchronous, so a fixed sleep is
+      // either longer than every run needs or shorter than one run needed —
+      // and the second reads as a missing guarantee.
+      const deadline = Date.now() + 5_000;
+      let fresh = 0;
+      while (Date.now() < deadline) {
+        const total = open.client.notifications().filter((n: any) => n.method === "mesh.message").length;
+        fresh = total - open.seen;
+        if (fresh >= step.count) break;
+        await Bun.sleep(25);
+      }
+      expect(fresh, `${ctx}: messages pushed since the last check`).toBe(step.count);
+      // **Cleared.** The window is "since the last check"; a cumulative count
+      // would make every expectation depend on the steps above it.
+      open.seen += fresh;
       return;
     }
 
@@ -444,6 +494,8 @@ describe("shared scenarios (SPEC § 17)", () => {
   for (const scenario of E2E_SCENARIOS as readonly Scenario[]) {
     const run = async () => {
       bound.clear();
+      for (const { client } of held.values()) client.close();
+      held.clear();
       for (const [i, step] of scenario.steps.entries()) {
         await runStep(step, `${scenario.id} step ${i + 1} (${step.do})`);
       }

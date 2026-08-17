@@ -252,6 +252,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["only the recipient is live", "mailbox"],
   },
   {
+    id: "reply-channel-scenario",
+    defect:
+      "The same defect as `reply-channel`, but stated where both implementations check it (§ 8.2a, § 17.3). It was held by unit tests here alone until the scenario vocabulary could express one end present and one absent.",
+    file: "packages/mailbox/src/channel.ts",
+    from: '  return input.recipientLive && input.senderLive ? "mesh" : "mailbox";',
+    to: '  return input.recipientLive ? "mesh" : "mailbox";',
+    suite: "test/scenarios.test.ts",
+    expect: ["E2E-REPLY-001", "message count"],
+  },
+  {
     id: "reply-channel-overreach",
     defect:
       "The both-live condition was applied to every send, not only to replies. A mailbox participant sending to an agent holding a socket stopped being delivered — behaviour the socketless transport was built to have and nobody asked to change. The first version of the rule did this, and two tests said so immediately.",
