@@ -853,8 +853,8 @@ export function TopologyPage() {
       });
       setToastMsg(`'${selectedNode.displayName}' 에이전트로 실시간 메시지가 백엔드에 성공적으로 전송되었습니다!`);
     } catch (err: any) {
-      console.warn("[Topology] Quick send fallback:", err.message);
-      setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지 전송이 완료되었습니다.`);
+      console.warn("[Topology] Quick send error:", err.message);
+      setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지 전송 실패: ${err.message || "서버 통신 오류"}`);
     }
     setTimeout(() => setToastMsg(null), 3500);
   };

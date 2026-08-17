@@ -124,12 +124,16 @@ export function PlaygroundPage() {
         text: payloadText,
       });
       setReceipt({
-        messageId: res.id || `msg_${Math.random().toString(36).substring(2, 9)}`,
+        messageId: res.id || "영수증 미발급",
         sender: res.from || sender,
         recipient: res.to || recipient,
         timestamp: res.ts || new Date().toISOString(),
-        signatureVerified: true,
-        sha256Digest: senderObj?.fingerprint || "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+        signatureVerified: typeof (res as any).signature_verified === "boolean"
+          ? (res as any).signature_verified
+          : typeof (res as any).verified === "boolean"
+          ? (res as any).verified
+          : false,
+        sha256Digest: (res as any).digest || (res as any).sha256 || senderObj?.fingerprint || "—",
         leaseStatus: res.status === "delivered" ? "Acked" : "Available",
       });
     } catch (err: any) {

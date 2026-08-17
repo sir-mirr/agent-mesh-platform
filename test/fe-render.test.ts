@@ -998,4 +998,115 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       }
     });
   }
+
+  // SC-WRITE-01: /creator/groups write abort does not claim success and row count does not increase
+  it("[SC-WRITE-01] handles group creation abort without claiming success or increasing rows", async () => {
+    await withPage("/creator/groups", async ({ page }) => {
+      const beforeCount = await page.locator("tbody tr").count();
+      await page.route("**/api/v1/admin/groups", (r) => {
+        if (r.request().method() === "POST") return r.abort();
+        return r.continue();
+      });
+
+      const createBtn = page.locator("button:has-text('그룹 생성')").first();
+      await createBtn.click();
+      await page.locator("input").first().fill("failed-group");
+      const submitBtn = page.locator("button[type='submit']:has-text('생성')").first();
+      await submitBtn.click();
+      await page.waitForTimeout(500);
+
+      const afterCount = await page.locator("tbody tr").count();
+      expect(afterCount).toBe(beforeCount);
+      const rootText = await page.locator("#root").innerText();
+      expect(rootText).not.toContain("성공적으로 생성");
+      expect(rootText).toMatch(/실패|오류|통신/);
+    });
+  });
+
+  // SC-WRITE-02: /creator/groups duplicate group name does not increase rows or claim success
+  it("[SC-WRITE-02] refuses duplicate group name without increasing rows or claiming success", async () => {
+    await withPage("/creator/groups", async ({ page }) => {
+      const beforeCount = await page.locator("tbody tr").count();
+      const createBtn = page.locator("button:has-text('그룹 생성')").first();
+      await createBtn.click();
+      await page.locator("input").first().fill("default");
+      const submitBtn = page.locator("button[type='submit']:has-text('생성')").first();
+      await submitBtn.click();
+      await page.waitForTimeout(500);
+
+      const afterCount = await page.locator("tbody tr").count();
+      expect(afterCount).toBe(beforeCount);
+      const rootText = await page.locator("#root").innerText();
+      expect(rootText).not.toContain("성공적으로 생성");
+    });
+  });
+
+  // SC-WRITE-03: /creator teardown abort does not remove row and reports error
+  it("[SC-WRITE-03] handles teardown abort without removing agent row and reports failure", async () => {
+    await withPage("/creator", async ({ page }) => {
+      const beforeCount = await page.locator("tbody tr").count();
+      await page.route("**/api/v1/admin/agents/**", (r) => {
+        if (r.request().method() === "DELETE") return r.abort();
+        return r.continue();
+      });
+
+      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
+      if (await teardownBtn.count() > 0) {
+        await teardownBtn.click();
+        const inputPrompt = page.locator("input[placeholder*='입력'], input[type='text']").last();
+        if (await inputPrompt.count() > 0) {
+          await inputPrompt.fill("admin");
+          const confirmBtn = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
+          if (await confirmBtn.count() > 0) {
+            await confirmBtn.click();
+            await page.waitForTimeout(500);
+          }
+        }
+      }
+
+      const afterCount = await page.locator("tbody tr").count();
+      expect(afterCount).toBe(beforeCount);
+      const rootText = await page.locator("#root").innerText();
+      expect(rootText).toMatch(/실패|오류|통신/);
+    });
+  });
+
+  // SC-WRITE-04: /creator/topology dispatch abort does not claim success and reports error
+  it("[SC-WRITE-04] handles topology quick send abort without claiming success", async () => {
+    await withPage("/creator/topology", async ({ page }) => {
+      await page.route("**/api/v1/messages", (r) => {
+        if (r.request().method() === "POST") return r.abort();
+        return r.continue();
+      });
+
+      // Click on a node or send button
+      const nodeEl = page.locator("circle, g[cursor='pointer']").first();
+      if (await nodeEl.count() > 0) {
+        await nodeEl.click({ force: true });
+        await page.waitForTimeout(300);
+        const sendBtn = page.locator("button:has-text('메시지 전송'), button:has-text('빠른 전송'), button:has-text('전송')").first();
+        if (await sendBtn.count() > 0) {
+          await sendBtn.click();
+          await page.waitForTimeout(500);
+          const rootText = await page.locator("#root").innerText();
+          expect(rootText).not.toContain("성공적으로 전송되었습니다");
+          expect(rootText).not.toContain("전송이 완료되었습니다");
+          expect(rootText).toMatch(/실패|오류|통신/);
+        }
+      }
+    });
+  });
+
+  // SC-WRITE-05: /creator/playground receipt displays real server fields
+  it("[SC-WRITE-05] renders playground receipt with real server response fields", async () => {
+    await withPage("/creator/playground", async ({ page }) => {
+      const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
+      expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
+      await sendBtn.click();
+      await page.waitForTimeout(600);
+      const mainText = await page.locator("#root").innerText();
+      expect(mainText).toContain("발송된 메시지 본문");
+      expect(mainText).not.toContain("msg_undefined");
+    });
+  });
 });

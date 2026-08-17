@@ -8,6 +8,7 @@ import {
   FingerprintBox,
   Button,
   ConfirmDialog,
+  Toast,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
@@ -30,42 +31,51 @@ export function AgentsPage() {
   const [isError, setIsError] = useState<boolean>(false);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const loadAgents = async () => {
+    setIsLoading(true);
+    setIsError(false);
+    try {
+      const list = await fetchAgents();
+      setAgents(
+        (list || []).map((a) => ({
+          id: a.identity,
+          name: a.description || a.identity,
+          groupName: a.type || "Default Group",
+          status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : "offline",
+          fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+          inboxDepth: 0,
+          lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : "최근 접속",
+        }))
+      );
+    } catch {
+      setIsError(true);
+      setAgents([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Load real agents from backend
   React.useEffect(() => {
-    setIsLoading(true);
-    setIsError(false);
-    fetchAgents()
-      .then((list) => {
-        setAgents(
-          (list || []).map((a) => ({
-            id: a.identity,
-            name: a.description || a.identity,
-            groupName: a.type || "Default Group",
-            status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : "offline",
-            fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
-            inboxDepth: 0,
-            lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : "최근 접속",
-          }))
-        );
-      })
-      .catch(() => {
-        setIsError(true);
-        setAgents([]);
-      })
-      .finally(() => setIsLoading(false));
+    loadAgents();
   }, []);
 
   const handleTeardownConfirm = async () => {
     if (!teardownTarget) return;
     try {
       await teardownAgentApi(teardownTarget.id);
+      setIsTeardownOpen(false);
+      const targetId = teardownTarget.id;
+      setTeardownTarget(null);
+      setToastMessage(`에이전트 [${targetId}]이(가) 성공적으로 영구 삭제(Teardown)되었습니다.`);
+      await loadAgents();
     } catch (err: any) {
-      console.warn("[Agents] Teardown API error fallback:", err.message);
+      setIsTeardownOpen(false);
+      setTeardownTarget(null);
+      setToastMessage(`에이전트 삭제 실패: ${err.message || "서버 통신 오류"}`);
     }
-    setAgents(agents.filter((a) => a.id !== teardownTarget.id));
-    setIsTeardownOpen(false);
-    setTeardownTarget(null);
   };
 
   const columns = [
@@ -214,6 +224,10 @@ export function AgentsPage() {
           isDestructive={true}
           confirmPromptMatch={teardownTarget.id}
         />
+      )}
+
+      {toastMessage && (
+        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
       )}
     </div>
   );

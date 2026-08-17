@@ -39,28 +39,32 @@ export function GroupsPage() {
   const [assignAgentId, setAssignAgentId] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load real groups on mount
-  React.useEffect(() => {
+  const loadGroups = async () => {
     setIsLoading(true);
     setIsError(false);
-    fetchGroups()
-      .then((list) => {
-        setGroups(
-          (list || []).map((g) => ({
-            id: g.id,
-            name: g.name,
-            description: g.description || "에이전트 클러스터 그룹",
-            memberCount: g.member_count || g.members?.length || 0,
-            members: g.members || [],
-            createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
-          }))
-        );
-      })
-      .catch(() => {
-        setIsError(true);
-        setGroups([]);
-      })
-      .finally(() => setIsLoading(false));
+    try {
+      const list = await fetchGroups();
+      setGroups(
+        (list || []).map((g) => ({
+          id: g.id,
+          name: g.name,
+          description: g.description || "에이전트 클러스터 그룹",
+          memberCount: g.member_count || g.members?.length || 0,
+          members: g.members || [],
+          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
+        }))
+      );
+    } catch {
+      setIsError(true);
+      setGroups([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load real groups on mount
+  React.useEffect(() => {
+    loadGroups();
   }, []);
 
   const handleCreateGroup = async (e: React.FormEvent) => {
@@ -68,25 +72,20 @@ export function GroupsPage() {
     if (!newGroupName) return;
 
     try {
-      await createGroupApi(newGroupName, newGroupDesc);
+      const res = await createGroupApi(newGroupName, newGroupDesc);
+      setIsCreateOpen(false);
+      const targetName = res.group_id || newGroupName;
+      setNewGroupName("");
+      setNewGroupDesc("");
+      if (res.created) {
+        setToastMessage(`그룹 [${targetName}]이(가) 성공적으로 생성되었습니다.`);
+      } else {
+        setToastMessage(`그룹 [${targetName}]은(는) 이미 등록되어 있습니다.`);
+      }
+      await loadGroups();
     } catch (err: any) {
-      console.warn("[Groups] Backend create error fallback:", err.message);
+      setToastMessage(`그룹 생성 실패: ${err.message || "서버 통신 오류"}`);
     }
-
-    const newGroup: AgentGroup = {
-      id: `grp_${Date.now()}`,
-      name: newGroupName,
-      description: newGroupDesc || "사용자 생성 에이전트 그룹",
-      memberCount: 0,
-      members: [],
-      createdAt: new Date().toISOString().replace("T", " ").substring(0, 19),
-    };
-
-    setGroups([...groups, newGroup]);
-    setIsCreateOpen(false);
-    setNewGroupName("");
-    setNewGroupDesc("");
-    setToastMessage(`그룹 [${newGroup.name}]이(가) 성공적으로 생성되었습니다.`);
   };
 
   const handleAssignAgent = (e: React.FormEvent) => {
