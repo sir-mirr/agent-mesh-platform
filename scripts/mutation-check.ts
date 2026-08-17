@@ -415,7 +415,7 @@ const MUTATIONS: Mutation[] = [
     id: "git-fails-loudly",
     defect: "A failed enumeration must name its cause rather than return nothing.",
     file: "test/typecheck-scope.test.ts",
-    from: '"--exclude-standard", "*.ts"],',
+    from: '"--exclude-standard", "*.ts", "*.tsx"],',
     to: '"--not-a-flag"],',
     suite: "test/typecheck-scope.test.ts",
     expect: ["cannot enumerate"],
