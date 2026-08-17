@@ -11,6 +11,8 @@
  * wait rather than something a conversation depends on.
  */
 
+export { accept } from "./accept";
+export type { AcceptOptions, AcceptStatements, AcceptedStatus } from "./accept";
 export { receive } from "./receive";
 export type {
   MailboxMessage,

@@ -29,6 +29,8 @@ import { log } from "../log";
 import { checkDormantSource } from "../dormancy";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
+import { accept } from "@agent-mesh/mailbox";
+
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
 const SEND_CONFLICT = MAILBOX_ERROR.SEND_CONFLICT;
@@ -188,17 +190,26 @@ export function handleSend(
   // The message and its idempotency record commit together, so a crash between
   // them cannot leave a key that names a message which does not exist, or a
   // message a retry would duplicate.
-  const persist = db.transaction(() => {
-    stmtInsertMessage.run(msgId, effectiveSender, to, senderIdentity, String(content), replyTo, status);
-    // § 8.11.2. Stamped only where a send was accepted, so the dormancy clock
-    // measures silence rather than attempts.
-    sources.markSend(agentsDb, effectiveSender);
-    if (idempotencyDigest !== null && typeof clientMessageId === "string") {
-      stmtInsertIdempotency.run(senderIdentity, clientMessageId, idempotencyDigest, msgId, status);
-    }
-  });
   try {
-    persist();
+    accept({
+      db,
+      stmt: { insertMessage: stmtInsertMessage, insertIdempotency: stmtInsertIdempotency },
+      id: msgId,
+      from: effectiveSender,
+      to,
+      sentBy: senderIdentity ?? null,
+      content: String(content),
+      replyTo,
+      // Decided above, from presence. The mailbox has no notion of who is
+      // online and must not acquire one — see docs/decisions/mailbox-and-hub.md.
+      status,
+      clientMessageId: typeof clientMessageId === "string" ? clientMessageId : null,
+      idempotencyDigest,
+      // § 8.11.2, and a different store with a different owner. Inside the same
+      // commit because the dormancy clock measures silence rather than
+      // attempts: a send that did not persist must not move it.
+      alsoInTransaction: () => sources.markSend(agentsDb, effectiveSender),
+    });
   } catch (err) {
     // Unguarded, this threw out of the WebSocket message handler and the send
     // simply never answered. On a full volume — the realistic exhaustion case,
