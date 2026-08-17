@@ -114,6 +114,55 @@ describe("§ 10 bootstrap script", () => {
     expect(await exists(mesh.hub, "self-reminder")).toBe(true);
   }, 30_000);
 
+  test("a retry count that would skip every attempt is refused, not obeyed", async () => {
+    // **The loop that never runs.** `for (( attempt = 1; attempt <= MAX_RETRIES;
+    // … ))` with `MAX_RETRIES=0` never enters its body, the function falls off
+    // the end returning the status of the `for` — which is 0 — and `main`
+    // proceeds. The unit's `ExecStartPost` then reports success having
+    // registered nothing and logged nothing.
+    //
+    // Measured before it was fixed, because the exit status of a loop nobody
+    // entered is not something to reason about from memory:
+    //
+    //     MAX_RETRIES='30'  -> body ran, exit 0
+    //     MAX_RETRIES='0'   -> body never ran, exit 0
+    //     MAX_RETRIES='abc' -> body never ran, exit 0
+    //
+    // `abc` matters as much as `0`: bash arithmetic reads any non-numeric
+    // string as zero, so a typo in a unit file is the same defect with no
+    // number in sight. Both are refused at configuration rather than defaulted,
+    // because a value that was set and is unusable means an operator believes
+    // something this script is not doing.
+    const root = envRoot({ "http.env": "", "self-reminder.env": "" });
+
+    for (const bad of ["0", "abc", "-1", "1.5"]) {
+      const result = await run({
+        AGENT_MESH_ENV_ROOT: root,
+        AGENT_MESH_HUB_API_URL: "http://127.0.0.1:1/api/v1/agents",
+        HUB_BOOTSTRAP_MAX_RETRIES: bad,
+      });
+      expect(result.code, `HUB_BOOTSTRAP_MAX_RETRIES=${bad} was accepted`).toBe(2);
+      expect(result.stderr).toContain("must be a positive integer");
+    }
+  }, 30_000);
+
+  test("a usable retry count still runs, so the check above is not refusing everything", async () => {
+    // The other half. A guard that rejected every value would satisfy the test
+    // above and stop the hub from ever coming up — and it runs before anyone is
+    // watching, which is the whole reason this file exists.
+    mesh = await startMesh({ withHttp: false });
+    const root = envRoot({ "http.env": "", "self-reminder.env": "" });
+
+    const result = await run({
+      AGENT_MESH_ENV_ROOT: root,
+      AGENT_MESH_HUB_API_URL: `${mesh.hub.url}/api/v1/agents`,
+      HUB_BOOTSTRAP_MAX_RETRIES: "1",
+    });
+
+    expect(result.code).toBe(0);
+    expect(await exists(mesh.hub, "http-server")).toBe(true);
+  }, 30_000);
+
   test("NODE_ENV=development provisions the -dev identity instead", async () => {
     mesh = await startMesh({ withHttp: false });
     const root = envRoot({ "http.env": "NODE_ENV=development\n", "self-reminder.env": "" });
