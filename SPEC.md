@@ -2604,7 +2604,12 @@ name is never usable again — so a teardown that reached one identity too far
 could not be undone. An agent operator MAY tear down an identity when either:
 
 - they hold `agent.teardown` **scoped to that identity** (or tenant-wide); or
-- they hold it at any scope **and** own the identity.
+- they hold it at any scope **and** own the identity; or
+- they hold `group.manage` **scoped to the group that identity is in** (§ 12).
+
+The third MUST NOT be satisfied by tenant-wide `group.manage`. That grant is
+held by every administrator, so accepting it turns this into a second and wider
+grant of teardown under a different name.
 
 Ownership alone MUST NOT suffice. Being answerable for an agent is not the same
 grant as being permitted to destroy it, and a deployment may give one without

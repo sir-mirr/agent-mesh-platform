@@ -1148,3 +1148,70 @@ describe("§ 12 — groups gate sends", () => {
     expect(res.body.error?.code).toBe(-32018);
   });
 });
+
+/**
+ * SPEC § 11.3 + § 12. The group-manager route to teardown, which could not
+ * exist until groups did.
+ *
+ * Its first draft, written before groups, tested `group.manage` at tenant
+ * scope — which every seeded admin holds and which satisfies any identity. It
+ * returned `200` for an agent the caller neither owned nor held a teardown
+ * grant over. The tests here are what stop that shape returning.
+ */
+describe("teardown by the group manager", () => {
+  const withDb = <T>(fn: (db: Database) => T): T => {
+    const db = new Database(join(mesh.stateDir, "agents.db"));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const setGrant = (capability: string, scope: string | null) => withDb((db) => {
+    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability=?`).run(capability);
+    if (scope) {
+      db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
+                  VALUES ('default','admin',?,?,'test')`).run(capability, scope);
+    }
+  });
+  const placeIn = (identity: string, groupId: string) => withDb((db) => {
+    db.prepare(`INSERT INTO agent_groups (tenant,group_id,created_by)
+                VALUES ('default',?,'test') ON CONFLICT DO NOTHING`).run(groupId);
+    db.prepare(`INSERT INTO agent_group_members (tenant,identity,group_id,moved_by)
+                VALUES ('default',?,?,'test')
+                ON CONFLICT(tenant,identity) DO UPDATE SET group_id=excluded.group_id`)
+      .run(identity, groupId);
+  });
+  const del = (identity: string) =>
+    fetch(`${mesh.http.url}/api/v1/admin/agents/${identity}`, {
+      method: "DELETE", headers: { cookie: adminCookie },
+    });
+
+  test("managing the agent's group is enough, without owning it", async () => {
+    await provision(mesh.hub, "gm-target", "service");
+    placeIn("gm-target", "gm-group");
+    setGrant("agent.teardown", null);
+    setGrant("group.manage", "gm-group");
+    expect((await del("gm-target")).status).toBe(200);
+    setGrant("group.manage", "*"); setGrant("agent.teardown", "*");
+  });
+
+  test("managing a different group is not", async () => {
+    await provision(mesh.hub, "gm-other", "service");
+    placeIn("gm-other", "gm-group-b");
+    setGrant("agent.teardown", null);
+    setGrant("group.manage", "gm-group");
+    expect((await del("gm-other")).status).toBe(403);
+    setGrant("group.manage", "*"); setGrant("agent.teardown", "*");
+  });
+
+  test("tenant-wide group.manage does NOT satisfy it", async () => {
+    // The failure the first draft had. Every seeded admin holds `*`, so
+    // accepting it makes this a second, wider grant of teardown under another
+    // name — and the caller here holds no teardown grant at all.
+    await provision(mesh.hub, "gm-wide", "service");
+    placeIn("gm-wide", "gm-group");
+    setGrant("agent.teardown", null);
+    setGrant("group.manage", "*");
+    const res = await del("gm-wide");
+    expect(res.status).toBe(403);
+    expect((await res.json()).capability).toBe("agent.teardown");
+    setGrant("agent.teardown", "*");
+  });
+});

@@ -1761,14 +1761,19 @@ app.delete('/api/v1/admin/agents/:identity', async (c) => {
       !!subject &&
       grants.hasAny(agentsDb(), subject, CAPABILITY.AGENT_TEARDOWN) &&
       ownership.isOwner(agentsDb(), subject, identity)
-    // The group-manager path is **not** here, and its absence is deliberate.
-    // Groups do not exist yet, so the only thing to test would be
-    // `group.manage` at tenant scope — which every seeded admin holds and
-    // which satisfies any identity. That is not "manages the group this agent
-    // is in"; it is a second, wider grant of teardown wearing the wrong name,
-    // and it silently returned `200` for an agent the caller did not own.
-    // It lands with groups.
-    if (!owns) return actor
+    // The group-manager path (§ 12). It asks the question the earlier draft
+    // could not: `group.manage` **scoped to the group this agent is in**.
+    //
+    // Tenant-wide `group.manage` deliberately does not satisfy it. Every
+    // seeded admin holds that, and accepting it would make this a second,
+    // wider grant of teardown wearing a different name — which is exactly
+    // what the first version did before groups existed.
+    const managesGroup =
+      !!subject &&
+      grants.has(agentsDb(), subject, CAPABILITY.GROUP_MANAGE,
+        groupsStore.groupOf(agentsDb(), identity)) &&
+      !grants.has(agentsDb(), subject, CAPABILITY.GROUP_MANAGE, SCOPE_TENANT)
+    if (!owns && !managesGroup) return actor
     if (!IDENTITY_RE.test(identity)) return badIdentity(c)
     return teardownAs(c, subject!, identity)
   }

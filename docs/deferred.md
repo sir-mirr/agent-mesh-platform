@@ -329,6 +329,14 @@ that file and had never once been reported.
 point: `main.ts` calls it and six tests name it. That is worth doing and is not
 worth doing between two unrelated changes.
 
+### ~~The group-manager path to teardown is not implemented~~
+
+**Closed** by SPEC § 12. It now asks the question the earlier draft could not:
+`group.manage` **scoped to the group the agent is in**, and explicitly not the
+tenant-wide grant every administrator holds.
+
+The original entry follows, because it is why the check has that shape.
+
 ### The group-manager path to teardown is not implemented
 
 § 11.3 admits two routes to teardown: a scoped capability, and the capability
