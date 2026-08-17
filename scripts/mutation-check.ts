@@ -521,7 +521,12 @@ const MUTATIONS: Mutation[] = [
     from: "WHERE (from_agent = ? OR to_agent = ?)",
     to: "WHERE (from_agent = ? OR to_agent = ? OR 1 = 1)",
     suite: "test/http.test.ts",
-    expect: ["a party to no message carrying it gets 404, not 403"],
+    // NOT "a party to no message carrying it" — that one passes under this
+    // mutation and did. Its attachment had never been sent, so the `content
+    // LIKE` half refused on its own and the identity clause was never reached:
+    // a negative test that proves the wrong half. The mutation found the hole,
+    // which is what it is for.
+    expect: ["a stranger to a conversation carrying it is refused"],
   },
   {
     id: "reregister-deleted",
