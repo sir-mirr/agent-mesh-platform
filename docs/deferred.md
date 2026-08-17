@@ -478,34 +478,43 @@ test written from the SPEC sentence, not by reading.
 does not exist yet produced exactly what such a check produces: a permissive
 no-op that reads as a control.
 
-### The integration suite occasionally loses two tests to a mesh that never starts
+### ~~The integration suite occasionally loses two tests to a mesh that never starts~~
 
-One run in several prints
+Withdrawn. The mechanism this entry asserted was measured and is not there.
+
+**What was seen**, once: a run printed
 
 ```
 service at http://127.0.0.1:PORT/health never became healthy:
 The socket connection was closed unexpectedly
 ```
 
-and finishes with two fewer tests than the run before it — 407 where the
-adjacent runs report 409. Nothing fails; the tests are simply not there, which
-is the part worth writing down. A suite that quietly runs fewer tests than it
-did yesterday reports the same green either way.
+and the summary line captured from it read `407 pass` where adjacent runs read
+`409`.
 
-The likely cause is the ephemeral-port dance: `freePort` binds, reads the port
-and closes, and between that close and the service binding it, another of the
-concurrently starting meshes can take it. Twenty test files now start their own
-mesh, and `test/scenarios.test.ts` starts two more for the scenarios that
-declare one, so the window is hit more often than it used to be.
+**What this entry then claimed** was the ephemeral-port dance — `freePort` binds,
+reads the port and closes, and another concurrently starting mesh takes it in
+the gap. That was written as the cause. It was a guess, and it reads as a
+finding.
 
-**Why deferred.** The fix is to have services bind port `0` themselves and
-report back, which means every service learning to announce its port and the
-harness learning to read it — a change to how three processes start, to remove
-a race that costs a re-run. Worth doing, not worth doing between a bug report
-and its answer.
+**Measured.** 400 allocations through the same bind-read-close path, 21
+concurrent to match one per test file, then each port claimed by a real
+`Bun.serve` exactly as a service does: **zero duplicates, zero rebind
+failures.** Eight consecutive full runs of `test/` since: `412 pass, 0 fail`
+every time. No test in `test/` kills a service on purpose, so the health failure
+had no deliberate source either.
 
-The mitigation meanwhile is to read the count, not the colour: `Ran N tests`
-dropping is the signal, and it is visible in CI output today.
+The single observation stands and the cause is unknown. It is not a port race.
+
+**Why this is withdrawn rather than left open with a question mark.** An entry
+naming a mechanism sends the next reader to `freePort`, and they will find
+nothing wrong with it, because there is nothing wrong with it. A wrong lead
+costs more than an absent one.
+
+What survives is the reporting point, which was true independently of the cause:
+**a suite that runs fewer tests than it did yesterday reports the same green.**
+Read `Ran N tests`, not the colour. If the symptom returns, capture the service
+stdout — the harness pipes it — rather than reasoning about it from the summary.
 
 ### ~~`scripts/` and `.claude/hooks/` were outside the typecheck~~
 
