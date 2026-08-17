@@ -1633,6 +1633,11 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
 | GET    | `/api/v1/admin/agents/{identity}/owners` | JWT\* | `200` | Who is answerable for an identity, and how the claim was made (§ 11.3). |
 | GET    | `/api/v1/admin/agents/owned`      | JWT\*  | `200`   | What the **caller** owns (§ 11.3). A tenant-wide grant does not widen it — "everything here" is not an answer to "what is mine". |
+| GET    | `/api/v1/admin/groups`            | JWT\*  | `200`   | Groups, their members and every egress rule (§ 12). |
+| POST   | `/api/v1/admin/groups`            | JWT\*  | `201`   | Create one. It can send nowhere until a rule says so (§ 12). |
+| POST   | `/api/v1/admin/groups/{group_id}/members` | JWT\* | `200` | Move an identity in. Membership is singular (§ 12). |
+| POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
+| DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/inbox/{identity}`  | JWT\*  | `200`   | What is queued for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
@@ -2649,6 +2654,63 @@ converted to grants — the same set that role could already exercise — rather
 than left as a comparison somewhere alongside the capability check. **A
 fallback to the role is not a compatibility shim; it is a hole**, because it
 reinstates exactly the property § 11.1 exists to remove.
+
+---
+
+## 12. Groups and send restrictions
+
+Every identity is in exactly one group. A send is refused unless a rule allows
+it, and `-32018 EGRESS_DENIED` says so.
+
+**Deny by default.** A mesh that ships permissive is a mesh where every
+deployment stays open until somebody configures it, and nobody configures what
+already works.
+
+**Which makes the default group the load-bearing part.** An identity nobody
+has placed is in `default`, and `default` MUST be seeded with a rule to
+itself. Without that, deny-by-default silences every existing mesh on upgrade —
+the difference between a feature and an outage. A deployment that has never
+heard of groups behaves exactly as it did before, and the first restriction
+somebody writes is the first one that bites.
+
+**Membership is singular.** "Which policy applies to this agent" must have one
+answer; two memberships with conflicting egress would need a precedence order
+nobody gets right under pressure.
+
+**Egress is directional.** `A -> B` says nothing about `B -> A`. Agents allowed
+to report into an aggregator are not agents it may command, and a symmetric
+rule makes the narrower grant inexpressible.
+
+**A group created is a group that can send nowhere**, including to itself,
+until someone says otherwise. Seeding a self-rule would guess the one thing the
+operator created it to state.
+
+### 12.1. Refuse, do not drop
+
+The refusal happens at `mesh.send`, before the message is written and before
+§ 8.11.2's clock is stamped.
+
+Accepting and silently dropping would avoid telling an unauthorised sender that
+the target exists. That is a real cost and it is the smaller one: the
+alternative is a mesh in which messages vanish with no error anywhere, and an
+operator debugging it has nothing to look at.
+
+`-32018` is **permanent**. A retry changes nothing; only an operator adding a
+rule does.
+
+### 12.2. Routes
+
+| Method | Path | Capability |
+|--------|------|-----------|
+| GET    | `/api/v1/admin/groups` | `group.manage` |
+| POST   | `/api/v1/admin/groups` | `group.manage` |
+| POST   | `/api/v1/admin/groups/{group_id}/members` | `group.manage` |
+| POST   | `/api/v1/admin/groups/{group_id}/egress` | `group.manage` |
+| DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | `group.manage` |
+
+Moving an identity into a group that does not exist MUST be refused. It would
+otherwise put the identity somewhere no rule can name, which is silence rather
+than an error.
 
 ---
 

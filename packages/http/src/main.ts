@@ -39,7 +39,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, grants, ownership, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, grants, groups as groupsStore, ownership, type MessageRow } from '@agent-mesh/store'
 import {
   CAPABILITY,
   IDENTITY_RE,
@@ -1399,6 +1399,88 @@ app.get('/api/v1/admin/agents/owned', async (c) => {
   return c.json({ ok: true, owner: actor, identities: ownership.ownedBy(agentsDb(), actor) })
 })
 
+// --- Groups and egress (SPEC § 12) ----------------------------------------
+//
+// Deny by default, so these routes are how a deployment says anything at all.
+// A mesh that shipped permissive would stay open until somebody configured it,
+// and nobody configures what already works.
+
+app.get('/api/v1/admin/groups', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
+  if (typeof actor !== 'string') return actor
+  const db = agentsDb()
+  return c.json({
+    ok: true,
+    groups: groupsStore.listGroups(db).map((g) => ({ ...g, members: groupsStore.membersOf(db, g.group_id) })),
+    egress: groupsStore.listEgress(db),
+  })
+})
+
+app.post('/api/v1/admin/groups', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
+  if (typeof actor !== 'string') return actor
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const groupId = body?.group_id
+  if (typeof groupId !== 'string' || !IDENTITY_RE.test(groupId)) {
+    return c.json({ ok: false, error: 'group_id must match ^[A-Za-z0-9][A-Za-z0-9-]*$' }, 400)
+  }
+  const created = groupsStore.createGroup(db_(), {
+    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,
+  })
+  // A new group can send nowhere, including to itself, until someone says so.
+  // Seeding a self-rule here would guess the one thing the operator created it
+  // to state.
+  return c.json({ ok: true, group_id: groupId, created }, created ? 201 : 200)
+})
+
+app.post('/api/v1/admin/groups/:group_id/members', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
+  if (typeof actor !== 'string') return actor
+  const groupId = c.req.param('group_id')
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const identity = body?.identity
+  if (typeof identity !== 'string' || !IDENTITY_RE.test(identity)) {
+    return c.json({ ok: false, error: 'identity is required' }, 400)
+  }
+  const db = db_()
+  if (!groupsStore.listGroups(db).some((g) => g.group_id === groupId)) {
+    // Moving into a group that does not exist would put the identity somewhere
+    // no rule can ever name, which is silence rather than an error.
+    return c.json({ ok: false, error: `no group '${groupId}'` }, 404)
+  }
+  const from = groupsStore.groupOf(db, identity)
+  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })
+  console.log(`[http-server] ${actor} moved ${identity} from ${from} to ${groupId}`)
+  return c.json({ ok: true, identity, from_group: from, to_group: groupId })
+})
+
+app.post('/api/v1/admin/groups/:group_id/egress', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
+  if (typeof actor !== 'string') return actor
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const toGroup = body?.to_group
+  if (typeof toGroup !== 'string' || !IDENTITY_RE.test(toGroup)) {
+    return c.json({ ok: false, error: 'to_group is required' }, 400)
+  }
+  // Directional, and the route shape says so: this grants `{group_id} -> to`
+  // and nothing in the other direction. Agents allowed to report into an
+  // aggregator are not agents it may command.
+  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })
+  return c.json({ ok: true, from_group: c.req.param('group_id'), to_group: toGroup }, 201)
+})
+
+app.delete('/api/v1/admin/groups/:group_id/egress/:to_group', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
+  if (typeof actor !== 'string') return actor
+  const removed = groupsStore.revokeEgress(db_(), {
+    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),
+  })
+  return c.json({ ok: true, removed }, removed ? 200 : 404)
+})
+
 /** Who is answerable for an identity, and how the claim was made. */
 app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
@@ -1693,6 +1775,9 @@ app.delete('/api/v1/admin/agents/:identity', async (c) => {
   if (!IDENTITY_RE.test(identity)) return badIdentity(c)
   return teardownAs(c, actor, identity)
 })
+
+/** The agents store, named short because these routes use it constantly. */
+const db_ = () => agentsDb()
 
 const badIdentity = (c: any) =>
   c.json({ ok: false, error: 'invalid identity format (must match ^[A-Za-z0-9][A-Za-z0-9-]*$)' }, 400)

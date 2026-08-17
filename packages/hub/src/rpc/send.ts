@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { MAILBOX_ERROR } from "@agent-mesh/contracts";
-import { entitlement, sources } from "@agent-mesh/store";
+import { entitlement, groups, sources } from "@agent-mesh/store";
 
 import {
   agentsDb,
@@ -137,6 +137,20 @@ export function handleSend(
   //
   // The address rides on the socket for a lane and is resolved per request for
   // § 8.10; `observedOf` reads whichever applies.
+  // § 12. Before the dormancy check and before anything is written: a send
+  // the policy forbids must not stamp the dormancy clock or reach the queue.
+  //
+  // Refused rather than accepted-and-dropped. Telling an unauthorised sender
+  // that the target exists is a real cost, and it is smaller than a mesh in
+  // which messages disappear with no error anywhere.
+  const egress = groups.maySend(agentsDb, effectiveSender, to);
+  if (!egress.ok) {
+    log(`refused: ${effectiveSender} (${egress.fromGroup}) may not send to ${to} (${egress.toGroup})`);
+    return rpcError(id, MAILBOX_ERROR.EGRESS_DENIED,
+      `no egress rule from '${egress.fromGroup}' to '${egress.toGroup}'`,
+      { code: "EGRESS_DENIED", from_group: egress.fromGroup, to_group: egress.toGroup });
+  }
+
   const dormancy = checkDormantSource(agentsDb, effectiveSender, senderIdentity, observedOf(ws));
   if (dormancy.refusal) {
     log(`refused: ${effectiveSender} sent after dormancy from an unseen network`);

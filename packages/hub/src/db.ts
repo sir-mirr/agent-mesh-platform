@@ -10,7 +10,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { agentsSchema, auditSchema, hubSchema, openStore, selfReminderSchema } from "@agent-mesh/store";
+import { groups as groupsSchema, agentsSchema, auditSchema, hubSchema, openStore, selfReminderSchema } from "@agent-mesh/store";
 
 /** Message routing and history. */
 export const db = openStore("hub", { create: true });
@@ -26,6 +26,8 @@ export const agentsDb = openStore("agents", { create: true });
 export const auditDb = openStore("audit", { create: true });
 
 agentsSchema.migrate(agentsDb);
+// § 12. Groups live beside identities, and the hub decides every send.
+groupsSchema.migrate(agentsDb);
 hubSchema.migrate(db);
 auditSchema.migrate(auditDb);
 
