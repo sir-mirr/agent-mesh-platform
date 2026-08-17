@@ -66,7 +66,7 @@ interface Mutation {
 }
 
 /** Why an entry was not counted as caught. */
-type FailureKind = "no-match" | "not-caught";
+type FailureKind = "no-match" | "not-caught" | "inconclusive";
 
 const MUTATIONS: Mutation[] = [
   {
@@ -157,6 +157,15 @@ const MUTATIONS: Mutation[] = [
     id: "type-change-event",
     defect:
       "Changing an identity's type recorded nothing, so the trail said it always was what it now is (§ 8.9.5).",
+    // **What this depends on**, written down because it came back not caught once
+    // and never again. The query filters on identity *and* event_type and reads
+    // row zero, so with the event unwritten no row can match — whatever else the
+    // mesh holds, in whatever order. Sort order is not a dependency here, unlike
+    // the audit filter beside it.
+    //
+    // That exonerates the scenario by construction and points the next
+    // occurrence at this tool or the run around it. `inconclusive` exists for
+    // the most likely of those.
     file: "packages/hub/src/rest/agents.ts",
     from: '    recordIdentityEvent("mesh.identity.type_changed", {',
     to: '    if (false) recordIdentityEvent("mesh.identity.type_changed", {',
@@ -281,6 +290,16 @@ const SELF_CHECK: Mutation[] = [
   },
 ];
 
+/**
+ * Where a failing run's output is kept.
+ *
+ * Ids carry a `/` (`self-check/not-caught`), which `Bun.write` reads as a
+ * directory — the first version created `mutation-check-self-check/` rather than
+ * a file, and the `.gitignore` entry added alongside it did not match the
+ * result. Flattened, and in one function so the call sites cannot disagree.
+ */
+const evidenceName = (id: string) => `mutation-check-${id.replace(/[^a-zA-Z0-9._-]/g, "-")}.log`;
+
 const dirty = async (): Promise<string> => (await $`git status --porcelain`.quiet().text()).trim();
 
 const argv = process.argv.slice(2).filter((a) => a !== "--");
@@ -339,6 +358,20 @@ for (const m of selected) {
     process.exit(2);
   }
 
+  // **A run with no summary decided nothing.** `caught` reads a non-zero exit and
+  // the expected text; if the child died before reporting — a crashed runtime, a
+  // truncated pipe, an out-of-memory kill — both are absent, and the entry was
+  // being recorded as though the guard had not noticed. That is a false finding
+  // about the guard rather than a true one about the run, which is the
+  // distinction this tool exists to keep.
+  if (!/\d+ (pass|fail)/.test(output)) {
+    console.error(`✗ ${m.id}: the run reported no test summary — inconclusive, not a verdict`);
+    await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
+    missed++;
+    kinds.set(m.id, "inconclusive");
+    continue;
+  }
+
   const caught = run.exitCode !== 0 && output.includes(m.expect);
   if (caught) {
     console.log(`✓ ${m.id}`);
@@ -354,11 +387,7 @@ for (const m of selected) {
     // guess a cause for, and a guessed cause in the place findings go is worse
     // than no entry at all. `docs/deferred.md` has one that had to be withdrawn
     // for exactly that.
-    // Ids carry a `/` (`self-check/not-caught`), which `Bun.write` reads as a
-    // directory — the first run of this line created one instead of a file,
-    // and the `.gitignore` entry written alongside it did not match the
-    // result. Flattened.
-    const evidence = `mutation-check-${m.id.replace(/[^a-zA-Z0-9._-]/g, "-")}.log`;
+    const evidence = evidenceName(m.id);
     await Bun.write(evidence, `exit ${run.exitCode}\nexpected: ${m.expect}\n\n${output}`);
     console.error(`  output kept in ${evidence}`);
     missed++;
