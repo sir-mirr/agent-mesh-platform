@@ -2227,13 +2227,16 @@ app.post('/api/v1/admin/deny', async (c) => {
 // --- Admin: Chat Audits (read-only view of hub.db messages) ---
 
 app.get('/api/v1/admin/chat-audits', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // **§ 11.0 and § 8.9.5, neither of which this route observed.** It serves
+  // `content` — whole message bodies — behind a role check, so every
+  // admin-role session read every conversation on the mesh and nothing
+  // recorded that it had. The capability note is explicit that holding
+  // `audit.read.content` is defensible and holding it without the record is
+  // not. This held neither.
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_CONTENT)
+  if (typeof actor !== 'string') return actor
+  const refused = logContentRead(c, actor, true, 'chat-audits:list', c.req.query())
+  if (refused) return refused
 
   const q = c.req.query()
   const beforeId = typeof q.before_id === 'string' && q.before_id ? q.before_id : null
@@ -2301,13 +2304,16 @@ app.get('/api/v1/admin/chat-audits', async (c) => {
 })
 
 app.get('/api/v1/admin/chat-audits/stream', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // **§ 11.0 and § 8.9.5, neither of which this route observed.** It serves
+  // `content` — whole message bodies — behind a role check, so every
+  // admin-role session read every conversation on the mesh and nothing
+  // recorded that it had. The capability note is explicit that holding
+  // `audit.read.content` is defensible and holding it without the record is
+  // not. This held neither.
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_CONTENT)
+  if (typeof actor !== 'string') return actor
+  const refused = logContentRead(c, actor, true, 'chat-audits:stream', c.req.query())
+  if (refused) return refused
 
   const q = c.req.query()
   const fromAgent = typeof q.from_agent === 'string' && q.from_agent ? q.from_agent : null
@@ -2398,13 +2404,11 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
 })
 
 app.get('/api/v1/admin/chat-audits/agents', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // Which identities appear in the audit, with no body attached — the metadata
+  // half of § 11's boundary, so the metadata capability is the gate.
+  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
+  if (typeof actor !== 'string') return actor
+  void actor
   try {
     const db = getHubDb()
     const rows = db.query(

@@ -237,13 +237,19 @@ describe("§ 9.1 auth", () => {
     // route joins the set, and it fails again when one is migrated — which
     // forces the list down rather than letting it sit. A `skip` would have done
     // neither.
+    // Was eight. The three `chat-audits` routes came off it by being migrated,
+    // and this test is what said so — it named them and refused to pass until
+    // the list shrank. That is the half a `skip` cannot do.
+    //
+    // The five left need a capability § 11's vocabulary does not have. Three
+    // approve *people* into the platform, which is not `role.grant` (that
+    // grants capabilities to someone already admitted) and not
+    // `agent.provision` (that is an identity, not a person). Two report AI
+    // usage, which is neither audit nor tenant traffic.
     const NOT_YET_ON_CAPABILITIES = new Set([
       "GET /api/v1/admin/pending",
       "POST /api/v1/admin/approve",
       "POST /api/v1/admin/deny",
-      "GET /api/v1/admin/chat-audits",
-      "GET /api/v1/admin/chat-audits/stream",
-      "GET /api/v1/admin/chat-audits/agents",
       "GET /api/v1/admin/ai-usage",
       "GET /api/v1/admin/ai-usage/stream",
     ]);
