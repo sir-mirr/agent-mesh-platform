@@ -62,7 +62,7 @@ export function TopologyPage() {
   const [liveGroups, setLiveGroups] = useState<GroupItem[]>([]);
   const [liveAgents, setLiveAgents] = useState<RegistryAgent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [simStage, setSimStage] = useState<number>(10);
+  const [isError, setIsError] = useState<boolean>(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
@@ -70,10 +70,16 @@ export function TopologyPage() {
 
   // Load real groups and agents on mount
   useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     Promise.all([fetchGroups(), fetchAgents()])
       .then(([groups, agents]) => {
         setLiveGroups(groups || []);
         setLiveAgents(agents || []);
+      })
+      .catch((err) => {
+        console.warn("[Topology] API load error:", err);
+        setIsError(true);
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -379,7 +385,7 @@ export function TopologyPage() {
         worldH,
       },
     };
-  }, [simStage]);
+  }, [liveGroups, liveAgents]);
 
   // Selected Node Object
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : null;
@@ -590,7 +596,7 @@ export function TopologyPage() {
     setScale(nextScale);
     setPanX(clamped.x);
     setPanY(clamped.y);
-  }, [simStage, getFitTransform, clampPan]);
+  }, [liveGroups, liveAgents, getFitTransform, clampPan]);
 
   // 3. MATHEMATICAL CURSOR-CENTERED ZOOM
   useEffect(() => {
@@ -971,8 +977,17 @@ export function TopologyPage() {
         </div>
 
         {totalAgentCount === 0 && (
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", padding: "16px 24px", background: "rgba(255,255,255,0.95)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", color: "var(--color-text-muted)", fontSize: "0.9rem", zIndex: 40, boxShadow: "0 10px 25px rgba(0,0,0,0.08)" }}>
-            현재 토폴로지에 등록된 에이전트 데이터가 없습니다.
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px 32px", background: "rgba(255,255,255,0.96)", border: `1px solid ${isError ? "var(--color-danger)" : "var(--color-border)"}`, borderRadius: "var(--radius-lg)", color: isError ? "var(--color-danger)" : "var(--color-text-muted)", fontSize: "0.88rem", zIndex: 40, boxShadow: "0 10px 25px rgba(0,0,0,0.08)", textAlign: "center", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+            {isLoading ? (
+              <span>토폴로지 데이터를 불러오는 중입니다...</span>
+            ) : isError ? (
+              <>
+                <span>⚠️ 토폴로지 서버와 통신할 수 없습니다 (오류 발생).</span>
+                <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>↻ 재시도</Button>
+              </>
+            ) : (
+              <span>현재 토폴로지에 등록된 에이전트 데이터가 없습니다.</span>
+            )}
           </div>
         )}
 
@@ -1584,94 +1599,9 @@ export function TopologyPage() {
         )}
       </div>
 
-      {/* ── Secondary Developer & Demo Simulation Toolbox (Placed Below Canvas for QA Testing) ── */}
-      <div
-        style={{
-          background: "var(--color-bg-surface)",
-          border: "1px dashed var(--color-border-strong)",
-          borderRadius: "var(--radius-lg)",
-          padding: "16px 20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
-            🛠️ {t("topo.sim.devTitle", "개발 및 데모 시뮬레이션 제어 도구 (Demo & Testing Controls)")}
-          </span>
-          <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-            {t("topo.sim.notice", "* 론칭 시 하단 툴박스는 운영자 전용 디버그 패널로 분리됩니다")}
-          </span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-            {t("topo.sim.title", "그룹 스케일 단계:")}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="range"
-              min="1"
-              max="10"
-              value={simStage}
-              onChange={(e) => setSimStage(Number(e.target.value))}
-              style={{ width: 140, accentColor: "var(--color-primary)", cursor: "pointer" }}
-            />
-            <span
-              style={{
-                fontSize: "0.78rem",
-                fontWeight: 800,
-                padding: "2px 8px",
-                borderRadius: "var(--radius-sm)",
-                background: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-                minWidth: 70,
-                textAlign: "center",
-              }}
-            >
-              Stage {simStage} / 10
-            </span>
-          </div>
-
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => setSimStage(1)} style={presetBtnStyle(simStage === 1)}>
-              1. {t("topo.sim.p1", "단일(5)")}
-            </button>
-            <button onClick={() => setSimStage(3)} style={presetBtnStyle(simStage === 3)}>
-              3. {t("topo.sim.p3", "트리플(43)")}
-            </button>
-            <button onClick={() => setSimStage(5)} style={presetBtnStyle(simStage === 5)}>
-              5. {t("topo.sim.p5", "상단덱(67)")}
-            </button>
-            <button onClick={() => setSimStage(10)} style={presetBtnStyle(simStage === 10)}>
-              10. {t("topo.sim.p10", "풀갤럭시(139)")}
-            </button>
-          </div>
-
-          <Button variant="secondary" size="sm" onClick={() => setSimStage(10)}>
-            {t("topo.sim.full", "⚡ 10-그룹 풀 로드 (139노드)")}
-          </Button>
-        </div>
-      </div>
-
       {toastMsg && <Toast message={toastMsg} type="success" onClose={() => setToastMsg(null)} />}
     </div>
   );
-}
-
-function presetBtnStyle(isActive: boolean): React.CSSProperties {
-  return {
-    padding: "4px 10px",
-    borderRadius: "var(--radius-sm)",
-    border: `1px solid ${isActive ? "var(--color-primary)" : "var(--color-border)"}`,
-    background: isActive ? "var(--color-primary)" : "var(--color-bg-surface)",
-    color: isActive ? "#FFFFFF" : "var(--color-text-secondary)",
-    fontSize: "0.76rem",
-    fontWeight: 700,
-    cursor: "pointer",
-    transition: "all 0.15s ease",
-  };
 }
 
 const hudBtnStyle: React.CSSProperties = {
