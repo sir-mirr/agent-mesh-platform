@@ -793,6 +793,36 @@ app.get('/auth/me', async (c) => {
     role: user.role,
     approved,
     created_at: user.created_at,
+    /**
+     * **What this session may actually do (§ 11).**
+     *
+     * Without it a client has `role` and nothing else, so it builds its own
+     * table mapping roles to capabilities — a second copy of a list this server
+     * owns, and one nothing can compare. The admin front end had exactly that,
+     * and three of its six names disagreed with these: `role.assign` for
+     * `role.grant`, and underscores where these have dots. Nothing failed,
+     * because the two lists never met.
+     *
+     * The visible cost was a screen refusing an operator the server had
+     * granted: its guard asked for a name its own table did not contain, so
+     * only a catch-all let anyone in. `agent-mesh-local-pm` measured it (mail
+     * #613).
+     *
+     * These are grants, not a role expansion. `admin` sees everything here
+     * because `LEGACY_ADMIN_CAPABILITIES` is `ALL_CAPABILITIES` and that is
+     * written as grants — so this reports what was granted, and a deployment
+     * that narrows the admin set later reports the narrower answer without
+     * anything else changing.
+     *
+     * **Affordance only.** Every route checks for itself; a client that ignored
+     * this and called anyway is refused exactly as before. It exists so a screen
+     * can grey out what would be refused rather than guess.
+     */
+    capabilities: grants
+      .listFor(agentsDb(), user.github_login)
+      .map((g) => g.capability)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort(),
   })
 })
 

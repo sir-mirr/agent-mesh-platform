@@ -1688,7 +1688,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/auth/github`                    | None   | `302`   | Begin GitHub OAuth flow. |
 | GET    | `/auth/github/callback`           | None   | `302`   | OAuth callback; sets `mesh_token` cookie. |
 | POST   | `/auth/local`                     | None   | `302`   | Local username/password login; sets cookie. |
-| GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved`. |
+| GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved` and `capabilities` — the § 11 grants this subject holds. |
 
 ¶ `/auth/me` is the one `JWT` route that does **not** refuse an
 unapproved user: it answers `200` with `approved: false`. It is how a
