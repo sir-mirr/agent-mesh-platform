@@ -57,11 +57,6 @@ const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
 
 const ICONS_PALETTE = ["🤖", "🔬", "💻", "⚡", "📦", "🛡️", "📜", "🔑", "📊", "🧠", "💡", "📝", "🏆", "🚀", "💬", "🔍", "⚙️", "👁️", "🔐"];
 
-// Total World Bounding Box for Minimap
-const WORLD_MIN_X = 0;
-const WORLD_MIN_Y = 0;
-const WORLD_TOTAL_W = 3500;
-const WORLD_TOTAL_H = 1750;
 const MINIMAP_W = 200;
 const MINIMAP_H = 110;
 
@@ -74,14 +69,14 @@ export function TopologyPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Pan / Zoom Transformation State
-  const [panX, setPanX] = useState<number>(50);
-  const [panY, setPanY] = useState<number>(30);
-  const [scale, setScale] = useState<number>(0.42);
+  const [panX, setPanX] = useState<number>(40);
+  const [panY, setPanY] = useState<number>(20);
+  const [scale, setScale] = useState<number>(0.38);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Synchronous ref for high-precision cursor-centered zoom & mouse events
-  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 50, panY: 30, scale: 0.42 });
-  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 50, panY: 30 });
+  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 40, panY: 20, scale: 0.38 });
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 40, panY: 20 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const minimapRef = useRef<SVGSVGElement | null>(null);
 
@@ -100,7 +95,7 @@ export function TopologyPage() {
   ];
 
   // 1. Build Topology Data Graph dynamically based on Stage (1 ~ 10)
-  const { clusters, nodes, edges, totalAgentCount } = useMemo(() => {
+  const { clusters, nodes, edges, totalAgentCount, bounds } = useMemo(() => {
     const rawClusters = MASTER_CLUSTERS_CONFIG.slice(0, simStage).map((c) => ({
       ...c,
       gw: { ...c.gw },
@@ -133,8 +128,19 @@ export function TopologyPage() {
     const edgeList: TopoEdge[] = [];
     let agentSum = 0;
 
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
     rawClusters.forEach((cfg) => {
       agentSum += cfg.count;
+
+      // Track bounding box of cluster orbital circle & header badge
+      minX = Math.min(minX, cfg.cx - cfg.r - 20);
+      maxX = Math.max(maxX, cfg.cx + cfg.r + 20);
+      minY = Math.min(minY, cfg.cy - cfg.r - 45);
+      maxY = Math.max(maxY, cfg.cy + cfg.r + 20);
 
       // Gateway node
       nodeDict[cfg.gw.id] = {
@@ -151,6 +157,11 @@ export function TopologyPage() {
         displayName: `${cfg.id}-gw`,
         directPeers: [],
       };
+
+      minX = Math.min(minX, cfg.gw.x - 30);
+      maxX = Math.max(maxX, cfg.gw.x + 30);
+      minY = Math.min(minY, cfg.gw.y - 30);
+      maxY = Math.max(maxY, cfg.gw.y + 50);
 
       const memberIds: string[] = [];
 
@@ -205,6 +216,9 @@ export function TopologyPage() {
           ny = cfg.cy + Math.sin(angle) * orbitDist;
         }
 
+        const roundX = Math.round(nx);
+        const roundY = Math.round(ny);
+
         nodeDict[name] = {
           identity: name,
           group: cfg.id,
@@ -213,8 +227,8 @@ export function TopologyPage() {
           status,
           desc: `Active autonomous member node in ${cfg.name} galaxy.`,
           key: `sha256:${cfg.id}_${name}_${(i * 991).toString(16)}`,
-          x: Math.round(nx),
-          y: Math.round(ny),
+          x: roundX,
+          y: roundY,
           icon,
           avatarImg,
           displayName,
@@ -283,7 +297,43 @@ export function TopologyPage() {
       }
     }
 
-    return { clusters: rawClusters, nodes: nodeDict, edges: edgeList, totalAgentCount: agentSum };
+    // Exact 20% Margin Bounding Box Calculation around all drawn entities
+    const entityW = Math.max(maxX - minX, 600);
+    const entityH = Math.max(maxY - minY, 400);
+    const marginX = entityW * 0.2; // 20% margin
+    const marginY = entityH * 0.2; // 20% margin
+
+    const worldMinX = minX - marginX;
+    const worldMaxX = maxX + marginX;
+    const worldMinY = minY - marginY;
+    const worldMaxY = maxY + marginY;
+    const worldW = worldMaxX - worldMinX;
+    const worldH = worldMaxY - worldMinY;
+    const entityCX = (minX + maxX) / 2;
+    const entityCY = (minY + maxY) / 2;
+
+    return {
+      clusters: rawClusters,
+      nodes: nodeDict,
+      edges: edgeList,
+      totalAgentCount: agentSum,
+      bounds: {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        entityW,
+        entityH,
+        entityCX,
+        entityCY,
+        worldMinX,
+        worldMaxX,
+        worldMinY,
+        worldMaxY,
+        worldW,
+        worldH,
+      },
+    };
   }, [simStage]);
 
   // Selected Node Object
@@ -310,7 +360,70 @@ export function TopologyPage() {
     return result;
   }, [nodes, activeFilterGroup, searchQuery]);
 
-  // 2. MATHEMATICAL CURSOR-CENTERED ZOOM ISOLATED TO CANVAS ONLY
+  // Boundary Clamping Function (Constrain panning inside 20% world margin box)
+  const clampPan = useCallback(
+    (targetPanX: number, targetPanY: number, targetScale: number) => {
+      const viewport = viewportRef.current;
+      if (!viewport) return { x: targetPanX, y: targetPanY };
+      const rect = viewport.getBoundingClientRect();
+      const vw = rect.width;
+      const vh = rect.height;
+
+      const maxPanX = -bounds.worldMinX * targetScale;
+      const minPanX = vw - bounds.worldMaxX * targetScale;
+      const maxPanY = -bounds.worldMinY * targetScale;
+      const minPanY = vh - bounds.worldMaxY * targetScale;
+
+      let clampedX = targetPanX;
+      let clampedY = targetPanY;
+
+      if (minPanX > maxPanX) {
+        clampedX = (vw - (bounds.worldMinX + bounds.worldMaxX) * targetScale) / 2;
+      } else {
+        clampedX = Math.min(Math.max(targetPanX, minPanX), maxPanX);
+      }
+
+      if (minPanY > maxPanY) {
+        clampedY = (vh - (bounds.worldMinY + bounds.worldMaxY) * targetScale) / 2;
+      } else {
+        clampedY = Math.min(Math.max(targetPanY, minPanY), maxPanY);
+      }
+
+      return { x: clampedX, y: clampedY };
+    },
+    [bounds]
+  );
+
+  // 2. FIT-TO-SCREEN (Fits all drawn entities with exact 20% margin)
+  const fitToScreen = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const vw = rect.width || 1200;
+    const vh = rect.height || 640;
+
+    // Scale to fit world bounds (with 20% margin)
+    const scaleX = vw / bounds.worldW;
+    const scaleY = vh / bounds.worldH;
+    const fitScale = Math.min(scaleX, scaleY);
+    const nextScale = Math.min(Math.max(fitScale, 0.15), 1.8);
+
+    const targetPanX = vw / 2 - bounds.entityCX * nextScale;
+    const targetPanY = vh / 2 - bounds.entityCY * nextScale;
+    const clamped = clampPan(targetPanX, targetPanY, nextScale);
+
+    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
+    setScale(nextScale);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
+  }, [bounds, clampPan]);
+
+  // Auto-fit to screen when simStage changes or initially mounted
+  useEffect(() => {
+    fitToScreen();
+  }, [simStage, fitToScreen]);
+
+  // 3. MATHEMATICAL CURSOR-CENTERED ZOOM ISOLATED TO CANVAS ONLY
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -331,25 +444,26 @@ export function TopologyPage() {
       const worldX = (mouseX - curPanX) / curScale;
       const worldY = (mouseY - curPanY) / curScale;
 
-      const nextScale = Math.min(Math.max(curScale * zoomFactor, 0.15), 2.2);
+      const nextScale = Math.min(Math.max(curScale * zoomFactor, 0.15), 2.5);
 
       // Keep world coordinate stationary under the same mouse position
-      const nextPanX = mouseX - worldX * nextScale;
-      const nextPanY = mouseY - worldY * nextScale;
+      const targetPanX = mouseX - worldX * nextScale;
+      const targetPanY = mouseY - worldY * nextScale;
+      const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
-      transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+      transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
       setScale(nextScale);
-      setPanX(nextPanX);
-      setPanY(nextPanY);
+      setPanX(clamped.x);
+      setPanY(clamped.y);
     };
 
     el.addEventListener("wheel", onWheelHandler, { passive: false });
     return () => {
       el.removeEventListener("wheel", onWheelHandler);
     };
-  }, []);
+  }, [clampPan]);
 
-  // Canvas Drag Pan Handlers
+  // Canvas Drag Pan Handlers with Boundary Clamping
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest(".node-clickable")) return;
     if ((e.target as HTMLElement).closest(".minimap-container")) return;
@@ -361,46 +475,52 @@ export function TopologyPage() {
     if (!isDragging) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
-    const nextPanX = dragStartRef.current.panX + dx;
-    const nextPanY = dragStartRef.current.panY + dy;
-    transformRef.current.panX = nextPanX;
-    transformRef.current.panY = nextPanY;
-    setPanX(nextPanX);
-    setPanY(nextPanY);
+    const targetPanX = dragStartRef.current.panX + dx;
+    const targetPanY = dragStartRef.current.panY + dy;
+    const clamped = clampPan(targetPanX, targetPanY, transformRef.current.scale);
+
+    transformRef.current.panX = clamped.x;
+    transformRef.current.panY = clamped.y;
+    setPanX(clamped.x);
+    setPanY(clamped.y);
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
   };
 
-  // 3. INTERACTIVE MINIMAP CLICK & DRAG NAVIGATION
+  // 4. INTERACTIVE MINIMAP CLICK & DRAG NAVIGATION
   const isMinimapDraggingRef = useRef(false);
 
-  const navigateFromMinimap = useCallback((clientX: number, clientY: number) => {
-    const miniSvg = minimapRef.current;
-    const viewport = viewportRef.current;
-    if (!miniSvg || !viewport) return;
+  const navigateFromMinimap = useCallback(
+    (clientX: number, clientY: number) => {
+      const miniSvg = minimapRef.current;
+      const viewport = viewportRef.current;
+      if (!miniSvg || !viewport) return;
 
-    const miniRect = miniSvg.getBoundingClientRect();
-    const clickX = Math.max(0, Math.min(clientX - miniRect.left, MINIMAP_W));
-    const clickY = Math.max(0, Math.min(clientY - miniRect.top, MINIMAP_H));
+      const miniRect = miniSvg.getBoundingClientRect();
+      const clickX = Math.max(0, Math.min(clientX - miniRect.left, MINIMAP_W));
+      const clickY = Math.max(0, Math.min(clientY - miniRect.top, MINIMAP_H));
 
-    // Target world center point clicked on minimap
-    const targetWorldX = WORLD_MIN_X + (clickX / MINIMAP_W) * WORLD_TOTAL_W;
-    const targetWorldY = WORLD_MIN_Y + (clickY / MINIMAP_H) * WORLD_TOTAL_H;
+      // Target world center point clicked on minimap
+      const targetWorldX = bounds.worldMinX + (clickX / MINIMAP_W) * bounds.worldW;
+      const targetWorldY = bounds.worldMinY + (clickY / MINIMAP_H) * bounds.worldH;
 
-    const vpRect = viewport.getBoundingClientRect();
-    const curScale = transformRef.current.scale;
+      const vpRect = viewport.getBoundingClientRect();
+      const curScale = transformRef.current.scale;
 
-    // Center viewport at this world position
-    const nextPanX = vpRect.width / 2 - targetWorldX * curScale;
-    const nextPanY = vpRect.height / 2 - targetWorldY * curScale;
+      // Center viewport at this world position
+      const targetPanX = vpRect.width / 2 - targetWorldX * curScale;
+      const targetPanY = vpRect.height / 2 - targetWorldY * curScale;
+      const clamped = clampPan(targetPanX, targetPanY, curScale);
 
-    transformRef.current.panX = nextPanX;
-    transformRef.current.panY = nextPanY;
-    setPanX(nextPanX);
-    setPanY(nextPanY);
-  }, []);
+      transformRef.current.panX = clamped.x;
+      transformRef.current.panY = clamped.y;
+      setPanX(clamped.x);
+      setPanY(clamped.y);
+    },
+    [bounds, clampPan]
+  );
 
   const handleMinimapMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -436,33 +556,24 @@ export function TopologyPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const resetView = () => {
-    const nextPanX = 50;
-    const nextPanY = 30;
-    const nextScale = 0.42;
-    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
-    setPanX(nextPanX);
-    setPanY(nextPanY);
-    setScale(nextScale);
-  };
-
   const zoomIn = () => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
     const curScale = transformRef.current.scale;
-    const nextScale = Math.min(curScale * 1.25, 2.2);
+    const nextScale = Math.min(curScale * 1.25, 2.5);
 
     const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
     const worldCenterY = (vh / 2 - transformRef.current.panY) / curScale;
 
-    const nextPanX = vw / 2 - worldCenterX * nextScale;
-    const nextPanY = vh / 2 - worldCenterY * nextScale;
+    const targetPanX = vw / 2 - worldCenterX * nextScale;
+    const targetPanY = vh / 2 - worldCenterY * nextScale;
+    const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
-    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
     setScale(nextScale);
-    setPanX(nextPanX);
-    setPanY(nextPanY);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
   };
 
   const zoomOut = () => {
@@ -475,27 +586,29 @@ export function TopologyPage() {
     const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
     const worldCenterY = (vh / 2 - transformRef.current.panY) / curScale;
 
-    const nextPanX = vw / 2 - worldCenterX * nextScale;
-    const nextPanY = vh / 2 - worldCenterY * nextScale;
+    const targetPanX = vw / 2 - worldCenterX * nextScale;
+    const targetPanY = vh / 2 - worldCenterY * nextScale;
+    const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
-    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: nextScale };
+    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
     setScale(nextScale);
-    setPanX(nextPanX);
-    setPanY(nextPanY);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
   };
 
   const focusNode = (node: TopoNode) => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
-    const targetScale = 0.85;
-    const nextPanX = vw / 2 - node.x * targetScale;
-    const nextPanY = vh / 2 - node.y * targetScale;
+    const targetScale = 0.95;
+    const targetPanX = vw / 2 - node.x * targetScale;
+    const targetPanY = vh / 2 - node.y * targetScale;
+    const clamped = clampPan(targetPanX, targetPanY, targetScale);
 
-    transformRef.current = { panX: nextPanX, panY: nextPanY, scale: targetScale };
+    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: targetScale };
     setScale(targetScale);
-    setPanX(nextPanX);
-    setPanY(nextPanY);
+    setPanX(clamped.x);
+    setPanY(clamped.y);
   };
 
   const handleSendQuickMessage = () => {
@@ -504,17 +617,17 @@ export function TopologyPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Minimap Viewport indicator rectangle coordinates
+  // Minimap Viewport indicator rectangle coordinates (20% margin matched)
   const minimapViewRect = useMemo(() => {
     const rect = viewportRef.current?.getBoundingClientRect();
     const vw = rect?.width || 1000;
     const vh = rect?.height || 600;
 
-    const miniScaleX = MINIMAP_W / WORLD_TOTAL_W;
-    const miniScaleY = MINIMAP_H / WORLD_TOTAL_H;
+    const miniScaleX = MINIMAP_W / bounds.worldW;
+    const miniScaleY = MINIMAP_H / bounds.worldH;
 
-    const vx = Math.max(0, ((-panX / scale) - WORLD_MIN_X) * miniScaleX);
-    const vy = Math.max(0, ((-panY / scale) - WORLD_MIN_Y) * miniScaleY);
+    const vx = Math.max(0, (-panX / scale - bounds.worldMinX) * miniScaleX);
+    const vy = Math.max(0, (-panY / scale - bounds.worldMinY) * miniScaleY);
     const width = (vw / scale) * miniScaleX;
     const height = (vh / scale) * miniScaleY;
 
@@ -524,7 +637,7 @@ export function TopologyPage() {
       width: Math.min(width, MINIMAP_W),
       height: Math.min(height, MINIMAP_H),
     };
-  }, [panX, panY, scale]);
+  }, [panX, panY, scale, bounds]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -538,8 +651,8 @@ export function TopologyPage() {
         subtitle="10단계 스케일 시뮬레이션 및 원형 오비탈 노드-엣지 인터랙티브 제어기 (139 Connected Agent Nodes)"
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Button variant="secondary" size="sm" onClick={resetView}>
-              🎯 100% 핏-투-스크린
+            <Button variant="secondary" size="sm" onClick={fitToScreen}>
+              🎯 100% 핏-투-스크린 (20% 마진)
             </Button>
             <Button variant="primary" size="sm" onClick={() => setSimStage(10)}>
               ⚡ 10-스웜 풀 로드 (139노드)
@@ -963,7 +1076,7 @@ export function TopologyPage() {
             {Math.round(scale * 100)}%
           </span>
           <button onClick={zoomOut} style={hudBtnStyle} title="축소 (-)">➖</button>
-          <button onClick={resetView} style={hudBtnStyle} title="핏-투-스크린 (100%)">🎯</button>
+          <button onClick={fitToScreen} style={hudBtnStyle} title="핏-투-스크린 (20% 마진)">🎯</button>
         </div>
 
         {/* ── Interactive Mini-Map with Drag/Click Navigation (Bottom-Left) ── */}
@@ -990,7 +1103,7 @@ export function TopologyPage() {
           <svg
             ref={minimapRef}
             style={{ width: "100%", height: "100%", display: "block" }}
-            viewBox={`${WORLD_MIN_X} ${WORLD_MIN_Y} ${WORLD_TOTAL_W} ${WORLD_TOTAL_H}`}
+            viewBox={`${bounds.worldMinX} ${bounds.worldMinY} ${bounds.worldW} ${bounds.worldH}`}
           >
             {/* Cluster Mini Circles */}
             {clusters.map((c) => (
