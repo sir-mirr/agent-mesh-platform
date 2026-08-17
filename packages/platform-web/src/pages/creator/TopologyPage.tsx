@@ -82,6 +82,7 @@ export function TopologyPage() {
   const isDraggingRef = useRef<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const animFrameRef = useRef<number | null>(null);
 
   // Keep transformRef in sync
   useEffect(() => {
@@ -429,21 +430,103 @@ export function TopologyPage() {
     [bounds]
   );
 
-  // 2. FIT-TO-SCREEN (Fits all drawn entities with exact 5% margin)
+  // 2. SMOOTH FLIGHT ANIMATION TO CAMERA TARGET (Cubic Ease-Out Interpolation)
+  const animateCameraTo = useCallback(
+    (targetPanX: number, targetPanY: number, targetScale: number, duration: number = 420) => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+
+      const clamped = clampPan(targetPanX, targetPanY, targetScale);
+      const startPanX = transformRef.current.panX;
+      const startPanY = transformRef.current.panY;
+      const startScale = transformRef.current.scale;
+
+      const endPanX = clamped.x;
+      const endPanY = clamped.y;
+      const endScale = targetScale;
+
+      const startTime = performance.now();
+
+      const step = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Smooth Cubic Ease-Out
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        const curPanX = startPanX + (endPanX - startPanX) * ease;
+        const curPanY = startPanY + (endPanY - startPanY) * ease;
+        const curScale = startScale + (endScale - startScale) * ease;
+
+        transformRef.current = { panX: curPanX, panY: curPanY, scale: curScale };
+        setPanX(curPanX);
+        setPanY(curPanY);
+        setScale(curScale);
+
+        if (progress < 1) {
+          animFrameRef.current = requestAnimationFrame(step);
+        } else {
+          animFrameRef.current = null;
+        }
+      };
+
+      animFrameRef.current = requestAnimationFrame(step);
+    },
+    [clampPan]
+  );
+
+  // Focus and Center Camera on Node (Positioned slightly left of center so right drawer doesn't obstruct it)
+  const focusAndFlyToNode = useCallback(
+    (node: TopoNode) => {
+      const viewport = viewportRef.current;
+      const vw = viewport?.getBoundingClientRect().width || 1200;
+      const vh = viewport?.getBoundingClientRect().height || 640;
+
+      // Keep comfortable zoom (at least 0.95 or current scale)
+      const targetScale = Math.max(transformRef.current.scale, 0.92);
+
+      // Frame at 42% X so the 320px right-side drawer overlay does not block the focused node
+      const targetPanX = vw * 0.42 - node.x * targetScale;
+      const targetPanY = vh * 0.5 - node.y * targetScale;
+
+      setSelectedNodeId(node.identity);
+      animateCameraTo(targetPanX, targetPanY, targetScale, 450);
+    },
+    [animateCameraTo]
+  );
+
+  // Click handler for Connected Peer badge: Selects peer and animates camera
+  const handleSelectPeer = useCallback(
+    (peerId: string, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      const peerNode = nodes[peerId];
+      if (peerNode) {
+        focusAndFlyToNode(peerNode);
+      } else {
+        setSelectedNodeId(peerId);
+      }
+    },
+    [nodes, focusAndFlyToNode]
+  );
+
+  // FIT-TO-SCREEN (Fits all drawn entities with exact 5% margin smoothly)
   const fitToScreen = useCallback(() => {
     const { scale: nextScale, panX: targetPanX, panY: targetPanY } = getFitTransform();
-    const clamped = clampPan(targetPanX, targetPanY, nextScale);
+    animateCameraTo(targetPanX, targetPanY, nextScale, 400);
+  }, [getFitTransform, animateCameraTo]);
 
+  // Auto-fit to screen when simStage changes
+  useEffect(() => {
+    const { scale: nextScale, panX: targetPanX, panY: targetPanY } = getFitTransform();
+    const clamped = clampPan(targetPanX, targetPanY, nextScale);
     transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
     setScale(nextScale);
     setPanX(clamped.x);
     setPanY(clamped.y);
-  }, [getFitTransform, clampPan]);
-
-  // Auto-fit to screen when simStage changes or initially mounted
-  useEffect(() => {
-    fitToScreen();
-  }, [simStage, fitToScreen]);
+  }, [simStage, getFitTransform, clampPan]);
 
   // 3. MATHEMATICAL CURSOR-CENTERED ZOOM
   useEffect(() => {
@@ -453,6 +536,8 @@ export function TopologyPage() {
     const onWheelHandler = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
       const { panX: curPanX, panY: curPanY, scale: curScale } = transformRef.current;
       const zoomFactor = e.deltaY < 0 ? 1.14 : 0.88;
@@ -490,12 +575,14 @@ export function TopologyPage() {
     };
   }, [clampPan, getFitTransform]);
 
-  // 4. GLOBAL DRAG PAN WITH POINTER CAPTURE (Prevents text selection and mouse release loss)
+  // 4. GLOBAL DRAG PAN WITH POINTER CAPTURE
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest(".node-clickable")) return;
     if ((e.target as HTMLElement).closest(".minimap-container")) return;
+    if ((e.target as HTMLElement).closest(".node-side-overlay")) return;
 
-    // Prevent text selection across the browser/sidebar during drag
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+
     e.preventDefault();
 
     isDraggingRef.current = true;
@@ -507,7 +594,6 @@ export function TopologyPage() {
       panY: transformRef.current.panY,
     };
 
-    // Capture pointer events even if cursor moves outside canvas
     if (viewportRef.current) {
       viewportRef.current.setPointerCapture(e.pointerId);
     }
@@ -563,7 +649,7 @@ export function TopologyPage() {
   const isMinimapDraggingRef = useRef(false);
 
   const navigateFromMinimap = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, smooth: boolean = false) => {
       const viewport = viewportRef.current;
       if (!viewport) return;
 
@@ -605,27 +691,32 @@ export function TopologyPage() {
       // Center viewport at this world position
       const targetPanX = vpRect.width / 2 - targetWorldX * curScale;
       const targetPanY = vpRect.height / 2 - targetWorldY * curScale;
-      const clamped = clampPan(targetPanX, targetPanY, curScale);
 
-      transformRef.current.panX = clamped.x;
-      transformRef.current.panY = clamped.y;
-      setPanX(clamped.x);
-      setPanY(clamped.y);
+      if (smooth) {
+        animateCameraTo(targetPanX, targetPanY, curScale, 300);
+      } else {
+        const clamped = clampPan(targetPanX, targetPanY, curScale);
+        transformRef.current.panX = clamped.x;
+        transformRef.current.panY = clamped.y;
+        setPanX(clamped.x);
+        setPanY(clamped.y);
+      }
     },
-    [bounds, clampPan]
+    [bounds, clampPan, animateCameraTo]
   );
 
   const handleMinimapMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     isMinimapDraggingRef.current = true;
-    navigateFromMinimap(e.clientX, e.clientY);
+    navigateFromMinimap(e.clientX, e.clientY, true);
   };
 
   useEffect(() => {
     const onWindowMouseMove = (e: MouseEvent) => {
       if (isMinimapDraggingRef.current) {
-        navigateFromMinimap(e.clientX, e.clientY);
+        navigateFromMinimap(e.clientX, e.clientY, false);
       }
     };
     const onWindowMouseUp = () => {
@@ -662,12 +753,8 @@ export function TopologyPage() {
 
     const targetPanX = vw / 2 - worldCenterX * nextScale;
     const targetPanY = vh / 2 - worldCenterY * nextScale;
-    const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
-    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
-    setScale(nextScale);
-    setPanX(clamped.x);
-    setPanY(clamped.y);
+    animateCameraTo(targetPanX, targetPanY, nextScale, 260);
   };
 
   const zoomOut = () => {
@@ -685,27 +772,8 @@ export function TopologyPage() {
 
     const targetPanX = vw / 2 - worldCenterX * nextScale;
     const targetPanY = vh / 2 - worldCenterY * nextScale;
-    const clamped = clampPan(targetPanX, targetPanY, nextScale);
 
-    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: nextScale };
-    setScale(nextScale);
-    setPanX(clamped.x);
-    setPanY(clamped.y);
-  };
-
-  const focusNode = (node: TopoNode) => {
-    const rect = viewportRef.current?.getBoundingClientRect();
-    const vw = rect?.width || 1000;
-    const vh = rect?.height || 600;
-    const targetScale = 0.95;
-    const targetPanX = vw / 2 - node.x * targetScale;
-    const targetPanY = vh / 2 - node.y * targetScale;
-    const clamped = clampPan(targetPanX, targetPanY, targetScale);
-
-    transformRef.current = { panX: clamped.x, panY: clamped.y, scale: targetScale };
-    setScale(targetScale);
-    setPanX(clamped.x);
-    setPanY(clamped.y);
+    animateCameraTo(targetPanX, targetPanY, nextScale, 260);
   };
 
   const handleSendQuickMessage = () => {
@@ -1049,7 +1117,7 @@ export function TopologyPage() {
                   <g
                     key={node.identity}
                     className="node-clickable"
-                    onClick={() => setSelectedNodeId(node.identity)}
+                    onClick={() => focusAndFlyToNode(node)}
                     style={{ cursor: "pointer", opacity: isMatch ? 1 : 0.2 }}
                   >
                     <circle cx={node.x} cy={node.y} r={40} fill="transparent" />
@@ -1090,7 +1158,7 @@ export function TopologyPage() {
                 <g
                   key={node.identity}
                   className="node-clickable"
-                  onClick={() => setSelectedNodeId(node.identity)}
+                  onClick={() => focusAndFlyToNode(node)}
                   style={{
                     cursor: "pointer",
                     opacity: isMatch ? 1 : 0.2,
@@ -1290,6 +1358,7 @@ export function TopologyPage() {
         {/* ── Slide-out Node Inspector Drawer (Right Side) ── */}
         {selectedNode && (
           <div
+            className="node-side-overlay"
             style={{
               position: "absolute",
               top: 16,
@@ -1391,23 +1460,29 @@ export function TopologyPage() {
               <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
                 연결된 피어 목록 ({selectedNode.directPeers.length}):
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 90, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 110, overflowY: "auto" }}>
                 {selectedNode.directPeers.map((peer) => (
                   <button
                     key={peer}
-                    onClick={() => setSelectedNodeId(peer)}
+                    onClick={(e) => handleSelectPeer(peer, e)}
                     style={{
                       background: "var(--color-bg-surface-sub)",
-                      border: "1px solid var(--color-border)",
+                      border: "1.5px solid var(--color-primary)",
                       color: "var(--color-primary)",
-                      fontSize: "0.7rem",
-                      fontWeight: 600,
-                      padding: "2px 8px",
-                      borderRadius: "var(--radius-sm)",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      padding: "4px 10px",
+                      borderRadius: "var(--radius-full)",
                       cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      transition: "all 0.15s ease",
+                      boxShadow: "0 1px 3px rgba(37, 99, 235, 0.15)",
                     }}
+                    title={`${peer} 노드로 카메라 비행 이동`}
                   >
-                    {peer}
+                    🔗 {peer}
                   </button>
                 ))}
               </div>
@@ -1416,7 +1491,7 @@ export function TopologyPage() {
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => focusNode(selectedNode)}
+              onClick={() => focusAndFlyToNode(selectedNode)}
               style={{ width: "100%", marginTop: 4 }}
             >
               🎯 노드 클러스터 포커스
