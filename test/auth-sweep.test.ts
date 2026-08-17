@@ -237,16 +237,26 @@ describe("§ 9.1 auth", () => {
     // route joins the set, and it fails again when one is migrated — which
     // forces the list down rather than letting it sit. A `skip` would have done
     // neither.
-    // **Empty, and this is the state it was built to reach.** It began at
-    // eight, dropped to five when the chat-audit routes migrated, and is now
-    // nothing: every JWT* route in § 9.1 refuses a session whose role says
-    // admin and whose subject holds no grant.
+    // **The list reached zero, and the check over it went with it.**
     //
-    // It stays here rather than being deleted with the list. The check that
-    // matters now is the other one — a *new* route gating on the role — and an
-    // empty allowance says plainly that there is no exception, where a deleted
-    // block would leave the next reader to work out whether there ever was one.
-    const NOT_YET_ON_CAPABILITIES = new Set<string>([]);
+    // It began at eight — every admin route still gating on `payload.role` —
+    // dropped to five when the chat-audit routes migrated, and emptied when
+    // `user.admit` and `usage.read` gave the last five somewhere to move to.
+    // Every step was forced by this test failing and naming what had changed,
+    // which is the half a `skip` cannot do.
+    //
+    // What was left afterwards was `[...new Set([])].filter(...)` asserted
+    // empty: a check no route, no server and no request could move. It survived
+    // a week of arguing that a green which cannot go red says nothing — written
+    // by the same hand, three hours after the argument, and found by pointing
+    // that argument at this suite.
+    //
+    // Not restated as `expect(set.size).toBe(0)` either. That asserts a literal
+    // against itself two lines below where it is declared, which is the same
+    // thing wearing a number.
+    //
+    // The live check needs no list: **any** JWT* route that does not refuse a
+    // role-only session is a finding.
 
     const adminOnly = routesFromSpec().filter((r) => r.auth === "JWT*");
     expect(adminOnly.length).toBeGreaterThan(5);
@@ -260,11 +270,7 @@ describe("§ 9.1 auth", () => {
       if (status !== 403) roleGated.push(`${route.method} ${route.path}`);
     }
 
-    const unexpected = roleGated.filter((r) => !NOT_YET_ON_CAPABILITIES.has(r));
-    expect(unexpected, "a new route gates on the role rather than a capability").toEqual([]);
-
-    const migrated = [...NOT_YET_ON_CAPABILITIES].filter((r) => !roleGated.includes(r));
-    expect(migrated, "these now refuse a role-only session — take them off the list").toEqual([]);
+    expect(roleGated, "these gate on the role rather than a capability").toEqual([]);
   }, 60_000);
 
   test("every implemented API route is in the § 9.1 table", async () => {
