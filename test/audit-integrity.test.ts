@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
+import { capabilityViewer, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -141,4 +141,44 @@ describe("the row agrees with the payload it stores", () => {
       }
     }
   }, 30_000);
+});
+
+describe("§ 11.0's three states, all of them reachable", () => {
+  test("no session, metadata only, and content — each answers differently", async () => {
+    // **The middle one had no caller who could stand on it.** `admin` holds
+    // every capability so it sees content, a stranger gets 401, and the state
+    // the audit screen advertises in its own subtitle — redacted for a holder
+    // of `audit.read.metadata` and not `audit.read.content` — could be produced
+    // by no account that existed. The code was all there; the caller was not,
+    // and a screen-level test cannot notice because the screen renders either
+    // way.
+    //
+    // Found by agent-mesh-local-pm trying to walk the redaction path and
+    // finding nobody to walk it as (mail #569).
+    const viewer = await capabilityViewer(mesh, "audit.read.metadata");
+
+    // 1. Nobody.
+    expect((await fetch(`${mesh.http.url}/api/v1/audit/events?limit=1`)).status).toBe(401);
+
+    // 2. Metadata only — the content is withheld and its length survives,
+    //    which is § 11.0's line: how much was said is metadata, what was said
+    //    is not.
+    const redacted = (await (await fetch(`${mesh.http.url}/api/v1/audit/events?limit=1`, {
+      headers: { cookie: viewer },
+    })).json()) as any;
+    const withheld = redacted.events[0].payload.message;
+    expect(withheld.content, "content reached a metadata-only reader").toContain("content withheld");
+    expect(withheld.content_length, "the length was redacted with the content").toBeGreaterThan(0);
+
+    // 3. Content — the real body, and the length the redaction reported.
+    const full = (await (await fetch(`${mesh.http.url}/api/v1/audit/events?limit=1`, {
+      headers: { cookie },
+    })).json()) as any;
+    const shown = full.events[0].payload.message;
+    expect(shown.content).not.toContain("content withheld");
+    // The two views must describe the same message. A length that does not
+    // match the body it stands in for is a number nobody can act on.
+    expect(withheld.content_length, "content_length does not match the body it replaced")
+      .toBe(shown.content.length);
+  }, 45_000);
 });

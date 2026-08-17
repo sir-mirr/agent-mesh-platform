@@ -153,6 +153,71 @@ for (let i = 1; i <= QUEUED; i++) {
 console.log(`queued       ${QUEUED} messages for ${recipientId}`);
 
 // ---------------------------------------------------------------------------
+// An account that can reach § 11.0's middle state.
+//
+// **The privacy boundary had no caller who could stand on it.** § 11.0 has
+// three outcomes and only two were reachable: `admin` holds every capability
+// so it sees content, and a stranger gets 401. The one the audit screen
+// advertises in its own subtitle — *[content withheld] for a holder of
+// `audit.read.metadata` and not `audit.read.content`* — could be produced by no
+// account that existed.
+//
+// `agent-mesh-local-pm` found it by trying to walk the redaction path and
+// discovering there was nobody to walk it as (mail #569). The code was all
+// there: the route, the redaction, the `content_length` that survives it, and a
+// screen that names the behaviour. Only the caller was missing, and a
+// screen-level test cannot notice — the screen renders and the test passes.
+//
+// The username is the capability subject: `/auth/local` writes it into `users`
+// as `github_login`, and `requireCapability` reads exactly that.
+//
+// Written to `local_users` directly because no route creates one. That is the
+// single place this fixture reaches past the API, and it is marked rather than
+// hidden — a fixture that quietly opens a database is one nobody can reason
+// about.
+// ---------------------------------------------------------------------------
+
+const VIEWER = "audit-viewer";
+{
+  const { Database } = await import("bun:sqlite");
+  const db = new Database(`${ready.state_dir}/agent-mesh.db`, { readwrite: true });
+  const exists = db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(VIEWER);
+  if (!exists) {
+    db.prepare(
+      "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
+    ).run(VIEWER, await Bun.password.hash("audit-viewer", { algorithm: "bcrypt" }), "Audit viewer", "member");
+  }
+  db.close();
+}
+
+// The grant goes through the route, because granting is a thing the product
+// does and a fixture that wrote it straight to the table would not notice the
+// route refusing.
+const granted = await fetch(`${HTTP}/api/v1/admin/grants`, {
+  method: "POST",
+  headers: { "content-type": "application/json", cookie },
+  body: JSON.stringify({ subject: VIEWER, capability: "audit.read.metadata", scope: "*" }),
+});
+if (granted.status >= 400) throw new Error(`granting audit.read.metadata answered ${granted.status}`);
+
+// **Logging in is the check.** A row in `local_users` is not an account until a
+// session comes back — and a 302 is not a session, which is the reading that
+// cost an hour tonight. The cookie is what says it worked.
+const viewerLogin = await fetch(`${HTTP}/auth/local`, {
+  method: "POST",
+  headers: { accept: "application/json", "content-type": "application/json" },
+  body: JSON.stringify({ username: VIEWER, password: "audit-viewer" }),
+  redirect: "manual",
+});
+const viewerCookie = viewerLogin.headers.get("set-cookie")?.split(";")[0] ?? "";
+if (!viewerCookie.startsWith("mesh_token=")) {
+  throw new Error(`${VIEWER} could not sign in: ${viewerLogin.status}, no mesh_token`);
+}
+const viewerMe = await fetch(`${HTTP}/auth/me`, { headers: { cookie: viewerCookie } });
+if (viewerMe.status !== 200) throw new Error(`${VIEWER} signed in but /auth/me answered ${viewerMe.status}`);
+console.log(`seeded       ${VIEWER} (audit.read.metadata only) — /auth/me ${viewerMe.status}`);
+
+// ---------------------------------------------------------------------------
 // Read the numbers back off the routes rather than trusting the loop above.
 // A fixture that reports what it *intended* to create is the same class of
 // thing it exists to catch.
