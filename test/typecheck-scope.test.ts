@@ -38,22 +38,39 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-/** Directories that hold no source this repository compiles. */
-const NOT_SOURCE = new Set(["node_modules", ".git", "dist", ".tsbuild", "data", "state"]);
-
-function everyTsFile(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (NOT_SOURCE.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) everyTsFile(path, out);
-    else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) out.push(relative(ROOT, path));
-  }
-  return out;
+/**
+ * The repository's TypeScript, as the repository itself defines it.
+ *
+ * The first version walked the tree past a hand-written set of directories to
+ * ignore — `node_modules`, `dist`, and whatever else someone remembered. That
+ * set is a second declaration of what counts as source, and a second
+ * declaration is what this whole file exists because of: adding a name to it
+ * removes a directory from the check, and **a file that is not enumerated
+ * cannot be reported as uncovered.** The failure would be silent in the one
+ * place built to make it loud.
+ *
+ * `git ls-files` with `--others --exclude-standard` is tracked files plus
+ * untracked ones that are not ignored — the repository's own answer, declared
+ * once in `.gitignore`. Nothing here restates it.
+ *
+ * The tradeoff is that a `.ts` file both untracked *and* ignored is invisible.
+ * That is the correct reading: an ignored file is not source this repository
+ * ships, and if it should be, `.gitignore` is where that gets said.
+ */
+function everyTsFile(): string[] {
+  const out = Bun.spawnSync(
+    ["git", "-C", ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "*.ts"],
+  );
+  if (!out.success) throw new Error("git ls-files failed — cannot enumerate this repository");
+  return new TextDecoder()
+    .decode(out.stdout)
+    .split("\n")
+    .filter((f) => f && !f.endsWith(".d.ts"));
 }
 
 /** `tsc` allows comments; `JSON.parse` does not. */
@@ -89,7 +106,7 @@ const covers = (prefixes: string[], file: string): boolean =>
 describe("the typecheck covers this repository", () => {
   test("no TypeScript file is outside every project", () => {
     const prefixes = coveredPrefixes();
-    const uncovered = everyTsFile(ROOT).filter((file) => !covers(prefixes, file));
+    const uncovered = everyTsFile().filter((file) => !covers(prefixes, file));
 
     // Named individually. "3 files are uncovered" sends a reader looking; the
     // list sends them to the tsconfig that needs a reference.
@@ -131,10 +148,14 @@ describe("the typecheck covers this repository", () => {
     // #211) — a full `**/*.ts` glob makes their matcher answer for any path at
     // all. Two implementations, two vacuity routes, one property.
     //
-    // Named files rather than only a count, and deliberately these two: the
-    // harness is what the original defect hid in, and this file finding itself
-    // is the cheapest proof the walk reaches where it claims to.
-    const found = everyTsFile(ROOT);
+    // Named files rather than only a count, and deliberately these: the harness
+    // is what the original defect hid in, and this file finding itself is the
+    // cheapest proof the enumeration reaches where it claims to.
+    //
+    // Still needed with `git ls-files` doing the enumerating. It removes the
+    // hand-written ignore list, not the possibility that the command changes,
+    // fails softly, or is asked the wrong question.
+    const found = everyTsFile();
     expect(found, "the walk found no source at all").not.toEqual([]);
     expect(found).toContain("scripts/e2e-harness.ts");
     expect(found).toContain("test/typecheck-scope.test.ts");
