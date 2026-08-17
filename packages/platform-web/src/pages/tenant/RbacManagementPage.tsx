@@ -7,9 +7,7 @@ import {
   Button,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchPendingUsers, approveUserApi, denyUserApi, type PendingUser } from "@/api/users.ts";
 import { fetchGrants, addGrantApi, deleteGrantApi, type GrantItem } from "@/api/grants.ts";
-import { useAuth } from "@/contexts/AuthContext.tsx";
 
 interface OrgMember {
   id: string;

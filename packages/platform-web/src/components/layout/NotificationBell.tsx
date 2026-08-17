@@ -2,32 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { AgentPairingModal, type PendingAgentRequest } from "@/components/feedback/AgentPairingModal.tsx";
 
-const INITIAL_REQUESTS: PendingAgentRequest[] = [
-  {
-    id: "req_01",
-    identity: "agt_settlement_04",
-    name: "Automated Settlement Agent",
-    groupName: "Billing Core",
-    requestedAt: "방금 전",
-    fingerprint: "sha256:4kvL9XzN81pQm6wY3vT...",
-    status: "pending",
-  },
-  {
-    id: "req_02",
-    identity: "agt_analyzer_05",
-    name: "Realtime Log Analyzer",
-    groupName: "Analytics Group",
-    requestedAt: "2분 전",
-    fingerprint: "sha256:9pxM1TaW72rKn4vE1aB...",
-    status: "pending",
-  },
-];
-
 import { fetchPendingKeys, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
 
 export function NotificationBell() {
   const { t } = useI18n();
-  const [requests, setRequests] = useState<PendingAgentRequest[]>(INITIAL_REQUESTS);
+  const [requests, setRequests] = useState<PendingAgentRequest[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<PendingAgentRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,10 +15,10 @@ export function NotificationBell() {
   // 1. Initial pending keys fetch & SSE Stream subscription
   useEffect(() => {
     // Initial fetch
-    fetchPendingKeys().then((proposals) => {
-      if (proposals && proposals.length > 0) {
+    fetchPendingKeys()
+      .then((proposals) => {
         setRequests(
-          proposals.map((p) => ({
+          (proposals || []).map((p) => ({
             id: `req_${p.fingerprint.slice(0, 10)}`,
             identity: p.identity,
             name: `${p.identity} (Agent)`,
@@ -49,8 +28,8 @@ export function NotificationBell() {
             status: "pending",
           }))
         );
-      }
-    });
+      })
+      .catch(() => setRequests([]));
 
     // Subscribe to SSE /api/v1/admin/keys/stream
     let es: EventSource | null = null;
