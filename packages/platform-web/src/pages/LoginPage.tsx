@@ -1,4 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext.tsx";
+import type { UserRole } from "@/types/auth.ts";
 
 interface NodeDef {
   id: string;
@@ -30,7 +33,24 @@ interface PacketDef {
 }
 
 export function LoginPage() {
+  const navigate = useNavigate();
+  const { loginWithLocal, loginWithGitHub } = useAuth();
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("PLATFORM_ADMIN");
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await loginWithLocal(username, password, selectedRole);
+    navigate("/dashboard");
+  };
+
+  const handleGitHubLogin = () => {
+    loginWithGitHub();
+    navigate("/dashboard");
+  };
 
   // Core character and network nodes
   const nodesRef = useRef<NodeDef[]>([
@@ -343,143 +363,352 @@ export function LoginPage() {
         background: "radial-gradient(circle at 30% 35%, #0369A1 0%, #075985 25%, #0F172A 65%, #020617 100%)",
         position: "relative",
         overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
       }}
     >
-      {/* Dynamic 60fps Physics Canvas (Nodes, Edges, and Locked Message Bullets) */}
-      <canvas
-        ref={canvasRef}
+      {/* ── Softly Blurred Dynamic Ambient Background (Canvas + Character Overlay) ── */}
+      <div
         style={{
           position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          display: "block",
+          inset: 0,
+          filter: "blur(2.2px)",
+          opacity: 0.88,
           pointerEvents: "none",
+          zIndex: 1,
+          transform: "scale(1.02)", // Prevents blur edge artifacts
         }}
-      />
-
-      {/* ── 3 Main Character Avatars (Clean Text Only, No Round Box Background) ── */}
-
-      {/* 1. 핀둥이 */}
-      {characterPos.fin && (
-        <div
+      >
+        {/* Dynamic 60fps Physics Canvas */}
+        <canvas
+          ref={canvasRef}
           style={{
             position: "absolute",
-            left: characterPos.fin.x,
-            top: characterPos.fin.y,
-            transform: "translate(-50%, -50%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            userSelect: "none",
-            pointerEvents: "auto",
-            cursor: "pointer",
-            zIndex: 10,
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            display: "block",
           }}
-          title="핀둥이"
-        >
-          <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div className="agent-glow-ring ring-blue" />
-            <div className="agent-avatar-frame">
-              <img src="/assets/agent-fin.png" alt="핀둥이" className="agent-avatar-img" />
-            </div>
-          </div>
-          <span
+        />
+
+        {/* 1. 핀둥이 */}
+        {characterPos.fin && (
+          <div
             style={{
-              marginTop: 6,
-              fontSize: "0.82rem",
-              fontWeight: 750,
-              color: "#FFFFFF",
-              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.7)",
-              whiteSpace: "nowrap",
-              letterSpacing: "-0.01em",
+              position: "absolute",
+              left: characterPos.fin.x,
+              top: characterPos.fin.y,
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              userSelect: "none",
             }}
           >
-            핀둥이
-          </span>
-        </div>
-      )}
+            <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="agent-glow-ring ring-blue" />
+              <div className="agent-avatar-frame">
+                <img src="/assets/agent-fin.png" alt="핀둥이" className="agent-avatar-img" />
+              </div>
+            </div>
+            <span
+              style={{
+                marginTop: 6,
+                fontSize: "0.82rem",
+                fontWeight: 750,
+                color: "#FFFFFF",
+                textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(56, 189, 248, 0.7)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              핀둥이
+            </span>
+          </div>
+        )}
 
-      {/* 2. 핀자 */}
-      {characterPos.pinja && (
+        {/* 2. 핀자 */}
+        {characterPos.pinja && (
+          <div
+            style={{
+              position: "absolute",
+              left: characterPos.pinja.x,
+              top: characterPos.pinja.y,
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              userSelect: "none",
+            }}
+          >
+            <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="agent-glow-ring ring-emerald" />
+              <div className="agent-avatar-frame">
+                <img src="/assets/agent-support.png" alt="핀자" className="agent-avatar-img" />
+              </div>
+            </div>
+            <span
+              style={{
+                marginTop: 6,
+                fontSize: "0.82rem",
+                fontWeight: 750,
+                color: "#FFFFFF",
+                textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(52, 211, 153, 0.7)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              핀자
+            </span>
+          </div>
+        )}
+
+        {/* 3. 아름이 */}
+        {characterPos.areum && (
+          <div
+            style={{
+              position: "absolute",
+              left: characterPos.areum.x,
+              top: characterPos.areum.y,
+              transform: "translate(-50%, -50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              userSelect: "none",
+            }}
+          >
+            <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="agent-glow-ring ring-purple" />
+              <div className="agent-avatar-frame">
+                <img src="/assets/agent-assistant.png" alt="아름이" className="agent-avatar-img" />
+              </div>
+            </div>
+            <span
+              style={{
+                marginTop: 6,
+                fontSize: "0.82rem",
+                fontWeight: 750,
+                color: "#FFFFFF",
+                textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(192, 132, 252, 0.7)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              아름이
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Foreground Crystal-Sharp Center Login Box (중앙 박스 복원) ── */}
+      <div
+        style={{
+          background: "rgba(255, 255, 255, 0.96)",
+          backdropFilter: "blur(24px)",
+          border: "1px solid rgba(255, 255, 255, 0.8)",
+          borderRadius: "var(--radius-xl)",
+          padding: "40px 36px",
+          width: "100%",
+          maxWidth: 440,
+          boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.9) inset",
+          display: "flex",
+          flexDirection: "column",
+          gap: 22,
+          position: "relative",
+          zIndex: 20,
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+              color: "white",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.4rem",
+              fontWeight: 900,
+              marginBottom: 12,
+              boxShadow: "0 6px 16px rgba(37, 99, 235, 0.35)",
+            }}
+          >
+            M
+          </div>
+          <h1
+            style={{
+              fontSize: "1.4rem",
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
+              color: "var(--color-text-primary)",
+            }}
+          >
+            Agent Mesh Platform
+          </h1>
+          <p
+            style={{
+              fontSize: "0.85rem",
+              color: "var(--color-text-secondary)",
+              marginTop: 4,
+            }}
+          >
+            단일 로그인 및 RBAC 통합 관리 게이트웨이
+          </p>
+        </div>
+
+        {/* GitHub OAuth Button */}
+        <button
+          type="button"
+          onClick={handleGitHubLogin}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "11px 16px",
+            borderRadius: "var(--radius-md)",
+            background: "#24292f",
+            color: "white",
+            fontWeight: 700,
+            fontSize: "0.9rem",
+            border: "none",
+            cursor: "pointer",
+            transition: "background 0.15s ease",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          }}
+        >
+          <GitHubIcon />
+          GitHub 계정으로 계속하기
+        </button>
+
         <div
           style={{
-            position: "absolute",
-            left: characterPos.pinja.x,
-            top: characterPos.pinja.y,
-            transform: "translate(-50%, -50%)",
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
-            userSelect: "none",
-            pointerEvents: "auto",
-            cursor: "pointer",
-            zIndex: 10,
+            gap: 12,
+            color: "var(--color-text-muted)",
+            fontSize: "0.8rem",
           }}
-          title="핀자"
         >
-          <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div className="agent-glow-ring ring-emerald" />
-            <div className="agent-avatar-frame">
-              <img src="/assets/agent-support.png" alt="핀자" className="agent-avatar-img" />
-            </div>
-          </div>
-          <span
+          <hr
             style={{
-              marginTop: 6,
-              fontSize: "0.82rem",
-              fontWeight: 750,
-              color: "#FFFFFF",
-              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(52, 211, 153, 0.7)",
-              whiteSpace: "nowrap",
-              letterSpacing: "-0.01em",
+              flex: 1,
+              border: "none",
+              borderTop: "1px solid var(--color-border)",
             }}
-          >
-            핀자
-          </span>
+          />
+          또는 로컬 계정
+          <hr
+            style={{
+              flex: 1,
+              border: "none",
+              borderTop: "1px solid var(--color-border)",
+            }}
+          />
         </div>
-      )}
 
-      {/* 3. 아름이 */}
-      {characterPos.areum && (
-        <div
-          style={{
-            position: "absolute",
-            left: characterPos.areum.x,
-            top: characterPos.areum.y,
-            transform: "translate(-50%, -50%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            userSelect: "none",
-            pointerEvents: "auto",
-            cursor: "pointer",
-            zIndex: 10,
-          }}
-          title="아름이"
+        {/* Local ID/PW Form */}
+        <form
+          style={{ display: "flex", flexDirection: "column", gap: 14 }}
+          onSubmit={handleSubmit}
         >
-          <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div className="agent-glow-ring ring-purple" />
-            <div className="agent-avatar-frame">
-              <img src="/assets/agent-assistant.png" alt="아름이" className="agent-avatar-img" />
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>아이디 (ID)</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
+              autoComplete="username"
+              style={inputStyle}
+              required
+            />
           </div>
-          <span
-            style={{
-              marginTop: 6,
-              fontSize: "0.82rem",
-              fontWeight: 750,
-              color: "#FFFFFF",
-              textShadow: "0 1px 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(192, 132, 252, 0.7)",
-              whiteSpace: "nowrap",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            아름이
-          </span>
-        </div>
-      )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>비밀번호 (Password)</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              style={inputStyle}
+              required
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+              style={inputStyle}
+            >
+              <option value="PLATFORM_ADMIN">👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option>
+              <option value="TENANT_ADMIN">🏢 테넌트 관리자 (Tenant Admin - 테넌트 메뉴 노출)</option>
+              <option value="GROUP_ADMIN">👥 그룹 관리자 (Group Admin - 스웜 그룹 관리)</option>
+              <option value="AGENT_OPERATOR">🤖 일반 에이전트 운영자 (Agent Operator - 관리자 메뉴 은닉)</option>
+            </select>
+          </div>
+
+          <button type="submit" style={btnPrimaryStyle}>
+            로그인하기
+          </button>
+        </form>
+
+        <p
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--color-text-muted)",
+            textAlign: "center",
+            lineHeight: 1.4,
+          }}
+        >
+          단일 계정(Single ID) 체계로, 선택된 역할에 따라 사이드바 메뉴가 자동으로 동적 활성화/은닉됩니다.
+        </p>
+      </div>
     </div>
   );
 }
+
+function GitHubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  );
+}
+
+const labelStyle: React.CSSProperties = {
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  color: "var(--color-text-secondary)",
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "9px 12px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--color-border-strong)",
+  fontSize: "0.88rem",
+  fontFamily: "inherit",
+  outline: "none",
+  background: "var(--color-bg-surface-sub)",
+  color: "var(--color-text-primary)",
+};
+
+const btnPrimaryStyle: React.CSSProperties = {
+  marginTop: 6,
+  padding: "11px 16px",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-primary)",
+  color: "white",
+  fontWeight: 700,
+  fontSize: "0.92rem",
+  border: "none",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+};
