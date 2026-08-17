@@ -259,6 +259,24 @@ try {
         base_url: `http://127.0.0.1:${httpPort}`,
         rpc_ws: `ws://127.0.0.1:${hubPort}/ws`,
         api_http: `http://127.0.0.1:${hubPort}`,
+        // **Which of the two above to call.** `api_http` is accurate from the
+        // hub's side — it is where a signed `POST /api/v1/rpc` goes — and reads
+        // from a browser's side as "the API I call", which it is not.
+        //
+        // A front end made exactly that mistake against the fixed ports and it
+        // was caught by eye, because `3100` and `3000` reversed look wrong.
+        // Here the ports are ephemeral, so `51234` and `51235` reversed look
+        // like nothing at all. Naming the audience is cheaper than the
+        // investigation that follows.
+        //
+        // Raised by `agent-mesh-local-pm` before it cost anybody anything
+        // (mail #347), on the grounds that the notes already on
+        // `admin_test_handle` had prevented a misreading the same day.
+        addresses: {
+          browser_and_admin: `http://127.0.0.1:${httpPort}`,
+          agents_signed_rpc: `http://127.0.0.1:${hubPort}`,
+          note: "Anything a person or an operator screen calls is base_url. api_http and rpc_ws are the agent-facing hub; a browser has no business there.",
+        },
         // What this mesh is. A conformance report that quotes it is one the
         // other side can compare against; one that does not is a claim about an
         // unnamed checkout. See `provenance`.
