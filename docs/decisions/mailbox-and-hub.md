@@ -37,6 +37,12 @@ exactly the window in which the other end is not there, and a mailbox that
 shares the hub's lifetime is not store-and-forward. It is a queue that
 disappears at the same moment its reason to exist appears.
 
+**This one is not fixed by the decision below.** The mailbox runs in the hub's
+process, so it still stops when the hub does. What the boundary buys is that the
+code no longer *assumes* it — which is the prerequisite for fixing it, and not
+the fix. Said plainly here because a design document that lists a benefit it has
+not delivered is the same defect as a check that reports green without checking.
+
 **A participant with no socket is a second-class case.** § 8.10 exists because
 an agent driven by an application is awake only while answering. Today that
 participant reaches the mesh through the hub's own port, so the hub is in the
@@ -93,11 +99,22 @@ the moment either side reconnects.
 4. **The hub pulls; the mailbox never pushes.** The mailbox has no address to
    push to, by construction.
 
-## Open at the time of writing
+## Decided: a package, in the hub's process
 
-Whether the mailbox becomes a fourth process with its own port, or stays a
-package inside the hub's process with a one-way dependency.
+Not a fourth service. The boundary is a compile-time one, enforced by
+`test/mailbox-boundary.test.ts`, and both halves run where they ran before.
 
-The package boundary is required under both readings and comes first. Promoting
-it to a process afterwards is mechanical precisely because the boundary exists —
-which is the argument for doing it in this order rather than deciding now.
+**What this does buy.** The dependency points one way, so the mailbox can be
+read, tested and reasoned about without the hub in the picture, and the routes
+stop reaching into presence and RPC handlers to do their work. A later promotion
+to its own process is mechanical exactly because nothing has to be untangled
+first.
+
+**What it does not buy**, and this is the part worth keeping in view: the
+mailbox stops when the hub stops. The first argument above is why the split is
+worth making, and it is not yet true. Anyone reading this to decide whether mail
+survives a hub restart should read it as *no*.
+
+The honest way to hold that is not to soften the argument but to leave it
+standing and mark it unmet. It is the reason to take the next step, and softening
+it would remove the reason while keeping the appearance of having addressed it.
