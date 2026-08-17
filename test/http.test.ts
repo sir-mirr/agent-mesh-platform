@@ -383,14 +383,40 @@ describe("attachment download", () => {
 
   test("ids with separators or .. are refused before the filesystem is touched", async () => {
     // The id is the only gate here, so these are the cases that matter.
-    for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b", ".."]) {
+    //
+    // **`400` exactly, not `[400, 404]`.** The looser form is what this test
+    // used to assert, and deleting the separator guard entirely left it green:
+    // `../etc/passwd` then reached the participation query, matched no message,
+    // and came back `404` — which was in the accepted list. A `404` is what a
+    // genuine miss returns, so accepting it here means accepting the answer
+    // given by a route that never looked at the id at all.
+    //
+    // The name says *before the filesystem is touched*, and `400` is the only
+    // status that says so. Anything else means the request got further than
+    // this test claims it can.
+    for (const id of ["../etc/passwd", "..%2Fescape", "a/b", "a\\b"]) {
       const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent(id)}`, {
         headers: { cookie: adminCookie },
       });
-      expect([400, 404], `id ${id}`).toContain(res.status);
-      // Whatever the status, it must not be a successful read.
-      expect(res.status).not.toBe(200);
+      expect(res.status, `id ${id} was not refused by the id gate`).toBe(400);
     }
+  });
+
+  test("a bare .. never reaches the handler at all", async () => {
+    // Separated from the four above rather than folded in with a looser
+    // matcher, because it is refused by a different thing: the router
+    // normalises `/api/v1/attachments/..` up a segment, so no handler runs and
+    // the answer is `404`.
+    //
+    // That is a real guarantee and a weaker one — it comes from the framework,
+    // not from this route — so it is stated on its own. Accepting `404`
+    // alongside the others was what let the guard be deleted with the suite
+    // green, since a deleted guard produces `404` for every one of them.
+    const res = await fetch(`${mesh.http.url}/api/v1/attachments/${encodeURIComponent("..")}`, {
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status).toBe(404);
+    expect(res.status).not.toBe(200);
   });
 
   test("an id that is neither a digest nor the legacy form is refused", async () => {

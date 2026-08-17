@@ -415,8 +415,12 @@ const MUTATIONS: Mutation[] = [
     id: "git-fails-loudly",
     defect: "A failed enumeration must name its cause rather than return nothing.",
     file: "test/typecheck-scope.test.ts",
-    from: '"--exclude-standard", "*.ts", "*.tsx"],',
-    to: '"--not-a-flag"],',
+    // Anchored past the file globs, which move. The first version ended at
+    // `"*.ts"],` and stopped matching the moment `"*.tsx"` was added beside it —
+    // and the tool said so, out loud, rather than reporting the entry as
+    // caught. That refusal is the whole reason a no-match is a failure here.
+    from: '"--cached", "--others", "--exclude-standard"',
+    to: '"--not-a-flag"',
     suite: "test/typecheck-scope.test.ts",
     expect: ["cannot enumerate"],
   },
@@ -455,6 +459,20 @@ const MUTATIONS: Mutation[] = [
     // A probe file, because a count would pass at zero — which is the state
     // being guarded against.
     expect: ["the walk asks for .tsx as well as .ts"],
+  },
+
+  {
+    id: "retry-after-floor",
+    defect:
+      "A refused caller could be told to retry in 0 seconds, which it does immediately, forever — the tight loop the limiter exists to stop. The guard against it (\u00a7 14) was unchecked: the only test used a whole-token deficit, where ceil, floor and the `Math.max(1, ...)` floor all agree on 10.",
+    file: "packages/hub/src/ratelimit.ts",
+    from: "Math.max(1, Math.ceil(deficit / this.config.refillPerSecond))",
+    to: "Math.floor(deficit / this.config.refillPerSecond)",
+    suite: "packages/hub/src/ratelimit.test.ts",
+    // A partial refill, where the roundings stop agreeing. Removing the
+    // `Math.max` alone is equivalent under `ceil` — a positive deficit never
+    // rounds to zero — so the entry mutates the rounding with it.
+    expect: ["nor when the bucket is a fraction of a token short"],
   },
 
   // ---------------------------------------------------------------------------
