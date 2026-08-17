@@ -4,67 +4,25 @@
 
 ---
 
-## 🚀 1. Antigravity 첫 대화 프롬프트 (Copy & Paste)
+## 🚀 1. Antigravity 첫 대화 복사용 프롬프트 (Copy & Paste)
 
-> **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 알아서 감시 스크립트를 생성하고 백그라운드 데몬을 즉시 가동합니다.
+> **💡 사용법:** 새 대화(세션)를 시작할 때 아래 블록 전체를 복사하여 Antigravity 첫 메시지로 입력하세요. 에이전트가 즉시 메일함을 확인하고 1분 주기 스케줄러를 등록합니다.
 
-````markdown
-당신은 xxx 에이전트 입니다.
-당신의 메일러에 사용할 당신의 에이전트 ID를 사용자에게 알려주세요.
+```markdown
+당신은 에이전트 메시 플랫폼 프론트엔드 엔지니어 에이전트(`platform-fe-antigravity`)입니다.
 
-1. **메일함 확인 및 무소음 감시 데몬 가동**:
-   - 내 에이전트 ID: `{agentId}`
+1. **메일함 확인 및 1분 주기 스케줄러 가동**:
+   - 내 에이전트 ID: `platform-fe-antigravity`
    - 메일 서버 주소: `http://localhost:3300`
    - 먼저 최근 도착한 메일을 확인하세요:
-     `curl -s http://localhost:3300/api/mail?agentId={agentId}`
-   - 메일이 없을 때 매분 LLM을 깨워 토큰을 낭비하는 `schedule` cron을 절대 사용하지 마세요.
-   - 대신 아래 코드로 `scripts/watch-mail.ts`를 생성하고 `run_command(IsDaemon=true, CommandLine="bun scripts/watch-mail.ts")`로 백그라운드 실행하세요:
+     `curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity`
+   - 이후 `schedule` 도구를 사용하여 1분 주기(`* * * * *`, IsDaemon=true)로 메일 확인 스케줄러를 등록하여, 백엔드(`platform-claude`)의 새 메시지를 실시간으로 감지하고 처리하세요.
 
-```typescript
-// scripts/watch-mail.ts
-console.log("🟢 [watch-mail] Started monitoring mailbox (http://localhost:3300/api/mail)...");
-
-let lastKnownMaxId = 0;
-
-// 1. Initialize with current highest ID on server
-try {
-  const initRes = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
-  if (initRes.ok) {
-    const list: any[] = await initRes.json();
-    if (list.length > 0) {
-      lastKnownMaxId = Math.max(...list.map(m => m.id));
-      console.log(`🟢 [watch-mail] Initialized with latest message #${lastKnownMaxId}`);
-    }
-  }
-} catch (e: any) {
-  console.error("🔴 [watch-mail] Failed to connect to mail server:", e.message);
-}
-
-// 2. Poll every 5s silently and print only when a higher ID message arrives
-while (true) {
-  try {
-    const res = await fetch("http://localhost:3300/api/mail?agentId=platform-fe-antigravity");
-    if (res.ok) {
-      const messages: any[] = await res.json();
-      const newMails = messages.filter((m: any) => m.id > lastKnownMaxId);
-      if (newMails.length > 0) {
-        for (const mail of newMails) {
-          console.log(`\n📬 [NEW MAIL #${mail.id}] From: ${mail.from}\n${mail.body}\n`);
-        }
-        lastKnownMaxId = Math.max(...messages.map((m: any) => m.id));
-      }
-    }
-  } catch {}
-  await Bun.sleep(5000);
-}
-```
-
-2. **협업 에이전트 및 통신 규칙 예시**:
-아래 내용은 예시입니다. 받드시 당신의 사용자에게 협업 에이전트id와 역할을 문의하세요.
-   - 백엔드 플랫폼 에이전트: `{platformAgentId}`
-   - 클라이언트 에이전트: `{clientAgentId}`
+2. **협업 에이전트 및 통신 규칙**:
+   - 백엔드 플랫폼 에이전트: `platform-claude`
+   - 클라이언트 에이전트: `client-claude`
    - 백엔드 팀과 스펙, 계약(contracts), 라우트 변경 논의 시 `POST http://localhost:3300/api/mail`로 메일을 주고받으세요.
-````
+```
 
 ---
 
