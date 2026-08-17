@@ -8,17 +8,21 @@ export interface SystemTelemetry {
   total_agents: number;
   total_messages: number | null;
   p99_latency_ms: number | null;
+  health_status?: string | undefined;
+  server_uptime_seconds?: number | undefined;
+  build_version?: string | undefined;
 }
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {
-  const [usage, agents, mailbox] = await Promise.all([
-    apiClient<any>("/api/v1/admin/ai-usage"),
-    apiClient<any>("/api/v1/agents"),
-    apiClient<any>("/api/v1/admin/mailbox"),
+  const [usage, agents, mailbox, health] = await Promise.all([
+    apiClient<any>("/api/v1/admin/ai-usage").catch(() => null),
+    apiClient<any>("/api/v1/agents").catch(() => null),
+    apiClient<any>("/api/v1/admin/mailbox").catch(() => null),
+    apiClient<any>("/api/v1/health").catch(() => null),
   ]);
 
   const agentList: any[] = Array.isArray(agents) ? agents : agents?.agents ?? [];
-  const totalAgents = agentList.length;
+  const totalAgents = health?.agent_count != null ? health.agent_count : agentList.length;
   const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;
 
   return {
@@ -29,5 +33,8 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
     total_agents: totalAgents,
     total_messages: mailbox?.total_queued != null ? mailbox.total_queued : (Array.isArray(mailbox?.mailboxes) && mailbox.mailboxes.length > 0 ? mailbox.mailboxes.reduce((acc: number, m: any) => acc + (m.depth || 0), 0) : null),
     p99_latency_ms: usage?.p99_latency_ms ?? null,
+    health_status: health?.status ?? undefined,
+    server_uptime_seconds: health?.uptime ?? undefined,
+    build_version: health?.version ?? undefined,
   };
 }

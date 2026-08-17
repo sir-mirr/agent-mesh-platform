@@ -21,7 +21,7 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     const content = typeof msg.content === "string" ? msg.content : (typeof payload.content === "string" ? payload.content : (typeof item.content === "string" ? item.content : (payload ? JSON.stringify(payload) : "[content withheld]")));
     const contentLength = item.content_length ?? (typeof content === "string" ? content.length : 0);
     const timestamp = item.occurred_at || item.stored_at || item.timestamp || item.ts || "—";
-    const signatureVerified = item.attestation != null ? Boolean(item.attestation.valid ?? true) : (item.signature_verified != null ? Boolean(item.signature_verified) : null);
+    const signatureVerified = item.attestation != null && typeof item.attestation.valid === "boolean" ? item.attestation.valid : (item.signature_verified != null ? Boolean(item.signature_verified) : null);
 
     return {
       id: item.event_id || item.id || `evt_${Math.random().toString(36).slice(2, 8)}`,

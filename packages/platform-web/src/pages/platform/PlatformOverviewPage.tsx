@@ -35,25 +35,31 @@ export function PlatformOverviewPage() {
 
   const isOnline = !isError && telemetry !== null;
 
+  const portNumber = typeof window !== "undefined" && window.location.port ? Number(window.location.port) : 3005;
+  const isHealthy = telemetry?.health_status === "ok";
+  const uptimeLabel = telemetry?.server_uptime_seconds != null
+    ? `${Math.floor(telemetry.server_uptime_seconds / 60)}분 ${telemetry.server_uptime_seconds % 60}초`
+    : "정상 가동 중";
+
   const serverNodes = isOnline
     ? [
         {
           id: "node_http_api",
           role: "Hono REST API Gateway (Admin & Auth)",
-          port: 3000,
-          status: "online" as const,
-          statusLabel: "HEALTHY",
+          port: portNumber,
+          status: isHealthy ? ("online" as const) : ("warning" as const),
+          statusLabel: isHealthy ? "HEALTHY" : "DEGRADED",
           activeSockets: telemetry?.active_sockets ?? 0,
-          uptime: "정상 가동 중",
+          uptime: uptimeLabel,
         },
         {
           id: "node_hub_primary",
           role: "WebSocket Hub Master (Mesh Runtime)",
-          port: 3100,
-          status: "online" as const,
-          statusLabel: "HEALTHY",
+          port: portNumber + 100,
+          status: isHealthy ? ("online" as const) : ("warning" as const),
+          statusLabel: isHealthy ? "HEALTHY" : "DEGRADED",
           activeSockets: telemetry?.active_sockets ?? 0,
-          uptime: "정상 가동 중",
+          uptime: uptimeLabel,
         },
       ]
     : [];

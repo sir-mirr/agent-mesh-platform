@@ -288,23 +288,25 @@ export function TopologyPage() {
         memberIds.push(agentIdentity);
       }
 
-      // Member internal loop edges
-      for (let i = 0; i < memberIds.length; i++) {
-        const nextIdx = (i + 1) % memberIds.length;
-        const fromId = memberIds[i] ?? "";
-        const toId = memberIds[nextIdx] ?? "";
-        const nA = nodeDict[fromId];
-        const nB = nodeDict[toId];
-        if (nA && nB && fromId && toId) {
-          edgeList.push({
-            id: `edge-${fromId}-${toId}`,
-            from: fromId,
-            to: toId,
-            d: `M ${nA.x},${nA.y} L ${nB.x},${nB.y}`,
-            type: "member-edge",
-          });
-          nA.directPeers.push(toId);
-          nB.directPeers.push(fromId);
+      // Member internal loop edges (only for 2+ members)
+      if (memberIds.length > 1) {
+        for (let i = 0; i < memberIds.length; i++) {
+          const nextIdx = (i + 1) % memberIds.length;
+          const fromId = memberIds[i] ?? "";
+          const toId = memberIds[nextIdx] ?? "";
+          const nA = nodeDict[fromId];
+          const nB = nodeDict[toId];
+          if (nA && nB && fromId && toId && fromId !== toId) {
+            edgeList.push({
+              id: `edge-${cfg.id}-${fromId}-${toId}-${i}`,
+              from: fromId,
+              to: toId,
+              d: `M ${nA.x},${nA.y} L ${nB.x},${nB.y}`,
+              type: "member-edge",
+            });
+            nA.directPeers.push(toId);
+            nB.directPeers.push(fromId);
+          }
         }
       }
 
