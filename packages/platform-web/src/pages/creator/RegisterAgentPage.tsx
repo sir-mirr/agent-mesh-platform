@@ -12,46 +12,26 @@ import {
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { AgentPairingModal, type PendingAgentRequest } from "@/components/feedback/AgentPairingModal.tsx";
 
-const MOCK_PENDING_QUEUE: PendingAgentRequest[] = [
-  {
-    id: "req_01",
-    identity: "agt_settlement_04",
-    name: "Automated Settlement Agent",
-    groupName: "Billing Core",
-    requestedAt: "1분 전",
-    fingerprint: "sha256:4kvL9XzN81pQm6wY3vT8jKl19...",
-    status: "pending",
-  },
-  {
-    id: "req_02",
-    identity: "agt_analyzer_05",
-    name: "Realtime Log Analyzer",
-    groupName: "Analytics Group",
-    requestedAt: "5분 전",
-    fingerprint: "sha256:9pxM1TaW72rKn4vE1aB8yUo42...",
-    status: "pending",
-  },
-];
-
 import { fetchPendingKeys, createPairingCodeApi, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
 
 export function RegisterAgentPage() {
   const { t } = useI18n();
-  const [targetIdentity, setTargetIdentity] = useState("agt_settlement_04");
+  const [targetIdentity, setTargetIdentity] = useState("");
   const [selectedTtl, setSelectedTtl] = useState(300);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [ttl, setTtl] = useState<number>(300);
   const [copied, setCopied] = useState<boolean>(false);
-  const [pendingList, setPendingList] = useState<PendingAgentRequest[]>(MOCK_PENDING_QUEUE);
+  const [pendingList, setPendingList] = useState<PendingAgentRequest[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [modalRequest, setModalRequest] = useState<PendingAgentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Fetch real pending proposals on mount
   React.useEffect(() => {
-    fetchPendingKeys().then((proposals) => {
-      if (proposals && proposals.length > 0) {
+    fetchPendingKeys()
+      .then((proposals) => {
         setPendingList(
-          proposals.map((p) => ({
+          (proposals || []).map((p) => ({
             id: `req_${p.fingerprint.slice(0, 10)}`,
             identity: p.identity,
             name: `${p.identity} (Agent)`,
@@ -61,8 +41,8 @@ export function RegisterAgentPage() {
             status: "pending",
           }))
         );
-      }
-    });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const handleGenerateCode = async (e: React.FormEvent) => {
@@ -75,14 +55,8 @@ export function RegisterAgentPage() {
       setCopied(false);
       setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
     } catch (err: any) {
-      // Fallback in case of mock/offline
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const cleanId = targetIdentity.replace(/^agt_/, "").toUpperCase();
-      const code = `PAIR-${randomSuffix}-${cleanId}`;
-      setGeneratedCode(code);
-      setTtl(selectedTtl);
-      setCopied(false);
-      setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
+      setGeneratedCode(null);
+      setToastMessage(`페어링 코드 발급 실패: ${err.message}`);
     }
   };
 

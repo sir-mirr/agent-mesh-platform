@@ -26,16 +26,16 @@ export function PlatformOverviewPage() {
       role: "Hono REST API Gateway (Admin & Auth)",
       port: 3000,
       status: "online" as const,
-      activeSockets: telemetry?.active_sockets ?? 8,
-      uptime: "3일 14시간",
+      activeSockets: telemetry?.active_sockets ?? 0,
+      uptime: "가동 중",
     },
     {
       id: "node_hub_primary",
       role: "WebSocket Hub Master (Mesh Runtime)",
       port: 3100,
       status: "online" as const,
-      activeSockets: telemetry?.active_sockets ?? 108,
-      uptime: "3일 14시간",
+      activeSockets: telemetry?.active_sockets ?? 0,
+      uptime: "가동 중",
     },
   ];
 
@@ -107,26 +107,26 @@ export function PlatformOverviewPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard label={t("server.kpi.health", "허브 헬스체크")} value="200 OK" color="var(--color-success)" icon="💓" />
-        <KpiCard label={t("server.kpi.sockets", "총 온라인 소켓")} value={String(telemetry?.active_sockets ?? 8)} subValue={t("server.kpi.socketsSub", "WebSocket 활성")} color="var(--color-primary)" icon="⚡" />
-        <KpiCard label={t("server.kpi.throughput", "전체 초당 처리량")} value="128 msg/s" subValue={t("server.kpi.throughputSub", "정상 버퍼")} color="var(--color-leased)" icon="📡" />
-        <KpiCard label={t("server.kpi.latency", "허브 지연 (p95)")} value={`${telemetry?.p99_latency_ms || 1.2} ms`} subValue={t("server.kpi.latencySub", "초저지연 라우팅")} color="#6366F1" icon="⏱️" />
+        <KpiCard label={t("server.kpi.sockets", "총 온라인 소켓")} value={String(telemetry?.active_sockets ?? 0)} subValue={t("server.kpi.socketsSub", "WebSocket 활성")} color="var(--color-primary)" icon="⚡" />
+        <KpiCard label={t("server.kpi.throughput", "전체 초당 처리량")} value={`${telemetry?.total_messages ?? 0} msg`} subValue={t("server.kpi.throughputSub", "실시간 메시지")} color="var(--color-leased)" icon="📡" />
+        <KpiCard label={t("server.kpi.latency", "허브 지연 (p95)")} value={`${telemetry?.p99_latency_ms || 0} ms`} subValue={t("server.kpi.latencySub", "초저지연 라우팅")} color="#6366F1" icon="⏱️" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <TelemetryCard
           label="허브 프로세스 CPU"
-          currentValue={`${telemetry?.cpu_usage_pct ?? 12.4}%`}
-          percentage={telemetry?.cpu_usage_pct ?? 12.4}
+          currentValue={`${telemetry?.cpu_usage_pct ?? 0}%`}
+          percentage={telemetry?.cpu_usage_pct ?? 0}
           barColor="var(--color-success)"
           statusText="정상 부하 범위"
         />
         <TelemetryCard
           label="허브 메모리 점유"
-          currentValue={`${telemetry?.memory_used_mb ?? 142} MB`}
+          currentValue={`${telemetry?.memory_used_mb ?? 0} MB`}
           maxLabel="2,048 MB"
-          percentage={((telemetry?.memory_used_mb ?? 142) / 2048) * 100}
+          percentage={((telemetry?.memory_used_mb ?? 0) / 2048) * 100}
           barColor="var(--color-primary)"
-          statusText="메모리 안정"
+          statusText="메모리 모니터링"
         />
       </div>
 

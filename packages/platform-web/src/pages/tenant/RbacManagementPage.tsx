@@ -15,38 +15,6 @@ interface OrgMember {
   capabilities: string[];
 }
 
-const INITIAL_MEMBERS: OrgMember[] = [
-  {
-    id: "usr_alice",
-    name: "Alice Kim (보안 감사관)",
-    email: "alice@acme.corp",
-    role: "Audit Officer",
-    capabilities: ["audit.read_content", "audit.read_metadata"],
-  },
-  {
-    id: "usr_bob",
-    name: "Bob Lee (그룹 운영자)",
-    email: "bob@acme.corp",
-    role: "Group Manager",
-    capabilities: ["group.manage", "audit.read_metadata"],
-  },
-  {
-    id: "usr_carol",
-    name: "Carol Park (테넌트 총괄)",
-    email: "carol@acme.corp",
-    role: "Tenant Admin",
-    capabilities: [
-      "key.approve",
-      "agent.teardown",
-      "group.manage",
-      "policy.send_restrict",
-      "audit.read_content",
-      "audit.read_metadata",
-      "role.assign",
-    ],
-  },
-];
-
 const ALL_CAPABILITIES = [
   { id: "key.approve", label: "키 승인/거부" },
   { id: "agent.teardown", label: "Teardown (§9.3)" },
@@ -57,13 +25,33 @@ const ALL_CAPABILITIES = [
 ];
 
 import { fetchPendingUsers, approveUserApi, denyUserApi, type PendingUser } from "@/api/users.ts";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 import { Button } from "@/components/index.ts";
 
 export function RbacManagementPage() {
   const { t } = useI18n();
-  const [members, setMembers] = useState<OrgMember[]>(INITIAL_MEMBERS);
+  const { user } = useAuth();
+  const [members, setMembers] = useState<OrgMember[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Load real user and pending users on mount
+  React.useEffect(() => {
+    if (user) {
+      setMembers([
+        {
+          id: user.id || "usr_current",
+          name: `${user.name} (${user.role})`,
+          email: user.email || `${user.name.toLowerCase()}@mesh.local`,
+          role: user.role,
+          capabilities: user.capabilities || ["key.approve", "group.manage", "audit.read_content", "audit.read_metadata", "role.assign"],
+        },
+      ]);
+    }
+    fetchPendingUsers().then((list) => {
+      setPendingUsers(list || []);
+    });
+  }, [user]);
 
   // Load real pending users on mount
   React.useEffect(() => {
