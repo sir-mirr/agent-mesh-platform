@@ -142,11 +142,11 @@
 - **화면 ID**: `SCR-10`
 - **라우트**: `/platform/telemetry`
 - **권한 요건**: `server.inspect`
-- **데이터 소스**: `GET /api/v1/admin/ai-usage`
+- **데이터 소스**: 행동 지표 6개 (D-1 결정: CPU/RSS/heap 제외 및 행동 기반 메트릭으로 대체 예정)
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
-| 실시간 텔레메트리 게이지 | CPU %, RSS RAM MB, 활성 소켓, p99 지연 | `fetchTelemetry()` | • 에러/단절: 에러 메시지 렌더 (T-127)<br>• 정상: 실측 게이지 바 및 진단 로그 | `SC-SCR10-01` |
+| 실시간 텔레메트리 현황 | 행동 기반 지표 6종 (대기키, 최고경과, 서명거절, rate limit, egress거절, 수락수) | `fetchTelemetry()` | *(D-1 야간 결정: 엔드포인트 구현 대기 중, 구현 시 연동)* | `SC-SCR10-01` (D-1 보류) |
 
 ---
 
@@ -182,7 +182,8 @@
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
-| 감사 로그 데이터 테이블 | Timestamp, Route, Length, Body, Sig | `fetchAuditEvents()` | • 에러: `⚠️ errorMessage`<br>• 0건: "감사 로그가 없습니다."<br>• `audit.read.content` 미보유: `[content withheld]` 마스킹<br>• 권한 보유: 본문 원문 열람 | `SC-SCR13-01` |
+| 감사 로그 데이터 테이블 | Timestamp, Route, Length, Body, Sig | `fetchAuditEvents()` | • 에러: `⚠️ errorMessage`<br>• 0건: "감사 로그가 없습니다."<br>• 정상: 메타데이터 스트림 렌더 | `SC-SCR13-01` |
+| 감사 본문 프라이버시 마스킹 | 본문 페이로드 및 서명 | `fetchAuditEvents()` | • `audit.read.content` 미보유: `[content withheld]` 마스킹<br>• 권한 보유: 본문 원문 열람 | `SC-SCR13-02` |
 
 ---
 
