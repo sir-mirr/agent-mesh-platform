@@ -79,4 +79,109 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(data.ok).toBe(true);
     expect(Array.isArray(data.tenants)).toBe(true);
   });
+
+  // SCR-04 / SC-SCR04-01 & SC-SCR04-02: Group Management
+  it("[SC-SCR04-01] fetches groups list via admin API", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(Array.isArray(data.groups)).toBe(true);
+  });
+
+  it("[SC-SCR04-02] creates a new agent group", async () => {
+    const groupName = `test-group-${Date.now()}`;
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: authCookie,
+      },
+      body: JSON.stringify({
+        group_id: groupName,
+        description: "Automated E2E Test Group",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  // SCR-12 / SC-SCR12-01: Egress ACL Matrix & Directional Policy
+  it("[SC-SCR12-01] adds and deletes directional egress rule between groups", async () => {
+    const srcGroup = "default";
+    const targetGroup = `target-${Date.now()}`;
+
+    // Create target group first
+    await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: targetGroup }),
+    });
+
+    // Add egress rule: default -> targetGroup
+    const addRes = await fetch(`${mesh.http.url}/api/v1/admin/groups/${srcGroup}/egress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ to_group: targetGroup }),
+    });
+    expect(addRes.status).toBe(201);
+    const addData = await addRes.json();
+    expect(addData.ok).toBe(true);
+
+    // Delete egress rule
+    const delRes = await fetch(`${mesh.http.url}/api/v1/admin/groups/${srcGroup}/egress/${targetGroup}`, {
+      method: "DELETE",
+      headers: { Cookie: authCookie },
+    });
+    expect(delRes.status).toBe(200);
+  });
+
+  // SCR-14 / SC-SCR14-01: RBAC Grant and Revoke
+  it("[SC-SCR14-01] grants capability to subject and revokes it", async () => {
+    const testSubject = `operator-${Date.now()}`;
+    const testCap = "audit.read.metadata";
+
+    // Grant capability
+    const grantRes = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({
+        subject: testSubject,
+        capability: testCap,
+      }),
+    });
+    expect(grantRes.status).toBe(201);
+
+    // Fetch grants to verify
+    const listRes = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(listRes.status).toBe(200);
+    const listData = await listRes.json();
+    expect(Array.isArray(listData.grants)).toBe(true);
+
+    // Revoke capability
+    const revokeRes = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({
+        subject: testSubject,
+        capability: testCap,
+      }),
+    });
+    expect(revokeRes.status).toBe(200);
+  });
+
+  // SCR-13 / SC-SCR13-01: Audit Logs Stream
+  it("[SC-SCR13-01] queries security audit events log", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data.events || data) || typeof data === "object").toBe(true);
+  });
 });

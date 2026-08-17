@@ -27,7 +27,7 @@ export async function fetchGroups(): Promise<GroupItem[]> {
 export async function createGroupApi(name: string, description?: string): Promise<{ ok: boolean; group?: any }> {
   return await apiClient<{ ok: boolean; group?: any }>("/api/v1/admin/groups", {
     method: "POST",
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ group_id: name, description }),
   });
 }
 
