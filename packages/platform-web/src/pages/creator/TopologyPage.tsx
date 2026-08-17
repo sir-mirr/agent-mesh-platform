@@ -57,9 +57,6 @@ const MASTER_CLUSTERS_CONFIG: ClusterConfig[] = [
 
 const ICONS_PALETTE = ["🤖", "🔬", "💻", "⚡", "📦", "🛡️", "📜", "🔑", "📊", "🧠", "💡", "📝", "🏆", "🚀", "💬", "🔍", "⚙️", "👁️", "🔐"];
 
-const MINIMAP_W = 200;
-const MINIMAP_H = 110;
-
 export function TopologyPage() {
   const [simStage, setSimStage] = useState<number>(10);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -68,14 +65,17 @@ export function TopologyPage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // Viewport dimensions
+  const [viewportDim, setViewportDim] = useState<{ width: number; height: number }>({ width: 1200, height: 640 });
+
   // Pan / Zoom Transformation State
   const [panX, setPanX] = useState<number>(0);
   const [panY, setPanY] = useState<number>(0);
-  const [scale, setScale] = useState<number>(0.42);
+  const [scale, setScale] = useState<number>(0.38);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Synchronous ref for high-precision cursor-centered zoom & mouse events
-  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 0, panY: 0, scale: 0.42 });
+  const transformRef = useRef<{ panX: number; panY: number; scale: number }>({ panX: 0, panY: 0, scale: 0.38 });
   const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number }>({ x: 0, y: 0, panX: 0, panY: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const minimapRef = useRef<SVGSVGElement | null>(null);
@@ -84,6 +84,19 @@ export function TopologyPage() {
   useEffect(() => {
     transformRef.current = { panX, panY, scale };
   }, [panX, panY, scale]);
+
+  // Update viewport dimensions on resize
+  useEffect(() => {
+    const updateDim = () => {
+      if (viewportRef.current) {
+        const rect = viewportRef.current.getBoundingClientRect();
+        setViewportDim({ width: rect.width, height: rect.height });
+      }
+    };
+    updateDim();
+    window.addEventListener("resize", updateDim);
+    return () => window.removeEventListener("resize", updateDim);
+  }, []);
 
   const subNavItems = [
     { label: "내 에이전트", href: "/creator", icon: "🤖" },
@@ -363,7 +376,7 @@ export function TopologyPage() {
   // Calculate the Fit Scale for the current viewport (with exact 5% margin)
   const getFitTransform = useCallback(() => {
     const viewport = viewportRef.current;
-    if (!viewport) return { scale: 0.42, panX: 0, panY: 0 };
+    if (!viewport) return { scale: 0.38, panX: 0, panY: 0 };
     const rect = viewport.getBoundingClientRect();
     const vw = rect.width || 1200;
     const vh = rect.height || 640;
@@ -376,7 +389,7 @@ export function TopologyPage() {
     const panX = vw / 2 - bounds.entityCX * fitScale;
     const panY = vh / 2 - bounds.entityCY * fitScale;
 
-    return { scale: fitScale, panX, panY };
+    return { scale: fitScale, panX, panY, vw, vh };
   }, [bounds]);
 
   // Boundary Clamping Function (Constrain panning inside world bounds)
@@ -450,9 +463,9 @@ export function TopologyPage() {
       const worldX = (mouseX - curPanX) / curScale;
       const worldY = (mouseY - curPanY) / curScale;
 
-      // Minimum zoom level is strictly capped at fitScale (or 95% of fitScale) so it never zooms out to a tiny spot with excessive margin!
+      // Minimum zoom level is strictly capped at fitScale so it never zooms out to a tiny spot with excessive margin!
       const { scale: fitScale } = getFitTransform();
-      const minScale = fitScale * 0.98;
+      const minScale = fitScale * 0.99;
       const maxScale = 2.5;
 
       const nextScale = Math.min(Math.max(curScale * zoomFactor, minScale), maxScale);
@@ -510,12 +523,12 @@ export function TopologyPage() {
       if (!miniSvg || !viewport) return;
 
       const miniRect = miniSvg.getBoundingClientRect();
-      const clickX = Math.max(0, Math.min(clientX - miniRect.left, MINIMAP_W));
-      const clickY = Math.max(0, Math.min(clientY - miniRect.top, MINIMAP_H));
+      const clickX = Math.max(0, Math.min(clientX - miniRect.left, miniRect.width));
+      const clickY = Math.max(0, Math.min(clientY - miniRect.top, miniRect.height));
 
       // Target world center point clicked on minimap
-      const targetWorldX = bounds.worldMinX + (clickX / MINIMAP_W) * bounds.worldW;
-      const targetWorldY = bounds.worldMinY + (clickY / MINIMAP_H) * bounds.worldH;
+      const targetWorldX = bounds.worldMinX + (clickX / miniRect.width) * bounds.worldW;
+      const targetWorldY = bounds.worldMinY + (clickY / miniRect.height) * bounds.worldH;
 
       const vpRect = viewport.getBoundingClientRect();
       const curScale = transformRef.current.scale;
@@ -594,7 +607,7 @@ export function TopologyPage() {
     const curScale = transformRef.current.scale;
 
     const { scale: fitScale } = getFitTransform();
-    const minScale = fitScale * 0.98;
+    const minScale = fitScale * 0.99;
     const nextScale = Math.max(curScale * 0.8, minScale);
 
     const worldCenterX = (vw / 2 - transformRef.current.panX) / curScale;
@@ -631,36 +644,28 @@ export function TopologyPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Minimap Viewport indicator rectangle coordinates with EXACT inner padding clamping
-  const minimapViewRect = useMemo(() => {
-    const rect = viewportRef.current?.getBoundingClientRect();
-    const vw = rect?.width || 1000;
-    const vh = rect?.height || 600;
+  // SVG-Native Minimap Lens calculation (Exact world coordinate bounds)
+  const minimapLensProps = useMemo(() => {
+    const vw = viewportDim.width;
+    const vh = viewportDim.height;
 
-    const miniScaleX = MINIMAP_W / bounds.worldW;
-    const miniScaleY = MINIMAP_H / bounds.worldH;
+    // Viewport boundaries in world coordinates
+    const worldLeft = -panX / scale;
+    const worldTop = -panY / scale;
+    const worldWidth = vw / scale;
+    const worldHeight = vh / scale;
 
-    const rawLeft = (-panX / scale - bounds.worldMinX) * miniScaleX;
-    const rawTop = (-panY / scale - bounds.worldMinY) * miniScaleY;
-    const rawWidth = (vw / scale) * miniScaleX;
-    const rawHeight = (vh / scale) * miniScaleY;
+    // Clamped strictly to the world bounding box
+    const x = Math.max(bounds.worldMinX, worldLeft);
+    const y = Math.max(bounds.worldMinY, worldTop);
+    const right = Math.min(bounds.worldMaxX, worldLeft + worldWidth);
+    const bottom = Math.min(bounds.worldMaxY, worldTop + worldHeight);
 
-    // Strictly clamp left and top within [0, MINIMAP_W]
-    const left = Math.max(0, Math.min(rawLeft, MINIMAP_W));
-    const top = Math.max(0, Math.min(rawTop, MINIMAP_H));
-    const right = Math.max(0, Math.min(rawLeft + rawWidth, MINIMAP_W));
-    const bottom = Math.max(0, Math.min(rawTop + rawHeight, MINIMAP_H));
+    const width = Math.max(bounds.worldW * 0.05, right - x);
+    const height = Math.max(bounds.worldH * 0.05, bottom - y);
 
-    const width = Math.max(2, right - left);
-    const height = Math.max(2, bottom - top);
-
-    return {
-      x: left,
-      y: top,
-      width,
-      height,
-    };
-  }, [panX, panY, scale, bounds]);
+    return { x, y, width, height };
+  }, [panX, panY, scale, bounds, viewportDim]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1116,23 +1121,24 @@ export function TopologyPage() {
           </button>
         </div>
 
-        {/* ── Interactive Mini-Map with Drag/Click Navigation (Bottom-Left) ── */}
+        {/* ── Interactive Mini-Map (Bottom-Left) — 100% Pure Vector SVG Lens ── */}
         <div
           className="minimap-container"
           style={{
             position: "absolute",
             bottom: 20,
             left: 20,
-            width: MINIMAP_W,
-            height: MINIMAP_H,
+            width: 200,
+            height: 110,
             background: "rgba(255, 255, 255, 0.96)",
             backdropFilter: "blur(10px)",
-            border: "1.5px solid var(--color-border)",
+            border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
-            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
-            overflow: "hidden", // Strictly prevents indicator from exceeding container
+            boxShadow: "0 4px 14px rgba(15, 23, 42, 0.1)",
+            overflow: "hidden",
             zIndex: 40,
             cursor: "crosshair",
+            userSelect: "none",
           }}
           onMouseDown={handleMinimapMouseDown}
           title="미니맵: 클릭 또는 드래그하여 해당 구역으로 즉시 이동"
@@ -1141,6 +1147,7 @@ export function TopologyPage() {
             ref={minimapRef}
             style={{ width: "100%", height: "100%", display: "block" }}
             viewBox={`${bounds.worldMinX} ${bounds.worldMinY} ${bounds.worldW} ${bounds.worldH}`}
+            preserveAspectRatio="none"
           >
             {/* Cluster Mini Circles */}
             {clusters.map((c) => (
@@ -1151,26 +1158,23 @@ export function TopologyPage() {
                 r={c.r}
                 fill={c.fill}
                 stroke={c.stroke}
-                strokeWidth={6}
+                strokeWidth={bounds.worldW / 350}
               />
             ))}
-          </svg>
 
-          {/* Interactive Viewport Indicator Blue Rectangle (Strictly Box-Bounded) */}
-          <div
-            style={{
-              position: "absolute",
-              left: minimapViewRect.x,
-              top: minimapViewRect.y,
-              width: minimapViewRect.width,
-              height: minimapViewRect.height,
-              border: "1.5px solid #2563EB",
-              background: "rgba(37, 99, 235, 0.2)",
-              borderRadius: 2,
-              pointerEvents: "none",
-              boxSizing: "border-box",
-            }}
-          />
+            {/* Viewport Indicator Lens (Clean Vector SVG Rect strictly contained within world bounds) */}
+            <rect
+              x={minimapLensProps.x}
+              y={minimapLensProps.y}
+              width={minimapLensProps.width}
+              height={minimapLensProps.height}
+              fill="rgba(37, 99, 235, 0.15)"
+              stroke="#2563EB"
+              strokeWidth={bounds.worldW / 260}
+              rx={bounds.worldW / 120}
+              ry={bounds.worldW / 120}
+            />
+          </svg>
         </div>
 
         {/* ── Slide-out Node Inspector Drawer (Right Side) ── */}
