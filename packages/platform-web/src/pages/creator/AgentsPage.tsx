@@ -85,7 +85,7 @@ export function AgentsPage() {
     },
     {
       key: "groupName",
-      header: "소속 스웜 그룹",
+      header: "소속 그룹",
       render: (item: AgentItem) => (
         <span
           style={{

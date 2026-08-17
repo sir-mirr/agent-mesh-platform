@@ -192,9 +192,9 @@ export function TopologyPage() {
           if (cfg.id === "core") {
             avatarImg = "/assets/agent-fin.png";
             displayName = "core-lead (핀둥이)";
-            desc = "코어 플랫폼 총괄 오케스트레이터. 전체 스웜 라우팅 조율, 글로벌 네임스페이스 관리 및 테넌트 메시지 디스패치 총괄.";
+            desc = "코어 플랫폼 총괄 오케스트레이터. 전체 그룹 라우팅 조율, 글로벌 네임스페이스 관리 및 테넌트 메시지 디스패치 총괄.";
           } else if (cfg.id === "research") {
-            desc = "연구 및 심층 추론 스웜 리드. 분산 지식 그래프 탐색 및 멀티-홉 추론 파이프라인 총괄.";
+            desc = "연구 및 심층 추론 그룹 리드. 분산 지식 그래프 탐색 및 멀티-홉 추론 파이프라인 총괄.";
           } else if (cfg.id === "delivery") {
             desc = "실행 및 배달 메시 오케스트레이터. 분산 비동기 태스크 큐 스케줄링 및 최종 작업 아티팩트 배포 총괄.";
           } else if (cfg.id === "security") {
@@ -206,9 +206,9 @@ export function TopologyPage() {
           } else if (cfg.id === "human") {
             desc = "휴먼 오퍼레이터 길드 총괄. 중요 시스템 변경 결재 및 Human-in-the-loop 검토 큐 관리.";
           } else if (cfg.id === "refactor") {
-            desc = "자율 코드 리팩토링 스웜 총괄. 코드베이스 정적 분석 및 리팩토링 최적화 계획 수립.";
+            desc = "자율 코드 리팩토링 그룹 총괄. 코드베이스 정적 분석 및 리팩토링 최적화 계획 수립.";
           } else if (cfg.id === "vision") {
-            desc = "멀티모달 비전 & 오디오 스웜 리드. 영상/음성 데이터의 다차원 멀티모달 임베딩 변환 총괄.";
+            desc = "멀티모달 비전 & 오디오 그룹 리드. 영상/음성 데이터의 다차원 멀티모달 임베딩 변환 총괄.";
           } else if (cfg.id === "audit") {
             desc = "컴플라이언스 & 감사 하이브 총괄. SPEC 규정 준수 검증 및 감사 증적 불변 기록 보관.";
           }
@@ -226,7 +226,7 @@ export function TopologyPage() {
           } else if (cfg.id === "core" && i === 4) {
             avatarImg = "/assets/agent-assistant.png";
             displayName = "core-agent-5 (아름이)";
-            desc = "스웜 간 크로스-메시지 배달 영수증 암호학적 서명 검증 및 감사 로그 정합성 보증 어시스턴트.";
+            desc = "그룹 간 크로스-메시지 배달 영수증 암호학적 서명 검증 및 감사 로그 정합성 보증 어시스턴트.";
           } else {
             // Specialized member description per cluster
             if (cfg.id === "core") {
@@ -250,12 +250,12 @@ export function TopologyPage() {
             } else if (cfg.id === "audit") {
               desc = `트랜잭션 전자 서명 영수증 대조, 권한 변경 이력 감사 및 테넌트 데이터 유출 방지 검증 노드 (${name}).`;
             } else {
-              desc = `${cfg.name} 스웜 소속 자율 에이전트 노드 (${name}).`;
+              desc = `${cfg.name} 그룹 소속 자율 에이전트 노드 (${name}).`;
             }
           }
         }
         if (!displayName) displayName = name;
-        if (!desc) desc = `${cfg.name} 스웜 소속 활성 에이전트 노드입니다.`;
+        if (!desc) desc = `${cfg.name} 그룹 소속 활성 에이전트 노드입니다.`;
 
         // Radial orbital layout coordinates
         let nx = cfg.cx;
@@ -918,7 +918,7 @@ export function TopologyPage() {
       {/* Clean Production Page Header */}
       <PageHeader
         title="에이전트 토폴로지"
-        subtitle={`실시간 연결된 ${clusters.length}개 스웜 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`}
+        subtitle={`실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`}
       />
 
       {/* Main Interactive Topology Viewport Container */}
@@ -970,7 +970,7 @@ export function TopologyPage() {
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
           <span>Gateways: {clusters.length}</span>
           <span style={{ color: "var(--color-text-muted)" }}>·</span>
-          <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 스웜 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
+          <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title="SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다">
             Egress: Active
           </span>
         </div>
@@ -1005,7 +1005,7 @@ export function TopologyPage() {
               boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
             }}
           >
-            <option value="all">전체 스웜 보기 ({clusters.length})</option>
+            <option value="all">전체 그룹 보기 ({clusters.length})</option>
             {clusters.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.count})
@@ -1604,7 +1604,7 @@ export function TopologyPage() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-            스웜 스케일 단계:
+            그룹 스케일 단계:
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input
@@ -1647,7 +1647,7 @@ export function TopologyPage() {
           </div>
 
           <Button variant="secondary" size="sm" onClick={() => setSimStage(10)}>
-            ⚡ 10-스웜 풀 로드 (139노드)
+            ⚡ 10-그룹 풀 로드 (139노드)
           </Button>
         </div>
       </div>

@@ -73,7 +73,7 @@ export function Sidebar({
           icon: "🤖",
         },
         {
-          label: "스웜 그룹 관리",
+          label: "그룹 관리",
           description: "그룹 생성 및 에이전트 배속/이동",
           href: "/creator/groups",
           icon: "👥",

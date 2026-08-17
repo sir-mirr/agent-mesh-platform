@@ -77,7 +77,7 @@ export function RegisterAgentPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                초기 배속 스웜 그룹
+                초기 배속 그룹
               </label>
               <select
                 value={selectedGroup}

@@ -13,7 +13,7 @@ export interface BreadcrumbsProps {
 const ROUTE_BREADCRUMB_MAP: Record<string, BreadcrumbItem[]> = {
   "/": [{ label: "홈", href: "/" }, { label: "대시보드" }],
   "/creator": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "소유 에이전트" }],
-  "/creator/groups": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "스웜 그룹 관리" }],
+  "/creator/groups": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "그룹 관리" }],
   "/creator/topology": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "에이전트 토폴로지" }],
   "/creator/playground": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "메시지 플레이그라운드" }],
   "/creator/lease-queue": [{ label: "홈", href: "/" }, { label: "에이전트 운영 스튜디오", href: "/creator" }, { label: "소켓리스 큐" }],
@@ -23,7 +23,7 @@ const ROUTE_BREADCRUMB_MAP: Record<string, BreadcrumbItem[]> = {
   "/platform/telemetry": [{ label: "홈", href: "/" }, { label: "실시간 서버 모니터링", href: "/platform" }, { label: "노드 텔레메트리" }],
   "/platform/tenants": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/platform/tenants" }, { label: "테넌트 트래픽 격리" }],
 
-  "/tenant/groups": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/tenant/groups" }, { label: "스웜 그룹 거버넌스" }],
+  "/tenant/groups": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/tenant/groups" }, { label: "그룹 거버넌스" }],
   "/tenant/egress": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/tenant/groups" }, { label: "Egress ACL 매트릭스" }],
   "/tenant/audit": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/tenant/groups" }, { label: "보안 감사 로그" }],
   "/tenant/rbac": [{ label: "홈", href: "/" }, { label: "플랫폼 거버넌스", href: "/tenant/groups" }, { label: "RBAC 권한 관리" }],

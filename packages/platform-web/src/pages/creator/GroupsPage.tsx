@@ -30,7 +30,7 @@ const INITIAL_GROUPS: SwarmGroup[] = [
   {
     id: "grp_billing",
     name: "Billing Core",
-    description: "정산 및 인보이스 결제 처리 스웜",
+    description: "정산 및 인보이스 결제 처리 그룹",
     memberCount: 1,
     members: ["agt_finance_02"],
     createdAt: "2026-08-15 11:45:00",
@@ -64,7 +64,7 @@ export function GroupsPage() {
     const newGroup: SwarmGroup = {
       id: `grp_${Date.now()}`,
       name: newGroupName,
-      description: newGroupDesc || "사용자 생성 스웜 그룹",
+      description: newGroupDesc || "사용자 생성 에이전트 그룹",
       memberCount: 0,
       members: [],
       createdAt: new Date().toISOString().replace("T", " ").substring(0, 19),
@@ -74,7 +74,7 @@ export function GroupsPage() {
     setIsCreateOpen(false);
     setNewGroupName("");
     setNewGroupDesc("");
-    setToastMessage(`스웜 그룹 [${newGroup.name}]이(가) 성공적으로 생성되었습니다.`);
+    setToastMessage(`그룹 [${newGroup.name}]이(가) 성공적으로 생성되었습니다.`);
   };
 
   const handleAssignAgent = (e: React.FormEvent) => {
@@ -98,7 +98,7 @@ export function GroupsPage() {
   const columns = [
     {
       key: "name",
-      header: "스웜 그룹 명 / ID",
+      header: "그룹 명 / ID",
       render: (item: SwarmGroup) => (
         <div>
           <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
@@ -182,11 +182,11 @@ export function GroupsPage() {
         suiteTag="STUDIO SUITE"
         suiteBadgeColor="leased"
         screenId="25"
-        title="스웜 그룹 관리 & 에이전트 배속"
-        subtitle="스웜 그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)"
+        title="그룹 관리 & 에이전트 배속"
+        subtitle="그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)"
         actions={
           <Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
-            ➕ 스웜 그룹 생성
+            ➕ 그룹 생성
           </Button>
         }
       />
@@ -209,18 +209,18 @@ export function GroupsPage() {
       <Modal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="신규 스웜 그룹 생성"
+        title="신규 그룹 생성"
       >
         <form onSubmit={handleCreateGroup} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input
-            label="스웜 그룹 이름"
+            label="그룹 이름"
             placeholder="예: Analytics Swarm"
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             required
           />
           <Input
-            label="스웜 그룹 설명"
+            label="그룹 설명"
             placeholder="그룹의 역할 및 격리 목적을 입력하세요"
             value={newGroupDesc}
             onChange={(e) => setNewGroupDesc(e.target.value)}

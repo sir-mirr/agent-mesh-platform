@@ -6,7 +6,7 @@
 export type Capability =
   | "key.approve"          // Ed25519 공개키 승인/거부
   | "agent.teardown"       // 영구 신원 삭제 (SPEC § 9.3)
-  | "group.manage"         // 스웜 그룹 생성/에이전트 이동
+  | "group.manage"         // 그룹 생성/에이전트 이동
   | "policy.send_restrict" // 그룹 간 이그레스 ACL 제어
   | "audit.read_content"   // 메시지 원문 열람
   | "audit.read_metadata"  // 메타데이터([content withheld]) 열람
@@ -16,7 +16,7 @@ export type Capability =
 
 export type UserRole =
   | "AGENT_OPERATOR"       // 일반 에이전트 생성/운영자
-  | "GROUP_ADMIN"          // 스웜 그룹 관리자
+  | "GROUP_ADMIN"          // 그룹 관리자
   | "TENANT_ADMIN"         // 테넌트 조직 관리자
   | "PLATFORM_ADMIN";      // 플랫폼 인프라 슈퍼 관리자
 

@@ -24,9 +24,9 @@ const INITIAL_MEMBERS: OrgMember[] = [
   },
   {
     id: "usr_bob",
-    name: "Bob Lee (스웜 운영자)",
+    name: "Bob Lee (그룹 운영자)",
     email: "bob@acme.corp",
-    role: "Swarm Manager",
+    role: "Group Manager",
     capabilities: ["group.manage", "audit.read_metadata"],
   },
   {
@@ -49,7 +49,7 @@ const INITIAL_MEMBERS: OrgMember[] = [
 const ALL_CAPABILITIES = [
   { id: "key.approve", label: "키 승인/거부" },
   { id: "agent.teardown", label: "Teardown (§9.3)" },
-  { id: "group.manage", label: "스웜 그룹 관리" },
+  { id: "group.manage", label: "그룹 관리" },
   { id: "policy.send_restrict", label: "이그레스 ACL 제어" },
   { id: "audit.read_content", label: "본문 원문 열람" },
   { id: "role.assign", label: "조직 RBAC 할당" },

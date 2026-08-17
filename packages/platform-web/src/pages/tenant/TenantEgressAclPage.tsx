@@ -61,7 +61,7 @@ export function TenantEgressAclPage() {
         suiteBadgeColor="leased"
         screenId="27"
         title="그룹 간 이그레스 ACL 행렬"
-        subtitle="Deny-by-default 기반 스웜 그룹 간 방향성(A→B != B→A) 통신 제어 (SPEC § 12 / -32018 EGRESS_DENIED)"
+        subtitle="Deny-by-default 기반 그룹 간 방향성(A→B != B→A) 통신 제어 (SPEC § 12 / -32018 EGRESS_DENIED)"
       />
 
       {toastMessage && (
