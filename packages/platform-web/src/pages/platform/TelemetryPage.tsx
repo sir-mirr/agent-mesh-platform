@@ -15,7 +15,7 @@ export function TelemetryPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
 
-  React.useEffect(() => {
+  const loadTelemetry = () => {
     setIsLoading(true);
     setIsError(false);
     fetchTelemetry()
@@ -28,6 +28,10 @@ export function TelemetryPage() {
         setTelemetry(null);
       })
       .finally(() => setIsLoading(false));
+  };
+
+  React.useEffect(() => {
+    loadTelemetry();
   }, []);
 
   return (
@@ -41,7 +45,7 @@ export function TelemetryPage() {
         title={t("telem.title", "노드 텔레메트리 모니터링")}
         subtitle={t("telem.subtitle", "서버 프로세스 CPU, RAM, 이벤트 루프 지연율 및 실시간 웹소켓 연결 헬스 메트릭")}
         actions={
-          <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+          <Button variant="secondary" size="sm" onClick={loadTelemetry}>
             {t("telem.refreshBtn", "↻ 실시간 갱신")}
           </Button>
         }

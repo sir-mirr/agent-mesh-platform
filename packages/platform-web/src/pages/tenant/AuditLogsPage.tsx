@@ -30,13 +30,18 @@ export function AuditLogsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const canReadContent = hasCapability("audit.read_content");
 
-  // Load real audit events on mount
-  React.useEffect(() => {
+  const loadAuditEvents = () => {
+    setIsLoading(true);
     fetchAuditEvents()
       .then((list) => {
         setEvents(list || []);
       })
       .finally(() => setIsLoading(false));
+  };
+
+  // Load real audit events on mount
+  React.useEffect(() => {
+    loadAuditEvents();
   }, []);
 
   const columns = [
@@ -141,7 +146,7 @@ export function AuditLogsPage() {
         title={t("audit.title", "참가자 본문 감사 스트림")}
         subtitle={t("audit.subtitle", "SPEC § 11.0 프라이버시 경계: audit.read.content 권한 보유자에게만 본문 노출, 미보유 시 [content withheld] 리댁션")}
         actions={
-          <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+          <Button variant="secondary" size="sm" onClick={loadAuditEvents}>
             {t("audit.refreshBtn", "↻ 감사 로그 갱신")}
           </Button>
         }

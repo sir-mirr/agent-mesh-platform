@@ -31,10 +31,13 @@ export function LeaseQueuePage() {
   const { t } = useI18n();
   const [queue, setQueue] = useState<LeaseItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real admin mailbox metrics on mount
   useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     fetchAdminMailbox()
       .then((res) => {
         if (res && res.mailboxes && res.mailboxes.length > 0) {
@@ -50,7 +53,10 @@ export function LeaseQueuePage() {
           );
         }
       })
-      .catch(() => setQueue([]))
+      .catch(() => {
+        setIsError(true);
+        setQueue([]);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -276,19 +282,19 @@ export function LeaseQueuePage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <TelemetryCard
           label="임대 중인 메시지 (Leased)"
-          currentValue={`${leasedCount}건`}
+          currentValue={isError ? "측정 불가" : `${leasedCount}건`}
           maxLabel="총 적체"
-          percentage={(leasedCount / Math.max(1, queue.length)) * 100}
+          percentage={isError ? 0 : (leasedCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-leased)"
-          statusText="워커가 처리 중 (300s TTL 카운트다운)"
+          statusText={isError ? "서버 연결 불가" : "워커가 처리 중 (300s TTL 카운트다운)"}
         />
         <TelemetryCard
           label="대기 중인 메시지 (Available)"
-          currentValue={`${availableCount}건`}
+          currentValue={isError ? "측정 불가" : `${availableCount}건`}
           maxLabel="총 적체"
-          percentage={(availableCount / Math.max(1, queue.length)) * 100}
+          percentage={isError ? 0 : (availableCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-warning)"
-          statusText="즉시 Lease 획득 가능"
+          statusText={isError ? "서버 연결 불가" : "즉시 Lease 획득 가능"}
         />
       </div>
 
@@ -297,6 +303,8 @@ export function LeaseQueuePage() {
         data={queue}
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="메일함 리스 큐 데이터를 불러올 수 없습니다 (서버 연결 실패)."
         emptyMessage="현재 대기 중인 메일박스 메시지 데이터가 없습니다."
       />
     </div>

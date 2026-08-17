@@ -433,15 +433,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SC-ACT-02: Interactive Refresh Button Action on Dashboard (D-91, D-101)
-  it("[SC-ACT-02] clicks interactive refresh button and maintains clean state", async () => {
+  // SC-ACT-02: Interactive Refresh Button Action on Dashboard (D-91, D-101, D-112)
+  it("[SC-ACT-02] clicks interactive refresh button and triggers live api response", async () => {
     const { page, context, errors } = await createAuthedPage("/dashboard");
     const refreshBtn = page.locator("button:has-text('새로고침'), button:has-text('Refresh'), button[aria-label*='새로고침']").first();
     expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
-    await refreshBtn.click();
-    await page.waitForTimeout(300);
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("전체 에이전트 노드");
+
+    const [resp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/v1/agents") && r.status() === 200, { timeout: 5000 }),
+      refreshBtn.click(),
+    ]);
+    expect(resp.ok()).toBe(true);
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -459,15 +461,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SC-ACT-04: Interactive Telemetry Refresh (D-91, D-101)
-  it("[SC-ACT-04] clicks refresh on platform telemetry", async () => {
+  // SC-ACT-04: Interactive Telemetry Refresh (D-91, D-101, D-112)
+  it("[SC-ACT-04] clicks refresh on platform telemetry and triggers live telemetry response", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
     const refreshBtn = page.locator("button:has-text('실시간 갱신'), button:has-text('갱신')").first();
     expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
-    await refreshBtn.click();
-    await page.waitForTimeout(300);
-    const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("활성 소켓 연결 수");
+
+    const [resp] = await Promise.all([
+      page.waitForResponse((r) => (r.url().includes("/api/v1/health") || r.url().includes("/api/v1/agents")) && r.status() === 200, { timeout: 5000 }),
+      refreshBtn.click(),
+    ]);
+    expect(resp.ok()).toBe(true);
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -488,20 +492,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SC-ACT-06: Interactive Tenant Audits Refresh (D-91, D-101)
-  it("[SC-ACT-06] clicks audit logs refresh and checks table rendering", async () => {
+  // SC-ACT-06: Interactive Tenant Audits Refresh (D-91, D-101, D-112)
+  it("[SC-ACT-06] clicks audit logs refresh and triggers live audit response", async () => {
     const { page, context, errors } = await createAuthedPage("/tenant/audits");
     const refreshBtn = page.locator("button:has-text('감사 로그 갱신'), button:has-text('갱신')").first();
     expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
-    await refreshBtn.click();
-    await page.waitForTimeout(300);
-    const rows = await page.locator("table tbody tr, [role='row']").count();
-    expect(rows).toBeGreaterThanOrEqual(4);
+
+    const [resp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/v1/audit/events") && r.status() === 200, { timeout: 5000 }),
+      refreshBtn.click(),
+    ]);
+    expect(resp.ok()).toBe(true);
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SC-CAP-01: Audit Content Redaction with Metadata Only Capability (SPEC § 11.0, D-110)
+  // SC-CAP-01: Audit Content Redaction with Metadata Only Capability (SPEC § 11.0, D-110, D-111)
   it("[SC-CAP-01] renders /tenant/audits with [content withheld] redaction for audit.read.metadata holder", async () => {
     const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
     const { page, context, errors } = await createViewerAuthedPage(viewerCookie, "/tenant/audits");
@@ -542,6 +548,84 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const createBtn = page.locator("button:has-text('그룹 생성'), button:has-text('➕ 그룹 생성')");
     expect(await createBtn.count()).toBe(0);
+
+    await context.close();
+  });
+
+  // SC-DOWN-01: Disconnected Backend Differentiation on Lease Queue (D-114, D-116)
+  it("[SC-DOWN-01] distinguishes between empty and disconnected states on /creator/lease-queue", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", (route) => route.abort());
+    await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
+
+    const downText = await page.locator("#root").innerText();
+    expect(downText).toContain("메일함 리스 큐 데이터를 불러올 수 없습니다");
+    expect(downText).toContain("측정 불가");
+
+    await context.close();
+  });
+
+  // SC-DOWN-02: Disconnected Backend Differentiation on Dashboard (D-114, D-116)
+  it("[SC-DOWN-02] does not claim 0 registered tenants when disconnected on /dashboard", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", (route) => route.abort());
+    await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+
+    const downText = await page.locator("#root").innerText();
+    expect(downText).not.toContain("등록된 테넌트 없음");
+    expect(downText).toContain("조직 정보 불러오지 못함");
+
+    await context.close();
+  });
+
+  // SC-DOWN-03: Disconnected Backend Differentiation on Groups (D-114, D-116)
+  it("[SC-DOWN-03] distinguishes between empty groups and disconnected server on /creator/groups", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await context.addCookies([
+      {
+        name: "mesh_token",
+        value: jwtToken,
+        domain: "127.0.0.1",
+        path: "/",
+        httpOnly: false,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.route("**/api/v1/**", (route) => route.abort());
+    await page.goto(`${viteBaseUrl}/creator/groups`, { waitUntil: "networkidle" });
+
+    const downText = await page.locator("#root").innerText();
+    expect(downText).not.toContain("현재 등록된 그룹 데이터가 없습니다");
+    expect(downText).toContain("그룹 목록을 불러올 수 없습니다");
 
     await context.close();
   });

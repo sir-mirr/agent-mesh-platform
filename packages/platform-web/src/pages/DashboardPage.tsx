@@ -21,6 +21,7 @@ import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 export function DashboardPage() {
   const { user, switchRole } = useAuth();
   const { t } = useI18n();
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const currentRole: UserRole = user?.role || "AGENT_OPERATOR";
 
@@ -62,7 +63,7 @@ export function DashboardPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => window.location.reload()}
+              onClick={() => setRefreshTick((t) => t + 1)}
             >
               ↻ {t("common.refresh", "새로고침")}
             </Button>
@@ -99,10 +100,10 @@ export function DashboardPage() {
       />
 
       {/* 2. Role-Tailored KPI Cards & Views */}
-      {currentRole === "PLATFORM_ADMIN" && <PlatformAdminDashboard />}
-      {currentRole === "TENANT_ADMIN" && <TenantAdminDashboard />}
-      {currentRole === "GROUP_ADMIN" && <GroupAdminDashboard />}
-      {currentRole === "AGENT_OPERATOR" && <AgentOperatorDashboard />}
+      {currentRole === "PLATFORM_ADMIN" && <PlatformAdminDashboard key={refreshTick} />}
+      {currentRole === "TENANT_ADMIN" && <TenantAdminDashboard key={refreshTick} />}
+      {currentRole === "GROUP_ADMIN" && <GroupAdminDashboard key={refreshTick} />}
+      {currentRole === "AGENT_OPERATOR" && <AgentOperatorDashboard key={refreshTick} />}
     </div>
   );
 }
@@ -115,11 +116,17 @@ function PlatformAdminDashboard() {
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const [isError, setIsError] = useState<boolean>(false);
 
   React.useEffect(() => {
-    fetchTelemetry().then(setTelemetry).catch(() => setTelemetry(null));
-    fetchGroups().then(setGroups).catch(() => setGroups([]));
-    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    setIsError(false);
+    Promise.all([
+      fetchTelemetry().then(setTelemetry),
+      fetchGroups().then(setGroups),
+      fetchAgents().then(setAgents),
+    ]).catch(() => {
+      setIsError(true);
+    });
   }, []);
 
   const totalAgents = agents.length || (telemetry?.total_agents ?? 0);
@@ -131,29 +138,29 @@ function PlatformAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.pa.nodes", "전체 에이전트 노드")}
-          value={String(totalAgents)}
-          subValue={t("dash.pa.nodesSub", "실시간 레지스트리")}
+          value={isError ? "—" : String(totalAgents)}
+          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.pa.nodesSub", "실시간 레지스트리")}
           color="var(--color-primary)"
           icon="🌐"
         />
         <KpiCard
           label={t("dash.pa.sockets", "활성 웹소켓 풀")}
-          value={String(activeSockets)}
-          subValue={t("dash.pa.socketsSub", "mTLS 연결")}
+          value={isError ? "—" : String(activeSockets)}
+          subValue={isError ? t("common.disconnected", "통신 불가") : t("dash.pa.socketsSub", "mTLS 연결")}
           color="var(--color-success)"
           icon="⚡"
         />
         <KpiCard
           label={t("dash.pa.tenants", "활성 테넌트 조직")}
-          value={String(groups.length)}
-          subValue={groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음"}
+          value={isError ? "—" : String(groups.length)}
+          subValue={isError ? t("common.errorLoad", "조직 정보 불러오지 못함") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
           color="#6366F1"
           icon="🏢"
         />
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
-          value={telemetry ? `${telemetry.p99_latency_ms || 0}ms` : "-"}
-          subValue={telemetry ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
+          value={telemetry && !isError ? `${telemetry.p99_latency_ms || 0}ms` : "—"}
+          subValue={telemetry && !isError ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
           color="var(--color-warning)"
           icon="⏱️"
         />

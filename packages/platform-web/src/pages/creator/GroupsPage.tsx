@@ -28,6 +28,7 @@ export function GroupsPage() {
   const canManage = hasCapability("group.manage");
   const [groups, setGroups] = useState<AgentGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
@@ -40,6 +41,8 @@ export function GroupsPage() {
 
   // Load real groups on mount
   React.useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     fetchGroups()
       .then((list) => {
         setGroups(
@@ -53,7 +56,10 @@ export function GroupsPage() {
           }))
         );
       })
-      .catch(() => setGroups([]))
+      .catch(() => {
+        setIsError(true);
+        setGroups([]);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -240,6 +246,8 @@ export function GroupsPage() {
         data={groups}
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="그룹 목록을 불러올 수 없습니다 (서버 연결 실패 또는 권한 부족)."
         emptyMessage="현재 등록된 그룹 데이터가 없습니다."
       />
 
