@@ -46,6 +46,7 @@ export function AgentsPage() {
           }))
         );
       })
+      .catch(() => setAgents([]))
       .finally(() => setIsLoading(false));
   }, []);
 

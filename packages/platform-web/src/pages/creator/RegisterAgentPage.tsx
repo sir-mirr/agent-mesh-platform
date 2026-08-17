@@ -42,6 +42,7 @@ export function RegisterAgentPage() {
           }))
         );
       })
+      .catch(() => setPendingList([]))
       .finally(() => setIsLoading(false));
   }, []);
 

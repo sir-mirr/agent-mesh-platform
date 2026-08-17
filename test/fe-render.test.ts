@@ -510,9 +510,38 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
     expect(rowCount).toBeGreaterThanOrEqual(4);
 
+    const bodyCells = await page.locator("tbody tr td:nth-child(4)").allInnerTexts();
+    expect(bodyCells.length).toBeGreaterThanOrEqual(4);
+    expect(bodyCells.every((c) => c.includes("content withheld"))).toBe(true);
+
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("[content withheld]");
+    expect(mainText).toContain("[content withheld — requires audit.read.content]");
     expect(mainText).not.toContain("hello security via proxy");
+
+    await context.close();
+  });
+
+  // SC-CAP-02: Route Guarding for Restricted Route (/tenant/rbac redirected to /dashboard when role.grant not held) (D-110)
+  it("[SC-CAP-02] redirects /tenant/rbac to /dashboard when role.grant is not held", async () => {
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context, errors } = await createViewerAuthedPage(viewerCookie, "/tenant/rbac");
+    expect(errors).toEqual([]);
+
+    await page.waitForURL(/\/dashboard/, { timeout: 5000 });
+    const mainText = await page.locator("#root").innerText();
+    expect(mainText).toContain("소유 에이전트 운영 대시보드");
+
+    await context.close();
+  });
+
+  // SC-CAP-03: Groups Management without group.manage has no create button (D-110)
+  it("[SC-CAP-03] renders /creator/groups without create button when group.manage is not held", async () => {
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context, errors } = await createViewerAuthedPage(viewerCookie, "/creator/groups");
+    expect(errors).toEqual([]);
+
+    const createBtn = page.locator("button:has-text('그룹 생성'), button:has-text('➕ 그룹 생성')");
+    expect(await createBtn.count()).toBe(0);
 
     await context.close();
   });

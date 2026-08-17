@@ -440,9 +440,9 @@ function GroupAdminDashboard() {
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
   React.useEffect(() => {
-    fetchGroups().then(setGroups);
-    fetchAgents().then(setAgents);
-    fetchAdminMailbox().then(setMailbox);
+    fetchGroups().then(setGroups).catch(() => setGroups([]));
+    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
   return (
@@ -559,8 +559,8 @@ function AgentOperatorDashboard() {
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
   React.useEffect(() => {
-    fetchAgents().then(setAgents);
-    fetchAdminMailbox().then(setMailbox);
+    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
   return (

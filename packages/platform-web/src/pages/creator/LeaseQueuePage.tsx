@@ -50,6 +50,7 @@ export function LeaseQueuePage() {
           );
         }
       })
+      .catch(() => setQueue([]))
       .finally(() => setIsLoading(false));
   }, []);
 

@@ -7,6 +7,7 @@ import {
   Button,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useRbac } from "@/contexts/RbacContext.tsx";
 import { fetchGrants, addGrantApi, deleteGrantApi, type GrantItem } from "@/api/grants.ts";
 
 interface OrgMember {
@@ -19,6 +20,8 @@ interface OrgMember {
 
 export function RbacManagementPage() {
   const { t } = useI18n();
+  const { hasCapability } = useRbac();
+  const canGrant = hasCapability("role.grant");
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [availableCaps, setAvailableCaps] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -65,6 +68,7 @@ export function RbacManagementPage() {
   }, []);
 
   const handleToggleCapability = async (subject: string, capId: string) => {
+    if (!canGrant) return;
     const member = members.find((m) => m.id === subject);
     const hasCap = member?.capabilities.includes(capId);
 
@@ -121,6 +125,7 @@ export function RbacManagementPage() {
               <button
                 key={capId}
                 type="button"
+                disabled={!canGrant}
                 onClick={() => handleToggleCapability(item.id, capId)}
                 style={{
                   padding: "4px 9px",
@@ -128,7 +133,8 @@ export function RbacManagementPage() {
                   border: isAssigned ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
                   fontSize: "0.72rem",
                   fontWeight: 700,
-                  cursor: "pointer",
+                  cursor: canGrant ? "pointer" : "not-allowed",
+                  opacity: canGrant ? 1 : 0.55,
                   background: isAssigned
                     ? "var(--color-primary-light)"
                     : "var(--color-bg-surface-sub)",
@@ -137,7 +143,7 @@ export function RbacManagementPage() {
                     : "var(--color-text-muted)",
                   transition: "all 0.15s ease",
                 }}
-                title={`클릭 시 ${isAssigned ? "권한 회수" : "권한 부여"}`}
+                title={canGrant ? `클릭 시 ${isAssigned ? "권한 회수" : "권한 부여"}` : "role.grant 권한이 필요합니다"}
               >
                 {isAssigned ? "✓ " : "+ "}
                 {capId}

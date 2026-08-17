@@ -63,7 +63,7 @@ export function PlaygroundPage() {
         setSender(mapped[0]!.id);
         setRecipient(mapped[1]?.id || mapped[0]!.id);
       }
-    });
+    }).catch(() => setAgentsList([]));
   }, []);
 
   // 1. Filter sender agents visible/permitted to the current user

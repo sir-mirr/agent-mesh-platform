@@ -9,6 +9,7 @@ import {
   Toast,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentGroup {
   id: string;
@@ -23,6 +24,8 @@ import { fetchGroups, createGroupApi, type GroupItem } from "@/api/groups.ts";
 
 export function GroupsPage() {
   const { t } = useI18n();
+  const { hasCapability } = useRbac();
+  const canManage = hasCapability("group.manage");
   const [groups, setGroups] = useState<AgentGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -50,6 +53,7 @@ export function GroupsPage() {
           }))
         );
       })
+      .catch(() => setGroups([]))
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -215,9 +219,11 @@ export function GroupsPage() {
         title={t("groups.title", "그룹 관리 & 에이전트 배속")}
         subtitle={t("groups.subtitle", "그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)")}
         actions={
-          <Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
-            {t("groups.createBtn", "➕ 그룹 생성")}
-          </Button>
+          canManage ? (
+            <Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>
+              {t("groups.createBtn", "➕ 그룹 생성")}
+            </Button>
+          ) : undefined
         }
       />
 
