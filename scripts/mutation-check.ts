@@ -262,6 +262,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["answers nothing", "mesh"],
   },
   {
+    id: "key-proposal-stream",
+    defect:
+      "An agent asking to join produced no notification. Registration starts on the agent's side and stops until a human compares a fingerprint, and the only way to learn one was waiting was to poll from a screen somebody had already opened — nobody looking meant nobody knew.",
+    file: "packages/http/src/key-proposals.ts",
+    from: "        if (reported.has(p.fingerprint)) continue",
+    to: "        if (true) continue",
+    suite: "test/key-proposals.test.ts",
+    expect: ["nothing was pushed"],
+  },
+  {
     id: "mailbox-boundary",
     defect:
       "The mailbox imported the hub. The arrangement this package replaced reached hub presence, the hub's database handle and three RPC handlers — faking a WebSocket so the handlers would accept the caller — and every one of those imports was reasonable on the day it was added. Nothing forbade them, which is the only reason they were there.",

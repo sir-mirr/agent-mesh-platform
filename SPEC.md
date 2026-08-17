@@ -1598,6 +1598,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |
 | GET    | `/api/v1/admin/mailbox/{identity}` | JWT\*  | `200`   | What is waiting for one identity, and what is leased. No bodies. |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
+| GET    | `/api/v1/admin/keys/stream`       | JWT\*  | `200`   | Key proposals as they arrive, SSE (§ 10.2.1). |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/deny`         | JWT\*  | `200`   | Deny a proposed key, by fingerprint (§ 10.2.1). |

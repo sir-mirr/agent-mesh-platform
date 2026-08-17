@@ -55,6 +55,7 @@ import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeA
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
+import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
@@ -1581,6 +1582,73 @@ app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
   const identity = c.req.param('identity')
   if (!IDENTITY_RE.test(identity)) return c.json({ ok: false, error: 'invalid identity format' }, 400)
   return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })
+})
+
+// **Before `keys/:identity`**, which matches `stream` as an identity and
+// answered this route's first request with a key history for an agent that
+// does not exist. Route order is the kind of coupling nothing declares.
+/**
+ * New key proposals, pushed (SPEC § 10.2.1).
+ *
+ * The event an operator's dashboard waits on: an agent has asked to join and
+ * nobody has compared its fingerprint yet. Before this the only way to know was
+ * to poll `keys/pending` from a screen somebody had already opened.
+ *
+ * **`key.approve`, not the admin role.** Whoever is told about a decision is
+ * whoever can make it — § 11 replaced the role check everywhere else, and a
+ * notification that reaches people who cannot act on it is a notification they
+ * learn to close.
+ */
+app.get('/api/v1/admin/keys/stream', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
+  if (typeof actor !== 'string') return actor
+
+  const encoder = new TextEncoder()
+  let stop: (() => void) | null = null
+  let heartbeat: ReturnType<typeof setInterval> | null = null
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const push = (event: string, data: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          return true
+        } catch {
+          return false
+        }
+      }
+      push('connected', { ok: true })
+
+      // What is already waiting, once, as a snapshot rather than as arrivals.
+      // Replaying a backlog as events would announce keys that have been
+      // sitting for a day as though they had just landed.
+      push('snapshot', { proposals: keyProposals.pendingSince(agentsDb()) })
+
+      stop = keyProposals.watchProposals(agentsDb(), (p) => {
+        if (!push('key-proposed', p)) stop?.()
+      })
+
+      heartbeat = setInterval(() => {
+        if (!push('ping', {})) {
+          if (heartbeat) clearInterval(heartbeat)
+          stop?.()
+        }
+      }, 20000)
+    },
+    cancel() {
+      if (heartbeat) clearInterval(heartbeat)
+      stop?.()
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
 })
 
 app.get('/api/v1/admin/keys/:identity', async (c) => {
