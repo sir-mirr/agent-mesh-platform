@@ -1,5 +1,5 @@
 /**
- * Replay of the shared cross-repository scenarios (SPEC § 16).
+ * Replay of the shared cross-repository scenarios (SPEC § 17).
  *
  * The scenarios themselves live in `@agent-mesh/contracts`, not here. That is
  * the whole point: the client repository runs the same list against its own
@@ -27,6 +27,9 @@
  * the thing being tested. The cost is that a failure early can cascade, which is
  * why the report prints the first failing step and stops that scenario rather
  * than every consequence of it.
+ *
+ * The exception is a scenario carrying `mesh` (§ 17.4): it gets one of its own,
+ * shaped as it asked, and provisions everything it names.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -315,7 +318,7 @@ function expectStored(step: Extract<Step, { do: "expectStored" }>, ctx: string):
   }
 }
 
-describe("shared scenarios (SPEC § 16)", () => {
+describe("shared scenarios (SPEC § 17)", () => {
   // `for` rather than `test.each` so the clause and the reason are in the name.
   // A failure reads as the contract clause it broke, which is the only thing
   // that makes a red run in the other repository comparable to a red run here.

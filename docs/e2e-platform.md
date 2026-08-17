@@ -1,11 +1,34 @@
 # End-to-end testing — the platform's half
 
-The client repository drives the cross-repository scenarios. This document is
-the platform side: how to bring a real mesh up, what it guarantees under test,
+The scenarios themselves are in `@agent-mesh/contracts` (`E2E_SCENARIOS`), and
+SPEC § 17 says why they live there rather than on either side. This document is
+the platform half: how to bring a real mesh up, what it guarantees under test,
 and which failures are worth asserting against rather than around.
 
-Scenario format and ordering are the client's — see its `e2e/scenarios/*.json`.
-Nothing here describes behaviour this repository does not own.
+```bash
+bun test test/scenarios.test.ts
+```
+
+`test/scenarios.test.ts` is an interpreter for the verb set and holds no
+expectations of its own. Adding one here would make this repository's green
+mean something the client's green does not, which is the failure the shared list
+exists to prevent — so a new expectation goes in the contracts package, gets a
+tag, and both sides pick it up.
+
+Four mutations were run against the first passing version, each caught by the
+scenario meant to catch it: egress default-deny disabled (`E2E-EGRESS-001`), an
+ack that reports success without settling (`E2E-RECEIVE-002`), the key-approval
+gate removed (`E2E-KEY-001`), and a content read that leaves no trace
+(`E2E-AUDIT-001`). Worth repeating after adding a scenario — a green run says
+nothing about whether the scenario checks anything.
+
+The first run failed six of eleven, and **five were defects in the scenarios
+rather than in the mesh**: `mesh.connect` refused over HTTP (correct — § 8.10
+has no session to establish), a leased batch expected back immediately (correct
+— that is the destructive read § 8.10.1 rejects), a key collision expressed as a
+keyless registration, and two trace assertions naming tables that were never the
+design. That ratio is the argument for writing scenarios against the contract
+and then running them, rather than writing them from memory of what was built.
 
 ---
 

@@ -3162,3 +3162,61 @@ exist or be removed independently of compliance:
 
 These domains are governed by deployment-local conventions and are
 beyond the SSOT contract defined here.
+
+---
+
+## 17. Conformance scenarios
+
+An implementation conforms to this specification when it passes the scenarios
+in `@agent-mesh/contracts` (`E2E_SCENARIOS`). They are normative: where a
+scenario and prose here disagree, the scenario is wrong and this document
+stands, but a scenario that passes on one implementation and fails on another
+is a contract defect regardless of which side prose seems to favour.
+
+### 17.1. Why they are not in either repository
+
+Two implementations have to agree on what the mesh does. A scenario list living
+on one side is that side's opinion about the other, and both sides had one —
+the client's as prose assertions, this one's as its own integration tests.
+Neither could be replayed by the other, so "we both pass" was never a claim
+anybody could check.
+
+They ship in the contracts package, pinned by tag like the error codes and for
+the same reason: a shared statement that changes only with a version bump.
+
+### 17.2. Shape
+
+A scenario is an `id`, the `clause` it holds, a `why` saying what breaks if it
+regresses, and a list of steps. Steps use a small verb set — `provision`,
+`approve`, `revoke`, `connect`, `send`, `receive`, `http`, `sleep`,
+`expectStored` — that each side implements against its own transport.
+
+Every scenario MUST cite a clause. A scenario nobody can trace back to this
+document asserts somebody's memory of it.
+
+The verb set is deliberately small. A vocabulary that grows to fit each new
+scenario becomes a second implementation of the protocol, and then the question
+"do both sides agree" is replaced by "does the scenario runner agree with
+itself".
+
+### 17.3. What a runner may skip, and what it may not
+
+`expectStored` asserts a trace rather than a response — a source recorded, an
+audit read logged. A participant with no access to the platform's stores cannot
+run those, and MUST skip them **by verb**, so what was skipped is visible in the
+report.
+
+A runner MUST NOT skip a scenario by id, and MUST fail on a verb it does not
+implement rather than ignoring the step. A step silently dropped is a scenario
+that reports green without running.
+
+### 17.4. A scenario may state the mesh it needs
+
+Some behaviour a default deployment cannot show in test time — a receive lease
+lapsing is the case that forced this. Such a scenario carries `mesh`, and the
+runner starts one shaped that way.
+
+The requirement belongs to the scenario because it is part of the claim: "with
+a two-second lease, an unacknowledged batch comes back" is what is being
+asserted. A runner that quietly used the default would report a pass for
+something it never measured.
