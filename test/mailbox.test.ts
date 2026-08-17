@@ -114,7 +114,19 @@ describe("draining an inbox", () => {
     expect(drain.body.result.messages.map((m: any) => m.content)).toEqual(["first", "second"]);
     expect(drain.body.result.remaining).toBe(0);
 
-    // Acknowledged on the next call, and only then are they gone.
+    // **Acknowledged on the next call — and the lease has to lapse first for
+    // that to be what this observes.**
+    //
+    // Without the wait, the batch is still leased from the drain above and
+    // `stmtLeasableMessages` withholds it whatever the acknowledgement did.
+    // Removing `ack_ids` entirely left this green: the emptiness came from the
+    // lease, and the comment above it credited the ack.
+    //
+    // Past the lease, an unacknowledged batch is leasable again and comes back
+    // as two — so zero here means the acknowledgement settled them. The
+    // neighbouring test asserts exactly that return, which is the other half of
+    // the same fact.
+    await pastLease();
     const settle = await callHttp(mesh.hub, signer(mail), "mesh.receive", { ack_ids: ids });
     expect(settle.body.result.messages).toHaveLength(0);
   });
