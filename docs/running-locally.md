@@ -131,10 +131,16 @@ until curl -sf "http://127.0.0.1:$HUB_PORT/health" >/dev/null; do sleep 0.2; don
 In a second shell. **`AGENT_MESH_STATE_DIR`, `HUB_PORT` and `HTTP_PORT` do not
 travel between shells** — export them again here, with the same values:
 
+**Re-export the values you chose in step 0 and step 2, not the defaults.** If
+you picked a different pair because 3100 or 3000 was taken, repeating the
+defaults here silently points this shell at the ports the other shell is not
+using — the first draft of this file did exactly that, reintroducing in step 4
+the hardcoding it had just removed from step 3.
+
 ```bash
-export AGENT_MESH_STATE_DIR="$HOME/.agent-mesh/local"
-export HUB_PORT=3100
-export HTTP_PORT=3000
+export AGENT_MESH_STATE_DIR=...   # the same path as step 2
+export HUB_PORT=...               # the same two ports as step 0
+export HTTP_PORT=...
 
 AGENT_MESH_STATE_DIR="$AGENT_MESH_STATE_DIR" \
 AGENT_MESH_HTTP_PORT="$HTTP_PORT" \

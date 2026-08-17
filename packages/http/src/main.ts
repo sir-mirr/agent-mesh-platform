@@ -1223,13 +1223,13 @@ app.get('/api/v1/files', async (c) => {
 // --- Admin: Approval Management ---
 
 app.get('/api/v1/admin/pending', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // § 11: admitting a person is its own capability. It is not role.grant —
+  // that hands capabilities to somebody already admitted — and not
+  // agent.provision, which claims a mesh identity. This route was on the role
+  // check until user.admit existed to move it to.
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+  void actor
 
   const pending = listPendingApprovals()
   return c.json({ pending })
@@ -2148,13 +2148,13 @@ async function teardownAs(c: any, actor: string, identity: string) {
 }
 
 app.post('/api/v1/admin/approve', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // § 11: admitting a person is its own capability. It is not role.grant —
+  // that hands capabilities to somebody already admitted — and not
+  // agent.provision, which claims a mesh identity. This route was on the role
+  // check until user.admit existed to move it to.
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+  void actor
 
   let body: Record<string, unknown>
   try {
@@ -2196,13 +2196,13 @@ app.post('/api/v1/admin/approve', async (c) => {
 })
 
 app.post('/api/v1/admin/deny', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // § 11: admitting a person is its own capability. It is not role.grant —
+  // that hands capabilities to somebody already admitted — and not
+  // agent.provision, which claims a mesh identity. This route was on the role
+  // check until user.admit existed to move it to.
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+  void actor
 
   let body: Record<string, unknown>
   try {
@@ -2466,24 +2466,22 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
 })
 
 app.get('/api/v1/admin/ai-usage', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // § 11: spend is not the audit trail and not tenant message traffic, so it
+  // has its own capability rather than borrowing one that answers a different
+  // question.
+  const actor = await requireCapability(c, CAPABILITY.USAGE_READ)
+  if (typeof actor !== 'string') return actor
+  void actor
   return c.json({ snapshot: latestAiUsageSnapshot })
 })
 
 app.get('/api/v1/admin/ai-usage/stream', async (c) => {
-  const payload = await extractJwt(c)
-  if (!payload) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  if (payload.role !== 'admin') {
-    return c.json({ error: 'Admin access required' }, 403)
-  }
+  // § 11: spend is not the audit trail and not tenant message traffic, so it
+  // has its own capability rather than borrowing one that answers a different
+  // question.
+  const actor = await requireCapability(c, CAPABILITY.USAGE_READ)
+  if (typeof actor !== 'string') return actor
+  void actor
 
   const encoder = new TextEncoder()
   let controllerRef: ReadableStreamDefaultController | null = null
