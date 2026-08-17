@@ -100,6 +100,13 @@ The mailbox is for things the other side cannot discover by reading the repos:
 
 - **A contract changed.** A new `agent-mesh-contracts` tag, and what moved.
   The other side pins a tag and will not notice otherwise.
+
+  **A new error code goes out before the tag, not after.** The rest of a
+  contract change is inert until somebody pins it; a new code is not. The hub
+  can emit it while the other side is still on the old tag, where it is absent
+  from `ERROR_CLASS` and falls to whatever that caller passes as a fallback.
+  `errorClassOf` now answers `permanent` for an unknown in-band code so that
+  window is survivable, and surviving it is not the same as it being fine.
 - **A SPEC section landed, or its status changed.** `SPEC.md`'s table says what
   is built; a change there changes what the other side can rely on.
 - **A blocking question about the other side's half.** Anything that would
