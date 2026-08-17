@@ -7,8 +7,8 @@ below are what it printed.** That is the only reason to trust it.
 twice by `client-claude` as a first reader — while the front-end step sat
 unexecuted under a heading that claimed otherwise, and it carried a wrong port
 the whole time. `agent-mesh-local-pm` found it by counting output markers per
-section and noticing one had none (mail #478). It has been run now, and § 7
-remains the only section without a trace. The `README.md` quick start has been there for months, requires a
+section and noticing one had none (mail #478). Both have been run now, and every
+section carries what it printed. The `README.md` quick start has been there for months, requires a
 Linux host with systemd and a GitHub OAuth app, and nobody on this project has
 ever run it — `client-claude` tried to follow it as a first reader and could not
 get past the prerequisites (mail #426).
@@ -242,13 +242,60 @@ SELF_REMINDER_IDENTITY=self-reminder \
 bun packages/self-reminder/src/main.ts
 ```
 
-Provision and approve that identity first (§ 10.2), the same as any other
-participant — nothing is exempt from key approval, including this.
+**Provision and approve it first (§ 10.2)**, the same as any other participant.
+Nothing is exempt from key approval, including this — and this section used to
+say so without giving the commands, leaving a reader to work them out while
+watching a backoff loop.
+
+Started without them, the refusal is honest and names its cause, which is why
+it is not a trap:
+
+```
+hub_registration_rejected {"error_category":"identity_not_registered"}
+hub_reconnect_scheduled   {"delay_ms":2000,"attempt":2}   -> 4000 -> 8000 -> 16000
+```
+
+The two commands, run against the mesh from § 3 and § 4:
+
+```bash
+# 1. Provision, with a key. The response carries the fingerprint.
+curl -s -X POST "http://127.0.0.1:$HUB_PORT/api/v1/agents" \
+  -H 'content-type: application/json' \
+  -d '{"identity":"self-reminder","type":"service","public_key":"<base64url ed25519>"}'
+
+# 2. Approve it, as the signed-in admin. § 10.2 puts this behind a person on
+#    purpose: a caller that could approve its own key is not approved by anyone.
+curl -s -X POST "http://127.0.0.1:$HTTP_PORT/api/v1/admin/keys/approve" \
+  -H 'content-type: application/json' -H "cookie: $COOKIE" \
+  -d '{"fingerprint":"sha256:..."}'
+```
+
+What that printed here:
+
+```
+provision HTTP 201  {"ok":true,...,"key":{"fingerprint":"sha256:MkPh1UW5…","status":"pending"}}
+approve   HTTP 200  {"ok":true,...,"status":"approved","decided_by":"admin"}
+
+[self-reminder] scheduler_started {"poll_ms":1000,"identity":"self-reminder",...}
+[self-reminder] hub_registered    {"generation":1}
+```
 
 ## 8. The admin front end
 
 `packages/platform-web` is not on `main`; it lives on the
 `fe-admin-requirements` branch and its merge is undecided.
+
+**Take it from `origin`, not from a branch you already have checked out.** A
+local `fe-admin-requirements` can be behind the remote and not contain the
+package at all, which is what a reader on this machine hit: `cd
+packages/platform-web` answered `No such file or directory` while the same
+branch on `origin` had 85 files in it.
+
+```bash
+git fetch origin
+git worktree add /tmp/fe origin/fe-admin-requirements
+cd /tmp/fe && bun install --frozen-lockfile
+```
 
 ```bash
 cd packages/platform-web
@@ -273,6 +320,23 @@ version of this section said `# serves on 3005`, which contradicted the rest of
 the document: every other step warns that a fixed port is one somebody else
 already has, and then this one assumed a free one. A reader opening 3005 sees
 somebody else's server or nothing at all.
+
+**Use `localhost` for the front end, not `127.0.0.1`.** Every other step here
+uses `127.0.0.1`, and following that habit at this one fails:
+
+```
+http://localhost:3006/     200
+http://[::1]:3006/         200
+http://127.0.0.1:3006/     000   <- connection refused
+
+$ lsof -nP -iTCP:3006 -sTCP:LISTEN
+node ... TCP [::1]:3006 (LISTEN)
+```
+
+Vite binds the IPv6 loopback only. It prints `Local: http://localhost:3006/`
+and says nothing about the address family, so the failure reads as "the front
+end did not start" when it started fine and is listening somewhere the reader
+did not look. The port is in the log; the bind address is not.
 
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
 the top of this document.
