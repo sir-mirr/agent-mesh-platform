@@ -456,6 +456,7 @@ accident.
 |---|---|
 | `SPEC.md` | the normative contract, and the 0.2 status table |
 | `docs/decisions/identity-and-authentication.md` | why 0.2's auth design is shaped the way it is |
+| `docs/decisions/unknown-error-codes.md` | what a pinned side does with a code its tag cannot name |
 | `docs/proposals/audit-ingestion-response.md` | the audit interface, as negotiated with the client team |
 | `docs/open-questions.md` | what is undecided, and what depends on it |
 | `ops/README.md` | deployment |
