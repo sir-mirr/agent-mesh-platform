@@ -71,54 +71,70 @@ function undecided(text: string): string[] {
     .map((l) => l.replace(/^- \*\*(.*?)\*\*.*$/s, "$1").trim());
 }
 
-const input = JSON.parse(await Bun.stdin.text());
-if (input.stop_hook_active) process.exit(0);
+/**
+ * The question, or `null` when there is nothing to ask.
+ *
+ * Exported because `/hooks` cannot reload settings mid-session: a hook entry
+ * added to `settings.json` after a session starts never runs. The commands
+ * already registered do re-read their *files* on every execution, so the
+ * mailbox hook calls this and it takes effect immediately. Registering it
+ * separately still matters for the next session; this is what makes it work in
+ * this one.
+ */
+export async function remainingWork(root = ROOT): Promise<string | null> {
+  const [deferredText, indexText] = await Promise.all([
+    read("docs/deferred.md"),
+    read("docs/proposals/README.md"),
+  ]);
 
-const [deferredText, indexText] = await Promise.all([
-  read("docs/deferred.md"),
-  read("docs/proposals/README.md"),
-]);
+  let unpushed = 0;
+  try {
+    const out = await $`git -C ${root} log --oneline origin/main..HEAD`.quiet().text();
+    unpushed = out.trim() ? out.trim().split("\n").length : 0;
+  } catch {
+    // Not a repo, no remote, or no upstream — none of which is this hook's
+    // business to report on.
+  }
 
-let unpushed = 0;
-try {
-  const out = await $`git -C ${ROOT} log --oneline origin/main..HEAD`.quiet().text();
-  unpushed = out.trim() ? out.trim().split("\n").length : 0;
-} catch {
-  // Not a repo, no remote, or no upstream — none of which is this hook's
-  // business to report on.
+  const open = openDeferred(deferredText);
+  const pending = undecided(indexText);
+
+  if (open.length === 0 && pending.length === 0 && unpushed === 0) return null;
+
+  const lines: string[] = ["Before stopping — is any of this the next thing to do?", ""];
+  if (unpushed > 0) {
+    lines.push(`**${unpushed} commit(s) not on \`origin/main\`.** Push them or say why not.`, "");
+  }
+  if (open.length > 0) {
+    lines.push(`**${open.length} in docs/deferred.md with no stated reason for waiting:**`);
+    for (const item of open.slice(0, 12)) lines.push(`- ${item}`);
+    if (open.length > 12) lines.push(`- …and ${open.length - 12} more`);
+    lines.push("");
+  }
+  if (pending.length > 0) {
+    lines.push("**Undecided in docs/proposals/README.md:**");
+    for (const item of pending) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  lines.push(
+    "If something here is implementable, implement it rather than describing it —",
+    "a turn that ends with \"next I will do X\" has not done X. If it is genuinely",
+    "blocked on a decision only the user can make, ask that one question and stop.",
+    "If none of it is worth doing now, say so in one line and stop.",
+  );
+
+  return lines.join("\n");
 }
 
-const open = openDeferred(deferredText);
-const pending = undecided(indexText);
-
-if (open.length === 0 && pending.length === 0 && unpushed === 0) process.exit(0);
-
-const lines: string[] = ["Before stopping — is any of this the next thing to do?", ""];
-if (unpushed > 0) {
-  lines.push(`**${unpushed} commit(s) not on \`origin/main\`.** Push them or say why not.`, "");
+// Only when run as a hook. Importing this file must not consume stdin — the
+// mailbox hook imports it, and reading stdin twice leaves the second reader
+// with EOF and a `JSON Parse error` that names the wrong file.
+if (import.meta.main) {
+  const input = JSON.parse(await Bun.stdin.text());
+  if (!input.stop_hook_active) {
+    const reason = await remainingWork();
+    if (reason) {
+      console.log(JSON.stringify({ decision: "block", reason, systemMessage: "work remains" }));
+    }
+  }
 }
-if (open.length > 0) {
-  lines.push(`**${open.length} in docs/deferred.md with no stated reason for waiting:**`);
-  for (const item of open.slice(0, 12)) lines.push(`- ${item}`);
-  if (open.length > 12) lines.push(`- …and ${open.length - 12} more`);
-  lines.push("");
-}
-if (pending.length > 0) {
-  lines.push("**Undecided in docs/proposals/README.md:**");
-  for (const item of pending) lines.push(`- ${item}`);
-  lines.push("");
-}
-lines.push(
-  "If something here is implementable, implement it rather than describing it —",
-  "a turn that ends with \"next I will do X\" has not done X. If it is genuinely",
-  "blocked on a decision only the user can make, ask that one question and stop.",
-  "If none of it is worth doing now, say so in one line and stop.",
-);
-
-console.log(
-  JSON.stringify({
-    decision: "block",
-    reason: lines.join("\n"),
-    systemMessage: `${open.length} deferred, ${pending.length} undecided, ${unpushed} unpushed`,
-  }),
-);
