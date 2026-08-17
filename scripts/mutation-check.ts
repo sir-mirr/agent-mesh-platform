@@ -475,6 +475,20 @@ const MUTATIONS: Mutation[] = [
     expect: ["nor when the bucket is a fraction of a token short"],
   },
 
+  {
+    id: "orphan-readonly",
+    defect:
+      "The orphan sweep opened the audit store read-write. It does not write, so nothing observable changes and the whole suite stayed green — but § 15.6 requires a sweep that is safe beside a live core, and a handle that *could* write is one an edit six months from now will write through.",
+    file: "scripts/collect-orphan-blobs.ts",
+    from: 'openStore("audit", { readonly: true })',
+    to: 'openStore("audit")',
+    suite: "test/orphans.test.ts",
+    // A source check, because there is nothing to observe from outside the
+    // process: SQLite refuses the write inside the connection, and no test
+    // holds it. The mtime test beside this one passes under the mutation.
+    expect: ["and could not, because the handle is read-only"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
