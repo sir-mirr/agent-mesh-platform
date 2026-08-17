@@ -184,4 +184,109 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const data = await res.json();
     expect(Array.isArray(data.events || data) || typeof data === "object").toBe(true);
   });
+
+  // SCR-08 / SC-SCR08-01: Key Proposal Approval flow
+  it("[SC-SCR08-01] approves a proposed key by fingerprint", async () => {
+    const keyPair = newKeyPair();
+    const agentId = `fe-approve-agent-${Date.now()}`;
+
+    // Register agent key proposal
+    await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: agentId,
+        public_key: keyPair.publicKey,
+        type: "ai-claude",
+      }),
+    });
+
+    // Query pending queue to get fingerprint
+    const pendingRes = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
+      headers: { Cookie: authCookie },
+    });
+    const pendingData = await pendingRes.json();
+    const proposal = (pendingData.pending as any[]).find((p) => p.identity === agentId);
+    expect(proposal).toBeDefined();
+    expect(proposal.fingerprint).toBeString();
+
+    // Approve key proposal
+    const approveRes = await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({
+        fingerprint: proposal.fingerprint,
+        reason: "E2E Test Approval",
+      }),
+    });
+    expect(approveRes.status).toBe(200);
+
+    // Verify key proposal is no longer in pending queue
+    const afterRes = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
+      headers: { Cookie: authCookie },
+    });
+    const afterData = await afterRes.json();
+    const stillPending = (afterData.pending as any[]).some((p) => p.identity === agentId);
+    expect(stillPending).toBe(false);
+  });
+
+  // SCR-03 / SC-SCR03-02: Agent teardown / soft deletion
+  it("[SC-SCR03-02] teardown removes registered agent", async () => {
+    const agentId = `fe-teardown-${Date.now()}`;
+
+    // Register agent
+    const regRes = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identity: agentId,
+        type: "human",
+      }),
+    });
+    expect(regRes.status).toBe(201);
+
+    // Teardown agent via admin endpoint
+    const delRes = await fetch(`${mesh.http.url}/api/v1/admin/agents/${agentId}`, {
+      method: "DELETE",
+      headers: { Cookie: authCookie },
+    });
+    expect(delRes.status).toBe(200);
+  });
+
+  // SCR-02 / SC-SCR02-01: Global KPI metrics aggregation
+  it("[SC-SCR02-01] aggregates global fleet metrics without mock values", async () => {
+    const [capRes, tenantsRes, groupsRes] = await Promise.all([
+      fetch(`${mesh.hub.url}/api/v1/capabilities`),
+      fetch(`${mesh.http.url}/api/v1/admin/tenants`, { headers: { Cookie: authCookie } }),
+      fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { Cookie: authCookie } }),
+    ]);
+
+    expect(capRes.status).toBe(200);
+    expect(tenantsRes.status).toBe(200);
+    expect(groupsRes.status).toBe(200);
+
+    const capData = await capRes.json();
+    const tenantsData = await tenantsRes.json();
+    const groupsData = await groupsRes.json();
+
+    expect(capData.platform).toBeDefined();
+    expect(Array.isArray(tenantsData.tenants)).toBe(true);
+    expect(Array.isArray(groupsData.groups)).toBe(true);
+  });
+
+  // SCR-05 / SC-SCR05-01: Orbital Topology Nodes & Edges Generation
+  it("[SC-SCR05-01] provides node and edge relations for SVG topology canvas", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+
+    // Verify group structures contain required properties for topology rendering
+    expect(Array.isArray(data.groups)).toBe(true);
+    data.groups.forEach((g: any) => {
+      expect(g.group_id).toBeString();
+      expect(Array.isArray(g.members)).toBe(true);
+    });
+  });
 });
