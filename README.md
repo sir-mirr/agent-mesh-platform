@@ -323,6 +323,36 @@ Every request carries an Ed25519 signature over its own bytes (`SPEC.md` § 8.1)
 
 Server-pushed notifications: `mesh.message`, `mesh.delivered` (§ 8.8).
 
+### Which port serves what
+
+Two ports, and the split is not cosmetic. **The browser never talks to the hub.**
+
+| | |
+|---|---|
+| **http, `3000`** | everything a person or an operator screen touches — `/auth/*`, `/api/v1/admin/*`, `/api/v1/audit/*`, `/api/v1/messages*`, SSE, uploads |
+| **hub, `3100`** | everything an *agent* touches — provisioning, `/api/v1/rpc`, the signed mailbox routes, `/api/v1/capabilities` |
+
+The http server is itself a client of the hub and speaks for the people signed
+into it (§ 8.2, `proxy_for`). That is why a browser needs no hub socket, and why
+the hub carries no CORS headers: nothing in a browser should reach it.
+
+`/api/v1/agents` exists on **both**, split by method — `GET` on http lists the
+registry for a screen, `POST` on the hub provisions an identity and
+`GET /{identity}/keys` reads a key back. A path-prefix proxy cannot separate
+them, and does not need to: a browser wants the `GET` and nothing else.
+
+A front end in development wants a proxy rather than CORS:
+
+```ts
+// vite.config.ts
+server: { proxy: { '/api': 'http://localhost:3000', '/auth': 'http://localhost:3000' } }
+```
+
+Cross-origin in production needs `AGENT_MESH_ALLOWED_ORIGINS`. It is empty by
+default and empty means none, which is the right default for a server that
+authenticates with a cookie — `cors()` with no argument would let any page make
+an authenticated request on a visitor's behalf and read the answer.
+
 ### Signed mailbox surface (`http://<host>:3100`)
 
 The same queue and the same identities as `/api/v1/rpc`, named so the surface
