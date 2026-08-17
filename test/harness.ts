@@ -115,6 +115,9 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     ...shared,
     AGENT_MESH_HUB_PORT: String(hubPort),
     AGENT_MESH_BLOB_BASE_URL: `http://127.0.0.1:${httpPort}`,
+    // § 8.2. The http server proxies for the people signed into it, and a
+    // deployment declares that rather than the process asserting it.
+    AGENT_MESH_PROXY_IDENTITIES: "http-server,http-server-dev",
   });
   const hub: Service = { ...hubProc, url: `http://127.0.0.1:${hubPort}` };
 
@@ -230,13 +233,43 @@ export async function provisionProxy(
   hub: Service,
   identity: string,
   type = "service",
+  http?: Service,
 ): Promise<Response> {
-  return fetch(`${hub.url}/api/v1/agents`, {
+  // § 8.2. Provisioning no longer accepts `can_proxy` — the route is
+  // unauthenticated, so a grant made there is one the checked party wrote for
+  // itself. Register, then grant as an operator, which is what a deployment
+  // does.
+  const created = await fetch(`${hub.url}/api/v1/agents`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ identity, type, can_proxy: true }),
+    body: JSON.stringify({ identity, type }),
+  });
+  if (!created.ok) return created;
+  // Two calls, deliberately visible. The grant is an operator action and the
+  // registration is not, and collapsing them back into one would restore the
+  // shape § 8.2 refuses.
+  if (http) await grantProxy(http, identity);
+  return created;
+}
+
+/** Grant or withdraw `can_proxy` the way an operator does (SPEC § 8.2). */
+export async function setProxyGrant(
+  http: Service,
+  identity: string,
+  canProxy: boolean,
+  cookie?: string,
+): Promise<Response> {
+  const session = cookie ?? (await loginAsAdmin(http));
+  return fetch(`${http.url}/api/v1/admin/agents/${encodeURIComponent(identity)}/can-proxy`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: session },
+    body: JSON.stringify({ can_proxy: canProxy }),
   });
 }
+
+/** Grant it. */
+export const grantProxy = (http: Service, identity: string, cookie?: string) =>
+  setProxyGrant(http, identity, true, cookie);
 
 export interface RpcClient {
   raw(text: string): void;

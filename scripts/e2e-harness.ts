@@ -142,6 +142,9 @@ const shared = { AGENT_MESH_STATE_DIR: stateDir };
 const hub = spawnService("packages/hub/src/main.ts", {
   ...shared,
   AGENT_MESH_HUB_PORT: String(hubPort),
+  // § 8.2. The http server proxies for the people signed into it, and a
+  // deployment declares that rather than the process asserting it.
+  AGENT_MESH_PROXY_IDENTITIES: "http-server,http-server-dev",
   // The hub answers prepare_blobs with an absolute upload URL, and the route it
   // names is served by the other process. It cannot work the address out — http
   // connects to it, never the reverse — so the thing that chose both ports says

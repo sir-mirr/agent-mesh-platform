@@ -347,7 +347,7 @@ describe("transmitter recording", () => {
   });
 
   test("a proxied send keeps both identities apart", async () => {
-    await provisionProxy(mesh.hub, "proxy-socket");
+    await provisionProxy(mesh.hub, "proxy-socket", "service", mesh.http);
     // A person: type `human`, so no key of their own and nobody to sign for
     // them. That is the only case the override exists for (SPEC § 8.2).
     await provision(mesh.hub, "web-user", "human");
@@ -383,7 +383,7 @@ describe("transmitter recording", () => {
   });
 
   test("the recipient is told, live and on replay", async () => {
-    await provisionProxy(mesh.hub, "live-proxy");
+    await provisionProxy(mesh.hub, "live-proxy", "service", mesh.http);
     await provision(mesh.hub, "live-user", "human");
     await provision(mesh.hub, "live-recipient", "service");
     await provision(mesh.hub, "queued-recipient", "service");
@@ -413,7 +413,7 @@ describe("transmitter recording", () => {
   });
 
   test("fetch_messages carries it", async () => {
-    await provisionProxy(mesh.hub, "hist-proxy");
+    await provisionProxy(mesh.hub, "hist-proxy", "service", mesh.http);
     await provision(mesh.hub, "hist-user", "human");
     await provision(mesh.hub, "hist-peer", "service");
 

@@ -111,7 +111,25 @@ Recorded honestly. Several are stated positions rather than oversights — SPEC
 § 14.2 sets out the v0.1 trust posture — but a stated position is still a
 weakness, and the list is more useful than the distinction.
 
-### `can_proxy` is self-asserted
+### ~~`can_proxy` is self-asserted~~
+
+**Closed.** The unauthenticated provisioning route refuses the field, and it is
+granted either by an operator holding `agent.provision` over that identity or
+by `AGENT_MESH_PROXY_IDENTITIES` on the hub.
+
+The original entry said closing it meant authenticating provisioning. It did
+not: the route stays open, because a lane must be able to register a key
+without holding a human's credential. What moved is the one field on it that
+was a grant.
+
+**One self-assertion remains and is not hidden.** `agent-mesh-http` is named in
+the deployment's own configuration, so it still ends up with the flag it needs
+without anyone approving it at runtime — there is nobody to approve it before
+the process that authenticates operators is running. What changed is that it is
+no longer *reachable*: an attacker who can open a socket to the hub can no
+longer grant themselves the same thing.
+
+#### Original entry — `can_proxy` is self-asserted
 
 http sets the grant on its own row when it registers itself, because
 provisioning is unauthenticated and nothing else was going to. So the entitlement

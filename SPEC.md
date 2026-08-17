@@ -757,109 +757,26 @@ fields.
 
 ### 8.2. `mesh.send`
 
-Routes a message envelope (in flat-content form) to another identity.
+**`can_proxy` MUST NOT be settable on `POST /api/v1/agents`.** That route is
+unauthenticated (§ 9.2 †), so a grant made there is one the checked party
+writes for itself, and an entitlement read from a value its subject set is not
+a check. A hub MUST refuse the field with `403
+CAN_PROXY_NOT_SELF_GRANTED` rather than ignore it — a caller that sends it and
+receives `200` believes it worked, and discovers otherwise at its first proxied
+send.
 
-```
-params: {
-  to:        string           // recipient identity
-  content:   string           // message body (often a formatted
-                              // ChannelEnvelope string; see § 7.1)
-  reply_to?: string | null    // peer message id this replies to
-  client_message_id?: string  // idempotency key, unique per sending identity
-  from?:     string           // optional sender override; defaults
-                              // to the socket's registered identity
-                              // (used by proxy senders such as the
-                              // HTTP server forwarding on a user's behalf)
-}
-result: {
-  id:     string              // hub-assigned message id ("msg_<16hex>")
-  status: "delivered" | "pending"
-}
-```
+It is granted two ways, both operator decisions:
 
-**Idempotency (0.2).** When `client_message_id` is present the hub MUST
-remember it, scoped to the **sending identity**. A repeat carrying the same key
-and the same message returns the original `id` and `status` with
-`duplicate: true`; a repeat carrying the same key and a *different* message is
-`-32015` SEND_CONFLICT and is **permanent**.
+- `POST /api/v1/admin/agents/{identity}/can-proxy`, behind
+  `agent.provision` scoped to that identity (§ 11);
+- `AGENT_MESH_PROXY_IDENTITIES` on the hub, for the infrastructure proxies a
+  deployment cannot grant any other way — `agent-mesh-http` needs the flag
+  before anybody can authenticate to grant it.
 
-It exists because the hub can commit a message and then fail to deliver the
-response — a lost HTTP reply, an ambiguous disconnect. To the hub the resulting
-retry is indistinguishable from a new send. Only the caller knows which it is,
-so only the caller can supply the key, and a key that means two things means
-neither.
-
-`status` is `"delivered"` when the recipient socket was online and the
-hub successfully pushed a `mesh.message` notification (§ 8.8) to it;
-`"pending"` otherwise (the envelope is persisted to `messages` and
-will be delivered on the recipient's next connect via
-`mesh.fetch_messages`/auto-deliver).
-
-**Transmitter recording (0.2).** The hub MUST record, alongside `from`, the
-identity of the socket that actually sent the envelope. It is taken from the
-authenticated connection and MUST NOT be read from `params` — a field the
-caller can set is a field the caller can lie in, which is the same rule
-§ 8.9.3 applies to `identity` and `recorded_by`.
-
-The two are equal unless a proxy overrode `from`. Recording only `from` erased
-the distinction: a proxied envelope was stored as though the claimed sender
-wrote it, and nothing anywhere recorded which socket produced it, so an
-incorrect override was not merely permitted but invisible.
-
-This is independent of the entitlement rule below. Entitlement decides whether
-an override is *allowed*; the transmitter record is what makes the answer
-auditable either way, and it does not depend on entitlement being implemented.
-
-**Sender validation (0.2).** `from` MUST be either the socket's own connected
-identity or one of the `proxy_for` entries that identity is entitled to. The
-hub MUST reject anything else. At 0.1 `from` was accepted unchecked, which let
-any connected socket originate an envelope as any identity.
-
-**The entitlement rule.** A socket may speak for an identity when both hold:
-
-1. its own identity carries `can_proxy`, and
-2. the subject's type has `requires_key = 0` (§ 10.3).
-
-Condition 2 is the substantive one, and it is stated against the type registry
-rather than a grant table because that makes it true rather than merely
-configured: **an identity that can hold a key signs for itself**, so a proxy
-claim over it is either redundant or a lie. The override exists for participants
-who by design hold no key — people (§ 10.3) — and that is now a property of the
-type rather than a special case. It is also why a person must hold a registered
-identity: the hub cannot ask the type of a row that does not exist.
-
-Condition 1 exists because condition 2 alone would let any connected agent speak
-for any person; the scheduler is a `service` exactly as the web gateway is.
-`can_proxy` is a column on `agents`, not on `agent_types`, for that reason.
-
-Both are read **per request** against stored rows, not cached from what the
-socket declared at connect. An operator who withdraws a grant, or tears the
-subject down, means it from that moment rather than from whenever the socket
-next reconnects — the same reasoning § 8.1 applies to the signing key.
-
-`proxy_for` is likewise validated at `mesh.connect`. Entries the socket may not
-claim are **dropped rather than failing the connection**: the http server
-declares every approved person at once, and refusing the whole connect over one
-bad entry would take the entire web surface down. A dropped entry is logged, is
-not wired into the socket's routing, and its envelopes are refused with
-`-32013` — which attributes the failure to the one person affected instead of to
-everyone.
-
-A socket must also have *declared* an identity in `proxy_for` to send as it.
-Entitlement alone is not enough, so a socket cannot reach beyond what it
-announced.
-
-Routing a message MUST also record an audit event (§ 8.9.4).
-
-Errors:
-
-- `-32602` INVALID_PARAMS — `params.to` missing/non-string or
-  `params.content` missing.
-- `-32600` INVALID_REQUEST — sender socket is not connected
-  (`mesh.connect` / `mesh.register` was never called on this WS).
-- `-32013` NOT_ENTITLED — `params.from` is neither the connected identity
-  nor an entitled `proxy_for` entry.
-
+The declaration is **additive and applied on provisioning as well as at boot**.
+Additive because clearing on restart would silently undo an operator's runtime
+grant; applied on provisioning because the http server registers itself after
+the hub is running, so a grant made only at boot never finds its row.
 ### 8.3. `mesh.list_agents`
 
 Returns the full agent registry.
@@ -1633,6 +1550,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/pairing-codes/redeem`    | None   | `200`   | Redeem one from the agent's host (§ 11.3). **Unauthenticated by design** — the code is the credential, and the caller has no human session. |
 | GET    | `/api/v1/admin/agents/{identity}/owners` | JWT\* | `200` | Who is answerable for an identity, and how the claim was made (§ 11.3). |
 | GET    | `/api/v1/admin/agents/owned`      | JWT\*  | `200`   | What the **caller** owns (§ 11.3). A tenant-wide grant does not widen it — "everything here" is not an answer to "what is mine". |
+| POST   | `/api/v1/admin/agents/{identity}/can-proxy` | JWT\* | `200` | Grant or withdraw `can_proxy` (§ 8.2). Not settable on the unauthenticated provisioning route — a grant the checked party writes is not a check. |
 | GET    | `/api/v1/admin/groups`            | JWT\*  | `200`   | Groups, their members and every egress rule (§ 12). |
 | POST   | `/api/v1/admin/groups`            | JWT\*  | `201`   | Create one. It can send nowhere until a rule says so (§ 12). |
 | POST   | `/api/v1/admin/groups/{group_id}/members` | JWT\* | `200` | Move an identity in. Membership is singular (§ 12). |

@@ -67,12 +67,15 @@ export interface ProvisionOutcome {
  * rather than pretended away.
  */
 export async function provisionSelf(identity: string): Promise<ProvisionOutcome> {
-  return post({
-    identity,
-    type: 'service',
-    description: 'Agent Mesh Web UI',
-    can_proxy: true,
-  })
+  // `can_proxy` is deliberately absent. § 8.2 refuses it on the
+  // unauthenticated route, and writing it here would contradict this module's
+  // whole reason for going over REST — the hub owns that schema and the rules
+  // on it.
+  //
+  // The deployment declares its proxies instead, through
+  // `AGENT_MESH_PROXY_IDENTITIES` on the hub. A proxy is an operator decision,
+  // and configuration is where a deployment states one.
+  return post({ identity, type: 'service', description: 'Agent Mesh Web UI' })
 }
 
 export async function provisionHuman(identity: string): Promise<ProvisionOutcome> {

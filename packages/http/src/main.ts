@@ -1410,6 +1410,39 @@ app.get('/api/v1/admin/agents/owned', async (c) => {
   return c.json({ ok: true, owner: actor, identities: ownership.ownedBy(agentsDb(), actor) })
 })
 
+/**
+ * Grant or withdraw `can_proxy` (SPEC § 8.2).
+ *
+ * **Here rather than on provisioning**, for the reason § 10.2 gives for key
+ * approval: the hub cannot authenticate a caller, so a grant it served would
+ * be one the granted party could write for itself. The entitlement check reads
+ * this value, and a value the checked party sets is not a check.
+ *
+ * Gated on `agent.provision` scoped to the identity. Speaking for someone else
+ * is the strongest thing a participant can be given, and the operator granting
+ * it should be one who could have created the identity in the first place.
+ */
+app.post('/api/v1/admin/agents/:identity/can-proxy', async (c) => {
+  const identity = c.req.param('identity')
+  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION, identity)
+  if (typeof actor !== 'string') return actor
+  if (!IDENTITY_RE.test(identity)) return badIdentity(c)
+
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  if (typeof body?.can_proxy !== 'boolean') {
+    return c.json({ ok: false, error: 'can_proxy must be a boolean' }, 400)
+  }
+
+  const db = agentsDb()
+  const exists = db.prepare(`SELECT 1 FROM agents WHERE identity = ? AND deleted_at IS NULL`).get(identity)
+  if (!exists) return c.json({ ok: false, error: `identity '${identity}' is not registered` }, 404)
+
+  db.prepare(`UPDATE agents SET can_proxy = ? WHERE identity = ?`).run(body.can_proxy ? 1 : 0, identity)
+  console.log(`[http-server] ${actor} set can_proxy=${body.can_proxy} on ${identity}`)
+  return c.json({ ok: true, identity, can_proxy: body.can_proxy })
+})
+
 // --- Groups and egress (SPEC § 12) ----------------------------------------
 //
 // Deny by default, so these routes are how a deployment says anything at all.

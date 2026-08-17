@@ -17,14 +17,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
+import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh , teardown, setProxyGrant } from "./harness";
 
 let mesh: Mesh;
 
 beforeAll(async () => {
   // Teardown (§ 9.3) needs an admin session, which only the http server issues.
   mesh = await startMesh();
-  await provisionProxy(mesh.hub, "gateway");
+  await provisionProxy(mesh.hub, "gateway", "service", mesh.http);
   await provision(mesh.hub, "person", "human");
   await provision(mesh.hub, "other-person", "human");
   await provision(mesh.hub, "recipient", "service");
@@ -190,16 +190,15 @@ describe("proxy_for at connect", () => {
 
 describe("checked live, not at connect", () => {
   test("withdrawing the grant takes effect on the next send", async () => {
-    await provisionProxy(mesh.hub, "revocable");
+    await provisionProxy(mesh.hub, "revocable", "service", mesh.http);
     const { rpc } = await asSocket("revocable", ["person"]);
     expect((await rpc.call("mesh.send", { to: "recipient", from: "person", content: "1" })).error)
       .toBeUndefined();
 
-    await fetch(`${mesh.hub.url}/api/v1/agents`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identity: "revocable", type: "service", can_proxy: false }),
-    });
+    // Withdrawn by an operator, which is the only way § 8.2 allows: the
+    // provisioning route refuses the field entirely, so a participant cannot
+    // grant *or* withdraw its own.
+    await setProxyGrant(mesh.http, "revocable", false);
 
     // On the open socket, without waiting for a reconnect. An operator who
     // withdraws a grant means it from that moment — the same reasoning as
@@ -210,7 +209,7 @@ describe("checked live, not at connect", () => {
   });
 
   test("a grant is not stripped by an unrelated update", async () => {
-    await provisionProxy(mesh.hub, "kept-grant");
+    await provisionProxy(mesh.hub, "kept-grant", "service", mesh.http);
     await fetch(`${mesh.hub.url}/api/v1/agents`, {
       method: "POST",
       headers: { "content-type": "application/json" },
