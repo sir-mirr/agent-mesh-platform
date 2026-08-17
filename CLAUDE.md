@@ -151,7 +151,12 @@ also add its mutation to `scripts/mutation-check.ts` and run it:
 
 ```bash
 bun run mutation-check
+bun run mutation-check -- --self-check
 ```
+
+The second one is the tool checking its own reporting branch. It was added after
+`18/18 caught` was reported while the code that prints a failure had never run
+once — a check whose failure path is untested is a check nobody has seen work.
 
 A green suite is not evidence that a new check checks anything. Five separate
 checks in this repository reported green while checking nothing, and every one
