@@ -240,10 +240,7 @@ export function Sidebar({
 
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {visibleItems.map((item) => {
-                  const isActive =
-                    location.pathname === item.href ||
-                    (item.href !== "/dashboard" &&
-                      location.pathname.startsWith(item.href));
+                  const isActive = location.pathname === item.href;
 
                   return (
                     <Link
