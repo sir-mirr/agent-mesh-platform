@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
+      "node:crypto": resolve(__dirname, "src/stubs/crypto.ts"),
     },
   },
   server: {

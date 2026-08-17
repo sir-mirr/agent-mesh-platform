@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { chromium, type Browser } from "playwright";
+import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer } from "./harness.ts";
 
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
@@ -741,27 +742,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SC-VOCAB-01: Capability Vocabulary Alignment Assertion (D-125, D-126, D-127)
+  // SC-VOCAB-01: Capability Vocabulary Alignment Assertion (D-125, D-126, D-127, D-139)
   it("[SC-VOCAB-01] verifies guarded route capabilities match backend platform vocabulary", async () => {
-    const validPlatformCapabilities = [
-      "agent.teardown",
-      "key.approve",
-      "group.manage",
-      "policy.send_restrict",
-      "role.grant",
-      "audit.read.metadata",
-      "audit.read.content",
-      "server.inspect",
-      "admin.all",
-    ];
-
     const appTsxContent = await Bun.file("packages/platform-web/src/App.tsx").text();
     const matches: string[] = Array.from(appTsxContent.matchAll(/requiredCapability="([^"]+)"/g))
       .map((m) => m[1])
       .filter((c): c is string => typeof c === "string");
     expect(matches.length).toBeGreaterThan(0);
     for (const cap of matches) {
-      expect(validPlatformCapabilities).toContain(cap);
+      expect(ALL_CAPABILITIES as readonly string[]).toContain(cap);
     }
   });
 
@@ -954,4 +943,59 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await context.close().catch(() => {});
     }
   });
+
+  // Data-Driven Comprehensive Down State Assertion Across All 13 Screens (D-145)
+  const ALL_13_SCREENS = [
+    "/dashboard",
+    "/creator",
+    "/creator/groups",
+    "/creator/topology",
+    "/creator/playground",
+    "/creator/lease-queue",
+    "/creator/register",
+    "/platform",
+    "/platform/telemetry",
+    "/platform/tenants",
+    "/tenant/egress-acl",
+    "/tenant/audits",
+    "/tenant/rbac",
+  ];
+
+  const ZERO_REGEX = /(?:기록된|등록된|데이터가|내역이|요청이)\s*없|0개|0명|\b0 sessions|active_sockets=0|Groups: 0|테넌트 없음/;
+  const UNKNOWN_REGEX = /불러오지 못|불러올 수 없|통신 불가|연결 불가|연결할 수 없|측정 불가|OFFLINE|수집 중/;
+
+  for (const route of ALL_13_SCREENS) {
+    it(`[SC-DOWN-ALL] ${route} distinguishes disconnected state from empty (D-145)`, async () => {
+      // 1. Up text
+      const upText = await withPage(route, async ({ page }) => {
+        return await page.locator("#root").innerText();
+      });
+
+      // 2. Down text
+      const context = await browser.newContext();
+      try {
+        const page = await context.newPage();
+        await context.addCookies([
+          {
+            name: "mesh_token",
+            value: jwtToken,
+            domain: "127.0.0.1",
+            path: "/",
+            httpOnly: false,
+            secure: false,
+            sameSite: "Lax",
+          },
+        ]);
+        await page.route("**/api/v1/**", (r) => r.abort());
+        await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+        const downText = await page.locator("#root").innerText();
+
+        expect(downText).not.toBe(upText);
+        expect(downText).not.toMatch(ZERO_REGEX);
+        expect(downText).toMatch(UNKNOWN_REGEX);
+      } finally {
+        await context.close().catch(() => {});
+      }
+    });
+  }
 });

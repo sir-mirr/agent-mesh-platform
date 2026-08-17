@@ -11,34 +11,30 @@ interface AuthContextType {
   switchRole: (role: UserRole) => void;
 }
 
+import { ALL_CAPABILITIES } from "@/types/auth.ts";
+
 const ROLE_CAPABILITIES: Record<UserRole, Capability[]> = {
   AGENT_OPERATOR: [
     "audit.read.metadata",
+    "mailbox.read.depth",
   ],
   GROUP_ADMIN: [
     "group.manage",
     "audit.read.metadata",
+    "mailbox.read.depth",
   ],
   TENANT_ADMIN: [
     "key.approve",
     "agent.teardown",
+    "agent.provision",
     "group.manage",
-    "policy.send_restrict",
     "audit.read.content",
     "audit.read.metadata",
+    "mailbox.read.depth",
+    "tenant.read.stats",
     "role.grant",
   ],
-  PLATFORM_ADMIN: [
-    "key.approve",
-    "agent.teardown",
-    "group.manage",
-    "policy.send_restrict",
-    "audit.read.content",
-    "audit.read.metadata",
-    "server.inspect",
-    "role.grant",
-    "admin.all",
-  ],
+  PLATFORM_ADMIN: ALL_CAPABILITIES as Capability[],
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);

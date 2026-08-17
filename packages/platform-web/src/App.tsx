@@ -51,27 +51,13 @@ export function App() {
               <Route path="/creator/lease-queue" element={<LeaseQueuePage />} />
               <Route path="/creator/register" element={<RegisterAgentPage />} />
 
-              {/* 2. 실시간 서버 모니터링 콘솔 (플랫폼 관리자 전용) */}
-              <Route
-                path="/platform"
-                element={
-                  <GuardedRoute requiredCapability="server.inspect">
-                    <PlatformOverviewPage />
-                  </GuardedRoute>
-                }
-              />
-              <Route
-                path="/platform/telemetry"
-                element={
-                  <GuardedRoute requiredCapability="server.inspect">
-                    <TelemetryPage />
-                  </GuardedRoute>
-                }
-              />
+              {/* 2. 실시간 서버 모니터링 콘솔 (인증된 사용자/운영자) */}
+              <Route path="/platform" element={<PlatformOverviewPage />} />
+              <Route path="/platform/telemetry" element={<TelemetryPage />} />
               <Route
                 path="/platform/tenants"
                 element={
-                  <GuardedRoute requiredCapability="server.inspect">
+                  <GuardedRoute requiredCapability="tenant.read.stats">
                     <TenantTrafficPage />
                   </GuardedRoute>
                 }
@@ -81,7 +67,7 @@ export function App() {
               <Route
                 path="/tenant/egress-acl"
                 element={
-                  <GuardedRoute requiredCapability="policy.send_restrict">
+                  <GuardedRoute requiredCapability="group.manage">
                     <TenantEgressAclPage />
                   </GuardedRoute>
                 }

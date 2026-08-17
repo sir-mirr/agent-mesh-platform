@@ -20,13 +20,11 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
 
   const hasCapability = (capability: Capability): boolean => {
     if (!user) return false;
-    if (capabilities.includes("admin.all")) return true;
     return capabilities.includes(capability);
   };
 
   const hasAnyCapability = (reqCapabilities: Capability[]): boolean => {
     if (!user) return false;
-    if (capabilities.includes("admin.all")) return true;
     return reqCapabilities.some((cap) => capabilities.includes(cap));
   };
 

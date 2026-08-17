@@ -23,11 +23,14 @@ export function RegisterAgentPage() {
   const [copied, setCopied] = useState<boolean>(false);
   const [pendingList, setPendingList] = useState<PendingAgentRequest[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isError, setIsError] = useState<boolean>(false);
   const [modalRequest, setModalRequest] = useState<PendingAgentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Fetch real pending proposals on mount
   React.useEffect(() => {
+    setIsLoading(true);
+    setIsError(false);
     fetchPendingKeys()
       .then((proposals) => {
         setPendingList(
@@ -42,7 +45,10 @@ export function RegisterAgentPage() {
           }))
         );
       })
-      .catch(() => setPendingList([]))
+      .catch(() => {
+        setIsError(true);
+        setPendingList([]);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
@@ -354,13 +360,15 @@ curl -X POST http://localhost:3100/api/v1/pairing-codes/redeem \\
       {/* Pending Agent Requests Table */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          📋 대기 중인 AI 에이전트 등록 요청 큐 ({pendingList.filter((p) => p.status === "pending").length}건 대기)
+          📋 대기 중인 AI 에이전트 등록 요청 큐 {isLoading ? "(조회 중...)" : isError ? "(통신 불가)" : `(${pendingList.filter((p) => p.status === "pending").length}건 대기)`}
         </h3>
         <DataTable
           columns={columns}
           data={pendingList}
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
+          isError={isError}
+          errorMessage="대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패)."
           emptyMessage="현재 대기 중인 공개키 제안 데이터가 없습니다."
         />
       </div>
