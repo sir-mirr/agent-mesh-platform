@@ -628,6 +628,20 @@ const MUTATIONS: Mutation[] = [
     expect: ["row.event_type and payload.event_type disagree"],
   },
 
+  {
+    id: "redaction-withholds",
+    defect:
+      "\u00a7 11.0's redaction was unreachable by any account and therefore unchecked: admin holds every capability and a stranger holds none, so the state the audit screen advertises — content withheld from a metadata-only reader — had no caller who could stand on it.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      if (k === 'content') {",
+    to: "      if (false) {",
+    suite: "test/audit-integrity.test.ts",
+    // Needs `capabilityViewer`, which makes an account holding exactly
+    // `audit.read.metadata`. Before it existed this branch could not be entered
+    // by any caller the suite could produce.
+    expect: ["content reached a metadata-only reader"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
