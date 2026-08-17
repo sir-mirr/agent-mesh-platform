@@ -58,7 +58,7 @@ import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb 
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -1029,7 +1029,24 @@ app.post('/api/v1/messages', async (c) => {
   // Push to SSE clients so sender's UI updates immediately
   // `pending` when the hub never took it, so the UI can tell "waiting for the
   // recipient" from "never left this machine".
-  if (!hubMessageId) msg.status = 'failed'
+  //
+  // **Written back, not only corrected in memory.** This assignment used to
+  // change the object the response and the SSE frames are built from, and
+  // nothing else: the row inserted above stayed `pending` for ever, because
+  // no `UPDATE` of this table existed anywhere. So the caller was told the
+  // truth once and every later read was told otherwise — the history route,
+  // the conversation view and search all serve the stored value, and they
+  // reported a message that never left this machine as one still waiting for
+  // its recipient.
+  if (!hubMessageId) {
+    msg.status = 'failed'
+    if (!updateMessageStatus(msg.id, 'failed')) {
+      // The row was inserted moments ago in this same handler, so a miss means
+      // the insert did not take — worth saying out loud rather than leaving a
+      // correction that quietly applied to nothing.
+      console.error(`[http-server] could not mark ${msg.id} failed: no such row`)
+    }
+  }
   const sseMsg = { id: msg.id, from: msg.from, to: msg.to, ts: msg.ts, content: msg.content, reply_to: msg.reply_to ?? null, file_path: msg.file_path ?? null, status: msg.status }
   pushToSSE(msg.to, msg.from, 'message', sseMsg)
   pushToSSE(msg.from, msg.to, 'message', sseMsg)

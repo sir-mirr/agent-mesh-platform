@@ -273,6 +273,27 @@ export function insertMessage(msg: {
   stmt.run(msg.id, msg.from, msg.to, msg.content, msg.reply_to ?? null, msg.file_path ?? null, msg.status, msg.ts)
 }
 
+/**
+ * Correct a message's status once its fate is known.
+ *
+ * **The row is written before the hub is asked**, because a message that
+ * reaches storage and then fails to route is recoverable and one that is
+ * routed and never stored is not. The consequence is that the status inserted
+ * is a guess, and until this existed nothing ever revised it: a send the hub
+ * refused was answered `failed` to the caller and left `pending` in the table,
+ * so the response and the record disagreed and every later read — the history
+ * route, the conversation view, search — served the record.
+ *
+ * Reports whether it matched, because the id comes from a caller in some paths
+ * and a silent no-op is how a correction stops happening without anything
+ * saying so.
+ */
+export function updateMessageStatus(id: string, status: string): boolean {
+  const db = getDb()
+  const result = db.prepare(`UPDATE messages SET status = ? WHERE id = ?`).run(status, id)
+  return result.changes > 0
+}
+
 export function getMessageHistory(agent: string, limit: number = 20): DbMessage[] {
   const db = getDb()
   const stmt = db.prepare(`
