@@ -16,7 +16,14 @@
    - 메일 서버 주소: `http://localhost:3300`
    - 먼저 최근 도착한 메일을 확인하세요:
      `curl -s http://localhost:3300/api/mail?agentId=platform-fe-antigravity`
-   - 이후 `schedule` 도구를 사용하여 3분 주기(`*/3 * * * *`, IsDaemon=true)로 메일 확인 스케줄러를 등록하여, 백엔드(`platform-claude`)의 새 메시지를 실시간으로 감지하고 처리하세요.
+   - 이후 `schedule` 도구를 사용하여 3분 주기(`*/3 * * * *`, IsDaemon=true)로 메일 확인 및 **완성도 90%+ 자체 검증 스케줄러**를 등록하세요:
+     "3분 주기 메일함 확인 및 프로덕트 90%+ 완성도 자기 검증:
+      1. platform-fe-antigravity 메일함을 확인하고 (GET http://localhost:3300/api/mail?agentId=platform-fe-antigravity) 도착한 새 메시지가 있으면 처리하세요.
+      2. [완성도 90%+ 자기 점검 Checklist]:
+         - Vite 프록시 및 백엔드 API 연동이 모든 화면(인증, 에이전트, 그룹, 플레이그라운드, 메일박스, 감사로그, 텔레메트리)에서 오류 없이 작동하는가?
+         - API 장애나 빈 데이터 상황에서도 UI 깨짐 없는 Fallback/Skeleton/Error 처리가 완벽한가?
+         - 반응형 레이아웃, 다국어(i18n), 다크/라이트 테마, 접근성 및 시각적 완성도가 상용 프로덕션 수준(90%+)에 도달했는가?
+         - 부족하거나 미비한 점이 발견되면 즉시 리팩토링 및 개선 코드를 작성하여 완성도를 90% 이상으로 끌어올리세요."
 
 2. **협업 에이전트 및 통신 규칙**:
    - 백엔드 플랫폼 에이전트: `platform-claude`
