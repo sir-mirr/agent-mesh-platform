@@ -251,8 +251,19 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A scenario verb the runner did not handle fell out of the `switch`, did nothing, and reported green (§ 17.3).",
     file: "test/scenarios.test.ts",
-    from: '    case "sleep":\n      await Bun.sleep(step.seconds * 1000);\n      return;\n',
-    to: "",
+    // **Aimed at `provision`, not at `sleep`.** The first version deleted the
+    // `sleep` case, and `sleep` is used by exactly two of eighteen scenarios —
+    // both of which ask for a bespoke mesh (`receiveLeaseSeconds: 2`). When one
+    // of those failed to come up in CI the suite reported that instead, the
+    // expected string never appeared, and the entry read `not caught`.
+    //
+    // The tool was right and the entry was fragile: it depended on the most
+    // failure-prone step in the run to reach the branch it was testing.
+    // `provision` appears twenty-four times, on the shared mesh, in the first
+    // step of nearly every scenario — so an unhandled verb throws before
+    // anything else can go wrong instead.
+    from: '    case "provision": {',
+    to: '    case "provision-disabled-by-mutation": {',
     suite: "test/scenarios.test.ts",
     expect: ["verb not implemented"],
   },
