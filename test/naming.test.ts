@@ -118,6 +118,41 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Blank out comment lines, so prose about a write is not read as one.
+ *
+ * **A comment cannot write.** This scan matched `DELETE FROM agent_keys`
+ * inside a sentence explaining why a superseded key's row is deleted, in a
+ * function that reads and returns — and reported it as a hidden write. Naming
+ * the mechanism is exactly what these comments are for, so a check that
+ * punishes it teaches people to describe writes vaguely.
+ *
+ * Line count is preserved, like `maskTemplates` beside it, because the
+ * declaration scan indexes back into the raw lines.
+ *
+ * Applied after template masking, so SQL inside a template that also looks
+ * like a comment is already gone.
+ */
+function maskComments(lines: string[]): string[] {
+  const out: string[] = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (inBlock) {
+      out.push("");
+      if (t.includes("*/")) inBlock = false;
+      continue;
+    }
+    if (t.startsWith("/*")) {
+      out.push("");
+      if (!t.includes("*/")) inBlock = true;
+      continue;
+    }
+    out.push(t.startsWith("//") || t.startsWith("*") ? "" : line);
+  }
+  return out;
+}
+
 /** Blank out template-literal lines so embedded SQL is not read as code. */
 function maskTemplates(lines: string[]): string[] {
   const out: string[] = [];
@@ -178,7 +213,13 @@ function scan(disagrees: (name: string) => boolean): Finding[] {
   const found: Finding[] = [];
   for (const file of sourceFiles(join(REPO_ROOT, "packages"))) {
     const raw = readFileSync(file, "utf8").split("\n");
-    const masked = maskTemplates(raw).join("\n");
+    // **Two maskings, for two different questions.** Declarations are found in
+    // source with templates blanked, so SQL inside a string is never mistaken
+    // for a signature. The body is scanned with templates *intact* — the write
+    // usually is a template — but with comments blanked, because a sentence
+    // describing a write is not one.
+    const bodyLines = maskComments(raw);
+    const masked = maskComments(maskTemplates(raw)).join("\n");
 
     DECL.lastIndex = 0;
     for (let m = DECL.exec(masked); m; m = DECL.exec(masked)) {
@@ -190,7 +231,7 @@ function scan(disagrees: (name: string) => boolean): Finding[] {
       // From the signature's brace, which is the end of the match — see
       // `bodyOf`. Masking preserves line count, so the two indexes agree.
       const braceLine = masked.slice(0, m.index + m[0].length).split("\n").length - 1;
-      const wrote = WRITES.exec(bodyOf(raw, braceLine));
+      const wrote = WRITES.exec(bodyOf(bodyLines, braceLine));
       const rel = file.slice(REPO_ROOT.length).replace(/^\//, "");
       if (wrote && disagrees(name) && !EXEMPT.has(`${rel}:${name}`)) {
         found.push({ file: file.slice(REPO_ROOT.length), line, name, wrote: wrote[0] });
