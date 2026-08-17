@@ -867,6 +867,24 @@ for (const m of selected) {
     continue;
   }
 
+  // **A summary is not the same as a run.** `send-idempotent-retry` came back
+  // `0 pass / 1 fail` with `a beforeEach/afterEach hook timed out` — the mesh
+  // never came up, so no test in the file executed and the guard had no chance
+  // to object. The regex above matched `0 pass` and the entry was recorded as
+  // `not caught`, which is a finding about a guard from a run that never
+  // reached it.
+  //
+  // One mutation breaks one guard; the rest of the file still passes. Zero
+  // passing tests means the file did not run, whatever the summary says.
+  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
+  if (passed === 0) {
+    console.error(`✗ ${m.id}: no test in ${m.suite} ran — inconclusive, not a verdict`);
+    await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
+    missed++;
+    kinds.set(m.id, "inconclusive");
+    continue;
+  }
+
   const caught = run.exitCode !== 0 && m.expect.every((e) => output.includes(e));
   if (caught) {
     console.log(`✓ ${m.id}`);
