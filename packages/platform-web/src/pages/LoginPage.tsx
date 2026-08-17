@@ -28,289 +28,158 @@ export function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "radial-gradient(circle at 30% 30%, #075985 0%, #0C4A6E 35%, #0F172A 75%, #020617 100%)",
+        background: "radial-gradient(ellipse at 30% 30%, #075985 0%, #0C4A6E 35%, #0F172A 70%, #020617 100%)",
         position: "relative",
         overflow: "hidden",
         padding: 24,
       }}
     >
-      {/* ── Futuristic Monochromatic Geometric Mesh with Path-following Data Bullets ── */}
+      {/* ── LEFT FLANK: Original Mockup 3-Agent Animated Constellation Triad ── */}
+      <div
+        className="hero-agents-constellation"
+        style={{
+          left: "max(5%, calc(50% - 580px))",
+          top: "50%",
+          transform: "translateY(-50%)",
+        }}
+      >
+        {/* Constellation SVG Overlay with Flowing Packets */}
+        <svg className="constellation-svg" viewBox="0 0 260 240">
+          <defs>
+            <linearGradient id="lineGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#34D399" stopOpacity="0.9" />
+            </linearGradient>
+            <linearGradient id="lineGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#C084FC" stopOpacity="0.9" />
+            </linearGradient>
+            <linearGradient id="lineGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#C084FC" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.9" />
+            </linearGradient>
+            <radialGradient id="meshCenterGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.16" />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Center Glow Polygon */}
+          <polygon points="48,40 200,70 120,180" fill="url(#meshCenterGlow)" />
+
+          {/* Connecting Dashed Lines */}
+          <line className="constellation-line" x1="48" y1="40" x2="200" y2="70" stroke="url(#lineGrad1)" />
+          <line className="constellation-line" x1="200" y1="70" x2="120" y2="180" stroke="url(#lineGrad2)" />
+          <line className="constellation-line" x1="120" y1="180" x2="48" y2="40" stroke="url(#lineGrad3)" />
+
+          {/* Flowing Data Pulses (Mesh Packets) */}
+          <circle className="mesh-packet packet-1" r="3.5" fill="#38BDF8" />
+          <circle className="mesh-packet packet-2" r="3.5" fill="#34D399" />
+          <circle className="mesh-packet packet-3" r="3.5" fill="#C084FC" />
+        </svg>
+
+        {/* 1. 핀둥이 (Top-Left) */}
+        <div className="hero-agent-node agent-node-1" title="핀둥이 Agent">
+          <div className="agent-glow-ring ring-blue" />
+          <div className="agent-avatar-frame">
+            <img src="/assets/agent-fin.png" alt="핀둥이" className="agent-avatar-img" />
+          </div>
+          <div className="agent-node-badge badge-blue">
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#38BDF8", display: "inline-block" }} />
+            핀둥이
+          </div>
+        </div>
+
+        {/* 2. 핀자 (Top-Right) */}
+        <div className="hero-agent-node agent-node-2" title="핀자 Agent">
+          <div className="agent-glow-ring ring-emerald" />
+          <div className="agent-avatar-frame">
+            <img src="/assets/agent-support.png" alt="핀자" className="agent-avatar-img" />
+          </div>
+          <div className="agent-node-badge badge-emerald">
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block" }} />
+            핀자
+          </div>
+        </div>
+
+        {/* 3. 아름이 (Bottom) */}
+        <div className="hero-agent-node agent-node-3" title="아름이 Agent">
+          <div className="agent-glow-ring ring-purple" />
+          <div className="agent-avatar-frame">
+            <img src="/assets/agent-assistant.png" alt="아름이" className="agent-avatar-img" />
+          </div>
+          <div className="agent-node-badge badge-purple">
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C084FC", display: "inline-block" }} />
+            아름이
+          </div>
+        </div>
+      </div>
+
+      {/* ── RIGHT FLANK: Clean Monochromatic Geometric Satellite Mesh ── */}
       <div
         style={{
           position: "absolute",
-          inset: 0,
+          right: "max(4%, calc(50% - 600px))",
+          top: "50%",
+          transform: "translateY(-50%)",
+          width: 280,
+          height: 320,
           pointerEvents: "none",
-          zIndex: 1,
-          overflow: "hidden",
         }}
-        aria-hidden="true"
       >
-        <svg
-          style={{
-            position: "absolute",
-            width: "100%",
-            height: "100%",
-            top: 0,
-            left: 0,
-          }}
-          viewBox="0 0 1440 900"
-          preserveAspectRatio="xMidYMid slice"
-        >
+        <svg style={{ width: "100%", height: "100%", overflow: "visible" }} viewBox="0 0 280 320">
           <defs>
-            {/* Ambient Monochromatic Cyan-Sky Glow */}
-            <radialGradient id="meshAmbientGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.12" />
-              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
-            </radialGradient>
-
-            {/* Glowing Bullet Filter */}
-            <filter id="bulletGlow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-
-            {/* ── Explicit SVG Paths for Precise Motion Tracking ── */}
-            {/* Left Triad Edges */}
-            <path id="path_fin_to_pinja" d="M 180,180 L 320,310" />
-            <path id="path_pinja_to_areum" d="M 320,310 L 160,460" />
-            <path id="path_areum_to_fin" d="M 160,460 L 180,180" />
-            <path id="path_fin_to_codex" d="M 180,180 L 380,110" />
-            <path id="path_areum_to_claude" d="M 160,460 L 240,640" />
-            <path id="path_claude_to_sentinel" d="M 240,640 L 390,720" />
-
-            {/* Right Lattice Edges */}
-            <path id="path_hub_to_workerA" d="M 1120,160 L 1260,260" />
-            <path id="path_workerA_to_audit" d="M 1260,260 L 1180,440" />
-            <path id="path_audit_to_relay" d="M 1180,440 L 1020,320" />
-            <path id="path_relay_to_hub" d="M 1020,320 L 1120,160" />
-            <path id="path_audit_to_workerB" d="M 1180,440 L 1340,560" />
-            <path id="path_workerB_to_gateway" d="M 1340,560 L 1140,710" />
-            <path id="path_gateway_to_vault" d="M 1140,710 L 1060,590" />
-            <path id="path_vault_to_audit" d="M 1060,590 L 1180,440" />
-            <path id="path_workerA_to_attestor" d="M 1260,260 L 1380,380" />
-            <path id="path_attestor_to_workerB" d="M 1380,380 L 1340,560" />
-
-            {/* Cross Galaxy Backbone Lines */}
-            <path id="path_codex_to_hub" d="M 380,110 L 1120,160" />
-            <path id="path_sentinel_to_vault" d="M 390,720 L 1060,590" />
+            <linearGradient id="rightLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.2" />
+            </linearGradient>
+            <path id="right_path1" d="M 40,40 L 160,30" />
+            <path id="right_path2" d="M 160,30 L 230,130" />
+            <path id="right_path3" d="M 230,130 L 130,200" />
+            <path id="right_path4" d="M 130,200 L 40,40" />
+            <path id="right_path5" d="M 130,200 L 210,290" />
+            <path id="right_path6" d="M 210,290 L 60,270" />
+            <path id="right_path7" d="M 60,270 L 130,200" />
           </defs>
 
-          {/* Clean 3D Geometric Facets */}
-          <polygon points="180,180 320,310 160,460" fill="url(#meshAmbientGlow)" stroke="#38BDF8" strokeWidth="0.8" strokeOpacity="0.25" />
-          <polygon points="1120,160 1260,260 1180,440" fill="url(#meshAmbientGlow)" stroke="#38BDF8" strokeWidth="0.8" strokeOpacity="0.25" />
-          <polygon points="1180,440 1340,560 1140,710" fill="url(#meshAmbientGlow)" stroke="#38BDF8" strokeWidth="0.8" strokeOpacity="0.2" />
+          {/* Geometric Wireframe Facets */}
+          <polygon points="40,40 160,30 230,130 130,200" fill="rgba(56, 189, 248, 0.04)" stroke="#38BDF8" strokeWidth="0.8" strokeOpacity="0.3" />
+          <polygon points="130,200 210,290 60,270" fill="rgba(56, 189, 248, 0.04)" stroke="#38BDF8" strokeWidth="0.8" strokeOpacity="0.3" />
 
-          {/* ── Render Monochromatic Connection Lines ── */}
-          <use href="#path_fin_to_pinja" stroke="#38BDF8" strokeWidth="1.6" strokeDasharray="5 5" strokeOpacity="0.5" />
-          <use href="#path_pinja_to_areum" stroke="#38BDF8" strokeWidth="1.6" strokeDasharray="5 5" strokeOpacity="0.5" />
-          <use href="#path_areum_to_fin" stroke="#38BDF8" strokeWidth="1.6" strokeDasharray="5 5" strokeOpacity="0.5" />
-          <use href="#path_fin_to_codex" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_areum_to_claude" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_claude_to_sentinel" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
+          {/* Lines */}
+          <use href="#right_path1" stroke="url(#rightLineGrad)" strokeWidth="1.2" strokeDasharray="4 4" />
+          <use href="#right_path2" stroke="url(#rightLineGrad)" strokeWidth="1.4" strokeDasharray="4 4" />
+          <use href="#right_path3" stroke="url(#rightLineGrad)" strokeWidth="1.4" strokeDasharray="4 4" />
+          <use href="#right_path4" stroke="url(#rightLineGrad)" strokeWidth="1.2" strokeDasharray="4 4" />
+          <use href="#right_path5" stroke="url(#rightLineGrad)" strokeWidth="1.2" strokeDasharray="4 4" />
+          <use href="#right_path6" stroke="url(#rightLineGrad)" strokeWidth="1.2" strokeDasharray="4 4" />
+          <use href="#right_path7" stroke="url(#rightLineGrad)" strokeWidth="1.2" strokeDasharray="4 4" />
 
-          <use href="#path_hub_to_workerA" stroke="#38BDF8" strokeWidth="1.4" strokeDasharray="5 5" strokeOpacity="0.45" />
-          <use href="#path_workerA_to_audit" stroke="#38BDF8" strokeWidth="1.6" strokeDasharray="5 5" strokeOpacity="0.5" />
-          <use href="#path_audit_to_relay" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_relay_to_hub" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_audit_to_workerB" stroke="#38BDF8" strokeWidth="1.4" strokeDasharray="5 5" strokeOpacity="0.45" />
-          <use href="#path_workerB_to_gateway" stroke="#38BDF8" strokeWidth="1.4" strokeDasharray="5 5" strokeOpacity="0.45" />
-          <use href="#path_gateway_to_vault" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_vault_to_audit" stroke="#38BDF8" strokeWidth="1.2" strokeDasharray="4 4" strokeOpacity="0.4" />
-          <use href="#path_workerA_to_attestor" stroke="#38BDF8" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.35" />
-          <use href="#path_attestor_to_workerB" stroke="#38BDF8" strokeWidth="1" strokeDasharray="3 3" strokeOpacity="0.35" />
-
-          <use href="#path_codex_to_hub" stroke="#38BDF8" strokeWidth="0.8" strokeDasharray="4 8" strokeOpacity="0.25" />
-          <use href="#path_sentinel_to_vault" stroke="#38BDF8" strokeWidth="0.8" strokeDasharray="4 8" strokeOpacity="0.25" />
-
-          {/* ── Precise Path-Following Moving Data Bullets (<animateMotion>) ── */}
-          {/* Left Circuit Bullets */}
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
-            <animateMotion dur="3.8s" repeatCount="indefinite">
-              <mpath href="#path_fin_to_pinja" />
-            </animateMotion>
-          </circle>
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
-            <animateMotion dur="4.2s" repeatCount="indefinite">
-              <mpath href="#path_pinja_to_areum" />
-            </animateMotion>
-          </circle>
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
-            <animateMotion dur="4.6s" repeatCount="indefinite">
-              <mpath href="#path_areum_to_fin" />
-            </animateMotion>
-          </circle>
-          <circle r="3" fill="#38BDF8" opacity="0.85">
-            <animateMotion dur="5.2s" repeatCount="indefinite">
-              <mpath href="#path_areum_to_claude" />
-            </animateMotion>
-          </circle>
-
-          {/* Right Circuit Bullets */}
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
-            <animateMotion dur="4.0s" repeatCount="indefinite">
-              <mpath href="#path_hub_to_workerA" />
-            </animateMotion>
-          </circle>
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
+          {/* Flowing Packets along Right Paths */}
+          <circle r="3" fill="#38BDF8" opacity="0.9">
             <animateMotion dur="4.5s" repeatCount="indefinite">
-              <mpath href="#path_workerA_to_audit" />
+              <mpath href="#right_path2" />
             </animateMotion>
           </circle>
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
-            <animateMotion dur="4.8s" repeatCount="indefinite">
-              <mpath href="#path_audit_to_workerB" />
-            </animateMotion>
-          </circle>
-          <circle r="3.5" fill="#38BDF8" filter="url(#bulletGlow)">
+          <circle r="3" fill="#38BDF8" opacity="0.9">
             <animateMotion dur="5.0s" repeatCount="indefinite">
-              <mpath href="#path_workerB_to_gateway" />
+              <mpath href="#right_path3" />
             </animateMotion>
           </circle>
-          <circle r="3" fill="#38BDF8" opacity="0.85">
-            <animateMotion dur="4.4s" repeatCount="indefinite">
-              <mpath href="#path_gateway_to_vault" />
-            </animateMotion>
-          </circle>
-
-          {/* Cross Galaxy Bullets */}
-          <circle r="3" fill="#BAE6FD" opacity="0.9">
-            <animateMotion dur="8.5s" repeatCount="indefinite">
-              <mpath href="#path_codex_to_hub" />
-            </animateMotion>
-          </circle>
-          <circle r="3" fill="#BAE6FD" opacity="0.9">
-            <animateMotion dur="9.2s" repeatCount="indefinite">
-              <mpath href="#path_sentinel_to_vault" />
+          <circle r="3" fill="#38BDF8" opacity="0.8">
+            <animateMotion dur="4.2s" repeatCount="indefinite">
+              <mpath href="#right_path5" />
             </animateMotion>
           </circle>
         </svg>
 
-        {/* ── LEFT FLANK: 3 Main Character Profile Avatars (Clean Monochromatic Name Tag) ── */}
-
-        {/* 1. 핀둥이 (Top-Left) */}
-        <CleanMainAgentNode
-          x={180}
-          y={180}
-          imageSrc="/assets/agent-fin.png"
-          name="핀둥이"
-          animationClass="floatSlow1"
-          animDuration="6.8s"
-        />
-
-        {/* 2. 핀자 (Middle-Left) */}
-        <CleanMainAgentNode
-          x={320}
-          y={310}
-          imageSrc="/assets/agent-support.png"
-          name="핀자"
-          animationClass="floatSlow2"
-          animDuration="7.4s"
-        />
-
-        {/* 3. 아름이 (Bottom-Left) */}
-        <CleanMainAgentNode
-          x={160}
-          y={460}
-          imageSrc="/assets/agent-assistant.png"
-          name="아름이"
-          animationClass="floatSlow3"
-          animDuration="8.2s"
-        />
-
-        {/* ── Left Ambient Monochromatic Small Circle Nodes (Name Only) ── */}
-        <CleanSmallCircleNode
-          x={380}
-          y={110}
-          name="Codex"
-          size={16}
-          animName="floatSlow2"
-          animDuration="6.2s"
-        />
-        <CleanSmallCircleNode
-          x={240}
-          y={640}
-          name="Claude"
-          size={18}
-          animName="floatSlow1"
-          animDuration="7.0s"
-        />
-        <CleanSmallCircleNode
-          x={390}
-          y={720}
-          name="Sentinel"
-          size={14}
-          animName="floatSlow3"
-          animDuration="8.5s"
-        />
-
-        {/* ── RIGHT FLANK: Monochromatic Small Circle Nodes (Name Only, Varied Size) ── */}
-        <CleanSmallCircleNode
-          x={1120}
-          y={160}
-          name="Hub-01"
-          size={22}
-          animName="floatSlow2"
-          animDuration="6.6s"
-        />
-        <CleanSmallCircleNode
-          x={1260}
-          y={260}
-          name="Worker-A"
-          size={18}
-          animName="floatSlow1"
-          animDuration="7.2s"
-        />
-        <CleanSmallCircleNode
-          x={1020}
-          y={320}
-          name="Relay"
-          size={14}
-          animName="floatSlow3"
-          animDuration="8.0s"
-        />
-        <CleanSmallCircleNode
-          x={1180}
-          y={440}
-          name="Audit"
-          size={24}
-          animName="floatSlow2"
-          animDuration="7.6s"
-        />
-        <CleanSmallCircleNode
-          x={1380}
-          y={380}
-          name="Attestor"
-          size={14}
-          animName="floatSlow1"
-          animDuration="6.4s"
-        />
-        <CleanSmallCircleNode
-          x={1340}
-          y={560}
-          name="Worker-B"
-          size={18}
-          animName="floatSlow3"
-          animDuration="7.8s"
-        />
-        <CleanSmallCircleNode
-          x={1060}
-          y={590}
-          name="Vault"
-          size={16}
-          animName="floatSlow1"
-          animDuration="6.9s"
-        />
-        <CleanSmallCircleNode
-          x={1140}
-          y={710}
-          name="Gateway"
-          size={20}
-          animName="floatSlow2"
-          animDuration="8.4s"
-        />
+        {/* Small Satellite Circles (Name Only) */}
+        <RightSmallNode x={40} y={40} name="Hub-01" size={20} />
+        <RightSmallNode x={160} y={30} name="Relay" size={15} />
+        <RightSmallNode x={230} y={130} name="Audit" size={22} />
+        <RightSmallNode x={130} y={200} name="Worker-A" size={17} />
+        <RightSmallNode x={210} y={290} name="Gateway" size={19} />
+        <RightSmallNode x={60} y={270} name="Vault" size={16} />
       </div>
 
       {/* ── Center Login Box (현재 가운데 박스 100% 유지) ── */}
@@ -323,7 +192,7 @@ export function LoginPage() {
           padding: "40px 36px",
           width: "100%",
           maxWidth: 440,
-          boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.9) inset",
+          boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.9) inset",
           display: "flex",
           flexDirection: "column",
           gap: 22,
@@ -487,150 +356,30 @@ export function LoginPage() {
   );
 }
 
-/**
- * Monochromatic Clean Main Agent Node on Left Flank (핀둥이, 핀자, 아름이)
- */
-function CleanMainAgentNode({
+function RightSmallNode({
   x,
   y,
-  imageSrc,
   name,
-  animationClass,
-  animDuration,
+  size,
 }: {
   x: number;
   y: number;
-  imageSrc: string;
   name: string;
-  animationClass: string;
-  animDuration: string;
+  size: number;
 }) {
   return (
     <div
       style={{
         position: "absolute",
-        left: `${(x / 1440) * 100}%`,
-        top: `${(y / 900) * 100}%`,
-        transform: "translate(-50%, -50%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 6,
-        userSelect: "none",
-        animation: `${animationClass} ${animDuration} ease-in-out infinite`,
-        zIndex: 2,
-      }}
-    >
-      {/* Clean Monochromatic Avatar Frame */}
-      <div
-        style={{
-          position: "relative",
-          width: 58,
-          height: 58,
-          borderRadius: "50%",
-          padding: 2.5,
-          background: "#38BDF8",
-          boxShadow: "0 0 16px rgba(56, 189, 248, 0.45)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            borderRadius: "50%",
-            overflow: "hidden",
-            background: "#0F172A",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <img
-            src={imageSrc}
-            alt={name}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        </div>
-
-        {/* Monochromatic Live Dot */}
-        <span
-          style={{
-            position: "absolute",
-            bottom: 2,
-            right: 2,
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: "#38BDF8",
-            border: "2px solid #0F172A",
-            boxShadow: "0 0 6px #38BDF8",
-          }}
-        />
-      </div>
-
-      {/* Clean Monochromatic Name Tag */}
-      <span
-        style={{
-          fontSize: "0.78rem",
-          fontWeight: 700,
-          color: "#F8FAFC",
-          background: "rgba(15, 23, 42, 0.8)",
-          padding: "2px 8px",
-          borderRadius: "var(--radius-full)",
-          border: "1px solid rgba(56, 189, 248, 0.35)",
-          whiteSpace: "nowrap",
-          textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-        }}
-      >
-        {name}
-      </span>
-    </div>
-  );
-}
-
-/**
- * Clean Monochromatic Small Circle Node (Name Only)
- */
-function CleanSmallCircleNode({
-  x,
-  y,
-  name,
-  size = 18,
-  animName,
-  animDuration,
-}: {
-  x: number;
-  y: number;
-  name: string;
-  size?: number;
-  animName: string;
-  animDuration: string;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: `${(x / 1440) * 100}%`,
-        top: `${(y / 900) * 100}%`,
+        left: x,
+        top: y,
         transform: "translate(-50%, -50%)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         gap: 3,
-        userSelect: "none",
-        animation: `${animName} ${animDuration} ease-in-out infinite`,
-        opacity: 0.92,
-        zIndex: 2,
       }}
     >
-      {/* Monochromatic Clean Circle */}
       <div
         style={{
           width: size,
@@ -641,8 +390,6 @@ function CleanSmallCircleNode({
           border: "1.5px solid rgba(255, 255, 255, 0.85)",
         }}
       />
-
-      {/* Name Only Label */}
       <span
         style={{
           fontSize: "0.68rem",
