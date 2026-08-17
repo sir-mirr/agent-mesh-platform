@@ -623,9 +623,11 @@ the sweep on their own — one of them, `capability-not-role`, turned out not to
 a test defect at all but eight admin routes that were never migrated to § 11,
 two of which served whole message bodies behind a role check with no record kept.
 
-### Group-to-group gateways — deferred past the first deployment
+### Group-to-group gateways — waiting on the first deployment (owner's decision)
 
-The owner's decision, 2026-08-17: think about it after 0.1 ships.
+Deferred by the owner on 2026-08-17: look at it again after 0.1 ships. Not
+blocked on anything technical and not waiting for a discovery — a scheduling
+call, recorded so nobody re-derives it.
 
 Nothing is built and nothing claims otherwise — `SPEC.md` does not mention
 gateways, `docs/decisions/` has no entry, and the only writing is
