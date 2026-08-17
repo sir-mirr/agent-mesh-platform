@@ -40,13 +40,35 @@ interface Args {
 
 function parseArgs(argv: string[]): Args {
   const args: Partial<Args> = { keep: false };
+
+  /**
+   * The value after a flag, refused when it is missing.
+   *
+   * `argv[++i]` is `string | undefined`, and assigning that straight through
+   * made `--state-dir` with nothing after it mean "no state directory" rather
+   * than an error — the harness would then invent a temporary one and remove it
+   * on exit, so a runner that asked to keep state got a mesh whose files were
+   * gone. `--ready-file` survived only because a later check happens to reject
+   * a falsy value.
+   *
+   * This file was outside the typecheck until now, which is why an assignment
+   * `exactOptionalPropertyTypes` exists to catch went uncaught.
+   */
+  const value = (flag: string, at: number): string => {
+    const v = argv[at];
+    if (v === undefined || v.startsWith("--")) {
+      throw new Error(`${flag} needs a value`);
+    }
+    return v;
+  };
+
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--ready-file":
-        args.readyFile = argv[++i];
+        args.readyFile = value("--ready-file", ++i);
         break;
       case "--state-dir":
-        args.stateDir = argv[++i];
+        args.stateDir = value("--state-dir", ++i);
         break;
       // Leave the state directory behind for inspection after a failure.
       case "--keep-state":
@@ -60,7 +82,7 @@ function parseArgs(argv: string[]): Args {
       // no longer running the same scenario, which is the guarantee the shared
       // list exists for.
       case "--receive-lease-seconds": {
-        const raw = argv[++i];
+        const raw = value("--receive-lease-seconds", ++i);
         const n = Number(raw);
         // Rejected rather than defaulted. A typo that silently restores the
         // 30-second lease makes E2E-RECEIVE-002 pass by never reaching the

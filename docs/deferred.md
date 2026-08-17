@@ -506,3 +506,20 @@ and its answer.
 
 The mitigation meanwhile is to read the count, not the colour: `Ran N tests`
 dropping is the signal, and it is visible in CI output today.
+
+### ~~`scripts/` and `.claude/hooks/` were outside the typecheck~~
+
+Closed. `tsconfig.base.json` now references a project for each, and
+`test/typecheck-scope.test.ts` fails if a TypeScript file in this repository
+falls outside every project.
+
+Two defects surfaced the moment the files were compiled for the first time:
+`--state-dir` with nothing after it assigned `undefined`, which the harness read
+as "no state directory" and answered by making a temporary one it removed on
+exit — so a runner that asked to keep state got a mesh whose files were gone.
+And `mailbox-watch.ts` was not a module, making every top-level `await` in it a
+syntax error nobody had run `tsc` over.
+
+Recorded rather than quietly fixed because of what it says about the reports.
+Every "typecheck 0" in this session, while the harness was being changed, was
+true of the repository *except the file being changed*.

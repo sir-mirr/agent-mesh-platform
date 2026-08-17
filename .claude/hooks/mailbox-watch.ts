@@ -87,3 +87,8 @@ while (true) {
     await emit(`mail #${m.id} from ${m.from} (${m.body.length} chars): ${preview}${ellipsis}`);
   }
 }
+
+// Top-level `await` needs this file to be a module, and it imports nothing.
+// Without it the file is a script, every `await` above is a syntax error to
+// `tsc`, and nothing said so while `.claude/hooks` sat outside the typecheck.
+export {};

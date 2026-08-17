@@ -53,6 +53,12 @@
     },
     {
       "path": "./test/tsconfig.json"
+    },
+    {
+      "path": "./scripts/tsconfig.json"
+    },
+    {
+      "path": "./.claude/hooks/tsconfig.json"
     }
   ]
 }

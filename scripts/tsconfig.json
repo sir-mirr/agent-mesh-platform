@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // Same shape as `packages/hub`: `noEmit` in the base config rules out
+    // project references, so a project that imports store compiles store's
+    // sources alongside its own.
+    "rootDir": "..",
+    "outDir": "dist"
+  },
+  "include": [
+    "**/*.ts",
+    "../packages/store/src/**/*.ts"
+  ]
+}
