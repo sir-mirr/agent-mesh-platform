@@ -52,10 +52,21 @@ const INITIAL_QUEUE: LeaseItem[] = [
   },
 ];
 
+import { fetchAdminMailbox } from "@/api/mailbox.ts";
+
 export function LeaseQueuePage() {
   const { t } = useI18n();
   const [queue, setQueue] = useState<LeaseItem[]>(INITIAL_QUEUE);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Load real admin mailbox metrics on mount
+  useEffect(() => {
+    fetchAdminMailbox().then((res) => {
+      if (res.mailboxes && res.mailboxes.length > 0) {
+        console.log("[Mailbox] Admin mailbox data:", res);
+      }
+    });
+  }, []);
 
   // Countdown timer simulation
   useEffect(() => {

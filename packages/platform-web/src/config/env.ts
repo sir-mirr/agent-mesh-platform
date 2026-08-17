@@ -1,10 +1,9 @@
 /**
  * Environment configuration loader.
- * In development, empty VITE_API_BASE_URL can use Vite proxy,
- * or connect directly to VITE_API_BASE_URL.
+ * In development, Vite proxy handles /api and /auth so API_BASE_URL defaults to "" (same-origin).
  */
 export const ENV = {
-  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || "http://localhost:3000",
+  API_BASE_URL: import.meta.env.VITE_API_BASE_URL ?? "",
   IS_PRODUCTION: import.meta.env.PROD,
   IS_DEVELOPMENT: import.meta.env.DEV,
 } as const;

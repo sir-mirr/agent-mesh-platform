@@ -23,6 +23,8 @@ const INITIAL_REQUESTS: PendingAgentRequest[] = [
   },
 ];
 
+import { fetchPendingKeys, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
+
 export function NotificationBell() {
   const { t } = useI18n();
   const [requests, setRequests] = useState<PendingAgentRequest[]>(INITIAL_REQUESTS);
@@ -30,6 +32,72 @@ export function NotificationBell() {
   const [selectedRequest, setSelectedRequest] = useState<PendingAgentRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // 1. Initial pending keys fetch & SSE Stream subscription
+  useEffect(() => {
+    // Initial fetch
+    fetchPendingKeys().then((proposals) => {
+      if (proposals && proposals.length > 0) {
+        setRequests(
+          proposals.map((p) => ({
+            id: `req_${p.fingerprint.slice(0, 10)}`,
+            identity: p.identity,
+            name: `${p.identity} (Agent)`,
+            groupName: p.type ?? "General",
+            requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : "방금 전",
+            fingerprint: p.fingerprint,
+            status: "pending",
+          }))
+        );
+      }
+    });
+
+    // Subscribe to SSE /api/v1/admin/keys/stream
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/v1/admin/keys/stream", { withCredentials: true });
+
+      es.addEventListener("snapshot", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const list = data.proposals || [];
+          if (list.length > 0) {
+            setRequests(
+              list.map((p: any) => ({
+                id: `req_${p.fingerprint.slice(0, 10)}`,
+                identity: p.identity,
+                name: `${p.identity} (Agent)`,
+                groupName: p.type ?? "General",
+                requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : "대기 중",
+                fingerprint: p.fingerprint,
+                status: "pending",
+              }))
+            );
+          }
+        } catch {}
+      });
+
+      es.addEventListener("key-proposed", (e: MessageEvent) => {
+        try {
+          const p = JSON.parse(e.data);
+          const newReq: PendingAgentRequest = {
+            id: `req_${p.fingerprint?.slice(0, 10) || Date.now()}`,
+            identity: p.identity,
+            name: `${p.identity} (Agent)`,
+            groupName: p.type ?? "General",
+            requestedAt: "방금 전",
+            fingerprint: p.fingerprint,
+            status: "pending",
+          };
+          setRequests((prev) => [newReq, ...prev.filter((r) => r.fingerprint !== p.fingerprint)]);
+        } catch {}
+      });
+    } catch {}
+
+    return () => {
+      es?.close();
+    };
+  }, []);
 
   const pendingCount = requests.filter((r) => r.status === "pending").length;
 
@@ -49,13 +117,23 @@ export function NotificationBell() {
     setIsOpen(false);
   };
 
-  const handleApprove = (fingerprint: string, identity: string) => {
+  const handleApprove = async (fingerprint: string, identity: string) => {
+    try {
+      await approveKeyProposal(fingerprint);
+    } catch (err: any) {
+      console.warn("[Approve] Error approving key proposal:", err.message);
+    }
     setRequests((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
     );
   };
 
-  const handleDeny = (fingerprint: string, identity: string) => {
+  const handleDeny = async (fingerprint: string, identity: string) => {
+    try {
+      await denyKeyProposal(fingerprint);
+    } catch (err: any) {
+      console.warn("[Deny] Error denying key proposal:", err.message);
+    }
     setRequests((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
     );

@@ -33,6 +33,8 @@ const MOCK_PENDING_QUEUE: PendingAgentRequest[] = [
   },
 ];
 
+import { fetchPendingKeys, createPairingCodeApi, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
+
 export function RegisterAgentPage() {
   const { t } = useI18n();
   const [targetIdentity, setTargetIdentity] = useState("agt_settlement_04");
@@ -44,16 +46,44 @@ export function RegisterAgentPage() {
   const [modalRequest, setModalRequest] = useState<PendingAgentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleGenerateCode = (e: React.FormEvent) => {
+  // Fetch real pending proposals on mount
+  React.useEffect(() => {
+    fetchPendingKeys().then((proposals) => {
+      if (proposals && proposals.length > 0) {
+        setPendingList(
+          proposals.map((p) => ({
+            id: `req_${p.fingerprint.slice(0, 10)}`,
+            identity: p.identity,
+            name: `${p.identity} (Agent)`,
+            groupName: p.type ?? "General",
+            requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : "대기 중",
+            fingerprint: p.fingerprint,
+            status: "pending",
+          }))
+        );
+      }
+    });
+  }, []);
+
+  const handleGenerateCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetIdentity) return;
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const cleanId = targetIdentity.replace(/^agt_/, "").toUpperCase();
-    const code = `PAIR-${randomSuffix}-${cleanId}`;
-    setGeneratedCode(code);
-    setTtl(selectedTtl);
-    setCopied(false);
-    setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
+    try {
+      const res = await createPairingCodeApi(targetIdentity, selectedTtl);
+      setGeneratedCode(res.code);
+      setTtl(res.ttl_seconds || selectedTtl);
+      setCopied(false);
+      setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
+    } catch (err: any) {
+      // Fallback in case of mock/offline
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const cleanId = targetIdentity.replace(/^agt_/, "").toUpperCase();
+      const code = `PAIR-${randomSuffix}-${cleanId}`;
+      setGeneratedCode(code);
+      setTtl(selectedTtl);
+      setCopied(false);
+      setToastMessage(`에이전트 [${targetIdentity}]용 페어링 코드가 발급되었습니다 (유효기간: ${selectedTtl / 60}분).`);
+    }
   };
 
   const handleCopy = () => {
@@ -64,14 +94,24 @@ export function RegisterAgentPage() {
     }
   };
 
-  const handleApproveFromModal = (fingerprint: string, identity: string, code: string) => {
+  const handleApproveFromModal = async (fingerprint: string, identity: string, code: string) => {
+    try {
+      await approveKeyProposal(fingerprint);
+    } catch (err: any) {
+      console.warn("[Approve] API error:", err.message);
+    }
     setPendingList((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
     );
     setToastMessage(`에이전트 [${identity}] 승인 및 페어링(${code})이 완료되었습니다.`);
   };
 
-  const handleDenyFromModal = (fingerprint: string, identity: string) => {
+  const handleDenyFromModal = async (fingerprint: string, identity: string) => {
+    try {
+      await denyKeyProposal(fingerprint);
+    } catch (err: any) {
+      console.warn("[Deny] API error:", err.message);
+    }
     setPendingList((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
     );

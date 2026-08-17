@@ -51,11 +51,32 @@ const INITIAL_AGENTS: AgentItem[] = [
   },
 ];
 
+import { fetchAgents } from "@/api/agents.ts";
+
 export function AgentsPage() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<AgentItem[]>(INITIAL_AGENTS);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
+
+  // Load real agents from backend
+  React.useEffect(() => {
+    fetchAgents().then((list) => {
+      if (list && list.length > 0) {
+        setAgents(
+          list.map((a) => ({
+            id: a.identity,
+            name: a.description || a.identity,
+            groupName: a.type || "Default Group",
+            status: a.status === "active" ? "online" : "offline",
+            fingerprint: a.fingerprint || "sha256:verified",
+            inboxDepth: 0,
+            lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : "최근 접속",
+          }))
+        );
+      }
+    });
+  }, []);
 
   const handleTeardownConfirm = () => {
     if (!teardownTarget) return;
