@@ -595,4 +595,100 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  // SCR-03 / SC-SCR03-03: Complex kebab-case identity preservation
+  it("[SC-SCR03-03] preserves complex valid kebab-case agent identity in agent registry", async () => {
+    const complexId = `agent-007-complex-${Date.now()}`;
+    const registerRes = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identity: complexId, type: "human" }),
+    });
+    expect(registerRes.status).toBe(201);
+
+    const rpc = await connectRpc(mesh.hub);
+    const listRes = await rpc.call("mesh.list_agents", {});
+    rpc.close();
+
+    const agents = listRes?.result?.agents ?? [];
+    const found = agents.some((a: any) => (a.id || a.identity) === complexId);
+    expect(found).toBe(true);
+  });
+
+  // SCR-07 / SC-SCR07-04: Non-existent lease ACK rejection
+  it("[SC-SCR07-04] refuses ACK for non-existent or invalid message lease", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/mailbox/ack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({
+        agent_id: "test-agent",
+        lease_id: "00000000-0000-0000-0000-000000000000",
+      }),
+    });
+    expect([400, 404]).toContain(res.status);
+  });
+
+  // SCR-12 / SC-SCR12-02: Directional egress rule independence
+  it("[SC-SCR12-02] preserves inverse direction egress rule when revoking one direction", async () => {
+    const grpA = `grp-a-${Date.now()}`;
+    const grpB = `grp-b-${Date.now()}`;
+    const resA = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: grpA }),
+    });
+    expect(resA.status).toBe(201);
+
+    const resB = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ group_id: grpB }),
+    });
+    expect(resB.status).toBe(201);
+
+    // Add A -> B and B -> A
+    const addAB = await fetch(`${mesh.http.url}/api/v1/admin/groups/${grpA}/egress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ to_group: grpB }),
+    });
+    expect(addAB.status).toBe(201);
+
+    const addBA = await fetch(`${mesh.http.url}/api/v1/admin/groups/${grpB}/egress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ to_group: grpA }),
+    });
+    expect(addBA.status).toBe(201);
+
+    // Delete A -> B
+    const delRes = await fetch(`${mesh.http.url}/api/v1/admin/groups/${grpA}/egress/${grpB}`, {
+      method: "DELETE",
+      headers: { Cookie: authCookie },
+    });
+    expect(delRes.status).toBe(200);
+
+    // Verify B -> A still exists
+    const listRes = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    const listData = await listRes.json();
+    const egress = listData.egress ?? [];
+    const bToA = egress.some((e: any) => e.from_group === grpB && e.to_group === grpA);
+    const aToB = egress.some((e: any) => e.from_group === grpA && e.to_group === grpB);
+    expect(bToA).toBe(true);
+    expect(aToB).toBe(false);
+  });
+
+  // SCR-13 / SC-SCR13-03: Security audit query bounds capping
+  it("[SC-SCR13-03] bounds oversized audit log query limit cleanly without error", async () => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=1000`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const events = Array.isArray(data) ? data : data.events ?? [];
+    expect(Array.isArray(events)).toBe(true);
+    expect(events.length).toBeLessThanOrEqual(200);
+  });
 });

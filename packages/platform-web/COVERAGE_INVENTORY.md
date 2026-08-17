@@ -56,6 +56,7 @@
 |---|---|---|---|---|
 | 에이전트 데이터 테이블 | ID, Name, Group, Status, Heartbeat | `fetchAgents()` | • 로딩: "데이터를 불러오는 중입니다..."<br>• 에러: `⚠️ errorMessage` (T-127)<br>• 0건: "등록된 에이전트가 없습니다."<br>• n건: 목록 렌더링 | `SC-SCR03-01` |
 | 에이전트 연결 해제 (Teardown) | 연결 종료 액션 | `DELETE /api/v1/agents/:id` | • 성공: 목록에서 즉시 제거 및 토스트<br>• 실패: 실패 토스트 노출 | `SC-SCR03-02` |
+| 특수 형식 에이전트 식별자 | 하이픈/숫자 혼합 identity 표기 | `fetchAgents()` | • 유효한 kebab-case 및 식별자 정상 보존 렌더링 | `SC-SCR03-03` |
 
 ---
 
@@ -111,6 +112,7 @@
 | 메일함 큐 적체 현황 | 큐 깊이, 300s 리스 만료 카운트다운 | `fetchAdminMailbox()` | • 0건: "적체된 메시지가 없습니다."<br>• n건: 메시지 대기 리스트 및 TTL 바 | `SC-SCR07-01` |
 | 리스 획득 및 ACK/NACK | 메시지 임대 및 승인 처리 | `leaseNextMessage()`, `ackMessage()` | • 임대 성공: 300초 타이머 시작<br>• ACK 완료: 큐에서 즉시 제거 | `SC-SCR07-02` |
 | 빈 메일함 리스 안전성 | 대기열 0건 상태에서 리스 시도 | `leaseNextMessage()` | • 0건: 정상 200/null 반환 (크래시 없음) | `SC-SCR07-03` |
+| 만료/무효 리스 ACK 거부 | 존재하지 않는 lease ID ACK 시도 | `ackMessage()` | • 404/false: 유효하지 않은 리스 ACK 안전 거부 | `SC-SCR07-04` |
 
 ---
 
@@ -174,6 +176,7 @@
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
 | 방향성 ACL 매트릭스 그리드 | Source Group ➔ Target Group 허용/차단 토글 | `fetchGroups()`, `updateGroupEgressApi()` | • 로딩: 스피너<br>• 에러: 에러 배너 (T-127)<br>• 토글 클릭: 즉시 ALLOW ⇄ DENY 전환 및 API 반영 | `SC-SCR12-01` |
+| 방향성 ACL 단방향 회수 보존 | A ➔ B 회수 시 B ➔ A 잔존 검증 | `updateGroupEgressApi()` | • A ➔ B 회수 후에도 B ➔ A Egress 룰 독립 보존 | `SC-SCR12-02` |
 
 ---
 
@@ -187,6 +190,7 @@
 |---|---|---|---|---|
 | 감사 로그 데이터 테이블 | Timestamp, Route, Length, Body, Sig | `fetchAuditEvents()` | • 에러: `⚠️ errorMessage`<br>• 0건: "감사 로그가 없습니다."<br>• 정상: 메타데이터 스트림 렌더 | `SC-SCR13-01` |
 | 감사 본문 프라이버시 마스킹 | 본문 페이로드 및 서명 | `fetchAuditEvents()` | • `audit.read.content` 미보유: `[content withheld]` 마스킹<br>• 권한 보유: 본문 원문 열람 | `SC-SCR13-02` |
+| 감사 쿼리 파라미터 경계값 검증 | limit 상한 및 정상 페이징 캡 | `fetchAuditEvents()` | • limit 1000 요청 시에도 서버 상한선 내 정상 반환 | `SC-SCR13-03` |
 
 ---
 
