@@ -647,12 +647,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ]);
 
     await page.route("**/api/v1/**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
     });
 
     await page.goto(`${viteBaseUrl}/creator/topology`);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("토폴로지 데이터를 불러오는 중입니다");
@@ -678,12 +678,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ]);
 
     await page.route("**/api/v1/**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
     });
 
     await page.goto(`${viteBaseUrl}/dashboard`);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("조회 중");
@@ -709,12 +709,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ]);
 
     await page.route("**/api/v1/**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await route.continue();
     });
 
     await page.goto(`${viteBaseUrl}/creator/playground`);
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("에이전트 목록을 불러오는 중입니다");
