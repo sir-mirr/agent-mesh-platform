@@ -79,8 +79,8 @@ export function Sidebar({
           icon: "👥",
         },
         {
-          label: "스웜 토폴로지",
-          description: "원형 오비탈 노드-엣지 채널 제어",
+          label: "에이전트 토폴로지",
+          description: "원형 오비탈 노드-엣지 인터랙티브 제어",
           href: "/creator/topology",
           icon: "🌐",
         },
