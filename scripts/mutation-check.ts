@@ -581,6 +581,30 @@ const MUTATIONS: Mutation[] = [
     expect: ["the payload changed and the route still said it matched"],
   },
 
+  {
+    id: "ack-observed-not-leased",
+    defect:
+      "`mesh.receive` was asserted to have settled a batch, and observed nothing of the sort: the messages were still leased from the drain three lines above, so the response was empty whatever the acknowledgement did. Removing `ack_ids` left it green.",
+    file: "test/mailbox.test.ts",
+    from: "    await pastLease();\n    const settle = await callHttp(mesh.hub, signer(mail), \"mesh.receive\", { ack_ids: ids });",
+    to: "    const settle = await callHttp(mesh.hub, signer(mail), \"mesh.receive\", { ack_ids: ids });",
+    suite: "test/mailbox.test.ts",
+    // Without the wait the lease hides the batch and the assertion passes for
+    // the wrong reason — which is the state this entry records, not a defect
+    // in the mesh.
+    expect: ["mesh.receive returns what was queued while the agent was away"],
+  },
+  {
+    id: "bootstrap-observes-registry",
+    defect:
+      "`repeated invocations change nothing` compared two empty lists. Its helper fetched a route the hub answers 405 to, then returned `[]` under a comment promising a fallback nobody wrote — so a script that wiped the registry on its second run passed.",
+    file: "test/bootstrap.test.ts",
+    from: '  const probe = ["http-server", "self-reminder", "not-provisioned-by-bootstrap"];',
+    to: "  const probe: string[] = [];",
+    suite: "test/bootstrap.test.ts",
+    expect: ["the first run provisioned no identity"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------
