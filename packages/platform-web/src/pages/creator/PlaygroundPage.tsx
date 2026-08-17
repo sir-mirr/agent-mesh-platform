@@ -20,57 +20,6 @@ interface RegisteredAgent {
   fingerprint: string;
 }
 
-const REGISTERED_AGENTS: RegisteredAgent[] = [
-  {
-    id: "agt_support_01",
-    name: "Customer Support Agent",
-    group: "Support Group",
-    ownerId: "usr_admin",
-    status: "online",
-    fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-  },
-  {
-    id: "agt_support_02",
-    name: "Support Bot Alpha",
-    group: "Support Group",
-    ownerId: "usr_admin",
-    status: "online",
-    fingerprint: "sha256:8b4c2e1199a0bf5521ca9028471bd80e198305f88410d0291ba549210948ab12",
-  },
-  {
-    id: "agt_finance_02",
-    name: "Financial Settlement Bot",
-    group: "Billing Core",
-    ownerId: "usr_finance",
-    status: "online",
-    fingerprint: "sha256:3urP2MxXOlnreg184OjQ5tAyF2U2533GWGC6xoe_DJc48271039485728192039",
-  },
-  {
-    id: "agt_analyzer_03",
-    name: "Market Intelligence Worker",
-    group: "Analytics Group",
-    ownerId: "usr_data",
-    status: "offline",
-    fingerprint: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  },
-  {
-    id: "agt_sentinel_01",
-    name: "Security & Audit Sentinel",
-    group: "Security Mesh",
-    ownerId: "usr_security",
-    status: "online",
-    fingerprint: "sha256:91a82f3c4d5e6b7a8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b",
-  },
-  {
-    id: "agt_etl_worker_05",
-    name: "ETL Stream Processor",
-    group: "Data Pipeline",
-    ownerId: "usr_data",
-    status: "online",
-    fingerprint: "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
-  },
-];
-
 const PAYLOAD_PRESETS = [
   {
     label: "정산 쿼리 (Settlement)",
@@ -95,24 +44,22 @@ export function PlaygroundPage() {
   const { t } = useI18n();
 
   const currentRole = user?.role || "AGENT_OPERATOR";
-  const [agentsList, setAgentsList] = useState<RegisteredAgent[]>(REGISTERED_AGENTS);
+  const [agentsList, setAgentsList] = useState<RegisteredAgent[]>([]);
   const [isSending, setIsSending] = useState(false);
 
   // Load real agents from backend
   React.useEffect(() => {
     fetchAgents().then((list) => {
-      if (list && list.length > 0) {
-        setAgentsList(
-          list.map((a) => ({
-            id: a.identity,
-            name: a.description || a.identity,
-            group: a.type || "Default Group",
-            ownerId: "usr_admin",
-            status: a.status === "active" ? "online" : "offline",
-            fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
-          }))
-        );
-      }
+      setAgentsList(
+        (list || []).map((a) => ({
+          id: a.identity,
+          name: a.description || a.identity,
+          group: a.type || "Default Group",
+          ownerId: "admin",
+          status: a.status === "active" ? "online" : "offline",
+          fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+        }))
+      );
     });
   }, []);
 

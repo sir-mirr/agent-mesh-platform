@@ -323,46 +323,48 @@ function TenantAdminDashboard() {
             </Link>
           </div>
 
-          {(groups.length > 0 ? groups : [
-            { id: "grp_support", name: "Support Group", member_count: 2, description: "고객 지원 및 자동 응답 에이전트 그룹" },
-            { id: "grp_billing", name: "Billing Core", member_count: 1, description: "정산 및 인보이스 결제 처리 그룹" },
-            { id: "grp_analytics", name: "Analytics Group", member_count: 1, description: "시장 인텔리전스 및 데이터 수집 워커 그룹" },
-          ]).map((g) => (
-            <div
-              key={g.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "10px 14px",
-                background: "var(--color-bg-surface-sub)",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--color-text-primary)" }}>
-                  {g.name}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-                  {g.description}
-                </div>
-              </div>
-              <span
+          {groups.length === 0 ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+              등록된 조직 그룹이 없습니다.
+            </div>
+          ) : (
+            groups.map((g) => (
+              <div
+                key={g.id}
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 700,
-                  fontSize: "0.78rem",
-                  padding: "2px 8px",
-                  borderRadius: "var(--radius-full)",
-                  background: "var(--color-primary-light)",
-                  color: "var(--color-primary)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  background: "var(--color-bg-surface-sub)",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
                 }}
               >
-                {g.member_count ?? 0} 에이전트
-              </span>
-            </div>
-          ))}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--color-text-primary)" }}>
+                    {g.name}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
+                    {g.description || "조직 에이전트 클러스터"}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 700,
+                    fontSize: "0.78rem",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    background: "var(--color-primary-light)",
+                    color: "var(--color-primary)",
+                  }}
+                >
+                  {g.member_count ?? 0} 에이전트
+                </span>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Pending Key Approval & Egress Rule Summary */}
@@ -455,21 +457,21 @@ function GroupAdminDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.ga.groups", "담당 관리 그룹")}
-          value={String(groups.length || 3)}
-          subValue={t("dash.ga.groupsSub", "Support, Billing, Analytics")}
+          value={String(groups.length)}
+          subValue={t("dash.ga.groupsSub", "실시간 활성 그룹")}
           color="var(--color-primary)"
           icon="👥"
         />
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
-          value={String(agents.length || 4)}
+          value={String(agents.length)}
           subValue={t("dash.ga.agentsSub", "정상 가동")}
           color="var(--color-success)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
-          value={String(mailbox?.total_queued ?? 3)}
+          value={String(mailbox?.total_queued ?? 0)}
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
           icon="📥"
@@ -508,45 +510,47 @@ function GroupAdminDashboard() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-          {(groups.length > 0 ? groups : [
-            { id: "grp_support", name: "Support Group", members: ["agt_support_01", "agt_support_02"] },
-            { id: "grp_billing", name: "Billing Core", members: ["agt_finance_02"] },
-            { id: "grp_analytics", name: "Analytics Group", members: ["agt_analyzer_03"] },
-          ]).map((item) => (
-            <div
-              key={item.id}
-              style={{
-                background: "var(--color-bg-surface-sub)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "16px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
-                <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
-                  Online ({item.members?.length || 0})
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {(item.members || []).map((id) => (
-                  <span
-                    key={id}
-                    style={{
-                      fontSize: "0.72rem",
-                      fontFamily: "var(--font-mono)",
-                      background: "#FFFFFF",
-                      padding: "2px 6px",
-                      borderRadius: "var(--radius-sm)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                  >
-                    {id}
-                  </span>
-                ))}
-              </div>
+          {groups.length === 0 ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+              등록된 관리 그룹이 없습니다.
             </div>
-          ))}
+          ) : (
+            groups.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  background: "var(--color-bg-surface-sub)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "16px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
+                    Online ({item.members?.length || 0})
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {(item.members || []).map((id) => (
+                    <span
+                      key={id}
+                      style={{
+                        fontSize: "0.72rem",
+                        fontFamily: "var(--font-mono)",
+                        background: "#FFFFFF",
+                        padding: "2px 6px",
+                        borderRadius: "var(--radius-sm)",
+                        border: "1px solid var(--color-border)",
+                      }}
+                    >
+                      {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </>
@@ -566,43 +570,19 @@ function AgentOperatorDashboard() {
     fetchAdminMailbox().then(setMailbox);
   }, []);
 
-  const displayAgents = agents.length > 0 ? agents : [
-    {
-      identity: "agt_support_01",
-      description: "Customer Support Agent",
-      type: "Support Group",
-      status: "active" as const,
-      created_at: new Date().toISOString(),
-    },
-    {
-      identity: "agt_finance_02",
-      description: "Financial Settlement Bot",
-      type: "Billing Core",
-      status: "active" as const,
-      created_at: new Date().toISOString(),
-    },
-    {
-      identity: "agt_analyzer_03",
-      description: "Market Intelligence Worker",
-      type: "Analytics Group",
-      status: "inactive" as const,
-      created_at: new Date().toISOString(),
-    },
-  ];
-
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.kpi.agents", "소유 에이전트")}
-          value={String(displayAgents.length)}
+          value={String(agents.length)}
           subValue={t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.kpi.sockets", "온라인 소켓")}
-          value={String(displayAgents.filter(a => a.status === "active").length)}
+          value={String(agents.filter(a => a.status === "active").length)}
           subValue={t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
@@ -610,14 +590,14 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
-          value={String(mailbox?.total_queued ?? 7)}
+          value={String(mailbox?.total_queued ?? 0)}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
         />
         <KpiCard
           label={t("dash.kpi.latency", "오늘의 전송량")}
-          value="142"
+          value="0"
           subValue={t("dash.kpi.latencySub", "건 완료")}
           color="#6366F1"
           icon="🔄"
@@ -650,49 +630,55 @@ function AgentOperatorDashboard() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {displayAgents.map((agt) => (
-            <div
-              key={agt.identity}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "12px 16px",
-                background: "var(--color-bg-surface-sub)",
-                borderRadius: "var(--radius-lg)",
-                border: "1px solid var(--color-border)",
-                flexWrap: "wrap",
-                gap: 10,
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "0.9rem" }}>
-                    {agt.description || agt.identity}
-                  </span>
-                  <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-                    {agt.identity}
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 2 }}>
-                  소속: <strong>{agt.type || "General"}</strong> · 상태: {agt.status === "active" ? "온라인" : "오프라인"}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <StatusBadge
-                  label={agt.status === "active" ? "ONLINE" : "OFFLINE"}
-                  status={agt.status === "active" ? "online" : "offline"}
-                  size="sm"
-                />
-                <Link to="/creator/playground">
-                  <Button variant="secondary" size="sm">
-                    {t("nav.playground", "메시지 테스트")}
-                  </Button>
-                </Link>
-              </div>
+          {agents.length === 0 ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+              등록된 소유 에이전트가 없습니다. <Link to="/creator/register" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>새 에이전트를 등록하세요</Link>.
             </div>
-          ))}
+          ) : (
+            agents.map((agt) => (
+              <div
+                key={agt.identity}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  background: "var(--color-bg-surface-sub)",
+                  borderRadius: "var(--radius-lg)",
+                  border: "1px solid var(--color-border)",
+                  flexWrap: "wrap",
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "0.9rem" }}>
+                      {agt.description || agt.identity}
+                    </span>
+                    <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
+                      {agt.identity}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 2 }}>
+                    소속: <strong>{agt.type || "General"}</strong> · 상태: {agt.status === "active" ? "온라인" : "오프라인"}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <StatusBadge
+                    label={agt.status === "active" ? "ONLINE" : "OFFLINE"}
+                    status={agt.status === "active" ? "online" : "offline"}
+                    size="sm"
+                  />
+                  <Link to="/creator/playground">
+                    <Button variant="secondary" size="sm">
+                      {t("nav.playground", "메시지 테스트")}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </>

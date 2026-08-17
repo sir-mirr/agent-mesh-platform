@@ -19,38 +19,12 @@ interface AgentGroup {
   createdAt: string;
 }
 
-const INITIAL_GROUPS: AgentGroup[] = [
-  {
-    id: "grp_support",
-    name: "Support Group",
-    description: "고객 지원 및 자동 응답 에이전트 그룹",
-    memberCount: 2,
-    members: ["agt_support_01", "agt_support_02"],
-    createdAt: "2026-08-15 10:20:00",
-  },
-  {
-    id: "grp_billing",
-    name: "Billing Core",
-    description: "정산 및 인보이스 결제 처리 그룹",
-    memberCount: 1,
-    members: ["agt_finance_02"],
-    createdAt: "2026-08-15 11:45:00",
-  },
-  {
-    id: "grp_analytics",
-    name: "Analytics Group",
-    description: "시장 인텔리전스 및 데이터 수집 워커 그룹",
-    memberCount: 1,
-    members: ["agt_analyzer_03"],
-    createdAt: "2026-08-16 09:30:00",
-  },
-];
-
 import { fetchGroups, createGroupApi, type GroupItem } from "@/api/groups.ts";
 
 export function GroupsPage() {
   const { t } = useI18n();
-  const [groups, setGroups] = useState<AgentGroup[]>(INITIAL_GROUPS);
+  const [groups, setGroups] = useState<AgentGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
@@ -63,10 +37,10 @@ export function GroupsPage() {
 
   // Load real groups on mount
   React.useEffect(() => {
-    fetchGroups().then((list) => {
-      if (list && list.length > 0) {
+    fetchGroups()
+      .then((list) => {
         setGroups(
-          list.map((g) => ({
+          (list || []).map((g) => ({
             id: g.id,
             name: g.name,
             description: g.description || "에이전트 클러스터 그룹",
@@ -75,8 +49,8 @@ export function GroupsPage() {
             createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
           }))
         );
-      }
-    });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const handleCreateGroup = async (e: React.FormEvent) => {

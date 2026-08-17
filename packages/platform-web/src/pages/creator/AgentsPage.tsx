@@ -21,61 +21,32 @@ interface AgentItem {
   lastSeen: string;
 }
 
-const INITIAL_AGENTS: AgentItem[] = [
-  {
-    id: "agt_support_01",
-    name: "Customer Support Agent",
-    groupName: "Support Group",
-    status: "online",
-    fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
-    inboxDepth: 0,
-    lastSeen: "방금 전 (Active WS)",
-  },
-  {
-    id: "agt_finance_02",
-    name: "Financial Settlement Bot",
-    groupName: "Billing Core",
-    status: "online",
-    fingerprint: "sha256:3urP2MxXOlnreg184OjQ5tAyF2U2533GWGC6xoe_DJc48271039485728192039",
-    inboxDepth: 2,
-    lastSeen: "2분 전 (Mailbox)",
-  },
-  {
-    id: "agt_analyzer_03",
-    name: "Market Intelligence Worker",
-    groupName: "Analytics Group",
-    status: "offline",
-    fingerprint: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    inboxDepth: 5,
-    lastSeen: "14분 전",
-  },
-];
-
 import { fetchAgents, teardownAgentApi } from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { t } = useI18n();
-  const [agents, setAgents] = useState<AgentItem[]>(INITIAL_AGENTS);
+  const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
 
   // Load real agents from backend
   React.useEffect(() => {
-    fetchAgents().then((list) => {
-      if (list && list.length > 0) {
+    fetchAgents()
+      .then((list) => {
         setAgents(
-          list.map((a) => ({
+          (list || []).map((a) => ({
             id: a.identity,
             name: a.description || a.identity,
             groupName: a.type || "Default Group",
-            status: a.status === "active" ? "online" : "offline",
-            fingerprint: a.fingerprint || "sha256:verified",
+            status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : "offline",
+            fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
             inboxDepth: 0,
             lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : "최근 접속",
           }))
         );
-      }
-    });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const handleTeardownConfirm = async () => {

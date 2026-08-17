@@ -19,42 +19,22 @@ interface AuditEvent {
   signatureVerified: boolean;
 }
 
-const INITIAL_EVENTS: AuditEvent[] = [
-  {
-    id: "evt_109281",
-    timestamp: "2026-08-17 13:38:12",
-    sender: "agt_support_01",
-    recipient: "agt_finance_02",
-    contentLength: 64,
-    rawContent: '{"action":"QUERY_SETTLEMENT","order_id":"ORD-98214"}',
-    signatureVerified: true,
-  },
-  {
-    id: "evt_109282",
-    timestamp: "2026-08-17 13:37:45",
-    sender: "agt_finance_02",
-    recipient: "agt_support_01",
-    contentLength: 128,
-    rawContent: '{"status":"CONFIRMED","tx_hash":"0x7f83...","amount":150000}',
-    signatureVerified: true,
-  },
-];
-
 import { fetchAuditEvents } from "@/api/audit.ts";
 
 export function AuditLogsPage() {
   const { t } = useI18n();
   const { hasCapability } = useRbac();
-  const [events, setEvents] = useState<AuditEvent[]>(INITIAL_EVENTS);
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const canReadContent = hasCapability("audit.read_content");
 
   // Load real audit events on mount
   React.useEffect(() => {
-    fetchAuditEvents().then((list) => {
-      if (list && list.length > 0) {
-        setEvents(list);
-      }
-    });
+    fetchAuditEvents()
+      .then((list) => {
+        setEvents(list || []);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const columns = [
