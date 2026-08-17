@@ -867,16 +867,30 @@ async function loadUsers() {
   } catch(e) {}
 }
 
+// Both of these ignored the response. The routes are gated on \`user.admit\`,
+// so an operator without it clicked approve, watched the list re-render with
+// the same person still pending, and was told nothing — the refusal and a
+// successful approval of somebody who then reappears look identical.
+async function reportIfRefused(res, what) {
+  if (res.ok) return false;
+  let detail = '';
+  try { detail = (await res.json()).error || ''; } catch (e) { detail = await res.text().catch(() => ''); }
+  alert(what + ' 실패 (' + res.status + ')' + (detail ? ': ' + detail : ''));
+  return true;
+}
+
 async function approve(login) {
   if (!confirm(login + ' 사용자를 승인하시겠습니까?')) return;
-  await fetch('/api/v1/admin/approve', { method: 'POST', headers, body: JSON.stringify({ github_login: login }) });
+  const res = await fetch('/api/v1/admin/approve', { method: 'POST', headers, body: JSON.stringify({ github_login: login }) });
+  if (await reportIfRefused(res, login + ' 승인')) return;
   loadPending();
   loadUsers();
 }
 
 async function deny(login) {
   if (!confirm(login + ' 사용자를 거부하시겠습니까?')) return;
-  await fetch('/api/v1/admin/deny', { method: 'POST', headers, body: JSON.stringify({ github_login: login }) });
+  const res = await fetch('/api/v1/admin/deny', { method: 'POST', headers, body: JSON.stringify({ github_login: login }) });
+  if (await reportIfRefused(res, login + ' 거부')) return;
   loadPending();
 }
 
