@@ -993,18 +993,43 @@ for (const m of selected) {
   // `not caught`, which is a finding about a guard from a run that never
   // reached it.
   //
-  // One mutation breaks one guard; the rest of the file still passes. Zero
-  // passing tests means the file did not run, whatever the summary says.
+  // The rule was `0 pass` means the file did not run, on the reasoning that one
+  // mutation breaks one guard and the rest of the file still passes. That held
+  // for every entry in the manifest until `message-status.test.ts`, which
+  // contains **one test**: when its guard objected, the summary was `0 pass /
+  // 1 fail` and a correctly caught mutation was reported as inconclusive.
+  //
+  // `0 pass` means two different things and the count cannot tell them apart —
+  // which is the ambiguity this whole script exists to hunt, sitting in the
+  // script. What separates them is *why* nothing passed:
   const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
-  if (passed === 0) {
-    console.error(`✗ ${m.id}: no test in ${m.suite} ran — inconclusive, not a verdict`);
+  const failed = Number(/(\d+) fail/.exec(output)?.[1] ?? "0");
+  const expected = m.expect.every((e) => output.includes(e));
+  // Bun says `a beforeEach/afterEach hook timed out` when a suite dies before
+  // its tests. That is how `send-idempotent-retry` came back `0 pass / 1 fail`
+  // from a run where the mesh never came up — a verdict about a guard the run
+  // never reached.
+  const hookDied = /\bhook (timed out|failed|threw)/i.test(output);
+  //
+  // With nothing passing and nothing failing there was no run at all; with a
+  // dead hook the failure is the harness's. And with nothing passing and the
+  // expected message absent, a silent guard and a broken suite look identical
+  // from here, so neither verdict is available.
+  const inconclusive =
+    (passed === 0 && failed === 0) || hookDied || (passed === 0 && !expected);
+  if (inconclusive) {
+    console.error(`✗ ${m.id}: no verdict from ${m.suite} — ${
+      hookDied ? "a hook died, so the guard was never reached"
+        : passed === 0 && failed === 0 ? "nothing ran"
+        : "nothing passed and the expected message is absent"
+    }`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");
     continue;
   }
 
-  const caught = run.exitCode !== 0 && m.expect.every((e) => output.includes(e));
+  const caught = run.exitCode !== 0 && expected;
   if (caught) {
     console.log(`✓ ${m.id}`);
   } else {
