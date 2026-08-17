@@ -502,6 +502,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["capabilities reports the configured one, not the default"],
   },
 
+  {
+    id: "spec-capability-drift",
+    defect:
+      "§ 11's capability table in SPEC.md listed eight names while the code enforced twelve, and one of the eight — `inbox.read.depth` — had been renamed to `mailbox.read.depth` and never followed. The normative document named a capability nobody could grant and omitted four that existed.",
+    file: "SPEC.md",
+    from: "| `usage.read` | AI usage figures |\n",
+    to: "",
+    suite: "test/capability-vocabulary.test.ts",
+    // Parsed out of the document rather than restated, the way auth-sweep reads
+    // the § 9.1 route table — a third copy would go stale silently.
+    expect: ["names exactly what the code enforces"],
+  },
+
   // ---------------------------------------------------------------------------
   // Swept by hand, entered here so the sweep does not have to be trusted twice.
   // ---------------------------------------------------------------------------

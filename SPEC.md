@@ -2556,7 +2556,11 @@ site and to a fifth by being wrong at one of them.
 | `role.grant` | grant and revoke inside this tenant |
 | `audit.read.metadata` | the trail **without** message content |
 | `audit.read.content` | message bodies in the trail |
-| `inbox.read.depth` | queue depth per identity, never bodies |
+| `mailbox.read.depth` | queue depth per identity, never bodies |
+| `tenant.read.stats` | how much traffic a tenant received (§ 11.4) |
+| `source.read` | where each identity has been observed connecting from (§ 8.11) |
+| `user.admit` | admit a **person** to the platform, or refuse them |
+| `usage.read` | AI usage figures |
 
 **The last three carry the privacy boundary.** A platform operator holds
 `audit.read.metadata` and not `audit.read.content` — who sent to whom, when,
