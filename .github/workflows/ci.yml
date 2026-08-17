@@ -5,6 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+  # **A green nobody can re-request is a green nobody can re-check.**
+  #
+  # Without this the only way to run CI again is to make a commit, so every
+  # re-check costs a change to the thing being checked. Three situations today
+  # needed one: a run that expired on the job budget with nothing to show, a
+  # mutation entry that passed locally and failed here, and an install that
+  # behaved differently on the runner than on any machine that could observe it.
+  #
+  # It also separates two questions that look alike from the outside — *is this
+  # tree broken* and *was that run unlucky* — which cannot be told apart when
+  # re-running requires a new tree.
+  workflow_dispatch:
+
 concurrency:
   # A newer push supersedes an in-flight run on the same ref.
   group: ${{ github.workflow }}-${{ github.ref }}
