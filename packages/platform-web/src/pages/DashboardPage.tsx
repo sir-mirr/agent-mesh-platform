@@ -153,7 +153,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.latency", "허브 p99 지연")}
           value={telemetry ? `${telemetry.p99_latency_ms || 0}ms` : "-"}
-          subValue={telemetry ? t("dash.pa.latencySub", "정상 SLA 99.99%") : "통신 불가"}
+          subValue={telemetry ? "실시간 p99 측정치" : "통신 불가"}
           color="var(--color-warning)"
           icon="⏱️"
         />
@@ -458,7 +458,7 @@ function GroupAdminDashboard() {
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
           value={String(agents.length)}
-          subValue={t("dash.ga.agentsSub", "정상 가동")}
+          subValue={agents.length > 0 ? `${agents.length}개 노드 등록` : "에이전트 없음"}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -470,9 +470,9 @@ function GroupAdminDashboard() {
           icon="📥"
         />
         <KpiCard
-          label={t("dash.ga.health", "그룹 헬스 지표")}
-          value="100%"
-          subValue={t("dash.ga.healthSub", "에러율 0.0%")}
+          label={t("dash.ga.health", "온라인 에이전트 비율")}
+          value={agents.length > 0 ? `${Math.round((agents.filter(a => a.status === "active").length / agents.length) * 100)}%` : "0%"}
+          subValue="소켓 연결 기준"
           color="#6366F1"
           icon="💚"
         />
