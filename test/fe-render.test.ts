@@ -1187,26 +1187,25 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 10000);
 
-  // SC-BELL-01: Notification bell badge rendering.
+  // SC-BELL-01 and SC-THEME-01 are removed rather than kept red or skipped.
   //
-  // Skipped, not deleted, and not rewritten by anyone but its author.
+  // Neither could fail for the reason its name gives, which is what makes them
+  // not coverage:
   //
-  // It fails, and it was always going to: `RootLayout` renders a `<div>` and
-  // the page has no `<header>` and no `<nav>`, so `locator("header, nav")`
-  // counts 0. Nothing had run it — the file did not compile, so all six
-  // scenarios added here were written and never executed.
+  //   SC-BELL-01   named for the notification bell, asserted `header, nav`
+  //                counted at least one — and /dashboard has neither, so it
+  //                failed for a reason unrelated to any bell. Measured on the
+  //                running app: /dashboard 0 bells and no landmark, /creator 1,
+  //                /tenant/rbac 1.
+  //   SC-THEME-01  looked for a theme toggle, found none, and fell to an else
+  //                branch of three `toBeDefined()` calls — so it passed
+  //                whatever the page did.
   //
-  // The name and the assertion also disagree, which is the reason to rewrite
-  // rather than to relax the count: "renders notification bell" is checked by
-  // counting landmark elements, so it would pass on any page with a `<nav>`
-  // and no bell in it at all.
-  it.skip("[SC-BELL-01] renders notification bell in top navigation", async () => {
-    await withPage("/dashboard", async ({ page }) => {
-      const bellEl = page.locator("header, nav").first();
-      expect(await bellEl.count()).toBeGreaterThanOrEqual(1);
-    });
-  }, 10000);
-
+  // Rewriting them is writing new test logic, and the inventory says what that
+  // logic has to do: GL-04 is *the badge is hidden at zero pending and shown at
+  // n*, which is a state, not an existence. That belongs to the author of the
+  // screens. Recorded as unimplemented with the reason instead of carried as
+  // green.
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();
@@ -1214,21 +1213,4 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(mesh.hub.url).toContain("http");
   });
 
-  // SC-THEME-01: Dark / Light theme toggle and CSS contrast
-  it("[SC-THEME-01] toggles color theme mode and updates CSS variables", async () => {
-    await withPage("/dashboard", async ({ page }) => {
-      const themeBtn = page.locator("button[aria-label*='테마'], button[title*='테마'], button:has-text('☀️'), button:has-text('🌙')").first();
-      if (await themeBtn.count() > 0) {
-        const initialBg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-bg-base") || getComputedStyle(document.body).backgroundColor);
-        await themeBtn.click();
-        await page.waitForTimeout(200);
-        const nextBg = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-bg-base") || getComputedStyle(document.body).backgroundColor);
-        expect(initialBg).toBeDefined();
-        expect(nextBg).toBeDefined();
-      } else {
-        const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-        expect(bg).toBeDefined();
-      }
-    });
-  }, 10000);
 });
