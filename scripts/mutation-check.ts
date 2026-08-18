@@ -1026,6 +1026,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/greppable.test.ts",
     expect: ["ignores node_modules whether it is a directory or a link to one", "a symlinked node_modules is showing as untracked"],
   },
+  {
+    id: "screen-names-local-address",
+    defect:
+      "The pairing screens rendered `curl -X POST http://localhost:3100/...` into a `<CodeBlock>` for the user to copy. It runs in a terminal that is not this browser and, on a deployment, not this machine — so a proxy cannot reach it. It named the reader's own laptop, and if a hub was running there it bound the agent to the wrong mesh. `3100` is also the hub while that route is served by `agent-mesh-http`, so the line worked nowhere, including where it was written. Found by agent-mesh-local-pm building `dist` and reading it.",
+    file: "packages/platform-web/src/components/feedback/AgentPairingModal.tsx",
+    from: "code={`curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem",
+    to: "code={`curl -X POST http://localhost:3100/api/v1/pairing-codes/redeem",
+    suite: "test/greppable.test.ts",
+    expect: ["no source in platform-web names a local address", "a screen is naming an address only one machine has"],
+  },
 ];
 
 /**

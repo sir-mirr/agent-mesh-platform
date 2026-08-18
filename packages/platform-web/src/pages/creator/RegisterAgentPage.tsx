@@ -13,6 +13,7 @@ import { useI18n } from "@/contexts/I18nContext.tsx";
 import { AgentPairingModal, type PendingAgentRequest } from "@/components/feedback/AgentPairingModal.tsx";
 
 import { fetchPendingKeys, createPairingCodeApi, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
+import { publicApiOrigin } from "@/config/env.ts";
 
 export function RegisterAgentPage() {
   const { t } = useI18n();
@@ -347,7 +348,7 @@ export function RegisterAgentPage() {
             title="에이전트 터미널 실행"
             language="bash"
             code={`# 발급받은 페어링 코드로 소유권 바인딩
-curl -X POST http://localhost:3100/api/v1/pairing-codes/redeem \\
+curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem \\
   -H "Content-Type: application/json" \\
   -d '{
     "code": "${generatedCode || "PAIR-9412-SETTLEMENT"}",

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Modal, Button, StatusBadge, CodeBlock } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { publicApiOrigin } from "@/config/env.ts";
 
 export interface PendingAgentRequest {
   id: string;
@@ -179,7 +180,7 @@ export function AgentPairingModal({
           <div style={{ marginTop: 6 }}>
             <CodeBlock
               language="bash"
-              code={`curl -X POST http://localhost:3100/api/v1/pairing-codes/redeem \\
+              code={`curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem \\
   -H "Content-Type: application/json" \\
   -d '{"code": "${pairingCode}", "owner": "admin"}'`}
             />

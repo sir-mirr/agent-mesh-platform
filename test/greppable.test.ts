@@ -161,3 +161,52 @@ describe("the ignore file", () => {
     }
   });
 });
+
+/**
+ * No screen hands the user an address only the developer's laptop has.
+ *
+ * The pairing screens render a `curl` line into a `<CodeBlock>` for the user to
+ * copy. It is not a call the app makes — it runs in a terminal that is not this
+ * browser and, on a deployment, not this machine. Both were hardcoded to
+ * `http://localhost:3100`, which was wrong twice: it names the reader's own
+ * laptop rather than the server, and if a hub happens to be running there the
+ * command binds an agent to the wrong mesh.
+ *
+ * **And `3100` is the hub while that route is served by `agent-mesh-http`**, so
+ * the line did not work anywhere, including on the machine it was written on.
+ * `docs/running-locally.md` opens by naming that confusion and
+ * `proxy-block-target` guards the proxy blocks against it; this is the same
+ * mistake one layer further out, where a proxy cannot reach it.
+ *
+ * agent-mesh-local-pm found it by building `dist` and reading it — the first
+ * time anyone had. They proposed it as a scenario, `SC-ADDR-01`. It is checked
+ * here instead because it is a property of the source rather than of a running
+ * screen: a static read catches a literal built by interpolation too, it needs
+ * no browser, and it runs on a machine where the FE suites currently cannot.
+ */
+describe("addresses shown to the user", () => {
+  test("no source in platform-web names a local address", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const root = join(REPO_ROOT, "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name);
+        return statSync(path).isDirectory() ? walk(path) : path.match(/\.tsx?$/) ? [path] : [];
+      });
+
+    const offenders: string[] = [];
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        // Prose may name the mistake — that is how the reason survives. Code
+        // may not, because code is what reaches the screen.
+        if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) return;
+        if (/localhost|127\.0\.0\.1|:3100\b/.test(line)) {
+          offenders.push(`${file.slice(REPO_ROOT.length)}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(offenders, "a screen is naming an address only one machine has").toEqual([]);
+  });
+});
