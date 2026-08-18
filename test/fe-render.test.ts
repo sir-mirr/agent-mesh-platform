@@ -195,10 +195,26 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * busy, not because 150ms is enough — and raising them changes how long the
    * suite takes, not what it measures.
    *
-   * Waiting on the state instead makes load irrelevant. `/auth/me` is not
-   * matched by the `**\/api\/v1\/**` abort patterns the disconnected scenarios
-   * install, so that request survives the cut and simply arrives late, which is
-   * exactly when this bites.
+   * Waiting on the state instead cannot read the interim screen at all,
+   * whatever the machine is doing.
+   *
+   * **What this does not claim.** It was reported as the fix for concurrent
+   * runs, on a before-and-after of 17+16 failures then 0+0. That was not a
+   * controlled comparison — with these calls disabled, two runs still pass
+   * 0+0, so the earlier failures had another cause and the improvement was
+   * not this. The claim has been withdrawn.
+   *
+   * No deterministic reproduction has been found either. Delaying `/auth/me`
+   * does not do it: `waitUntil: "networkidle"` already waits for that request,
+   * so the interim screen is gone before the assertion looks. A scenario built
+   * on that lever passed with these calls removed — it proved nothing, and was
+   * deleted rather than kept as evidence of something it does not show.
+   *
+   * What remains is a state that was **observed once**, by
+   * agent-mesh-local-pm, with SC-DOWN-07 reading `인증 상태를 확인하는 중` on a
+   * screen that was telling the truth. Waiting for that text to go makes the
+   * misread impossible whether or not anyone can summon it on demand, and that
+   * is the whole of the case for it.
    */
   async function settled(page: import("playwright").Page): Promise<void> {
     await page
