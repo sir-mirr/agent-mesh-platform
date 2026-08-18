@@ -1046,6 +1046,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/production-bundle.test.ts",
     expect: ["the production bundle asks the page's own origin for the API", "api.mesh.enterprise.internal"],
   },
+  {
+    id: "production-origin-at-runtime",
+    defect:
+      "The same line, guarded at the layer that actually answers the question. Reading the bundle proves a string; it does not prove that the app, loaded and executing, sends its requests anywhere reachable — and this defect lived exactly in that gap, with the source right, every test green and the dev build working. agent-mesh-local-pm measured the broken build in a browser: zero same-origin requests, one to `api.mesh.enterprise.internal`, and a rendered screen.",
+    file: "packages/platform-web/.env.production",
+    from: "VITE_API_BASE_URL=",
+    to: "VITE_API_BASE_URL=https://api.mesh.enterprise.internal",
+    suite: "test/production-bundle.test.ts",
+    expect: ["a loaded page sends its API calls to its own origin", "the page is calling a host it was not served from"],
+  },
 ];
 
 /**
