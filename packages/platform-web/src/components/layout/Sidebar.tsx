@@ -1,13 +1,27 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import type { Capability } from "@/types/auth.ts";
 
 export interface NavItemDef {
   label: string;
   description: string;
   href: string;
   icon: string;
-  requiredCapability?: string;
+  /**
+   * The capability a viewer must hold for this item to appear.
+   *
+   * **`Capability`, not `string`.** As a string it accepted six names the
+   * contract does not define — `server.inspect`, `policy.send_restrict`,
+   * `audit.read_content`, `role.assign` — and every one of them compiled. A
+   * name nobody holds hides its item from everybody, so the menu was the same
+   * for every role, which is how this was found: by looking at it.
+   *
+   * The route guards took the contract's type when `@agent-mesh/contracts`
+   * landed and were corrected by the compiler. This table was not typed, so it
+   * kept its own copy of the vocabulary and drifted alone.
+   */
+  requiredCapability?: Capability;
   badge?: string;
 }
 
@@ -131,21 +145,25 @@ export function Sidebar({
           description: t("nav.server.desc", "실시간 허브 헬스 및 온라인 소켓"),
           href: "/platform",
           icon: "⚡",
-          requiredCapability: "server.inspect",
+          // No capability. `/api/v1/agents` and `/api/v1/health` gate on a
+          // session and nothing more, and App.tsx guards this route the same
+          // way. A menu stricter than the route hides a page from someone who
+          // is allowed to open it.
         },
         {
           label: t("nav.telemetry", "노드 텔레메트리"),
           description: t("nav.telemetry.desc", "프로세스 CPU, RAM 및 소켓 지표"),
           href: "/platform/telemetry",
           icon: "📈",
-          requiredCapability: "server.inspect",
+          // As above. The screen reads three routes with three different
+          // gates, so the honest form is a partial render, not one name.
         },
         {
           label: t("nav.tenants", "테넌트 라우팅 분석"),
           description: t("nav.tenants.desc", "조직별 라우팅 처리량 및 스토리지"),
           href: "/platform/tenants",
           icon: "🏢",
-          requiredCapability: "server.inspect",
+          requiredCapability: "tenant.read.stats",
         },
       ],
     },
@@ -157,21 +175,21 @@ export function Sidebar({
           description: t("nav.egress.desc", "그룹 간 통신 허용/차단 제어"),
           href: "/tenant/egress-acl",
           icon: "🛡️",
-          requiredCapability: "policy.send_restrict",
+          requiredCapability: "group.manage",
         },
         {
           label: t("nav.audit", "메시지 본문 감사"),
-          description: t("nav.audit.desc", "audit.read_content 기반 열람"),
+          description: t("nav.audit.desc", "audit.read.content 기반 열람"),
           href: "/tenant/audits",
           icon: "🔍",
-          requiredCapability: "audit.read_content",
+          requiredCapability: "audit.read.metadata",
         },
         {
           label: t("nav.rbac", "조직 멤버 RBAC"),
           description: t("nav.rbac.desc", "관리자별 9대 권한 부여/회수"),
           href: "/tenant/rbac",
           icon: "🔑",
-          requiredCapability: "role.assign",
+          requiredCapability: "role.grant",
         },
       ],
     },
@@ -327,10 +345,11 @@ export function Sidebar({
         {sections.map((section) => {
           const visibleItems = section.items.filter((item) => {
             if (!item.requiredCapability) return true;
-            return (
-              userCapabilities.includes(item.requiredCapability) ||
-              userCapabilities.includes("admin.all")
-            );
+            // No `admin.all` fallback. It is not in the contract and must not
+            // come back: § 11 exists because "is an administrator" is not a
+            // capability, and one name standing for all twelve is the shape it
+            // undoes. An admin holds the twelve individually.
+            return userCapabilities.includes(item.requiredCapability);
           });
 
           if (visibleItems.length === 0) return null;

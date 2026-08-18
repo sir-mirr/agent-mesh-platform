@@ -40,7 +40,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "nav.egress": "이그레스 ACL 행렬",
     "nav.egress.desc": "그룹 간 통신 허용/차단 제어",
     "nav.audit": "메시지 본문 감사",
-    "nav.audit.desc": "audit.read_content 기반 열람",
+    "nav.audit.desc": "audit.read.content 기반 열람",
     "nav.rbac": "조직 멤버 RBAC",
     "nav.rbac.desc": "관리자별 9대 권한 부여/회수",
 
