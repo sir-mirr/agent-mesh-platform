@@ -1016,6 +1016,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/scenario-ids.test.ts",
     expect: ["it reads an id whose last segment is not a number"],
   },
+  {
+    id: "ignore-symlinked-modules",
+    defect:
+      "`node_modules/` with a trailing slash is a *directory* pattern, and git does not treat a symlink as a directory — so a worktree that links its dependencies rather than installing them shows four untracked `node_modules`. `scripts/e2e-harness.ts` then reports `platform.dirty` and `mutation-check` refuses to start, both deliberately. agent-mesh-local-pm hit it from both ends in one session, and the `dirty: true` from a worktree whose `git status` was empty nearly went into the record as a defect in the documented setup.",
+    file: ".gitignore",
+    from: "node_modules\n",
+    to: "node_modules/\n",
+    suite: "test/greppable.test.ts",
+    expect: ["ignores node_modules whether it is a directory or a link to one", "a symlinked node_modules is showing as untracked"],
+  },
 ];
 
 /**

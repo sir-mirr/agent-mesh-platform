@@ -117,3 +117,47 @@ describe("stores are opened through the harness", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * `node_modules` is ignored even when it is a symlink.
+ *
+ * A trailing slash makes a gitignore entry a *directory* pattern, and git does
+ * not treat a symlink as a directory. The entry read `node_modules/`, so a
+ * worktree that links its dependencies rather than installing them showed
+ * `?? node_modules` — four of them, one per workspace package.
+ *
+ * That is not cosmetic here. `scripts/e2e-harness.ts` reports `platform.dirty`
+ * and `mutation-check` refuses to run on a dirty tree, both deliberately: a
+ * measurement taken against a tree that is not any commit cannot be reproduced.
+ * agent-mesh-local-pm hit it from both ends in one session — a mutation run that
+ * refused to start, and a `dirty: true` from a worktree whose `git status` was
+ * empty, which nearly went into the record as "following the documented setup
+ * always reports dirty".
+ *
+ * Checked by behaviour rather than by reading the line, because the failure was
+ * never in the text — it was in what git does with it.
+ */
+describe("the ignore file", () => {
+  test("ignores node_modules whether it is a directory or a link to one", async () => {
+    const { mkdtempSync, rmSync, mkdirSync, symlinkSync, copyFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    const dir = mkdtempSync(join(tmpdir(), "ignore-"));
+    try {
+      spawnSync("git", ["init", "-q", "."], { cwd: dir });
+      copyFileSync(join(REPO_ROOT, ".gitignore"), join(dir, ".gitignore"));
+      mkdirSync(join(dir, "elsewhere"));
+      symlinkSync("elsewhere", join(dir, "node_modules"));
+      mkdirSync(join(dir, "packages", "web"), { recursive: true });
+      symlinkSync("../../elsewhere", join(dir, "packages", "web", "node_modules"));
+
+      const status = spawnSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf8" }).stdout;
+      const untracked = status.split("\n").filter((l) => l.includes("node_modules"));
+      expect(untracked, "a symlinked node_modules is showing as untracked").toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
