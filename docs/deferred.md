@@ -703,7 +703,7 @@ grammar is normative and lives in § 9.1, `IDENTITY_RE` is one copy of it, and a
 bound added to the code alone would be a contract the SPEC does not state — the
 same drift `test/capability-vocabulary.test.ts` exists to prevent for § 11.
 
-### The hub does not close its audit store, and closing it breaks the suite
+### The hub still does not close its audit store — and that is no longer the cost it looked like
 
 `closeDatabases()` in `packages/hub/src/db.ts` closes three of the four stores
 the process opens:
@@ -713,14 +713,29 @@ opened    hub · agents · audit · selfReminder
 closed    hub · agents ·  —    · selfReminder
 ```
 
-The omission is the one whose contents are the record. § 8.9 keeps `audit.db`
-indefinitely while the others are operational, and closing the last connection
-is what lets SQLite checkpoint the write-ahead log and remove it. A store left
-open at exit leaves its `-wal` for whoever opens it next to recover — which
-works, and is why nothing has ever complained.
+This was deferred as a leak whose cost was an unfolded write-ahead log. **That
+reading was wrong in a way worth keeping**, because the measurement that
+corrected it also corrected the fix.
 
-**Why it is not fixed here.** Adding the close turns the integration suite red,
-twice, in two different shapes of the same change:
+`close()` was never folding anything, for any of the four. bun's close is a
+*safe* close: with statements prepared against the handle — thirty of them, at
+module load — it marks the database closed to JavaScript and leaves the file
+open. Measured on bun 1.3.13:
+
+```
+db.close()            wal 2,476,152 -> 2,476,152   main     4,096
+db.close(true)        throws "database is locked"
+finalise, close()     wal 2,476,152 ->         0   main   827,392
+```
+
+So the three closed stores were no better off than the leaked one, and the
+standing deployment shows it: `hub.db` is 4096 bytes — one page, no checkpoint
+has ever completed — beside 1.5 MB of log. The log is now folded explicitly
+(`checkpointForShutdown`, commit "Fold every write-ahead log at shutdown"),
+which is what the close was wanted for and does not require closing anything.
+
+**What remains unexplained.** Adding `auditDb.close()` turned the integration
+suite red, twice, in two shapes of the same change:
 
 ```
 restructured loop, per-store try/catch    55 fail, then 44 on a second run
@@ -728,21 +743,21 @@ one added line, nothing else touched      24 fail
 without the change                         0 fail
 ```
 
-Controlled: the same tree, the same command, the change reverted in between.
-The failures are the familiar cascade — one scenario times out at ~5000ms and
-everything after it reports `browser has been closed` or reaches a mesh that is
-already gone. So closing the audit store on shutdown changes the timing or the
-outcome of the hub's exit in a way the harness notices, and **what exactly is
-not established.**
+Controlled: same tree, same command, reverted in between. A close makes the
+handle unusable immediately — `Database has closed` — and that mechanism was
+confirmed directly afterwards, when an in-process test calling
+`closeDatabases()` left eight later tests in the same run failing with exactly
+that error. **But `test/` starts real hub processes that exit right after
+shutdown**, so nothing there should ever reach a closed handle, and the
+`packages/` reproduction is therefore not the explanation for `test/`. It is
+the same error text arising from a different cause.
 
-**Why deferred.** The gap is benign in the direction that matters: an unclosed
-store is recovered on the next open, and the audit trail is not lost — the cost
-is a `-wal` file that outlives the process. The fix, on the evidence above,
-costs a red suite for an unknown reason, and shipping a change whose mechanism
-is unexplained is worse than the leak it closes.
+**Why it stays deferred.** With the log folded, closing the audit store buys
+nothing measurable: it releases no file the process is not about to release by
+exiting, and the § 8.9 record is not at risk either way. Chasing the red suite
+would be answering a question whose answer changes nothing — which is a
+different thing from the question being uninteresting.
 
-What would settle it: whether `auditDb.close()` throws, blocks, or simply
-delays `process.exit(0)` past what the harness waits for — measurable by
-instrumenting the shutdown path directly instead of inferring it from the
-suite. Doing that after a night of measurements would be one more inference on
-a tired reading, which is the shape this document exists to interrupt.
+What would settle it, if it ever earns the time: instrument the hub's exit path
+directly — whether `auditDb.close()` throws, blocks, or delays `process.exit(0)`
+past what the harness waits for — rather than inferring it from suite totals.
