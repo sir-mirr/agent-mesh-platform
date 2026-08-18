@@ -144,6 +144,16 @@ describe("the shapes a display string can arrive in", () => {
   test("and a bare key is still not display text", () => {
     // The whole reason the positional rule existed. Losing it must not bring
     // back the seventy-one.
+    //
+    // **This is the boundary the rule buys, and it is chosen rather than
+    // missed.** A display string that is alone on its line with no whitespace —
+    // `"audit.read_content",` as an array element — is byte-for-byte a key, so
+    // no rule reading one line can tell them apart. One of the two has to be
+    // given up, and giving up the key costs seventy-one false alarms while
+    // giving up that string costs one shape nothing currently writes: the
+    // screen that lists capability names as chips renders a server-supplied
+    // array, not literals. Read as a hole and someone will "fix" it by
+    // scanning keys again.
     const found = displayStrings('    "server.kpi.sockets": "소켓 수",');
     expect(found.join(" "), "the key came back as display text").not.toContain("server.kpi.sockets");
   });

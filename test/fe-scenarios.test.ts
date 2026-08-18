@@ -9,6 +9,32 @@ function hs256(payload: object, secret: string): string {
   return `${header}.${body}.${sig}`;
 }
 
+/**
+ * Why these are `SC-API-*` and not the `SC-AUTH-*` of `fe-render.test.ts`.
+ *
+ * Four ids used to name a scenario in each file, and they were not duplicates:
+ * these reach the API, those drive the screen. **An id is the unit the
+ * inventory counts, so one id covering two layers cannot say they disagree** —
+ * "SC-AUTH-03 passes" would mean either both are right or one of them is, with
+ * no way to tell which.
+ *
+ * That is not hypothetical. It is exactly where the worst defect of the night
+ * lived:
+ *
+ * ```
+ * capabilities = []   the API refused with 403   the screen opened every guarded page
+ * ```
+ *
+ * The two layers disagreed, and a single id spanning them had no way to hold
+ * that fact. Split, each layer is counted and a divergence has somewhere to
+ * appear.
+ *
+ * `SC-PROV-01` is not a rename for tidiness either: it measures provenance and
+ * platform metadata, a different axis from the harness-health check that keeps
+ * the `SC-HARNESS-01` name in the other file. It is also, under a name nobody
+ * had given it, the thing `I-047` proposed writing — *does the build report its
+ * own origin honestly* — so the scenario existed before the id did.
+ */
 describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   let mesh: Mesh;
   let authCookie: string = "";
@@ -27,7 +53,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   });
 
   // GL-00 / SC-HARNESS-01: Harness Precondition & Provenance Guard
-  it("[SC-HARNESS-01] verifies provenance and platform metadata", async () => {
+  it("[SC-PROV-01] verifies provenance and platform metadata", async () => {
     const res = await fetch(`${mesh.hub.url}/api/v1/capabilities`);
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -38,7 +64,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   });
 
   // GL-01 / SC-AUTH-01: Session authentication & Cookie acquisition
-  it("[SC-AUTH-01] authenticates admin test handle and receives session cookie", async () => {
+  it("[SC-API-AUTH-01] authenticates admin test handle and receives session cookie", async () => {
     authCookie = await loginAsAdmin(mesh.http);
     expect(authCookie).toBeString();
     expect(authCookie).toContain("mesh_token");
@@ -461,13 +487,13 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   });
 
   // GL-02 / SC-AUTH-02: Unauthenticated Route Guard
-  it("[SC-AUTH-02] enforces authentication on protected admin routes", async () => {
+  it("[SC-API-AUTH-02] enforces authentication on protected admin routes", async () => {
     const res = await fetch(`${mesh.http.url}/api/v1/admin/grants`);
     expect(res.status).toBe(401);
   });
 
   // GL-03 / SC-AUTH-03: Capability RBAC Guard Enforcement
-  it("[SC-AUTH-03] enforces capability check and denies unauthorized actions with 403", async () => {
+  it("[SC-API-AUTH-03] enforces capability check and denies unauthorized actions with 403", async () => {
     // Authenticated non-admin session without key.approve capability
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
       method: "POST",

@@ -1212,6 +1212,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // n*, which is a state, not an existence. That belongs to the author of the
   // screens. Recorded as unimplemented with the reason instead of carried as
   // green.
+  // Four ids, not two used twice. Each `it` here is its own scenario because an
+  // id is what the inventory counts, and the first version of these registered
+  // SC-NAV-01 and SC-NAV-02 twice apiece — so "SC-NAV-02 passes" could not say
+  // whether the menu hid the items, the routes refused them, or only one did.
+  // That is the same defect the split of SC-AUTH-* from SC-API-AUTH-* exists to
+  // undo, written by the person who wrote the split.
+  //
+  //   SC-NAV-01  an admin sees every guarded item
+  //   SC-NAV-02  a viewer sees the one they hold and not the others
+  //   SC-NAV-03  a viewer holding nothing sees no guarded item
+  //   SC-NAV-04  ... and the routes refuse them too
   // SC-NAV-01: the sidebar shows what the viewer's capabilities allow.
   //
   // The defect this exists for was invisible to every other check. Six items
@@ -1252,7 +1263,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 20000);
 
-  it("[SC-NAV-01] hides from a viewer the items they hold no capability for", async () => {
+  it("[SC-NAV-02] hides from a viewer the items they hold no capability for", async () => {
     // The other direction, and the one that says the filter still filters.
     // Without it, deleting `requiredCapability` from every entry would satisfy
     // the test above and show everything to everyone.
@@ -1285,7 +1296,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // the list stays green all the way down and inverts at the end point, so a
   // suite that only checks "fewer capabilities, fewer links" reports health for
   // the one case that is wrong.
-  it("[SC-NAV-02] a viewer with no capability at all sees no guarded item", async () => {
+  it("[SC-NAV-03] a viewer with no capability at all sees no guarded item", async () => {
     const cookie = await capabilityViewer(mesh);          // no grants at all
     const { page, context } = await createViewerAuthedPage(cookie, "/dashboard");
     try {
@@ -1302,7 +1313,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 20000);
 
-  it("[SC-NAV-02] and the routes refuse it too, not only the menu", async () => {
+  it("[SC-NAV-04] the routes refuse a session holding nothing, not only the menu", async () => {
     // The menu is an affordance. If the guard resolved the same way — and it
     // did, both reading one context — then hiding the link while the route
     // opened would be the worse half left in place.
