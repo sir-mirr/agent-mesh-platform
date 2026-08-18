@@ -18,7 +18,9 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
@@ -163,3 +165,69 @@ test("stopping the hub first still folds what only the http server holds", async
 
   foldedEverything(mesh, before);
 }, 120_000);
+
+/**
+ * The third process, which had no shutdown at all.
+ *
+ * The hub and the http server at least *called* something on the way out. The
+ * self-reminder daemon installed no signal handler, so `systemctl stop` killed
+ * it mid-poll and `self-reminder.db-wal` outlived every restart. It was found by
+ * looking for the defect rather than by anything failing — the store is written
+ * for abrupt death, so nothing was ever lost and nothing ever complained.
+ *
+ * Started for real rather than by importing its module, because "installs a
+ * SIGTERM handler" is a claim about a process and there is no way to assert it
+ * from inside one.
+ */
+test("the self-reminder daemon folds its log on SIGTERM", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wal-reminder-"));
+  const path = join(dir, "self-reminder.db");
+  const wal = () => (existsSync(`${path}-wal`) ? statSync(`${path}-wal`).size : 0);
+
+  const proc = Bun.spawn(["bun", "packages/self-reminder/src/main.ts"], {
+    cwd: new URL("..", import.meta.url).pathname,
+    env: {
+      ...process.env,
+      AGENT_MESH_STATE_DIR: dir,
+      // Nothing is listening; the daemon retries and keeps scheduling, which is
+      // the state a stop most often arrives in.
+      HUB_URL: "ws://127.0.0.1:1/ws",
+      SELF_REMINDER_POLL_MS: "60000",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  try {
+    // Wait for it to have opened and migrated the store, not merely to exist.
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    let said = "";
+    while (!said.includes("scheduler_started")) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error(`daemon exited before starting:\n${said}`);
+      said += decoder.decode(value);
+    }
+
+    // Enough rows that a zero afterwards is a fold and not an empty store.
+    const writer = new Database(path, { readwrite: true });
+    writer.exec("PRAGMA busy_timeout = 5000;");
+    const insert = writer.prepare(
+      `INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, created_by)
+       VALUES (?, 'a', 'once', '2030-01-01T00:00:00Z', ?, 'test')`,
+    );
+    const payload = "x".repeat(4000);
+    for (let i = 0; i < 200; i++) insert.run(`r${i}`, payload);
+    writer.close();
+    expect({ store: "self-reminder.db-wal", wrote: wal() > 0 }).toEqual({ store: "self-reminder.db-wal", wrote: true });
+
+    proc.kill("SIGTERM");
+    const code = await proc.exited;
+    expect({ code, reaped: await reaped(proc.pid) }).toEqual({ code: 0, reaped: true });
+
+    expect({ store: "self-reminder.db-wal", wal: wal() }).toEqual({ store: "self-reminder.db-wal", wal: 0 });
+    expect({ store: "self-reminder.db", kept: statSync(path).size > 4096 }).toEqual({ store: "self-reminder.db", kept: true });
+  } finally {
+    proc.kill("SIGKILL");
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 60_000);

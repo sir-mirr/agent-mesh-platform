@@ -7,8 +7,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { Database } from "bun:sqlite";
-import { selfReminderSchema } from "@agent-mesh/store";
+import { checkpointForShutdown, openAt, selfReminderSchema } from "@agent-mesh/store";
 import WebSocket from "ws";
 
 import { HubLifecycle, hubErrorCategory } from "./lifecycle";
@@ -39,9 +38,11 @@ function log(event: string, fields: Record<string, unknown> = {}): void {
   console.log(`[self-reminder ${new Date().toISOString()}] ${event}`, JSON.stringify(fields));
 }
 
-const db = new Database(DB_PATH, { create: true });
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA busy_timeout = 5000;");
+// `openAt` rather than `new Database` with the two pragmas repeated here. They
+// were identical, which is exactly how a second copy stays invisible: WAL and
+// `busy_timeout` are what make it safe for the hub to write this same file for
+// § 8.5 reminder RPCs, and a copy that drifts drops that without a symptom.
+const db = openAt(DB_PATH, { create: true });
 selfReminderSchema.migrate(db);
 
 const recovered = db.prepare(`UPDATE reminders SET status = 'active', updated_at = datetime('now') WHERE status = 'firing'`).run();
@@ -77,7 +78,7 @@ lifecycle = new HubLifecycle({
 });
 
 lifecycle.start();
-setInterval(() => {
+const poll = setInterval(() => {
   void scheduler.advanceDue(lifecycle.isReady(), (reminder, content, clientMessageId) =>
     // **From this daemon, not from the owner.** A fired reminder is sent by the
     // scheduler; the owner scheduled it earlier, which the payload records. It
@@ -96,5 +97,36 @@ setInterval(() => {
         throw error;
       }));
 }, POLL_MS);
+
+/**
+ * Stop without leaving the log behind.
+ *
+ * This daemon had no signal handler at all, so `systemctl stop` killed it
+ * mid-poll and `self-reminder.db-wal` survived every restart. Nothing was lost
+ * — the store is written for abrupt death, which is why the `firing` rows are
+ * recovered on the way up — but "no data is lost" and "nothing is left" are
+ * different claims and only the first one was true.
+ *
+ * The checkpoint is what folds the log; `close()` alone does not (see
+ * `checkpointForShutdown`). The unit sets no `KillSignal` or `TimeoutStopSec`,
+ * so this runs under SIGTERM with the systemd default to finish in, and the
+ * checkpoint's own budget is 250ms.
+ */
+function shutdown(signal: string): void {
+  log("shutting_down", { signal });
+  clearInterval(poll);
+  try {
+    lifecycle.stop();
+  } catch {
+    // Stopping a socket that never opened is not a reason to skip the store.
+  }
+  checkpointForShutdown(db);
+  db.close();
+  log("shutdown_complete", {});
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 log("scheduler_started", { db_path: DB_PATH, poll_ms: POLL_MS, identity: IDENTITY, overdue_policy: "hold_pending_operator_decision" });

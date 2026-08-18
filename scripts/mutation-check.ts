@@ -942,6 +942,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/wal-shutdown.test.ts",
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
+  {
+    id: "wal-reminder-unhandled",
+    defect:
+      "The self-reminder daemon installed no signal handler at all, so `systemctl stop` killed it mid-poll and `self-reminder.db-wal` outlived every restart. Nothing complained, because the store is written for abrupt death — `firing` rows are recovered on the way up — so 'no data is lost' was true and 'nothing is left behind' was not, and only the first was ever checked.",
+    file: "packages/self-reminder/src/main.ts",
+    from: 'process.on("SIGTERM", () => shutdown("SIGTERM"));',
+    to: 'void shutdown;',
+    suite: "test/wal-shutdown.test.ts",
+    expect: ["the self-reminder daemon folds its log on SIGTERM", "self-reminder.db-wal"],
+  },
+  {
+    id: "wal-reminder-fold",
+    defect:
+      "A shutdown handler that closes without checkpointing leaves the log exactly where it was — the same inert `close()` as everywhere else, now inside a handler that looks like it handles it.",
+    file: "packages/self-reminder/src/main.ts",
+    from: "  checkpointForShutdown(db);",
+    to: "  void db;",
+    suite: "test/wal-shutdown.test.ts",
+    expect: ["the self-reminder daemon folds its log on SIGTERM", "self-reminder.db-wal"],
+  },
 ];
 
 /**
