@@ -734,8 +734,8 @@ has ever completed — beside 1.5 MB of log. The log is now folded explicitly
 (`checkpointForShutdown`, commit "Fold every write-ahead log at shutdown"),
 which is what the close was wanted for and does not require closing anything.
 
-**What remains unexplained.** Adding `auditDb.close()` turned the integration
-suite red, twice, in two shapes of the same change:
+**What remains unexplained — and the evidence for it is now suspect too.**
+Adding `auditDb.close()` turned the integration suite red, twice:
 
 ```
 restructured loop, per-store try/catch    55 fail, then 44 on a second run
@@ -743,21 +743,35 @@ one added line, nothing else touched      24 fail
 without the change                         0 fail
 ```
 
-Controlled: same tree, same command, reverted in between. A close makes the
-handle unusable immediately — `Database has closed` — and that mechanism was
-confirmed directly afterwards, when an in-process test calling
-`closeDatabases()` left eight later tests in the same run failing with exactly
-that error. **But `test/` starts real hub processes that exit right after
-shutdown**, so nothing there should ever reach a closed handle, and the
-`packages/` reproduction is therefore not the explanation for `test/`. It is
-the same error text arising from a different cause.
+Retried with the checkpoint in place, and the numbers stopped agreeing with
+themselves:
 
-**Why it stays deferred.** With the log folded, closing the audit store buys
-nothing measurable: it releases no file the process is not about to release by
-exiting, and the § 8.9 record is not at risk either way. Chasing the red suite
-would be answering a question whose answer changes nothing — which is a
-different thing from the question being uninteresting.
+```
+auditDb.close(), run 1     625 pass, 0 fail
+auditDb.close(), run 2      68 fail
+reverted, same command      58 fail        <- the arm that is supposed to be green
+```
 
-What would settle it, if it ever earns the time: instrument the hub's exit path
-directly — whether `auditDb.close()` throws, blocks, or delays `process.exit(0)`
-past what the harness waits for — rather than inferring it from suite totals.
+The third line is the one that matters. **The reverted tree failed under the
+same conditions**, so what those runs measured was the machine, not the change:
+agent-mesh-local-pm was running the full suite on this host at the time, and the
+failures are the FE browser cascade — `Target page, context or browser has been
+closed`, 57 of them behind one timeout — which is this machine's load signature
+and has nothing to do with SQLite. The same tip is 625 pass / 0 fail twice on a
+quiet machine, once here and once by pm independently.
+
+So the original numbers above were never controlled for a concurrently running
+suite either, and cannot be read as evidence about the close.
+
+One thing is genuinely eliminated: `Database has closed` appears **zero** times
+in the failing output. The use-after-close reading — which the `packages/`
+reproduction made tempting — is not what happens in `test/`.
+
+**Why it stays deferred.** Two reasons, and the second is the real one:
+
+1. Measuring it needs a quiet machine. Both arms have to run interleaved rather
+   than in sequence, or the next pair of numbers will describe the load again.
+2. With the log folded by `checkpointForShutdown`, closing the audit store buys
+   nothing measurable. It releases no file the process is not about to release
+   by exiting, and the § 8.9 record is not at risk either way. The question is
+   now about tidiness, and it is being kept off a machine somebody is using.
