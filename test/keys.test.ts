@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { keyFingerprint } from "@agent-mesh/contracts";
 
-import { callHttp, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh , teardown} from "./harness";
+import { callHttp, connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -290,7 +290,7 @@ describe("approval is what makes a key usable", () => {
 
 describe("storage", () => {
   test("keys and their history live in agents.db", () => {
-    const db = new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+    const db = openTestDb(join(mesh.stateDir, "agents.db"), { readonly: true });
     const n = db.prepare(`SELECT COUNT(*) AS n FROM agent_key_events`).get() as { n: number };
     expect(n.n).toBeGreaterThan(0);
     db.close();
@@ -353,7 +353,7 @@ describe("create_only", () => {
     expect(body.keys[0].fingerprint).toBe(original.fingerprint);
     expect(body.keys[0].status).toBe("pending");
 
-    const db = new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+    const db = openTestDb(join(mesh.stateDir, "agents.db"), { readonly: true });
     const row = db.prepare(`SELECT description FROM agents WHERE identity = ?`)
       .get("lane-intact") as { description: string };
     db.close();
@@ -559,7 +559,7 @@ describe("a key already held by another identity", () => {
  */
 describe("a type change leaves a record", () => {
   const auditOf = (identity: string) => {
-    const db = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    const db = openTestDb(join(mesh.stateDir, "audit.db"), { readonly: true });
     try {
       return db
         .prepare(`SELECT event_type, payload FROM audit_events WHERE identity = ? ORDER BY stored_at`)
@@ -625,7 +625,7 @@ describe("a type change leaves a record", () => {
  */
 describe("the observed source is recorded", () => {
   const sourcesOf = (identity: string) => {
-    const db = new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+    const db = openTestDb(join(mesh.stateDir, "agents.db"), { readonly: true });
     try {
       return db
         .prepare(`SELECT observed, requests FROM agent_sources WHERE identity = ?`)
@@ -716,7 +716,7 @@ describe("capabilities gate the routes", () => {
   // that boundary — and the build, since `test/` compiles with `rootDir: "."`.
   // Made that mistake twice today; the second time is why this comment exists.
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const held = (subject: string) =>
@@ -783,7 +783,7 @@ describe("capabilities gate the routes", () => {
  */
 describe("the observed sources are readable by an operator", () => {
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const asAdmin = (path: string) =>
@@ -845,7 +845,7 @@ describe("the observed sources are readable by an operator", () => {
  */
 describe("ownership scopes what an operator sees", () => {
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const grantTo = (subject: string, capability: string, scope = "*") =>
@@ -983,7 +983,7 @@ describe("ownership scopes what an operator sees", () => {
  */
 describe("teardown is scoped", () => {
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const setGrant = (capability: string, scope: string | null) => withDb((db) => {
@@ -1160,7 +1160,7 @@ describe("§ 12 — groups gate sends", () => {
  */
 describe("teardown by the group manager", () => {
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const setGrant = (capability: string, scope: string | null) => withDb((db) => {

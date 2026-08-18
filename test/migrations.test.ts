@@ -22,6 +22,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+
+import { openTestDb } from "./harness";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,7 +57,7 @@ describe("0002 drop autonomy tables", () => {
     const dir = scratch();
     try {
       const path = join(dir, "hub.db");
-      const db = new Database(path);
+      const db = openTestDb(path);
       db.exec(`CREATE TABLE messages (id TEXT PRIMARY KEY)`);
       db.close();
 
@@ -65,7 +67,7 @@ describe("0002 drop autonomy tables", () => {
       expect(stderr).toContain("CHECK constraint failed");
 
       // And it left the database alone.
-      const after = new Database(path, { readonly: true });
+      const after = openTestDb(path, { readonly: true });
       const tables = (after.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as Array<{ name: string }>)
         .map((r) => r.name);
       after.close();
@@ -83,7 +85,7 @@ describe("0002 drop autonomy tables", () => {
     const dir = scratch();
     try {
       const path = join(dir, "self-reminder.db");
-      const db = new Database(path);
+      const db = openTestDb(path);
       db.exec(`
         CREATE TABLE reminders (id TEXT PRIMARY KEY);
         CREATE TABLE autonomy_tasks (id TEXT PRIMARY KEY);
@@ -95,7 +97,7 @@ describe("0002 drop autonomy tables", () => {
       const { code, stderr } = await apply(path);
       expect(code, stderr).toBe(0);
 
-      const after = new Database(path, { readonly: true });
+      const after = openTestDb(path, { readonly: true });
       const tables = (after.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as Array<{ name: string }>)
         .map((r) => r.name);
       after.close();
@@ -115,7 +117,7 @@ describe("0002 drop autonomy tables", () => {
     const dir = scratch();
     try {
       const path = join(dir, "self-reminder.db");
-      const db = new Database(path);
+      const db = openTestDb(path);
       db.exec(`CREATE TABLE reminders (id TEXT PRIMARY KEY)`);
       db.close();
 

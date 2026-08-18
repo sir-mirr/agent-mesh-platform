@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, openTestDb, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -42,12 +42,12 @@ afterAll(() => mesh?.stop());
  */
 function breakTable(file: string, table: string): () => void {
   const path = join(mesh.stateDir, file);
-  const db = new Database(path);
+  const db = openTestDb(path);
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(`ALTER TABLE ${table} RENAME TO ${table}_hidden`);
   db.close();
   return () => {
-    const back = new Database(path);
+    const back = openTestDb(path);
     back.exec("PRAGMA busy_timeout = 5000;");
     back.exec(`ALTER TABLE ${table}_hidden RENAME TO ${table}`);
     back.close();

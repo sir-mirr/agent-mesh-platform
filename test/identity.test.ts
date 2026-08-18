@@ -12,7 +12,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, provision, loginAsAdmin, newPublicKey, provisionProxy, startMesh, type Mesh , teardown} from "./harness";
+import { connectRpc, loginAsAdmin, newPublicKey, openTestDb, provision, provisionProxy, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -21,7 +21,7 @@ const del = (identity: string) =>
 
 /** Read `agents.db` directly to assert on what was actually stored. */
 function agentsDb(): Database {
-  return new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+  return openTestDb(join(mesh.stateDir, "agents.db"), { readonly: true });
 }
 
 beforeAll(async () => {
@@ -47,7 +47,7 @@ describe("storage split", () => {
     expect(tables).toContain("agent_key_events");
     expect(tables).not.toContain("messages");
 
-    const hub = new Database(join(mesh.stateDir, "hub.db"), { readonly: true });
+    const hub = openTestDb(join(mesh.stateDir, "hub.db"), { readonly: true });
     const hubTables = (hub.prepare(
       `SELECT name FROM sqlite_master WHERE type='table'`,
     ).all() as Array<{ name: string }>).map((t) => t.name);
@@ -68,7 +68,7 @@ describe("hub baseline invariants", () => {
     // § 3.1 states the reason: one file means audit growth exhausting the disk
     // also stops message routing — a recording feature taking down the
     // communication feature.
-    const audit = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    const audit = openTestDb(join(mesh.stateDir, "audit.db"), { readonly: true });
     const auditTables = (audit.prepare(
       `SELECT name FROM sqlite_master WHERE type='table'`,
     ).all() as Array<{ name: string }>).map((t) => t.name);
@@ -83,7 +83,7 @@ describe("hub baseline invariants", () => {
   test("an event and its blob references share one file, because they commit together", () => {
     // § 8.9.3 requires one transaction, and SQLite gives no atomic commit
     // across attached databases in WAL mode.
-    const audit = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+    const audit = openTestDb(join(mesh.stateDir, "audit.db"), { readonly: true });
     const tables = (audit.prepare(
       `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'audit_%'`,
     ).all() as Array<{ name: string }>).map((t) => t.name);
@@ -149,7 +149,7 @@ describe("agent type registry", () => {
 
   test("a type added to the table is accepted with no code change", async () => {
     // This is the whole point of § 10.3: a new runtime is a row, not a release.
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     db.prepare(
       `INSERT INTO agent_types (type, description, requires_key) VALUES (?, ?, 1)`,
     ).run("ai-invented", "added at runtime");
@@ -173,7 +173,7 @@ describe("agent type registry", () => {
 
 describe("agent_keys constraints", () => {
   test("the database refuses two approved keys for one identity", () => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     const insert = db.prepare(
       `INSERT INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
     );
@@ -189,7 +189,7 @@ describe("agent_keys constraints", () => {
   });
 
   test("rejects a status outside the four the contract defines", () => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     expect(() =>
       db.prepare(
         `INSERT INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
@@ -221,7 +221,7 @@ describe("soft delete", () => {
     expect(row.deleted_at).not.toBeNull();
 
     // And the message it received is still there.
-    const messages = new Database(join(mesh.stateDir, "hub.db"), { readonly: true })
+    const messages = openTestDb(join(mesh.stateDir, "hub.db"), { readonly: true })
       .prepare(`SELECT COUNT(*) AS n FROM messages WHERE to_agent = 'doomed'`)
       .get() as { n: number };
     expect(messages.n).toBeGreaterThan(0);
@@ -283,7 +283,7 @@ describe("soft delete", () => {
 
   test("revokes the identity's keys and records why", async () => {
     await provision(mesh.hub, "keyed-agent", "service");
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     db.prepare(
       `INSERT INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
     ).run("fp-teardown", "keyed-agent", "pk", "approved");
@@ -328,7 +328,7 @@ describe("soft delete", () => {
  */
 describe("transmitter recording", () => {
   const messageRow = (id: string) =>
-    new Database(join(mesh.stateDir, "hub.db"), { readonly: true })
+    openTestDb(join(mesh.stateDir, "hub.db"), { readonly: true })
       .prepare(`SELECT from_agent, to_agent, sent_by FROM messages WHERE id = ?`)
       .get(id) as { from_agent: string; to_agent: string; sent_by: string | null };
 

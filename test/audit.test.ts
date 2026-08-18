@@ -18,10 +18,7 @@ import {
   formatUploadAuthorization, uploadSignaturePreimage,
 } from "@agent-mesh/contracts";
 
-import {
-  connectRpc, loginAsAdmin, newKeyPair, provision, startMesh,
-  type KeyPair, type Mesh, type RpcClient,
-} from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, type KeyPair, type Mesh, type RpcClient } from "./harness";
 
 let mesh: Mesh;
 let kp: KeyPair;
@@ -50,7 +47,7 @@ afterAll(() => {
   mesh?.stop();
 });
 
-const auditDb = () => new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+const auditDb = () => openTestDb(join(mesh.stateDir, "audit.db"), { readonly: true });
 
 const event = (over: Record<string, unknown> = {}) => ({
   schema_version: 1,
@@ -480,7 +477,7 @@ describe("query API", () => {
  */
 describe("§ 11 — content is a separate grant from metadata", () => {
   const withDb = <T>(fn: (db: Database) => T): T => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try { return fn(db); } finally { db.close(); }
   };
   const setContentGrant = (on: boolean) =>
@@ -547,7 +544,7 @@ describe("§ 11 — content is a separate grant from metadata", () => {
  * messages" is defensible; "someone can read them and nobody knows" is not.
  */
 describe("§ 11.0.1 — reading content leaves a trace", () => {
-  const auditRW = () => new Database(join(mesh.stateDir, "audit.db"));
+  const auditRW = () => openTestDb(join(mesh.stateDir, "audit.db"));
   const readEvents = () => {
     const db = auditRW();
     try {
@@ -576,7 +573,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
   test("a metadata-only read writes nothing", async () => {
     // Nothing to protect, so nothing to record — and gating it would take the
     // mesh's diagnostics down with its audit store.
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run();
     db.close();
 
@@ -585,7 +582,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
     expect(res.status).toBe(200);
     expect(readEvents().length).toBe(before);
 
-    const db2 = new Database(join(mesh.stateDir, "agents.db"));
+    const db2 = openTestDb(join(mesh.stateDir, "agents.db"));
     db2.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
                  VALUES ('default','admin','audit.read.content','*','test') ON CONFLICT DO NOTHING`).run();
     db2.close();
@@ -616,7 +613,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
  */
 describe("§ 11.0.1 — a read that cannot be recorded does not happen", () => {
   const setContent = (on: boolean) => {
-    const db = new Database(join(mesh.stateDir, "agents.db"));
+    const db = openTestDb(join(mesh.stateDir, "agents.db"));
     try {
       if (on) {
         db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
@@ -638,7 +635,7 @@ describe("§ 11.0.1 — a read that cannot be recorded does not happen", () => {
    * store costs five seconds before it is refused.**
    */
   const withLockedAudit = async <T>(fn: () => Promise<T>): Promise<T> => {
-    const blocker = new Database(join(mesh.stateDir, "audit.db"));
+    const blocker = openTestDb(join(mesh.stateDir, "audit.db"));
     blocker.exec("PRAGMA busy_timeout = 0");
     blocker.exec("BEGIN EXCLUSIVE");
     try { return await fn(); } finally { blocker.exec("ROLLBACK"); blocker.close(); }

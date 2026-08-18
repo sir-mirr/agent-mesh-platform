@@ -80,3 +80,40 @@ describe("searchability", () => {
     expect(without.includes(0), "the escape was mistaken for the byte").toBe(false);
   });
 });
+
+/**
+ * The suite opens its stores through one helper, and the check is here because
+ * the alternative is remembering.
+ *
+ * `openTestDb` sets `busy_timeout = 5000`, which is what `@agent-mesh/store`'s
+ * `openAt` sets and what this tree cannot import — it drives real processes
+ * over the wire, and pulling the store's source in breaks that boundary and the
+ * build with it. So the value is declared once in the harness, and a raw
+ * `new Database` anywhere else is a copy of it that is missing.
+ *
+ * **Readers are included on purpose.** In WAL a reader never blocked behind a
+ * writer, which is why forty-three of these survived unnoticed. A shutdown now
+ * ends with `wal_checkpoint(TRUNCATE)` and that takes an exclusive lock, so a
+ * test reading a store while some mesh stops is a collision that did not exist
+ * until the checkpoint did — the fix for one defect made a benign race into a
+ * real one, and this is the line that stops it coming back.
+ */
+describe("stores are opened through the harness", () => {
+  test("no test opens a database by hand", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    // Assembled rather than written out, so this file does not report itself —
+    // which it did, and which is the same shape as a linter that flags its own
+    // rule text.
+    const needle = `new ${"Database"}(`;
+    const offenders: Array<{ file: string; count: number }> = [];
+    for (const name of readdirSync(new URL("../test", import.meta.url).pathname)) {
+      // The harness is where the helper lives, so it is the one place the raw
+      // constructor belongs.
+      if (!name.endsWith(".ts") || name === "harness.ts") continue;
+      const body = readFileSync(`${REPO_ROOT}test/${name}`, "utf8");
+      const count = body.split(needle).length - 1;
+      if (count > 0) offenders.push({ file: `test/${name}`, count });
+    }
+    expect(offenders).toEqual([]);
+  });
+});

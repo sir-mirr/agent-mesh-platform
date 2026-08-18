@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -194,7 +194,7 @@ describe("attachment metadata (§ 15.2)", () => {
    * sides.
    */
   const addToWebRegistry = (id: string) => {
-    const db = new Database(join(mesh.stateDir, "agent-mesh.db"));
+    const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"));
     db.prepare(
       `INSERT OR IGNORE INTO agent_registry (id, name, type, approved) VALUES (?, ?, 'agent', 1)`,
     ).run(id, id);
@@ -461,8 +461,8 @@ describe("attachment download", () => {
  * belonged to anyone.
  */
 describe("people are mesh participants", () => {
-  const httpDb = () => new Database(join(mesh.stateDir, "agent-mesh.db"));
-  const agentsDb = () => new Database(join(mesh.stateDir, "agents.db"), { readonly: true });
+  const httpDb = () => openTestDb(join(mesh.stateDir, "agent-mesh.db"));
+  const agentsDb = () => openTestDb(join(mesh.stateDir, "agents.db"), { readonly: true });
 
   /** Pending rows are normally written by the OAuth callback. */
   const requestAccess = (login: string) => {

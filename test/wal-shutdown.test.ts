@@ -23,7 +23,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, type Mesh } from "./harness";
 
 const meshes: Mesh[] = [];
 afterAll(() => {
@@ -209,7 +209,7 @@ test("the self-reminder daemon folds its log on SIGTERM", async () => {
     }
 
     // Enough rows that a zero afterwards is a fold and not an empty store.
-    const writer = new Database(path, { readwrite: true });
+    const writer = openTestDb(path, { readwrite: true });
     writer.exec("PRAGMA busy_timeout = 5000;");
     const insert = writer.prepare(
       `INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, created_by)

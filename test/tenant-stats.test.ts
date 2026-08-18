@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash, randomUUID, sign as edSign } from "node:crypto";
 import { formatRestAuthorization, restSignaturePreimage } from "@agent-mesh/contracts";
-import { callHttp, loginAsAdmin, newKeyPair, startMesh, type KeyPair, type Mesh } from "./harness";
+import { callHttp, loginAsAdmin, newKeyPair, openTestDb, startMesh, type KeyPair, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -36,7 +36,7 @@ async function agent(identity: string, tenant?: string): Promise<void> {
     // No route assigns tenancy yet — the column is what § 11.4 needed and
     // whoever provisions decides it. Written directly so this file tests the
     // attribution rule rather than a route that does not exist.
-    const db = new Database(`${mesh.stateDir}/agents.db`);
+    const db = openTestDb(`${mesh.stateDir}/agents.db`);
     db.prepare(`UPDATE agents SET tenant = ? WHERE identity = ?`).run(tenant, identity);
     db.close();
   }

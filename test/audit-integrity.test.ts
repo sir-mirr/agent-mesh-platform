@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { capabilityViewer, connectRpc, loginAsAdmin, newKeyPair, provision, provisionProxy, startMesh, type Mesh } from "./harness";
+import { capabilityViewer, connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, provisionProxy, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -69,7 +69,7 @@ describe("payload integrity", () => {
     const target = before[0]!;
     expect(target.integrity.digest_matches).toBe(true);
 
-    const db = new Database(join(mesh.stateDir, "audit.db"), { readwrite: true });
+    const db = openTestDb(join(mesh.stateDir, "audit.db"), { readwrite: true });
     const original = (db.prepare(`SELECT payload FROM audit_events WHERE event_id = ?`)
       .get(target.event_id) as { payload: string }).payload;
     db.prepare(`UPDATE audit_events SET payload = ? WHERE event_id = ?`)

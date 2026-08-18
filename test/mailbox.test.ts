@@ -16,10 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import {
-  callHttp, connectRpc, loginAsAdmin, newKeyPair, provision, startMesh,
-  type KeyPair, type Mesh,
-} from "./harness";
+import { callHttp, connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, type KeyPair, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -196,7 +193,7 @@ describe("draining an inbox", () => {
     const ids = batch.body.result.messages.map((m: any) => m.id);
 
     const audit = () => {
-      const db = new Database(join(mesh.stateDir, "audit.db"), { readonly: true });
+      const db = openTestDb(join(mesh.stateDir, "audit.db"), { readonly: true });
       const r = db.prepare(
         `SELECT event_type FROM audit_events WHERE correlation_id = ? AND recorded_by_kind = 'hub'`,
       ).all(ids[0]) as Array<{ event_type: string }>;

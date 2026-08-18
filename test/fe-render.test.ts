@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { Database } from "bun:sqlite";
+
+import { openTestDb } from "./harness";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
@@ -100,7 +102,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // 4. Seed message stats for tenant traffic table
     try {
       const hubDbPath = path.join(mesh.stateDir, "hub.db");
-      const db = new Database(hubDbPath);
+      const db = openTestDb(hubDbPath);
       db.prepare(`
         INSERT INTO message_stats (ts, tenant, from_agent, to_agent, via)
         VALUES (datetime('now'), 'default', 'agent-alpha', 'admin', 'direct')
@@ -111,7 +113,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // 5. Seed rich audit events in audit.db with D-67 proxy routing (sent_by != from) & attested signatures
     try {
       const auditDbPath = path.join(mesh.stateDir, "audit.db");
-      const auditDb = new Database(auditDbPath);
+      const auditDb = openTestDb(auditDbPath);
       const attestationPayload = JSON.stringify({
         covers: ["message"],
         sig: {
@@ -136,7 +138,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // 6. Seed agent-alpha into agent-mesh.db agent_registry for multi-agent console
     try {
       const httpDbPath = path.join(mesh.stateDir, "agent-mesh.db");
-      const httpDb = new Database(httpDbPath);
+      const httpDb = openTestDb(httpDbPath);
       httpDb.prepare(`
         INSERT OR IGNORE INTO agent_registry (id, name, description, channel, type, approved)
         VALUES ('agent-alpha', 'Agent Alpha (Claude)', 'High performance reasoning agent', 'hub', 'ai-claude', 1)

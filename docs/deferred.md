@@ -722,34 +722,25 @@ the full suite on the same host, and a re-run put the *reverted* arm at 58
 failures. A comparison that controls the code and not the load measures the
 load.
 
-### The suite opens stores by hand, mostly without a busy timeout
+### ~~The suite opens stores by hand, mostly without a busy timeout~~
 
-`openAt` sets `busy_timeout = 5000` because writes across processes serialise
-and, without it, a concurrent writer surfaces as an immediate `SQLITE_BUSY`
-rather than a short wait. `test/` deliberately does not import
-`@agent-mesh/store` — this tree drives real processes over the wire, and pulling
-the store's source into it breaks that boundary and the build with it (the
-comment above `withDb` in `keys.test.ts` records the two times that was learned).
+Closed. Every store in `test/` is now opened through `openTestDb` in the
+harness, which sets `busy_timeout = 5000` — the value `@agent-mesh/store`'s
+`openAt` sets, declared once here because this tree cannot import that package
+(it drives real processes over the wire, and pulling the store's source in
+breaks that boundary and the build with it). 47 raw opens across 14 files, and
+`test/greppable.test.ts` now fails if another appears.
 
-So the suite opens its stores with `new Database`, and the pragma is not there:
+**Deferred for one cycle, on a reason that did not hold.** It was written down
+as too large to verify while the full suite could not be run cleanly — and then
+the files verified one at a time, on the same machine, in under a minute. The
+size was real; the blocker was not, and the two got argued as one.
 
-```
-raw opens in test/                47
-of those, setting busy_timeout     4
-read-write, against a live mesh   ~20
-```
-
-**Not fixed here, and the reason is the size rather than the difficulty.**
-Every one of these is a one-statement read or write against a mesh that is
-mostly idle at that moment, the window is microseconds, and no `SQLITE_BUSY`
-has ever been observed in this suite. Editing twenty call sites in a suite is a
-larger risk than the defect — particularly on a machine where the full suite
-cannot currently be run cleanly, which means the edit could not be verified.
-
-`test/harness.ts`'s `capabilityViewer` is fixed, because it was already being
-edited and it writes while the http server is serving.
-
-What would settle it: a checker in the style of `test/greppable.test.ts`
-asserting that every raw `new Database` in `test/` sets the pragma — which is
-the repository's idiom for this, and which would be red on 43 existing sites
-the day it lands. That is the work, and it is a sweep rather than a fix.
+**Readers are included, which is the part worth keeping.** In WAL a reader never
+blocked behind a writer, which is why forty-seven of these survived unnoticed.
+The shutdown fix ends with `wal_checkpoint(TRUNCATE)` and that takes an
+exclusive lock, so a test reading a store while some mesh stops is a collision
+that did not exist until the checkpoint did. agent-mesh-local-pm named the shape
+on the harness defect in the same cycle: making an operation do more turns
+everything that raced with it harmlessly into something that races with it for
+real.

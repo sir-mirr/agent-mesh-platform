@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, newPublicKey, provision, provisionProxy, startMesh, type Mesh , teardown, setProxyGrant } from "./harness";
+import { connectRpc, newPublicKey, openTestDb, provision, provisionProxy, setProxyGrant, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -179,7 +179,7 @@ describe("proxy_for at connect", () => {
     // And it is still queued for whoever is entitled to it. Read from the store
     // rather than by connecting as the subject: the leak destroyed evidence by
     // marking rows delivered, so the assertion has to be about the row.
-    const hub = new Database(join(mesh.stateDir, "hub.db"), { readonly: true });
+    const hub = openTestDb(join(mesh.stateDir, "hub.db"), { readonly: true });
     const row = hub.prepare(
       `SELECT status FROM messages WHERE to_agent = ? AND content = ?`,
     ).get("queued-subject", "for its eyes only") as { status: string };

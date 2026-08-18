@@ -13,6 +13,7 @@
  * moved to another file.
  */
 
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
@@ -619,21 +620,9 @@ export async function capabilityViewer(
   mesh: Mesh,
   ...capabilities: string[]
 ): Promise<string> {
-  const { Database } = await import("bun:sqlite");
   const username = `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
-  const db = new Database(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
-  // The http server is running and writing this same file. Without a busy
-  // timeout a collision is an immediate SQLITE_BUSY rather than a short wait,
-  // which in a harness surfaces as a test that fails sometimes — and a suite
-  // that fails sometimes is what this repository spends the most effort not
-  // having.
-  //
-  // Copied rather than taken from `openAt`, which is where this value lives.
-  // `test/` deliberately does not import `@agent-mesh/store` (see the comment
-  // above `withDb` in `keys.test.ts`): this tree drives real processes over the
-  // wire, and pulling the store's source into it breaks that boundary and the
-  // build with it.
-  db.exec("PRAGMA busy_timeout = 5000;");
+  // The http server is serving from this file while this writes to it.
+  const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
   if (!db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(username)) {
     db.prepare(
       "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
@@ -664,4 +653,27 @@ export async function capabilityViewer(
     throw new Error(`${username} could not sign in: ${login.status}, no mesh_token`);
   }
   return cookie;
+}
+
+/**
+ * Open a store the way the services open one.
+ *
+ * The pragma is the whole point. `openAt` in `@agent-mesh/store` sets
+ * `busy_timeout = 5000` because writes across processes serialise and, without
+ * it, a collision is an immediate `SQLITE_BUSY` rather than a short wait. This
+ * tree deliberately does not import that package — it drives real processes
+ * over the wire, and pulling the store's source in breaks that boundary and the
+ * build with it (see the comment above `withDb` in `keys.test.ts`) — so the
+ * value is declared once here instead of at forty-odd call sites.
+ *
+ * **Readers need it too, now.** In WAL a reader never blocked behind a writer,
+ * which is why this was survivable; but a shutdown now ends with
+ * `wal_checkpoint(TRUNCATE)`, and that takes an exclusive lock. A test reading
+ * a store while some mesh is stopping is a collision that did not exist before
+ * the checkpoint did.
+ */
+export function openTestDb(path: string, opts?: ConstructorParameters<typeof Database>[1]): Database {
+  const db = new Database(path, opts);
+  db.exec("PRAGMA busy_timeout = 5000;");
+  return db;
 }

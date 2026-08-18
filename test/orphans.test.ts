@@ -16,7 +16,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { startMesh, type Mesh } from "./harness";
+import { openTestDb, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const SCRIPT = join(REPO_ROOT, "scripts/collect-orphan-blobs.ts");
@@ -73,7 +73,7 @@ const KEY_B = "b".repeat(64);
 /** Reference a blob from the audit store, the way a committed event does. */
 function reference(stateDir: string, blobKey: string): void {
   const { Database } = require("bun:sqlite") as typeof import("bun:sqlite");
-  const db = new Database(join(stateDir, "audit.db"), { readwrite: true });
+  const db = openTestDb(join(stateDir, "audit.db"), { readwrite: true });
   db.prepare(
     `INSERT INTO audit_event_blobs (event_id, blob_key, sha256, size) VALUES (?, ?, ?, ?)`,
   ).run("01900000-0000-7000-8000-000000000000", blobKey, blobKey.slice(0, 64), 1);
