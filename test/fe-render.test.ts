@@ -4,18 +4,25 @@ import path from "node:path";
 import { Database } from "bun:sqlite";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
-import { startMesh, newKeyPair, capabilityViewer } from "./harness.ts";
+import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
 
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
   let mesh: Awaited<ReturnType<typeof startMesh>>;
   let viteProc: ChildProcess;
   let browser: Browser;
-  const VITE_PORT = 3195;
-  const viteBaseUrl = `http://127.0.0.1:${VITE_PORT}`;
+  // **Asked for, not chosen.** This was a fixed 3195 with `--strictPort`, which
+  // meant a second run of this suite could not bind and every scenario in it
+  // then failed to reach a server — a red suite produced by two people testing
+  // at the same time, and indistinguishable from a red suite produced by a
+  // defect. It cost an hour of exactly that confusion tonight.
+  let vitePort = 0;
+  let viteBaseUrl = "";
   let jwtToken: string;
 
   beforeAll(async () => {
     mesh = await startMesh();
+    vitePort = await freePort();
+    viteBaseUrl = `http://127.0.0.1:${vitePort}`;
 
     // Authenticate admin session directly
     const authRes = await fetch(`${mesh.http.url}/auth/local`, {
@@ -140,7 +147,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const viteBin = path.resolve(import.meta.dir, "../packages/platform-web/node_modules/vite/bin/vite.js");
     const webRoot = path.resolve(import.meta.dir, "../packages/platform-web");
 
-    viteProc = spawn(process.execPath, [viteBin, webRoot, "--host", "127.0.0.1", "--port", String(VITE_PORT), "--strictPort"], {
+    viteProc = spawn(process.execPath, [viteBin, webRoot, "--host", "127.0.0.1", "--port", String(vitePort), "--strictPort"], {
       env: {
         ...process.env,
         API_PROXY_TARGET: mesh.http.url,
