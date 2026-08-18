@@ -101,12 +101,12 @@ interface Mutation {
 // The verdict predicate lives in its own module because importing a script
 // runs it: this one refuses on a dirty tree and exits, so a test that imported
 // it to check `readVerdict` never got as far as a test.
-import { readVerdict, verdictsAgree, type Verdict } from "./mutation-verdict";
+import { markFor, readVerdict, summarise, verdictsAgree, type Verdict } from "./mutation-verdict";
 
-export { readVerdict, verdictsAgree, type Verdict };
+export { markFor, readVerdict, summarise, verdictsAgree, type Verdict };
 
 /** Why an entry was not counted as caught. */
-type FailureKind = "no-match" | "not-caught" | "inconclusive" | "flapped";
+type FailureKind = import("./mutation-verdict").FailureKindName;
 
 const MUTATIONS: Mutation[] = [
   {
@@ -1182,7 +1182,7 @@ for (const m of selected) {
   if (!src.includes(m.from)) {
     // Loud, and counted as a failure. A pattern that no longer matches runs the
     // unmutated source, which passes, which reads as the guard missing it.
-    console.error(`✗ ${m.id}: pattern no longer present in ${m.file} — this mutation checks nothing`);
+    console.error(`${markFor("no-match")} ${m.id}: pattern no longer present in ${m.file} — this mutation checks nothing`);
     missed++;
     kinds.set(m.id, "no-match");
     continue;
@@ -1203,7 +1203,7 @@ for (const m of selected) {
 
   const after = await dirty();
   if (after) {
-    console.error(`✗ ${m.id}: tree still dirty after restore:\n${after}`);
+    console.error(`${markFor("inconclusive")} ${m.id}: tree still dirty after restore — nothing here measured the guard:\n${after}`);
     process.exit(2);
   }
 
@@ -1214,7 +1214,7 @@ for (const m of selected) {
   // about the guard rather than a true one about the run, which is the
   // distinction this tool exists to keep.
   if (!/\d+ (pass|fail)/.test(output)) {
-    console.error(`✗ ${m.id}: the run reported no test summary — inconclusive, not a verdict`);
+    console.error(`${markFor("inconclusive")} ${m.id}: the run reported no test summary — inconclusive, not a verdict`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");
@@ -1239,7 +1239,7 @@ for (const m of selected) {
   // script. What separates them is *why* nothing passed:
   const verdict = readVerdict(output, m.expect, run.exitCode);
   if (verdict.kind === "inconclusive") {
-    console.error(`✗ ${m.id}: no verdict from ${m.suite} — ${verdict.why}`);
+    console.error(`${markFor("inconclusive")} ${m.id}: no verdict from ${m.suite} — ${verdict.why}`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");
@@ -1254,7 +1254,7 @@ for (const m of selected) {
   if (attempts.length > 1) {
     const kindsSeen = attempts.map((a) => readVerdict(a.output, m.expect, a.exitCode).kind);
     if (!verdictsAgree(kindsSeen)) {
-      console.error(`✗ ${m.id}: verdict flapped across ${attempts.length} runs — ${kindsSeen.join(", ")}`);
+      console.error(`${markFor("flapped")} ${m.id}: verdict flapped across ${attempts.length} runs — ${kindsSeen.join(", ")}`);
       await Bun.write(
         evidenceName(m.id),
         attempts.map((a, i) => `--- run ${i + 1} (exit ${a.exitCode}) -> ${kindsSeen[i]}\n\n${a.output}`).join("\n\n"),
@@ -1317,5 +1317,5 @@ const scope =
   selected.length === MUTATIONS.length
     ? ""
     : ` — filtered to ${filter.join(", ")}, of ${MUTATIONS.length} in the manifest`;
-console.log(`\n${selected.length - missed}/${selected.length} caught${scope}`);
+console.log(`\n${summarise([...kinds.values()], selected.length)}${scope}`);
 process.exit(missed === 0 ? 0 : 1);

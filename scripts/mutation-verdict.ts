@@ -65,3 +65,46 @@ export function readVerdict(output: string, expect: string[], exitCode: number):
 export function verdictsAgree(kinds: Array<Verdict["kind"]>): boolean {
   return new Set(kinds).size <= 1;
 }
+
+/**
+ * One line for a run, with the failures separated by what they mean.
+ *
+ * `✗` used to carry three different facts. agent-mesh-local-pm read
+ * `✗ signed-rate-limit` as a guard that missed something when it was the tool
+ * refusing to measure — the tree had changed under it — and said so: **one line
+ * with two meanings**. The script already knew the difference; the screen threw
+ * it away.
+ *
+ * They are different findings and they ask different things:
+ *
+ * ```
+ * not-caught     the guard missed it            → write or fix the guard
+ * no-match       the entry's pattern is gone    → the manifest is stale
+ * inconclusive   the run decided nothing        → measure again
+ * flapped        the runs disagreed             → the guard is not measuring the guard
+ * ```
+ *
+ * Only the first is a statement about the code. Folding the other three into it
+ * is how a tooling problem gets recorded as a defect, which is the failure this
+ * script exists to prevent — sitting in the script's own output.
+ */
+export function summarise(kinds: Array<FailureKindName>, total: number): string {
+  const count = (k: FailureKindName) => kinds.filter((x) => x === k).length;
+  const caught = total - kinds.length;
+  const parts = [`${caught}/${total} caught`];
+  if (count("not-caught")) parts.push(`${count("not-caught")} not caught`);
+  const unmeasured = count("no-match") + count("inconclusive") + count("flapped");
+  // Named rather than counted with the misses: a run that decided nothing says
+  // nothing about the guard, and reading it as a miss is the whole complaint.
+  if (unmeasured) parts.push(`${unmeasured} not measured`);
+  return parts.join(" · ");
+}
+
+/** Kept here so `summarise` and the runner cannot disagree about the set. */
+export type FailureKindName = "no-match" | "not-caught" | "inconclusive" | "flapped";
+
+/** The mark a line carries, so the three are distinguishable at a glance. */
+export function markFor(kind: FailureKindName): string {
+  // `!` is the manifest's own problem, `?` is the tool's, `✗` is the code's.
+  return kind === "not-caught" ? "✗" : kind === "no-match" ? "!" : "?";
+}

@@ -22,7 +22,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { readVerdict, verdictsAgree } from "../scripts/mutation-verdict";
+import { markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
 const EXPECT = ["a socket that dropped the frame"];
 
@@ -133,5 +133,49 @@ describe("verdictsAgree", () => {
   test("a single run agrees with itself, which is what --repeat 1 claims", () => {
     expect(verdictsAgree(["caught"])).toBe(true);
     expect(verdictsAgree([])).toBe(true);
+  });
+});
+
+/**
+ * The line a run prints, with the failures kept apart.
+ *
+ * `✗` carried three different facts, and agent-mesh-local-pm read one of them
+ * as the wrong one — `✗ signed-rate-limit` was the tool refusing to measure
+ * because the tree had changed under it, not a guard that missed something.
+ * They said so: **one line with two meanings.** The script already knew the
+ * difference and the screen threw it away.
+ *
+ * Only `not-caught` is a statement about the code. Folding the rest into it is
+ * how a tooling problem gets written down as a defect — which is the failure
+ * this script exists to prevent, in the script's own output.
+ */
+describe("summarise", () => {
+  test("a clean run says only what it caught", () => {
+    expect(summarise([], 78)).toBe("78/78 caught");
+  });
+
+  test("a miss is named as a miss", () => {
+    expect(summarise(["not-caught"], 78)).toBe("77/78 caught · 1 not caught");
+  });
+
+  test("a run that decided nothing is not a miss", () => {
+    // The distinction the mark exists for: nothing here says the guard failed.
+    expect(summarise(["inconclusive"], 78)).toBe("77/78 caught · 1 not measured");
+    expect(summarise(["no-match"], 78)).toBe("77/78 caught · 1 not measured");
+    expect(summarise(["flapped"], 78)).toBe("77/78 caught · 1 not measured");
+  });
+
+  test("both kinds appear when both happened", () => {
+    expect(summarise(["not-caught", "flapped", "inconclusive"], 78)).toBe(
+      "75/78 caught · 1 not caught · 2 not measured",
+    );
+  });
+
+  test("the mark separates whose problem it is", () => {
+    // The code's, the manifest's, the tool's.
+    expect(markFor("not-caught")).toBe("✗");
+    expect(markFor("no-match")).toBe("!");
+    expect(markFor("inconclusive")).toBe("?");
+    expect(markFor("flapped")).toBe("?");
   });
 });
