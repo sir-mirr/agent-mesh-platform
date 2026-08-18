@@ -85,6 +85,21 @@ serialise; readers never block.
 **The hub owns the DDL** (SPEC § 3.1). It is the only process that calls
 `migrate`. Others open a store expecting its tables to be there.
 
+**Both processes checkpoint on the way out** — `checkpointForShutdown`, on every
+read-write handle, before it is closed. `close()` alone does not do this: bun's
+close is a *safe* close, and while any statement is still prepared against the
+handle it marks the database closed to JavaScript and leaves the file open with
+nothing folded. Both shutdown paths relied on it for as long as they existed
+and folded nothing, which showed up as a `hub.db` of 4096 bytes — one page, no
+checkpoint ever completed — beside 1.5 MB of log.
+
+Whether a bare close folds a given store turns out to depend on whether a
+statement happens to be alive at exit, so the two are not distinguishable by
+reading the code: on one run `agent-mesh.db` folded and `audit.db` kept 156 KB,
+same process, same shutdown. The checkpoint removes the question. Its failure
+mode is that nothing happens — a log another process is pinning returns `busy`
+and is left for the next open to recover, which is what has always happened.
+
 ### Why there is a `store` package
 
 http reads `hub.db` to serve the admin audit views. It used to do that with SQL
