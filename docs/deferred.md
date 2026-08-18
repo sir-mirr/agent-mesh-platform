@@ -702,3 +702,47 @@ What should happen when it is decided: **SPEC first, then both ends.** The
 grammar is normative and lives in § 9.1, `IDENTITY_RE` is one copy of it, and a
 bound added to the code alone would be a contract the SPEC does not state — the
 same drift `test/capability-vocabulary.test.ts` exists to prevent for § 11.
+
+### The hub does not close its audit store, and closing it breaks the suite
+
+`closeDatabases()` in `packages/hub/src/db.ts` closes three of the four stores
+the process opens:
+
+```
+opened    hub · agents · audit · selfReminder
+closed    hub · agents ·  —    · selfReminder
+```
+
+The omission is the one whose contents are the record. § 8.9 keeps `audit.db`
+indefinitely while the others are operational, and closing the last connection
+is what lets SQLite checkpoint the write-ahead log and remove it. A store left
+open at exit leaves its `-wal` for whoever opens it next to recover — which
+works, and is why nothing has ever complained.
+
+**Why it is not fixed here.** Adding the close turns the integration suite red,
+twice, in two different shapes of the same change:
+
+```
+restructured loop, per-store try/catch    55 fail, then 44 on a second run
+one added line, nothing else touched      24 fail
+without the change                         0 fail
+```
+
+Controlled: the same tree, the same command, the change reverted in between.
+The failures are the familiar cascade — one scenario times out at ~5000ms and
+everything after it reports `browser has been closed` or reaches a mesh that is
+already gone. So closing the audit store on shutdown changes the timing or the
+outcome of the hub's exit in a way the harness notices, and **what exactly is
+not established.**
+
+**Why deferred.** The gap is benign in the direction that matters: an unclosed
+store is recovered on the next open, and the audit trail is not lost — the cost
+is a `-wal` file that outlives the process. The fix, on the evidence above,
+costs a red suite for an unknown reason, and shipping a change whose mechanism
+is unexplained is worse than the leak it closes.
+
+What would settle it: whether `auditDb.close()` throws, blocks, or simply
+delays `process.exit(0)` past what the harness waits for — measurable by
+instrumenting the shutdown path directly instead of inferring it from the
+suite. Doing that after a night of measurements would be one more inference on
+a tired reading, which is the shape this document exists to interrupt.
