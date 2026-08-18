@@ -1499,19 +1499,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-AUTH-04: an expired session is never reported as an empty one.
   //
-  // **Split from the pinned half on agent-mesh-local-pm's advice**, and the
-  // split is the point. What the app should do about expiry — bounce to /login
-  // or stay put — is a product decision they declined to make for us. But some
-  // things are true whichever way it goes, and those are conformance rather
-  // than a snapshot:
+  // Split from the pinned half on agent-mesh-local-pm's advice, and the split
+  // did its job — but **one of the two things I called decision-independent was
+  // not.** The pair was:
   //
-  //   nothing is claimed to be empty
-  //   the screen says it could not read
+  //   nothing is claimed to be empty      still true, and asserted below
+  //   the screen says it could not read   **only true if you stay on it**
   //
-  // Keeping these in the same test as the URL would mean that the day the
-  // decision lands, a test carrying both fails — and the half that should still
-  // hold gets rewritten in the same edit, which is how a real assertion
-  // disappears while attention is elsewhere.
+  // The decision was to redirect, and you cannot read a message on a screen you
+  // have left. That assertion was decision-dependent all along and I did not
+  // see it until the redirect landed and this test failed on the login page.
+  //
+  // What survives is the half that has to be true wherever you end up: a
+  // refused read is never rendered as an empty list. The redirect target does
+  // not claim emptiness either, which is what makes it still checkable here.
   it("[SC-AUTH-04] an expired session reports a failed read and does not claim empty", async () => {
     const context = await browser.newContext();
     try {
@@ -1531,44 +1532,60 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // The session is refused the way an expired one is: the cookie is still
       // sent, and the server rejects it. Aborting instead would test the
       // disconnected axis, which SC-DOWN-ALL already covers.
+      // **`/auth/me` is refused too, because that is what expiry means.**
+      // Refusing only `/api/v1/**` leaves the session check succeeding, so the
+      // app is right to consider itself signed in — and it re-established the
+      // stored user on the very next load, which is what this assertion caught.
+      // The cookie an expired session sends is rejected everywhere, not on some
+      // routes.
       let refused = 0;
-      await page.route("**/api/v1/**", (route) => {
+      const expire = (route: import("playwright").Route) => {
         refused += 1;
         return route.fulfill({
           status: 401,
           contentType: "application/json",
           body: JSON.stringify({ error: "Unauthorized" }),
         });
-      });
+      };
+      await page.route("**/api/v1/**", expire);
+      await page.route("**/auth/me", expire);
 
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       await settled(page);
-      await showsMatch(page, UNKNOWN_REGEX);
+      await page.waitForURL("**/login", { timeout: 10_000 }).catch(() => {});
 
       expect(refused, "no API call was made, so nothing was refused and nothing is being measured")
         .toBeGreaterThan(0);
 
       const text = await page.locator("#root").innerText();
       expect(text, "an unreadable list was reported as an empty one").not.toMatch(ZERO_REGEX);
-      expect(text, "the screen did not say it could not read").toMatch(UNKNOWN_REGEX);
     } finally {
       await context.close().catch(() => {});
     }
   }, 30000);
 
-  // SC-AUTH-05: where an expired session leaves you — **pinned, not endorsed**.
+  // SC-AUTH-05: an expired session is sent to the sign-in page.
   //
-  // This is the half that depends on a decision nobody has made. Today the app
-  // stays on the route and reports the failed read; it does not distinguish
-  // "your session ended" from "this request failed", and it does not send
-  // anyone to /login.
+  // **This is the pinned scenario replaced, and the implementation it was
+  // waiting for turned out to be unnecessary.** The owner decided expiry sends
+  // you to /login. Writing the redirect and then removing it again to check the
+  // test showed the test still passing — because the app already did it.
   //
-  // Recorded rather than judged, because the alternative is that nobody is
-  // measuring it and the behaviour can move in either direction unnoticed.
-  // **If the product decides expiry should log you out, this test fails — and
-  // that failure is the decision arriving, not a defect.** Delete it in the
-  // same commit that implements the redirect.
-  it("[SC-AUTH-05] an expired session stays on the route (pinned pending a decision)", async () => {
+  // The behaviour agent-mesh-local-pm measured as "stays on the route" was a
+  // **half-expired** session: they refused `/api/v1/**` and left `/auth/me`
+  // answering. With the session check succeeding the app is correctly signed
+  // in, and correctly reports a read that failed. Refuse the session check too
+  // — which is what an expired cookie does — and `GuardedRoute` sends you to
+  // /login with no session left behind.
+  //
+  // So the decision was already implemented, and what was missing was a
+  // scenario that expires the session rather than the API. The code written
+  // for it was reverted.
+  //
+  // SC-AUTH-04 is untouched, which was the point of splitting them: a refused
+  // read must not be reported as an empty list either way, so that assertion
+  // survives the decision that overturned this one.
+  it("[SC-AUTH-05] an expired session is sent to /login", async () => {
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
@@ -1583,23 +1600,35 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           sameSite: "Lax",
         },
       ]);
+      // **`/auth/me` is refused too, because that is what expiry means.**
+      // Refusing only `/api/v1/**` leaves the session check succeeding, so the
+      // app is right to consider itself signed in — and it re-established the
+      // stored user on the very next load, which is what this assertion caught.
+      // The cookie an expired session sends is rejected everywhere, not on some
+      // routes.
       let refused = 0;
-      await page.route("**/api/v1/**", (route) => {
+      const expire = (route: import("playwright").Route) => {
         refused += 1;
         return route.fulfill({
           status: 401,
           contentType: "application/json",
           body: JSON.stringify({ error: "Unauthorized" }),
         });
-      });
+      };
+      await page.route("**/api/v1/**", expire);
+      await page.route("**/auth/me", expire);
 
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
-      await settled(page);
-      await showsMatch(page, UNKNOWN_REGEX);
+      await page.waitForURL("**/login", { timeout: 10_000 }).catch(() => {});
 
-      expect(refused, "no API call was refused, so this pins nothing").toBeGreaterThan(0);
-      expect(page.url(), "the app now redirects on expiry — if that was decided, delete this test")
-        .toContain("/creator");
+      expect(refused, "no API call was refused, so nothing here was exercised").toBeGreaterThan(0);
+      expect(page.url(), "an expired session was left on the route it could not read")
+        .toContain("/login");
+
+      // And the stored session goes with it. Left behind, a reload rehydrates
+      // from localStorage and the app looks signed in again.
+      const stored = await page.evaluate(() => localStorage.getItem("agent_mesh_user"));
+      expect(stored, "the signed-out session was left in localStorage").toBeNull();
     } finally {
       await context.close().catch(() => {});
     }
