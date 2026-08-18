@@ -703,75 +703,21 @@ grammar is normative and lives in § 9.1, `IDENTITY_RE` is one copy of it, and a
 bound added to the code alone would be a contract the SPEC does not state — the
 same drift `test/capability-vocabulary.test.ts` exists to prevent for § 11.
 
-### The hub still does not close its audit store — and that is no longer the cost it looked like
+### ~~The hub does not close its audit store~~
 
-`closeDatabases()` in `packages/hub/src/db.ts` closes three of the four stores
-the process opens:
+Closed, and moved to
+[`docs/decisions/folding-the-write-ahead-logs.md`](decisions/folding-the-write-ahead-logs.md)
+— it turned out to be a decision rather than a delay.
 
-```
-opened    hub · agents · audit · selfReminder
-closed    hub · agents ·  —    · selfReminder
-```
+The entry deferred an unclosed store on the grounds that its cost was an
+unfolded write-ahead log. Measurement showed `close()` folded nothing for any of
+the four stores, so the three closed ones were in exactly the state of the
+leaked one. Every log is now folded explicitly at shutdown, in both processes,
+and closing the audit store buys nothing that is left to buy.
 
-This was deferred as a leak whose cost was an unfolded write-ahead log. **That
-reading was wrong in a way worth keeping**, because the measurement that
-corrected it also corrected the fix.
-
-`close()` was never folding anything, for any of the four. bun's close is a
-*safe* close: with statements prepared against the handle — thirty of them, at
-module load — it marks the database closed to JavaScript and leaves the file
-open. Measured on bun 1.3.13:
-
-```
-db.close()            wal 2,476,152 -> 2,476,152   main     4,096
-db.close(true)        throws "database is locked"
-finalise, close()     wal 2,476,152 ->         0   main   827,392
-```
-
-So the three closed stores were no better off than the leaked one, and the
-standing deployment shows it: `hub.db` is 4096 bytes — one page, no checkpoint
-has ever completed — beside 1.5 MB of log. The log is now folded explicitly
-(`checkpointForShutdown`, commit "Fold every write-ahead log at shutdown"),
-which is what the close was wanted for and does not require closing anything.
-
-**What remains unexplained — and the evidence for it is now suspect too.**
-Adding `auditDb.close()` turned the integration suite red, twice:
-
-```
-restructured loop, per-store try/catch    55 fail, then 44 on a second run
-one added line, nothing else touched      24 fail
-without the change                         0 fail
-```
-
-Retried with the checkpoint in place, and the numbers stopped agreeing with
-themselves:
-
-```
-auditDb.close(), run 1     625 pass, 0 fail
-auditDb.close(), run 2      68 fail
-reverted, same command      58 fail        <- the arm that is supposed to be green
-```
-
-The third line is the one that matters. **The reverted tree failed under the
-same conditions**, so what those runs measured was the machine, not the change:
-agent-mesh-local-pm was running the full suite on this host at the time, and the
-failures are the FE browser cascade — `Target page, context or browser has been
-closed`, 57 of them behind one timeout — which is this machine's load signature
-and has nothing to do with SQLite. The same tip is 625 pass / 0 fail twice on a
-quiet machine, once here and once by pm independently.
-
-So the original numbers above were never controlled for a concurrently running
-suite either, and cannot be read as evidence about the close.
-
-One thing is genuinely eliminated: `Database has closed` appears **zero** times
-in the failing output. The use-after-close reading — which the `packages/`
-reproduction made tempting — is not what happens in `test/`.
-
-**Why it stays deferred.** Two reasons, and the second is the real one:
-
-1. Measuring it needs a quiet machine. Both arms have to run interleaved rather
-   than in sequence, or the next pair of numbers will describe the load again.
-2. With the log folded by `checkpointForShutdown`, closing the audit store buys
-   nothing measurable. It releases no file the process is not about to release
-   by exiting, and the § 8.9 record is not at risk either way. The question is
-   now about tidiness, and it is being kept off a machine somebody is using.
+**Its evidence was retracted, which is the part worth keeping here.** The entry
+reported 24, 44 and 55 failures against 0, called controlled because the tree
+was held constant between runs. The machine was not: another agent was running
+the full suite on the same host, and a re-run put the *reverted* arm at 58
+failures. A comparison that controls the code and not the load measures the
+load.
