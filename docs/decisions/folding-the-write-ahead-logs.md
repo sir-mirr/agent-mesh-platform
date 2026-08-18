@@ -33,7 +33,21 @@ no checkpoint ever completed — beside 1.5 MB of log.
 
 **It was not deterministic.** In one shutdown of the standing deployment,
 captured live between the stop and the start, `agent-mesh.db` folded to zero
-while `hub.db`, `agents.db` and `audit.db` did not. Whether a bare close folds
+while `hub.db`, `agents.db` and `audit.db` did not.
+
+The clearest artefact came from a fixture mesh that had been left running for
+twenty-four hours on the pre-fix binary, read as it was stopped:
+
+```
+agent-mesh.db   main    73,728   wal         0   ← http's own store, folded
+agents.db       main     4,096   wal 2,047,672
+audit.db        main     4,096   wal 2,381,392
+hub.db          main     4,096   wal 1,050,632
+```
+
+**Three main files at exactly one page each**, with 5.4 MB of the day's writes
+sitting beside them in logs that no checkpoint had ever touched. Nothing was
+lost — the next open recovers them — and nothing had ever complained. Whether a bare close folds
 depends on whether a statement happens to be alive at exit, which is a question
 about when the collector last ran. That is why the fix is not "close harder"
 and why it applies to every read-write handle rather than the ones that looked
