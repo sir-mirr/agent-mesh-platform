@@ -923,22 +923,22 @@ const MUTATIONS: Mutation[] = [
     expect: ["closeDatabases folds hub, agents and audit"],
   },
   {
-    id: "wal-http-own-store",
-    defect:
-      "The http server left its own store's log unfolded at shutdown — the same `close()` that folds nothing, in the other process. `agent-mesh.db` is the one no other process opens, so nothing else would ever fold it.",
-    file: "packages/http/src/db.ts",
-    from: "    checkpointForShutdown(_db)",
-    to: "    void _db",
-    suite: "test/wal-shutdown.test.ts",
-    expect: ["stopping the hub first still folds what only the http server holds", "agent-mesh.db-wal"],
-  },
-  {
     id: "wal-http-access-log",
     defect:
       "`closeAuditAccessLog` was imported into the http server's shutdown and never called, so the § 8.9 access-log handle on `audit.db` — a second read-write connection — went out unfolded and unclosed. Invisible while the hub happened to stop last, because the hub folds that store too.",
     file: "packages/http/src/main.ts",
     from: "  closeAuditAccessLog()",
     to: "  void closeAuditAccessLog",
+    suite: "test/wal-shutdown.test.ts",
+    expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
+  },
+  {
+    id: "wal-http-access-log-fold",
+    defect:
+      "Closing the § 8.9 access-log handle without checkpointing it left 156 KB of log behind — measured, in the same process and run where `agent-mesh.db` folded on a bare close. Which one happens depends on whether a statement is still prepared against the handle, and that depends on when the collector last ran. A shutdown path must not rest on that.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "    checkpointForShutdown(_db)",
+    to: "    void _db",
     suite: "test/wal-shutdown.test.ts",
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },

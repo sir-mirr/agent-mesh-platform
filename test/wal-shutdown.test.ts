@@ -53,7 +53,7 @@ async function reaped(pid: number, budgetMs = 10_000): Promise<boolean> {
 }
 
 /** A mesh with enough traffic that every log is unmistakably non-empty. */
-async function busyMesh(): Promise<Mesh> {
+async function busyMesh(): Promise<{ mesh: Mesh; cookie: string }> {
   const mesh = await startMesh();
   meshes.push(mesh);
   const cookie = await loginAsAdmin(mesh.http);
@@ -78,7 +78,24 @@ async function busyMesh(): Promise<Mesh> {
   rpc.close();
   await Bun.sleep(300);
 
-  return mesh;
+  return { mesh, cookie };
+}
+
+/**
+ * Read an audit event's content, which is what opens the § 8.9 access-log
+ * handle. Nothing else in this file does: the store is only written when
+ * somebody reads, so a run without this leaves `_db` null and a missing
+ * `closeAuditAccessLog()` closes nothing because there is nothing open.
+ */
+async function readAuditContent(mesh: Mesh, cookie: string): Promise<void> {
+  const list = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=5`, { headers: { cookie } });
+  expect({ route: "/api/v1/audit/events", status: list.status }).toEqual({ route: "/api/v1/audit/events", status: 200 });
+  const events = ((await list.json()) as { events?: Array<{ event_id: string }> }).events ?? [];
+  expect(events.length).toBeGreaterThan(0);
+  for (const { event_id } of events) {
+    const one = await fetch(`${mesh.http.url}/api/v1/audit/events/${event_id}`, { headers: { cookie } });
+    expect({ event_id, status: one.status }).toEqual({ event_id, status: 200 });
+  }
 }
 
 /** Assert every log the run produced is gone, and its pages are not. */
@@ -102,7 +119,8 @@ function wroteEverything(mesh: Mesh): Record<string, number> {
 }
 
 test("stopping the mesh folds every log both processes wrote", async () => {
-  const mesh = await busyMesh();
+  const { mesh, cookie } = await busyMesh();
+  await readAuditContent(mesh, cookie);
   const before = wroteEverything(mesh);
 
   // http first, so its read-only handle on `hub.db` is not pinning the log the
@@ -126,14 +144,22 @@ test("stopping the mesh folds every log both processes wrote", async () => {
  * read-write connection that only http can release.
  */
 test("stopping the hub first still folds what only the http server holds", async () => {
-  const mesh = await busyMesh();
+  const { mesh, cookie } = await busyMesh();
   const before = wroteEverything(mesh);
 
-  const pids = [mesh.hub.pid, mesh.http.pid];
   mesh.hub.stop();
-  expect({ pid: pids[0], reaped: await reaped(pids[0]!) }).toEqual({ pid: pids[0], reaped: true });
+  expect({ pid: mesh.hub.pid, reaped: await reaped(mesh.hub.pid) }).toEqual({ pid: mesh.hub.pid, reaped: true });
+
+  // With the hub gone, the http server is the last writer to `audit.db` as well
+  // as the only one holding `agent-mesh.db`. Reading here rather than before
+  // the stop is the whole point: written earlier, the hub's own checkpoint
+  // folds the log on its way out and covers for whatever http does next.
+  await readAuditContent(mesh, cookie);
+  expect({ store: "audit.db-wal", wrote: (logs(mesh.stateDir)["audit.db-wal"] ?? 0) > 0 })
+    .toEqual({ store: "audit.db-wal", wrote: true });
+
   mesh.http.stop();
-  expect({ pid: pids[1], reaped: await reaped(pids[1]!) }).toEqual({ pid: pids[1], reaped: true });
+  expect({ pid: mesh.http.pid, reaped: await reaped(mesh.http.pid) }).toEqual({ pid: mesh.http.pid, reaped: true });
 
   foldedEverything(mesh, before);
 }, 120_000);

@@ -531,9 +531,11 @@ export async function seedLocalUsers(): Promise<void> {
 
 export function closeDb(): void {
   if (_db) {
-    // Fold the log before letting go. `close()` alone does not: statements are
-    // prepared against this handle, and bun's safe close then leaves the file
-    // open with nothing checkpointed. See `checkpointForShutdown`.
+    // Fold the log first. `close()` does not, whenever a statement is still
+    // prepared against the handle — and whether one is at exit depends on when
+    // the collector last ran, which is not something a shutdown path should
+    // rest on. It was measured both ways here: `agent-mesh.db` folded on a
+    // bare close, `audit.db` did not, in the same process on the same run.
     checkpointForShutdown(_db)
     _db.close()
     _db = null
