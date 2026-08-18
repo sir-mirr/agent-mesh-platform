@@ -558,6 +558,27 @@ mesh.example.internal {
 written from what the front end asks for and what § 8.9 needs, and the check
 below is what says whether the one you installed works.
 
+Two properties of the build to know before choosing a URL for it:
+
+**It has to be served from the root of its host.** `vite.config.ts` sets no
+`base`, so `dist/index.html` asks for `/assets/…` absolutely. Under
+`https://host/mesh/` the page returns 200 and every asset 404s — a white screen
+with a clean access log, which is this document's failure again one level down.
+Serving it at a subpath means setting `base` and rebuilding, not configuring the
+web server.
+
+**It fetches its fonts from Google.** `index.html` links `fonts.googleapis.com`
+and `fonts.gstatic.com`. On a network without egress the screen falls back and
+stays usable, so this is a decision rather than a defect — but every page load
+announces the deployment to a third party, and a mesh addressed at something
+like `api.mesh.enterprise.internal` may not want that. Vendoring the two
+families into `dist` is the fix if it is not wanted; nothing here depends on
+them being remote.
+
+Both were found by agent-mesh-local-pm building `dist` and reading it, which
+until then nobody had done. **Running the documented commands and reading what
+they produce are different checks**, and only the first had ever been made.
+
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
 the top of this document.
 
