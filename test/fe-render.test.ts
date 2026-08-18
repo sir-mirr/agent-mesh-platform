@@ -299,6 +299,38 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.waitForLoadState("networkidle").catch(() => {});
   }
 
+  /**
+   * Scenarios that ran but measured nothing.
+   *
+   * **An inconclusive result is reported as a pass**, because there is no other
+   * verdict for bun to give it, and a `console.warn` is one line inside six
+   * hundred. agent-mesh-local-pm counted three such exits in SC-WRITE-08 alone
+   * and named the risk concretely: change the placeholder that scenario finds
+   * its field by, and it goes inconclusive **for ever** — leaving a green line
+   * that says a check exists while nothing is checked. That is the shape of the
+   * scenario deleted earlier tonight, coming back through a different door.
+   *
+   * So they are collected and printed together at the end, where a count is
+   * legible. Not failed on: the honest reason for most of them is that this
+   * machine cannot reproduce the condition, and turning a property of the
+   * machine into a red is the thing this suite spent the night removing.
+   */
+  const inconclusive: string[] = [];
+
+  function cannotMeasure(scenario: string, why: string): void {
+    inconclusive.push(`${scenario} — ${why}`);
+    console.warn(`[${scenario}] inconclusive: ${why}`);
+  }
+
+  afterAll(() => {
+    if (inconclusive.length === 0) return;
+    console.warn(
+      `\n─── ${inconclusive.length} scenario(s) ran without measuring anything ───\n` +
+        inconclusive.map((line) => `  ${line}`).join("\n") +
+        `\n─── each of these is reported above as a pass ───\n`,
+    );
+  });
+
   async function createAuthedPage(route: string) {
     const context = await browser.newContext();
     await context.addCookies([
@@ -1124,10 +1156,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // green here is not evidence about the guard. Reported rather than
         // dressed as a pass, because a check that cannot fail is the shape this
         // suite spent the night removing.
-        console.warn(
-          `[SC-HARNESS-02] inconclusive: at 1/${RATE} this machine reaches the ` +
-            `terminal state before the read, so the wait is not exercised. ` +
-            `Raise SC_HARNESS_RATE, or run it where the misread reproduces.`,
+        cannotMeasure(
+          "SC-HARNESS-02",
+          `at 1/${RATE} this machine reaches the terminal state before the read, so the wait is not exercised`,
         );
         return;
       }
@@ -1412,7 +1443,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // reported inconclusive for that reason rather than for a real absence.
       const identityInput = page.locator("input[placeholder*='agt_']").first();
       if (await identityInput.count() === 0) {
-        console.warn("[SC-WRITE-08] inconclusive: no identity field is rendered, so no write was attempted");
+        cannotMeasure("SC-WRITE-08", "no identity field is rendered, so no write was attempted");
         return;
       }
       await identityInput.fill("pairing-abort-probe");
@@ -1433,11 +1464,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       const submit = page.locator("button[type='submit']").first();
       if (await submit.count() === 0) {
-        console.warn("[SC-WRITE-08] inconclusive: no submit control is rendered");
+        cannotMeasure("SC-WRITE-08", "no submit control is rendered");
         return;
       }
       await submit.click();
-      await page.waitForFunction(() => true).catch(() => {});
       // **Wait for either outcome, not for the one that should happen.**
       // Waiting only for the failure text means that when the screen wrongly
       // claims success, nothing matches, the wait burns its full timeout, and
@@ -1456,7 +1486,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await showsMatch(page, new RegExp(`${FAILED}|${CLAIMED}`));
 
       if (writes === 0) {
-        console.warn("[SC-WRITE-08] inconclusive: the submit never produced a pairing-code request");
+        cannotMeasure("SC-WRITE-08", "the submit never produced a pairing-code request");
         return;
       }
 
@@ -1612,7 +1642,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       if (chipCount === 0) {
         // No chips means no subject is listed, and clicking nothing proves
         // nothing. Say so rather than pass.
-        console.warn("[SC-WRITE-07] inconclusive: no capability chip is rendered, so no write was attempted");
+        cannotMeasure("SC-WRITE-07", "no capability chip is rendered, so no write was attempted");
         return;
       }
 
