@@ -721,3 +721,35 @@ was held constant between runs. The machine was not: another agent was running
 the full suite on the same host, and a re-run put the *reverted* arm at 58
 failures. A comparison that controls the code and not the load measures the
 load.
+
+### The suite opens stores by hand, mostly without a busy timeout
+
+`openAt` sets `busy_timeout = 5000` because writes across processes serialise
+and, without it, a concurrent writer surfaces as an immediate `SQLITE_BUSY`
+rather than a short wait. `test/` deliberately does not import
+`@agent-mesh/store` — this tree drives real processes over the wire, and pulling
+the store's source into it breaks that boundary and the build with it (the
+comment above `withDb` in `keys.test.ts` records the two times that was learned).
+
+So the suite opens its stores with `new Database`, and the pragma is not there:
+
+```
+raw opens in test/                47
+of those, setting busy_timeout     4
+read-write, against a live mesh   ~20
+```
+
+**Not fixed here, and the reason is the size rather than the difficulty.**
+Every one of these is a one-statement read or write against a mesh that is
+mostly idle at that moment, the window is microseconds, and no `SQLITE_BUSY`
+has ever been observed in this suite. Editing twenty call sites in a suite is a
+larger risk than the defect — particularly on a machine where the full suite
+cannot currently be run cleanly, which means the edit could not be verified.
+
+`test/harness.ts`'s `capabilityViewer` is fixed, because it was already being
+edited and it writes while the http server is serving.
+
+What would settle it: a checker in the style of `test/greppable.test.ts`
+asserting that every raw `new Database` in `test/` sets the pragma — which is
+the repository's idiom for this, and which would be red on 43 existing sites
+the day it lands. That is the work, and it is a sweep rather than a fix.

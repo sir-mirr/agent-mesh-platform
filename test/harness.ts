@@ -622,6 +622,18 @@ export async function capabilityViewer(
   const { Database } = await import("bun:sqlite");
   const username = `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
   const db = new Database(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
+  // The http server is running and writing this same file. Without a busy
+  // timeout a collision is an immediate SQLITE_BUSY rather than a short wait,
+  // which in a harness surfaces as a test that fails sometimes — and a suite
+  // that fails sometimes is what this repository spends the most effort not
+  // having.
+  //
+  // Copied rather than taken from `openAt`, which is where this value lives.
+  // `test/` deliberately does not import `@agent-mesh/store` (see the comment
+  // above `withDb` in `keys.test.ts`): this tree drives real processes over the
+  // wire, and pulling the store's source into it breaks that boundary and the
+  // build with it.
+  db.exec("PRAGMA busy_timeout = 5000;");
   if (!db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(username)) {
     db.prepare(
       "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
