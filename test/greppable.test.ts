@@ -210,3 +210,56 @@ describe("addresses shown to the user", () => {
     expect(offenders, "a screen is naming an address only one machine has").toEqual([]);
   });
 });
+
+/**
+ * Nothing in the front end invents a cryptographic identifier.
+ *
+ * `/creator` showed `sha256:verified_mesh_identity` in a column headed "Ed25519
+ * public key fingerprint", for every agent, because `GET /api/v1/agents`
+ * carries no fingerprint and three call sites wrote
+ * `a.fingerprint || "sha256:verified_mesh_identity"`.
+ *
+ * **A fingerprint is the value an operator compares to decide an identity is
+ * who it claims to be.** A constant there makes every agent match, and the word
+ * `verified` inside it invites skipping the comparison — so a genuine mismatch
+ * would have been invisible. This is a class apart from the empty-state defects
+ * this suite has been removing: those draw *nothing* where they do not know,
+ * and this drew *a confirmation*.
+ *
+ * agent-mesh-local-pm found it while re-reading a finding of their own they had
+ * already called closed.
+ *
+ * The rule is shape, not spelling: a literal that announces a digest has to be
+ * one. Catching `verified_mesh_identity` by name would pass the moment somebody
+ * writes `sha256:pending`.
+ */
+describe("cryptographic identifiers", () => {
+  test("no literal claims to be a digest without being one", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const root = join(REPO_ROOT, "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name);
+        return statSync(path).isDirectory() ? walk(path) : path.match(/\.tsx?$/) ? [path] : [];
+      });
+
+    const offenders: string[] = [];
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        // Prose may name the value that was wrong; that is how the reason
+        // survives. Code may not.
+        if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) return;
+        for (const match of line.matchAll(/["'`](?:sha256|sha512|ed25519):([^"'`]*)["'`]/gi)) {
+          const body = match[1] ?? "";
+          // A real digest is hex, or an interpolation of one. Anything else is
+          // a sentence wearing a prefix.
+          if (/^[0-9a-f]*$/i.test(body) || body.includes("${")) continue;
+          offenders.push(`${file.slice(REPO_ROOT.length)}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(offenders, "a literal announces a digest and is not one").toEqual([]);
+  });
+});

@@ -16,10 +16,18 @@ interface AgentItem {
   id: string;
   name: string;
   groupName: string;
-  status: "online" | "offline" | "pending";
-  fingerprint: string;
+  /**
+   * `null` when the list did not report one.
+   *
+   * `GET /api/v1/agents` does not carry a status, and this used to collapse the
+   * absence to `"offline"` — a report of health on a screen whose job is to
+   * show which agents are not healthy. Unknown and down are different answers
+   * and only one of them is true here.
+   */
+  status: "online" | "offline" | "pending" | null;
+  fingerprint: string | null;
   inboxDepth: number;
-  lastSeen: string;
+  lastSeen: string | null;
 }
 
 import { fetchAgents, teardownAgentApi } from "@/api/agents.ts";
@@ -43,10 +51,12 @@ export function AgentsPage() {
           id: a.identity,
           name: a.description || a.identity,
           groupName: a.type || "Default Group",
-          status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : "offline",
-          fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+          status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : a.status === "inactive" ? "offline" : null,
+          // Absent, not invented — see `fetchAgents`.
+          fingerprint: a.fingerprint ?? null,
           inboxDepth: 0,
-          lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : "최근 접속",
+          // Was "최근 접속" — a claim about when, from a field that was not sent.
+          lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : null,
         }))
       );
     } catch {
@@ -119,19 +129,18 @@ export function AgentsPage() {
     {
       key: "status",
       header: t("agents.col.status", "상태"),
-      render: (item: AgentItem) => (
-        <StatusBadge
-          label={
-            item.status === "online"
-              ? "ONLINE"
-              : item.status === "offline"
-              ? "OFFLINE"
-              : "PENDING"
-          }
-          status={item.status}
-          size="sm"
-        />
-      ),
+      render: (item: AgentItem) =>
+        item.status === null ? (
+          <span data-testid="status-unknown" style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
+            — 미보고
+          </span>
+        ) : (
+          <StatusBadge
+            label={item.status === "online" ? "ONLINE" : item.status === "offline" ? "OFFLINE" : "PENDING"}
+            status={item.status}
+            size="sm"
+          />
+        ),
     },
     {
       key: "fingerprint",

@@ -1,10 +1,26 @@
 import React, { useState } from "react";
 
 export interface FingerprintBoxProps {
-  fingerprint: string;
+  /**
+   * `null` when the caller does not have one.
+   *
+   * **It has to be representable.** `/creator` used to pass
+   * `a.fingerprint || "sha256:verified_mesh_identity"` because this prop was a
+   * required string, and `GET /api/v1/agents` carries no fingerprint — so every
+   * row showed that constant under a column headed "Ed25519 public key
+   * fingerprint". A fingerprint is what an operator compares to decide an
+   * identity is who it claims to be; a constant makes every agent match, and
+   * the word `verified` inside it invites skipping the comparison.
+   *
+   * A type that cannot say "I do not have this" is what made inventing one the
+   * easy path.
+   */
+  fingerprint: string | null;
   prefix?: string;
   label?: string;
   showCopy?: boolean;
+  /** What to say when there is none. Named, because "—" alone reads as zero. */
+  absentLabel?: string;
 }
 
 export function FingerprintBox({
@@ -12,8 +28,27 @@ export function FingerprintBox({
   prefix = "sha256:",
   label,
   showCopy = true,
+  absentLabel = "지문 없음 (서버가 이 목록에 싣지 않습니다)",
 }: FingerprintBoxProps) {
   const [copied, setCopied] = useState(false);
+
+  if (fingerprint === null || fingerprint === "") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {label && (
+          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
+            {label}
+          </span>
+        )}
+        <span
+          data-testid="fingerprint-absent"
+          style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "var(--color-text-muted)" }}
+        >
+          — {absentLabel}
+        </span>
+      </div>
+    );
+  }
 
   const fullText = fingerprint.startsWith(prefix)
     ? fingerprint

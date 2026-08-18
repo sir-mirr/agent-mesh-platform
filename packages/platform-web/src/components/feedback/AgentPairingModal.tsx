@@ -9,7 +9,14 @@ export interface PendingAgentRequest {
   name: string;
   groupName: string;
   requestedAt: string;
-  fingerprint: string;
+  /**
+   * `null` when the proposal did not carry one.
+   *
+   * A required string here is what made `|| "sha256:verified_mesh_identity"`
+   * the easy path at the call sites: a type that cannot say *absent* leaves
+   * inventing a value as the only way to satisfy it.
+   */
+  fingerprint: string | null;
   status: "pending" | "approved" | "rejected";
 }
 
@@ -68,10 +75,19 @@ export function AgentPairingModal({
       maxWidth={580}
       footer={
         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+          {/*
+            **Both decisions name a key by its fingerprint**, and with none there
+            is no key to decide about. Disabled rather than sent as an empty
+            string: § 10.2 approval is what lets an identity open a lane, and a
+            request the server cannot resolve is not a request an operator
+            should be able to make by clicking.
+          */}
           <Button
             variant="danger"
             size="sm"
+            disabled={request.fingerprint === null}
             onClick={() => {
+              if (request.fingerprint === null) return;
               onDeny?.(request.fingerprint, request.identity);
               onClose();
             }}
@@ -85,7 +101,9 @@ export function AgentPairingModal({
             <Button
               variant="primary"
               size="sm"
+              disabled={request.fingerprint === null}
               onClick={() => {
+                if (request.fingerprint === null) return;
                 onApprove?.(request.fingerprint, request.identity, pairingCode);
                 onClose();
               }}

@@ -17,7 +17,7 @@ interface RegisteredAgent {
   group: string;
   ownerId: string;
   status: "online" | "offline";
-  fingerprint: string;
+  fingerprint: string | null;
 }
 
 const PAYLOAD_PRESETS = [
@@ -60,7 +60,8 @@ export function PlaygroundPage() {
         group: a.type || "Default Group",
         ownerId: "admin",
         status: (a.status === "active" ? "online" : "offline") as "online" | "offline",
-        fingerprint: a.fingerprint || "sha256:verified_mesh_identity",
+        // Absent, not invented — see `fetchAgents`.
+          fingerprint: a.fingerprint ?? null,
       }));
       setAgentsList(mapped);
       if (mapped.length > 0) {
@@ -224,7 +225,7 @@ export function PlaygroundPage() {
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
                   <span>소속: <strong>{selectedSenderObj.group}</strong></span>
                   <span>상태: <strong style={{ color: selectedSenderObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.status.toUpperCase()}</strong></span>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint.substring(0, 20)}...</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : "지문 없음"}</span>
                 </div>
               )}
             </div>

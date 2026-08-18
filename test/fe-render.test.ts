@@ -792,6 +792,29 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   }, 30_000);
 
+  // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
+  // (I-062)
+  it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
+    // `GET /api/v1/agents` returns id, name, description, channel and type. It
+    // has never carried a fingerprint, and the column is headed "Ed25519 public
+    // key fingerprint" — so every row rendered
+    // `sha256:verified_mesh_identity`, the same value for every agent, with the
+    // word an operator is looking for sitting inside it.
+    await withPage("/creator", async ({ page }) => {
+      const body = (await page.locator("body").textContent()) ?? "";
+
+      // The specific constant, and the shape of any replacement for it.
+      expect({ constant: body.includes("verified_mesh_identity") }).toEqual({ constant: false });
+      expect({ digestLike: /sha256:[a-z_]{6,}/i.test(body) && !/sha256:[0-9a-f]{6,}/i.test(body) })
+        .toEqual({ digestLike: false });
+
+      // And absence is stated rather than left blank, because a blank cell in a
+      // security column reads as "nothing to worry about".
+      const absent = page.locator("[data-testid='fingerprint-absent']");
+      expect(await absent.count()).toBeGreaterThan(0);
+    });
+  }, 30_000);
+
   // SC-DOWN-01: Disconnected Backend Differentiation on Lease Queue (D-114, D-116)
   it("[SC-DOWN-01] distinguishes between empty and disconnected states on /creator/lease-queue", async () => {
     const context = await browser.newContext();

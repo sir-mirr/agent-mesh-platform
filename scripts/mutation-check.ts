@@ -1076,6 +1076,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["names the refused panels on /platform/telemetry instead of rendering blanks"],
   },
+  {
+    id: "invented-fingerprint",
+    defect:
+      "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "    fingerprint: a.fingerprint ?? null,",
+    to: '    fingerprint: a.fingerprint || "sha256:verified_mesh_identity",',
+    suite: "test/greppable.test.ts",
+    expect: ["no literal claims to be a digest without being one", "a literal announces a digest and is not one"],
+  },
+  {
+    id: "invented-fingerprint-onscreen",
+    defect:
+      "The same line, guarded at the screen. A static rule can be satisfied while the rendered column still reads as a confirmation — the value reaching an operator's eye is the one that matters, and it is the only layer that sees the absence marker actually drawn.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "    fingerprint: a.fingerprint ?? null,",
+    to: '    fingerprint: a.fingerprint || "sha256:verified_mesh_identity",',
+    suite: "test/fe-render.test.ts",
+    expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
+  },
 ];
 
 /**

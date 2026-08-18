@@ -19,7 +19,9 @@ export function NotificationBell() {
       .then((proposals) => {
         setRequests(
           (proposals || []).map((p) => ({
-            id: `req_${p.fingerprint.slice(0, 10)}`,
+            // A proposal with no fingerprint is still a proposal; identifying it
+            // by one meant `undefined` in the key when the field was absent.
+            id: `req_${p.fingerprint?.slice(0, 10) ?? p.identity}`,
             identity: p.identity,
             name: `${p.identity} (Agent)`,
             groupName: p.type ?? "General",
