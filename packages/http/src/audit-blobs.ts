@@ -31,7 +31,7 @@ import {
   uploadSignaturePreimage,
   BLOB_KEY_ACCEPT_RE,
 } from '@agent-mesh/contracts'
-import { openAt, stateDir, STORE_FILES, nonces, verify } from '@agent-mesh/store'
+import { checkpointForShutdown, openAt, stateDir, STORE_FILES, nonces, verify } from '@agent-mesh/store'
 import type { Database } from 'bun:sqlite'
 
 /**
@@ -54,7 +54,10 @@ function agentsDb(): Database {
 }
 
 export function closeBlobDb(): void {
-  _agentsDb?.close()
+  if (_agentsDb) {
+    checkpointForShutdown(_agentsDb)
+    _agentsDb.close()
+  }
   _agentsDb = null
 }
 

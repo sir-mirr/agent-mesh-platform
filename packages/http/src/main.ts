@@ -3263,6 +3263,10 @@ function shutdown(): void {
   closeAgentsDb()
   closeBlobDb()
   closeAuditDb()
+  // `audit.db` is opened read-write here too, to record who read what (§ 8.9).
+  // It was imported and never called, so that handle went out unfolded and
+  // unclosed — the same omission the hub had, in the other process.
+  closeAuditAccessLog()
   server.stop()
   process.exit(0)
 }

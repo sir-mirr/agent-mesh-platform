@@ -27,7 +27,7 @@ import type { Database } from 'bun:sqlite'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-import { openAt, stateDir, STORE_FILES } from '@agent-mesh/store'
+import { checkpointForShutdown, openAt, stateDir, STORE_FILES } from '@agent-mesh/store'
 
 let _db: Database | null = null
 
@@ -37,7 +37,10 @@ function db(): Database {
 }
 
 export function closeAuditAccessLog(): void {
-  _db?.close()
+  if (_db) {
+    checkpointForShutdown(_db)
+    _db.close()
+  }
   _db = null
 }
 

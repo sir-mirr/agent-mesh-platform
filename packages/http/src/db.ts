@@ -7,7 +7,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
-import { openAt, stateDir } from '@agent-mesh/store'
+import { checkpointForShutdown, openAt, stateDir } from '@agent-mesh/store'
 
 const DB_PATH = join(stateDir(), 'agent-mesh.db')
 const LEGACY_REGISTRY_FILE = join(stateDir(), 'registry.json')
@@ -531,6 +531,10 @@ export async function seedLocalUsers(): Promise<void> {
 
 export function closeDb(): void {
   if (_db) {
+    // Fold the log before letting go. `close()` alone does not: statements are
+    // prepared against this handle, and bun's safe close then leaves the file
+    // open with nothing checkpointed. See `checkpointForShutdown`.
+    checkpointForShutdown(_db)
     _db.close()
     _db = null
   }

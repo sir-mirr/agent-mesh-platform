@@ -20,7 +20,7 @@
  * including one that arrived between reading the screen and clicking.
  */
 
-import { openAt, stateDir, STORE_FILES, keys, KeyTransitionError } from '@agent-mesh/store'
+import { checkpointForShutdown, openAt, stateDir, STORE_FILES, keys, KeyTransitionError } from '@agent-mesh/store'
 import { join } from 'node:path'
 import type { Database } from 'bun:sqlite'
 
@@ -46,7 +46,10 @@ export function agentsDb(): Database {
 }
 
 export function closeAgentsDb(): void {
-  _agentsDb?.close()
+  if (_agentsDb) {
+    checkpointForShutdown(_agentsDb)
+    _agentsDb.close()
+  }
   _agentsDb = null
 }
 
