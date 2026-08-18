@@ -812,6 +812,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // security column reads as "nothing to worry about".
       const absent = page.locator("[data-testid='fingerprint-absent']");
       expect(await absent.count()).toBeGreaterThan(0);
+
+      // **The row, not the cell.** `GET /api/v1/agents` sends five fields and
+      // four columns were filled from none of them: every agent showed as
+      // ONLINE, with a backlog of 0, created now, and verified. The two that
+      // survive as their own columns are marked here — a default of `ONLINE`
+      // is the worst of them, because unknown reading as healthy is the one an
+      // operator has no reason to question.
+      expect({ statusUnknown: await page.locator("[data-testid='status-unknown']").count() > 0 })
+        .toEqual({ statusUnknown: true });
+      expect({ inboxUnknown: await page.locator("[data-testid='inbox-unknown']").count() > 0 })
+        .toEqual({ inboxUnknown: true });
+      expect({ online: body.includes("ONLINE") }).toEqual({ online: false });
     });
   }, 30_000);
 

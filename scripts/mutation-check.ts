@@ -1096,6 +1096,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
   },
+  {
+    id: "absent-status-reads-healthy",
+    defect:
+      "`a.status === \"inactive\" ? … : a.status === \"pending\" ? … : \"active\"` — and `GET /api/v1/agents` sends no status, so `undefined` fell to the last branch and every agent rendered ONLINE. The largest form of the shape this suite has spent the week removing: elsewhere an unknown was drawn as `0` or *none*, which a reader can at least doubt; here an unknown is drawn as *healthy*, on the screen whose job is to show which agents are not. Measured on the standing mesh drawing `admin` — a web user, not a connected agent — as ONLINE.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: 'a.status === "active" ? "active" : null,',
+    to: '"active",',
+    suite: "test/fe-render.test.ts",
+    expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
+  },
 ];
 
 /**

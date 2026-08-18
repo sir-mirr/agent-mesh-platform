@@ -75,7 +75,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed) {
-          const roleKey: UserRole = parsed.role || "PLATFORM_ADMIN";
+          // A `roleKey` defaulting to `PLATFORM_ADMIN` used to be computed here
+          // and never used — the identifier below is a different scope. It was
+          // deleted rather than left: dead code that reads as fail-open costs
+          // every later audit the minutes it takes to prove it is dead, and
+          // agent-mesh-local-pm nearly filed "authentication opens at the
+          // highest role" as a P0 before following it three lines further.
           return {
             ...parsed,
             capabilities: capabilitiesFrom(parsed.capabilities),

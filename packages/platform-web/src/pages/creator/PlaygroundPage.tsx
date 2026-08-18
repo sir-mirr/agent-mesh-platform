@@ -57,7 +57,8 @@ export function PlaygroundPage() {
       const mapped = (list || []).map((a) => ({
         id: a.identity,
         name: a.description || a.identity,
-        group: a.type || "Default Group",
+        // `type` is the kind of agent, not a membership. See AgentsPage.
+        group: a.type ?? "—",
         ownerId: "admin",
         status: (a.status === "active" ? "online" : "offline") as "online" | "offline",
         // Absent, not invented — see `fetchAgents`.

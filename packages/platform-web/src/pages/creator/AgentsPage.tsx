@@ -26,7 +26,14 @@ interface AgentItem {
    */
   status: "online" | "offline" | "pending" | null;
   fingerprint: string | null;
-  inboxDepth: number;
+  /**
+   * `null` — this list has never carried it.
+   *
+   * It was a literal `0` in a column headed "메일함 적체". Zero backlog is the
+   * answer an operator is hoping for, so the one value that could not be
+   * checked was also the one nobody would question.
+   */
+  inboxDepth: number | null;
   lastSeen: string | null;
 }
 
@@ -50,11 +57,12 @@ export function AgentsPage() {
         (list || []).map((a) => ({
           id: a.identity,
           name: a.description || a.identity,
-          groupName: a.type || "Default Group",
+          groupName: a.type ?? "—",
           status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : a.status === "inactive" ? "offline" : null,
           // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,
-          inboxDepth: 0,
+          // `GET /api/v1/agents` does not report queue depth. See the type.
+          inboxDepth: null,
           // Was "최근 접속" — a claim about when, from a field that was not sent.
           lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : null,
         }))
@@ -111,7 +119,13 @@ export function AgentsPage() {
     },
     {
       key: "groupName",
-      header: t("agents.col.group", "소속 그룹"),
+      // **Renamed rather than defaulted.** The value here is `a.type` — what
+      // kind of agent this is — and the column called it the group it belongs
+      // to, with `"Default Group"` invented whenever type was absent. Two
+      // different facts, one of which the server does send. Naming it for what
+      // it holds keeps the information and drops the claim; a membership column
+      // needs a membership field, and there is not one on this route.
+      header: t("agents.col.type", "종류"),
       render: (item: AgentItem) => (
         <span
           style={{
@@ -152,20 +166,25 @@ export function AgentsPage() {
     {
       key: "inboxDepth",
       header: t("agents.col.inbox", "메일함 적체"),
-      render: (item: AgentItem) => (
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontWeight: 700,
-            color:
-              item.inboxDepth > 0
-                ? "var(--color-warning)"
-                : "var(--color-text-muted)",
-          }}
-        >
-          {item.inboxDepth}
-        </span>
-      ),
+      render: (item: AgentItem) =>
+        item.inboxDepth === null ? (
+          // Not `0`. Zero backlog is the answer an operator hopes for, so
+          // printing it for an unknown makes the one unverifiable cell the one
+          // nobody questions.
+          <span data-testid="inbox-unknown" style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
+            — 미보고
+          </span>
+        ) : (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontWeight: 700,
+              color: item.inboxDepth > 0 ? "var(--color-warning)" : "var(--color-text-muted)",
+            }}
+          >
+            {item.inboxDepth}
+          </span>
+        ),
     },
     {
       key: "actions",
