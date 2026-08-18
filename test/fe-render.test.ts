@@ -1266,6 +1266,52 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 20000);
 
+  // SC-NAV-02: a session holding nothing is shown nothing it cannot open.
+  //
+  // **The defect appeared only at zero.** `AuthContext` read
+  // `capabilities.length > 0 ? server : ROLE_CAPABILITIES[role]`, so a session
+  // the server said held nothing took the same branch as a session the server
+  // had not answered for — and that branch resolved to a role table, which for
+  // admin is every capability. One capability locked four screens; none opened
+  // them, menu and route alike.
+  //
+  // That is why the test uses an empty grant rather than a small one. Narrowing
+  // the list stays green all the way down and inverts at the end point, so a
+  // suite that only checks "fewer capabilities, fewer links" reports health for
+  // the one case that is wrong.
+  it("[SC-NAV-02] a viewer with no capability at all sees no guarded item", async () => {
+    const cookie = await capabilityViewer(mesh);          // no grants at all
+    const { page, context } = await createViewerAuthedPage(cookie, "/dashboard");
+    try {
+      const hrefs = await sidebarHrefs(page);
+      // The scope has to have found the sidebar; an empty list contains no
+      // guarded links either and would pass the assertion below on its own.
+      expect(hrefs.length, "no sidebar links were found — the <aside> scope missed")
+        .toBeGreaterThan(0);
+
+      const shown = GUARDED.filter((href) => hrefs.includes(href));
+      expect(shown, "holding nothing opened every guarded item").toEqual([]);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 20000);
+
+  it("[SC-NAV-02] and the routes refuse it too, not only the menu", async () => {
+    // The menu is an affordance. If the guard resolved the same way — and it
+    // did, both reading one context — then hiding the link while the route
+    // opened would be the worse half left in place.
+    const cookie = await capabilityViewer(mesh);
+    for (const route of ["/tenant/rbac", "/tenant/audits"]) {
+      const { page, context } = await createViewerAuthedPage(cookie, route);
+      try {
+        await page.waitForURL("**/dashboard", { timeout: 3000 }).catch(() => {});
+        expect(page.url(), `${route} opened for a session holding nothing`).toContain("/dashboard");
+      } finally {
+        await context.close().catch(() => {});
+      }
+    }
+  }, 25000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

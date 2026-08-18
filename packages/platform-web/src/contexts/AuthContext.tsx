@@ -13,29 +13,43 @@ interface AuthContextType {
 
 import { ALL_CAPABILITIES } from "@/types/auth.ts";
 
-const ROLE_CAPABILITIES: Record<UserRole, Capability[]> = {
-  AGENT_OPERATOR: [
-    "audit.read.metadata",
-    "mailbox.read.depth",
-  ],
-  GROUP_ADMIN: [
-    "group.manage",
-    "audit.read.metadata",
-    "mailbox.read.depth",
-  ],
-  TENANT_ADMIN: [
-    "key.approve",
-    "agent.teardown",
-    "agent.provision",
-    "group.manage",
-    "audit.read.content",
-    "audit.read.metadata",
-    "mailbox.read.depth",
-    "tenant.read.stats",
-    "role.grant",
-  ],
-  PLATFORM_ADMIN: ALL_CAPABILITIES as Capability[],
-};
+/**
+ * What the server said this session may do.
+ *
+ * **An empty array is an answer.** Every one of these sites used to read
+ * `length > 0 ? server : ROLE_CAPABILITIES[role]`, which sends "the server says
+ * you hold nothing" down the same branch as "the server did not say" — and that
+ * branch resolved to a role table, which for `admin` is every capability there
+ * is. Holding one capability locked four screens; holding none opened them.
+ * The direction was inverted exactly at zero, which is why narrowing the list
+ * never found it: it only appears at the end point.
+ *
+ * Measured against the server before choosing: `/auth/me` always sends the
+ * field, and sends `[]` for a person who holds nothing.
+ *
+ *   admin                 12 names
+ *   audit.read.metadata   ["audit.read.metadata"]
+ *   nobody                []          <- present, and empty
+ *
+ * So absent and empty are not two server states to tell apart; empty is what
+ * the server says, and it is authoritative. An array is taken as given.
+ *
+ * When the field is genuinely missing — an older server, a body that failed to
+ * parse — the answer is nothing rather than everything. A screen that shows too
+ * little is a complaint; one that shows too much is this defect. The API refuses
+ * either way: a zero-capability session gets 403 from every gated route,
+ * measured, so what was at stake here was what the screen offers, not what it
+ * can reach.
+ */
+function capabilitiesFrom(value: unknown): Capability[] {
+  return Array.isArray(value) ? (value as Capability[]) : [];
+}
+
+// `ROLE_CAPABILITIES` is gone. It was a table mapping roles to capabilities —
+// the second copy of a list the server owns, which is what D-125 removed from
+// the guards and left here. Nothing reads it now that an array from the server
+// is taken as given, and the count in it was the source of the "9" the screen
+// used to quote at people while the server handed out twelve.
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -51,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const roleKey: UserRole = parsed.role || "PLATFORM_ADMIN";
           return {
             ...parsed,
-            capabilities: parsed.capabilities || ROLE_CAPABILITIES[roleKey],
+            capabilities: capabilitiesFrom(parsed.capabilities),
           };
         }
       } catch {
@@ -74,9 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
                 ? "PLATFORM_ADMIN"
                 : (prev?.role || "AGENT_OPERATOR");
-            const resolvedCaps = Array.isArray(me.capabilities) && me.capabilities.length > 0
-              ? me.capabilities
-              : ROLE_CAPABILITIES[prev?.role || roleKey];
+            const resolvedCaps = capabilitiesFrom(me.capabilities);
 
             return {
               id: `usr_${me.github_login}`,
@@ -114,9 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await loginLocalApi(id, pass);
       const mappedRole: UserRole =
         res.user.role === "admin" ? "PLATFORM_ADMIN" : role;
-      const resolvedCaps = Array.isArray(res.user.capabilities) && res.user.capabilities.length > 0
-        ? res.user.capabilities
-        : ROLE_CAPABILITIES[mappedRole];
+      const resolvedCaps = capabilitiesFrom(res.user.capabilities);
 
       const newUser: User = {
         id: `usr_${res.user.github_login}`,
@@ -150,7 +160,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser({
       ...user,
       role,
-      capabilities: ROLE_CAPABILITIES[role],
+      // The label changes; what the session may do does not. Capabilities come
+      // from the server, and a control in the browser cannot grant any.
+      capabilities: user.capabilities,
     });
   };
 
