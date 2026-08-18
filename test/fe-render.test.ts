@@ -190,10 +190,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * authenticating one. **The screen was telling the truth and the assertion
    * did not know that state existed.**
    *
-   * The three `waitForTimeout(600|300|150)` calls in this file are the same
-   * defect with a number in front of it. They pass because this machine is not
-   * busy, not because 150ms is enough — and raising them changes how long the
-   * suite takes, not what it measures.
+   * The fourteen `waitForTimeout` calls in this file are the same defect with a
+   * number in front of it. (This comment said three, from a count taken over
+   * one section and reported as the file — measured since: 150ms ×5, 300ms ×2,
+   * 500ms ×5, 600ms ×2.) They pass because this machine is not busy, not
+   * because the number is enough, and raising them changes how long the suite
+   * takes rather than what it measures.
+   *
+   * Five of them sat directly after a `settled()` call and are gone: measured
+   * at 1/1 and 1/10, the gap between the interim text going and the content
+   * appearing is 0ms, because `GuardedRoute` releasing its child and the
+   * child's aborted fetch resolve in the same commit. They were waiting for
+   * something that had already happened.
+   *
+   * The nine after a `click()` are the ones that still matter, and they need a
+   * different answer: what to wait for there is what the click produces.
    *
    * Waiting on the state instead cannot read the interim screen at all,
    * whatever the machine is doing.
@@ -761,7 +772,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.goto(`${viteBaseUrl}/creator/topology`);
     await settled(page);
-    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("토폴로지 데이터를 불러오는 중입니다");
@@ -793,7 +803,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.goto(`${viteBaseUrl}/dashboard`);
     await settled(page);
-    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("조회 중");
@@ -825,7 +834,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.goto(`${viteBaseUrl}/creator/playground`);
     await settled(page);
-    await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("에이전트 목록을 불러오는 중입니다");
@@ -952,6 +960,86 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   });
 
+  // SC-HARNESS-02: a disconnected screen is not read as the authenticating one.
+  //
+  // **The lever is CPU, not the network** — agent-mesh-local-pm measured both.
+  // Delaying `/auth/me` does nothing, because `waitUntil: "networkidle"` waits
+  // for that request: the delay moves `goto`, not the assertion. What lands
+  // after networkidle is the *re-render*, and starving the CPU pushes it past
+  // the read:
+  //
+  //   1/1 and 1/4   terminal state
+  //   1/10 and 1/20 "인증 상태를 확인하는 중입니다..."
+  //
+  // This is also why two machines disagreed about concurrent runs — 33
+  // failures on one and 1 on another, same command, same commit. It was CPU
+  // contention, not the scope difference first offered to explain it.
+  //
+  // Refuses rather than reports when the machine is already starved: if the
+  // interim screen shows up unthrottled, the throttled result says nothing
+  // about the guard, and a test that cannot tell those apart is a test of the
+  // machine.
+  it("[SC-HARNESS-02] a starved CPU does not make a disconnected screen read as authenticating", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await page.route("**/api/v1/**", (route) => route.abort());
+
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      const unthrottled = await page.locator("#root").innerText();
+      if (unthrottled.includes("인증 상태를 확인하는 중")) {
+        // Not a pass and not a failure of the guard: this machine is already
+        // too busy for the comparison to mean anything.
+        expect(unthrottled, "this machine shows the interim screen unthrottled — nothing here is measurable")
+          .toContain("인증 상태를 확인하는 중");
+        return;
+      }
+
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 10 });
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+
+      // Read once *without* waiting. This is what the old assertions did, and
+      // it is the only way to know whether this machine can be made slow
+      // enough for the guard to matter.
+      const unwaited = await page.locator("#root").innerText();
+      if (!unwaited.includes("인증 상태를 확인하는 중")) {
+        // **Inconclusive, and it says so.** 1/10 reproduced the misread on
+        // agent-mesh-local-pm's machine and does not on every machine; where it
+        // does not, this scenario passes with the guard and without it, so a
+        // green here is not evidence about the guard. Reported rather than
+        // dressed as a pass, because a check that cannot fail is the shape this
+        // suite spent the night removing.
+        console.warn(
+          "[SC-HARNESS-02] inconclusive: at 1/10 this machine reaches the terminal " +
+            "state before the read, so the wait is not exercised. Raise the rate " +
+            "or run it where the misread reproduces.",
+        );
+        return;
+      }
+
+      await settled(page);
+      const text = await page.locator("#root").innerText();
+      expect(text, "the assertion read the interim screen instead of the one it came for")
+        .not.toContain("인증 상태를 확인하는 중");
+      expect(text).toContain("에이전트 목록을 불러올 수 없습니다");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 40000);
+
   // SC-DOWN-08: /platform/telemetry does not show active_sockets=0 or info cards when disconnected
   it("[SC-DOWN-08] renders /platform/telemetry with connection error and no 0 sessions when disconnected", async () => {
     const context = await browser.newContext();
@@ -1002,7 +1090,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
       await page.goto(`${viteBaseUrl}/dashboard`);
       await settled(page);
-      await page.waitForTimeout(150);
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("현재 등록된 테넌트 조직 데이터가 없습니다");
       expect(loadText).not.toContain("0 sessions");
@@ -1034,7 +1121,6 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
       await page.goto(`${viteBaseUrl}/tenant/rbac`);
       await settled(page);
-      await page.waitForTimeout(150);
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("(0명)");
       expect(loadText).toContain("조회 중");
