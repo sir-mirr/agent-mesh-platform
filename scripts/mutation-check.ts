@@ -902,6 +902,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/bootstrap.test.ts",
     expect: ["was accepted"],
   },
+  {
+    id: "wal-checkpoint-inert",
+    defect:
+      "The shutdown path folded no write-ahead log at all. `db.close()` with statements still prepared against the handle is a *safe* close in bun: it marks the database closed to JavaScript and leaves the file open, so nothing is checkpointed. The standing deployment showed it as a `hub.db` of 4096 bytes — one page, no checkpoint ever completed — beside 1.5 MB of log. Two years of `close()` calls doing nothing, with every suite green.",
+    file: "packages/store/src/open.ts",
+    from: '    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");',
+    to: "    void db;",
+    suite: "packages/store/src/checkpoint.test.ts",
+    expect: ["folds a log that close() leaves whole"],
+  },
+  {
+    id: "wal-checkpoint-unwired",
+    defect:
+      "The checkpoint existed and the hub did not call it. Guarding the helper alone leaves the wiring free to be deleted, which is the state the repair started from: `closeDatabases()` opened four stores, closed three, and folded none.",
+    file: "packages/hub/src/db.ts",
+    from: "    if (store) checkpointForShutdown(store);",
+    to: "    void store;",
+    suite: "packages/hub/src/close-databases.test.ts",
+    expect: ["closeDatabases folds hub, agents and audit"],
+  },
 ];
 
 /**

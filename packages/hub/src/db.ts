@@ -10,7 +10,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { groups as groupsSchema, agentsSchema, auditSchema, hubSchema, openStore, selfReminderSchema } from "@agent-mesh/store";
+import { groups as groupsSchema, agentsSchema, auditSchema, checkpointForShutdown, hubSchema, openStore, selfReminderSchema } from "@agent-mesh/store";
 
 /** Message routing and history. */
 export const db = openStore("hub", { create: true });
@@ -93,7 +93,28 @@ export function srDb(): Database {
   return _srDb;
 }
 
+/**
+ * Fold every log on the way out, and close what can be closed.
+ *
+ * These are two separate jobs and only the first one works. `close()` here runs
+ * against handles carrying thirty prepared statements, and bun's safe close
+ * then leaves the file open — measured, see `checkpointForShutdown`. So the
+ * checkpoint is what actually folds the logs; the closes below are what stops
+ * further use, which is a different and smaller thing.
+ *
+ * **`auditDb` is checkpointed and deliberately not closed.** Adding
+ * `auditDb.close()` looked like the obvious repair for it being opened and
+ * never released, and it turned `test/` red — 24 to 55 failures against 0 with
+ * it reverted. The reason is not mysterious once the close semantics are known:
+ * the handle becomes unusable to JavaScript immediately (`Database has closed`)
+ * while § 8.9 audit writes are still on the shutdown path, and it releases
+ * nothing on disk in exchange. The checkpoint gets the whole benefit the close
+ * was wanted for and costs none of that.
+ */
 export function closeDatabases(): void {
+  for (const store of [db, agentsDb, auditDb, _srDb]) {
+    if (store) checkpointForShutdown(store);
+  }
   db.close();
   agentsDb.close();
   _srDb?.close();

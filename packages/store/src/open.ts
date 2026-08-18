@@ -77,3 +77,43 @@ export function openAt(path: string, opts: Omit<OpenOptions, "env"> = {}): Datab
   db.exec("PRAGMA busy_timeout = 5000;");
   return db;
 }
+
+/**
+ * Fold a store's write-ahead log before the process leaves.
+ *
+ * `db.close()` is the obvious call for this and it does not do it. bun's close
+ * is a *safe* close: with statements still prepared against the handle it marks
+ * the database closed to JavaScript and leaves the file open, so nothing is
+ * checkpointed and the log outlives the process. Measured on bun 1.3.13 against
+ * a store with one live prepared statement:
+ *
+ *     db.close()            wal 2,476,152 -> 2,476,152   main     4,096
+ *     db.close(true)        throws "database is locked"
+ *     finalise, close()     wal 2,476,152 ->         0   main   827,392
+ *
+ * `packages/hub/src/db.ts` prepares thirty statements at module load and never
+ * finalises them, which is why the standing deployment's `hub.db` is 4096 bytes
+ * — one page, no checkpoint has ever completed — while 1.5 MB of it lives in
+ * the log beside it. The shutdown path has been calling `close()` on that
+ * handle for as long as it has existed and folding nothing.
+ *
+ * So checkpoint explicitly rather than close harder. The log folds, the handle
+ * stays usable afterwards, and the failure mode is that nothing happens:
+ *
+ *     reader pinning an older snapshot, busy_timeout 250ms   folded in 151ms
+ *     reader pinning an older snapshot, busy_timeout 0       busy:1, 2ms, no fold
+ *
+ * The timeout is lowered first because the default is five seconds **per
+ * store**, and this runs on the way out: a shutdown that waits twenty seconds
+ * is worse than a log that stays large for one more run.
+ */
+export function checkpointForShutdown(db: Database, timeoutMs = 250): void {
+  try {
+    db.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.trunc(timeoutMs))};`);
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  } catch {
+    // A handle already closed, or a log some other process is pinning harder
+    // than the timeout allows. Neither is worth failing a shutdown over — the
+    // next open recovers the log, which is what has been happening all along.
+  }
+}
