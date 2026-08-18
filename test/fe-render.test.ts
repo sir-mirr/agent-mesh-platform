@@ -240,6 +240,34 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
   }
 
+  /**
+   * Wait until `#root` actually contains what the assertion is about.
+   *
+   * **`settled()` was passing for a reason unrelated to its name.** It waits
+   * for the authenticating text to go, and agent-mesh-local-pm measured that
+   * this is already true when the read happens — 0ms — while the content the
+   * scenario then asserts takes another 81ms on a cold server at 1/10. Removing
+   * `settled()` made those scenarios fail, which looked like proof that it
+   * worked; what it actually contributed was the ~80ms its `waitForFunction`
+   * spends polling. A guard whose value is its own overhead breaks the day the
+   * polling gets faster.
+   *
+   * So the wait names the thing it is waiting for. That is the difference
+   * between a margin and a coincidence: 80ms against 81ms is the latter.
+   */
+  async function shows(page: import("playwright").Page, needle: string, timeoutMs = 10_000): Promise<void> {
+    await page
+      .waitForFunction(
+        (text) => (document.getElementById("root")?.innerText ?? "").includes(text as string),
+        needle,
+        { timeout: timeoutMs },
+      )
+      .catch(() => {
+        // Let the assertion report what the screen really said. A throw here
+        // would replace the screen's own words with a timeout message.
+      });
+  }
+
   async function createAuthedPage(route: string) {
     const context = await browser.newContext();
     await context.addCookies([
@@ -688,6 +716,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
     await settled(page);
 
+    await shows(page, "메일함 리스 큐 데이터를 불러올 수 없습니다");
+
     const downText = await page.locator("#root").innerText();
     expect(downText).toContain("메일함 리스 큐 데이터를 불러올 수 없습니다");
     expect(downText).toContain("측정 불가");
@@ -715,6 +745,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
     await settled(page);
 
+    await shows(page, "조직 정보 불러오지 못함");
+
     const downText = await page.locator("#root").innerText();
     expect(downText).not.toContain("등록된 테넌트 없음");
     expect(downText).toContain("조직 정보 불러오지 못함");
@@ -741,6 +773,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.route("**/api/v1/**", (route) => route.abort());
     await page.goto(`${viteBaseUrl}/creator/groups`, { waitUntil: "networkidle" });
     await settled(page);
+
+    await shows(page, "그룹 목록을 불러올 수 없습니다");
 
     const downText = await page.locator("#root").innerText();
     expect(downText).not.toContain("현재 등록된 그룹 데이터가 없습니다");
@@ -773,6 +807,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/topology`);
     await settled(page);
 
+    await shows(page, "토폴로지 데이터를 불러오는 중입니다");
+
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("토폴로지 데이터를 불러오는 중입니다");
     expect(loadText).not.toContain("0개 그룹");
@@ -804,6 +840,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/dashboard`);
     await settled(page);
 
+    await shows(page, "조회 중");
+
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("조회 중");
     expect(loadText).not.toContain("등록된 테넌트 없음");
@@ -834,6 +872,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.goto(`${viteBaseUrl}/creator/playground`);
     await settled(page);
+
+    await shows(page, "에이전트 목록을 불러오는 중입니다");
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("에이전트 목록을 불러오는 중입니다");
@@ -873,6 +913,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform`, { waitUntil: "networkidle" });
       await settled(page);
+      await shows(page, "OFFLINE");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("정상 가동 중");
       expect(downText).toContain("OFFLINE");
@@ -900,6 +941,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
       await settled(page);
+      await shows(page, "감사 로그 데이터를 불러올 수 없습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 기록된 감사 로그 데이터가 없습니다");
       expect(downText).toContain("감사 로그 데이터를 불러올 수 없습니다");
@@ -952,6 +994,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       await settled(page);
+      await shows(page, "에이전트 목록을 불러올 수 없습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 등록된 에이전트 데이터가 없습니다");
       expect(downText).toContain("에이전트 목록을 불러올 수 없습니다");
@@ -1019,13 +1062,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         return;
       }
 
-      await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
-      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      // **A fresh page for the throttled leg.** Reusing the one that just
+      // loaded unthrottled measures a warm page: the module graph is
+      // transformed, the browser has the assets, and it reaches the terminal
+      // state before the read no matter how starved the CPU is. That is why
+      // this scenario reported inconclusive on a machine where
+      // agent-mesh-local-pm's own harness — which opens a new page each time —
+      // reproduced at the same rate.
+      const cold = await context.newPage();
+      await cold.route("**/api/v1/**", (route) => route.abort());
+      const coldCdp = await context.newCDPSession(cold);
+      await coldCdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+      await cold.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
 
       // Read once *without* waiting. This is what the old assertions did, and
       // it is the only way to know whether this machine can be made slow
       // enough for the guard to matter.
-      const unwaited = await page.locator("#root").innerText();
+      const unwaited = await cold.locator("#root").innerText();
       if (!unwaited.includes("인증 상태를 확인하는 중")) {
         // **Inconclusive, and it says so.** 1/10 reproduced the misread on
         // agent-mesh-local-pm's machine and does not on every machine; where it
@@ -1041,8 +1094,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         return;
       }
 
-      await settled(page);
-      const text = await page.locator("#root").innerText();
+      await settled(cold);
+      await shows(cold, "에이전트 목록을 불러올 수 없습니다");
+      const text = await cold.locator("#root").innerText();
       expect(text, "the assertion read the interim screen instead of the one it came for")
         .not.toContain("인증 상태를 확인하는 중");
       expect(text).toContain("에이전트 목록을 불러올 수 없습니다");
@@ -1070,6 +1124,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
       await settled(page);
+      await shows(page, "텔레메트리 서버와 연결할 수 없습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("active_sockets=0");
       expect(downText).not.toContain("0 sessions");
@@ -1101,6 +1156,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
       await page.goto(`${viteBaseUrl}/dashboard`);
       await settled(page);
+      await shows(page, "조회 중");
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("현재 등록된 테넌트 조직 데이터가 없습니다");
       expect(loadText).not.toContain("0 sessions");
@@ -1132,6 +1188,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
       await page.goto(`${viteBaseUrl}/tenant/rbac`);
       await settled(page);
+      await shows(page, "조회 중");
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("(0명)");
       expect(loadText).toContain("조회 중");
