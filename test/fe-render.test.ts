@@ -1396,6 +1396,77 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   });
 
+  // SC-WRITE-08: /creator/register does not show a pairing code it never got.
+  //
+  // The last route on the write axis with nothing on it. This screen issues a
+  // one-time credential, and the failure mode is specific: `generatedCode` is
+  // component state, so a refused request must clear it rather than leave the
+  // previous code on screen. An operator reading a stale code hands out a
+  // credential that will not work, and finds out from the other side.
+  it("[SC-WRITE-08] handles a pairing-code abort without displaying a code", async () => {
+    await withPage("/creator/register", async ({ page }) => {
+      await shows(page, "페어링");
+
+      // By placeholder: the shared `Input` component does not set `type`, so
+      // `input[type='text']` matches nothing here — the first version of this
+      // reported inconclusive for that reason rather than for a real absence.
+      const identityInput = page.locator("input[placeholder*='agt_']").first();
+      if (await identityInput.count() === 0) {
+        console.warn("[SC-WRITE-08] inconclusive: no identity field is rendered, so no write was attempted");
+        return;
+      }
+      await identityInput.fill("pairing-abort-probe");
+
+      // **Counted, because "the control exists" is not "the write happened".**
+      // The first version checked only that a field and a button were on the
+      // page, clicked, and asserted. It passed even with the page's catch
+      // rewritten to announce success — because the click never reached the
+      // request, so there was nothing to lie about. A scenario that cannot tell
+      // "the screen behaved" from "nothing happened" is the shape this suite
+      // exists to remove.
+      let writes = 0;
+      await page.route("**/api/v1/admin/pairing-codes", (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        writes += 1;
+        return route.abort();
+      });
+
+      const submit = page.locator("button[type='submit']").first();
+      if (await submit.count() === 0) {
+        console.warn("[SC-WRITE-08] inconclusive: no submit control is rendered");
+        return;
+      }
+      await submit.click();
+      await page.waitForFunction(() => true).catch(() => {});
+      // **Wait for either outcome, not for the one that should happen.**
+      // Waiting only for the failure text means that when the screen wrongly
+      // claims success, nothing matches, the wait burns its full timeout, and
+      // the success toast is gone by the time the read happens — so the
+      // assertions pass on an empty screen. Measured: with the catch pointed at
+      // the success toast, this scenario passed until the wait covered both.
+      // **The exact toast strings, not a family of failure words.** This waited
+      // on `/실패|오류|통신/`, and the page's own copy contains those — "(통신
+      // 불가)" and "서버 연결 실패" are static labels on the queue below the
+      // form. So the wait returned on page furniture and the assertion never
+      // saw a toast: the scenario stayed green with the page's catch rewritten
+      // to announce success. Same shape as the probe that matched "에이전트" in
+      // the sidebar.
+      const FAILED = "페어링 코드 발급 실패";
+      const CLAIMED = "페어링 코드가 발급되었습니다";
+      await showsMatch(page, new RegExp(`${FAILED}|${CLAIMED}`));
+
+      if (writes === 0) {
+        console.warn("[SC-WRITE-08] inconclusive: the submit never produced a pairing-code request");
+        return;
+      }
+
+      const text = await page.locator("#root").innerText();
+      expect(text, "the screen announced a pairing code the server never issued")
+        .not.toContain(CLAIMED);
+      expect(text, "the screen said nothing about a write that failed").toContain(FAILED);
+    });
+  }, 30000);
+
   // SC-WRITE-07: /tenant/rbac does not claim a grant it failed to make.
   //
   // The write axis had nothing on this screen, and agent-mesh-local-pm put it
@@ -1439,14 +1510,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       const before = await page.locator("#root").innerText();
       await chip.click();
-      await showsMatch(page, /실패|오류|통신/);
+      // Either outcome, for the reason spelled out in SC-WRITE-08: waiting only
+      // for the failure lets a wrongly-claimed success expire unread.
+      await showsMatch(page, /권한 변경 실패|권한이 부여되었습니다|권한이 회수되었습니다/);
       const after = await page.locator("#root").innerText();
 
       expect(after, "the screen announced a grant the server refused")
         .not.toContain("권한이 부여되었습니다");
       expect(after, "the screen announced a revocation the server refused")
         .not.toContain("권한이 회수되었습니다");
-      expect(after).toMatch(/실패|오류|통신/);
+      expect(after, "the screen said nothing about a write that failed").toContain("권한 변경 실패");
 
       // And the chips are unchanged: the failure must not leave the screen
       // rendering a permission set nobody holds.
