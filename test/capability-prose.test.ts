@@ -30,6 +30,11 @@ const WEB = join(import.meta.dir, "..", "packages", "platform-web", "src");
 const FILES = [
   "contexts/I18nContext.tsx",
   "components/layout/Sidebar.tsx",
+  // Added once the rule stopped depending on position: this page writes its
+  // subtitle as a JSX attribute, which the previous rule could not see. It
+  // names `role.grant` four times, correctly, and is the shape that would have
+  // slipped through.
+  "pages/tenant/RbacManagementPage.tsx",
 ];
 
 /** Namespaces the contract uses, plus two it does not — those are the signal. */
@@ -48,21 +53,35 @@ const NOT_CAPABILITIES = new Set([
 ]);
 
 /**
- * The part of a line a person could read.
+ * The strings on a line that a person could read.
  *
  * **The keys look exactly like capability names.** `"server.kpi.sockets"`,
- * `"tenant.title"`, `"audit.title"` — a first attempt at this check flagged
- * seventy-one of them, which is not an allow-list problem but the wrong scope:
- * a translation key is an identifier in a map, and nobody sees it.
+ * `"tenant.title"`, `"audit.title"` — a first attempt flagged seventy-one of
+ * them, which was not an allow-list problem but the wrong scope: a translation
+ * key is an identifier in a map and nobody sees it.
  *
- * Both shapes here put the key first — `"key": "value"` in the table, and
- * `t("key", "fallback")` at a call site — so dropping the first quoted string
- * leaves what is displayed. A line with no second string yields nothing to
- * scan, which is correct: there is nothing on it to read.
+ * The first rule was positional — drop the first quoted string, keep the rest —
+ * and `agent-mesh-local-pm` found what it costs: a display string that *is* the
+ * first string on its line becomes invisible, which is what happens the day a
+ * formatter folds a long value onto its own line, or the day a JSX attribute
+ * (`subtitle="…"`) or an array element is added. Long values are exactly the
+ * ones that fold, and a sentence explaining a capability is long.
+ *
+ * So the rule is about shape instead of position. **A key never contains
+ * whitespace and a sentence always does**, so a quoted string is display text
+ * if it holds whitespace, wherever it sits on the line — and a bare identifier
+ * is treated as a key only when it leads, which is where keys are written.
+ *
+ * Their suggested guard — assert no line starts with a quote — would have been
+ * red on arrival: 448 lines of `I18nContext.tsx` start with one, because that
+ * is where a key begins. The dependency was narrower than the assertion, and
+ * removing the dependency was cheaper than stating it.
  */
-function displayText(line: string): string {
-  const first = /"(?:[^"\\]|\\.)*"/.exec(line);
-  return first ? line.slice(first.index + first[0].length) : "";
+function displayStrings(line: string): string[] {
+  const quoted = [...line.matchAll(/"(?:[^"\\]|\\.)*"/g)];
+  return quoted
+    .filter((m, i) => /\s/.test(m[0]) || i > 0)
+    .map((m) => m[0]);
 }
 
 describe("capability names in text a person reads", () => {
@@ -82,7 +101,7 @@ describe("capability names in text a person reads", () => {
       for (const line of source.split("\n")) {
         // Comments explain names, including wrong ones deliberately.
         if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;
-        for (const match of displayText(line).matchAll(NAMESPACED)) {
+        for (const match of displayStrings(line).join(" ").matchAll(NAMESPACED)) {
           const token = match[0];
           if (NOT_CAPABILITIES.has(token)) continue;
           if ((ALL_CAPABILITIES as readonly string[]).includes(token)) continue;
@@ -97,8 +116,35 @@ describe("capability names in text a person reads", () => {
     // Otherwise the assertion above is satisfied by a regex that matches
     // nothing — the same green as a file with no problems in it.
     const source = readFileSync(join(WEB, "contexts/I18nContext.tsx"), "utf8");
-    const found = source.split("\n").flatMap((l) => [...displayText(l).matchAll(NAMESPACED)].map((m) => m[0]));
+    const found = source.split("\n").flatMap((l) => [...displayStrings(l).join(" ").matchAll(NAMESPACED)].map((m) => m[0]));
     expect(found.length, "the scan found no namespaced names anywhere, so it proves nothing")
       .toBeGreaterThan(0);
+  });
+});
+
+describe("the shapes a display string can arrive in", () => {
+  // Each of these is a line the previous, positional rule could not see, found
+  // by agent-mesh-local-pm trying to defeat the check rather than run it. A
+  // formatter folding one long value produces the second; the RbacManagement
+  // page already writes the third.
+  const CASES: Array<[string, string]> = [
+    ["key and value on one line", '    "nav.audit.desc": "audit.read_content 기반 열람",'],
+    ["value folded onto its own line", '      "audit.read_content 기반 열람 — 긴 설명문",'],
+    ["JSX attribute", '        subtitle="audit.read_content 기반 열람"'],
+    ["array element", '      "audit.read_content 를 보유해야 합니다",'],
+  ];
+
+  for (const [name, line] of CASES) {
+    test(`a wrong name is seen in ${name}`, () => {
+      const found = [...displayStrings(line).join(" ").matchAll(NAMESPACED)].map((m) => m[0]);
+      expect(found, `${name}: the scan cannot see this shape`).toContain("audit.read_content");
+    });
+  }
+
+  test("and a bare key is still not display text", () => {
+    // The whole reason the positional rule existed. Losing it must not bring
+    // back the seventy-one.
+    const found = displayStrings('    "server.kpi.sockets": "소켓 수",');
+    expect(found.join(" "), "the key came back as display text").not.toContain("server.kpi.sockets");
   });
 });
