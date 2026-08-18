@@ -1201,6 +1201,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   //                branch of three `toBeDefined()` calls — so it passed
   //                whatever the page did.
   //
+  // **Both IDs are still registered — in `test/fe-scenarios.test.ts`.** What was
+  // removed here was the weaker of two copies: the surviving SC-BELL-01 counts
+  // the badge against the pending-keys queue, which is the state GL-04 asks
+  // for, and this one asserted that a landmark element existed. Read as "this
+  // scenario has no coverage" and somebody writes a third.
+  //
   // Rewriting them is writing new test logic, and the inventory says what that
   // logic has to do: GL-04 is *the badge is hidden at zero pending and shown at
   // n*, which is a state, not an existence. That belongs to the author of the

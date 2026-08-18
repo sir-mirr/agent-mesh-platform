@@ -24,8 +24,14 @@ import { ALL_CAPABILITIES } from "@/types/auth.ts";
  * The direction was inverted exactly at zero, which is why narrowing the list
  * never found it: it only appears at the end point.
  *
- * Measured against the server before choosing: `/auth/me` always sends the
- * field, and sends `[]` for a person who holds nothing.
+ * Measured before choosing, **against a mesh started from this source** —
+ * which is not the same claim as "the server does this". A deployment running
+ * an older build does not send the field at all: the standing stack was started
+ * at 23:04 and the line that adds it landed at 04:18 the next morning, five
+ * hours later, so `/auth/me` there answers without `capabilities` and every
+ * session reads as holding nothing.
+ *
+ * On this source:
  *
  *   admin                 12 names
  *   audit.read.metadata   ["audit.read.metadata"]
@@ -33,6 +39,13 @@ import { ALL_CAPABILITIES } from "@/types/auth.ts";
  *
  * So absent and empty are not two server states to tell apart; empty is what
  * the server says, and it is authoritative. An array is taken as given.
+ *
+ * **This makes the front end depend on a backend that sends the field**, and
+ * that is a deployment order, not a detail: backend first, front end second.
+ * Reversed, a full administrator sees nine of thirteen links and is bounced
+ * from four screens, with no error and nothing in a log — the screen quietly
+ * shows less. The fallback that used to hide this hid it by being wrong in the
+ * other direction, which is not a reason to keep it.
  *
  * When the field is genuinely missing — an older server, a body that failed to
  * parse — the answer is nothing rather than everything. A screen that shows too
