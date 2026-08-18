@@ -101,12 +101,12 @@ interface Mutation {
 // The verdict predicate lives in its own module because importing a script
 // runs it: this one refuses on a dirty tree and exits, so a test that imported
 // it to check `readVerdict` never got as far as a test.
-import { readVerdict, type Verdict } from "./mutation-verdict";
+import { readVerdict, verdictsAgree, type Verdict } from "./mutation-verdict";
 
-export { readVerdict, type Verdict };
+export { readVerdict, verdictsAgree, type Verdict };
 
 /** Why an entry was not counted as caught. */
-type FailureKind = "no-match" | "not-caught" | "inconclusive";
+type FailureKind = "no-match" | "not-caught" | "inconclusive" | "flapped";
 
 const MUTATIONS: Mutation[] = [
   {
@@ -966,6 +966,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/wal-shutdown.test.ts",
     expect: ["the self-reminder daemon folds its log on SIGTERM", "self-reminder.db-wal"],
   },
+  {
+    id: "verdict-flap-blind",
+    defect:
+      "Repeated runs of one mutation were believed without being compared, so an entry whose verdict depends on GC timing read as `caught` on most runs. `wal-reminder-fold` was exactly that, and it surfaced because a full pass happened to disagree with an earlier filtered one — luck, not a mechanism. agent-mesh-local-pm asked whether this script could catch its own non-deterministic entries; it could not.",
+    file: "scripts/mutation-verdict.ts",
+    from: "  return new Set(kinds).size <= 1;",
+    to: "  return kinds.length >= 0;",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["caught once and missed once is a flap, not a catch"],
+  },
 ];
 
 /**
@@ -1023,7 +1033,33 @@ const dirty = async (): Promise<string> => (await $`git status --porcelain`.quie
 
 const argv = process.argv.slice(2).filter((a) => a !== "--");
 const selfCheck = argv.includes("--self-check");
-const filter = argv.filter((a) => !a.startsWith("--"));
+/**
+ * How many times to run each mutated suite.
+ *
+ * **One run cannot tell a guard from a coin.** `wal-reminder-fold` was recorded
+ * caught on the run that added it and then passed three of three on the next
+ * full pass: the behaviour it removed — `close()` folding a write-ahead log —
+ * happens only when no prepared statement survives to exit, which is the
+ * collector's timing rather than the guard's doing. It surfaced because a full
+ * pass happened to disagree with an earlier filtered one, and nothing in this
+ * script was looking.
+ *
+ * A non-deterministic entry reads as `caught` on most runs, so the manifest
+ * reports the difference as a defect in whatever else changed that day. That is
+ * the same false finding this script exists to prevent, one level up.
+ */
+const repeat = (() => {
+  const flag = argv.find((a) => a.startsWith("--repeat"));
+  if (!flag) return 1;
+  const value = Number(flag.includes("=") ? flag.split("=")[1] : argv[argv.indexOf(flag) + 1]);
+  if (!Number.isInteger(value) || value < 1) {
+    console.error(`--repeat needs a positive integer, got ${JSON.stringify(flag)}`);
+    process.exit(2);
+  }
+  return value;
+})();
+const repeatValueIndex = argv.findIndex((a) => a === "--repeat") + 1;
+const filter = argv.filter((a, i) => !a.startsWith("--") && !(repeatValueIndex > 0 && i === repeatValueIndex));
 const selected = selfCheck
   ? SELF_CHECK
   : filter.length
@@ -1073,9 +1109,17 @@ for (const m of selected) {
   }
 
   await Bun.write(m.file, src.replace(m.from, m.to));
-  const run = await $`bun test ${m.suite}`.env({ ...process.env, AGENT_MESH_MUTATING: "1" }).quiet().nothrow();
-  const output = run.stdout.toString() + run.stderr.toString();
+  // Repeated with the mutation left in place. The suite is the expensive part,
+  // and re-applying the edit between attempts would put the edit inside what is
+  // being measured.
+  const attempts: Array<{ output: string; exitCode: number }> = [];
+  for (let attempt = 0; attempt < repeat; attempt++) {
+    const r = await $`bun test ${m.suite}`.env({ ...process.env, AGENT_MESH_MUTATING: "1" }).quiet().nothrow();
+    attempts.push({ output: r.stdout.toString() + r.stderr.toString(), exitCode: r.exitCode ?? 0 });
+  }
   await $`git checkout -- ${m.file}`.quiet();
+  const run = attempts[0]!;
+  const output = run.output;
 
   const after = await dirty();
   if (after) {
@@ -1120,6 +1164,25 @@ for (const m of selected) {
     missed++;
     kinds.set(m.id, "inconclusive");
     continue;
+  }
+
+  // **Agreement first.** A verdict that is not the same every time is not a
+  // verdict about the guard; it is one about whatever else moved between runs.
+  // Reported as its own kind rather than as `not-caught`, because the two ask
+  // for different repairs: `not-caught` says write a guard, `flapped` says the
+  // guard is measuring something it does not control.
+  if (attempts.length > 1) {
+    const kindsSeen = attempts.map((a) => readVerdict(a.output, m.expect, a.exitCode).kind);
+    if (!verdictsAgree(kindsSeen)) {
+      console.error(`✗ ${m.id}: verdict flapped across ${attempts.length} runs — ${kindsSeen.join(", ")}`);
+      await Bun.write(
+        evidenceName(m.id),
+        attempts.map((a, i) => `--- run ${i + 1} (exit ${a.exitCode}) -> ${kindsSeen[i]}\n\n${a.output}`).join("\n\n"),
+      );
+      missed++;
+      kinds.set(m.id, "flapped");
+      continue;
+    }
   }
 
   const caught = verdict.kind === "caught";

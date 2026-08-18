@@ -41,3 +41,27 @@ export function readVerdict(output: string, expect: string[], exitCode: number):
   }
   return exitCode !== 0 && expected ? { kind: "caught" } : { kind: "not-caught" };
 }
+
+/**
+ * Do repeated runs of the same mutation agree?
+ *
+ * **One run cannot tell a guard from a coin.** `wal-reminder-fold` was written
+ * down as caught on the run that added it, then passed three of three on the
+ * next full pass: the behaviour it removed — `close()` folding a write-ahead log
+ * — happens only when no prepared statement survives to exit, which is the
+ * collector's timing rather than the guard's doing. Nothing here was looking,
+ * and it surfaced because a full pass happened to disagree with an earlier
+ * filtered one. That is luck, and luck is not a mechanism.
+ *
+ * A disagreement is reported as its own kind rather than folded into
+ * `not-caught`, because the two ask for different repairs: `not-caught` says
+ * write a guard, a flap says the guard is measuring something it does not
+ * control.
+ *
+ * A single run agrees with itself. That is not a special case to be defended
+ * against — it is what `--repeat 1` means, and it keeps the default honest
+ * about having checked nothing here.
+ */
+export function verdictsAgree(kinds: Array<Verdict["kind"]>): boolean {
+  return new Set(kinds).size <= 1;
+}

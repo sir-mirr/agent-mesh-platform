@@ -22,7 +22,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { readVerdict } from "../scripts/mutation-verdict";
+import { readVerdict, verdictsAgree } from "../scripts/mutation-verdict";
 
 const EXPECT = ["a socket that dropped the frame"];
 
@@ -98,5 +98,40 @@ describe("what an exit code alone cannot decide", () => {
     // objection. Both halves are required.
     const output = "ok: a socket that dropped the frame\n\n 12 pass\n 0 fail\n";
     expect(readVerdict(output, EXPECT, 0)).toEqual({ kind: "not-caught" });
+  });
+});
+
+/**
+ * The predicate that decides whether repeated runs of one mutation are saying
+ * the same thing.
+ *
+ * It exists because a non-deterministic entry reads as `caught` on most runs, so
+ * the manifest reports the difference as a defect in whatever else changed that
+ * day — the false finding this whole script exists to prevent, one level up.
+ */
+describe("verdictsAgree", () => {
+  test("runs that all caught agree", () => {
+    expect(verdictsAgree(["caught", "caught", "caught"])).toBe(true);
+  });
+
+  test("runs that all missed agree — a guard can be absent consistently", () => {
+    expect(verdictsAgree(["not-caught", "not-caught"])).toBe(true);
+  });
+
+  test("caught once and missed once is a flap, not a catch", () => {
+    // The shape `wal-reminder-fold` had: caught on the run that added it, three
+    // passes on the next. Believing the first is how it survived.
+    expect(verdictsAgree(["caught", "not-caught", "not-caught"])).toBe(false);
+  });
+
+  test("an inconclusive run among caught ones is a flap too", () => {
+    // Not folded into `caught`: a run that decided nothing is not evidence that
+    // the other runs decided rightly.
+    expect(verdictsAgree(["caught", "inconclusive"])).toBe(false);
+  });
+
+  test("a single run agrees with itself, which is what --repeat 1 claims", () => {
+    expect(verdictsAgree(["caught"])).toBe(true);
+    expect(verdictsAgree([])).toBe(true);
   });
 });
