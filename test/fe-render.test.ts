@@ -997,6 +997,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
 
       const cdp = await context.newCDPSession(page);
+      // Overridable because the rate that bites is a property of the machine,
+      // not of the code. Measured here: 1/10 and 1/20 reach the terminal state
+      // before the read, 1/50 lands on the boundary — two runs of the same code
+      // took different branches — and 1/100 is slow enough that the content
+      // never arrives at all. On agent-mesh-local-pm's machine 1/10 is stable
+      // and reproduces the misread every time.
+      //
+      // So the controlled pair that would settle whether `settled()` earns its
+      // place — on at rate R passes, off at rate R fails — **is runnable there
+      // and not here.** Default 10 for that reason.
+      const RATE = Number(process.env.SC_HARNESS_RATE ?? 10);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       const unthrottled = await page.locator("#root").innerText();
@@ -1008,7 +1019,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         return;
       }
 
-      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 10 });
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
 
       // Read once *without* waiting. This is what the old assertions did, and
@@ -1023,9 +1034,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // dressed as a pass, because a check that cannot fail is the shape this
         // suite spent the night removing.
         console.warn(
-          "[SC-HARNESS-02] inconclusive: at 1/10 this machine reaches the terminal " +
-            "state before the read, so the wait is not exercised. Raise the rate " +
-            "or run it where the misread reproduces.",
+          `[SC-HARNESS-02] inconclusive: at 1/${RATE} this machine reaches the ` +
+            `terminal state before the read, so the wait is not exercised. ` +
+            `Raise SC_HARNESS_RATE, or run it where the misread reproduces.`,
         );
         return;
       }
