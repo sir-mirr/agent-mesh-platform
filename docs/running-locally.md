@@ -505,6 +505,12 @@ The same answer through both means the proxy is wired. A different one, or an
 empty reply, means the screen is talking to something else — which is the whole
 failure this document is about, one layer up.
 
+**On a separate server the two lines are two machines**, and copying them as
+written is how this check passes without checking anything. The first has to be
+the origin the screen is served from; the second is wherever the http server
+runs. Point both at the same host and they agree without a proxy in the path —
+the answer looks like success and was never routed.
+
 ---
 
 ## When you just want a mesh, not a deployment
