@@ -11,17 +11,54 @@ export interface SystemTelemetry {
   health_status?: string | undefined;
   server_uptime_seconds?: number | undefined;
   build_version?: string | undefined;
+  /**
+   * Panels this session was refused, by the capability that would have opened
+   * them. Empty when everything answered.
+   *
+   * **A refusal and an idle mesh looked identical before this.** Two of the
+   * four endpoints are ungated — `/api/v1/agents` and `/api/v1/health`, because
+   * none of § 11's twelve capabilities names reading the registry — so they
+   * always answer, the "all four failed" throw below was unreachable for a
+   * capability refusal, and the page rendered its normal layout with `—` in the
+   * cells the caller was not allowed to see. agent-mesh-local-pm measured it as
+   * 999 bytes before and 999 bytes after: **the screen made no statement about
+   * the backend at all.**
+   */
+  refused: Array<{ panel: string; capability: string }>;
 }
 
-export async function fetchTelemetry(): Promise<SystemTelemetry> {
-  const [usage, agents, mailbox, health] = await Promise.all([
-    apiClient<any>("/api/v1/admin/ai-usage").catch(() => null),
-    apiClient<any>("/api/v1/agents").catch(() => null),
-    apiClient<any>("/api/v1/admin/mailbox").catch(() => null),
-    apiClient<any>("/api/v1/health").catch(() => null),
-  ]);
+/**
+ * What each endpoint is for, and what it costs to be told no.
+ *
+ * `null` from a fetch says only *nothing came back*. Which of the two reasons
+ * it was — refused, or unreachable — is the thing the screen has to pass on,
+ * and `.catch(() => null)` threw it away.
+ */
+const PANELS = [
+  { key: "usage", path: "/api/v1/admin/ai-usage", panel: "CPU · memory · p99", capability: "usage.read" },
+  { key: "agents", path: "/api/v1/agents", panel: "agents", capability: "" },
+  { key: "mailbox", path: "/api/v1/admin/mailbox", panel: "queue depth", capability: "mailbox.read.depth" },
+  { key: "health", path: "/api/v1/health", panel: "health", capability: "" },
+] as const;
 
-  if (usage === null && agents === null && mailbox === null && health === null) {
+export async function fetchTelemetry(): Promise<SystemTelemetry> {
+  const refused: Array<{ panel: string; capability: string }> = [];
+  const results = await Promise.all(
+    PANELS.map((p) =>
+      apiClient<any>(p.path).catch((err: unknown) => {
+        // The message `apiClient` throws carries the server's `error` field,
+        // and § 11.3's refusal says `capability`. Anything else is the backend
+        // being unreachable, which the empty state already communicates.
+        if (p.capability && /forbidden|capability|permission/i.test(String(err))) {
+          refused.push({ panel: p.panel, capability: p.capability });
+        }
+        return null;
+      }),
+    ),
+  );
+  const [usage, agents, mailbox, health] = results;
+
+  if (results.every((r) => r === null)) {
     throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
   }
 
@@ -40,5 +77,6 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
     health_status: health?.status ?? undefined,
     server_uptime_seconds: health?.uptime ?? undefined,
     build_version: health?.version ?? undefined,
+    refused,
   };
 }

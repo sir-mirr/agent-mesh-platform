@@ -761,6 +761,37 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
+  // SC-CAP-04: Telemetry says which panels it was refused, rather than showing
+  // an empty mesh (I-061)
+  it("[SC-CAP-04] names the refused panels on /platform/telemetry instead of rendering blanks", async () => {
+    // **Two of the four endpoints behind this screen are ungated** — none of
+    // § 11's twelve capabilities names reading the registry — so they always
+    // answer and the page's error branch is unreachable for a refusal. Before
+    // this, a viewer without `usage.read` saw the normal layout with `—` in
+    // every cell, which is exactly what an idle mesh looks like.
+    // agent-mesh-local-pm measured it as 999 bytes before the refusal and 999
+    // after: the screen made no statement about the backend at all.
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context, errors } = await createViewerAuthedPage(viewerCookie, "/platform/telemetry");
+    expect(errors).toEqual([]);
+
+    const banner = page.locator("[data-testid='telemetry-refused']");
+    await banner.waitFor({ state: "visible", timeout: 5000 });
+
+    // The capability, not just "an error" — the reader has to know what to ask
+    // for, and "something went wrong" sends them to the wrong person.
+    const said = (await banner.textContent()) ?? "";
+    expect({ names: said.includes("usage.read") && said.includes("mailbox.read.depth") })
+      .toEqual({ names: true });
+
+    // And it is genuinely different from what an admin sees.
+    const admin = await createAuthedPage("/platform/telemetry");
+    expect(await admin.page.locator("[data-testid='telemetry-refused']").count()).toBe(0);
+    await admin.context.close();
+
+    await context.close();
+  }, 30_000);
+
   // SC-DOWN-01: Disconnected Backend Differentiation on Lease Queue (D-114, D-116)
   it("[SC-DOWN-01] distinguishes between empty and disconnected states on /creator/lease-queue", async () => {
     const context = await browser.newContext();

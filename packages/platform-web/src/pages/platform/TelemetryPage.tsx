@@ -61,6 +61,25 @@ export function TelemetryPage() {
         </div>
       ) : (
         <>
+          {/*
+            **A refused panel and an idle mesh used to render the same page.**
+            Two of the four endpoints behind this screen are ungated, so they
+            always answer and the error branch above was unreachable for a § 11
+            refusal — the cells simply read `—`, which is what an empty mesh
+            looks like. Naming the capability is the difference between "there
+            is nothing here" and "you are not allowed to see this".
+          */}
+          {telemetry.refused.length > 0 && (
+            <div
+              data-testid="telemetry-refused"
+              style={{ padding: "14px 18px", marginBottom: 16, background: "var(--color-bg-surface)", border: "1px solid var(--color-warning, var(--color-danger))", borderRadius: "var(--radius-lg)", color: "var(--color-text-secondary)" }}
+            >
+              일부 지표를 볼 권한이 없습니다 —{" "}
+              {telemetry.refused.map((r) => `${r.panel} (${r.capability})`).join(" · ")}
+              . 아래 값이 비어 있는 것은 데이터가 없어서가 아닙니다.
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
             <TelemetryCard
               label={t("telem.cpu", "CPU 사용률 (Process)")}
