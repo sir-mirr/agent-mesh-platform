@@ -432,7 +432,23 @@ with no extra configuration, which is easy to assume is missing and is not.
 `agent-mesh-local-pm` reported it absent from a `grep` for `serveStatic`,
 then went back and measured; both halves above were re-measured here.
 
-The same `localhost` caveat applies: preview binds the IPv6 loopback too.
+The same `localhost` caveat applies, and **`too` was the wrong word here**:
+preview binds the IPv6 loopback *only*. `127.0.0.1` has no listener at all —
+not a refused connection to something fussy, nothing listening:
+
+```
+http://localhost:3041/    200
+http://[::1]:3041/        200
+http://127.0.0.1:3041/    connection refused
+
+$ lsof -nP -iTCP:3041 -sTCP:LISTEN
+node ... TCP [::1]:3041 (LISTEN)      <- and nothing on 127.0.0.1
+```
+
+`agent-mesh-local-pm` caught the wording. Read as "IPv6 works as well", a
+reader who gets `Connection refused` goes looking at the port or the build; read
+as "IPv4 is not served", they change one word in the URL. Same sentence, two
+different afternoons.
 
 **What is genuinely missing is the deployment wiring, not the serving.** There
 is no systemd unit for the front end — `ops/systemd/` has the hub, the http
