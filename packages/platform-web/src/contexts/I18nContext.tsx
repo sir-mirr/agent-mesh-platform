@@ -42,7 +42,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "nav.audit": "메시지 본문 감사",
     "nav.audit.desc": "audit.read.content 기반 열람",
     "nav.rbac": "조직 멤버 RBAC",
-    "nav.rbac.desc": "관리자별 9대 권한 부여/회수",
+    "nav.rbac.desc": "계정별 권한 부여 및 회수",
 
     // Breadcrumbs
     "bc.home": "홈",
@@ -216,7 +216,6 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
 
     // RBAC Management Page
     "rbac.title": "조직 멤버 RBAC 권한 할당",
-    "rbac.subtitle": "단일 ID 계정별 9대 Capability 즉각 부여 및 회수 (SPEC § 11.3 / § 17 Conformance)",
     "rbac.col.name": "멤버 이름 / 계정",
     "rbac.col.role": "역할 (Role)",
     "rbac.col.caps": "부여된 Capability (클릭하여 토글)",
@@ -306,7 +305,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "nav.audit": "Audit Logs",
     "nav.audit.desc": "Tamper-Evident Content Auditing",
     "nav.rbac": "Member RBAC",
-    "nav.rbac.desc": "Manage 9 Core Admin Capabilities",
+    "nav.rbac.desc": "Grant and revoke member capabilities",
 
     // Breadcrumbs
     "bc.home": "Home",
@@ -480,7 +479,6 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
 
     // RBAC Management Page
     "rbac.title": "Organization Member RBAC Capabilities",
-    "rbac.subtitle": "Instantly grant and revoke 9 core capabilities per member account (SPEC § 11.3 / § 17 Conformance)",
     "rbac.col.name": "Member Name / Account",
     "rbac.col.role": "Role",
     "rbac.col.caps": "Assigned Capabilities (Click to toggle)",

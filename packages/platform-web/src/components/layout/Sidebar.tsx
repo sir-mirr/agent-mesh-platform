@@ -186,7 +186,7 @@ export function Sidebar({
         },
         {
           label: t("nav.rbac", "조직 멤버 RBAC"),
-          description: t("nav.rbac.desc", "관리자별 9대 권한 부여/회수"),
+          description: t("nav.rbac.desc", "계정별 권한 부여 및 회수"),
           href: "/tenant/rbac",
           icon: "🔑",
           requiredCapability: "role.grant",

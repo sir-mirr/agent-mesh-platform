@@ -1206,6 +1206,66 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // n*, which is a state, not an existence. That belongs to the author of the
   // screens. Recorded as unimplemented with the reason instead of carried as
   // green.
+  // SC-NAV-01: the sidebar shows what the viewer's capabilities allow.
+  //
+  // The defect this exists for was invisible to every other check. Six items
+  // named capabilities the contract does not define, so `includes()` was false
+  // for everybody — including an admin holding all twelve — and six links
+  // disappeared for every role at once. What remained was the same menu for a
+  // platform operator, a tenant admin and an ordinary user, and the app looked
+  // like it worked. The owner found it by looking at the screen.
+  //
+  // Scoped to the `<aside>`, which is the sidebar. Counting `a[href^="/"]`
+  // across the page counts links in the page body too: the dashboard has one
+  // to /platform/tenants, so a page-wide count reports a sidebar link that is
+  // not in the sidebar — a wrong number rather than an obviously missing one,
+  // which is worse.
+  const GUARDED = [
+    "/platform/tenants",
+    "/tenant/egress-acl",
+    "/tenant/audits",
+    "/tenant/rbac",
+  ];
+
+  async function sidebarHrefs(page: import("playwright").Page): Promise<string[]> {
+    return page.$$eval("aside a[href^='/']", (els) =>
+      els.map((el) => (el as HTMLAnchorElement).getAttribute("href") ?? ""),
+    );
+  }
+
+  it("[SC-NAV-01] shows an admin every guarded item, in the sidebar itself", async () => {
+    await withPage("/dashboard", async ({ page }) => {
+      const hrefs = await sidebarHrefs(page);
+
+      // The scope has to have found the sidebar. An empty list contains no
+      // wrong links either, and would pass every assertion below.
+      expect(hrefs.length, "no sidebar links were found — the <aside> scope missed").toBeGreaterThan(6);
+
+      const missing = GUARDED.filter((href) => !hrefs.includes(href));
+      expect(missing, "admin holds all twelve capabilities and cannot see these").toEqual([]);
+    });
+  }, 20000);
+
+  it("[SC-NAV-01] hides from a viewer the items they hold no capability for", async () => {
+    // The other direction, and the one that says the filter still filters.
+    // Without it, deleting `requiredCapability` from every entry would satisfy
+    // the test above and show everything to everyone.
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context } = await createViewerAuthedPage(viewerCookie, "/dashboard");
+    try {
+      const hrefs = await sidebarHrefs(page);
+      expect(hrefs.length, "no sidebar links were found").toBeGreaterThan(0);
+
+      expect(hrefs, "the viewer holds audit.read.metadata and must see this")
+        .toContain("/tenant/audits");
+      for (const href of GUARDED.filter((h) => h !== "/tenant/audits")) {
+        expect(hrefs, `${href} is shown to a viewer who cannot open it`).not.toContain(href);
+      }
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 20000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();
