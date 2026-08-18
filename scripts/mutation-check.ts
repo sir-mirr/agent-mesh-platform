@@ -1036,6 +1036,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/greppable.test.ts",
     expect: ["no source in platform-web names a local address", "a screen is naming an address only one machine has"],
   },
+  {
+    id: "production-api-base",
+    defect:
+      "`.env.production` is a tracked file and set `VITE_API_BASE_URL=https://api.mesh.enterprise.internal`, a host nobody owns. `import.meta.env` bakes it in at build time, so every API call in a production build went there — the proxy was never reached and the screen rendered while nothing behind it answered. Nothing caught it because `.env.development` is empty and every test and every local run is a dev build: the production path had never been executed. Found by agent-mesh-local-pm building `dist` and reading it.",
+    file: "packages/platform-web/.env.production",
+    from: "VITE_API_BASE_URL=",
+    to: "VITE_API_BASE_URL=https://api.mesh.enterprise.internal",
+    suite: "test/production-bundle.test.ts",
+    expect: ["the production bundle asks the page's own origin for the API", "api.mesh.enterprise.internal"],
+  },
 ];
 
 /**
