@@ -59,3 +59,35 @@ describe("scenario ids", () => {
     }
   });
 });
+
+describe("the inventory's own count", () => {
+  // **§ 4 said 53 while § 4's own tables held 54, and called itself "분모 통계".**
+  // Someone looking for the denominator reads the section named for it, so the
+  // document contradicted itself in the place most likely to be believed. The
+  // number was written by hand and the file grew three times in one day.
+  //
+  // Checked rather than corrected: correcting it buys until the next scenario.
+  const INVENTORY = join(import.meta.dir, "..", "packages", "platform-web", "COVERAGE_INVENTORY.md");
+
+  test("the number it states is the number it holds", () => {
+    const doc = readFileSync(INVENTORY, "utf8");
+    const ids = new Set([...doc.matchAll(/SC-[A-Z0-9]+-[0-9]+/g)].map((m) => m[0]));
+
+    // A regex that matched nothing would make the comparison 0 === 0 as soon as
+    // the stated number went missing too.
+    expect(ids.size, "no scenario ids were found in the inventory").toBeGreaterThan(20);
+
+    const stated = /이 문서가 등록한 시나리오 ID\*\*:\s*\*\*([0-9]+)개/.exec(doc);
+    expect(stated, "the inventory no longer states a count for this to check").not.toBeNull();
+    expect(Number(stated![1]), "the inventory states a count it does not hold").toBe(ids.size);
+  });
+
+  test("and it still claims the screen count it documents", () => {
+    // The one number in § 4 that was right, kept honest the same way.
+    const doc = readFileSync(INVENTORY, "utf8");
+    const screens = [...doc.matchAll(/^### [0-9]+\)/gm)].length;
+    const stated = /대상 화면\*\*: 총 ([0-9]+)개/.exec(doc);
+    expect(stated).not.toBeNull();
+    expect(Number(stated![1]), "the inventory states a screen count it does not document").toBe(screens);
+  });
+});

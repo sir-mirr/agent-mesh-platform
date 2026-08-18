@@ -180,6 +180,39 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await mesh?.stop();
   }, 10000);
 
+  /**
+   * Wait until the app has finished deciding whether the session is valid.
+   *
+   * **`GuardedRoute` renders `인증 상태를 확인하는 중입니다...` while it asks**,
+   * and a scenario that reads `innerText` straight after `goto` can catch that
+   * instead of the screen it came for. agent-mesh-local-pm hit it running two
+   * suites at once: SC-DOWN-07 expected the disconnected message and got the
+   * authenticating one. **The screen was telling the truth and the assertion
+   * did not know that state existed.**
+   *
+   * The three `waitForTimeout(600|300|150)` calls in this file are the same
+   * defect with a number in front of it. They pass because this machine is not
+   * busy, not because 150ms is enough — and raising them changes how long the
+   * suite takes, not what it measures.
+   *
+   * Waiting on the state instead makes load irrelevant. `/auth/me` is not
+   * matched by the `**\/api\/v1\/**` abort patterns the disconnected scenarios
+   * install, so that request survives the cut and simply arrives late, which is
+   * exactly when this bites.
+   */
+  async function settled(page: import("playwright").Page): Promise<void> {
+    await page
+      .waitForFunction(
+        () => !(document.body.innerText || "").includes("인증 상태를 확인하는 중"),
+        undefined,
+        { timeout: 10_000 },
+      )
+      .catch(() => {
+        // Still checking after ten seconds is a finding, not something to hide
+        // — let the assertion that follows report what it actually saw.
+      });
+  }
+
   async function createAuthedPage(route: string) {
     const context = await browser.newContext();
     await context.addCookies([
@@ -230,6 +263,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     // Navigate to target route
     await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+    await settled(page);
     return { page, context, errors };
   }
 
@@ -269,6 +303,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+    await settled(page);
     return { page, context, errors };
   }
 
@@ -278,6 +313,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+    await settled(page);
     try {
       return await fn({ page, errors });
     } finally {
@@ -623,6 +659,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.route("**/api/v1/**", (route) => route.abort());
     await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
+    await settled(page);
 
     const downText = await page.locator("#root").innerText();
     expect(downText).toContain("메일함 리스 큐 데이터를 불러올 수 없습니다");
@@ -649,6 +686,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.route("**/api/v1/**", (route) => route.abort());
     await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+    await settled(page);
 
     const downText = await page.locator("#root").innerText();
     expect(downText).not.toContain("등록된 테넌트 없음");
@@ -675,6 +713,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.route("**/api/v1/**", (route) => route.abort());
     await page.goto(`${viteBaseUrl}/creator/groups`, { waitUntil: "networkidle" });
+    await settled(page);
 
     const downText = await page.locator("#root").innerText();
     expect(downText).not.toContain("현재 등록된 그룹 데이터가 없습니다");
@@ -705,6 +744,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     await page.goto(`${viteBaseUrl}/creator/topology`);
+    await settled(page);
     await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
@@ -736,6 +776,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     await page.goto(`${viteBaseUrl}/dashboard`);
+    await settled(page);
     await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
@@ -767,6 +808,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     await page.goto(`${viteBaseUrl}/creator/playground`);
+    await settled(page);
     await page.waitForTimeout(150);
 
     const loadText = await page.locator("#root").innerText();
@@ -806,6 +848,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ]);
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform`, { waitUntil: "networkidle" });
+      await settled(page);
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("정상 가동 중");
       expect(downText).toContain("OFFLINE");
@@ -832,6 +875,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ]);
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
+      await settled(page);
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 기록된 감사 로그 데이터가 없습니다");
       expect(downText).toContain("감사 로그 데이터를 불러올 수 없습니다");
@@ -858,6 +902,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ]);
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/creator/register`, { waitUntil: "networkidle" });
+      await settled(page);
       expect(await page.locator("input, textarea").count()).toBeGreaterThanOrEqual(1);
     } finally {
       await context.close().catch(() => {});
@@ -882,6 +927,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ]);
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      await settled(page);
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 등록된 에이전트 데이터가 없습니다");
       expect(downText).toContain("에이전트 목록을 불러올 수 없습니다");
@@ -908,6 +954,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ]);
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
+      await settled(page);
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("active_sockets=0");
       expect(downText).not.toContain("0 sessions");
@@ -938,6 +985,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await route.continue();
       });
       await page.goto(`${viteBaseUrl}/dashboard`);
+      await settled(page);
       await page.waitForTimeout(150);
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("현재 등록된 테넌트 조직 데이터가 없습니다");
@@ -969,6 +1017,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await route.continue();
       });
       await page.goto(`${viteBaseUrl}/tenant/rbac`);
+      await settled(page);
       await page.waitForTimeout(150);
       const loadText = await page.locator("#root").innerText();
       expect(loadText).not.toContain("(0명)");
@@ -1022,6 +1071,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         ]);
         await page.route("**/api/v1/**", (r) => r.abort());
         await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+        await settled(page);
         const downText = await page.locator("#root").innerText();
 
         expect(downText).not.toBe(upText);
