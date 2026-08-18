@@ -1040,16 +1040,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
 
       const cdp = await context.newCDPSession(page);
-      // Overridable because the rate that bites is a property of the machine,
-      // not of the code. Measured here: 1/10 and 1/20 reach the terminal state
-      // before the read, 1/50 lands on the boundary — two runs of the same code
-      // took different branches — and 1/100 is slow enough that the content
-      // never arrives at all. On agent-mesh-local-pm's machine 1/10 is stable
-      // and reproduces the misread every time.
+      // Measured on the cold page, which is the only configuration in which
+      // this measures anything:
       //
-      // So the controlled pair that would settle whether `settled()` earns its
-      // place — on at rate R passes, off at rate R fails — **is runnable there
-      // and not here.** Default 10 for that reason.
+      //   1/1 · 1/4    terminal before the read — nothing to catch
+      //   1/10 · 1/20  the interim screen, and the assertion is exercised
+      //
+      // **Identical to agent-mesh-local-pm's machine.** An earlier sweep here
+      // reported 1/10 and 1/20 as inconclusive, 1/50 as unstable and 1/100 as
+      // broken, and concluded that the window is a property of the hardware.
+      // That sweep was run with the page reused between the unthrottled and
+      // throttled legs — the same variable that made this scenario report
+      // inconclusive in the first place. It was not measuring the machine; it
+      // was measuring a warm page, and it closed the window it went looking
+      // for.
+      //
+      // So 10 is not one machine's number. It is left overridable anyway,
+      // because the next machine is still unmeasured.
       const RATE = Number(process.env.SC_HARNESS_RATE ?? 10);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
