@@ -268,6 +268,37 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
   }
 
+  /**
+   * `shows`, for an assertion written as a pattern.
+   *
+   * The failure scenarios do not assert a fixed sentence — they assert that
+   * *something* went wrong, `/실패|오류|통신/` — so there is no literal to wait
+   * for. Suggested by agent-mesh-local-pm while checking the last uncovered
+   * site.
+   */
+  async function showsMatch(page: import("playwright").Page, re: RegExp, timeoutMs = 10_000): Promise<void> {
+    await page
+      .waitForFunction(
+        (source) => new RegExp(source as string).test(document.getElementById("root")?.innerText ?? ""),
+        re.source,
+        { timeout: timeoutMs },
+      )
+      .catch(() => {});
+  }
+
+  /**
+   * Wait for a write attempt to be over when the assertion is about absence.
+   *
+   * Two of these scenarios assert that nothing happened — the row count did not
+   * change, no success message appeared — and **absence cannot be waited for.**
+   * What can be waited for is the attempt finishing, which is what an idle
+   * network means here: the click fired a request and it has resolved or been
+   * refused. Still a state rather than a number.
+   */
+  async function attemptOver(page: import("playwright").Page): Promise<void> {
+    await page.waitForLoadState("networkidle").catch(() => {});
+  }
+
   async function createAuthedPage(route: string) {
     const context = await browser.newContext();
     await context.addCookies([
@@ -598,7 +629,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
     expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
     await sendBtn.click();
-    await page.waitForTimeout(600);
+    await shows(page, "발송된 메시지 본문");
     const mainText = await page.locator("#root").innerText();
     expect(mainText).toContain("발송된 메시지 본문");
     expect(errors).toEqual([]);
@@ -626,7 +657,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const createBtn = page.locator("button:has-text('그룹 생성')").first();
     expect(await createBtn.count()).toBeGreaterThanOrEqual(1);
     await createBtn.click();
-    await page.waitForTimeout(300);
+    await shows(page, "신규 그룹 생성");
     const modalInput = page.locator("input").first();
     expect(await modalInput.count()).toBeGreaterThanOrEqual(1);
     await modalInput.fill("operations");
@@ -1249,6 +1280,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await page.route("**/api/v1/**", (r) => r.abort());
         await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
         await settled(page);
+        // The assertion is a pattern, so wait for the pattern. Without this the
+        // scenario is still safe — `toMatch(UNKNOWN_REGEX)` rejects the interim
+        // screens, which agent-mesh-local-pm checked against the actual strings
+        // — but under load it fails rather than waits, and a red that means
+        // "too early" is noise on top of a suite whose reds should mean
+        // something.
+        await showsMatch(page, UNKNOWN_REGEX);
         const downText = await page.locator("#root").innerText();
 
         expect(downText).not.toBe(upText);
@@ -1274,7 +1312,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.locator("input").first().fill("failed-group");
       const submitBtn = page.locator("button[type='submit']:has-text('생성')").first();
       await submitBtn.click();
-      await page.waitForTimeout(500);
+      await showsMatch(page, /실패|오류|통신/);
 
       const afterCount = await page.locator("tbody tr").count();
       expect(afterCount).toBe(beforeCount);
@@ -1293,7 +1331,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.locator("input").first().fill("default");
       const submitBtn = page.locator("button[type='submit']:has-text('생성')").first();
       await submitBtn.click();
-      await page.waitForTimeout(500);
+      await attemptOver(page);
 
       const afterCount = await page.locator("tbody tr").count();
       expect(afterCount).toBe(beforeCount);
@@ -1320,7 +1358,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           const confirmBtn = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
           if (await confirmBtn.count() > 0) {
             await confirmBtn.click();
-            await page.waitForTimeout(500);
+            await attemptOver(page);
           }
         }
       }
@@ -1344,11 +1382,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const nodeEl = page.locator("circle, g[cursor='pointer']").first();
       if (await nodeEl.count() > 0) {
         await nodeEl.click({ force: true });
-        await page.waitForTimeout(300);
+        await attemptOver(page);
         const sendBtn = page.locator("button:has-text('메시지 전송'), button:has-text('빠른 전송'), button:has-text('전송')").first();
         if (await sendBtn.count() > 0) {
           await sendBtn.click();
-          await page.waitForTimeout(500);
+          await showsMatch(page, /실패|오류|통신/);
           const rootText = await page.locator("#root").innerText();
           expect(rootText).not.toContain("성공적으로 전송되었습니다");
           expect(rootText).not.toContain("전송이 완료되었습니다");
@@ -1364,7 +1402,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
       expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
       await sendBtn.click();
-      await page.waitForTimeout(600);
+      await shows(page, "발송된 메시지 본문");
       const mainText = await page.locator("#root").innerText();
       expect(mainText).toContain("발송된 메시지 본문");
       expect(mainText).not.toContain("msg_undefined");
@@ -1379,7 +1417,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const toggleBtn = page.locator("button:has-text('ALLOW'), button:has-text('DENY'), button[title*='토글']").first();
       if (await toggleBtn.count() > 0) {
         await toggleBtn.click();
-        await page.waitForTimeout(500);
+        await showsMatch(page, /실패|오류|통신/);
         const rootText = await page.locator("#root").innerText();
         expect(rootText).toMatch(/실패|오류|통신/);
       }
