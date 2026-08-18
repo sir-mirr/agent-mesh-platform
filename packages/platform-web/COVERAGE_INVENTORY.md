@@ -4,6 +4,37 @@
 
 ---
 
+## 0. 이 문서가 분모인 것과 아닌 것
+
+**분모는 화면 × 위젯입니다.** `SC-SCR01`~`SC-SCR14` 와 `GL-*` 가 그것이고, 그
+축에서는 실제로 전수에 가깝습니다.
+
+**축(axis) 시나리오는 여기 없습니다.** 한 화면이 아니라 모든 화면을 가로지르는
+성질을 재기 때문에 화면별 표에 넣으면 열넷으로 복제되거나 한 칸에 묻힙니다:
+
+| 계열 | 재는 것 | 등록 |
+|---|---|---|
+| `SC-DOWN-*` | 백엔드가 끊겼을 때 화면이 무엇을 말하는가 | 8 |
+| `SC-WRITE-*` | 실패한 쓰기를 성공으로 그리지 않는가 | 6 |
+| `SC-ACT-*` | 액션이 서버 응답을 확인하는가 | 6 |
+| `SC-LOAD-*` | 로딩·지연 상태 | 5 |
+| `SC-NAV-*` | 메뉴가 보유 권한을 따르는가 | 4 |
+| `SC-CAP-*` | 권한 없는 주체에게 무엇이 안 보이는가 | 3 |
+| `SC-API-AUTH-*` | 같은 질문을 API 층에서 | 3 |
+| `SC-VOCAB-*` · `SC-MODULE-*` · `SC-PROV-*` | 어휘 · 번들 · 출처 | 각 1 |
+
+**그래서 이 문서만 읽고 커버리지를 세면 과소평가합니다.** 반대가 아니라 이쪽이
+라는 점이 중요합니다 — 분모가 작아 보이는 문서는 *"아직 멀었다"* 로 읽히고,
+사람들은 이미 있는 검사를 다시 씁니다. `SC-BELL-01` 이 두 벌 존재한 것이 그
+경위였습니다.
+
+**한 ID 는 한 파일에서 한 번만 등록됩니다.** 층이 다르면 ID 도 다릅니다 —
+화면은 `SC-AUTH-*`, API 는 `SC-API-AUTH-*`. `test/scenario-ids.test.ts` 가
+그것을 지킵니다. 합쳐 두면 두 층이 어긋난 것을 표현할 방법이 없고, 그 어긋남이
+`I-055`(권한 0개면 API 는 403·화면은 열림) 였습니다.
+
+---
+
 ## 1. 전역 공통 인프라 (Global Infrastructure)
 
 | ID | 영역 / 요소 | 소스 엔드포인트 / 메커니즘 | 상태별 기대 동작 | i18n (KO/EN) | RBAC / 가드 | 시나리오 ID | 비고 |
@@ -133,7 +164,10 @@
 ### 9) `/platform` (실시간 서버 인프라 현황판)
 - **화면 ID**: `SCR-09`
 - **라우트**: `/platform` / `/platform/overview`
-- **권한 요건**: `server.inspect`
+- **권한 요건**: 없음 — 세션만 있으면 됩니다. `server.inspect` 는 계약에 없는
+  이름이었고, 이 화면이 부르는 `GET /api/v1/agents` 는 `extractJwt` 만 봅니다.
+  **여기에 capability 를 적으면 그것을 단언하는 시나리오가 나오고, 그 시나리오는
+  코드가 아니라 이 문서 때문에 빨갛습니다.**
 - **데이터 소스**: `GET /api/v1/admin/ai-usage`, `GET /api/v1/agents`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
@@ -146,8 +180,14 @@
 ### 10) `/platform/telemetry` (노드 텔레메트리 모니터링)
 - **화면 ID**: `SCR-10`
 - **라우트**: `/platform/telemetry`
-- **권한 요건**: `server.inspect`
+- **권한 요건**: 없음 — 세션만. 화면이 읽는 세 라우트의 가드가 서로 달라
+  (`audit.read.metadata` · `usage.read` · `mailbox.read.depth`) 하나의 이름으로
+  적을 수 없고, 정직한 형태는 **가진 것만 그리는 부분 렌더**입니다.
 - **데이터 소스**: 행동 지표 6개 (D-1 결정: CPU/RSS/heap 제외 및 행동 기반 메트릭으로 대체 예정)
+
+> **`SC-SCR10-01` 미작성 — 검사가 없어서가 아니라 잴 것이 안 정해져서입니다.**
+> 어떤 지표를 그릴지가 `D-1` 대기 중이라, 지금 쓰는 시나리오는 다음 결정에서
+> 통째로 버려집니다. 결정이 나면 그때가 이 칸을 채울 자리입니다.
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -170,7 +210,7 @@
 ### 12) `/tenant/egress-acl` (그룹 간 Egress ACL 행렬)
 - **화면 ID**: `SCR-12`
 - **라우트**: `/tenant/egress-acl`
-- **권한 요건**: `policy.send_restrict` (Tenant Admin)
+- **권한 요건**: `group.manage` — 라우트 가드가 요구하는 것입니다. (`policy.send_restrict` 는 계약에 없는 이름이었습니다.)
 - **데이터 소스**: `GET /api/v1/groups`, `PUT /api/v1/groups/:id/egress`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
@@ -202,7 +242,7 @@
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
-| Capability 할당 매트릭스 | Subject(ID), Role, 9대 Capability 토글 칩 | `fetchGrants()`, `addGrantApi()`, `deleteGrantApi()` | • 에러: "RBAC 권한 데이터를 불러올 수 없습니다"<br>• 0건: "등록된 조직원 데이터가 없습니다"<br>• 칩 클릭: 실시간 권한 부여/회수 토스트 (T-129) | `SC-SCR14-01` |
+| Capability 할당 매트릭스 | Subject(ID), Role, Capability 토글 칩 | `fetchGrants()`, `addGrantApi()`, `deleteGrantApi()` | • 에러: "RBAC 권한 데이터를 불러올 수 없습니다"<br>• 0건: "등록된 조직원 데이터가 없습니다"<br>• 칩 클릭: 실시간 권한 부여/회수 토스트 (T-129) | `SC-SCR14-01` |
 | 유효하지 않은 권한 부여 거부 | 오타/미지원 capability 부여 시도 | `addGrantApi()` | • 400 Bad Request: 거부 및 미등록 방어 | `SC-SCR14-02` |
 
 ---
@@ -228,7 +268,7 @@
 | `SCR-11` | `/platform/tenants` | `TenantTrafficPage` | 테넌트 격리 분석 테이블, 트래픽 메트릭 헤더 렌더 | `SC-RENDER-11` |
 | `SCR-12` | `/tenant/egress-acl` | `TenantEgressAclPage` | 방향성 Egress ACL 매트릭스 그리드, ALLOW/DENY 토글 버튼 렌더 | `SC-RENDER-12` |
 | `SCR-13` | `/tenant/audits` | `AuditLogsPage` | 보안 감사 스트림 테이블, 프라이버시 리댁션 배지, 갱신 버튼 렌더 | `SC-RENDER-13` |
-| `SCR-14` | `/tenant/rbac` | `RbacManagementPage` | RBAC 관리 테이블, 9대 Capability 토글 칩, 조직원 목록 렌더 | `SC-RENDER-14` |
+| `SCR-14` | `/tenant/rbac` | `RbacManagementPage` | RBAC 관리 테이블, Capability 토글 칩, 조직원 목록 렌더 | `SC-RENDER-14` |
 
 ---
 
