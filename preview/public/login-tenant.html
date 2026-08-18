@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tenant Admin SSO Portal — Agent Mesh Enterprise Platform</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Global Top Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn active">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Page Container -->
+  <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/public/index.html" class="subnav-pill ">🌟 Landing</a>
+  
+    <a href="/public/security-architecture.html" class="subnav-pill ">📐 Security Architecture</a>
+  
+    <a href="/public/lease-state-machine.html" class="subnav-pill ">⏱️ Lease State Machine</a>
+  
+    <a href="/public/login-operator.html" class="subnav-pill ">👤 Operator Login</a>
+  
+    <a href="/public/login-tenant.html" class="subnav-pill active">🏢 Tenant Login</a>
+  
+    <a href="/public/login-platform.html" class="subnav-pill ">🛡️ Platform Login</a>
+  
+    <a href="/public/pricing-tiers.html" class="subnav-pill ">💎 Pricing & SLAs</a>
+  
+    <a href="/public/compliance-overview.html" class="subnav-pill ">📜 Compliance & Trust</a>
+  
+    </div>
+
+    <!-- Header Row -->
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+          <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #5</span>
+        </div>
+        <h1 class="admin-header-title">Tenant Admin SSO Portal</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Enterprise SAML / Okta SSO entrypoint for Acme Corp company security administrators</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
+      </div>
+    </div>
+
+    <!-- Body Content -->
+    
+      <div class="card" style="max-width:500px; margin:40px auto; padding:32px; box-shadow:var(--shadow-lg);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h2 style="font-size:1.3rem; font-weight:800;">Tenant Admin Login</h2>
+          <span class="badge badge-leased">Enterprise SSO</span>
+        </div>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:20px; line-height:1.6;">
+          Access the Acme Corp company security gateway, approve 50-character agent public keys, generate RFC 8628 pairing codes, and configure cross-tenant egress policies.
+        </p>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block; font-size:0.8rem; font-weight:700; margin-bottom:4px;">Organization Tenant Domain</label>
+          <input type="text" value="acme-corp" readonly style="width:100%; padding:8px 12px; background:var(--bg-surface-sub); border:1px solid var(--border-default); border-radius:var(--radius-md); font-weight:600;">
+        </div>
+        <a href="/tenant/index.html" class="btn btn-primary" style="width:100%; background:#0284C7; padding:10px; font-size:0.95rem;">
+          Sign In to Acme Corp →
+        </a>
+      </div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>

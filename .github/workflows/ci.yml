@@ -54,8 +54,14 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+      - name: Build web frontend
+        run: bun run build:web
+
       - name: Unit tests
         run: bun test packages/
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
 
       # Integration tests start real hub and http processes on ephemeral ports.
       # Kept as a separate step so a failure here is distinguishable at a glance

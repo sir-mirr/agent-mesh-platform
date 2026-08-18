@@ -1,0 +1,282 @@
+:root {
+  /* ── Colour tokens ── */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #eff6ff;
+
+  --color-bg-page: #f8fafc;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-sub: #f1f5f9;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  /* ── Typography ── */
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ── Radius ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-xs: 0 1px 2px rgba(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 3px rgba(15 23 42 / 0.08);
+  --shadow-md: 0 4px 6px -1px rgba(15 23 42 / 0.08),
+    0 2px 4px -2px rgba(15 23 42 / 0.04);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  min-height: 100dvh;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-primary-hover);
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Original Mockup Constellation & Flowing Packet Animations ── */
+.hero-agents-constellation {
+  position: absolute;
+  width: 260px;
+  height: 240px;
+  user-select: none;
+  z-index: 2;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.constellation-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.constellation-line {
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+  opacity: 0.75;
+  animation: constellationDash 16s linear infinite;
+}
+
+@keyframes constellationDash {
+  to { stroke-dashoffset: -220; }
+}
+
+.mesh-packet {
+  filter: drop-shadow(0 0 5px currentColor);
+}
+.mesh-packet.packet-1 {
+  animation: flowEdge1 4.2s ease-in-out infinite;
+}
+.mesh-packet.packet-2 {
+  animation: flowEdge2 4.2s ease-in-out infinite 1.4s;
+}
+.mesh-packet.packet-3 {
+  animation: flowEdge3 4.2s ease-in-out infinite 2.8s;
+}
+
+@keyframes flowEdge1 {
+  0% { cx: 48px; cy: 40px; opacity: 0; }
+  20% { opacity: 0.95; }
+  80% { opacity: 0.95; }
+  100% { cx: 200px; cy: 70px; opacity: 0; }
+}
+@keyframes flowEdge2 {
+  0% { cx: 200px; cy: 70px; opacity: 0; }
+  20% { opacity: 0.95; }
+  80% { opacity: 0.95; }
+  100% { cx: 120px; cy: 180px; opacity: 0; }
+}
+@keyframes flowEdge3 {
+  0% { cx: 120px; cy: 180px; opacity: 0; }
+  20% { opacity: 0.95; }
+  80% { opacity: 0.95; }
+  100% { cx: 48px; cy: 40px; opacity: 0; }
+}
+
+.hero-agent-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.hero-agent-node:hover {
+  transform: scale(1.15) !important;
+  z-index: 10;
+}
+
+.agent-node-1 {
+  top: 14px;
+  left: 20px;
+  animation: floatNode1 6s ease-in-out infinite;
+}
+.agent-node-2 {
+  top: 42px;
+  left: 172px;
+  animation: floatNode2 6.8s ease-in-out infinite 0.9s;
+}
+.agent-node-3 {
+  top: 152px;
+  left: 92px;
+  animation: floatNode3 6.4s ease-in-out infinite 1.8s;
+}
+
+@keyframes floatNode1 {
+  0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+  25% { transform: translate(8px, -6px) rotate(1.5deg); }
+  50% { transform: translate(-6px, -3px) rotate(-1deg); }
+  75% { transform: translate(-8px, 6px) rotate(1deg); }
+}
+@keyframes floatNode2 {
+  0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+  25% { transform: translate(-8px, 6px) rotate(-1.5deg); }
+  50% { transform: translate(7px, 8px) rotate(1.2deg); }
+  75% { transform: translate(8px, -5px) rotate(-1deg); }
+}
+@keyframes floatNode3 {
+  0%, 100% { transform: translate(0px, 0px) rotate(0deg); }
+  25% { transform: translate(9px, 5px) rotate(1.2deg); }
+  50% { transform: translate(-8px, -7px) rotate(-1.5deg); }
+  75% { transform: translate(6px, -3px) rotate(1deg); }
+}
+
+.agent-avatar-frame {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #FFFFFF !important;
+  border: 2.5px solid #FFFFFF;
+  box-shadow: 0 8px 24px -2px rgba(15, 23, 42, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.agent-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.agent-glow-ring {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.75;
+  animation: ringPulse 3.2s ease-in-out infinite;
+  z-index: 1;
+}
+.ring-blue {
+  border: 2px solid #38BDF8;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.7);
+}
+.ring-emerald {
+  border: 2px solid #34D399;
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.7);
+}
+.ring-purple {
+  border: 2px solid #C084FC;
+  box-shadow: 0 0 18px rgba(192, 132, 252, 0.7);
+}
+
+@keyframes ringPulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.08); opacity: 0.95; }
+}
+
+.agent-node-badge {
+  margin-top: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.74rem;
+  font-weight: 750;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border: 1px solid transparent;
+  z-index: 3;
+}
+
+.badge-blue {
+  background: rgba(15, 23, 42, 0.85);
+  color: #38BDF8;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.badge-emerald {
+  background: rgba(15, 23, 42, 0.85);
+  color: #34D399;
+  border-color: rgba(52, 211, 153, 0.4);
+}
+.badge-purple {
+  background: rgba(15, 23, 42, 0.85);
+  color: #C084FC;
+  border-color: rgba(192, 132, 252, 0.4);
+}
+
+

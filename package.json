@@ -13,10 +13,13 @@
     "start:hub": "bun packages/hub/src/main.ts",
     "start:http": "bun packages/http/src/main.ts",
     "start:self-reminder": "bun packages/self-reminder/src/main.ts",
+    "start:web": "bun --cwd packages/platform-web dev",
+    "build:web": "bun --cwd packages/platform-web build",
     "typecheck": "bun --bun tsc -b tsconfig.base.json --pretty false",
     "typecheck:hub": "bun --bun tsc -p packages/hub/tsconfig.json --pretty false",
     "typecheck:http": "bun --bun tsc -p packages/http/tsconfig.json --pretty false",
     "typecheck:self-reminder": "bun --bun tsc -p packages/self-reminder/tsconfig.json --pretty false",
+    "typecheck:web": "bun --bun tsc -p packages/platform-web/tsconfig.json --pretty false",
     "test": "bun test packages/",
     "typecheck:store": "bun --bun tsc -p packages/store/tsconfig.json --pretty false",
     "test:integration": "bun test test/",
@@ -31,6 +34,7 @@
     "@types/node": "^22.15.21",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
+    "playwright": "^1.62.1",
     "typescript": "7.0.2"
   },
   "dependencies": {

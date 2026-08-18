@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC § 8.11 Observed Source Inspector — Agent Mesh Enterprise Platform</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Global Top Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn ">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn active">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Page Container -->
+  <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/platform/index.html" class="subnav-pill ">📊 Overview</a>
+  
+    <a href="/platform/highways.html" class="subnav-pill ">🌐 14 Highways</a>
+  
+    <a href="/platform/tenant-manager.html" class="subnav-pill ">🏢 Tenants</a>
+  
+    <a href="/platform/tenant-detail.html" class="subnav-pill ">🏢 Tenant Detail</a>
+  
+    <a href="/platform/telemetry.html" class="subnav-pill ">🖥️ Telemetry</a>
+  
+    <a href="/platform/failover-sim.html" class="subnav-pill ">🌍 Failover (Future)</a>
+  
+    <a href="/platform/rate-limiting.html" class="subnav-pill ">⚡ Rate Limiting (Prop)</a>
+  
+    <a href="/platform/metadata-audits.html" class="subnav-pill ">🔒 Metadata Audits</a>
+  
+    <a href="/platform/gateway-inspect.html" class="subnav-pill ">🔌 Gateway Sockets</a>
+  
+    <a href="/platform/bandwidth-shaper.html" class="subnav-pill ">📶 QoS Shaper</a>
+  
+    <a href="/platform/certificate-authority.html" class="subnav-pill ">🔐 Root CA</a>
+  
+    <a href="/platform/observed-sources.html" class="subnav-pill active">👁️ §8.11 Observed Sources</a>
+  
+    </div>
+
+    <!-- Header Row -->
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+          <span class="badge badge-leased">PLATFORM SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #20</span>
+        </div>
+        <h1 class="admin-header-title">SPEC § 8.11 Observed Source Inspector</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Inspection of kernel socket vs X-Forwarded-For attestation telemetry (GET /api/v1/admin/agent-sources)</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
+      </div>
+    </div>
+
+    <!-- Body Content -->
+    
+      <div class="card">
+        <!-- Dynamic Evidence Note Banner directly from API -->
+        <div id="evidenceNoteBanner" style="background:#F0FDF4; border:1px solid #86EFAC; color:#166534; padding:14px; border-radius:var(--radius-md); font-size:0.875rem; margin-bottom:16px;">
+          <strong>🛡️ Observed Source Mode: <code>socket</code></strong><br>
+          <span style="font-size:0.85rem; color:#15803D;">"Addresses are the kernel-observed peer of each connection."</span>
+        </div>
+
+        <div class="card-header">
+          <div>
+            <div class="card-title">Agent Sources Ledger</div>
+            <div class="card-subtitle">Endpoint: <code>GET /api/v1/admin/agent-sources</code> (requires capability <code>source.read</code>)</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" placeholder="Filter by ?identity=..." style="padding:4px 8px; font-size:0.8rem; border:1px solid var(--border-default); border-radius:var(--radius-sm);">
+            <button class="btn btn-primary btn-sm" onclick="alert('Fetched latest 500 records from GET /api/v1/admin/agent-sources')">Refresh Sources</button>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Agent Identity</th>
+              <th>Observed Peer Address</th>
+              <th>First Seen</th>
+              <th>Last Seen</th>
+              <th>Total Requests</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>acme-corp:core-lead</strong></td>
+              <td><code>127.0.0.1</code></td>
+              <td>2026-08-16 10:00:00</td>
+              <td>2026-08-17 01:18:12</td>
+              <td><strong>142,890</strong></td>
+            </tr>
+            <tr>
+              <td><strong>acme-corp:core-agent-3</strong></td>
+              <td><code>127.0.0.1</code></td>
+              <td>2026-08-16 10:05:00</td>
+              <td>2026-08-17 01:17:44</td>
+              <td><strong>98,420</strong></td>
+            </tr>
+            <tr>
+              <td><strong>nova-biotech:research-lead</strong></td>
+              <td><code>192.168.1.100</code></td>
+              <td>2026-08-16 11:20:00</td>
+              <td>2026-08-17 01:12:00</td>
+              <td><strong>34,100</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zero-Downtime Rolling Key Rotation & 48h Grace Period — Agent Mesh Enterprise Platform</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Global Top Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn ">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn active">3. Tenant Admin (Acme Corp)</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Page Container -->
+  <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/tenant/index.html" class="subnav-pill ">📈 Executive Overview</a>
+  
+    <a href="/tenant/key-approvals.html" class="subnav-pill ">🔑 Key Approvals (3)</a>
+  
+    <a href="/tenant/key-rotations.html" class="subnav-pill active">🔄 Key Rotations (Prop)</a>
+  
+    <a href="/tenant/compromised-keys.html" class="subnav-pill ">⛔ Compromised Keys</a>
+  
+    <a href="/tenant/groups.html" class="subnav-pill ">📁 Swarm Groups</a>
+  
+    <a href="/tenant/group-detail.html" class="subnav-pill ">📁 Group Detail</a>
+  
+    <a href="/tenant/egress-acl.html" class="subnav-pill ">🛡️ Egress ACL</a>
+  
+    <a href="/tenant/send-policy-default.html" class="subnav-pill ">⚙️ Send Policy Default</a>
+  
+    <a href="/tenant/network-attestation.html" class="subnav-pill ">🌐 Network CIDR (§8.11)</a>
+  
+    <a href="/tenant/audit-failure-policy.html" class="subnav-pill ">🚨 Audit Failure Policy</a>
+  
+    <a href="/tenant/pairing-codes.html" class="subnav-pill ">⚡ Pairing Codes</a>
+  
+    <a href="/tenant/pairing-history.html" class="subnav-pill ">📜 Pairing History</a>
+  
+    <a href="/tenant/participant-audits.html" class="subnav-pill ">📋 Participant Audits</a>
+  
+    <a href="/tenant/audit-read-events.html" class="subnav-pill ">👁️ Audit Read Log (Prop)</a>
+  
+    <a href="/tenant/siem-export.html" class="subnav-pill ">📦 SIEM Export (Prop)</a>
+  
+    <a href="/tenant/organization-rbac.html" class="subnav-pill ">👥 Organization RBAC</a>
+  
+    </div>
+
+    <!-- Header Row -->
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+          <span class="badge badge-leased">TENANT SUITE</span>
+          <span class="badge badge-warning">💡 UI Proposal / Design Concept</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #23</span>
+        </div>
+        <h1 class="admin-header-title">Zero-Downtime Rolling Key Rotation & 48h Grace Period</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Scheduled key rotations allowing dual-key validity during transitions (Design Concept)</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
+      </div>
+    </div>
+
+    <!-- Body Content -->
+    
+      <div class="card"><div class="card-header"><div class="card-title">Rolling Key Schedule (Proposed)</div></div><p style="font-size:0.85rem; color:var(--text-secondary);">core-lead: Dual-key active with 48h grace window.</p></div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>

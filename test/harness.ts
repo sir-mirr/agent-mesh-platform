@@ -80,7 +80,15 @@ export interface Mesh {
  * what `scripts/e2e-harness.ts` has always done — which is why the flake
  * appeared here and never there.
  */
-async function freePort(): Promise<number> {
+/**
+ * A port the OS is not using, for a caller that has to name one.
+ *
+ * Exported because `fe-render.test.ts` had a fixed 3195 with `--strictPort`, so
+ * two runs of the suite could not coexist: the second failed to bind and every
+ * scenario after it failed to reach a server. A red run from two people testing
+ * at once is indistinguishable from a red run from a defect.
+ */
+export async function freePort(): Promise<number> {
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("") });
   const port = server.port;
   server.stop(true);

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise Ingress Quotas & Pricing Tiers — Agent Mesh Enterprise Platform</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Global Top Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn active">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn ">3. Tenant Admin (Acme Corp)</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Page Container -->
+  <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/public/index.html" class="subnav-pill ">🌟 Landing</a>
+  
+    <a href="/public/security-architecture.html" class="subnav-pill ">📐 Security Architecture</a>
+  
+    <a href="/public/lease-state-machine.html" class="subnav-pill ">⏱️ Lease State Machine</a>
+  
+    <a href="/public/login-operator.html" class="subnav-pill ">👤 Operator Login</a>
+  
+    <a href="/public/login-tenant.html" class="subnav-pill ">🏢 Tenant Login</a>
+  
+    <a href="/public/login-platform.html" class="subnav-pill ">🛡️ Platform Login</a>
+  
+    <a href="/public/pricing-tiers.html" class="subnav-pill active">💎 Pricing & SLAs</a>
+  
+    <a href="/public/compliance-overview.html" class="subnav-pill ">📜 Compliance & Trust</a>
+  
+    </div>
+
+    <!-- Header Row -->
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+          <span class="badge badge-leased">PUBLIC SUITE</span>
+          <span class="badge badge-warning">💡 UI Proposal / Design Concept</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #7</span>
+        </div>
+        <h1 class="admin-header-title">Enterprise Ingress Quotas & Pricing Tiers</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Transparent resource allocation, throughput limits, and SLA guarantees for enterprise tenants</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
+      </div>
+    </div>
+
+    <!-- Body Content -->
+    
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+        <div class="card">
+          <strong style="font-size:1.1rem;">Starter Swarm</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$0 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Ideal for individual developers building prototype autonomous agents.</p>
+          <ul style="font-size:0.82rem; color:var(--text-secondary); line-height:1.8; margin-left:18px; margin-bottom:20px;">
+            <li>Up to 10 Managed Agents</li>
+            <li>100,000 Ingress Requests / month</li>
+            <li>1 Gateway Bridge</li>
+          </ul>
+        </div>
+
+        <div class="card" style="border:2px solid var(--primary); background:#F8FAFC;">
+          <div class="badge badge-success" style="margin-bottom:6px;">Most Popular</div>
+          <strong style="font-size:1.1rem; display:block;">Enterprise Mesh</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:var(--primary); margin:8px 0;">$499 <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Complete corporate governance and security compliance suite.</p>
+          <ul style="font-size:0.82rem; color:var(--text-secondary); line-height:1.8; margin-left:18px; margin-bottom:20px;">
+            <li>Up to 50 Managed Agents (Acme Corp)</li>
+            <li>5,000,000 Ingress Requests / month</li>
+            <li>4 Dedicated Swarm Clusters</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <strong style="font-size:1.1rem;">Global Fabric</strong>
+          <div style="font-size:1.6rem; font-weight:900; color:#7C3AED; margin:8px 0;">Custom <small style="font-size:0.8rem; color:var(--text-muted);">/month</small></div>
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Dedicated global backbone highways and multi-region failover.</p>
+        </div>
+      </div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>

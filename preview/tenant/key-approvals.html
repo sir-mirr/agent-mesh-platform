@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped) — Agent Mesh Enterprise Platform</title>
+  <link rel="stylesheet" href="/assets/css/style.css">
+</head>
+<body>
+  <!-- Global Top Navigation Header -->
+  <header class="preview-control-bar">
+    <a href="/index.html" class="preview-brand">
+      <div class="brand-icon">M</div>
+      <span>Agent Mesh Platform</span>
+      <span class="badge badge-success"><span class="live-dot"></span> v0.3 Live (v4 surface)</span>
+    </a>
+
+    <div class="preview-nav">
+      <a href="/public/index.html" class="preview-btn ">1. Home & Protocols</a>
+      <a href="/platform/index.html" class="preview-btn ">2. Platform Operator</a>
+      <a href="/tenant/index.html" class="preview-btn active">3. Tenant Admin (Acme Corp)</a>
+      <a href="/creator/index.html" class="preview-btn ">4. Agent Studio</a>
+      <a href="/dev/index.html" class="preview-btn ">5. Developer Hub & APIs</a>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+    </div>
+  </header>
+
+  <!-- Main Page Container -->
+  <div class="page-container">
+    <!-- Sub-navigation Pills -->
+    <div class="subnav-pills">
+      
+    <a href="/tenant/index.html" class="subnav-pill ">📈 Executive Overview</a>
+  
+    <a href="/tenant/key-approvals.html" class="subnav-pill active">🔑 Key Approvals (3)</a>
+  
+    <a href="/tenant/key-rotations.html" class="subnav-pill ">🔄 Key Rotations (Prop)</a>
+  
+    <a href="/tenant/compromised-keys.html" class="subnav-pill ">⛔ Compromised Keys</a>
+  
+    <a href="/tenant/groups.html" class="subnav-pill ">📁 Swarm Groups</a>
+  
+    <a href="/tenant/group-detail.html" class="subnav-pill ">📁 Group Detail</a>
+  
+    <a href="/tenant/egress-acl.html" class="subnav-pill ">🛡️ Egress ACL</a>
+  
+    <a href="/tenant/send-policy-default.html" class="subnav-pill ">⚙️ Send Policy Default</a>
+  
+    <a href="/tenant/network-attestation.html" class="subnav-pill ">🌐 Network CIDR (§8.11)</a>
+  
+    <a href="/tenant/audit-failure-policy.html" class="subnav-pill ">🚨 Audit Failure Policy</a>
+  
+    <a href="/tenant/pairing-codes.html" class="subnav-pill ">⚡ Pairing Codes</a>
+  
+    <a href="/tenant/pairing-history.html" class="subnav-pill ">📜 Pairing History</a>
+  
+    <a href="/tenant/participant-audits.html" class="subnav-pill ">📋 Participant Audits</a>
+  
+    <a href="/tenant/audit-read-events.html" class="subnav-pill ">👁️ Audit Read Log (Prop)</a>
+  
+    <a href="/tenant/siem-export.html" class="subnav-pill ">📦 SIEM Export (Prop)</a>
+  
+    <a href="/tenant/organization-rbac.html" class="subnav-pill ">👥 Organization RBAC</a>
+  
+    </div>
+
+    <!-- Header Row -->
+    <div class="admin-header-row">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;">
+          <span class="badge badge-leased">TENANT SUITE</span>
+          <span class="badge badge-success"><span class="live-dot"></span> Backend Active (SPEC v0.3 / §8.11)</span>
+          <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">Screen #22</span>
+        </div>
+        <h1 class="admin-header-title">50-Character Fingerprint Key Approval Queue (SPEC § 11.3 Scoped)</h1>
+        <p style="font-size:0.875rem; color:var(--text-secondary); margin-top:2px;">Wildcard tenant approval vs scoped ownership approval with 2-way empty states and 403 handling</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.reload()">↻ Refresh</button>
+        <a href="/index.html" class="btn btn-primary btn-sm">Master Hub →</a>
+      </div>
+    </div>
+
+    <!-- Body Content -->
+    
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Pending Public Key Queue (<code>GET /api/v1/admin/keys/pending</code>)</div>
+            <div class="card-subtitle">Caller Ownership Query: <code>GET /api/v1/admin/agents/owned</code> (Gate: <code>key.approve</code>) · Answers "What is mine"</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Tenant Admin (Wildcard scope: *).')">Admin View (*)</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Viewing as Scoped Operator (GET /api/v1/admin/agents/owned -> ["acme-corp:core-lead"]).')">Scoped View</button>
+            <button class="btn btn-secondary btn-sm" onclick="alert('Simulated 200 OK Empty State: GET /api/v1/admin/agents/owned -> []')">Empty (0 Owned)</button>
+          </div>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:12px; border-radius:var(--radius-md); font-size:0.85rem; margin-bottom:16px;">
+          🔑 <strong>Scoped Approval & 3-Tier Empty State Rules (SPEC § 11.3):</strong><br>
+          • <strong>0 Owned Agents (<code>GET /api/v1/admin/agents/owned</code> &rarr; <code>[]</code>):</strong> <em>"You do not own any agents yet."</em> &rarr; Prompts user to generate pairing code.<br>
+          • <strong>Owned Agents, 0 Pending Keys (<code>GET /api/v1/admin/keys/pending</code> &rarr; <code>[]</code>):</strong> <em>"All owned agents fully approved."</em> (Healthy idle state).<br>
+          • <strong>Missing Capability (<code>403 Forbidden</code>):</strong> <code>{ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }</code>.
+        </div>
+
+        <!-- Active Proposal Card -->
+        <div style="border:1px solid var(--border-default); border-radius:var(--radius-md); padding:14px; background:var(--bg-surface);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:0.95rem; color:var(--text-primary);">acme-corp:core-lead (Fin둥이)</strong>
+            <span class="badge badge-leased">Owned by alice_dev</span>
+          </div>
+          <div class="code-snippet-box">Fingerprint: sha256:pfsELGYsvWLUoreIgzOjd0Yg8Pvz_HNChpw-rzcjPWw
+Proposed: 2026-08-17 01:45:00 UTC · Origin: Direct Provisioning</div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+            <button class="btn btn-primary btn-sm" onclick="alert('Key approved atomically.')">✓ Approve Key</button>
+            <button class="btn btn-danger btn-sm" onclick="alert('Key revoked.')">✕ Deny Proposal</button>
+          </div>
+        </div>
+
+        <!-- 2-Way Empty State Demonstration Box -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;">
+          <div style="border:1px dashed var(--border-default); border-radius:var(--radius-md); padding:16px; text-align:center; background:var(--bg-surface-sub);">
+            <span style="font-size:1.2rem;">🎟️</span>
+            <div style="font-weight:700; font-size:0.85rem; margin-top:4px;">You do not own any agents yet</div>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin:4px 0 10px;">Claim ownership of an agent via device pairing code.</p>
+            <a href="/tenant/pairing-codes.html" class="btn btn-primary btn-sm" style="font-size:0.75rem;">+ Generate Pairing Code →</a>
+          </div>
+          <div style="border:1px dashed var(--border-default); border-radius:var(--radius-md); padding:16px; text-align:center; background:var(--bg-surface-sub);">
+            <span style="font-size:1.2rem;">✅</span>
+            <div style="font-weight:700; font-size:0.85rem; margin-top:4px;">All owned agents fully approved</div>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px;">No pending key proposals in queue.</p>
+          </div>
+        </div>
+      </div>
+    
+  </div>
+
+  <script src="/assets/js/common.js"></script>
+</body>
+</html>

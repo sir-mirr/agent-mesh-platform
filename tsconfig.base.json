@@ -37,6 +37,9 @@
       ],
       "@agent-mesh/mailbox": [
         "./packages/mailbox/src/index.ts"
+      ],
+      "@agent-mesh/platform-web": [
+        "./packages/platform-web/src/main.tsx"
       ]
     }
   },
@@ -56,6 +59,9 @@
     },
     {
       "path": "./packages/self-reminder/tsconfig.json"
+    },
+    {
+      "path": "./packages/platform-web/tsconfig.json"
     },
     {
       "path": "./test/tsconfig.json"

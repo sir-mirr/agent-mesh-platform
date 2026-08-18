@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Mesh Platform — 4단계 정보구조도 (Phase 1 IA & Roadmap Map)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --primary-border: #DBEAFE;
+      --primary-subtle: #F0F7FF;
+
+      --suite-public: #0284C7;
+      --suite-public-bg: #F0F9FF;
+      --suite-public-br: #BAE6FD;
+
+      --suite-platform: #7C3AED;
+      --suite-platform-bg: #F5F3FF;
+      --suite-platform-br: #DDD6FE;
+
+      --suite-tenant: #059669;
+      --suite-tenant-bg: #ECFDF5;
+      --suite-tenant-br: #A7F3D0;
+
+      --suite-creator: #D97706;
+      --suite-creator-bg: #FFFBEB;
+      --suite-creator-br: #FDE68A;
+
+      --suite-dev: #4F46E5;
+      --suite-dev-bg: #EEF2FF;
+      --suite-dev-br: #C7D2FE;
+
+      --phase-p1: #10B981;
+      --phase-p1-bg: #ECFDF5;
+      --phase-p2: #3B82F6;
+      --phase-p2-bg: #EFF6FF;
+      --phase-p3: #8B5CF6;
+      --phase-p3-bg: #F5F3FF;
+      --phase-p4: #64748B;
+      --phase-p4-bg: #F8FAFC;
+
+      --bg-page: #F8FAFC;
+      --bg-surface: #FFFFFF;
+      --bg-surface-sub: #F1F5F9;
+      --bg-card: #FFFFFF;
+
+      --text-primary: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+
+      --border-default: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --border-subtle: #F1F5F9;
+
+      --status-success: #059669;
+      --status-success-bg: #ECFDF5;
+      --status-warning: #D97706;
+      --status-warning-bg: #FFFBEB;
+      --status-danger: #DC2626;
+      --status-danger-bg: #FEF2F2;
+
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+
+      --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+      --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08);
+      --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-page);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Control Bar */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 28px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: var(--shadow-sm);
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 900;
+      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+    }
+    .brand-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--bg-surface); border-color: var(--border-strong); color: var(--text-primary); }
+    .btn-secondary:hover { background: var(--bg-surface-sub); }
+    .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+
+    /* Main Container */
+    .main-layout {
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+      color: white;
+      border-radius: var(--radius-xl);
+      padding: 28px 36px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .hero-text h1 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hero-text p {
+      font-size: 0.9rem;
+      color: #94A3B8;
+      max-width: 820px;
+      line-height: 1.6;
+    }
+
+    .kpi-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .kpi-card {
+      background: rgba(255, 255, 255, 0.07);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-lg);
+      padding: 10px 16px;
+      min-width: 120px;
+      text-align: center;
+    }
+    .kpi-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      color: #34D399;
+    }
+    .kpi-lbl {
+      font-size: 0.7rem;
+      color: #CBD5E1;
+      font-weight: 600;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Role Simulation Selector */
+    .role-bar {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: var(--shadow-xs);
+    }
+    .role-options {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .role-btn {
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid var(--border-default);
+      background: var(--bg-surface-sub);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .role-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      box-shadow: var(--shadow-xs);
+    }
+
+    /* Navigation View Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 6px;
+      background: var(--bg-surface-sub);
+      padding: 5px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-default);
+      overflow-x: auto;
+    }
+    .tab-btn {
+      border: none;
+      background: transparent;
+      padding: 10px 18px;
+      border-radius: var(--radius-md);
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active {
+      background: var(--bg-surface);
+      color: var(--primary);
+      box-shadow: var(--shadow-sm);
+    }
+    .tab-badge {
+      background: var(--bg-surface-sub);
+      color: var(--text-secondary);
+      padding: 2px 7px;
+      border-radius: var(--radius-full);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .tab-btn.active .tab-badge {
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* View Content Panels */
+    .view-panel {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .view-panel.active { display: flex; }
+
+    /* ==========================================================================
+       🌿 1. Phase 1 계층형 연결선 트리 다이어그램 (Line Diagram)
+       ========================================================================== */
+    .tree-canvas {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-xs);
+      overflow-x: auto;
+    }
+    
+    .tree-root-card {
+      background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+      color: white;
+      border-radius: var(--radius-lg);
+      padding: 16px 24px;
+      max-width: 480px;
+      margin: 0 auto 36px auto;
+      text-align: center;
+      box-shadow: var(--shadow-md);
+      position: relative;
+    }
+    .tree-root-card::after {
+      content: "";
+      position: absolute;
+      bottom: -36px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      height: 36px;
+      background: var(--border-strong);
+    }
+    .tree-root-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .tree-root-desc {
+      font-size: 0.82rem;
+      color: #94A3B8;
+      margin-top: 4px;
+    }
+
+    .suites-line-container {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      position: relative;
+    }
+
+    .suite-tree-block {
+      background: #FAFCFF;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+    .suite-tree-block.border-public { border-left: 6px solid var(--suite-public); }
+    .suite-tree-block.border-platform { border-left: 6px solid var(--suite-platform); }
+    .suite-tree-block.border-tenant { border-left: 6px solid var(--suite-tenant); }
+    .suite-tree-block.border-creator { border-left: 6px solid var(--suite-creator); }
+
+    .suite-head-box {
+      background: var(--bg-surface);
+      border: 2px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 14px 20px;
+      display: inline-flex;
+      flex-direction: column;
+      gap: 4px;
+      box-shadow: var(--shadow-sm);
+      min-width: 340px;
+      margin-bottom: 24px;
+    }
+    .suite-head-box .line-1 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .suite-head-box .line-2 {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .module-group-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-left: 28px;
+      position: relative;
+    }
+    .module-group-container::before {
+      content: "";
+      position: absolute;
+      left: 8px;
+      top: -12px;
+      bottom: 24px;
+      width: 2px;
+      background: var(--border-strong);
+    }
+
+    .module-branch {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .module-branch::before {
+      content: "";
+      position: absolute;
+      left: -20px;
+      top: 22px;
+      width: 20px;
+      height: 2px;
+      background: var(--border-strong);
+    }
+
+    .submodule-box {
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 10px 16px;
+      display: inline-flex;
+      flex-direction: column;
+      gap: 3px;
+      align-self: flex-start;
+      box-shadow: var(--shadow-xs);
+    }
+    .submodule-box .line-1 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .submodule-box .line-2 {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+
+    .screen-nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 12px;
+      padding-left: 24px;
+      position: relative;
+    }
+    .screen-nodes-grid::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 0;
+      bottom: 16px;
+      width: 2px;
+      background: var(--border-default);
+    }
+
+    .two-line-node {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.15s ease;
+      position: relative;
+      box-shadow: var(--shadow-xs);
+      cursor: pointer;
+    }
+    .two-line-node::before {
+      content: "";
+      position: absolute;
+      left: -18px;
+      top: 50%;
+      width: 18px;
+      height: 2px;
+      background: var(--border-default);
+    }
+    .two-line-node:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: var(--shadow-md);
+      background: #FFFFFF;
+    }
+    .two-line-node .node-l1 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .two-line-node .node-l2 {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    .node-num {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: var(--radius-full);
+      font-size: 0.7rem;
+      font-weight: 600;
+      font-family: inherit;
+    }
+    .badge-wired { background: var(--status-success-bg); color: var(--status-success); border: 1px solid #A7F3D0; }
+    .badge-content { background: #F0F9FF; color: #0284C7; border: 1px solid #BAE6FD; }
+    .badge-spec { background: #FDF4FF; color: #A21CAF; border: 1px solid #F5D0FE; }
+    .badge-cap { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; font-family: var(--font-mono); font-size: 0.7rem; }
+
+    /* Phase Roadmap Grid */
+    .phase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .phase-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+      box-shadow: var(--shadow-xs);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .phase-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-default);
+    }
+    .phase-title {
+      font-size: 1.1rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .phase-item-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .phase-item {
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+    }
+    .phase-item-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+    .phase-item-desc { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+
+    /* Matrix Table */
+    .table-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xl);
+      overflow-x: auto;
+      box-shadow: var(--shadow-xs);
+    }
+    .ia-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      text-align: left;
+    }
+    .ia-table th {
+      background: var(--bg-surface-sub);
+      padding: 12px 16px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-default);
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .ia-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-default);
+      vertical-align: top;
+    }
+    .ia-table tr:hover td { background: #F8FAFC; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.active { display: flex; }
+    .modal-box {
+      background: var(--bg-surface);
+      border-radius: var(--radius-xl);
+      max-width: 640px;
+      width: 100%;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 85vh;
+      animation: modalSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalSlide {
+      from { transform: translateY(16px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-head {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border-default);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .modal-body {
+      padding: 22px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal-foot {
+      padding: 14px 22px;
+      border-top: 1px solid var(--border-default);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: var(--bg-surface-sub);
+    }
+    .detail-section-title {
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .detail-block {
+      background: var(--bg-surface-sub);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 0.84rem;
+      line-height: 1.5;
+    }
+    .close-btn {
+      background: transparent;
+      border: none;
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    footer {
+      margin-top: auto;
+      border-top: 1px solid var(--border-default);
+      padding: 24px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      background: var(--bg-surface);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <a href="/index.html" class="brand-group">
+      <div class="brand-logo">M</div>
+      <div>
+        <div class="brand-title">Agent Mesh Platform</div>
+        <div class="brand-sub">4단계 정보구조도 (Phase 1 IA & Roadmap)</div>
+      </div>
+    </a>
+
+    <div class="top-actions">
+      <a href="/index.html" class="btn btn-secondary btn-sm">🗂 All-in-One Hub</a>
+      <a href="/public/index.html" class="btn btn-primary btn-sm">🚀 Live Preview Portal</a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+
+    <!-- Hero Banner & KPIs -->
+    <section class="hero-banner">
+      <div class="hero-text">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <span class="badge badge-spec" style="background:#10B981; color:white; border:none;">Phase 1 Focus Active</span>
+          <span class="badge badge-wired" style="background:#3B82F6; color:white; border:none;">Port :3005 Live</span>
+        </div>
+        <h1>에이전트 메시 플랫폼 정보구조도 (IA)</h1>
+        <p>
+          검수 1단계 피드백을 반영하여 <strong>단일 로그인(GitHub / ID·PW)</strong>과 <strong>단일 ID 기반 RBAC 역할 제어</strong>를 적용하고, 
+          미뤄둔 항목(CA, SDK, 백본 하이웨이, SIEM 등)을 4대 페이즈(Phase 1~4)로 체계적으로 분리 정리한 2줄 직관 트리입니다.
+        </p>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-val" id="kpi-p1-screens">22</div>
+          <div class="kpi-lbl">Phase 1 Focus</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#60A5FA;">15</div>
+          <div class="kpi-lbl">Phase 2 DevHub</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#A78BFA;">3</div>
+          <div class="kpi-lbl">Phase 3 Audit</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:#94A3B8;">20</div>
+          <div class="kpi-lbl">Phase 4 Commercial</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Role-based Dynamic Menu Simulation Toolbar -->
+    <div class="role-bar">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">👤 단일 계정 RBAC 시뮬레이션:</span>
+        <span style="font-size:0.78rem; color:var(--text-secondary);">로그인한 사용자의 역할에 따라 메뉴가 동적으로 노출/은닉됩니다.</span>
+      </div>
+      <div class="role-options">
+        <button class="role-btn active" onclick="setRoleSim('operator', this)">에이전트 운영자 (기본)</button>
+        <button class="role-btn" onclick="setRoleSim('tenant-admin', this)">테넌트 관리자 (조직 관리 권한)</button>
+        <button class="role-btn" onclick="setRoleSim('platform-admin', this)">플랫폼 최고 운영자 (전체 권한)</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" onclick="switchView('tree-lines', this)">
+        🌿 Phase 1 집중 트리 다이어그램 <span class="tab-badge">2줄 직관 뷰</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('roadmap', this)">
+        🗺️ 4대 페이즈 로드맵 (Phase 1~4) <span class="tab-badge">미뤄둔 항목 관리</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('matrix', this)">
+        📊 전체 매트릭스 표 (Matrix Table) <span class="tab-badge">API & Spec</span>
+      </button>
+      <button class="tab-btn" onclick="switchView('flows', this)">
+        👤 단일 계정 기반 사용자 동선 (Flows) <span class="tab-badge">User Journey</span>
+      </button>
+    </nav>
+
+    <!-- =========================================================================
+         VIEW 1: Phase 1 집중 연결선 트리 다이어그램 (Line Diagram)
+         ========================================================================= -->
+    <div id="view-tree-lines" class="view-panel active">
+      <div class="tree-canvas">
+        
+        <!-- Root Node (0 Depth) -->
+        <div class="tree-root-card">
+          <div class="tree-root-title">에이전트 메시 플랫폼 (Phase 1 MVP)</div>
+          <div class="tree-root-desc">단일 ID 기반 통합 로그인 및 RBAC 역할 제어 단일 패브릭 콘솔</div>
+        </div>
+
+        <div class="suites-line-container">
+
+          <!-- 1. Public Suite -->
+          <div class="suite-tree-block border-public">
+            <div class="suite-head-box">
+              <div class="line-1">
+                <span>1. 공개 및 단일 로그인 게이트웨이 (Public Suite)</span>
+                <span class="badge badge-content">Phase 1</span>
+              </div>
+              <div class="line-2">서비스 소개, 보안 신뢰 모델, 소켓리스 상태머신 및 GitHub/ID·PW 단일 로그인</div>
+            </div>
+
+            <div class="module-group-container">
+              
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">1.1 서비스 소개 및 프로토콜 안내</div>
+                  <div class="line-2">플랫폼 핵심 가치, Ed25519 암호학적 신뢰 모델 및 소켓리스 상태머신</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(1)">
+                    <div class="node-l1"><span>메인 랜딩 & 성좌</span><span class="node-num">#1</span></div>
+                    <div class="node-l2">3D 스웜 은하수 성좌 애니메이션 및 플랫폼 개요</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(2)">
+                    <div class="node-l1"><span>보안 아키텍처 & 프로토콜</span><span class="node-num">#2</span></div>
+                    <div class="node-l2">Ed25519 서명 체계, 논스 재생 방지 및 영구 톰스톤</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(3)">
+                    <div class="node-l1"><span>소켓리스 리스 상태머신</span><span class="node-num">#3</span></div>
+                    <div class="node-l2">Available → Leased → Acked 4단계 상태 전이도</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">1.2 단일 로그인 통합 게이트웨이</div>
+                  <div class="line-2">GitHub OAuth 또는 ID/PW 로컬 로그인 (모든 역할 공통 진입)</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(4)">
+                    <div class="node-l1"><span>통합 로그인 게이트웨이</span><span class="node-num">#4</span></div>
+                    <div class="node-l2">GitHub OAuth 및 ID/PW 계정 로그인 (역할별 권한 자동 획득)</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 2. Platform Monitoring Suite (Phase 1) -->
+          <div class="suite-tree-block border-platform" id="block-platform">
+            <div class="suite-head-box">
+              <div class="line-1">
+                <span>2. 실시간 서버 모니터링 콘솔 (Platform Suite)</span>
+                <span class="badge badge-spec">Platform Admin</span>
+              </div>
+              <div class="line-2">현재 가동 중인 허브/HTTP 서버 헬스, 테넌트 라우팅 처리량 및 전역 메타데이터 감사</div>
+            </div>
+
+            <div class="module-group-container">
+              
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">2.1 실시간 서버 헬스 및 텔레메트리</div>
+                  <div class="line-2">허브 헬스체크(/health, online_agents), 프로세스 상태 및 소켓 모니터링</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(9)">
+                    <div class="node-l1"><span>실시간 서버 인프라 현황판</span><span class="node-num">#9</span></div>
+                    <div class="node-l2">허브 가동 상태, 활성 테넌트 및 온라인 소켓 총괄 요약</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(13)">
+                    <div class="node-l1"><span>노드 텔레메트리 모니터링</span><span class="node-num">#13</span></div>
+                    <div class="node-l2">서버 프로세스 CPU, RAM 및 실시간 소켓 헬스 메트릭</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">2.2 테넌트 라우팅 분석 및 감사 통제</div>
+                  <div class="line-2">테넌트별 라우팅 처리 건수(Routing Count), 스토리지 및 Egress Redaction 감사</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(11)">
+                    <div class="node-l1"><span>멀티 테넌트 조직 관리자</span><span class="node-num">#11</span></div>
+                    <div class="node-l2">테넌트 조직 생성, 격리 파티션 및 상태 제어</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(12)">
+                    <div class="node-l1"><span>테넌트 라우팅 처리량 분석</span><span class="node-num">#12</span></div>
+                    <div class="node-l2">테넌트별 메시지 라우팅 건수, 스토리지 점유율 및 에이전트 수</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(16)">
+                    <div class="node-l1"><span>전역 메타데이터 감사 추적</span><span class="node-num">#16</span></div>
+                    <div class="node-l2">본문 유출 없는 [content withheld] 메타데이터 감사</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(20)">
+                    <div class="node-l1"><span>§8.11 관측 출처 감사기</span><span class="node-num">#20</span></div>
+                    <div class="node-l2">프록시 헤더 위조 방지 /24, /48 소스 IP 정규화 감사</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 3. Tenant Admin Suite (Phase 1) -->
+          <div class="suite-tree-block border-tenant" id="block-tenant">
+            <div class="suite-head-box">
+              <div class="line-1">
+                <span>3. 테넌트 관리자 콘솔 (Tenant Suite)</span>
+                <span class="badge badge-wired">Tenant Admin Only</span>
+              </div>
+              <div class="line-2">플릿 현황 요약, 스웜 그룹 간 이그레스 ACL, 본문 감사 스트림 및 RBAC 권한 관리</div>
+            </div>
+
+            <div class="module-group-container">
+              
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">3.1 테넌트 플릿 현황 및 이그레스 보안 정책</div>
+                  <div class="line-2">소유 에이전트 대시보드 요약, Deny-by-default 그룹 간 통신 제어 및 IP 증명</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(21)">
+                    <div class="node-l1"><span>테넌트 플릿 현황 요약</span><span class="node-num">#21</span></div>
+                    <div class="node-l2">소유 에이전트 수, 활성 키 상태 및 적체 큐 대시보드 위젯</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(27)">
+                    <div class="node-l1"><span>그룹 간 이그레스 ACL 행렬</span><span class="node-num">#27</span></div>
+                    <div class="node-l2">방향성 있는 이그레스 정책(A→B != B→A) 통신 제어</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(28)">
+                    <div class="node-l1"><span>테넌트 기본 전송 정책 전환</span><span class="node-num">#28</span></div>
+                    <div class="node-l2">Deny-by-default vs Allow-by-default 기본값 설정</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(29)">
+                    <div class="node-l1"><span>소스 IP CIDR & ASN 증명</span><span class="node-num">#29</span></div>
+                    <div class="node-l2">에이전트 연결 허용 IP 대역 및 자율시스템 화이트리스트</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(30)">
+                    <div class="node-l1"><span>감사 실패 시 라우팅 정책</span><span class="node-num">#30</span></div>
+                    <div class="node-l2">감사 저장소 장애 시 라우팅 차단(Fail-Closed/Open)</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">3.2 메시지 본문 감사 및 조직 RBAC 관리</div>
+                  <div class="line-2">audit.read.content 권한 기반 본문 감사 및 조직 멤버 권한 부여</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(33)">
+                    <div class="node-l1"><span>참가자 본문 감사 스트림</span><span class="node-num">#33</span></div>
+                    <div class="node-l2">audit.read.content 권한 기반 전체 메시지 본문 열람</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(34)">
+                    <div class="node-l1"><span>감사자 본문 열람 감사 로그</span><span class="node-num">#34</span></div>
+                    <div class="node-l2">관리자가 본문을 열람한 사실 자체를 남기는 내부 감사</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(36)">
+                    <div class="node-l1"><span>조직 멤버 RBAC 권한 할당</span><span class="node-num">#36</span></div>
+                    <div class="node-l2">관리자 멤버별 9대 Capability 부여 및 즉각 회수</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 4. Agent Operations Studio (Phase 1) -->
+          <div class="suite-tree-block border-creator" id="block-creator">
+            <div class="suite-head-box">
+              <div class="line-1">
+                <span>4. 에이전트 개발·운영 스튜디오 (Studio Suite)</span>
+                <span class="badge badge-wired">All Users</span>
+              </div>
+              <div class="line-2">스웜 그룹 관리, 갤럭시 토폴로지, 인터랙티브 메시징, 소켓리스 리스 감시 및 Teardown</div>
+            </div>
+
+            <div class="module-group-container">
+              
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">4.1 스웜 그룹 관리 및 토폴로지 시뮬레이션</div>
+                  <div class="line-2">그룹 생성 및 에이전트 배속(신규 편입), 원형 오비탈 노드-엣지 채널 제어</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(37)">
+                    <div class="node-l1"><span>에이전트 통합 운영 스튜디오</span><span class="node-num">#37</span></div>
+                    <div class="node-l2">등록된 내 에이전트 목록 및 온라인 연결 상태 홈</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(25)">
+                    <div class="node-l1"><span>스웜 그룹 관리 & 에이전트 배속</span><span class="node-num">#25</span></div>
+                    <div class="node-l2">스웜 그룹 생성 및 소유 에이전트 멤버 이동·배치</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(26)">
+                    <div class="node-l1"><span>스웜 그룹 상세 및 라우팅</span><span class="node-num">#26</span></div>
+                    <div class="node-l2">특정 스웜 그룹 소속 멤버 및 라우팅 설정 관리</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(38)">
+                    <div class="node-l1"><span>스웜 갤럭시 토폴로지 & ACL</span><span class="node-num">#38</span></div>
+                    <div class="node-l2">원형 오비탈 노드-엣지 선택적 통신 채널 동적 제어</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(39)">
+                    <div class="node-l1"><span>단일 클러스터 포커스 뷰</span><span class="node-num">#39</span></div>
+                    <div class="node-l2">선택 클러스터 집중 줌인 및 에이전트 추적 카메라</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="module-branch">
+                <div class="submodule-box">
+                  <div class="line-1">4.2 메시지 테스트, 소켓리스 큐 및 라이프사이클</div>
+                  <div class="line-2">메시지 플레이그라운드, 300초 리스 카운트다운, WS 디버거 및 영구 Teardown</div>
+                </div>
+                <div class="screen-nodes-grid">
+                  <div class="two-line-node" onclick="openModal(40)">
+                    <div class="node-l1"><span>메시지 테스트 플레이그라운드</span><span class="node-num">#40</span></div>
+                    <div class="node-l2">JWT 프록시 메시지 발송 및 실시간 배달 영수증 확인</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(41)">
+                    <div class="node-l1"><span>검증된 배달 영수증 & 해시</span><span class="node-num">#41</span></div>
+                    <div class="node-l2">암호학적 서명 검증 영수증 및 SHA-256 다이제스트</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(42)">
+                    <div class="node-l1"><span>인박스 큐 & 300s 리스 감시</span><span class="node-num">#42</span></div>
+                    <div class="node-l2">Total Depth vs Leased 감시 및 300초 카운트다운 바</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(43)">
+                    <div class="node-l1"><span>원자적 일괄 Lease & Ack</span><span class="node-num">#43</span></div>
+                    <div class="node-l2">단일 HTTP 요청으로 이전 메시지 Ack + 다음 메시지 Lease</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(44)">
+                    <div class="node-l1"><span>실시간 웹소켓 프레임 추적기</span><span class="node-num">#44</span></div>
+                    <div class="node-l2">JSON-RPC mesh.connect, mesh.message 프레임 디버거</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(45)">
+                    <div class="node-l1"><span>로컬 에이전트 러너 CLI 가이드</span><span class="node-num">#45</span></div>
+                    <div class="node-l2">터미널 CLI 환경에서 에이전트 구동 및 키 등록 가이드</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(46)">
+                    <div class="node-l1"><span>신규 에이전트 등록 & 키 제안</span><span class="node-num">#46</span></div>
+                    <div class="node-l2">신원 등록 및 Ed25519 키 제안 (3대 409 충돌 방어)</div>
+                  </div>
+                  <div class="two-line-node" onclick="openModal(47)">
+                    <div class="node-l1"><span>영구 신원 Teardown 2차 확인</span><span class="node-num">#47</span></div>
+                    <div class="node-l2">불가역 삭제 2차 경고 모달 및 재등록 영구 금지(409)</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================================================
+         VIEW 2: 4대 페이즈 로드맵 (Roadmap & Deferred Items)
+         ========================================================================= -->
+    <div id="view-roadmap" class="view-panel">
+      <div class="phase-grid">
+        
+        <!-- Phase 1 Card -->
+        <div class="phase-card" style="border-top:4px solid var(--phase-p1);">
+          <div class="phase-card-header">
+            <div class="phase-title">
+              <span style="color:var(--phase-p1);">🚀 Phase 1</span>
+              <span>단일 패브릭 MVP (현재)</span>
+            </div>
+            <span class="badge badge-wired">Active Focus</span>
+          </div>
+          <p style="font-size:0.82rem; color:var(--text-secondary);">
+            단일 로그인 및 RBAC 역할 제어 기반의 핵심 운영 콘솔, 실시간 서버 모니터링, 스웜 그룹 관리 및 에이전트 스튜디오 MVP
+          </p>
+          <div class="phase-item-list">
+            <div class="phase-item">
+              <div class="phase-item-title">통합 단일 로그인 (GitHub / ID·PW)</div>
+              <div class="phase-item-desc">#4 로컬 세션 로그인 (역할별 권한 자동 획득)</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">실시간 서버 헬스 & 인프라 현황</div>
+              <div class="phase-item-desc">#9 서버 현황판, #13 노드 텔레메트리, #16 메타데이터 감사</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">테넌트 라우팅 처리량 분석</div>
+              <div class="phase-item-desc">#11 테넌트 관리자, #12 메시지 라우팅 건수/스토리지 쿼터 분석</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">스웜 그룹 관리 & 에이전트 배속</div>
+              <div class="phase-item-desc">#25 그룹 관리, #26 그룹 상세, #38 토폴로지, #40 플레이그라운드</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">소켓리스 큐 & 라이프사이클</div>
+              <div class="phase-item-desc">#42 300s 리스 감시, #46 에이전트 등록(409 방어), #47 영구 Teardown</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 2 Card -->
+        <div class="phase-card" style="border-top:4px solid var(--phase-p2);">
+          <div class="phase-card-header">
+            <div class="phase-title">
+              <span style="color:var(--phase-p2);">🔐 Phase 2</span>
+              <span>확장 거버넌스 & 개발자 허브</span>
+            </div>
+            <span class="badge badge-content">Next Milestone</span>
+          </div>
+          <p style="font-size:0.82rem; color:var(--text-secondary);">
+            Root Ed25519 CA 인증기관, 무중단 키 로테이션, 침해 키 보관소 및 개발자 허브/공식 SDK 전면 도입
+          </p>
+          <div class="phase-item-list">
+            <div class="phase-item">
+              <div class="phase-item-title">Root Ed25519 CA 인증기관 (#19)</div>
+              <div class="phase-item-desc">게이트웨이 간 MTLS 키 롤링 로테이션 및 신뢰 체인 관리</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">무중단 롤링 키 로테이션 & 침해 키 (#22, #23, #24)</div>
+              <div class="phase-item-desc">50자리 지문 키 승인 큐, 48h 유예 로테이션 및 침해 키 보관소</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">개발자 허브 & OpenAPI 3.1 콘솔 (#49, #50)</div>
+              <div class="phase-item-desc">5분 퀵스타트 및 브라우저 내 실시간 엔드포인트 테스트 콘솔</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">Outbox / Inbox REST API 명세 (#51 ~ #56)</div>
+              <div class="phase-item-desc">소켓리스 원자적 Lease/Ack, 발송 취소 및 프로비저닝 API</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">공식 다국어 SDK & 웹훅 (#57 ~ #60)</div>
+              <div class="phase-item-desc">TypeScript/Node.js, Python, Go 공식 라이브러리 및 DLQ</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 3 Card -->
+        <div class="phase-card" style="border-top:4px solid var(--phase-p3);">
+          <div class="phase-card-header">
+            <div class="phase-title">
+              <span style="color:var(--phase-p3);">🏢 Phase 3</span>
+              <span>엔터프라이즈 컴플라이언스</span>
+            </div>
+            <span class="badge badge-spec">Compliance</span>
+          </div>
+          <p style="font-size:0.82rem; color:var(--text-secondary);">
+            감사자 본문 열람 사실 자체를 감사하는 내부 통제, 자율시스템(ASN) 휴면 차단 및 본문 물리적 암호화 분리
+          </p>
+          <div class="phase-item-list">
+            <div class="phase-item">
+              <div class="phase-item-title">내부 감사자 본문 열람 감사 로그 고도화 (#34)</div>
+              <div class="phase-item-desc">관리자가 본문을 열람한 사실 자체를 남기는 내부 포렌식 통제</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">고급 네트워크 ASN 휴면 차단</div>
+              <div class="phase-item-desc">미접속 휴면 에이전트의 IP/ASN 대역 자동 격리 및 차단</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">본문 물리적 분리 및 테넌트 키 암호화</div>
+              <div class="phase-item-desc">스토리지 레벨에서 본문을 테넌트 고유 키로 암호화하여 저장</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 4 Card (Commercial) -->
+        <div class="phase-card" style="border-top:4px solid var(--phase-p4);">
+          <div class="phase-card-header">
+            <div class="phase-title">
+              <span style="color:var(--phase-p4);">🌐 Phase 4</span>
+              <span>상용화 페이즈 (Commercial)</span>
+            </div>
+            <span class="badge" style="background:#F1F5F9; color:#475569;">Commercial Only</span>
+          </div>
+          <p style="font-size:0.82rem; color:var(--text-secondary);">
+            기업용 SAML/SSO 및 2FA 마스터 로그인, 14개 백본 하이웨이, 멀티 리전 페일오버, Redis 분산 토큰 버킷, SIEM 연동
+          </p>
+          <div class="phase-item-list">
+            <div class="phase-item">
+              <div class="phase-item-title">기업용 SAML/SSO & 2FA 마스터 (#5, #6)</div>
+              <div class="phase-item-desc">Okta/AzureAD SAML SSO 및 하드웨어 2FA 보안 키 인증</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">14개 인터게이트웨이 백본 하이웨이 (#10)</div>
+              <div class="phase-item-desc">멀티 리전 클러스터 덱 간 초고속 라우팅 하이웨이 감시</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">글로벌 게이트웨이 페일오버 시뮬레이터 (#14)</div>
+              <div class="phase-item-desc">리전 장애 발생 시 무중단 트래픽 우회 재해 복구</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">Redis 분산 토큰 버킷 스로틀링 (#15)</div>
+              <div class="phase-item-desc">분산 캐시 기반 인그레스 속도 제한 정책 제어기</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">하이웨이 대역폭 QoS & 소켓 검사 (#17, #18)</div>
+              <div class="phase-item-desc">덱 간 대역폭 쉐이핑 및 게이트웨이 직결 소켓 인스펙터</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">엔터프라이즈 SIEM (Splunk/S3) 연동 (#35)</div>
+              <div class="phase-item-desc">Splunk, Datadog 및 AWS S3 규정 준수 장기 보관소 내보내기</div>
+            </div>
+            <div class="phase-item">
+              <div class="phase-item-title">엔터프라이즈 가격 & 쿼터 플랜 (#7, #8)</div>
+              <div class="phase-item-desc">상용 요금제 티어 및 SLA 컴플라이언스 관리</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- =========================================================================
+         VIEW 3: 전체 매트릭스 표 (Matrix Table)
+         ========================================================================= -->
+    <div id="view-matrix" class="view-panel">
+      <div class="table-container">
+        <table class="ia-table">
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th style="width:110px;">Phase</th>
+              <th style="width:140px;">스위트 (Suite)</th>
+              <th style="width:140px;">대상 역할</th>
+              <th style="width:240px;">메뉴명 및 설명 (2줄)</th>
+              <th style="width:200px;">파일 경로</th>
+              <th style="width:220px;">매핑 엔드포인트</th>
+              <th style="width:120px;">권한 (Cap)</th>
+              <th style="width:80px;">상태</th>
+              <th style="width:80px;">액션</th>
+            </tr>
+          </thead>
+          <tbody id="matrix-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- =========================================================================
+         VIEW 4: 단일 계정 기반 사용자 동선 (Flows)
+         ========================================================================= -->
+    <div id="view-flows" class="view-panel">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px;">
+        
+        <!-- Flow: Single ID User Journey -->
+        <div style="background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:24px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border-default);">
+            <div style="width:38px; height:38px; border-radius:8px; background:var(--primary-light); color:var(--primary); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">👤</div>
+            <div>
+              <h3 style="font-size:1.05rem; font-weight:800;">단일 계정 통합 사용자 여정 (Single ID User Journey)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">로그인 후 부여된 역할(Role)에 따라 메뉴가 활성화되는 표준 동선</p>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div class="two-line-node" onclick="openModal(4)">
+              <div class="node-l1"><span>1단계: 통합 단일 로그인</span><span class="node-num">#4</span></div>
+              <div class="node-l2">GitHub OAuth 또는 ID/PW로 로그인하여 세션 및 RBAC 권한 획득</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(46)">
+              <div class="node-l1"><span>2단계: 신규 에이전트 등록 & 키 제안</span><span class="node-num">#46</span></div>
+              <div class="node-l2">신원 등록 및 Ed25519 공개키 제안 (3대 409 충돌 방어)</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(25)">
+              <div class="node-l1"><span>3단계: 스웜 그룹 생성 & 에이전트 배속</span><span class="node-num">#25</span></div>
+              <div class="node-l2">스웜 그룹을 생성하고 소유 에이전트를 특정 그룹에 배속 및 이동</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(38)">
+              <div class="node-l1"><span>4단계: 스웜 갤럭시 토폴로지 & ACL 제어</span><span class="node-num">#38</span></div>
+              <div class="node-l2">오비탈 그래프에서 연결 노드를 확인하고 통신 채널 동적 토글</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(40)">
+              <div class="node-l1"><span>5단계: 메시지 플레이그라운드 테스트 & 리스 감시</span><span class="node-num">#40</span></div>
+              <div class="node-l2">JWT 프록시 발송, 영수증 확인 및 300초 소켓리스 큐 모니터링</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flow: Tenant Admin Exclusive Journey -->
+        <div style="background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:24px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border-default);">
+            <div style="width:38px; height:38px; border-radius:8px; background:var(--suite-tenant-bg); color:var(--suite-tenant); display:flex; align-items:center; justify-content:center; font-size:1.2rem;">🏢</div>
+            <div>
+              <h3 style="font-size:1.05rem; font-weight:800;">테넌트 관리자 전용 보안 통제 동선 (Tenant Admin Journey)</h3>
+              <p style="font-size:0.8rem; color:var(--text-secondary);">조직 관리 권한 보유자에게만 노출되는 보안 거버넌스 동선</p>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div class="two-line-node" onclick="openModal(21)">
+              <div class="node-l1"><span>1단계: 테넌트 플릿 및 큐 현황 확인</span><span class="node-num">#21</span></div>
+              <div class="node-l2">소유 에이전트 수, 키 상태 및 적체 큐 대시보드 위젯 조회</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(27)">
+              <div class="node-l1"><span>2단계: 그룹 간 이그레스 ACL 통제</span><span class="node-num">#27</span></div>
+              <div class="node-l2">Deny-by-default 기반 그룹 간 방향성(A→B != B→A) 통신 허용 설정</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(29)">
+              <div class="node-l1"><span>3단계: 소스 IP CIDR & ASN 네트워크 증명</span><span class="node-num">#29</span></div>
+              <div class="node-l2">에이전트 연결 허용 소스 IP 서브넷 대역 화이트리스트 등록</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(33)">
+              <div class="node-l1"><span>4단계: 참가자 메시지 본문 감사 스트림</span><span class="node-num">#33</span></div>
+              <div class="node-l2">audit.read.content 권한 기반 복호화된 대화 본문 조사</div>
+            </div>
+            <div class="two-line-node" onclick="openModal(36)">
+              <div class="node-l1"><span>5단계: 조직 멤버 RBAC 권한 할당 & 회수</span><span class="node-num">#36</span></div>
+              <div class="node-l2">조직 내 관리자 멤버별 9대 Capability 부여 및 권한 철회</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Node Detail Modal -->
+  <div id="nodeModal" class="modal-backdrop" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span id="modal-phase-badge" class="badge">PHASE</span>
+            <span id="modal-suite-badge" class="badge">SUITE</span>
+            <span id="modal-id-badge" class="node-num" style="font-size:0.8rem; background:var(--bg-surface-sub); padding:2px 6px; border-radius:4px;">#0</span>
+          </div>
+          <h2 id="modal-title" style="font-size:1.2rem; font-weight:800;">Screen Title</h2>
+          <div id="modal-path" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--primary); margin-top:4px;">preview/path/to/screen.html</div>
+        </div>
+        <button class="close-btn" onclick="closeModalDirect()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div>
+          <div class="detail-section-title">배정 페이즈 및 대상 역할 (Phase & Scope)</div>
+          <div id="modal-role" class="detail-block">Role info</div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">운영자가 봐야 하는 것 (SEE) & 해야 하는 것 (DO)</div>
+          <div id="modal-see-do" class="detail-block">SEE & DO info</div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">매핑된 엔드포인트 (Mapped APIs)</div>
+          <div id="modal-apis" class="detail-block" style="font-family:var(--font-mono); font-size:0.78rem; background:#0F172A; color:#E2E8F0;">
+            GET /api/v1/health
+          </div>
+        </div>
+
+        <div>
+          <div class="detail-section-title">필요 권한 (Required Capability)</div>
+          <div id="modal-cap" class="detail-block" style="font-family:var(--font-mono); font-weight:600; color:#B45309;">
+            None
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn btn-secondary btn-sm" onclick="closeModalDirect()">닫기</button>
+        <a id="modal-preview-btn" href="#" class="btn btn-primary btn-sm" target="_blank">샘플 화면 열기 ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div style="max-width:1200px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+      <div>
+        <strong>Agent Mesh Platform</strong> — 4-Phase Information Architecture
+      </div>
+      <div>
+        Managed by <code>platform-fe-antigravity</code> | Strict 2-Line Concise Hierarchy
+      </div>
+    </div>
+  </footer>
+
+  <!-- Catalog Data & Interactive Logic -->
+  <script>
+    const SCREEN_CATALOG = [
+      // 1. Public Suite
+      { id: 1, phase: "Phase 1", suite: "public", role: "Public / All Users", title: "메인 랜딩 & 성좌", path: "/public/index.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "None", status: "wired", desc: "3D 스웜 은하수 성좌 애니메이션 및 플랫폼 개요", see: "플랫폼 활성 에이전트 수, 허브 헬스체크", do: "플랫폼 개요 탐색 및 로그인 진입" },
+      { id: 2, phase: "Phase 1", suite: "public", role: "Public / Security", title: "보안 아키텍처 & 프로토콜", path: "/public/security-architecture.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "Ed25519 서명 체계, 논스 재생 방지 및 영구 톰스톤", see: "5단계 보안 파이프라인 및 암호학적 불변 원칙", do: "보안 명세 검토" },
+      { id: 3, phase: "Phase 1", suite: "public", role: "Public / Developers", title: "소켓리스 리스 상태머신", path: "/public/lease-state-machine.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "Available → Leased → Acked 4단계 상태 전이도", see: "300초 리스 타임아웃 전이 다이어그램", do: "리스 메커니즘 시뮬레이션" },
+      { id: 4, phase: "Phase 1", suite: "public", role: "All Users", title: "통합 단일 로그인 게이트웨이", path: "/public/login-operator.html", apis: "POST /auth/local, GET /auth/github", cap: "None", status: "wired", desc: "GitHub OAuth 및 ID/PW 계정 로그인 (역할별 권한 자동 획득)", see: "단일 로그인 폼 (GitHub 또는 로컬 ID/PW)", do: "단일 계정 로그인으로 RBAC 권한 획득" },
+      { id: 5, phase: "Phase 4", suite: "public", role: "Commercial", title: "기업 테넌트 SAML SSO", path: "/public/login-tenant.html", apis: "POST /auth/local", cap: "None", status: "content", desc: "상용화: 기업 테넌트 전용 SAML/Okta SSO 인증", see: "기업 IdP 연동 설정", do: "상용화 시점 연동" },
+      { id: 6, phase: "Phase 4", suite: "public", role: "Commercial", title: "플랫폼 마스터 2FA 로그인", path: "/public/login-platform.html", apis: "POST /auth/local, GET /auth/me", cap: "None", status: "content", desc: "상용화: 최고 운영자 전용 하드웨어 2FA 보안 키 로그인", see: "2FA 하드웨어 키 입력기", do: "상용화 시점 연동" },
+      { id: 7, phase: "Phase 4", suite: "public", role: "Commercial", title: "엔터프라이즈 가격 & 쿼터", path: "/public/pricing-tiers.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "상용화: 테넌트별 수신 쿼터 및 가격 티어표", see: "Tier 1 ~ 3 쿼터 및 SLA 스펙", do: "상용화 플랜 비교" },
+      { id: 8, phase: "Phase 4", suite: "public", role: "Commercial", title: "컴플라이언스 & 머클 신뢰", path: "/public/compliance-overview.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "상용화: 불변 머클 감사 로그 해시 체인 및 규정 준수 기준", see: "감사 체인의 SHA-256 검증 구조", do: "감사 무결성 모델 검토" },
+
+      // 2. Platform Operator Suite
+      { id: 9, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "실시간 서버 인프라 현황판", path: "/platform/index.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "허브 가동 상태, 활성 테넌트 및 온라인 소켓 총괄 요약", see: "허브 헬스체크(/health, online_agents), 활성 소켓 수", do: "실시간 서버 가동 상태 모니터링" },
+      { id: 10, phase: "Phase 4", suite: "platform", role: "Commercial", title: "14개 인터게이트웨이 하이웨이", path: "/platform/highways.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "content", desc: "상용화: 클러스터 덱 간 14개 인터게이트웨이 백본 브릿지 감시", see: "하이웨이별 레이턴시, 패킷 드롭률 0.000%", do: "상용화 시점 멀티 리전 백본 감시" },
+      { id: 11, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "멀티 테넌트 조직 관리자", path: "/platform/tenant-manager.html", apis: "GET /api/v1/admin/groups, GET /api/v1/agents", cap: "admin", status: "wired", desc: "테넌트 조직 생성, 격리 파티션 및 상태 제어", see: "Acme, Cyberdyne, Wayne Tech 테넌트 목록", do: "신규 테넌트 생성 및 파티션 격리" },
+      { id: 12, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "테넌트 라우팅 처리량 분석", path: "/platform/tenant-detail.html", apis: "GET /api/v1/admin/groups, GET /api/v1/admin/mailbox", cap: "admin", status: "wired", desc: "테넌트별 메시지 라우팅 건수, 스토리지 점유율 및 에이전트 수", see: "메시지 라우팅 건수(Routing Count), 스토리지 사용량", do: "테넌트 라우팅 쿼터 상향 조정" },
+      { id: 13, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "노드 텔레메트리 모니터링", path: "/platform/telemetry.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "wired", desc: "서버 프로세스 CPU, RAM 및 실시간 소켓 헬스 메트릭", see: "서버 프로세스 실시간 헬스 메트릭", do: "과부하 노드 격리 및 스케일아웃" },
+      { id: 14, phase: "Phase 4", suite: "platform", role: "Commercial", title: "글로벌 페일오버 시뮬레이터", path: "/platform/failover-sim.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "상용화: 멀티 리전 게이트웨이 장애 발생 및 무중단 우회 훈련", see: "리전별 가용성 및 라우팅 전환 경로", do: "재해 복구 모의 훈련" },
+      { id: 15, phase: "Phase 4", suite: "platform", role: "Commercial", title: "토큰 버킷 트래픽 스로틀링", path: "/platform/rate-limiting.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "상용화: Redis 토큰 버킷 기반 분산 인그레스 속도 제한 정책", see: "IP/테넌트별 버킷 잔여량", do: "버스트 트래픽 상한 조정" },
+      { id: 16, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "전역 메타데이터 감사 추적", path: "/platform/metadata-audits.html", apis: "GET /api/v1/audit/events", cap: "admin", status: "wired", desc: "본문 유출 없는 [content withheld] 메타데이터 감사", see: "발신자, 수신자, 바이트 크기(content_length)", do: "불법 트래픽 흐름 포렌식 추적" },
+      { id: 17, phase: "Phase 4", suite: "platform", role: "Commercial", title: "게이트웨이 소켓 인스펙터", path: "/platform/gateway-inspect.html", apis: "GET /api/v1/capabilities, GET /api/v1/health", cap: "admin", status: "content", desc: "상용화: 리전 게이트웨이 활성 TCP/WS 직결 소켓 상태 조사", see: "활성 TCP/WS 소켓 목록", do: "고스트 연결 강제 종료" },
+      { id: 18, phase: "Phase 4", suite: "platform", role: "Commercial", title: "하이웨이 대역폭 QoS 조절기", path: "/platform/bandwidth-shaper.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "상용화: 덱 간 대역폭 쉐이핑 및 트래픽 우선순위 정책 제어", see: "하이웨이별 할당 대역폭", do: "QoS 우선순위 규칙 변경" },
+      { id: 19, phase: "Phase 2", suite: "platform", role: "Platform Operator", title: "Root Ed25519 CA 인증기관", path: "/platform/certificate-authority.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "Phase 2: 게이트웨이 간 MTLS 키 롤링 로테이션 및 신뢰 체인", see: "루트 인증서 만료일 및 지문", do: "게이트웨이 인증서 즉시 갱신" },
+      { id: 20, phase: "Phase 1", suite: "platform", role: "Platform Operator", title: "§8.11 관측 출처 감사기", path: "/platform/observed-sources.html", apis: "GET /api/v1/admin/agent-sources", cap: "admin", status: "wired", desc: "프록시 헤더 위조 방지 /24, /48 소스 IP 정규화 감사", see: "신뢰 프록시 홉 및 클라이언트 실제 IP", do: "위조 헤더 소스 차단" },
+
+      // 3. Tenant Admin Suite
+      { id: 21, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "테넌트 플릿 현황 요약", path: "/tenant/index.html", apis: "GET /api/v1/admin/mailbox, GET /api/v1/agents", cap: "admin", status: "wired", desc: "소유 에이전트 수, 활성 키 상태 및 적체 큐 대시보드 위젯", see: "소유 에이전트 수, 키 상태, 큐 깊이", do: "테넌트 보안 상태 총괄 파악" },
+      { id: 22, phase: "Phase 2", suite: "tenant", role: "Governance", title: "50자리 지문 키 승인 큐", path: "/tenant/key-approvals.html", apis: "GET /api/v1/admin/keys/pending, POST /api/v1/admin/keys/approve", cap: "key.approve", status: "content", desc: "Phase 2: 말줄임 없는 sha256:... 1:1 대조 및 원자적 승인/거부", see: "50자리 sha256:... 지문 전체", do: "지문 복사, 승인, 사유 명시 거부" },
+      { id: 23, phase: "Phase 2", suite: "tenant", role: "Governance", title: "무중단 롤링 키 로테이션", path: "/tenant/key-rotations.html", apis: "GET /api/v1/admin/keys/pending", cap: "key.approve", status: "content", desc: "Phase 2: 48시간 이전 키 유예 기간 및 무중단 전환 현황", see: "로테이션 진행률 및 유예 시간 타이머", do: "로테이션 스케줄 등록" },
+      { id: 24, phase: "Phase 2", suite: "tenant", role: "Governance", title: "침해 키 영구 폐기 보관소", path: "/tenant/compromised-keys.html", apis: "GET /api/v1/admin/keys/pending", cap: "key.approve", status: "content", desc: "Phase 2: 침해 사고 사유 명시 및 폐기 키 포렌식 이력 보존", see: "침해 사고 사유, 폐기 타임스탬프", do: "폐기 키 이력 포렌식 조회" },
+      { id: 25, phase: "Phase 1", suite: "creator", role: "All Users", title: "스웜 그룹 관리 & 에이전트 배속", path: "/tenant/groups.html", apis: "GET /api/v1/admin/groups, POST /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "스웜 그룹 생성 및 소유 에이전트 멤버 이동·배치", see: "Core Platform, Research Swarm 그룹 목록", do: "신규 스웜 그룹 생성 및 멤버 이동" },
+      { id: 26, phase: "Phase 1", suite: "creator", role: "All Users", title: "스웜 그룹 상세 및 라우팅", path: "/tenant/group-detail.html", apis: "GET /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "특정 스웜 그룹 소속 멤버 및 라우팅 설정 관리", see: "소속 에이전트 신원 및 역할", do: "그룹 멤버 추가/제거" },
+      { id: 27, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "그룹 간 이그레스 ACL 행렬", path: "/tenant/egress-acl.html", apis: "GET /api/v1/admin/groups, POST /api/v1/admin/groups/{group_id}/egress", cap: "group.egress", status: "wired", desc: "방향성 있는 이그레스 정책(A→B != B→A) 통신 제어", see: "그룹 간 송수신 허용 행렬", do: "특정 방향 통신 권한 토글" },
+      { id: 28, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "테넌트 기본 전송 정책 전환", path: "/tenant/send-policy-default.html", apis: "GET /api/v1/admin/groups", cap: "group.egress", status: "wired", desc: "Deny-by-default vs Allow-by-default 기본값 설정", see: "현재 전송 기본값 및 보안 영향도", do: "기본 정책 변경 및 감사 기록" },
+      { id: 29, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "소스 IP CIDR & ASN 증명", path: "/tenant/network-attestation.html", apis: "GET /api/v1/admin/agent-sources", cap: "admin", status: "wired", desc: "에이전트 연결 허용 IP 대역 및 자율시스템 화이트리스트", see: "허용 서브넷 및 차단된 접속 시도", do: "IP CIDR 화이트리스트 등록" },
+      { id: 30, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "감사 실패 시 라우팅 정책", path: "/tenant/audit-failure-policy.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "wired", desc: "감사 저장소 장애 시 라우팅 차단(Fail-Closed/Open)", see: "현재 감사 실패 대응 정책", do: "컴플라이언스 레벨에 따른 정책 전환" },
+      { id: 33, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "참가자 본문 감사 스트림", path: "/tenant/participant-audits.html", apis: "GET /api/v1/audit/events", cap: "audit.read.content", status: "wired", desc: "audit.read.content 권한 기반 전체 메시지 본문 열람", see: "복호화된 메시지 본문 및 감사 열람 경고", do: "특정 에이전트 대화 로그 전수 조사" },
+      { id: 34, phase: "Phase 3", suite: "tenant", role: "Compliance", title: "감사자 본문 열람 감사 로그", path: "/tenant/audit-read-events.html", apis: "GET /api/v1/audit/events", cap: "audit.read.content", status: "content", desc: "Phase 3: 관리자가 본문을 열람한 사실 자체를 남기는 내부 감사", see: "본문 열람 관리자 ID, 열람 시각", do: "열람 권한 오남용 모니터링" },
+      { id: 35, phase: "Phase 4", suite: "tenant", role: "Commercial", title: "엔터프라이즈 SIEM 내보내기", path: "/tenant/siem-export.html", apis: "GET /api/v1/capabilities", cap: "admin", status: "content", desc: "상용화: Splunk, Datadog 및 S3 아카이빙 파이프라인 연동", see: "내보내기 동기화 상태 및 용량", do: "SIEM 웹훅 엔드포인트 연동" },
+      { id: 36, phase: "Phase 1", suite: "tenant", role: "Tenant Admin", title: "조직 멤버 RBAC 권한 할당", path: "/tenant/organization-rbac.html", apis: "GET /api/v1/admin/pending, POST /api/v1/admin/approve", cap: "admin", status: "wired", desc: "관리자 멤버별 9대 Capability 부여 및 즉각 회수", see: "관리자 멤버 목록 및 보유 권한 뱃지", do: "권한 부여(Grant) 및 즉각 회수(Revoke)" },
+
+      // 4. Agent Operations Studio
+      { id: 37, phase: "Phase 1", suite: "creator", role: "All Users", title: "에이전트 통합 운영 스튜디오", path: "/creator/index.html", apis: "GET /api/v1/agents, GET /api/v1/health", cap: "None", status: "wired", desc: "등록된 내 에이전트 목록 및 온라인 연결 상태 홈", see: "등록된 내 에이전트 목록, 온라인 연결 상태", do: "에이전트 신규 등록 또는 테스트 진입" },
+      { id: 38, phase: "Phase 1", suite: "creator", role: "All Users", title: "스웜 갤럭시 토폴로지 & ACL", path: "/creator/topology.html", apis: "GET /api/v1/agents, GET /api/v1/health", cap: "None", status: "wired", desc: "원형 오비탈 노드-엣지 선택적 통신 채널 동적 제어", see: "3대 클러스터, 통신 허용 선, 게이트웨이 브릿지", do: "노드 클릭, 인스펙터 열기, 통신 권한 토글" },
+      { id: 39, phase: "Phase 1", suite: "creator", role: "All Users", title: "단일 클러스터 포커스 뷰", path: "/creator/topology-focus.html", apis: "GET /api/v1/agents", cap: "None", status: "wired", desc: "선택 클러스터 집중 줌인 및 에이전트 추적 카메라", see: "선택 클러스터 내부 노드 간 고속 통신선", do: "클러스터 전환 및 포커스" },
+      { id: 40, phase: "Phase 1", suite: "creator", role: "All Users", title: "메시지 테스트 플레이그라운드", path: "/creator/playground.html", apis: "POST /api/v1/messages", cap: "message.send", status: "wired", desc: "JWT 프록시 메시지 발송 및 실시간 배달 영수증 확인", see: "배달 영수증: Delivered to Socket vs Queued in Inbox", do: "JSON/Text 메시지 발송 및 레이턴시 실측" },
+      { id: 41, phase: "Phase 1", suite: "creator", role: "All Users", title: "검증된 배달 영수증 & 해시", path: "/creator/message-receipts.html", apis: "GET /api/v1/messages/search", cap: "message.send", status: "wired", desc: "암호학적 서명 검증 영수증 및 SHA-256 다이제스트", see: "시퀀스 ID, 서명 상태, 수신 확인 시각", do: "영수증 해시 다운로드" },
+      { id: 42, phase: "Phase 1", suite: "creator", role: "All Users", title: "인박스 큐 & 300s 리스 감시", path: "/creator/lease-queue.html", apis: "GET /api/v1/admin/mailbox/{identity}, POST /api/v1/mailbox/in", cap: "inbox.lease", status: "wired", desc: "Total Depth vs Leased 감시 및 300초 카운트다운 바", see: "개별 메시지 임대 만료 잔여 시간 바", do: "원자적 리스 획득 및 수동 ACK" },
+      { id: 43, phase: "Phase 1", suite: "creator", role: "All Users", title: "원자적 일괄 Lease & Ack", path: "/creator/lease-batch-actions.html", apis: "POST /api/v1/mailbox/in", cap: "inbox.lease", status: "wired", desc: "단일 HTTP 요청으로 이전 메시지 Ack + 다음 메시지 Lease", see: "배치 처리 결과 로그", do: "일괄 Lease & Ack 시뮬레이션" },
+      { id: 44, phase: "Phase 1", suite: "creator", role: "All Users", title: "실시간 웹소켓 프레임 추적기", path: "/creator/websocket-trace.html", apis: "GET /api/v1/health", cap: "None", status: "wired", desc: "JSON-RPC mesh.connect, mesh.message 프레임 디버거", see: "프레임 방향, 메서드, 페이로드 JSON", do: "웹소켓 연결 및 프레임 전송 테스트" },
+      { id: 45, phase: "Phase 1", suite: "creator", role: "All Users", title: "로컬 에이전트 러너 CLI 가이드", path: "/creator/agent-runner.html", apis: "GET /api/v1/capabilities", cap: "None", status: "wired", desc: "터미널 CLI 환경에서 에이전트 구동 및 키 등록 가이드", see: "OS별 원클릭 실행 스크립트", do: "CLI 연결 코드 복사" },
+      { id: 46, phase: "Phase 1", suite: "creator", role: "All Users", title: "신규 에이전트 등록 & 키 제안", path: "/creator/agent-register.html", apis: "POST /api/v1/agents, GET /api/v1/agents/{identity}/keys", cap: "key.propose", status: "wired", desc: "신원 등록 및 Ed25519 키 제안 (3대 409 충돌 방어)", see: "등록 결과 및 /keys 실제 소유권 검증", do: "에이전트 신원 등록 양식 제출" },
+      { id: 47, phase: "Phase 1", suite: "creator", role: "All Users", title: "영구 신원 Teardown 2차 확인", path: "/creator/agent-teardown.html", apis: "DELETE /api/v1/admin/agents/{identity}", cap: "agent.provision", status: "wired", desc: "불가역 삭제 2차 경고 모달 및 재등록 영구 금지(409)", see: "재등록 영구 불가 409 IDENTITY_DELETED 경고", do: "신원 이름 직접 타이핑 후 영구 삭제" },
+      { id: 48, phase: "Phase 4", suite: "creator", role: "Commercial", title: "실시간 트래픽 펄스 애니메이션", path: "/creator/traffic-pulse-sim.html", apis: "GET /api/v1/health", cap: "None", status: "content", desc: "상용화: 14개 하이웨이를 오가는 실시간 패킷 흐름 시각화", see: "하이웨이 간 메시지 패킷 흐름", do: "트래픽 부하 주입" },
+
+      // 5. Developer Hub Suite (Phase 2 전체)
+      { id: 49, phase: "Phase 2", suite: "dev", role: "Developer", title: "개발자 허브 퀵스타트", path: "/dev/index.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: 5분 퀵스타트 가이드 및 기본 아키텍처 연동 안내", see: "핵심 API 엔드포인트 목록 및 인증 방식", do: "퀵스타트 코드 복사" },
+      { id: 50, phase: "Phase 2", suite: "dev", role: "Developer", title: "OpenAPI 3.1 대화형 콘솔", path: "/dev/openapi-explorer.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: 브라우저 내 실시간 엔드포인트 호출 및 스키마 테스트", see: "56개 엔드포인트 스키마 및 파라미터", do: "Try it out API 실측 호출" },
+      { id: 51, phase: "Phase 2", suite: "dev", role: "Developer", title: "아웃박스 메시지 발송 API", path: "/dev/api-outbox.html", apis: "POST /api/v1/mailbox/out, GET /api/v1/mailbox/out", cap: "message.send", status: "content", desc: "Phase 2: POST /api/v1/mailbox/out 메시지 큐 적재 및 조회 명세", see: "요청/응답 JSON 스키마 및 에러 코드", do: "Outbox API 호출 예제 테스트" },
+      { id: 52, phase: "Phase 2", suite: "dev", role: "Developer", title: "인박스 원자적 Lease & Ack API", path: "/dev/api-inbox.html", apis: "POST /api/v1/mailbox/in", cap: "inbox.lease", status: "content", desc: "Phase 2: POST /api/v1/mailbox/in 소켓리스 수신 및 확인 명세", see: "ack_ids, lease_seconds 파라미터 구조", do: "Atomic Lease & Ack 호출 테스트" },
+      { id: 53, phase: "Phase 2", suite: "dev", role: "Developer", title: "발송 메시지 회수/취소 API", path: "/dev/api-outbox-delete.html", apis: "DELETE /api/v1/mailbox/out/{message_id}", cap: "message.send", status: "content", desc: "Phase 2: DELETE /api/v1/mailbox/out/{message_id} 발송자 전용 메시지 회수", see: "회수 성공 여부 및 소유권 검증 규칙", do: "메시지 취소 호출 테스트" },
+      { id: 54, phase: "Phase 2", suite: "dev", role: "Developer", title: "인박스 처리 이력 조회 API", path: "/dev/api-inbox-history.html", apis: "GET /api/v1/mailbox/history", cap: "inbox.lease", status: "content", desc: "Phase 2: GET /api/v1/mailbox/history 완료된 메시지 커서 페이징", see: "이력 목록 및 next_cursor", do: "과거 인박스 로그 조회" },
+      { id: 55, phase: "Phase 2", suite: "dev", role: "Developer", title: "에이전트 프로비저닝 API", path: "/dev/api-agents-provision.html", apis: "POST /api/v1/agents", cap: "agent.provision", status: "content", desc: "Phase 2: POST /api/v1/agents 신규 신원 등록 및 키 제안 명세", see: "3대 409 Conflict 에러 구조", do: "에이전트 등록 요청 테스트" },
+      { id: 56, phase: "Phase 2", suite: "dev", role: "Developer", title: "허브 역량 조회 API", path: "/dev/api-capabilities.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: GET /api/v1/capabilities surface.version 메타데이터", see: "receive_lease_seconds 등 허브 설정값", do: "허브 역량 메타데이터 확인" },
+      { id: 57, phase: "Phase 2", suite: "dev", role: "Developer", title: "공식 TypeScript SDK 문서", path: "/dev/sdk-typescript.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: Node.js/TS 클라이언트 설치 및 비동기 이벤트 핸들러", see: "TypeScript 타입 정의 및 비동기 이벤트 핸들러", do: "SDK 예제 코드 복사" },
+      { id: 58, phase: "Phase 2", suite: "dev", role: "Developer", title: "공식 Python SDK 문서", path: "/dev/sdk-python.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: Python 비동기 asyncio 및 Ed25519 서명 클라이언트", see: "Python async/await 코드 스니펫", do: "파이썬 연동 코드 복사" },
+      { id: 59, phase: "Phase 2", suite: "dev", role: "Developer", title: "공식 Go SDK 문서", path: "/dev/sdk-go.html", apis: "GET /api/v1/capabilities", cap: "None", status: "content", desc: "Phase 2: Go 고루틴 채널 리스너 및 고성능 파이프라인 가이드", see: "Go 구조체 및 채널 리스너 패턴", do: "Go 연동 코드 복사" },
+      { id: 60, phase: "Phase 2", suite: "dev", role: "Developer", title: "웹훅 구독 및 DLQ 관리자", path: "/dev/webhooks.html", apis: "POST /api/v1/push/subscribe, GET /api/v1/push/vapid-key", cap: "admin", status: "content", desc: "Phase 2: 이벤트 푸시 구독 등록, 지수 백오프 및 전송 실패 DLQ", see: "구독 URL, 실패 횟수 및 서명 비밀키", do: "웹훅 테스트 이벤트 발송" }
+    ];
+
+    function setRoleSim(role, el) {
+      document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+
+      const blockTenant = document.getElementById('block-tenant');
+      const blockPlatform = document.getElementById('block-platform');
+
+      if (role === 'operator') {
+        // Operator: Hide Tenant Admin and Platform Admin modules
+        if (blockTenant) blockTenant.style.display = 'none';
+        if (blockPlatform) blockPlatform.style.display = 'none';
+      } else if (role === 'tenant-admin') {
+        // Tenant Admin: Show Tenant block, Hide Platform block
+        if (blockTenant) blockTenant.style.display = 'block';
+        if (blockPlatform) blockPlatform.style.display = 'none';
+      } else if (role === 'platform-admin') {
+        // Platform Admin: Show All blocks
+        if (blockTenant) blockTenant.style.display = 'block';
+        if (blockPlatform) blockPlatform.style.display = 'block';
+      }
+    }
+
+    function renderMatrixTable() {
+      const tbody = document.getElementById('matrix-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      SCREEN_CATALOG.forEach(item => {
+        const tr = document.createElement('tr');
+        const phaseColor = item.phase === 'Phase 1' ? 'var(--phase-p1)' : (item.phase === 'Phase 2' ? 'var(--phase-p2)' : (item.phase === 'Phase 3' ? 'var(--phase-p3)' : 'var(--phase-p4)'));
+        tr.innerHTML = `
+          <td style="font-family:var(--font-mono); font-weight:700; color:var(--text-muted);">${item.id}</td>
+          <td><span class="badge" style="background:#F8FAFC; color:${phaseColor}; border:1px solid ${phaseColor};">${item.phase}</span></td>
+          <td><span class="badge" style="background:var(--suite-${item.suite}-bg); color:var(--suite-${item.suite}); border:1px solid var(--suite-${item.suite}-br);">${item.suite.toUpperCase()}</span></td>
+          <td><span style="font-size:0.8rem; font-weight:600;">${item.role}</span></td>
+          <td>
+            <div style="font-weight:700; color:var(--text-primary);">${item.title}</div>
+            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">${item.desc}</div>
+          </td>
+          <td><a href="${item.path}" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--primary); text-decoration:none;">${item.path}</a></td>
+          <td><code style="font-size:0.72rem; color:#475569; font-family:var(--font-mono);">${item.apis}</code></td>
+          <td>${item.cap !== 'None' ? `<span class="badge badge-cap">${item.cap}</span>` : '<span style="color:var(--text-muted);">-</span>'}</td>
+          <td><span class="badge badge-${item.status}">${item.status}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="openModal(${item.id})">상세</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function switchView(viewName, el) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+
+      el.classList.add('active');
+      document.getElementById(`view-${viewName}`).classList.add('active');
+    }
+
+    function openModal(id) {
+      const item = SCREEN_CATALOG.find(x => x.id === id);
+      if (!item) return;
+
+      document.getElementById('modal-id-badge').textContent = `#${item.id}`;
+      document.getElementById('modal-phase-badge').textContent = item.phase;
+      document.getElementById('modal-suite-badge').textContent = item.suite.toUpperCase();
+      document.getElementById('modal-title').textContent = item.title;
+      document.getElementById('modal-path').textContent = item.path;
+      document.getElementById('modal-role').textContent = `${item.role} (배정: ${item.phase} / Suite: ${item.suite})`;
+      document.getElementById('modal-see-do').innerHTML = `<strong>SEE:</strong> ${item.see}<br><br><strong>DO:</strong> ${item.do}`;
+      document.getElementById('modal-apis').textContent = item.apis;
+      document.getElementById('modal-cap').textContent = item.cap !== 'None' ? item.cap : '무인증 또는 기본 세션';
+      document.getElementById('modal-preview-btn').href = item.path;
+
+      document.getElementById('nodeModal').classList.add('active');
+    }
+
+    function closeModalDirect() {
+      document.getElementById('nodeModal').classList.remove('active');
+    }
+
+    function closeModal(e) {
+      if (e.target.id === 'nodeModal') closeModalDirect();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderMatrixTable();
+      setRoleSim('operator', document.querySelector('.role-btn.active'));
+    });
+  </script>
+</body>
+</html>
