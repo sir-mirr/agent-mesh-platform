@@ -100,6 +100,17 @@ describe("scenario ids", () => {
   });
 });
 
+/**
+ * An id as the inventory writes one.
+ *
+ * `SC-DOWN-ALL` is the case that matters: the last segment is not a number, and
+ * every hand-written count and the first version of this pattern missed it for
+ * that reason. `\b(?!-\*)` keeps the family notations out — `SC-DOWN-*` names a
+ * family and registers nothing, and without the word boundary the pattern
+ * backtracks into `SC-API-AUT` to satisfy the lookahead.
+ */
+const ID_IN_DOC = /SC-(?:[A-Z0-9]+-)+[A-Z0-9]+\b(?!-\*)/g;
+
 describe("the inventory's own count", () => {
   // **§ 4 said 53 while § 4's own tables held 54, and called itself "분모 통계".**
   // Someone looking for the denominator reads the section named for it, so the
@@ -109,20 +120,28 @@ describe("the inventory's own count", () => {
   // Checked rather than corrected: correcting it buys until the next scenario.
   const INVENTORY = join(import.meta.dir, "..", "packages", "platform-web", "COVERAGE_INVENTORY.md");
 
-  // **It counts mentions, not registrations**, and that is a proxy rather than
-  // the thing. A scenario id named in a paragraph explaining what once drifted
-  // is counted as registered, which is how correcting § 0 turned this red: three
-  // ids appeared in prose and the stated total was suddenly three short.
+  // **It counts what the tables register**, not every id the file mentions.
   //
-  // Left as a proxy on purpose. The alternative is parsing the matrix rows,
-  // which is a second implementation of the document's structure living in a
-  // test — and the reason § 0 drifted at all was a second declaration. The cost
-  // is a rule for whoever edits the document: **name families in prose, not
-  // ids.** Stated here rather than only in the document, because the person who
-  // trips it will be reading this failure.
+  // It used to count mentions, and that cost a rule: *name families in prose,
+  // not ids*, because a paragraph explaining what had drifted would register the
+  // ids it named. agent-mesh-local-pm found the rule leaking anyway, from the
+  // other side — the pattern was `SC-[A-Z0-9]+-[0-9]+`, which asks **does it end
+  // in digits** rather than **is it an id**, so `SC-DOWN-ALL` was invisible to
+  // it. Those two questions had the same answer until `SC-DOWN-ALL` existed.
+  //
+  // That is precisely the blindness that made § 0's axis table say 8 with nine
+  // registered: whoever counted read the numbered ones. **A guard went blind in
+  // the same place as the thing it guards against**, in the same file where the
+  // other check had already been fixed for it.
+  //
+  // Both are repaired here, and the second repair removes the rule rather than
+  // restating it: scoped to table rows, a mention in prose is harmless, so
+  // nobody has to remember not to write one. `-\*` is excluded because
+  // `SC-DOWN-*` is a family, not an id.
   test("the number it states is the number it holds", () => {
     const doc = readFileSync(INVENTORY, "utf8");
-    const ids = new Set([...doc.matchAll(/SC-[A-Z0-9]+-[0-9]+/g)].map((m) => m[0]));
+    const registered = doc.split("\n").filter((line) => line.startsWith("|")).join("\n");
+    const ids = new Set([...registered.matchAll(ID_IN_DOC)].map((m) => m[0]));
 
     // A regex that matched nothing would make the comparison 0 === 0 as soon as
     // the stated number went missing too.
@@ -131,6 +150,26 @@ describe("the inventory's own count", () => {
     const stated = /이 문서가 등록한 시나리오 ID\*\*:\s*\*\*([0-9]+)개/.exec(doc);
     expect(stated, "the inventory no longer states a count for this to check").not.toBeNull();
     expect(Number(stated![1]), "the inventory states a count it does not hold").toBe(ids.size);
+  });
+
+  /**
+   * The pattern itself, on the shapes that broke the hand counts.
+   *
+   * Asserted directly rather than through the document, because the document
+   * holds exactly one id of the awkward shape and a check that depends on that
+   * stops checking the moment somebody rewrites a sentence. This is the branch
+   * `SC-[A-Z0-9]+-[0-9]+` could not see, and seeing it is the repair.
+   */
+  test("it reads an id whose last segment is not a number", () => {
+    const read = (text: string) => [...text.matchAll(ID_IN_DOC)].map((m) => m[0]);
+
+    expect(read("`SC-DOWN-ALL` drove thirteen routes")).toEqual(["SC-DOWN-ALL"]);
+    expect(read("`SC-API-AUTH-01` and `SC-SCR01-01`")).toEqual(["SC-API-AUTH-01", "SC-SCR01-01"]);
+
+    // Families register nothing, and the word boundary is what stops the
+    // pattern backtracking into `SC-API-AUT` to get past the lookahead.
+    expect(read("| `SC-DOWN-*` | ... | 9 |")).toEqual([]);
+    expect(read("| `SC-API-AUTH-*` | ... | 3 |")).toEqual([]);
   });
 
   test("and it still claims the screen count it documents", () => {

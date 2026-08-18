@@ -1006,6 +1006,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/readme.test.ts",
     expect: ["every proxy target is the http server, never the hub", "a proxy block points at the hub"],
   },
+  {
+    id: "inventory-id-shape",
+    defect:
+      "The inventory's own count read ids as `SC-[A-Z0-9]+-[0-9]+` — **does it end in digits** rather than **is it an id** — so `SC-DOWN-ALL` was invisible. That is the same blindness that made § 0's axis table say 8 with nine registered: whoever counted read the numbered ones. A guard went blind in the same place as the thing it guards against, in the file where the other check had already been fixed for it. Found by agent-mesh-local-pm.",
+    file: "test/scenario-ids.test.ts",
+    from: "const ID_IN_DOC = /SC-(?:[A-Z0-9]+-)+[A-Z0-9]+\\b(?!-\\*)/g;",
+    to: "const ID_IN_DOC = /SC-[A-Z0-9]+-[0-9]+/g;",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["it reads an id whose last segment is not a number"],
+  },
 ];
 
 /**
