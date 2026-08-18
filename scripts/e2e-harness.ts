@@ -235,18 +235,36 @@ const hub = spawnService("packages/hub/src/main.ts", {
 let http: ReturnType<typeof spawnService> | null = null;
 let shuttingDown = false;
 
-function shutdown(code = 0): never {
+/**
+ * Stop, and wait for the children to actually be gone before touching their
+ * files.
+ *
+ * `kill()` is a request. This used to send it and delete the state directory on
+ * the next line, while both services were still in their own shutdown — which
+ * is now a shutdown that checkpoints, so the window is a real one: the removal
+ * races two processes writing into the files being removed. On POSIX the
+ * children's descriptors survive the unlink, so nothing errors and the harness
+ * reports success; what is left is a directory that may or may not be there.
+ *
+ * The wait is bounded because a child that will not die must not hold the
+ * runner forever — the directory removal is worth a second, not a hang.
+ */
+async function shutdown(code = 0): Promise<never> {
   if (shuttingDown) process.exit(code);
   shuttingDown = true;
   http?.kill();
   hub.kill();
+  await Promise.race([
+    Promise.all([http?.exited, hub.exited]),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
   rmSync(args.readyFile, { force: true });
   if (!args.stateDir && !args.keep) rmSync(stateDir, { recursive: true, force: true });
   process.exit(code);
 }
 
-process.on("SIGTERM", () => shutdown(0));
-process.on("SIGINT", () => shutdown(0));
+process.on("SIGTERM", () => void shutdown(0));
+process.on("SIGINT", () => void shutdown(0));
 
 try {
   await waitForHealth(`http://127.0.0.1:${hubPort}/health`);
@@ -328,7 +346,7 @@ try {
   console.log(`[harness] SIGTERM to stop`);
 } catch (err) {
   console.error(`[harness] failed to start: ${err instanceof Error ? err.message : String(err)}`);
-  shutdown(1);
+  await shutdown(1);
 }
 
 // Nothing further to do; the services own the process from here. Exiting when
@@ -336,4 +354,4 @@ try {
 // mesh is gone rather than timing out against a port nobody is listening on.
 const exited = await Promise.race([hub.exited, http!.exited]);
 console.error(`[harness] a service exited (code ${exited}); shutting down`);
-shutdown(exited === 0 ? 1 : (exited ?? 1));
+await shutdown(exited === 0 ? 1 : (exited ?? 1));

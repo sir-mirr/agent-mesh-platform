@@ -51,6 +51,14 @@ export interface Service {
   /** Everything the process wrote, for assertions and for failure output. */
   output(): string;
   stop(): void;
+  /**
+   * Resolves when the process is actually gone.
+   *
+   * `stop()` sends a signal, which is a request. Anything that reads the files
+   * the process owns has to wait for this instead — a shutdown now checkpoints
+   * its stores, so "killed" and "finished" are a real interval apart.
+   */
+  exited: Promise<number>;
 }
 
 export interface Mesh {
@@ -166,6 +174,7 @@ function spawnService(
     pid: proc.pid,
     died: () => epitaph,
     output: () => chunks.join(""),
+    exited: proc.exited,
     stop: () => {
       stopped = true;
       proc.kill();
@@ -260,6 +269,9 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
         pid: 0,
         died: () => null,
         output: () => "",
+        // Already gone, so a caller ordering cleanup behind the exits is not
+        // left waiting on a service this mesh never started.
+        exited: Promise.resolve(0),
         stop: () => {},
       };
     }
@@ -273,10 +285,26 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     hub,
     http,
     stateDir,
+    /**
+     * Stop both services and remove the state directory — in that order, which
+     * it was not.
+     *
+     * The removal used to run on the line after the kills, while both processes
+     * were still shutting down. That shutdown now checkpoints their stores, so
+     * the removal races two writers into the files it is deleting: on POSIX the
+     * open descriptors outlive the unlink, nothing errors, and what is left
+     * behind is a directory that may or may not still exist.
+     *
+     * Deliberately still synchronous. Every caller is an `afterEach` that does
+     * not await, and making them would be a large edit for a cleanup nobody
+     * observes; ordering the removal behind the exits fixes the race without
+     * asking anyone to wait for it.
+     */
     stop() {
+      const gone = Promise.all([http.exited, hub.exited]);
       http.stop();
       hub.stop();
-      rmSync(stateDir, { recursive: true, force: true });
+      void gone.then(() => rmSync(stateDir, { recursive: true, force: true })).catch(() => {});
     },
   };
 }

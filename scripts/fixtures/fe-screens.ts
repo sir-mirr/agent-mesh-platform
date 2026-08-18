@@ -179,8 +179,12 @@ console.log(`queued       ${QUEUED} messages for ${recipientId}`);
 
 const VIEWER = "audit-viewer";
 {
-  const { Database } = await import("bun:sqlite");
-  const db = new Database(`${ready.state_dir}/agent-mesh.db`, { readwrite: true });
+  // `openAt` rather than `new Database`: the http server is running and writing
+  // this same file, and `openAt` is where `busy_timeout` lives. Without it a
+  // concurrent write here is an immediate SQLITE_BUSY rather than a short wait,
+  // which would surface as a fixture that fails sometimes.
+  const { openAt } = await import("@agent-mesh/store");
+  const db = openAt(`${ready.state_dir}/agent-mesh.db`, {});
   const exists = db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(VIEWER);
   if (!exists) {
     db.prepare(
