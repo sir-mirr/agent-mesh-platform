@@ -1056,6 +1056,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/production-bundle.test.ts",
     expect: ["a loaded page sends its API calls to its own origin", "the page is calling a host it was not served from"],
   },
+  {
+    id: "verdict-summary-folds",
+    defect:
+      "`✗` carried three different facts and the summary counted them as one. agent-mesh-local-pm read `✗ signed-rate-limit` as a guard that missed something when it was this tool refusing to measure — the tree had changed under it. Only `not-caught` is a statement about the code; folding `no-match`, `inconclusive` and `flapped` into it is how a tooling problem gets written down as a defect, which is the failure this script exists to prevent, in its own output.",
+    file: "scripts/mutation-verdict.ts",
+    from: "  if (unmeasured) parts.push(`${unmeasured} not measured`);",
+    to: "  if (unmeasured) parts.push(`${unmeasured} not caught`);",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a run that decided nothing is not a miss"],
+  },
 ];
 
 /**
