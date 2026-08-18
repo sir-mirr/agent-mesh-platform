@@ -761,6 +761,34 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
+  // SC-SCR10-01: the behavioural metrics § D-1 chose, and the zero they must
+  // not invent
+  it("[SC-SCR10-01] draws the six behavioural metrics and marks unread ones as unmeasured", async () => {
+    await withPage("/platform/telemetry", async ({ page }) => {
+      const panel = page.locator("[data-testid='behaviour-metrics']");
+      await panel.waitFor({ state: "visible", timeout: 10_000 });
+
+      const said = (await panel.textContent()) ?? "";
+      // The six by the names the inventory gives them. Not a count of tiles —
+      // six tiles with the wrong labels would pass that.
+      for (const label of ["대기 키", "최고 경과", "서명 거절", "rate limit", "egress 거절", "수락 수"]) {
+        expect({ label, drawn: said.includes(label) }).toEqual({ label, drawn: true });
+      }
+
+      // **The window travels with the counts.** The hub's refusal counters are
+      // per-process and reset with it, so `0 refusals` and `this hub started a
+      // minute ago` are the same figure without it.
+      const since = page.locator("[data-testid='counting-since']");
+      expect(await since.count()).toBe(1);
+      expect({ stated: ((await since.textContent()) ?? "").length > 10 }).toEqual({ stated: true });
+
+      // A live mesh answers, so nothing here should be unmeasured — and that is
+      // asserted rather than assumed, because an all-unmeasured panel would
+      // otherwise satisfy every check above.
+      expect(await page.locator("[data-testid='metric-unmeasured']").count()).toBe(0);
+    });
+  }, 30_000);
+
   // SC-CAP-04: Telemetry says which panels it was refused, rather than showing
   // an empty mesh (I-061)
   it("[SC-CAP-04] names the refused panels on /platform/telemetry instead of rendering blanks", async () => {

@@ -17,7 +17,7 @@ import { SERVER_ERROR, rpcError } from "./jsonrpc";
 import { log } from "./log";
 import { OBSERVED } from "./observed-config";
 import { observedSource } from "./observed";
-import { refusalCounts } from "./refusals";
+import { COUNTING_SINCE, refusalCounts } from "./refusals";
 import { ALL_LIMITERS, PROVISION_LIMIT } from "./ratelimit";
 import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentities, wsProxies } from "./presence";
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
@@ -140,7 +140,14 @@ const server = Bun.serve<SocketData, never>({
      */
     if (url.pathname === "/api/v1/limits") {
       return new Response(
-        JSON.stringify({ ok: true, limiters: ALL_LIMITERS.map((l) => l.stats()), refusals: refusalCounts() }),
+        JSON.stringify({
+          ok: true,
+          // The counters are per-process and lost on restart, so a `0` here means
+          // nothing until a reader knows how long "since" is.
+          counting_since: COUNTING_SINCE,
+          limiters: ALL_LIMITERS.map((l) => l.stats()),
+          refusals: refusalCounts(),
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }

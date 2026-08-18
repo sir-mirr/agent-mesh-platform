@@ -12,6 +12,12 @@ export interface SystemTelemetry {
   server_uptime_seconds?: number | undefined;
   build_version?: string | undefined;
   /**
+   * The six behavioural metrics § D-1 chose over CPU and memory gauges
+   * (`SC-SCR10-01`). `null` inside each one means it could not be read — never
+   * a stand-in, because four of the six read `0` when all is well.
+   */
+  behaviour: BehaviourMetrics | null;
+  /**
    * Panels this session was refused, by the capability that would have opened
    * them. Empty when everything answered.
    *
@@ -34,11 +40,27 @@ export interface SystemTelemetry {
  * it was — refused, or unreachable — is the thing the screen has to pass on,
  * and `.catch(() => null)` threw it away.
  */
+export interface Metric {
+  value: number | null;
+  unavailable?: string;
+}
+
+export interface BehaviourMetrics {
+  counting_since: string | null;
+  pending_keys: Metric;
+  oldest_pending_ms: Metric;
+  signature_refusals: Metric;
+  rate_limited: Metric;
+  egress_refusals: Metric;
+  accepted: Metric;
+}
+
 const PANELS = [
   { key: "usage", path: "/api/v1/admin/ai-usage", panel: "CPU · memory · p99", capability: "usage.read" },
   { key: "agents", path: "/api/v1/agents", panel: "agents", capability: "" },
   { key: "mailbox", path: "/api/v1/admin/mailbox", panel: "queue depth", capability: "mailbox.read.depth" },
   { key: "health", path: "/api/v1/health", panel: "health", capability: "" },
+  { key: "behaviour", path: "/api/v1/admin/telemetry/behaviour", panel: "행동 지표 6종", capability: "usage.read" },
 ] as const;
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {
@@ -56,7 +78,7 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
       }),
     ),
   );
-  const [usage, agents, mailbox, health] = results;
+  const [usage, agents, mailbox, health, behaviour] = results;
 
   if (results.every((r) => r === null)) {
     throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
@@ -77,6 +99,7 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
     health_status: health?.status ?? undefined,
     server_uptime_seconds: health?.uptime ?? undefined,
     build_version: health?.version ?? undefined,
+    behaviour: behaviour ?? null,
     refused,
   };
 }

@@ -44,6 +44,22 @@ export type RefusalKind = "signature" | "egress";
 const counts = new Map<string, number>();
 
 /**
+ * When this process began counting.
+ *
+ * **Without it a `0` cannot be read.** These counters live in memory and are
+ * lost on restart — the module says so a few lines down — so "no signature
+ * refusals" and "this hub started ninety seconds ago" produce the same number,
+ * and on a screen the second one looks like health. Refusal counts are the kind
+ * of metric where `0` is the hoped-for answer, which is exactly when nobody
+ * questions it.
+ *
+ * Captured at module load rather than at first refusal: the window a reader
+ * needs is *how long has this been watching*, not *when did something first go
+ * wrong*.
+ */
+export const COUNTING_SINCE = new Date().toISOString();
+
+/**
  * NUL as the separator, because no reason can contain one — and **written as an
  * escape**, because it used to be typed here as the byte itself.
  *

@@ -80,6 +80,57 @@ export function TelemetryPage() {
             </div>
           )}
 
+          {/*
+            § D-1 chose these over CPU and memory: a hub at 4% CPU refusing
+            every signature is not healthy, and a process gauge cannot say so.
+
+            **Four of the six read `0` when all is well**, which is what makes
+            an unread source dangerous here — a zero drawn because nothing
+            answered is the number an operator is hoping for and will not
+            question. So `null` is drawn as "미측정", never as `0`, and the
+            window the refusal counts were taken over travels with them: those
+            counters are per-process and reset with the hub.
+          */}
+          {telemetry.behaviour && (
+            <div data-testid="behaviour-metrics" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>행동 지표</span>
+                <span data-testid="counting-since" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+                  {telemetry.behaviour.counting_since
+                    ? `거절 집계 기준: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} 부터 (허브 재기동 시 초기화)`
+                    : "집계 시작 시각 미상 — 아래 거절 수치는 읽을 수 없습니다"}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                {([
+                  ["대기 키", telemetry.behaviour.pending_keys, ""],
+                  ["최고 경과", telemetry.behaviour.oldest_pending_ms, "ms"],
+                  ["서명 거절", telemetry.behaviour.signature_refusals, ""],
+                  ["rate limit", telemetry.behaviour.rate_limited, ""],
+                  ["egress 거절", telemetry.behaviour.egress_refusals, ""],
+                  ["수락 수", telemetry.behaviour.accepted, ""],
+                ] as const).map(([label, metric, unit]) => (
+                  <div
+                    key={label}
+                    style={{ padding: "12px 14px", background: "var(--color-bg-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}
+                  >
+                    <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>{label}</div>
+                    {metric.value === null ? (
+                      <div data-testid="metric-unmeasured" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }} title={metric.unavailable}>
+                        — 미측정
+                      </div>
+                    ) : (
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.15rem", fontWeight: 700 }}>
+                        {metric.value}
+                        {unit && <span style={{ fontSize: "0.75rem", fontWeight: 400 }}> {unit}</span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
             <TelemetryCard
               label={t("telem.cpu", "CPU 사용률 (Process)")}

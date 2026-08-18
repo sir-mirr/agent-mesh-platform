@@ -1077,6 +1077,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["names the refused panels on /platform/telemetry instead of rendering blanks"],
   },
   {
+    id: "telemetry-unknown-reads-zero",
+    defect:
+      "An unread source drawn as `0` on the one screen where four of six metrics read `0` when all is well. No signature refusals, no egress refusals, nothing rate-limited, nothing queued — those are the answers an operator hopes for, so a zero produced by a hub that did not answer is the number nobody questions. agent-mesh-local-pm asked for this guard before the endpoint was written, having found four screens the same evening drawing what they could not know: `ONLINE`, `0`, `verified`, and `1`.",
+    file: "packages/http/src/behaviour-metrics.ts",
+    from: 'const unread = (why: string): Metric => ({ value: null, unavailable: why });',
+    to: 'const unread = (why: string): Metric => ({ value: 0, unavailable: why });',
+    suite: "packages/http/src/behaviour-metrics.test.ts",
+    expect: ["a hub that did not answer produces no numbers at all"],
+  },
+  {
+    id: "counts-without-a-window",
+    defect:
+      "Refusal counts served without saying when counting began. The hub holds them in memory and they reset with it, so `0 refusals` and `this hub started ninety seconds ago` are the same figure — and on a screen the second one looks like health. The window has to travel with the numbers or the numbers cannot be read.",
+    file: "packages/http/src/behaviour-metrics.ts",
+    from: '    if (!countingSince) return unread("hub answered without counting_since");',
+    to: "    void countingSince;",
+    suite: "packages/http/src/behaviour-metrics.test.ts",
+    expect: ["counts without a window are not offered as counts"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

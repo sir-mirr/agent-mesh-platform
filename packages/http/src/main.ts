@@ -40,6 +40,7 @@ import {
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
 import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, verify, type MessageRow } from '@agent-mesh/store'
+import { shapeMetrics } from './behaviour-metrics.ts'
 import {
   CAPABILITY,
   IDENTITY_RE,
@@ -2679,6 +2680,65 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
   broadcastAiUsage(snapshot)
   console.log(`[ai-usage/ingest] snapshot accepted: source=${snapshot.source} accounts=${snapshot.accounts.length} ts=${snapshot.ts}`)
   return c.json({ ok: true, accepted_at: snapshot.last_updated_at })
+})
+
+/**
+ * The six behavioural metrics `/platform/telemetry` draws (§ D-1, `SC-SCR10-01`).
+ *
+ * **Nothing new is counted here.** Five of the six were already recorded — the
+ * hub's `recordRefusal` has counted signature and egress refusals since it was
+ * written, the limiters carry their own stats, and `keys/pending` has always
+ * answered. What was missing was a route that put them where a screen could
+ * reach them, which is why this is a gather rather than an instrument.
+ *
+ * Behind `usage.read` because it is the same question as the AI usage panel
+ * beside it: what has this deployment been doing. The hub's own
+ * `/api/v1/limits` is unauthenticated and stays so — it carries counts and no
+ * identities, and § 11 governs anything keyed on *who*.
+ *
+ * Every value is nullable and no absence is filled in. Four of these six read
+ * `0` when everything is well, so a zero produced by a source that could not be
+ * reached is the one wrong number an operator has no reason to question.
+ */
+app.get('/api/v1/admin/telemetry/behaviour', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.USAGE_READ)
+  if (typeof actor !== 'string') return actor
+
+  const limits = await fetch(`${HUB_HTTP_URL}/api/v1/limits`, { signal: AbortSignal.timeout(2000) })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+
+  let pendingKeys: number | null = null
+  try {
+    const r = listPendingKeys()
+    pendingKeys = r.status === 200 ? ((r.body as any).proposals?.length ?? 0) : null
+  } catch {
+    pendingKeys = null
+  }
+
+  let oldestPendingMs: number | null = null
+  let accepted: number | null = null
+  try {
+    const db = getHubDb()
+    // `ts` is written by SQLite's `CURRENT_TIMESTAMP`, which is UTC without a
+    // zone marker — read as an epoch here rather than parsed in JavaScript,
+    // where it would be taken as local time and read hours old.
+    const oldest = db
+      .prepare(
+        `SELECT (strftime('%s','now') - strftime('%s', MIN(ts))) * 1000 AS ms
+         FROM messages WHERE status = 'pending'`,
+      )
+      .get() as { ms: number | null }
+    // No pending message is a real zero, not an unknown: the query answered.
+    oldestPendingMs = oldest?.ms ?? 0
+    const total = db.prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
+    accepted = total.n
+  } catch {
+    oldestPendingMs = null
+    accepted = null
+  }
+
+  return c.json({ ok: true, ...shapeMetrics({ limits, pendingKeys, oldestPendingMs, accepted }) })
 })
 
 app.get('/api/v1/admin/ai-usage', async (c) => {
