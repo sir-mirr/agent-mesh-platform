@@ -411,6 +411,37 @@ and says nothing about the address family, so the failure reads as "the front
 end did not start" when it started fine and is listening somewhere the reader
 did not look. The port is in the log; the bind address is not.
 
+### The built front end, and what it still lacks
+
+`dev` above is the development server. There is also a build, and it serves:
+
+```bash
+bun run build:web                       # packages/platform-web/dist
+bunx --cwd packages/platform-web vite preview --port 3041
+```
+
+```
+http://localhost:3041/                 200   the built page
+http://localhost:3041/api/v1/health    200   {"status":"ok",...}
+```
+
+**The second line is the surprising one.** `vite.config.ts` sets `server.proxy`
+and nothing under `preview`, yet the API is reachable through the preview
+server — it inherits the proxy. So the built front end talks to the backend
+with no extra configuration, which is easy to assume is missing and is not.
+`agent-mesh-local-pm` reported it absent from a `grep` for `serveStatic`,
+then went back and measured; both halves above were re-measured here.
+
+The same `localhost` caveat applies: preview binds the IPv6 loopback too.
+
+**What is genuinely missing is the deployment wiring, not the serving.** There
+is no systemd unit for the front end — `ops/systemd/` has the hub, the http
+server, the self-reminder and the orphan collector, and nothing else — and
+Vite does not intend `preview` as a production server. So the choice is
+between running `preview` under a unit of its own and putting `dist` behind a
+static host; the pieces for either are present, and neither is written down as
+the decision yet.
+
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
 the top of this document.
 
