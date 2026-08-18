@@ -217,15 +217,28 @@ test("the self-reminder daemon folds its log on SIGTERM", async () => {
     );
     const payload = "x".repeat(4000);
     for (let i = 0; i < 200; i++) insert.run(`r${i}`, payload);
-    writer.close();
     expect({ store: "self-reminder.db-wal", wrote: wal() > 0 }).toEqual({ store: "self-reminder.db-wal", wrote: true });
 
+    // **This connection stays open across the stop, and that is the assertion.**
+    //
+    // Without it the test proved nothing: `close()` folds a log too, whenever
+    // no statement happens to be alive at exit, and this daemon is small enough
+    // that usually none is. The mutation that removes the checkpoint passed
+    // three of three — a guard that catches on some runs and not others is
+    // worse than none, because it reports the difference as a defect in
+    // whatever else changed.
+    //
+    // A second connection removes the coin flip. SQLite cannot delete a log
+    // another connection still has open, so a bare `close()` leaves the whole
+    // 800 KB behind; `wal_checkpoint(TRUNCATE)` folds it anyway, because the
+    // reader holds no snapshot to pin the frames.
     proc.kill("SIGTERM");
     const code = await proc.exited;
     expect({ code, reaped: await reaped(proc.pid) }).toEqual({ code: 0, reaped: true });
 
     expect({ store: "self-reminder.db-wal", wal: wal() }).toEqual({ store: "self-reminder.db-wal", wal: 0 });
     expect({ store: "self-reminder.db", kept: statSync(path).size > 4096 }).toEqual({ store: "self-reminder.db", kept: true });
+    writer.close();
   } finally {
     proc.kill("SIGKILL");
     rmSync(dir, { recursive: true, force: true });
