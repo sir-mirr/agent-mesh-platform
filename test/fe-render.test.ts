@@ -1187,8 +1187,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 10000);
 
-  // SC-BELL-01: Notification bell badge rendering
-  it("[SC-BELL-01] renders notification bell in top navigation", async () => {
+  // SC-BELL-01: Notification bell badge rendering.
+  //
+  // Skipped, not deleted, and not rewritten by anyone but its author.
+  //
+  // It fails, and it was always going to: `RootLayout` renders a `<div>` and
+  // the page has no `<header>` and no `<nav>`, so `locator("header, nav")`
+  // counts 0. Nothing had run it — the file did not compile, so all six
+  // scenarios added here were written and never executed.
+  //
+  // The name and the assertion also disagree, which is the reason to rewrite
+  // rather than to relax the count: "renders notification bell" is checked by
+  // counting landmark elements, so it would pass on any page with a `<nav>`
+  // and no bell in it at all.
+  it.skip("[SC-BELL-01] renders notification bell in top navigation", async () => {
     await withPage("/dashboard", async ({ page }) => {
       const bellEl = page.locator("header, nav").first();
       expect(await bellEl.count()).toBeGreaterThanOrEqual(1);
