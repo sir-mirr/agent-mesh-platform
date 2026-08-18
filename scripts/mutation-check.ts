@@ -996,6 +996,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/scenario-ids.test.ts",
     expect: ["every family with more than one id has a row", "SC-HARNESS-* has 2 ids and no row"],
   },
+  {
+    id: "proxy-block-target",
+    defect:
+      "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
+    file: "docs/running-locally.md",
+    from: "    proxy_pass http://127.0.0.1:3000;\n    proxy_set_header Host $host;",
+    to: "    proxy_pass http://127.0.0.1:3100;\n    proxy_set_header Host $host;",
+    suite: "test/readme.test.ts",
+    expect: ["every proxy target is the http server, never the hub", "a proxy block points at the hub"],
+  },
 ];
 
 /**

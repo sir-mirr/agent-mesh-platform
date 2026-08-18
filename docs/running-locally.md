@@ -480,10 +480,83 @@ is named in a proxy config or in a build argument and a CORS list.
 **What is genuinely missing is the deployment wiring, not the serving.** There
 is no systemd unit for the front end — `ops/systemd/` has the hub, the http
 server, the self-reminder and the orphan collector, and nothing else — and
-Vite does not intend `preview` as a production server. So the choice is
-between running `preview` under a unit of its own and putting `dist` behind a
-static host; the pieces for either are present, and neither is written down as
-the decision yet.
+Vite does not intend `preview` as a production server.
+
+**The decision is the static host, and it is the first row above.** `dist`
+behind nginx or Caddy, with that host proxying `/api` to `agent-mesh-http`.
+Running `preview` under a unit of its own is not used: it puts a development
+server in production, which is a choice the administrator has to defend later
+and Vite's own documentation argues against.
+
+The rest follows from it rather than being separate decisions:
+
+```
+front-end code changes      none — the front end already calls relative paths
+AGENT_MESH_ALLOWED_ORIGINS  stays empty. Same origin, so CORS never arises
+what the administrator runs a web server they already operate, plus one block
+```
+
+`AGENT_MESH_ALLOWED_ORIGINS` is worth stating explicitly because the earlier
+advice paired this branch's recommendation with the *other* branch's
+requirement, and an administrator following it would fill in a list nothing
+reads — and, worse, would believe a cross-origin request is happening here.
+§ 4's rule is the one that applies: same-origin requests need no entry.
+
+A block to copy. Ports are this document's local ones; on that server they are
+whatever the units bind:
+
+```nginx
+server {
+  listen 80;
+  server_name mesh.example.internal;
+
+  root /srv/agent-mesh-web;          # where `dist` was copied
+  index index.html;
+
+  # The SPA owns its routes: anything that is not a file is index.html, or a
+  # reload on /tenant/rbac is a 404 from nginx rather than a screen.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # **The http server, not the hub.** Pointing this at 3100 is the mistake at
+  # the top of this document, and it fails as a page that renders and cannot
+  # log in.
+  location /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  # § 8.9 audit streams over SSE, and a proxy that buffers turns a live view
+  # into a page that updates when the connection closes.
+  location /api/v1/audit/stream {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+  }
+}
+```
+
+Caddy, the same thing:
+
+```caddyfile
+mesh.example.internal {
+  root * /srv/agent-mesh-web
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3000
+  }
+  handle {
+    try_files {path} /index.html
+    file_server
+  }
+}
+```
+
+**Neither block is deployed or tested by anything in this repository.** They are
+written from what the front end asks for and what § 8.9 needs, and the check
+below is what says whether the one you installed works.
 
 The proxy target is the **http** server. Setting it to 3100 is the mistake at
 the top of this document.
@@ -491,25 +564,37 @@ the top of this document.
 Check the proxy rather than assuming it, because a screen that cannot reach the
 backend renders perfectly:
 
+On this laptop, where both are the same machine:
+
 ```bash
 curl -s "http://localhost:<the port vite printed>/api/v1/health"
 curl -s "http://127.0.0.1:$HTTP_PORT/api/v1/health"
 ```
 
+On the separate server, where they are not:
+
+```bash
+# the origin the screen is served from — through the proxy
+curl -s "https://mesh.example.internal/api/v1/health"
+# where agent-mesh-http actually runs — not through it
+curl -s "http://127.0.0.1:3000/api/v1/health"
 ```
-{"status":"ok","version":"20260817133905","agent_count":1,"uptime":23}
-{"status":"ok","version":"20260817133905","agent_count":1,"uptime":23}
+
+```
+{"status":"ok","version":"20260817133905","agent_count":14,"uptime":23}
+{"status":"ok","version":"20260817133905","agent_count":14,"uptime":23}
 ```
 
 The same answer through both means the proxy is wired. A different one, or an
 empty reply, means the screen is talking to something else — which is the whole
 failure this document is about, one layer up.
 
-**On a separate server the two lines are two machines**, and copying them as
-written is how this check passes without checking anything. The first has to be
-the origin the screen is served from; the second is wherever the http server
-runs. Point both at the same host and they agree without a proxy in the path —
-the answer looks like success and was never routed.
+**Two commands pointed at the same host prove nothing.** They agree without a
+proxy in the path, the answer looks like success, and nothing was ever routed.
+The warning used to be here in prose while the block above it still said
+`localhost` twice — and a reader copies the block. So the second form is
+written out rather than described: a rule stated in prose beside an example
+that contradicts it loses to the example, every time.
 
 ---
 

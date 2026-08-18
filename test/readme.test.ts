@@ -267,3 +267,33 @@ function sourceFiles(): string[] {
   walk(root);
   return out;
 }
+
+/**
+ * The proxy blocks in `docs/running-locally.md` point at the http server.
+ *
+ * That document opens by naming the mistake it exists to prevent — reaching for
+ * `3100`, the hub, when the thing a browser talks to is `3000`. It then prints
+ * two proxy configurations for an administrator to copy, and a copied block
+ * with the wrong port fails as a page that renders and cannot log in: the hub
+ * answers, so nothing is refused, and the symptom is a screen that looks fine.
+ *
+ * **A rule stated in prose beside an example that contradicts it loses to the
+ * example.** That happened one section down in this same document — the
+ * verification snippet kept two `localhost` curls under a paragraph explaining
+ * that on a separate server they are two machines. Nobody reads past a block
+ * they can copy, so the blocks are what gets checked.
+ */
+describe("running-locally's proxy blocks", () => {
+  const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
+
+  test("every proxy target is the http server, never the hub", () => {
+    const targets = [...DOC.matchAll(/^\s*(?:proxy_pass|reverse_proxy)\s+(\S+?);?\s*$/gm)].map((m) => m[1]!);
+
+    // A regex that matched nothing would pass while the blocks said anything at
+    // all — the shape this file exists to refuse.
+    expect(targets.length, "no proxy directives found — the blocks changed shape").toBeGreaterThan(1);
+
+    const hub = targets.filter((t) => t.includes("3100"));
+    expect(hub, "a proxy block points at the hub; the browser talks to the http server").toEqual([]);
+  });
+});
