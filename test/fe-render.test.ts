@@ -1467,6 +1467,114 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30000);
 
+  // SC-AUTH-04: an expired session is never reported as an empty one.
+  //
+  // **Split from the pinned half on agent-mesh-local-pm's advice**, and the
+  // split is the point. What the app should do about expiry — bounce to /login
+  // or stay put — is a product decision they declined to make for us. But some
+  // things are true whichever way it goes, and those are conformance rather
+  // than a snapshot:
+  //
+  //   nothing is claimed to be empty
+  //   the screen says it could not read
+  //
+  // Keeping these in the same test as the URL would mean that the day the
+  // decision lands, a test carrying both fails — and the half that should still
+  // hold gets rewritten in the same edit, which is how a real assertion
+  // disappears while attention is elsewhere.
+  it("[SC-AUTH-04] an expired session reports a failed read and does not claim empty", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+
+      // The session is refused the way an expired one is: the cookie is still
+      // sent, and the server rejects it. Aborting instead would test the
+      // disconnected axis, which SC-DOWN-ALL already covers.
+      let refused = 0;
+      await page.route("**/api/v1/**", (route) => {
+        refused += 1;
+        return route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Unauthorized" }),
+        });
+      });
+
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      await settled(page);
+      await showsMatch(page, UNKNOWN_REGEX);
+
+      expect(refused, "no API call was made, so nothing was refused and nothing is being measured")
+        .toBeGreaterThan(0);
+
+      const text = await page.locator("#root").innerText();
+      expect(text, "an unreadable list was reported as an empty one").not.toMatch(ZERO_REGEX);
+      expect(text, "the screen did not say it could not read").toMatch(UNKNOWN_REGEX);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 30000);
+
+  // SC-AUTH-05: where an expired session leaves you — **pinned, not endorsed**.
+  //
+  // This is the half that depends on a decision nobody has made. Today the app
+  // stays on the route and reports the failed read; it does not distinguish
+  // "your session ended" from "this request failed", and it does not send
+  // anyone to /login.
+  //
+  // Recorded rather than judged, because the alternative is that nobody is
+  // measuring it and the behaviour can move in either direction unnoticed.
+  // **If the product decides expiry should log you out, this test fails — and
+  // that failure is the decision arriving, not a defect.** Delete it in the
+  // same commit that implements the redirect.
+  it("[SC-AUTH-05] an expired session stays on the route (pinned pending a decision)", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        {
+          name: "mesh_token",
+          value: jwtToken,
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      let refused = 0;
+      await page.route("**/api/v1/**", (route) => {
+        refused += 1;
+        return route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Unauthorized" }),
+        });
+      });
+
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      await settled(page);
+      await showsMatch(page, UNKNOWN_REGEX);
+
+      expect(refused, "no API call was refused, so this pins nothing").toBeGreaterThan(0);
+      expect(page.url(), "the app now redirects on expiry — if that was decided, delete this test")
+        .toContain("/creator");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 30000);
+
   // SC-WRITE-07: /tenant/rbac does not claim a grant it failed to make.
   //
   // The write axis had nothing on this screen, and agent-mesh-local-pm put it
