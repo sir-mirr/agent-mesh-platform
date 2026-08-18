@@ -39,7 +39,13 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
 
             {/* Authenticated Shell — RBAC 기반 동적 사이드바 */}
-            <Route element={<RootLayout />}>
+            <Route
+              element={
+                <GuardedRoute>
+                  <RootLayout />
+                </GuardedRoute>
+              }
+            >
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
 
