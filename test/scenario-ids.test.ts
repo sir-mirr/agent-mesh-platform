@@ -109,6 +109,17 @@ describe("the inventory's own count", () => {
   // Checked rather than corrected: correcting it buys until the next scenario.
   const INVENTORY = join(import.meta.dir, "..", "packages", "platform-web", "COVERAGE_INVENTORY.md");
 
+  // **It counts mentions, not registrations**, and that is a proxy rather than
+  // the thing. A scenario id named in a paragraph explaining what once drifted
+  // is counted as registered, which is how correcting § 0 turned this red: three
+  // ids appeared in prose and the stated total was suddenly three short.
+  //
+  // Left as a proxy on purpose. The alternative is parsing the matrix rows,
+  // which is a second implementation of the document's structure living in a
+  // test — and the reason § 0 drifted at all was a second declaration. The cost
+  // is a rule for whoever edits the document: **name families in prose, not
+  // ids.** Stated here rather than only in the document, because the person who
+  // trips it will be reading this failure.
   test("the number it states is the number it holds", () => {
     const doc = readFileSync(INVENTORY, "utf8");
     const ids = new Set([...doc.matchAll(/SC-[A-Z0-9]+-[0-9]+/g)].map((m) => m[0]));
@@ -129,5 +140,73 @@ describe("the inventory's own count", () => {
     const stated = /대상 화면\*\*: 총 ([0-9]+)개/.exec(doc);
     expect(stated).not.toBeNull();
     expect(Number(stated![1]), "the inventory states a screen count it does not document").toBe(screens);
+  });
+});
+
+/**
+ * The axis table in § 0 counts what the screen matrix cannot hold, and it was
+ * counting it by hand.
+ *
+ * § 0 exists because a screen × widget matrix has no row for a property that
+ * crosses every screen, and it says so well. What it also did was **state the
+ * per-family totals as literals** — a second declaration of what the test files
+ * register, which is the shape this repository keeps meeting: write one fact in
+ * two places and one of them goes quietly wrong.
+ *
+ * It had. `SC-DOWN-*` was 8 with nine registered (`SC-DOWN-ALL` is not a number
+ * and the count was written by reading the numbered ones), `SC-WRITE-*` was 6
+ * with eight, and `SC-AUTH-04`, `SC-AUTH-05` and `SC-HARNESS-02` had no row at
+ * all. agent-mesh-local-pm found the total was 44 short; this is the half of it
+ * that a check can hold.
+ *
+ * **A family with two or more ids must have a row.** Otherwise the drift comes
+ * back as an omission rather than a wrong number, which is the direction that
+ * reads as "not written yet" — and someone rewrites the scenario that already
+ * exists. `SC-BELL-01` existed twice for exactly that reason.
+ */
+describe("the inventory's axis table", () => {
+  const INVENTORY = join(import.meta.dir, "..", "packages", "platform-web", "COVERAGE_INVENTORY.md");
+
+  /** `SC-WRITE-01` → `SC-WRITE`, `SC-API-AUTH-02` → `SC-API-AUTH`. */
+  const familyOf = (id: string) => id.replace(/-[A-Z0-9]+$/, "");
+
+  /** What the test files actually register, per family. */
+  function registered(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const id of new Set(FILES.flatMap(idsOf))) {
+      const family = familyOf(id);
+      counts.set(family, (counts.get(family) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  /** What § 0's table claims, per family. */
+  function claimed(): Map<string, number> {
+    const doc = readFileSync(INVENTORY, "utf8");
+    const rows = [...doc.matchAll(/^\| `(SC-[A-Z-]+)-\*` \|[^|]*\| ([0-9]+) \|$/gm)];
+    return new Map(rows.map((m) => [m[1]!, Number(m[2]!)]));
+  }
+
+  test("every count it states is the count the tests hold", () => {
+    const table = claimed();
+    // A regex that matched nothing would make every comparison below vacuous,
+    // which is how a check about a table survives the table being renamed.
+    expect(table.size, "no axis rows were found — the table's shape changed").toBeGreaterThan(8);
+
+    const actual = registered();
+    const disagreements = [...table].filter(([family, n]) => (actual.get(family) ?? 0) !== n);
+    expect(disagreements.map(([f, n]) => `${f}-*: table says ${n}, tests register ${actual.get(f) ?? 0}`)).toEqual([]);
+  });
+
+  test("every family with more than one id has a row", () => {
+    const table = claimed();
+    const actual = registered();
+    // Screen scenarios are the matrix's own axis and are counted there; the
+    // per-screen sections hold them, one row each.
+    const missing = [...actual]
+      .filter(([family, n]) => n > 1 && !family.startsWith("SC-SCR") && family !== "SC-RENDER")
+      .filter(([family]) => !table.has(family))
+      .map(([family, n]) => `${family}-* has ${n} ids and no row in § 0`);
+    expect(missing).toEqual([]);
   });
 });

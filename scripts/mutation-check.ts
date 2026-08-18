@@ -976,6 +976,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/mutation-verdict.test.ts",
     expect: ["caught once and missed once is a flap, not a catch"],
   },
+  {
+    id: "inventory-axis-count",
+    defect:
+      "§ 0 of the FE coverage inventory stated per-family totals as literals — a second declaration of what the test files register — and two of them had gone quietly wrong: `SC-DOWN-*` said 8 with nine registered, `SC-WRITE-*` said 6 with eight. The inventory is the denominator for goal ②, so an undercount reads as work not yet done and gets written twice.",
+    file: "packages/platform-web/COVERAGE_INVENTORY.md",
+    from: "| `SC-WRITE-*` | 실패한 쓰기를 성공으로 그리지 않는가 | 8 |",
+    to: "| `SC-WRITE-*` | 실패한 쓰기를 성공으로 그리지 않는가 | 6 |",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 6"],
+  },
+  {
+    id: "inventory-axis-missing-row",
+    defect:
+      "A family can drift by being absent rather than by being wrong, and absence reads as `not written yet` — which is the direction that costs a rewrite. `SC-AUTH-04`, `SC-AUTH-05` and `SC-HARNESS-02` had no row at all, and `SC-BELL-01` was written twice for exactly this reason.",
+    file: "packages/platform-web/COVERAGE_INVENTORY.md",
+    from: "| `SC-HARNESS-*` | 하네스가 잰다고 말한 것을 실제로 재는가 | 2 |\n",
+    to: "",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["every family with more than one id has a row", "SC-HARNESS-* has 2 ids and no row"],
+  },
 ];
 
 /**
