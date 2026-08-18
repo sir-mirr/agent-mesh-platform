@@ -950,7 +950,11 @@ const MUTATIONS: Mutation[] = [
     from: 'process.on("SIGTERM", () => shutdown("SIGTERM"));',
     to: 'void shutdown;',
     suite: "test/wal-shutdown.test.ts",
-    expect: ["the self-reminder daemon folds its log on SIGTERM", "self-reminder.db-wal"],
+    // `143` is the fact, not the log size: a process with no handler is killed
+    // by the signal rather than exiting from it, and the test reaches the file
+    // assertions only if it exited. Naming the log here instead would be an
+    // expectation the run never gets to.
+    expect: ["the self-reminder daemon folds its log on SIGTERM", '"code": 143'],
   },
   {
     id: "wal-reminder-fold",
