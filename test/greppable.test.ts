@@ -233,7 +233,43 @@ describe("addresses shown to the user", () => {
  * one. Catching `verified_mesh_identity` by name would pass the moment somebody
  * writes `sha256:pending`.
  */
+/**
+ * Does a literal announce a digest without being one?
+ *
+ * Named so it can be asserted directly. A rule checked only against the
+ * repository's current source stops checking the moment somebody fixes the
+ * source — the guard and the thing it guards would vanish together, which is
+ * how a manifest entry becomes a line nobody can make fail.
+ */
+export function fabricatedDigest(body: string): boolean {
+  // **Placeholders are removed rather than excused.** The first version
+  // exempted anything containing `${`, on the reasoning that a real digest is
+  // usually built by interpolation — and `sha256:gw_${cfg.id}_${…}` sat in that
+  // exemption, a synthesised key on a synthesised topology node, found by
+  // agent-mesh-local-pm one commit after this rule was written. An interpolated
+  // digest is still hex between its holes.
+  const literalParts = body.replace(/\$\{[^}]*\}/g, "");
+  return !/^[0-9a-f]*$/i.test(literalParts);
+}
+
 describe("cryptographic identifiers", () => {
+  test("the rule reads a fabrication by shape, not by spelling", () => {
+    expect(fabricatedDigest("gw_${cfg.id}_${x}")).toBe(true);
+    expect(fabricatedDigest("verified_mesh_identity")).toBe(true);
+    expect(fabricatedDigest("pending")).toBe(true);
+
+    expect(fabricatedDigest("${hash}")).toBe(false);
+    expect(fabricatedDigest("deadbeef")).toBe(false);
+    expect(fabricatedDigest("")).toBe(false);
+
+    // **`sha256:${identity}` cannot be caught here and is not claimed to be.**
+    // With the placeholder stripped nothing non-hex is left, so a name dressed
+    // as a digest passes this rule — `TopologyPage` had one and it was fixed by
+    // reading, not by this check. A guard that is quiet about its blind spot is
+    // worse than one that names it.
+    expect(fabricatedDigest("${agentIdentity}")).toBe(false);
+  });
+
   test("no literal claims to be a digest without being one", async () => {
     const { readdirSync, readFileSync, statSync } = await import("node:fs");
     const { join } = await import("node:path");
@@ -252,10 +288,7 @@ describe("cryptographic identifiers", () => {
         // survives. Code may not.
         if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) return;
         for (const match of line.matchAll(/["'`](?:sha256|sha512|ed25519):([^"'`]*)["'`]/gi)) {
-          const body = match[1] ?? "";
-          // A real digest is hex, or an interpolation of one. Anything else is
-          // a sentence wearing a prefix.
-          if (/^[0-9a-f]*$/i.test(body) || body.includes("${")) continue;
+          if (!fabricatedDigest(match[1] ?? "")) continue;
           offenders.push(`${file.slice(REPO_ROOT.length)}:${i + 1}: ${line.trim()}`);
         }
       });

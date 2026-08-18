@@ -1087,6 +1087,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["no literal claims to be a digest without being one", "a literal announces a digest and is not one"],
   },
   {
+    id: "digest-rule-excuses-interpolation",
+    defect:
+      "The rule exempted any literal containing `${`, on the reasoning that a real digest is usually built by interpolation. `sha256:gw_${cfg.id}_${…}` sat in that exemption — a synthesised key on a synthesised topology node, in the same list as real agents — and agent-mesh-local-pm found it one commit after the rule was written. An interpolated digest is still hex between its holes, so the placeholders are stripped now rather than excusing the whole literal.",
+    file: "test/greppable.test.ts",
+    from: '  const literalParts = body.replace(/\\$\\{[^}]*\\}/g, "");',
+    to: '  const literalParts = body.includes("${") ? "" : body;',
+    suite: "test/greppable.test.ts",
+    expect: ["the rule reads a fabrication by shape, not by spelling"],
+  },
+  {
     id: "invented-fingerprint-onscreen",
     defect:
       "The same line, guarded at the screen. A static rule can be satisfied while the rendered column still reads as a confirmation — the value reaching an operator's eye is the one that matters, and it is the only layer that sees the absence marker actually drawn.",

@@ -26,7 +26,15 @@ interface TopoNode {
   status: "Online" | "Socketless" | "Gateway";
   badgeClass?: string | undefined;
   desc: string;
-  key: string;
+  /**
+   * `null` for a node that has none — a synthesised gateway, or an agent whose
+   * fingerprint this route does not carry.
+   *
+   * Both used to be filled: the gateway with `sha256:gw_${id}_…` and the agent
+   * with `sha256:${identity}`. An identity is not a digest, and a drawn
+   * backbone is not a key holder.
+   */
+  key: string | null;
   x: number;
   y: number;
   icon: string;
@@ -166,10 +174,16 @@ export function TopologyPage() {
       const row = Math.floor(idx / 4);
       const cx = 380 + col * 720;
       const cy = 380 + row * 850;
-      const members = (g.members && g.members.length > 0)
-        ? g.members
-        : liveAgents.filter((a) => a.type === g.id || a.type === g.name).map((a) => a.identity);
-      const memberCount = Math.max(members.length, g.member_count || 1);
+      // No fallback by `type`. That is the kind of agent, not what it belongs
+      // to — the same layer confusion the agent list carried until `71afcdb`,
+      // still alive here. An empty membership is an empty membership.
+      const members = g.members ?? [];
+      // **`|| 1` turned a known 0 into a 1.** `member_count` is not a field
+      // this route sends, so the fallback always ran and an empty group drew as
+      // holding one member. The mirror image of the empty-state defects removed
+      // elsewhere this week: there an unknown became `0`, here a known `0`
+      // became `1`.
+      const memberCount = members.length;
       const r = Math.max(160, 120 + memberCount * 25);
       const pal = PALETTE[idx % PALETTE.length] ?? { fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF" };
       return {
@@ -212,7 +226,10 @@ export function TopologyPage() {
         type: "gateway-bridge",
         status: "Gateway",
         desc: `은하계 간 패킷 라우팅 및 SPEC § 12 Egress ACL 보안 정책을 전담하는 ${cfg.name} 백본 게이트웨이 브릿지입니다.`,
-        key: `sha256:gw_${cfg.id}_${cfg.gw.id.slice(-4)}`,
+        // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
+        // put a synthesised node in the same list as real agents wearing the
+        // same kind of value.
+        key: null,
         x: cfg.gw.x,
         y: cfg.gw.y,
         icon: "🌐",
@@ -278,7 +295,13 @@ export function TopologyPage() {
           type,
           status,
           desc,
-          key: agentObj?.fingerprint || `sha256:${agentIdentity}`,
+          // Not `sha256:${identity}`. An identity is a name and a digest is a
+          // measurement; dressing the first as the second is what `I-062`
+          // removed from the agent list. **The shape rule in
+          // `test/greppable.test.ts` cannot catch this form** — after its
+          // placeholders are stripped nothing non-hex is left — so it is fixed
+          // here and the limit is recorded there.
+          key: agentObj?.fingerprint ?? null,
           x: roundX,
           y: roundY,
           icon,
@@ -924,9 +947,11 @@ export function TopologyPage() {
             ? t("common.loading", "토폴로지 데이터를 불러오는 중입니다...")
             : isError
             ? t("common.loadError", "토폴로지 데이터를 불러오지 못했습니다.")
-            : t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount + clusters.length}개 에이전트 라우팅 토폴로지`)
+            : t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount}개 에이전트 라우팅 토폴로지`)
                 .replace("{groups}", String(clusters.length))
-                .replace("{agents}", String(totalAgentCount + clusters.length))
+                // Gateways are drawn, not connected. Adding them here made the
+                // heading disagree with the counter beside it.
+                .replace("{agents}", String(totalAgentCount))
         }
       />
 
