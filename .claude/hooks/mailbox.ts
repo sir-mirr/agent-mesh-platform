@@ -74,15 +74,47 @@ function writeMark(id: number): void {
   }
 }
 
-/** Everything not delivered before. Returns [] for any failure, including no mailer. */
+/**
+ * Everything not delivered before. Returns [] for any failure.
+ *
+ * **No mailer is silent; anything else is not.** Those were the same `return []`
+ * before, so a mailer answering 500, or a response that stopped parsing, was
+ * indistinguishable from an empty inbox — and the empty inbox is the normal
+ * case, so the failure looked normal.
+ *
+ * It is not lossy: the mark only advances on a successful read, so the next run
+ * replays whatever was missed. What it costs is a wait nobody can account for —
+ * the other side is answered late and the reason is not written down anywhere.
+ *
+ * The silence for "no mailer running" is kept, and is the whole reason for
+ * splitting rather than just reporting everything: a machine not doing
+ * cross-agent work has no mailer, and a hook that complained every turn would
+ * be one somebody turns off.
+ *
+ * The timeout is generous today and this says so rather than assuming: the
+ * whole inbox comes back on every GET, and at 179 messages that is 565 KB
+ * served in 10 ms against a 2 s limit. It grows; a timeout here would now be
+ * reported instead of read as an empty inbox.
+ */
 async function drain(): Promise<Mail[]> {
   const url = `${MAILBOX}?agentId=${encodeURIComponent(AGENT_ID)}`;
   let messages: Mail[];
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`[mailbox] the mailer answered ${res.status}; mail was not delivered this turn`);
+      return [];
+    }
     messages = ((await res.json()) as { messages?: Mail[] }).messages ?? [];
-  } catch {
+  } catch (error) {
+    // A refused connection is a machine with no mailer, which is the ordinary
+    // state. Everything else — a timeout, a socket reset, a body that stopped
+    // being JSON — is a mailer that exists and did not answer.
+    const message = error instanceof Error ? error.message : String(error);
+    const noMailer = /ConnectionRefused|ECONNREFUSED|Unable to connect|failed to connect/i.test(message);
+    if (!noMailer) {
+      console.error(`[mailbox] could not read the inbox: ${message}; mail was not delivered this turn`);
+    }
     return [];
   }
   if (messages.length === 0) return [];

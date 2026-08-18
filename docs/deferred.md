@@ -661,3 +661,44 @@ architecture — `onlineAgents` is one in-memory map in one hub process, which i
 why the hub does not scale horizontally, and per-tenant processes would make a
 gateway the only thing speaking across them. Worth deciding together rather than
 twice.
+
+### An identity has a grammar and no length
+
+SPEC § 9.1 states the grammar `^[A-Za-z0-9][A-Za-z0-9-]*$` and stops there, and
+`IDENTITY_RE` in `packages/http/src/provision.ts` matches it exactly. Neither
+bounds the length, so neither is wrong — the code implements what the contract
+says. What is recorded here is that the contract does not say anything.
+
+Measured rather than reasoned about, because a guess here was wrong once: a
+first probe reported every length failing with `-32014`, which looked like a
+length limit and was an unapproved key. With the keys approved the answer is
+flat:
+
+```
+identity length   provision   addressed by a sender   received by the holder
+64                201         sent                    1 msg
+255               201         sent                    1 msg
+1000              201         sent                    1 msg
+10000             201         sent                    1 msg
+```
+
+A ten-thousand-character identity is not a half-working curiosity. It is
+created, it is addressable, and mail reaches it — the whole path works, which
+is why nothing anywhere reports a problem.
+
+**Why deferred.** Nothing is broken to fix. The identity is a primary key, and
+it is copied into every message row, every audit row and every queue entry that
+names it, so the cost of an absurd one is storage and index size rather than a
+failure anybody would see. On a local deployment where the operator provisions
+every identity, that cost has no path to being paid by accident.
+
+Choosing a bound is the part that is not free. `255` is the obvious number and
+obvious for no reason connected to this system; the honest bound comes from
+what an identity is for — a name a person types and reads in an audit trail —
+and that is a decision with a migration attached, because a bound added later
+refuses identities that already exist.
+
+What should happen when it is decided: **SPEC first, then both ends.** The
+grammar is normative and lives in § 9.1, `IDENTITY_RE` is one copy of it, and a
+bound added to the code alone would be a contract the SPEC does not state — the
+same drift `test/capability-vocabulary.test.ts` exists to prevent for § 11.

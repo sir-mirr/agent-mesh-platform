@@ -13,6 +13,7 @@ import {
   rpcError,
   rpcNotification,
   rpcResult,
+  sendFrame,
 } from "../jsonrpc";
 import { entitlement, sources } from "@agent-mesh/store";
 
@@ -244,7 +245,8 @@ export function deliverPending(identity: string, ws: any) {
 
   for (const msg of pending) {
     try {
-      ws.send(
+      const landed = sendFrame(
+        ws,
         rpcNotification("mesh.message", {
           id: msg.id,
           from: msg.from_agent,
@@ -257,6 +259,21 @@ export function deliverPending(identity: string, ws: any) {
           ts: msg.ts,
         })
       );
+      // **The frame has to have landed.** `ws.send` returns 0 for a dropped
+      // frame instead of throwing, so this loop used to walk a closing socket
+      // to the end, flip every row to `delivered`, and write an audit event
+      // per message saying a participant received mail that went nowhere. The
+      // `break` below existed for exactly that case and could not reach it.
+      //
+      // Worse than a wrong log line, because it is not recoverable: a row
+      // marked `delivered` is not pending any more, so the replay that would
+      // have handed it over on the next connect never sees it again. § 8.9.4's
+      // delivery record is a claim about the recipient, and this made the
+      // claim from the sender's side of a socket that was already gone.
+      if (!landed) {
+        log(`pending ${msg.id} to ${identity}: the socket dropped the frame — left pending`);
+        break;
+      }
       stmtUpdateMessageStatus.run("delivered", msg.id);
       // The audit record said `pending` and would have said so for ever
       // (§ 8.9.4). A replay is a delivery and has to be recorded as one.

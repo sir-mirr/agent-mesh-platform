@@ -1,0 +1,82 @@
+/**
+ * Every tracked source file can be found by the tools people search with.
+ *
+ * **`grep -rn` skips a file containing a NUL byte and does not say so.** It
+ * decides text from binary by sniffing, reports nothing for a file it declined
+ * to read, and exits 0 — so a repository-wide count comes back complete and is
+ * not. `file` calls such a file `data`; most diff views hide it.
+ *
+ * Three raw NUL bytes had been typed straight into two files as map-key and
+ * digest separators. `packages/hub/src/refusals.ts` was one of them, which is
+ * the worst possible one: it is the process's counter module, the single
+ * densest place to look for state that is written and never read — and it was
+ * invisible to the tool anybody would look with. It is clean. Nothing about the
+ * searching established that.
+ *
+ * The escape `\u0000` produces the identical string, so this costs nothing at
+ * runtime. What it buys is that *"no match in this repository"* means what it
+ * says.
+ *
+ * ## Tracked, which means a file is unguarded until it is committed
+ *
+ * `git ls-files` is the list, so a file that has not been added yet is not
+ * checked — and this file proved it on itself. It was written with a literal
+ * NUL in the paragraph above describing the escape, passed while it was still
+ * untracked, and failed the moment it was committed. The check works; the
+ * window is real, and it is the window in which new files are written.
+ *
+ * ## Why a test rather than a note
+ *
+ * Because the failure is silent in both directions. Nothing warns when a NUL
+ * enters a file, and nothing warns when a search misses one — the only symptom
+ * is a conclusion drawn from a count that was quietly short, which is
+ * indistinguishable from a correct one. It was found here by a review agent
+ * that happened to run `file`, not by any check.
+ */
+
+import { describe, expect, test } from "bun:test";
+
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
+
+/** Everything git tracks, since a file git does not know is not one anyone greps. */
+async function trackedFiles(): Promise<string[]> {
+  const proc = Bun.spawn(["git", "ls-files", "-z"], { cwd: REPO_ROOT, stdout: "pipe" });
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+  return out.split("\0").filter(Boolean);
+}
+
+/** Extensions whose content is expected to be text a person greps. */
+const SOURCE = /\.(ts|tsx|js|mjs|json|md|sh|sql|yml|yaml|toml|service|env|html|css)$/;
+
+describe("searchability", () => {
+  test("no tracked source file contains a raw NUL byte", async () => {
+    const files = (await trackedFiles()).filter((f) => SOURCE.test(f));
+    // Guards the guard: a `git ls-files` that returns nothing — wrong cwd, no
+    // repository — would make the loop below vacuous and green.
+    expect(files.length, "no tracked source files were found, so this checked nothing")
+      .toBeGreaterThan(50);
+
+    const binary: string[] = [];
+    for (const f of files) {
+      const bytes = new Uint8Array(await Bun.file(`${REPO_ROOT}${f}`).arrayBuffer());
+      if (bytes.includes(0)) binary.push(f);
+    }
+
+    expect(
+      binary,
+      "grep -rn skips these silently, so any count that did not use -a was short by however much they hold",
+    ).toEqual([]);
+  });
+
+  test("the check would notice a NUL if one were there", async () => {
+    // Otherwise the assertion above passes because the reader never sees a
+    // byte — a file read that returned nothing, an extension list that matched
+    // nothing — and a clean repository and a broken check look identical.
+    const withNul = new TextEncoder().encode(`const sep = "a${String.fromCharCode(0)}b";`);
+    expect(withNul.includes(0), "the detector cannot see the byte it exists for").toBe(true);
+
+    const without = new TextEncoder().encode(`const sep = "a\\u0000b";`);
+    expect(without.includes(0), "the escape was mistaken for the byte").toBe(false);
+  });
+});

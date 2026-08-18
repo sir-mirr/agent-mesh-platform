@@ -58,7 +58,8 @@ import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb 
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, countRegistryAgents, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { readPushFailure } from './push'
+import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -472,12 +473,33 @@ function sendPushNotificationForMessage(toUser: string, fromAgent: string, conte
       webpush.sendNotification({
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth },
-      }, payload).catch(() => {
-        deletePushSubscription(sub.endpoint)
+      }, payload).catch((error: unknown) => {
+        // **Every rejection used to delete the subscription.** A push service
+        // having a bad minute was treated exactly like a browser that had
+        // unsubscribed: the row went, the device went quiet, and nothing was
+        // logged — so the repair was for the person to notice and subscribe
+        // again. Only 404 and 410 mean the endpoint is gone; see `push.ts`.
+        const { drop, reason } = readPushFailure(error)
+        if (drop) deletePushSubscription(sub.endpoint)
+        console.warn(
+          `agent-mesh-http: push to ${toUser} failed — ${reason}` +
+            `${drop ? ' (subscription removed)' : ' (subscription kept)'}`,
+        )
       })
     }
-    console.log(`agent-mesh-http: push sent to ${toUser} from ${fromAgent}`)
-  } catch {}
+    // **Queued, not sent.** This line ran synchronously while every send was
+    // still in flight, so it claimed a delivery that had not happened and would
+    // print unchanged if all of them failed.
+    console.log(`agent-mesh-http: push queued to ${subs.length} device(s) for ${toUser} from ${fromAgent}`)
+  } catch (error) {
+    // Was a bare `catch {}`. Push is best-effort and must not fail a send, but
+    // best-effort is not the same as unobservable: an exception here means no
+    // device was even asked, and the sender is told nothing either way.
+    console.error(
+      `agent-mesh-http: push to ${toUser} could not be attempted:`,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
 }
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? ''
@@ -793,6 +815,36 @@ app.get('/auth/me', async (c) => {
     role: user.role,
     approved,
     created_at: user.created_at,
+    /**
+     * **What this session may actually do (§ 11).**
+     *
+     * Without it a client has `role` and nothing else, so it builds its own
+     * table mapping roles to capabilities — a second copy of a list this server
+     * owns, and one nothing can compare. The admin front end had exactly that,
+     * and three of its six names disagreed with these: `role.assign` for
+     * `role.grant`, and underscores where these have dots. Nothing failed,
+     * because the two lists never met.
+     *
+     * The visible cost was a screen refusing an operator the server had
+     * granted: its guard asked for a name its own table did not contain, so
+     * only a catch-all let anyone in. `agent-mesh-local-pm` measured it (mail
+     * #613).
+     *
+     * These are grants, not a role expansion. `admin` sees everything here
+     * because `LEGACY_ADMIN_CAPABILITIES` is `ALL_CAPABILITIES` and that is
+     * written as grants — so this reports what was granted, and a deployment
+     * that narrows the admin set later reports the narrower answer without
+     * anything else changing.
+     *
+     * **Affordance only.** Every route checks for itself; a client that ignored
+     * this and called anyway is refused exactly as before. It exists so a screen
+     * can grey out what would be refused rather than guess.
+     */
+    capabilities: grants
+      .listFor(agentsDb(), user.github_login)
+      .map((g) => g.capability)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort(),
   })
 })
 
@@ -825,14 +877,43 @@ async function extractJwt(c: any): Promise<JwtPayload | null> {
 
 // --- Health ---
 
+/**
+ * Liveness (SPEC § 13's table), and one number that has to mean what it says.
+ *
+ * **`agent_count` counted the wrong table for as long as it existed.**
+ * `countRegistryAgents()` counts `agent_registry`, which is this process's
+ * messaging directory: its only two writers are a one-time import of the
+ * pre-database `registry.json` and `upsertApprovedWebUser`, which inserts a
+ * **person** with `type: 'user'`. Provisioning a mesh identity writes the hub's
+ * registry and never touches it.
+ *
+ * On the deployment where this was found the route answered `agent_count: 1`.
+ * The 1 was `admin` — a human — and the mesh in the same state directory held
+ * fourteen agents. A field named for agents reported a number that moves when
+ * somebody logs in and does not move when an agent is provisioned.
+ *
+ * Nothing caught it because nothing asserted what the number *is*. A count is
+ * the easiest value in the world to test and the easiest to test vacuously:
+ * assert it is a number and every wrong source passes, assert it is 1 on a
+ * fixture and the one row happens to be right for the wrong reason. The test
+ * beside this asserts it *moves with provisioning and not with login*, which is
+ * the only form of the assertion that names the subject.
+ *
+ * SPEC calls this route a liveness ping and specifies no body, so correcting
+ * the field breaks no contract. It stays rather than being deleted because it
+ * is the one number an operator can get before authenticating, and *how many
+ * identities exist* is what they are asking when they ask.
+ */
 app.get('/api/v1/health', (c) => {
-  const agentCount = countRegistryAgents()
+  const registered = agentsDb()
+    .prepare('SELECT count(*) AS n FROM agents')
+    .get() as { n: number }
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
 
   return c.json({
     status: 'ok',
     version: BUILD_VERSION,
-    agent_count: agentCount,
+    agent_count: registered.n,
     uptime: uptimeSeconds,
   })
 })
@@ -970,7 +1051,24 @@ app.post('/api/v1/messages', async (c) => {
   // Push to SSE clients so sender's UI updates immediately
   // `pending` when the hub never took it, so the UI can tell "waiting for the
   // recipient" from "never left this machine".
-  if (!hubMessageId) msg.status = 'failed'
+  //
+  // **Written back, not only corrected in memory.** This assignment used to
+  // change the object the response and the SSE frames are built from, and
+  // nothing else: the row inserted above stayed `pending` for ever, because
+  // no `UPDATE` of this table existed anywhere. So the caller was told the
+  // truth once and every later read was told otherwise — the history route,
+  // the conversation view and search all serve the stored value, and they
+  // reported a message that never left this machine as one still waiting for
+  // its recipient.
+  if (!hubMessageId) {
+    msg.status = 'failed'
+    if (!updateMessageStatus(msg.id, 'failed')) {
+      // The row was inserted moments ago in this same handler, so a miss means
+      // the insert did not take — worth saying out loud rather than leaving a
+      // correction that quietly applied to nothing.
+      console.error(`[http-server] could not mark ${msg.id} failed: no such row`)
+    }
+  }
   const sseMsg = { id: msg.id, from: msg.from, to: msg.to, ts: msg.ts, content: msg.content, reply_to: msg.reply_to ?? null, file_path: msg.file_path ?? null, status: msg.status }
   pushToSSE(msg.to, msg.from, 'message', sseMsg)
   pushToSSE(msg.from, msg.to, 'message', sseMsg)

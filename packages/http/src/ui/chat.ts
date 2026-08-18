@@ -1359,12 +1359,25 @@ async function setupPushNotifications() {
     });
   }
 
-  // Send subscription to server
-  await fetch('/api/v1/push/subscribe', {
+  // Send subscription to server.
+  //
+  // The response was ignored, and this is the one call where that is worst:
+  // the browser now holds a live subscription whatever the server said, so a
+  // failure here leaves the device believing it will receive notifications
+  // while nothing on the server knows it exists. It goes quiet and looks
+  // subscribed — the same end state as a subscription the server deleted, and
+  // for the same reason nobody would find out.
+  const res = await fetch('/api/v1/push/subscribe', {
     method: 'POST',
     headers,
     body: JSON.stringify({ subscription: sub.toJSON() })
   });
+  if (!res.ok) {
+    // Undone rather than left half-made. A browser subscription the server
+    // never stored is worse than none: none retries on the next visit.
+    await sub.unsubscribe().catch(() => {});
+    throw new Error('push subscribe rejected by server: ' + res.status);
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -1378,8 +1391,12 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-// Call after SW registration
-setupPushNotifications();
+// Call after SW registration. The rejection is caught here rather than left to
+// become an unhandled one: a throw into nowhere is the same as the ignored
+// response it replaced, one console line further away.
+setupPushNotifications().catch(err => {
+  console.warn('push notifications are not set up:', err && err.message ? err.message : err);
+});
 </script>
 </body>
 </html>`

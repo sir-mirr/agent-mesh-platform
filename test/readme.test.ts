@@ -222,4 +222,48 @@ describe("SPEC self-consistency", () => {
     expect(SPEC).toContain("normative contract");
     expect(SPEC.slice(0, 2000)).toMatch(/§ N\.N/);
   });
+
+  test("the build-status note's claim about hub-direct forwarding holds", () => {
+    // The note under the 0.2 table says the two remaining `no` rows are lane
+    // components and that the hub's half of § 6.1 — dropping *hub-direct*
+    // forwarding — is done, on the evidence that neither environment variable
+    // is read here. **That is exactly the kind of sentence that stops being
+    // true without anybody editing it**: someone reintroduces the variable and
+    // the paragraph goes on asserting the opposite, in the normative document.
+    //
+    // Source only. The names appear in the note itself and in `ops/README.md`
+    // saying the mode is gone, and a check that counted those would fail for
+    // the documentation that is telling the truth.
+    const sources = sourceFiles();
+    expect(sources.length, "no source files were scanned, so this checked nothing")
+      .toBeGreaterThan(20);
+
+    const offenders = sources.filter((f) =>
+      /HUB_FORWARD_IDENTITY|HUB_FORWARD_TARGET_AGENT/.test(readFileSync(f, "utf8")),
+    );
+    expect(offenders, "SPEC says hub-direct forwarding is gone from this tree").toEqual([]);
+  });
 });
+
+// Every `.ts` under the packages tree, which is what the claim is about.
+//
+// A line comment, not a block one: the path glob this wanted to write contains
+// the two characters that end a block comment, so the JSDoc version closed
+// itself mid-sentence and the parser met the rest as code.
+function sourceFiles(): string[] {
+  const root = new URL("../packages", import.meta.url).pathname;
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === "dist") continue;
+        walk(path);
+      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+        out.push(path);
+      }
+    }
+  };
+  walk(root);
+  return out;
+}

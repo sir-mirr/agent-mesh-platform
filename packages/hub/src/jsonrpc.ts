@@ -35,6 +35,36 @@ export function rpcNotification(method: string, params: unknown): string {
   return JSON.stringify({ jsonrpc: "2.0", method, params });
 }
 
+/**
+ * Send a frame, and say whether it went.
+ *
+ * **`ws.send` reports failure by returning, not by throwing**, and every call
+ * site here was written as though it threw. Bun answers with the bytes written,
+ * `-1` when the frame is buffered behind backpressure, and **`0` when the
+ * socket is gone and the frame was dropped**. Measured, because the whole
+ * question is whether one particular case throws:
+ *
+ * ```
+ * open socket    ws.send("hi")          →  2
+ * after close    ws.send("after close") →  0, and no exception
+ * ```
+ *
+ * So a `try`/`catch` around a send to a closed socket never runs its `catch`,
+ * and the code after the send — the code that records the message as
+ * delivered — runs as if the frame had arrived. § 8.9.4 draws exactly this
+ * line: a delivery record is a claim that a participant received something,
+ * and handing a frame to a dead socket is not that. `mailbox.test.ts` asserts
+ * it for the mailbox path in *acknowledgement is what records delivery, not
+ * hand-out*; the socket path had no equivalent and needed one.
+ *
+ * `-1` is a success. The frame is queued in Bun's outgoing buffer and flushes
+ * when the socket drains; treating backpressure as a loss would re-queue
+ * messages the recipient is about to receive, and duplicate them.
+ */
+export function sendFrame(ws: { send(data: string): number }, frame: string): boolean {
+  return ws.send(frame) !== 0;
+}
+
 export const PARSE_ERROR = -32700;
 export const INVALID_REQUEST = -32600;
 export const METHOD_NOT_FOUND = -32601;

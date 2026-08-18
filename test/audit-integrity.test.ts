@@ -246,3 +246,29 @@ describe("§ 8.2 — the sender and the carrier stay different facts", () => {
     }
   }, 60_000);
 });
+
+describe("§ 11 — a session is told what it may do", () => {
+  test("/auth/me reports the grants this subject holds, and different subjects differ", async () => {
+    // **Without this a client has `role` and builds its own table**, which is a
+    // second copy of a list this server owns and which nothing can compare. The
+    // admin front end had one, and three of its six names disagreed — nothing
+    // failed, because the two lists never met (mail #613).
+    const adminMe = (await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie } })).json()) as any;
+    expect(Array.isArray(adminMe.capabilities), "/auth/me does not report capabilities").toBe(true);
+    expect(adminMe.capabilities, "admin holds no capability").not.toEqual([]);
+
+    // The half that makes the first meaningful. `admin` holds everything, so
+    // asserting on it alone passes against a hardcoded list of all names — the
+    // shape this field exists to remove.
+    const viewer = await capabilityViewer(mesh, "audit.read.metadata");
+    const viewerMe = (await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie: viewer } })).json()) as any;
+    expect(viewerMe.capabilities).toEqual(["audit.read.metadata"]);
+    expect(viewerMe.capabilities).not.toEqual(adminMe.capabilities);
+
+    // And what it reports is what the routes enforce, not a role expansion: a
+    // name it omits is a name that gets 403.
+    expect(viewerMe.capabilities).not.toContain("key.approve");
+    const refused = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: viewer } });
+    expect(refused.status, "a capability it does not report was allowed anyway").toBe(403);
+  }, 45_000);
+});

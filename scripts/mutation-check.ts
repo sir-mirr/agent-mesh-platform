@@ -98,6 +98,13 @@ interface Mutation {
   expectFailure?: FailureKind;
 }
 
+// The verdict predicate lives in its own module because importing a script
+// runs it: this one refuses on a dirty tree and exits, so a test that imported
+// it to check `readVerdict` never got as far as a test.
+import { readVerdict, type Verdict } from "./mutation-verdict";
+
+export { readVerdict, type Verdict };
+
 /** Why an entry was not counted as caught. */
 type FailureKind = "no-match" | "not-caught" | "inconclusive";
 
@@ -775,6 +782,126 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/dormancy.test.ts",
     expect: ["a proxied send, because the address observed is the proxy's"],
   },
+  {
+    id: "death-announced",
+    defect:
+      "A spawned service that exited on its own said why, into a buffer nothing read. CI run 32059573317 reported fifteen failures reading `Unable to connect`; one test had exceeded its budget, Bun signalled the shared mesh, and the hub's own account of its shutdown sat in `output()` where only a test that thought to ask would find it. Nothing asked.",
+    file: "test/harness.ts",
+    from: "  void proc.exited.then((code) => {",
+    to: "  void Promise.resolve().then((code?: number) => { if (1) return;",
+    suite: "test/harness-death.test.ts",
+    expect: ["says so, and repeats what it said on the way out"],
+  },
+  {
+    id: "orderly-exit-silent",
+    defect:
+      "The announcement above has to tell an exit somebody asked for from one nobody did. Without the `stopped` flag it fires after every suite that shuts down cleanly, a reader learns to skip it, and it costs exactly what not printing it would on the run where it mattered.",
+    file: "test/harness.ts",
+    from: "    if (stopped) return;",
+    to: "    if (false) return;",
+    suite: "test/harness-death.test.ts",
+    expect: ["but stop() is silent, because that exit was asked for"],
+  },
+  {
+    id: "dead-service-unaddressable",
+    defect:
+      "Every test after a dead shared mesh failed with `Unable to connect` — true about the socket, wrong about the subject. Those tests reached nothing and measured nothing, and a reader who cannot tell debris from cause cannot see a second real failure hiding in the debris. A rerun then comes back red with nothing to say about which red it is.",
+    file: "test/harness.ts",
+    from: "      const epitaph = svc.died();",
+    to: "      const epitaph = null;",
+    suite: "test/harness-death.test.ts",
+    expect: ["is told it measured nothing, not that a socket was unreachable"],
+  },
+  {
+    id: "dropped-frame-not-a-delivery",
+    defect:
+      "`ws.send` reports a dropped frame by returning 0 rather than throwing, and `mesh.send` decided `delivered` from the presence of a socket before sending. A message to a socket that had gone away was written `delivered` in the row and in § 8.9.4's audit event, and a row that is not pending is never replayed — so the claim that the recipient got it is also the reason it is unrecoverable.",
+    file: "packages/hub/src/jsonrpc.ts",
+    from: "  return ws.send(frame) !== 0;",
+    to: "  ws.send(frame); return true;",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["is recorded pending when the socket drops the frame"],
+  },
+  {
+    id: "backpressure-is-not-a-loss",
+    defect:
+      "Bun returns -1 when a frame is buffered behind backpressure — queued, and about to flush. Reading any non-positive return as a loss would leave the row pending and replay it on the next connect, handing the recipient a duplicate of a message it was already receiving. The fix for a loss would have manufactured one.",
+    file: "packages/hub/src/jsonrpc.ts",
+    from: "  return ws.send(frame) !== 0;",
+    to: "  return ws.send(frame) > 0;",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["backpressure is a delivery, not a loss"],
+  },
+  {
+    id: "replay-stops-at-a-drop",
+    defect:
+      "The replay loop's `break` was unreachable: it sat in a `catch`, and a send to a closed socket returns 0 instead of throwing. A reconnect into a closing socket walked the entire queue, marking every message delivered and writing an audit event for each.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "      if (!landed) {",
+    to: "      if (false) {",
+    suite: "packages/hub/src/rpc/delivery-landing.test.ts",
+    expect: ["leaves the queue pending when the socket drops the frame"],
+  },
+  {
+    id: "health-counts-agents",
+    defect:
+      "`GET /api/v1/health` answered `agent_count` from `agent_registry`, the http server's messaging directory, whose only writers are a legacy JSON import and one that inserts a person. It reported 1 — the `admin` human — on a deployment holding fourteen mesh identities: a number that moves when somebody logs in and not when an agent is provisioned.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare('SELECT count(*) AS n FROM agents')",
+    to: "    .prepare('SELECT 1 AS n')",
+    suite: "test/http.test.ts",
+    expect: ["`agent_count` counts mesh identities, and moves when one is provisioned"],
+  },
+  {
+    id: "refused-send-written-back",
+    defect:
+      "`POST /api/v1/messages` corrected a refused message's status on the object it answers from and never on the row. No UPDATE of that table existed in the package, so the response said `failed` and the record said `pending` — and the record is what the history route, the conversation view and search all serve, for the rest of the message's life.",
+    file: "packages/http/src/main.ts",
+    from: "    if (!updateMessageStatus(msg.id, 'failed')) {",
+    to: "    if (false) {",
+    suite: "test/message-status.test.ts",
+    expect: ["is recorded as failed, not left pending for ever"],
+  },
+  {
+    id: "real-error-category",
+    defect:
+      "Three sites caught with `catch {`, discarded the error, and filed the outcome as `hub_rpc_failed` — the fallback `hubErrorCategory` returns when it has nothing better. One of the three is read back into the recovery alert's `last_error_category=`, so an operator asking why an outage happened was answered with a constant.",
+    file: "packages/self-reminder/src/scheduler.ts",
+    from: "          const category = hubErrorCategory(error);",
+    to: '          const category = "hub_rpc_failed";',
+    suite: "packages/self-reminder/src/error-category.test.ts",
+    expect: ["records the hub's own category, not a constant"],
+  },
+  {
+    id: "transient-push-keeps-subscription",
+    defect:
+      "Every rejected push deleted the subscription. A 500, a 429 or a DNS failure unsubscribed the device as surely as a browser that had gone away, silently — so a person's phone went quiet and the repair was for them to notice. Only 404 and 410 mean the endpoint is gone.",
+    file: "packages/http/src/push.ts",
+    from: "  if (typeof status === \"number\" && GONE.has(status)) {",
+    to: "  if (true) {",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["a push service outage unsubscribed the device"],
+  },
+  {
+    id: "push-status-must-be-a-number",
+    defect:
+      "An error with no `statusCode` — a DNS failure, an abort — read as `undefined`, and the old code deleted anyway. An error whose status is unknown is not a subscription known to be gone.",
+    file: "packages/http/src/push.ts",
+    from: "  if (typeof status === \"number\" && GONE.has(status)) {",
+    to: "  if (GONE.has(status as number) || status === undefined) {",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["an error with no status at all keeps it"],
+  },
+  {
+    id: "bootstrap-retries-usable",
+    defect:
+      "`for (( attempt = 1; attempt <= MAX_RETRIES; … ))` with MAX_RETRIES=0 never enters its body, falls off the end returning 0, and the hub unit's ExecStartPost reports success having registered nothing. Bash reads any non-numeric string as 0, so a typo in a unit file is the same defect with no number in sight.",
+    file: "ops/bin/bootstrap-hub-service-identities.sh",
+    from: 'if ! [[ "$MAX_RETRIES" =~ ^[1-9][0-9]*$ ]]; then',
+    to: "if false; then",
+    suite: "test/bootstrap.test.ts",
+    expect: ["was accepted"],
+  },
 ];
 
 /**
@@ -913,18 +1040,25 @@ for (const m of selected) {
   // `not caught`, which is a finding about a guard from a run that never
   // reached it.
   //
-  // One mutation breaks one guard; the rest of the file still passes. Zero
-  // passing tests means the file did not run, whatever the summary says.
-  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
-  if (passed === 0) {
-    console.error(`✗ ${m.id}: no test in ${m.suite} ran — inconclusive, not a verdict`);
+  // The rule was `0 pass` means the file did not run, on the reasoning that one
+  // mutation breaks one guard and the rest of the file still passes. That held
+  // for every entry in the manifest until `message-status.test.ts`, which
+  // contains **one test**: when its guard objected, the summary was `0 pass /
+  // 1 fail` and a correctly caught mutation was reported as inconclusive.
+  //
+  // `0 pass` means two different things and the count cannot tell them apart —
+  // which is the ambiguity this whole script exists to hunt, sitting in the
+  // script. What separates them is *why* nothing passed:
+  const verdict = readVerdict(output, m.expect, run.exitCode);
+  if (verdict.kind === "inconclusive") {
+    console.error(`✗ ${m.id}: no verdict from ${m.suite} — ${verdict.why}`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
     missed++;
     kinds.set(m.id, "inconclusive");
     continue;
   }
 
-  const caught = run.exitCode !== 0 && m.expect.every((e) => output.includes(e));
+  const caught = verdict.kind === "caught";
   if (caught) {
     console.log(`✓ ${m.id}`);
   } else {

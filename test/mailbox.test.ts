@@ -56,7 +56,27 @@ const signer = (kp: KeyPair) => ({ kid: kp.fingerprint, privateKey: kp.privateKe
  * a second can land on the same one. Two clears it regardless of where in the
  * second the lease was taken.
  */
-const pastLease = () => Bun.sleep(2100);
+const LEASE_WAIT_MS = 2100;
+const pastLease = () => Bun.sleep(LEASE_WAIT_MS);
+
+/**
+ * What a test that waits `n` leases is allowed to take.
+ *
+ * **A sleeping test has no slack, and running out of it is not a flake.** The
+ * default budget is five seconds, so a test that waits two leases has spent
+ * 4.2s of it before doing anything, leaving 800ms for a dozen signed round
+ * trips — fine on an idle laptop, not fine on a runner with three suites on
+ * it. It failed in CI at 5002ms, passed on rerun, and read as a flake. It was
+ * the only test in the file that waits twice.
+ *
+ * The cascade is what makes it worth a named budget rather than a number
+ * appended to one test. Bun signals spawned children when a test times out, so
+ * the mesh this file shares shuts down gracefully and **every test after it
+ * fails with `Unable to connect`** — fifteen failures describing a socket and
+ * none of them naming the timeout. One test over its budget hides whatever
+ * else was wrong.
+ */
+const leaseBudget = (n: number) => n * LEASE_WAIT_MS + 5_000;
 
 describe("sending without a socket", () => {
   test("a mailbox agent sends, and the message reaches a socket agent", async () => {
@@ -129,7 +149,7 @@ describe("draining an inbox", () => {
     await pastLease();
     const settle = await callHttp(mesh.hub, signer(mail), "mesh.receive", { ack_ids: ids });
     expect(settle.body.result.messages).toHaveLength(0);
-  });
+  }, leaseBudget(1));
 
   test("an unacknowledged batch comes back — a lost response loses nothing", async () => {
     // The case a destructive read cannot survive: the caller's turn ends
@@ -162,7 +182,7 @@ describe("draining an inbox", () => {
     await pastLease();
     expect((await callHttp(mesh.hub, signer(mail), "mesh.receive", {})).body.result.messages)
       .toHaveLength(0);
-  });
+  }, leaseBudget(2));
 
   test("acknowledgement is what records delivery, not hand-out", async () => {
     // A leased batch may be redelivered, so recording on hand-out would put
@@ -205,7 +225,7 @@ describe("draining an inbox", () => {
     await pastLease();
     const bAgain = await callHttp(mesh.hub, signer(b), "mesh.receive", {});
     expect(bAgain.body.result.messages.map((m: any) => m.id)).toEqual(bIds);
-  });
+  }, leaseBudget(1));
 
   test("an unknown ack id is ignored rather than refused", async () => {
     // A caller retrying an ambiguous receive re-sends the same acknowledgements.

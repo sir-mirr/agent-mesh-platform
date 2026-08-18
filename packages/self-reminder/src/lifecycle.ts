@@ -20,7 +20,15 @@ export interface HubLifecycleOptions {
   onRegistered?: () => void | Promise<void>;
 }
 
-class HubRpcError extends Error {
+/**
+ * A hub refusal, carrying the category the hub gave for it.
+ *
+ * Exported because `hubErrorCategory` below is exported and does nothing except
+ * read this class: a caller could ask the question and had no way to construct
+ * the case where the answer is interesting, which is how the scheduler came to
+ * hardcode the fallback in three places with no test able to object.
+ */
+export class HubRpcError extends Error {
   constructor(message: string, readonly category: string) {
     super(message);
   }
@@ -133,8 +141,23 @@ export class HubLifecycle {
       this.reconnectAttempt = 0;
       this.options.onConnectivityState?.("registered");
       this.log("hub_registered", { generation });
-      void Promise.resolve(this.options.onRegistered?.()).catch(() => {
-        this.log("hub_recovery_alert_failed", { generation });
+      // **Named for a failure it cannot observe.** `onHubRegistered` catches
+      // every `sendAlert` rejection inside its own loop and does not rethrow,
+      // so this handler never sees an alert that failed to send — those are
+      // reported by the scheduler, per recipient, with the real category.
+      //
+      // What can reach here is everything else in that method: the state
+      // writes, the due-count query, the event insert. So it is renamed for
+      // what it actually covers and now carries the reason, which it was
+      // discarding. An `error_category` alongside the other calls in this file,
+      // and the message too — a category alone says which family, and the
+      // family for anything that is not a hub error is the unhelpful one.
+      void Promise.resolve(this.options.onRegistered?.()).catch((error) => {
+        this.log("hub_post_registration_failed", {
+          generation,
+          error_category: hubErrorCategory(error),
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
     } catch (error) {
       if (!this.owns(generation, ws)) return;

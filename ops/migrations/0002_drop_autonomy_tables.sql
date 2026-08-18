@@ -22,6 +22,25 @@
 -- Apply (adjust the path to match SELF_REMINDER_DB / AGENT_MESH_STATE_DIR):
 --   sqlite3 /srv/agent-mesh-lab/state/shared/self-reminder.db \
 --     < ops/migrations/0002_drop_autonomy_tables.sql
+--
+-- Pointing this at the wrong database is refused rather than reported as a
+-- no-op; see the guard below. Measured both ways, with and without `-bail`:
+--   wrong database   Runtime error ... CHECK constraint failed  → exit 1
+--   self-reminder.db autonomy tables dropped, `reminders` kept  → exit 0
+
+-- Refuse a database that is not `self-reminder.db`.
+--
+-- Every statement below is `IF EXISTS`, so pointing this file at `hub.db` — or
+-- at any other database — completed with exit 0 having done nothing, which is
+-- indistinguishable from the intended no-op on an already-migrated database.
+-- An operator would have every reason to believe the migration had run.
+--
+-- `reminders` is the table `self-reminder.db` always has and no other database
+-- here does. The CHECK fails when the count is 0, so the run stops with
+-- `CHECK constraint failed` instead of reporting success.
+CREATE TEMP TABLE _target_check (is_self_reminder INTEGER CHECK (is_self_reminder = 1));
+INSERT INTO _target_check (is_self_reminder)
+  SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'reminders';
 
 BEGIN;
 

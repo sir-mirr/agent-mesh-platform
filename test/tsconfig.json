@@ -1,12 +1,24 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // `..` for the same reason `scripts/tsconfig.json` uses it: a project that
+    // imports a file outside its own directory compiles that file alongside its
+    // own, and `noEmit` in the base config rules out project references.
+    // `mutation-verdict.ts` is the one such import — the predicate that turns a
+    // mutation run into a verdict, which needed a test of its own.
+    //
+    // Raising it costs nothing here. `outDir` and `rootDir` decide where output
+    // lands, and the base config sets `noEmit: true`, so there is no output to
+    // place. What `rootDir` still does is decide which sources the project is
+    // allowed to contain, which is the whole reason it moved.
+    "rootDir": "..",
     "outDir": "dist",
+    // The front-end scenarios are `.tsx`.
     "jsx": "react-jsx"
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "../scripts/mutation-verdict.ts"
   ]
 }

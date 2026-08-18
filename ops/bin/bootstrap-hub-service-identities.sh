@@ -131,6 +131,16 @@ post_identity() {
     fi
     sleep "$RETRY_SLEEP_SEC"
   done
+
+  # **A loop that never ran is not a success.** Falling off the end returns the
+  # status of the `for`, which is 0 whether it registered something or never
+  # began, so a `MAX_RETRIES` of 0 — or any value bash arithmetic reads as 0,
+  # which includes every non-numeric string — made `main` proceed and the unit's
+  # `ExecStartPost` report success having registered nothing and logged nothing.
+  # Guarded below as well; this is the half that does not depend on remembering
+  # to guard.
+  log "failed to register ${identity}: no attempt was made (MAX_RETRIES=${MAX_RETRIES})"
+  return 1
 }
 
 main() {
@@ -158,6 +168,14 @@ ENV_ROOT="${AGENT_MESH_ENV_ROOT:-${AGENT_MESH_LAB_HOME:-/srv/agent-mesh-lab}/env
 HUB_WS_URL="${AGENT_MESH_HUB_URL:-${HUB_URL:-ws://127.0.0.1:3100/ws}}"
 HUB_API_URL="${AGENT_MESH_HUB_API_URL:-$(derive_hub_api_url "$HUB_WS_URL")}"
 MAX_RETRIES="${HUB_BOOTSTRAP_MAX_RETRIES:-30}"
+# Refused rather than defaulted, because a value that was set and is unusable is
+# an operator who believes something this script is not doing. Bash arithmetic
+# reads any non-numeric string as 0, so `HUB_BOOTSTRAP_MAX_RETRIES=none` would
+# otherwise skip every attempt silently and exit 0.
+if ! [[ "$MAX_RETRIES" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'HUB_BOOTSTRAP_MAX_RETRIES must be a positive integer, got: %s\n' "$MAX_RETRIES" >&2
+  exit 2
+fi
 RETRY_SLEEP_SEC="${HUB_BOOTSTRAP_RETRY_SLEEP_SEC:-1}"
 DRY_RUN="${HUB_BOOTSTRAP_DRY_RUN:-false}"
 

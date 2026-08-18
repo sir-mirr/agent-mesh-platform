@@ -25,6 +25,7 @@ import {
   SERVER_ERROR,
   rpcError,
   rpcNotification,
+  sendFrame,
   rpcResult,
 } from "../jsonrpc";
 import { log } from "../log";
@@ -32,7 +33,7 @@ import { recordRefusal } from "../refusals";
 import { checkDormantSource } from "../dormancy";
 import { recordMeshEvent } from "./audit";
 import { rawParams } from "../raw-params";
-import { accept, replyChannel, type Channel } from "@agent-mesh/mailbox";
+import { accept, replyChannel, type AcceptedStatus, type Channel } from "@agent-mesh/mailbox";
 
 import { onlineAgents, proxyMap, wsIdentities, wsProxies } from "../presence";
 
@@ -220,7 +221,12 @@ export function handleSend(
 
   // Pushed only when the routing says mesh *and* somebody is there to push to.
   const deliverNow = carriedBy === "mesh" ? recipientWs : undefined;
-  const status = deliverNow ? "delivered" : "pending";
+  // **Provisional, and it used to be final.** A socket in the map is somebody
+  // who connected, not somebody who received: the frame still has to land, and
+  // `ws.send` reports a drop by returning 0 rather than by throwing. Deciding
+  // the recorded status here and never revisiting it made every send to a
+  // socket that had gone away an audited delivery. The block below revises it.
+  let status: AcceptedStatus = deliverNow ? "delivered" : "pending";
 
   // The message and its idempotency record commit together, so a crash between
   // them cannot leave a key that names a message which does not exist, or a
@@ -273,8 +279,11 @@ export function handleSend(
   // Deliver immediately when the routing chose the mesh and the recipient is
   // there. `deliverNow` already carries both conditions.
   if (deliverNow) {
+    let landed: boolean;
+    let why = "";
     try {
-      deliverNow.send(
+      landed = sendFrame(
+        deliverNow,
         rpcNotification("mesh.message", {
           id: msgId,
           from: effectiveSender,
@@ -285,6 +294,16 @@ export function handleSend(
           ts: new Date().toISOString(),
         })
       );
+      if (!landed) why = "the socket was gone and the frame was dropped";
+    } catch (err) {
+      // **The reason used to be bound here and thrown away.** The log line said
+      // which route and which message and not what went wrong, so the one fact
+      // that would explain the failure was in hand and never printed.
+      landed = false;
+      why = err instanceof Error ? err.message : String(err);
+    }
+
+    if (landed) {
       log(`delivered: ${route} (${msgId})`);
       // Notify sender that message was delivered (for typing indicator)
       const senderWs = onlineAgents.get(effectiveSender) ?? proxyMap.get(effectiveSender);
@@ -295,11 +314,15 @@ export function handleSend(
           }));
         } catch {}
       }
-    } catch (err) {
-      // If send fails, mark as pending
+    } else {
+      // Queued instead, and **recorded as queued**. Falling through rather than
+      // returning early, so this takes the same audit path as every other
+      // outcome: the early return here skipped § 8.9.4's second event entirely,
+      // leaving a `sent` with nothing after it — a message whose record stops
+      // mid-sentence.
       stmtUpdateMessageStatus.run("pending", msgId);
-      log(`delivery failed: ${route} (${msgId}), queued`);
-      return rpcResult(id, { id: msgId, status: "pending" });
+      status = "pending";
+      log(`delivery failed: ${route} (${msgId}), queued — ${why}`);
     }
   } else {
     log(`queued: ${route} (${msgId})`);
