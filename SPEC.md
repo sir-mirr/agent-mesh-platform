@@ -1641,7 +1641,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 
 | Method | Path                              | Auth   | Success | Notes |
 |--------|-----------------------------------|--------|---------|-------|
-| GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. |
+| GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. Body in § 9.1a. |
 | GET    | `/api/v1/agents`                  | JWT    | `200`   | List entries from the http-server's own `agent_registry` table in `${AGENT_MESH_STATE_DIR}/agent-mesh.db` — *not* the hub `agents` table in `hub.db` (see § 10). Superseded the `registry.json` file store; a pre-existing `registry.json` is imported once, on first boot after the upgrade, while the table is still empty. |
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
@@ -1801,6 +1801,37 @@ forever — the correct handling is to tell the user their access is
 pending.
 Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 `admin` role for a `JWT*` route) MUST return `403`.
+
+
+#### 9.1a. What `/api/v1/health` answers
+
+```json
+{ "status": "ok", "version": "20260818041757", "agent_count": 14, "uptime": 51407 }
+```
+
+| field | meaning |
+|---|---|
+| `status` | `"ok"`. The route answering at all is the liveness signal; this is not a health roll-up of anything else. |
+| `version` | The build stamp of the running process, so two deployments can be told apart. |
+| `agent_count` | Mesh identities in the registry. **Not** people, not online sockets — an operator asking *how many agents exist* is asking this. |
+| `uptime` | Seconds since this process started. |
+
+**Unauthenticated, deliberately.** It is the one answer available before a
+session exists, and a liveness check that needs a credential is one nobody can
+use from a load balancer.
+
+**This body was unspecified until now, and both halves of that cost something.**
+`agent_count` counted the http server's messaging directory rather than the
+registry, so it reported the number of *people* — one, where the mesh held
+fourteen — and no test disagreed because none asserted what the number was of.
+Separately, nobody had decided whether an unauthenticated caller should see a
+count at all; that is settled here as yes, and written down so the next person
+does not re-open it by guessing.
+
+`agent-mesh-hub` answers its own `/health` on its own port with a different
+body — `service`, `version`, `agent_mesh_spec`, `online_agents`. **`online_agents`
+and `agent_count` are different questions**: who is connected now, and how many
+identities exist.
 
 ### 9.2. Control-plane routes on `agent-mesh-hub` (`AGENT_MESH_HUB_PORT`, default `3100`)
 

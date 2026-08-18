@@ -450,6 +450,33 @@ reader who gets `Connection refused` goes looking at the port or the build; read
 as "IPv4 is not served", they change one word in the URL. Same sentence, two
 different afternoons.
 
+### Deploying it somewhere else
+
+The owner's decision is a **separate server with an administrator on it**, not
+this laptop. That takes `vite preview` off the table as the answer, and it
+takes the proxy with it:
+
+```
+preview reached the API because it inherits `server.proxy` from vite.config.ts
+a static host has no such thing
+```
+
+So `dist` copied onto a web server gives a page that loads and an API that
+404s from that server's own root — **the screen works and cannot reach the
+backend**, which looks like the backend is down. The front end calls relative
+paths (`/api/v1/...`), so the two ways out are:
+
+| | |
+|---|---|
+| **the host proxies `/api` to `agent-mesh-http`** | one nginx or Caddy block; the front end is unchanged |
+| the front end calls an absolute URL | inject an API base at build time, and then it is cross-origin |
+
+The first leaves the code alone. The second needs
+`AGENT_MESH_ALLOWED_ORIGINS` set to the front end's origin — that variable is
+**empty by default and empty does not mean "allow everything"**, as § 4 says.
+Either way the origin has to be named somewhere; the difference is whether it
+is named in a proxy config or in a build argument and a CORS list.
+
 **What is genuinely missing is the deployment wiring, not the serving.** There
 is no systemd unit for the front end — `ops/systemd/` has the hub, the http
 server, the self-reminder and the orphan collector, and nothing else — and
