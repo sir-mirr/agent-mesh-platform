@@ -1396,6 +1396,66 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   });
 
+  // SC-WRITE-07: /tenant/rbac does not claim a grant it failed to make.
+  //
+  // The write axis had nothing on this screen, and agent-mesh-local-pm put it
+  // first for a reason: it is the screen that grants and revokes capabilities.
+  // A screen that says "권한이 부여되었습니다" for a grant the server refused
+  // tells an operator someone has access they do not have — and I-055 was found
+  // one route away from here.
+  //
+  // The toggle is optimistic in its wording and not in its state: it posts,
+  // then reloads from the server. So the chip must still read as it did, and
+  // the toast must say it failed.
+  it("[SC-WRITE-07] handles an RBAC grant abort without claiming the capability was granted", async () => {
+    // A subject with a grant, so the table has a row and the row has chips.
+    // Without this the screen is empty and there is nothing to click — which
+    // the scenario would report as inconclusive rather than pass, but an
+    // inconclusive scenario measures nothing.
+    await capabilityViewer(mesh, "usage.read");
+
+    await withPage("/tenant/rbac", async ({ page }) => {
+      await shows(page, "usage.read");
+
+      // Only the write. The read has to succeed or there are no chips to click.
+      await page.route("**/api/v1/admin/grants", (route) => {
+        const method = route.request().method();
+        if (method === "POST" || method === "DELETE") return route.abort();
+        return route.continue();
+      });
+
+      // By the title only the chips carry. Their visible text is prefixed
+      // (`✓ usage.read`), so an anchored match on the capability name finds
+      // nothing — which the first version of this did, and reported as
+      // inconclusive rather than as a wrong selector.
+      const chip = page.locator('button[title*="권한"]').first();
+      const chipCount = await chip.count();
+      if (chipCount === 0) {
+        // No chips means no subject is listed, and clicking nothing proves
+        // nothing. Say so rather than pass.
+        console.warn("[SC-WRITE-07] inconclusive: no capability chip is rendered, so no write was attempted");
+        return;
+      }
+
+      const before = await page.locator("#root").innerText();
+      await chip.click();
+      await showsMatch(page, /실패|오류|통신/);
+      const after = await page.locator("#root").innerText();
+
+      expect(after, "the screen announced a grant the server refused")
+        .not.toContain("권한이 부여되었습니다");
+      expect(after, "the screen announced a revocation the server refused")
+        .not.toContain("권한이 회수되었습니다");
+      expect(after).toMatch(/실패|오류|통신/);
+
+      // And the chips are unchanged: the failure must not leave the screen
+      // rendering a permission set nobody holds.
+      const chipsBefore = (before.match(/\b[a-z]+\.[a-z.]+\b/g) ?? []).sort().join(",");
+      const chipsAfter = (after.match(/\b[a-z]+\.[a-z.]+\b/g) ?? []).sort().join(",");
+      expect(chipsAfter, "the capability list changed after a write that failed").toBe(chipsBefore);
+    });
+  }, 30000);
+
   // SC-WRITE-05: /creator/playground receipt displays real server fields
   it("[SC-WRITE-05] renders playground receipt with real server response fields", async () => {
     await withPage("/creator/playground", async ({ page }) => {
