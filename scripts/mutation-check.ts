@@ -1633,6 +1633,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-AUTH-07", "signing out left the session usable"],
   },
   {
+    id: "ratchet-lets-a-screen-slip-back",
+    defect:
+      "A string put back into a component rather than the dictionary, on a screen outside the admission path. The flow check does not look there, so the only thing standing between this and English-mode Korean is the count — which is exactly what a ratchet is for.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: 'header: t("reg.col.status", "승인 상태"),',
+    to: 'header: "승인 상태",',
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "untranslated strings, up from"],
+  },
+  {
     id: "korean-straight-into-a-screen",
     defect:
       "A string written into a component instead of the dictionary. It renders in Korean with the language set to English, and neither dictionary check sees it: `SC-I18N-01` compares two dictionaries and `SC-I18N-03` checks keys that exist. Text between tags is the shape that walked through the first version of this guard.",
