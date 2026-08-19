@@ -682,6 +682,13 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       "layouts/RootLayout.tsx",
       "contexts/AuthContext.tsx",
     ];
+    // **The list is checked against the router, not trusted.** Four of those
+    // eight are screens, and a screen is named here by a path I typed. If the
+    // admission routes come to point at different components — renamed, split,
+    // replaced — this list would go on holding the old files to zero while the
+    // new ones drifted, and nothing would say so. So the four routes are read
+    // out of `App.tsx` and their components resolved through its imports.
+    const ADMISSION = ["/login", "/change-password", "/platform/users", "/tenant/rbac"];
     const RATCHET = 117;
     const ROOT = "packages/platform-web/src";
     const KOREAN = /[가-힣]/;
@@ -738,6 +745,27 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       { scanned: sources.length > 40, listed: FLOW.filter((f) => !sources.includes(join(ROOT, f))) },
       "the scan found nothing to read, or a flow file is no longer where it was",
     ).toEqual({ scanned: true, listed: [] });
+
+    const app = readFileSync(join(ROOT, "App.tsx"), "utf8");
+    const imports = new Map<string, string>();
+    for (const m of app.matchAll(/import \{\s*([A-Za-z0-9_]+)\s*\} from "@\/([^"]+)"/g)) {
+      imports.set(m[1] ?? "", (m[2] ?? "").replace(/\.tsx$/, ".tsx"));
+    }
+    const drawnBy = (route: string): string | null => {
+      const at = app.indexOf(`path="${route}"`);
+      if (at < 0) return null;
+      const near = app.slice(at, at + 400);
+      const el = near.match(/<([A-Z][A-Za-z0-9_]*)\s*\/>/);
+      return el ? imports.get(el[1] ?? "") ?? null : null;
+    };
+    const admissionFiles = ADMISSION.map((r) => ({ route: r, file: drawnBy(r) }));
+    expect(
+      {
+        resolved: admissionFiles.filter((a) => a.file === null).map((a) => a.route),
+        outsideFlow: admissionFiles.filter((a) => a.file && !FLOW.includes(a.file)).map((a) => `${a.route} → ${a.file}`),
+      },
+      "an admission route could not be resolved to a component, or points at a file this check does not hold to zero",
+    ).toEqual({ resolved: [], outsideFlow: [] });
 
     expect(
       FLOW.flatMap((f) => offendersIn(join(ROOT, f), true)),

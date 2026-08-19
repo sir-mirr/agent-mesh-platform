@@ -1643,6 +1643,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-07", "a refusal was drawn as silence"],
   },
   {
+    id: "admission-route-points-somewhere-unchecked",
+    defect:
+      "The four admission screens are named in `SC-I18N-04` by a path somebody typed. Pointing a route at a different component leaves that list holding the old files to zero while the screen a person actually sees drifts — and every check stays green.",
+    file: "packages/platform-web/src/App.tsx",
+    from: "                    <UserAdminPage />",
+    to: "                    <TenantTrafficPage />",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "points at a file this check does not hold to zero"],
+  },
+  {
     id: "client-drops-the-capability-the-server-named",
     defect:
       "§ 11.3's refusal carries `capability` as a field so a client does not parse it out of a sentence. Dropping it sends every screen back to the name typed into its own copy — nine guesses that were right on the day they were written.",
