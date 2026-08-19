@@ -104,3 +104,82 @@ test("a scheduled reminder is fired by the daemon and reaches its owner", async 
   // scheduler rather than on the owner's behalf.
   expect(JSON.stringify(delivered)).toContain("self-reminder");
 }, 120_000);
+
+/**
+ * A reminder waiting on a person, told apart from one waiting on its time.
+ *
+ * A `once` reminder more than `overdueHoldMs` late is held for an operator
+ * decision and **its row stays `active`**, with `next_fire_at` receding further
+ * into the past on every scan. So `mesh.list_reminders` showed the same thing
+ * for one about to fire and one that never will, and the caller had no way to
+ * ask — the shape this repository has spent the week taking out of screens,
+ * living in an RPC response.
+ *
+ * agent-mesh-local-pm asked for both directions, and the reverse is the half
+ * that matters: a field that always says *held* passes the first assertion.
+ */
+test("list_reminders tells a held reminder from a scheduled one", async () => {
+  const own = await startMesh({ withHttp: false });
+  let client: RpcClient | null = null;
+  let proc: ReturnType<typeof spawn> | null = null;
+  try {
+    await provision(own.hub, "self-reminder", "service");
+    await provision(own.hub, "hold-owner", "service");
+    client = await connectRpc(own.hub);
+    await client.call("mesh.connect", { identity: "hold-owner" });
+
+    // Late enough to be overdue once the hold is a millisecond.
+    await client.call("mesh.schedule_reminder", {
+      id: `rem_${"a".repeat(16)}`,
+      type: "once",
+      schedule_spec: JSON.stringify({ at: new Date(Date.now() - 60_000).toISOString() }),
+      payload: "waiting on a person",
+      next_fire_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    // Repeating, so it is never held — the other side of the comparison.
+    await client.call("mesh.schedule_reminder", {
+      id: `rem_${"b".repeat(16)}`,
+      type: "interval",
+      schedule_spec: JSON.stringify({ every: "1h" }),
+      payload: "waiting on its time",
+      next_fire_at: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+
+    proc = spawn("bun", [join(REPO_ROOT, "packages/self-reminder/src/main.ts")], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        AGENT_MESH_STATE_DIR: own.stateDir,
+        HUB_URL: `ws://127.0.0.1:${own.hub.port}/ws`,
+        SELF_REMINDER_POLL_MS: "200",
+        SELF_REMINDER_OVERDUE_HOLD_MS: "1",
+      },
+      stdio: "pipe",
+    });
+    const said: string[] = [];
+    proc.stdout?.on("data", (b) => said.push(String(b)));
+    proc.stderr?.on("data", (b) => said.push(String(b)));
+
+    const deadline = Date.now() + 30_000;
+    let rows: Array<Record<string, unknown>> = [];
+    while (Date.now() < deadline) {
+      rows = (await client.call("mesh.list_reminders", { status: "all" })).result.rows;
+      if (rows.some((r) => r.held_since)) break;
+      await Bun.sleep(150);
+    }
+
+    const held = rows.find((r) => r.payload === "waiting on a person");
+    const scheduled = rows.find((r) => r.payload === "waiting on its time");
+    expect({ found: Boolean(held && scheduled), said: said.join("").slice(-800) })
+      .toMatchObject({ found: true });
+
+    expect({ heldMarked: typeof held!.held_since === "string" }).toEqual({ heldMarked: true });
+    // Both are still `active`; without the field they are indistinguishable.
+    expect({ status: held!.status }).toEqual({ status: "active" });
+    expect({ scheduledMarked: "held_since" in scheduled! }).toEqual({ scheduledMarked: false });
+  } finally {
+    proc?.kill();
+    client?.close();
+    own.stop();
+  }
+}, 120_000);

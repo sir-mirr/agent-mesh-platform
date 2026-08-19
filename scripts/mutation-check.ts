@@ -1157,6 +1157,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["a scheduled reminder is fired by the daemon and reaches its owner"],
   },
   {
+    id: "held-reminder-looks-scheduled",
+    defect:
+      "A `once` reminder more than `overdueHoldMs` late is held for an operator and its row stays `active`, with `next_fire_at` receding further into the past on every scan — so `mesh.list_reminders` showed the same thing for one about to fire and one that never will. Two states where three are needed: scheduled, held, gone. The shape this repository spent the week taking out of screens, in an RPC response. Raised by agent-mesh-local-pm, who also asked for the reverse direction: a field that always says *held* passes the first half.",
+    file: "packages/hub/src/rpc/reminders.ts",
+    from: "      return held?.value ?? null;",
+    to: "      return held ? null : null;",
+    suite: "test/reminder-fires.test.ts",
+    expect: ["list_reminders tells a held reminder from a scheduled one"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

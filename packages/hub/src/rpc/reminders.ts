@@ -147,5 +147,47 @@ export function handleListReminders(
           )
           .all(agent_id, status, limit);
 
-  return rpcResult(id, { rows });
+  /**
+   * Whether each row is waiting on a person, rather than waiting on its time.
+   *
+   * **Both look like `active`.** A `once` reminder more than `overdueHoldMs`
+   * late is held for an operator decision (`scheduler.ts:284`) and its row stays
+   * `active` with a `next_fire_at` receding further into the past on every scan.
+   * So a caller listing its reminders sees the same thing for one that is about
+   * to fire and one that never will, and § 8.5 gives it no way to tell — the
+   * shape this repository has spent the week removing from screens, in an RPC
+   * response.
+   *
+   * Additive rather than a new `status`: existing consumers read `status` and a
+   * value they have never seen would change what they do. `held_since` is
+   * absent on every row that is simply scheduled, so the two are distinguishable
+   * without either becoming the other.
+   *
+   * The hold lives in the daemon's own `scheduler_health` keys and is read here
+   * rather than mirrored, because a copy of it in `reminders` would be a second
+   * declaration of the same fact — and the daemon is the only writer.
+   */
+  const heldSince = (row: { id?: unknown; next_fire_at?: unknown }): string | null => {
+    if (typeof row.id !== "string" || typeof row.next_fire_at !== "string") return null;
+    try {
+      const held = srDb()
+        .prepare(`SELECT value FROM scheduler_health WHERE key = ?`)
+        .get(`overdue_hold:${row.id}:${row.next_fire_at}`) as { value?: string } | undefined;
+      return held?.value ?? null;
+    } catch {
+      // `scheduler_health` is created by the daemon's own migration, not by the
+      // store schema the hub applies — so on a deployment where the daemon has
+      // never run the table is absent. **Absent is the right answer there and
+      // not a guess**: only the daemon writes a hold, so a mesh it has never
+      // touched cannot be holding anything.
+      return null;
+    }
+  };
+
+  return rpcResult(id, {
+    rows: (rows as Array<Record<string, unknown>>).map((row) => {
+      const since = heldSince(row as { id?: unknown; next_fire_at?: unknown });
+      return since === null ? row : { ...row, held_since: since };
+    }),
+  });
 }
