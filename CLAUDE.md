@@ -201,6 +201,38 @@ repository have reported green while checking nothing, repeatedly, and every one
 was found by breaking the behaviour on purpose rather than by reading the code.
 `docs/decisions/checks-that-check-nothing.md` lists them.
 
+### The machine is shared
+
+Two agents run this suite on one host, and `test/` starts real hub, http and
+Playwright processes. Under contention it fails as one timeout followed by
+dozens of `Target page, context or browser has been closed` — **that signature
+is load, not a defect**, and reading it as one costs an evening.
+
+Announce the run in the mailbox before starting and when it ends. **Announce a
+re-run too.** A rebase changes the base, so the number has to be taken again,
+and re-measuring is ordinary work — but a protocol with only "start" and "stop"
+in it leaves the second start invisible. `agent-mesh-local-pm` began a run on the
+strength of a "finished" that had already been overtaken by a re-arm (mail
+#1092).
+
+**`ps` cannot tell whose run it is.** Both agents invoke `bun test test/` from
+different worktrees, so the command lines are identical to the character. The
+working directory is what separates them:
+
+```bash
+for p in $(pgrep -f "bun test"); do
+  printf '%s  %s\n' "$p" "$(lsof -a -p $p -d cwd -Fn | grep '^n' | cut -c2-)"
+done
+```
+
+And when waiting for the machine to clear, wait for **zero**. A condition of
+`-le 1` reads as "nobody else" and means "one other is fine"; it let a run start
+alongside another agent's `fe-render`, which is the shape it was written to
+prevent.
+
+A **green** taken under load stands — contention produces false reds, never
+false greens. A red does not, until it is re-run on a quiet machine.
+
 CI runs every command above. `test/` starts real hub and http processes, so a failure
 there usually means wiring rather than logic.
 
