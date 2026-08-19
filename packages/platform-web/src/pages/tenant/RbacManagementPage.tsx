@@ -89,14 +89,14 @@ export function RbacManagementPage() {
     try {
       if (hasCap) {
         await deleteGrantApi(subject, capId);
-        setToastMessage(`[${subject}]의 [${capId}] 권한이 회수되었습니다.`);
+        setToastMessage(`${t("rbac.toast.revoked", "권한 회수")}: ${subject} · ${capId}`);
       } else {
         await addGrantApi(subject, capId);
-        setToastMessage(`[${subject}]에게 [${capId}] 권한이 부여되었습니다.`);
+        setToastMessage(`${t("rbac.toast.granted", "권한 부여")}: ${subject} · ${capId}`);
       }
       await loadGrantsAndMembers();
     } catch (err: any) {
-      setToastMessage(`권한 변경 실패: ${err.message}`);
+      setToastMessage(`${t("rbac.toast.failed", "권한 변경 실패")}: ${err.message}`);
     }
   };
 
@@ -159,7 +159,7 @@ export function RbacManagementPage() {
                     : "var(--color-text-muted)",
                   transition: "all 0.15s ease",
                 }}
-                title={canGrant ? `클릭 시 ${isAssigned ? "권한 회수" : "권한 부여"}` : "role.grant 권한이 필요합니다"}
+                title={canGrant ? (isAssigned ? t("rbac.toast.revoked", "권한 회수") : t("rbac.toast.granted", "권한 부여")) : t("rbac.needs.grant", "role.grant 권한이 필요합니다")}
               >
                 {isAssigned ? "✓ " : "+ "}
                 {capId}
@@ -180,7 +180,7 @@ export function RbacManagementPage() {
         suiteBadgeColor="leased"
         screenId="36"
         title={t("rbac.title", "조직 멤버 RBAC 권한 & Capability 관리")}
-        subtitle="SPEC § 11.3 / § 12: 계정별 Capability(권한) 세분화 부여 및 회수 (role.grant 인가 전용)"
+        subtitle={t("rbac.subtitle", "SPEC § 11.3 / § 12: 계정별 Capability(권한) 세분화 부여 및 회수 (role.grant 인가 전용)")}
       />
 
       {toastMessage && (
@@ -194,7 +194,8 @@ export function RbacManagementPage() {
       {/* Capability Matrix Section */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          🛡️ 활성 조직원 및 Capability 권한 할당 매트릭스 {isLoading ? "(조회 중...)" : isError ? "(통신 불가)" : `(${members.length}명)`}
+          🛡️ {t("rbac.matrix", "활성 조직원 및 Capability 권한 할당 매트릭스")}{" "}
+          {isLoading ? `(${t("common.loading", "조회 중...")})` : isError ? t("common.unreachable", "(통신 불가)") : `(${members.length})`}
         </h3>
         <DataTable
           columns={columns}
@@ -202,8 +203,8 @@ export function RbacManagementPage() {
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
           isError={isError}
-          errorMessage="RBAC 권한 데이터를 불러올 수 없습니다 (role.grant 권한 부족 또는 서버 오류)."
-          emptyMessage="현재 등록된 조직원 데이터가 없습니다."
+          errorMessage={t("rbac.error", "RBAC 권한 데이터를 불러올 수 없습니다 (role.grant 권한 부족 또는 서버 오류).")}
+          emptyMessage={t("rbac.empty", "현재 등록된 조직원 데이터가 없습니다.")}
         />
       </div>
     </div>

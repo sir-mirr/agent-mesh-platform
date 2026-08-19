@@ -17,7 +17,7 @@ export function RootLayout() {
   return (
     <div style={{ display: "flex", minHeight: "100dvh" }}>
       <Sidebar
-        userName={user?.name || "운영자"}
+        userName={user?.name ?? ""}
         userRole={user?.role || "AGENT_OPERATOR"}
         userCapabilities={capabilities}
         onLogout={() => {

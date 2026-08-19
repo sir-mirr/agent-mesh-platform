@@ -1600,6 +1600,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "korean-straight-into-a-screen",
+    defect:
+      "A string written into a component instead of the dictionary. It renders in Korean with the language set to English, and neither dictionary check sees it: `SC-I18N-01` compares two dictionaries and `SC-I18N-03` checks keys that exist. Text between tags is the shape that walked through the first version of this guard.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '          {t("users.issued.for", "Temporary password for")} {issued.username}',
+    to: "          임시 비밀번호 — {issued.username}",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
+  },
+  {
+    id: "client-appends-a-title-nobody-granted",
+    defect:
+      "`admin (운영자)` in the sidebar of every screen — the client decorating what the server returned. Two defects in one string: a Korean noun that no dictionary carries, and a role the server never said.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: "              name: me.github_login,",
+    to: "              name: `${me.github_login} (운영자)`,",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
+  },
+  {
     id: "issued-password-survives-a-reload",
     defect:
       "Keeping the one-time password somewhere a reload can find it. The screen looks the same and the word `once` becomes false — and the place it would be kept, `localStorage`, is readable by anything else running on the origin.",

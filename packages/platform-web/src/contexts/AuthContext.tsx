@@ -138,7 +138,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             return {
               id: `usr_${me.github_login}`,
-              name: `${me.github_login} (운영자)`,
+              // The server said `github_login`. Appending a Korean noun to it made
+              // the sidebar say "admin (운영자)" in English mode, and made the
+              // client the author of a title nobody granted.
+              name: me.github_login,
               role: roleKey,
               capabilities: resolvedCaps,
               tenantId: "tenant_default",
@@ -201,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const newUser: User = {
         id: `usr_${res.user.github_login}`,
-        name: `${res.user.github_login} (운영자)`,
+        name: res.user.github_login,
         role: mappedRole,
         capabilities: resolvedCaps,
         tenantId: "tenant_acme",

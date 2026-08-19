@@ -39,7 +39,7 @@ export interface SidebarProps {
 
 export function Sidebar({
   userCapabilities = [],
-  userRole = "에이전트 운영자",
+  userRole = "",
   userName = "admin",
   onLogout,
 }: SidebarProps) {
@@ -234,7 +234,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={toggleSidebar}
-            title="LNB 메뉴 펼치기"
+            title={t("nav.expand", "LNB 메뉴 펼치기")}
             style={{
               width: 36,
               height: 36,
@@ -313,7 +313,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={toggleSidebar}
-              title="LNB 메뉴 숨기기 (접기)"
+              title={t("nav.collapse", "LNB 메뉴 숨기기 (접기)")}
               style={{
                 background: "var(--color-bg-surface-sub)",
                 border: "1px solid var(--color-border)",
@@ -549,7 +549,7 @@ export function Sidebar({
                 marginBottom: 2,
               }}
             >
-              Language / 언어 선택
+              {t("lang.title", "Language / 언어 선택")}
             </div>
 
             <button
@@ -583,7 +583,7 @@ export function Sidebar({
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: "1.1rem" }}>🇰🇷</span>
-                <span>한국어</span>
+                <span>{t("lang.ko", "한국어")}</span>
               </span>
               {language === "ko" && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>✓</span>}
             </button>
@@ -634,7 +634,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={() => setIsLangOpen((prev) => !prev)}
-                title="언어 변경 (Language Switcher)"
+                title={t("nav.lang", "언어 변경 (Language Switcher)")}
                 style={{
                   width: 30,
                   height: 30,
@@ -709,7 +709,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => setIsLangOpen((prev) => !prev)}
-              title="언어 변경 (Language Switcher)"
+              title={t("nav.lang", "언어 변경 (Language Switcher)")}
               style={{
                 width: 28,
                 height: 28,
@@ -739,7 +739,7 @@ export function Sidebar({
                 alignItems: "center",
                 justifyContent: "center",
               }}
-              title="로그아웃"
+              title={t("nav.logout", "로그아웃")}
             >
               🚪
             </button>

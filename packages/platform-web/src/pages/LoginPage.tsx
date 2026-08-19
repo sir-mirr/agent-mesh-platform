@@ -67,8 +67,8 @@ export function LoginPage() {
     } catch (err: any) {
       setLoginError(
         err instanceof ApiError && !err.refused
-          ? "서버에 연결할 수 없습니다 — 아이디·비밀번호 문제가 아닙니다."
-          : err?.message || "로그인에 실패했습니다.",
+          ? t("login.unreachable", "서버에 연결할 수 없습니다 — 아이디·비밀번호 문제가 아닙니다.")
+          : err?.message || t("login.failed", "로그인에 실패했습니다."),
       );
       return;
     }
@@ -83,9 +83,9 @@ export function LoginPage() {
   // Core character and network nodes
   const nodesRef = useRef<NodeDef[]>([
     // 3 Main Characters
-    { id: "fin", baseX: 220, baseY: 300, type: "character", name: "핀둥이", avatar: "/assets/agent-fin.png", color: "#38BDF8", size: 54, speed: 0.8, ampX: 10, ampY: 14, phase: 0 },
-    { id: "pinja", baseX: 400, baseY: 420, type: "character", name: "핀자", avatar: "/assets/agent-support.png", color: "#34D399", size: 54, speed: 0.7, ampX: 12, ampY: 10, phase: 2.1 },
-    { id: "areum", baseX: 260, baseY: 620, type: "character", name: "아름이", avatar: "/assets/agent-assistant.png", color: "#C084FC", size: 54, speed: 0.75, ampX: 14, ampY: 12, phase: 4.2 },
+    { id: "fin", baseX: 220, baseY: 300, type: "character", name: t("login.demo.fin", "핀둥이"), avatar: "/assets/agent-fin.png", color: "#38BDF8", size: 54, speed: 0.8, ampX: 10, ampY: 14, phase: 0 },
+    { id: "pinja", baseX: 400, baseY: 420, type: "character", name: t("login.demo.pinja", "핀자"), avatar: "/assets/agent-support.png", color: "#34D399", size: 54, speed: 0.7, ampX: 12, ampY: 10, phase: 2.1 },
+    { id: "areum", baseX: 260, baseY: 620, type: "character", name: t("login.demo.areum", "아름이"), avatar: "/assets/agent-assistant.png", color: "#C084FC", size: 54, speed: 0.75, ampX: 14, ampY: 12, phase: 4.2 },
 
     // Left Wing Connected Nodes
     { id: "n1", baseX: 100, baseY: 160, type: "dot", size: 14, speed: 0.9, ampX: 8, ampY: 10, phase: 1.0 },
@@ -411,7 +411,7 @@ export function LoginPage() {
           type="button"
           aria-haspopup="listbox"
           aria-expanded={langOpen}
-          aria-label={language === "en" ? "Language: English" : "언어: 한국어"}
+          aria-label={t("login.lang.aria", "언어: 한국어")}
           data-testid="lang-trigger"
           onClick={() => setLangOpen((v) => !v)}
           style={{
@@ -529,7 +529,7 @@ export function LoginPage() {
             <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="agent-glow-ring ring-blue" />
               <div className="agent-avatar-frame">
-                <img src="/assets/agent-fin.png" alt="핀둥이" className="agent-avatar-img" />
+                <img src="/assets/agent-fin.png" alt={t("login.demo.fin", "핀둥이")} className="agent-avatar-img" />
               </div>
             </div>
             <span
@@ -542,7 +542,7 @@ export function LoginPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              핀둥이
+              {t("login.demo.fin", "핀둥이")}
             </span>
           </div>
         )}
@@ -564,7 +564,7 @@ export function LoginPage() {
             <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="agent-glow-ring ring-emerald" />
               <div className="agent-avatar-frame">
-                <img src="/assets/agent-support.png" alt="핀자" className="agent-avatar-img" />
+                <img src="/assets/agent-support.png" alt={t("login.demo.pinja", "핀자")} className="agent-avatar-img" />
               </div>
             </div>
             <span
@@ -577,7 +577,7 @@ export function LoginPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              핀자
+              {t("login.demo.pinja", "핀자")}
             </span>
           </div>
         )}
@@ -599,7 +599,7 @@ export function LoginPage() {
             <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="agent-glow-ring ring-purple" />
               <div className="agent-avatar-frame">
-                <img src="/assets/agent-assistant.png" alt="아름이" className="agent-avatar-img" />
+                <img src="/assets/agent-assistant.png" alt={t("login.demo.areum", "아름이")} className="agent-avatar-img" />
               </div>
             </div>
             <span
@@ -612,7 +612,7 @@ export function LoginPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              아름이
+              {t("login.demo.areum", "아름이")}
             </span>
           </div>
         )}

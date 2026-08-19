@@ -640,6 +640,117 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     return (await signIn(username, chosen)).cookie;
   }
 
+  /**
+   * SC-I18N-04 — Korean that never passed through the dictionary.
+   *
+   * `SC-I18N-01` compares the two dictionaries and `SC-I18N-03` checks that
+   * every key a screen asks for is defined. Both are about keys, and a string
+   * written straight into a component has no key at all: it renders in Korean
+   * in English mode and neither check has anything to say about it. Measured on
+   * the running product, `/creator/register` was 21.7% Korean characters with
+   * the language set to English, and `admin (운영자)` sat in the sidebar of every
+   * screen — the client appending a Korean noun to what the server returned.
+   *
+   * ## Two denominators, because one of them cannot be zero today
+   *
+   * `FLOW` is the path a person actually walks to be admitted and to be given a
+   * capability. Those screens are held at zero.
+   *
+   * The rest of the tree carries 153 such strings. Deleting the number here to
+   * make the check pass is the failure this is written against, so the number
+   * is asserted from above: it may fall, and any commit that raises it fails.
+   * A ratchet says less than a zero would, and it says it about every file
+   * rather than about the six somebody remembered to list.
+   *
+   * ## What it cannot see
+   *
+   * A string built at runtime (`` `${count}개` ``) is a template literal and is
+   * caught; one assembled from variables is not. The scan is over source, so it
+   * is blind to anything the browser composes — `audit/langsweep.mjs` measures
+   * the rendered page and is the other half.
+   */
+  it("[SC-I18N-04] keeps Korean out of the source that the dictionary should carry", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const FLOW = [
+      "pages/LoginPage.tsx",
+      "pages/ChangePasswordPage.tsx",
+      "pages/platform/UserAdminPage.tsx",
+      "pages/tenant/RbacManagementPage.tsx",
+      "components/layout/Sidebar.tsx",
+      "components/layout/Breadcrumbs.tsx",
+      "layouts/RootLayout.tsx",
+      "contexts/AuthContext.tsx",
+    ];
+    const RATCHET = 153;
+    const ROOT = "packages/platform-web/src";
+    const KOREAN = /[가-힣]/;
+    const LITERAL = /"([^"\\\n]*)"|'([^'\\\n]*)'|`([^`\\]*)`/gs;
+    // The fallback argument of `t("key", "…")` is where Korean belongs.
+    const AS_FALLBACK = /t\(\s*"[^"]+"\s*,\s*$/;
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f) && !f.includes("I18nContext"));
+
+    const offendersIn = (file: string, withJsx: boolean): string[] => {
+      const raw = readFileSync(file, "utf8");
+      // Comments are prose about the code, and this check twice read its own
+      // explanation of a defect as the defect. `//` is only a comment when it
+      // is not the `//` of a URL.
+      // Blanked rather than deleted: the line numbers below are how somebody
+      // finds the string, and `D-34` is the entry for a report whose lines had
+      // shifted out from under it.
+      const blank = (m: string) => m.replace(/[^\n]/g, " ");
+      const text = raw.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])(\/\/[^\n]*)/g, (_a, p1, c) => p1 + blank(c));
+      const found: string[] = [];
+      for (const m of text.matchAll(LITERAL)) {
+        // A template's `${…}` holds expressions, and `t("key", "한글")` inside
+        // one is the dictionary being used correctly.
+        const value = (m[1] ?? m[2] ?? m[3] ?? "").replace(/\$\{[^}]*\}/g, "");
+        if (!KOREAN.test(value)) continue;
+        if (AS_FALLBACK.test(text.slice(Math.max(0, m.index - 80), m.index))) continue;
+        found.push(`${file}: ${value.slice(0, 40)}`);
+      }
+      if (withJsx) {
+        // **Not a second literal scan.** Text between tags is not a literal at
+        // all, and it does not have to sit on one line — the first version of
+        // this looked for `>…<` per line and a two-line `<strong>` heading
+        // walked straight through it. So: delete what the dictionary carries,
+        // and nothing Korean may remain anywhere in the file.
+        const carried = text.replace(
+          /t\(\s*"[^"]+"\s*,\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)\s*\)/g,
+          "t()",
+        );
+        carried.split("\n").forEach((line, i) => {
+          if (KOREAN.test(line)) found.push(`${file}:${i + 1}: ${line.trim().slice(0, 40)}`);
+        });
+      }
+      return found;
+    };
+
+    // **The guard's own denominator.** A walk that finds nothing, or a listed
+    // file that has been renamed, would leave every assertion below vacuously
+    // true — which is how a check goes quiet instead of going red.
+    expect(
+      { scanned: sources.length > 40, listed: FLOW.filter((f) => !sources.includes(join(ROOT, f))) },
+      "the scan found nothing to read, or a flow file is no longer where it was",
+    ).toEqual({ scanned: true, listed: [] });
+
+    expect(
+      FLOW.flatMap((f) => offendersIn(join(ROOT, f), true)),
+      "a screen on the admission path holds Korean the dictionary never saw",
+    ).toEqual([]);
+
+    const total = sources.flatMap((f) => offendersIn(f, false)).length;
+    expect(
+      { total, ratchet: RATCHET },
+      `${total} untranslated strings, up from ${RATCHET} — lower the ratchet when it falls, never raise it`,
+    ).toEqual({ total: Math.min(total, RATCHET), ratchet: RATCHET });
+  });
+
   it("[SC-USER-B1] hands over a temporary password once, and never again", async () => {
     const admin = await adminCookie();
     const created = await admit(admin, "b1-alice", { display_name: "Alice" });
