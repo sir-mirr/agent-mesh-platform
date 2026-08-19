@@ -1,5 +1,11 @@
 import { apiClient } from "./client.ts";
 
+export interface SignatureFact {
+  signed: boolean;
+  algorithm: string | null;
+  keyId: string | null;
+}
+
 export interface AuditEventItem {
   id: string;
   timestamp: string;
@@ -10,9 +16,9 @@ export interface AuditEventItem {
   rawContent: string;
   /** `integrity.digest_matches` — computed when the response was built. */
   digestMatches: boolean | null;
-  signatureInfo: string;
+  signature: SignatureFact;
   /** What `digestMatches` means in words, for the cell. */
-  integrityInfo: string;
+
 }
 
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
@@ -51,13 +57,13 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       const digestMatches: boolean | null =
         typeof item.integrity?.digest_matches === "boolean" ? item.integrity.digest_matches : null;
     
-      const signatureInfo = sig != null
-        ? `서명 있음 · ${attestationAlgorithm || "알 수 없음"}${keyId ? ` · ${keyId}` : ""}`
-        : "미서명 (Unsigned)";
-      const integrityInfo =
-        digestMatches === true ? "무결 (본문이 기록된 해시와 일치)"
-        : digestMatches === false ? "변조 — 본문이 기록된 해시와 다름"
-        : "무결성 미측정";
+      // **The shape, not the sentence.** These two fields carried Korean prose out
+      // of a module with no dictionary in reach, so the audit screen printed it in
+      // English mode and no key could reach it. The screen composes the words now;
+      // what travels is what was measured.
+      const signature: SignatureFact = sig != null
+        ? { signed: true, algorithm: attestationAlgorithm || null, keyId: keyId || null }
+        : { signed: false, algorithm: null, keyId: null };
 
     return {
       id: item.event_id || item.id || `evt_${Math.random().toString(36).slice(2, 8)}`,
@@ -68,8 +74,7 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       contentLength,
       rawContent: content,
         digestMatches,
-      signatureInfo,
-        integrityInfo,
+      signature,
     };
   });
 }

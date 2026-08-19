@@ -9,7 +9,7 @@ import {
 } from "@/components/index.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchAgents, type RegistryAgent, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
+import { fetchAgents, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { sendMessageApi, type MessageReceipt } from "@/api/messages.ts";
 
 interface RegisteredAgent {
@@ -75,7 +75,7 @@ export function PlaygroundPage() {
           // comparisons read a key that never arrived, so every agent came out
           // `null` — a judgement dressed as a reading. `last_seen_at` is measured.
           seen: hasBeenSeen(a),
-          lastSeen: lastSeenLabel(a.last_seen_at),
+          lastSeen: lastSeenText(t, a.last_seen_at),
         // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,
       }));

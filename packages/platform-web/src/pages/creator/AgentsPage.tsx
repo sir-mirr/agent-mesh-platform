@@ -41,7 +41,7 @@ interface AgentItem {
   lastSeen: string;
 }
 
-import { fetchAgents, teardownAgentApi, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
+import { fetchAgents, teardownAgentApi, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { hasCapability } = useRbac();
@@ -70,7 +70,7 @@ export function AgentsPage() {
           groupName: a.type ?? "—",
           // `status` is gone from the route on purpose (SPEC § 9.1). What the mesh
           // measured is when it last saw the identity.
-          lastSeen: lastSeenLabel(a.last_seen_at),
+          lastSeen: lastSeenText(t, a.last_seen_at),
           seen: hasBeenSeen(a),
           // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,

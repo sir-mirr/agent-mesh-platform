@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
-import { fetchAgents, fetchPendingKeys, type RegistryAgent, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
+import { fetchAgents, fetchPendingKeys, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
@@ -792,7 +792,7 @@ function AgentOperatorDashboard() {
                       status at all.
                     */}
                     {t("dash.op.kind", "종류")}: <strong>{agt.type ?? "—"}</strong> · {t("dash.op.state", "상태")}:{" "}
-                    {lastSeenLabel(agt.last_seen_at)}
+                    {lastSeenText(t, agt.last_seen_at)}
                   </div>
                 </div>
 

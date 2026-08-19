@@ -124,7 +124,9 @@ export function AuditLogsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {/* Arrival, which is measured. Nothing about verification, which is not. */}
           <span data-testid="audit-signature" style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
-            {item.signatureInfo}
+            {item.signature.signed
+              ? `${t("audit.signed", "서명 있음")} · ${item.signature.algorithm ?? t("auditAlgUnknown", "알고리즘 미상")}${item.signature.keyId ? ` · ${item.signature.keyId}` : ""}`
+              : t("audit.unsigned", "미서명")}
           </span>
           {/* `digest_matches` is computed when the response is built, so this one
               is a reading. A false is tampering and takes the colour that says so. */}
@@ -142,7 +144,11 @@ export function AuditLogsPage() {
                     : "var(--color-text-muted)",
             }}
           >
-            {item.integrityInfo}
+            {item.digestMatches === true
+              ? t("audit.intact", "무결 — 본문이 기록된 해시와 일치")
+              : item.digestMatches === false
+              ? t("audit.tampered", "변조 — 본문이 기록된 해시와 다름")
+              : t("audit.unmeasured", "무결성 미측정")}
           </span>
         </div>
       ),

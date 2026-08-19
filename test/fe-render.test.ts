@@ -680,7 +680,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // D-25 & D-28 assertions:
     expect(mainText).not.toContain("VERIFIED");
     expect(mainText).toContain("서명 있음 · ed25519");
-    expect(mainText).toContain("미서명 (Unsigned)");
+    expect(mainText).toContain("미서명");
 
     await context.close();
   });

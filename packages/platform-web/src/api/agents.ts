@@ -112,15 +112,35 @@ export async function teardownAgentApi(identity: string): Promise<{ ok: boolean 
  * decide. So the three states stay three — seen at a time, never seen, and (for
  * a caller that has not asked yet) not loaded.
  */
-export function lastSeenLabel(lastSeenAt: string | null | undefined): string {
-  if (!lastSeenAt) return "접속 기록 없음";
+/**
+ * **The api layer stops writing sentences.**
+ *
+ * This returned Korean prose — `"접속 기록 없음"`, `"3시간 전 접속"` — from a module
+ * with no dictionary in reach, so five screens printed Korean in English mode and
+ * no key could reach it. It now returns the shape of the answer and the number;
+ * the screen that draws it owns the words.
+ */
+export type LastSeen =
+  | { kind: "never" }
+  | { kind: "ago"; unit: "second" | "minute" | "hour" | "day"; value: number };
+
+export function lastSeen(lastSeenAt: string | null | undefined): LastSeen {
+  if (!lastSeenAt) return { kind: "never" };
   const seen = new Date(lastSeenAt).getTime();
-  if (Number.isNaN(seen)) return "접속 기록 없음";
+  if (Number.isNaN(seen)) return { kind: "never" };
   const secs = Math.max(0, Math.round((Date.now() - seen) / 1000));
-  if (secs < 60) return `${secs}초 전 접속`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}분 전 접속`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}시간 전 접속`;
-  return `${Math.floor(secs / 86400)}일 전 접속`;
+  if (secs < 60) return { kind: "ago", unit: "second", value: secs };
+  if (secs < 3600) return { kind: "ago", unit: "minute", value: Math.floor(secs / 60) };
+  if (secs < 86400) return { kind: "ago", unit: "hour", value: Math.floor(secs / 3600) };
+  return { kind: "ago", unit: "day", value: Math.floor(secs / 86400) };
+}
+
+/** The sentence, composed where the dictionary is. */
+export function lastSeenText(t: (key: string, fallback: string) => string, at: string | null | undefined): string {
+  const v = lastSeen(at);
+  if (v.kind === "never") return t("agents.neverSeen", "접속 기록 없음");
+  const unit = t(`agents.unit.${v.unit}`, { second: "초", minute: "분", hour: "시간", day: "일" }[v.unit]);
+  return `${v.value}${unit} ${t("agents.ago", "전 접속")}`;
 }
 
 /** Has the mesh ever seen this identity? A measured fact, unlike "online". */
