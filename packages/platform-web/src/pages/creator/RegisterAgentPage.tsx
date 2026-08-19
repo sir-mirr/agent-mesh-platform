@@ -363,7 +363,7 @@ curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem \\
       {/* Pending Agent Requests Table */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          📋 {t("reg.queue.title", "대기 중인 AI 에이전트 등록 요청 큐")} {isLoading ? `(${t("common.loading", "조회 중...")})` : isError ? t("common.unreachable", "(통신 불가)") : `(${pendingList.filter((p) => p.status === "pending").length}건 대기)`}
+          📋 {t("reg.queue.title", "대기 중인 AI 에이전트 등록 요청 큐")} {isLoading ? `(${t("common.loading", "조회 중...")})` : isError ? t("common.unreachable", "(통신 불가)") : `(${pendingList.filter((p) => p.status === "pending").length} ${t("reg.queue.waiting", "대기")})`}
         </h3>
         <DataTable
           columns={columns}

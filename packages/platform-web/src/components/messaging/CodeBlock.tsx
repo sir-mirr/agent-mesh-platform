@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export interface CodeBlockProps {
   code: string;
@@ -13,6 +14,7 @@ export function CodeBlock({
   title,
   showCopy = true,
 }: CodeBlockProps) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -62,7 +64,7 @@ export function CodeBlock({
                 fontWeight: 600,
               }}
             >
-              {copied ? "✓ 복사됨" : "코드 복사"}
+              {copied ? `✓ ${t("reg.copied", "복사됨")}` : t("reg.copy", "코드 복사")}
             </button>
           )}
         </div>
