@@ -8,8 +8,11 @@ export interface AuditEventItem {
   sentBy: string | null;
   contentLength: number;
   rawContent: string;
-  signatureVerified: boolean | null;
+  /** `integrity.digest_matches` — computed when the response was built. */
+  digestMatches: boolean | null;
   signatureInfo: string;
+  /** What `digestMatches` means in words, for the cell. */
+  integrityInfo: string;
 }
 
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
@@ -35,19 +38,26 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     const sig = attestationObj?.sig;
     const attestationAlgorithm = sig?.alg ?? null;
     const keyId = sig?.kid ?? null;
-    // **Present is not verified**, which `audit-query.ts` says where it returns
-    // this: *a screen must not read this as proof; the hub verified it at ingest
-    // and this route does not re-verify, because it cannot always.* A rotated
-    // key's row is deleted, so an event signed by one can never be verified
-    // again — and `sig ? true : null` painted exactly those green.
-    //
-    // Presence is a measured fact and already has somewhere to go: the
-    // `signatureInfo` line below says `서명 있음 · <alg> · <kid>`.
-    const signatureVerified = item.signature_verified != null ? Boolean(item.signature_verified) : null;
+      // **`signature_verified` never existed.** Zero occurrences in hub, http,
+      // store, contracts or SPEC — platform-claude counted them. So the branch
+      // that read it could never run, and a boolean could not carry the answer
+      // anyway: a rotated key's row is deleted, so *unverifiable because rotated*
+      // and *forged* would share one `false`. Nobody measures verification here,
+      // so this screen no longer says it.
+      //
+      // What **is** measured is `integrity.digest_matches`, computed at the moment
+      // the response is built. Reading it is the half that was missing while the
+      // screen was inventing the half nobody can measure.
+      const digestMatches: boolean | null =
+        typeof item.integrity?.digest_matches === "boolean" ? item.integrity.digest_matches : null;
     
-    const signatureInfo = sig != null
-      ? `서명 있음 · ${attestationAlgorithm || "알 수 없음"}${keyId ? ` · ${keyId}` : ""}`
-      : (signatureVerified === true ? "서명 있음" : (signatureVerified === false ? "서명 실패 (FAILED)" : "미서명 (Unsigned)"));
+      const signatureInfo = sig != null
+        ? `서명 있음 · ${attestationAlgorithm || "알 수 없음"}${keyId ? ` · ${keyId}` : ""}`
+        : "미서명 (Unsigned)";
+      const integrityInfo =
+        digestMatches === true ? "무결 (본문이 기록된 해시와 일치)"
+        : digestMatches === false ? "변조 — 본문이 기록된 해시와 다름"
+        : "무결성 미측정";
 
     return {
       id: item.event_id || item.id || `evt_${Math.random().toString(36).slice(2, 8)}`,
@@ -57,8 +67,9 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       sentBy,
       contentLength,
       rawContent: content,
-      signatureVerified,
+        digestMatches,
       signatureInfo,
+        integrityInfo,
     };
   });
 }

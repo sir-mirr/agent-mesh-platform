@@ -9,24 +9,13 @@ import {
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
-interface AuditEvent {
-  id: string;
-  timestamp: string;
-  sender: string;
-  recipient: string;
-  sentBy: string | null;
-  contentLength: number;
-  rawContent: string;
-  signatureVerified: boolean | null;
-  signatureInfo: string;
-}
 
-import { fetchAuditEvents } from "@/api/audit.ts";
+import { fetchAuditEvents, type AuditEventItem } from "@/api/audit.ts";
 
 export function AuditLogsPage() {
   const { t } = useI18n();
   const { hasCapability } = useRbac();
-  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [events, setEvents] = useState<AuditEventItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const canReadContent = hasCapability("audit.read.content");
@@ -54,7 +43,7 @@ export function AuditLogsPage() {
     {
       key: "timestamp",
       header: t("audit.col.time", "타임스탬프"),
-      render: (item: AuditEvent) => (
+      render: (item: AuditEventItem) => (
         <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
           {item.timestamp}
         </span>
@@ -63,7 +52,7 @@ export function AuditLogsPage() {
     {
       key: "route",
       header: t("audit.col.route", "송수신 경로"),
-      render: (item: AuditEvent) => (
+      render: (item: AuditEventItem) => (
         <span style={{ fontSize: "0.82rem" }}>
           <code>{item.sender}</code> → <code>{item.recipient}</code>
           {item.sentBy && item.sentBy !== item.sender && (
@@ -77,7 +66,7 @@ export function AuditLogsPage() {
     {
       key: "contentLength",
       header: t("audit.col.length", "길이 (Bytes)"),
-      render: (item: AuditEvent) => (
+      render: (item: AuditEventItem) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
           {item.contentLength} B
         </span>
@@ -86,7 +75,7 @@ export function AuditLogsPage() {
     {
       key: "content",
       header: t("audit.col.content", "메시지 본문 (§ 11.0 프라이버시 경계)"),
-      render: (item: AuditEvent) => {
+      render: (item: AuditEventItem) => {
         if (!canReadContent) {
           return (
             <span
@@ -120,24 +109,33 @@ export function AuditLogsPage() {
     },
     {
       key: "signatureInfo",
-      header: t("audit.col.signature", "서명 상태"),
-      render: (item: AuditEvent) => {
-        if (item.signatureVerified === true) {
-          return (
-            <span style={{ fontSize: "0.8rem", color: "var(--color-success)", fontWeight: 600 }}>
-              {item.signatureInfo}
-            </span>
-          );
-        }
-        if (item.signatureVerified === false) {
-          return (
-            <span style={{ fontSize: "0.8rem", color: "var(--color-danger)", fontWeight: 600 }}>
-              {item.signatureInfo}
-            </span>
-          );
-        }
-        return <span style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>{item.signatureInfo || "미서명 (Unsigned)"}</span>;
-      },
+      header: t("audit.col.signature", "서명 · 무결성"),
+      render: (item: AuditEventItem) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {/* Arrival, which is measured. Nothing about verification, which is not. */}
+          <span data-testid="audit-signature" style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
+            {item.signatureInfo}
+          </span>
+          {/* `digest_matches` is computed when the response is built, so this one
+              is a reading. A false is tampering and takes the colour that says so. */}
+          <span
+            data-testid="audit-integrity"
+            data-digest={item.digestMatches === null ? "unmeasured" : item.digestMatches ? "matches" : "broken"}
+            style={{
+              fontSize: "0.75rem",
+              fontWeight: item.digestMatches === false ? 700 : 400,
+              color:
+                item.digestMatches === false
+                  ? "var(--color-danger)"
+                  : item.digestMatches === true
+                    ? "var(--color-success)"
+                    : "var(--color-text-muted)",
+            }}
+          >
+            {item.integrityInfo}
+          </span>
+        </div>
+      ),
     },
   ];
 

@@ -2451,20 +2451,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * render and sent in the other, and only the difference between them says
    * anything. Without the second, a screen that never claims verification passes.
    */
-  it("[SC-INVENT-02] calls a signature verified only when the server says so", async () => {
+  it("[SC-INVENT-02] shows the integrity verdict it was given, and claims no verification it was not", async () => {
     const tag = "sig" + String(Date.now()).slice(-6);
-    const event = (extra: Record<string, unknown>) => ({
+    const event = (integrity: unknown) => ({
       event_id: `evt_${tag}`,
       event_type: "channel.message.received",
       occurred_at: new Date().toISOString(),
       identity: `who-${tag}`,
       payload: { message: { from: `who-${tag}`, to: "admin", content: `body-${tag}` } },
-      // Signed on arrival — a measured fact, and the one the screen used to read as proof.
+      // Signed on arrival — a measured fact, and the one this screen used to read
+      // as proof of verification.
       attestation: { sig: { alg: "ed25519", kid: `kid-${tag}` } },
-      ...extra,
+      ...(integrity === undefined ? {} : { integrity }),
     });
 
-    async function auditRow(extra: Record<string, unknown>): Promise<{ text: string; verified: number }> {
+    async function row(integrity: unknown): Promise<{ text: string; digest: string | null }> {
       const context = await browser.newContext();
       await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
       const page = await context.newPage();
@@ -2473,44 +2474,50 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ events: [event(extra)], next_cursor: null }),
+            body: JSON.stringify({ events: [event(integrity)], next_cursor: null }),
           }),
         );
         await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
         await settled(page);
         await shows(page, `who-${tag}`);
-        const text = (await page.locator("#root").innerText().catch(() => "")).trim();
-        // The screen paints a verified signature with the success colour, so that
-        // is what "claimed verified" means here — read from the DOM, not guessed.
-        const verified = await page
-          .locator("span[style*='--color-success']")
-          .filter({ hasText: "서명" })
-          .count();
-        return { text, verified };
+        return {
+          text: (await page.locator("#root").innerText().catch(() => "")).trim(),
+          digest: await page.locator("[data-testid='audit-integrity']").first().getAttribute("data-digest"),
+        };
       } finally {
         await context.close().catch(() => {});
       }
     }
 
-    // Withheld: the server sends the attestation and no verdict — today's shape.
-    const withheld = await auditRow({});
-    // Sent: the verdict is stated. This is the branch the screen may act on.
-    const stated = await auditRow({ signature_verified: true });
+    const intact = await row({ digest_matches: true });
+    const tampered = await row({ digest_matches: false });
+    const unmeasured = await row(undefined);
 
     expect(
-      { withheldDrew: withheld.text.includes(`who-${tag}`), statedDrew: stated.text.includes(`who-${tag}`) },
+      { intact: intact.text.includes(`who-${tag}`), tampered: tampered.text.includes(`who-${tag}`) },
       "the audit row never rendered, so nothing was compared",
-    ).toEqual({ withheldDrew: true, statedDrew: true });
+    ).toEqual({ intact: true, tampered: true });
 
-    expect(
-      { claimedVerified: withheld.verified > 0 },
-      "the screen called a signature verified from its presence alone",
-    ).toEqual({ claimedVerified: false });
+    // **The verdict the server measured, all three of its states.** Only `false`
+    // is tampering; a missing `integrity` is not a pass, and reading it as one is
+    // the shape this file keeps removing.
+    expect({ intact: intact.digest, tampered: tampered.digest, unmeasured: unmeasured.digest }).toEqual({
+      intact: "matches",
+      tampered: "broken",
+      unmeasured: "unmeasured",
+    });
 
+    // **And no claim of verification.** `signature_verified` has never existed in
+    // hub, http, store, contracts or SPEC — a boolean could not carry the answer
+    // anyway, because a rotated key's row is deleted and *unverifiable* and
+    // *forged* would share one `false`. So the screen says a signature arrived
+    // and stops there.
     expect(
-      { claimedVerified: stated.verified > 0 },
-      "the screen ignored a verdict the server did state — this pair has nothing to compare",
-    ).toEqual({ claimedVerified: true });
+      { claimed: /검증됨|FAILED|서명 실패/.test(intact.text) },
+      "the screen claimed a verification nobody measured",
+    ).toEqual({ claimed: false });
+    expect(intact.text, "the screen stopped saying a signature arrived, so this pair compares nothing")
+      .toContain("서명 있음");
   }, 45_000);
 
   // SC-HARNESS-01: Harness reliability check
