@@ -963,6 +963,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
   },
   {
+    id: "every-message-recorded-failed",
+    defect:
+      "`failed` and `pending` only mean something if both are reachable. The suite pinned the refused case alone, so a handler that recorded every message as failed passed it — and a comment in this file claimed the opposite mapping for long enough that the front end nearly labelled the console from it.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!hubMessageId) {\n    msg.status = 'failed'",
+    to: "  if (true) {\n    msg.status = 'failed'",
+    suite: "test/message-status.test.ts",
+    expect: ["is recorded as pending", "pending"],
+  },
+  {
     id: "pong-stops-counting-as-life",
     defect:
       "A pong is the only thing that distinguishes a live socket from a half-open one — `ws.ping()` returns 0 for both — so if answering stops clearing the awaiting flag the next sweep drops every healthy connection. The heartbeat had no manifest entry at all until the integration test that covered it was shortened from eight real sweeps to three, and this is the check that the shorter one still catches it.",

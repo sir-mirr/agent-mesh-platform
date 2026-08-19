@@ -1087,9 +1087,14 @@ app.post('/api/v1/messages', async (c) => {
     console.warn(`[http-server] ${from} -> ${to}: the hub did not accept this message`)
   }
 
-  // Push to SSE clients so sender's UI updates immediately
-  // `pending` when the hub never took it, so the UI can tell "waiting for the
-  // recipient" from "never left this machine".
+  // Push to SSE clients so sender's UI updates immediately.
+  //
+  // **`failed` when the hub never took it**, and `pending` only while it has
+  // been accepted and is waiting for its recipient. A line here used to say the
+  // opposite — that the refused case stayed `pending` — describing a design
+  // this paragraph replaced, and it survived the change it was refuted by. A
+  // reader building a screen from it labels every refused message *waiting*,
+  // which is the exact confusion the write-back below exists to end.
   //
   // **Written back, not only corrected in memory.** This assignment used to
   // change the object the response and the SSE frames are built from, and

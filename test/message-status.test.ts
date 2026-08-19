@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { loginAsAdmin, openTestDb, startMesh, type Mesh } from "./harness";
+import { loginAsAdmin, openTestDb, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -69,6 +69,35 @@ function storedStatus(id: string): string | null {
   db.close();
   return row?.status ?? null;
 }
+
+describe("a message the hub takes", () => {
+  // **First, because the test below takes the hub away for good.**
+  //
+  // Without this half, a handler that wrote `failed` for every message would
+  // pass the one below and be wrong about all of them. The two words have to
+  // mean different things for either to mean anything, and this is the one that
+  // says `pending` is still reachable.
+  //
+  // It also pins the vocabulary a screen is built from. A comment here claimed
+  // the opposite — that a refused message stayed `pending` — for long enough
+  // that agent-mesh-local-pm asked which to believe before labelling the
+  // console from it. Prose can invert; this cannot.
+  test("is recorded as pending, which is what makes `failed` mean something", async () => {
+    expect((await provision(mesh.hub, "status-accepted", "service")).status).toBe(201);
+    addToWebRegistry("status-accepted");
+
+    const sent = await send("status-accepted", "on its way");
+    expect(sent.body?.message?.status, "the hub refused a send this test needs accepted").toBe("pending");
+
+    const id = sent.body.message.id as string;
+    expect(storedStatus(id), "the row disagrees with the response it just returned").toBe("pending");
+
+    const history = (await (
+      await fetch(`${mesh.http.url}/api/v1/messages/status-accepted`, { headers: { cookie } })
+    ).json()) as { messages: Array<{ id: string; status: string }> };
+    expect(history.messages.find((m) => m.id === id)?.status, "the history route served something else").toBe("pending");
+  }, 20_000);
+});
 
 describe("a message the hub would not take", () => {
   test("is recorded as failed, not left pending for ever", async () => {
