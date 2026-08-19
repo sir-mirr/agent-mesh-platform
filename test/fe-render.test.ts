@@ -968,18 +968,59 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
-    // `GET /api/v1/agents` returns id, name, description, channel and type. It
-    // has never carried a fingerprint, and the column is headed "Ed25519 public
-    // key fingerprint" — so every row rendered
-    // `sha256:verified_mesh_identity`, the same value for every agent, with the
-    // word an operator is looking for sitting inside it.
-    await withPage("/creator", async ({ page }) => {
-      const body = (await page.locator("body").textContent()) ?? "";
+      // `GET /api/v1/agents` used to return id, name, description, channel and
+      // type and no fingerprint, while the column was headed "Ed25519 public key
+      // fingerprint" — so every row rendered `sha256:verified_mesh_identity`, the
+      // same value for every agent, with the word an operator is looking for
+      // sitting inside it. The route carries a real fingerprint now.
+      //
+      // **Compared against the server, not against a shape.** This used to assert
+      // that nothing looked like `sha256:<letters>` unless a hex digest was also
+      // on the page — a rule that held while the invented value was the only
+      // letter-shaped one. Fingerprints are base64url (`FINGERPRINT_RE` is
+      // `^sha256:[A-Za-z0-9_-]{43}$`), so a real one starts with six letters or
+      // underscores about a third of the time, and the same code failed on roughly
+      // one run in three with nothing changed but a freshly generated key.
+      // Measured: 3000 random fingerprints, 0.330 letter-shaped, 0.003 readable as
+      // hex — platform-claude derived the same figures from the alphabet and found
+      // the flake in the field.
+      //
+      // The question is now *did this string come from the server*, which does not
+      // care what the string looks like.
+      const listed = await (
+        await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { Cookie: `mesh_token=${jwtToken}` } })
+      ).json();
+      const rows: Array<{ id?: string; fingerprint?: string | null }> = listed?.agents ?? listed ?? [];
+      const withKey = rows.filter((a) => typeof a.fingerprint === "string" && a.fingerprint);
+      const withoutKey = rows.filter((a) => !a.fingerprint);
 
-      // The specific constant, and the shape of any replacement for it.
-      expect({ constant: body.includes("verified_mesh_identity") }).toEqual({ constant: false });
-      expect({ digestLike: /sha256:[a-z_]{6,}/i.test(body) && !/sha256:[0-9a-f]{6,}/i.test(body) })
-        .toEqual({ digestLike: false });
+      // Both halves must exist or the pair says nothing: keyed-only cannot catch a
+      // screen that prints every fingerprint it is given plus some it is not, and
+      // unkeyed-only cannot catch one that shows nothing at all.
+      expect(
+        { keyed: withKey.length > 0, unkeyed: withoutKey.length > 0 },
+        `the fixture no longer holds both a keyed and an unkeyed agent: ${JSON.stringify(rows.map((r) => [r.id, !!r.fingerprint]))}`,
+      ).toEqual({ keyed: true, unkeyed: true });
+
+      await withPage("/creator", async ({ page }) => {
+        const body = (await page.locator("body").textContent()) ?? "";
+
+        // The constant that started this. Cheap, and it does not weaken.
+        expect({ constant: body.includes("verified_mesh_identity") }).toEqual({ constant: false });
+
+        // Every fingerprint the server gave, on the page, character for character.
+        expect(
+          withKey.filter((a) => !body.includes(a.fingerprint!)).map((a) => a.id),
+          "the screen dropped a fingerprint the server sent",
+        ).toEqual([]);
+
+        // And nothing fingerprint-shaped that the server never sent.
+        const shown = [...body.matchAll(/sha256:[A-Za-z0-9_-]{10,}/g)].map((m) => m[0]);
+        const given = new Set(withKey.map((a) => a.fingerprint!));
+        expect(
+          [...new Set(shown.filter((f) => !given.has(f)))],
+          "the screen showed a fingerprint the server never sent",
+        ).toEqual([]);
 
       // And absence is stated rather than left blank, because a blank cell in a
       // security column reads as "nothing to worry about".
