@@ -78,6 +78,10 @@ describe("granting and revoking", () => {
     //
     // A grant whose author is self-reported records whatever the author wanted
     // recorded, and then the trail agrees with anybody who can write to it.
+    // dropped-fields: sent on purpose — `test/dropped-fields.test.ts` forbids
+    // sending a field no route reads, and this test's whole point is to send
+    // one. Without the marker the two guards cancel: one demands the claim be
+    // made, the other demands it never be.
     await call("POST", "/api/v1/admin/grants", {
       subject: "author-probe",
       capability: "key.approve",

@@ -943,6 +943,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
   {
+    id: "route-renames-a-field-callers-send",
+    defect:
+      "A route that renames the field it reads leaves every caller sending the old one, and the callers are told 201. This is the group-create silence from the server's side: nothing in the suite compares what a route reads against what anyone sends it.",
+    file: "packages/http/src/main.ts",
+    from: "  const toGroup = body?.to_group",
+    to: "  const toGroup = body?.to_group_id",
+    suite: "test/dropped-fields.test.ts",
+    expect: ["no caller sends one", "to_group"],
+  },
+  {
+    id: "looped-route-fields-reach-the-comparison",
+    defect:
+      "The three key decision routes are registered by one templated `app.post` inside a loop, so a scan for `app.post('` never saw them and every call to them went unchecked — which is how a fixture posting `{identity, public_key}` at a route reading `fingerprint` passed. Resolving the loop is not enough: the handler's fields have to reach the comparison, and writing out three registration lines with the body attached to the last one left two of them reading nothing.",
+    file: "packages/http/src/main.ts",
+    from: "    const reason = typeof body.reason === 'string' ? body.reason : null",
+    to: "    const reason = null",
+    suite: "test/dropped-fields.test.ts",
+    expect: ["no caller sends one", "reason"],
+  },
+  {
     id: "group-create-refuse-unsupported",
     defect:
       "`POST /api/v1/admin/groups` read `group_id` and `description` and dropped every other field in silence. The front end's own fixture sent `members` and `name` for four months and was answered 201 each time, so its groups were empty — and the topology screen filled them by inventing members, which is why neither defect was visible while the other stood.",
@@ -1021,10 +1041,19 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A family can drift by being absent rather than by being wrong, and absence reads as `not written yet` — which is the direction that costs a rewrite. `SC-AUTH-04`, `SC-AUTH-05` and `SC-HARNESS-02` had no row at all, and `SC-BELL-01` was written twice for exactly this reason.",
     file: "packages/platform-web/COVERAGE_INVENTORY.md",
-    from: "| `SC-HARNESS-*` | 하네스가 잰다고 말한 것을 실제로 재는가 | 2 |\n",
-    to: "",
+    // Anchored on the family, never on its count. This entry held a copy of the
+    // whole row — `… | 2 |` — and went unmeasurable the moment the count became
+    // 3, which is a file the front end edits whenever it adds a scenario. The
+    // manifest reported `not measured` rather than `caught`, which is the one
+    // thing a stale entry must do, but a guard that expires on someone else's
+    // ordinary work is a guard that spends its life expired.
+    //
+    // § 0 is read as the lines beginning with `|`, so breaking the line's start
+    // removes the row exactly as deleting it did.
+    from: "| `SC-HARNESS-*` |",
+    to: "ROW REMOVED BY MUTATION | `SC-HARNESS-*` |",
     suite: "test/scenario-ids.test.ts",
-    expect: ["every family with more than one id has a row", "SC-HARNESS-* has 2 ids and no row"],
+    expect: ["every family with more than one id has a row", "SC-HARNESS-* has", "ids and no row in § 0"],
   },
   {
     id: "proxy-block-target",
