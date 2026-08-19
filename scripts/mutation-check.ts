@@ -1590,6 +1590,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "user-listing-carries-the-secret",
+    defect:
+      "A person is admitted with one password, once, and the listing is where `once` stops being true. Nothing else in this suite notices a listing that carries password material — the creation response is the only place it is supposed to appear.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, users: listLocalUsers() })",
+    to: '  return c.json({ ok: true, users: listLocalUsers().map((u: any) => ({ ...u, password_hash: "x" })) })',
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-USER-B1", "the listing carries the password it was supposed to show once"],
+  },
+  {
+    id: "refusal-does-not-name-the-capability",
+    defect:
+      "`403` without the capability's name sends an operator to guess which of twelve they are missing. The refusal has said so since § 11 and it is worth a check, because the sentence that names it is the easiest thing to drop while keeping the status.",
+    file: "packages/http/src/main.ts",
+    from: "return c.json({ error: `Missing capability: ${capability}`, capability, scope }, 403)",
+    to: "return c.json({ error: 'Forbidden' }, 403)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-USER-B2", "a refusal that does not name what is missing sends somebody to guess"],
+  },
+  {
     id: "landing-defaults-to-korean",
     defect:
       "The default language was Korean and the toggle lived in the sidebar, which is behind the login. A visitor who could not read the login form could not reach the control that would have translated it.",

@@ -588,6 +588,141 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(overloaded, "one key is asked to mean two things").toEqual([]);
   });
 
+  /**
+   * SC-USER-B1 … B5 — a person is admitted with one password, once.
+   *
+   * Measured against the running server rather than written from the note that
+   * announced the routes: that note named
+   * `POST /api/v1/admin/users/:username/capabilities`, which answers `404` —
+   * granting goes through `/api/v1/admin/grants`, which already existed. The
+   * same shape as `must_change_password` two cycles ago, where the note said the
+   * login response carried a field it did not.
+   *
+   * No browser anywhere in this block. The screen half is `SC-USER-D*`; what
+   * these ask is whether the *server* admits, refuses and grants, because a
+   * guard that only redirects passes every test that goes through a page.
+   */
+  /**
+   * Its own session, not the file's.
+   *
+   * `authCookie` is assigned inside `SC-API-AUTH-01`, so a scenario placed above
+   * it reads an empty string and gets `401` — a failure about test ordering
+   * wearing the shape of a product defect. These ask for their own.
+   */
+  async function adminCookie(): Promise<string> {
+    return await loginAsAdmin(mesh.http);
+  }
+
+  async function admit(cookie: string, username: string, body: Record<string, unknown> = {}) {
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ username, ...body }),
+    });
+    return { status: res.status, body: (await res.json()) as any };
+  }
+  async function signIn(username: string, password: string) {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      redirect: "manual",
+    });
+    return { status: res.status, cookie: res.headers.get("set-cookie")?.split(";")[0] ?? "" };
+  }
+  async function activate(username: string, temporary: string, chosen: string) {
+    const first = await signIn(username, temporary);
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: first.cookie, "content-type": "application/json" },
+      body: JSON.stringify({ current: temporary, next: chosen }),
+    });
+    return (await signIn(username, chosen)).cookie;
+  }
+
+  it("[SC-USER-B1] hands over a temporary password once, and never again", async () => {
+    const admin = await adminCookie();
+    const created = await admit(admin, "b1-alice", { display_name: "Alice" });
+    expect(
+      { status: created.status, gave: typeof created.body.temporary_password === "string", flagged: created.body.user?.must_change_password },
+      "admitting a person did not hand over a password",
+    ).toMatchObject({ status: 201, gave: true });
+
+    // **The whole point of "once".** A listing that carries it makes the word
+    // false, and nothing else in this suite would notice.
+    const listed = await (await fetch(`${mesh.http.url}/api/v1/admin/users`, { headers: { cookie: admin } })).text();
+    expect(
+      { leaks: listed.includes(created.body.temporary_password), hashed: /password_hash/.test(listed) },
+      "the listing carries the password it was supposed to show once",
+    ).toEqual({ leaks: false, hashed: false });
+
+    // And the account arrives locked, which is what makes the temporary
+    // password temporary rather than just a password somebody else chose.
+    const me = await (await fetch(`${mesh.http.url}/auth/me`, {
+      headers: { cookie: (await signIn("b1-alice", created.body.temporary_password)).cookie },
+    })).json();
+    expect(me.must_change_password, "the admitted account was not asked to choose a password").toBe(true);
+  }, 20000);
+
+  it("[SC-USER-B2] refuses an account that holds no user.admit, and names it", async () => {
+    const admin = await adminCookie();
+    const created = await admit(admin, "b2-carol");
+    // **Activated first.** A locked session is refused by the password gate, so
+    // asking an unactivated account proves nothing about capabilities — it
+    // would pass with the capability check deleted.
+    const cookie = await activate("b2-carol", created.body.temporary_password, "b2-carol-99");
+    const refused = await admit(cookie, "b2-mallory");
+    expect(
+      { status: refused.status, named: refused.body.capability },
+      "a refusal that does not name what is missing sends somebody to guess",
+    ).toEqual({ status: 403, named: "user.admit" });
+
+    // The other half: the platform admin can, so the check is not simply always
+    // refusing.
+    expect((await admit(admin, "b2-allowed")).status).toBe(201);
+  }, 20000);
+
+  it("[SC-USER-B4] admits with no capabilities at all, and says so as an answer", async () => {
+    const admin = await adminCookie();
+    const created = await admit(admin, "b4-dave");
+    const cookie = await activate("b4-dave", created.body.temporary_password, "b4-dave-99");
+    const me = await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie } })).json();
+    expect(
+      { caps: me.capabilities, changed: me.must_change_password },
+      "a newly admitted account arrived holding something",
+    ).toEqual({ caps: [], changed: false });
+    // `[]` is an answer — `I-055` was the screen reading that absence as
+    // "everything" — so the refusal it produces is asserted rather than assumed.
+    const groups = await fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie } });
+    expect(groups.status, "an account holding nothing reached a guarded route").toBe(403);
+  }, 20000);
+
+  it("[SC-USER-B5] opens a route when the capability is granted, and closes it when taken back", async () => {
+    const admin = await adminCookie();
+    const created = await admit(admin, "b5-erin");
+    const cookie = await activate("b5-erin", created.body.temporary_password, "b5-erin-99");
+    const groups = () => fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie } }).then((r) => r.status);
+    const grant = (method: string) =>
+      fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+        method,
+        headers: { cookie: admin, "content-type": "application/json" },
+        body: JSON.stringify({ subject: "b5-erin", capability: "group.manage", scope: "*" }),
+      }).then((r) => r.status);
+
+    const before = await groups();
+    expect(await grant("POST")).toBe(201);
+    // **The same cookie.** Measured: the server reads grants live, so a screen
+    // only has to ask `/auth/me` again — it does not have to sign anybody out.
+    const after = await groups();
+    expect(await grant("DELETE")).toBe(200);
+    const revoked = await groups();
+
+    expect(
+      { before, after, revoked },
+      "granting or revoking did not change what the account may do",
+    ).toEqual({ before: 403, after: 200, revoked: 403 });
+  }, 25000);
+
   // GL-05 / SC-I18N-01: Localization dictionary completeness & consistency
   it("[SC-I18N-01] verifies localization dictionary key symmetry", async () => {
     const text = await Bun.file("packages/platform-web/src/contexts/I18nContext.tsx").text();
