@@ -656,7 +656,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
    * `FLOW` is the path a person actually walks to be admitted and to be given a
    * capability. Those screens are held at zero.
    *
-   * The rest of the tree carries 126 such strings. Deleting the number here to
+   * The rest of the tree carries 124 such strings. Deleting the number here to
    * make the check pass is the failure this is written against, so the number
    * is asserted from above: it may fall, and any commit that raises it fails.
    * A ratchet says less than a zero would, and it says it about every file
@@ -682,7 +682,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       "layouts/RootLayout.tsx",
       "contexts/AuthContext.tsx",
     ];
-    const RATCHET = 126;
+    const RATCHET = 124;
     const ROOT = "packages/platform-web/src";
     const KOREAN = /[가-힣]/;
     const LITERAL = /"([^"\\\n]*)"|'([^'\\\n]*)'|`([^`\\]*)`/gs;

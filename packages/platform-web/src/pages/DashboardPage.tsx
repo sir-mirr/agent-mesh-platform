@@ -200,7 +200,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.tenants", "활성 테넌트 조직")}
           value={isLoading ? "..." : isError ? "—" : String(groups.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("dash.tenants.errorLoad", "Could not load tenants") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("dash.tenants.errorLoad", "Could not load tenants") : (groups.length > 0 ? `${groups.length} ${t("dash.pa.tenantsUnit", "개 조직 등록")}` : t("dash.pa.tenantsNone", "등록된 테넌트 없음"))}
           color="#6366F1"
           icon="🏢"
         />
