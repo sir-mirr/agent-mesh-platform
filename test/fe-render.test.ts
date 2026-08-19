@@ -1033,11 +1033,19 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // survive as their own columns are marked here — a default of `ONLINE`
       // is the worst of them, because unknown reading as healthy is the one an
       // operator has no reason to question.
-      expect({ statusUnknown: await page.locator("[data-testid='status-unknown']").count() > 0 })
-        .toEqual({ statusUnknown: true });
+      // `status` is gone from the route by decision, not omission — SPEC § 9.1 says
+      // whether silence means `inactive` is an operating policy this screen does not
+      // decide. What the row carries instead is when the mesh last saw the identity,
+      // and that is a reading: these agents connected during setup, so the cell holds
+      // a time. The omitted case — no record at all — is `SC-INVENT-01`, which
+      // withholds the field rather than hoping the fixture lacks it. Asserting
+      // "never seen" here was a guess about the fixture, and it was wrong.
+      expect({ lastSeen: await page.locator("[data-testid='last-seen']").count() > 0 })
+        .toEqual({ lastSeen: true });
       expect({ inboxUnknown: await page.locator("[data-testid='inbox-unknown']").count() > 0 })
         .toEqual({ inboxUnknown: true });
-      expect({ online: body.includes("ONLINE") }).toEqual({ online: false });
+      // The words themselves are gone: nothing here claims a socket state.
+      expect({ online: body.includes("ONLINE") || body.includes("OFFLINE") }).toEqual({ online: false });
     });
   }, 30_000);
 
@@ -2347,7 +2355,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    */
   it("[SC-INVENT-01] draws an omitted field as absent, never as the value it would have had", async () => {
     const tag = "inv" + String(Date.now()).slice(-6);
-    const base = { identity: `pm-${tag}`, description: `DESC-${tag}`, type: `TYPE-${tag}` };
+    const base = { id: `pm-${tag}`, name: `NAME-${tag}`, description: `DESC-${tag}`, type: `TYPE-${tag}` };
 
     async function rowOf(agent: Record<string, unknown>): Promise<{ text: string; absent: number }> {
       const context = await browser.newContext();
@@ -2361,19 +2369,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await settled(page);
         await shows(page, `pm-${tag}`);
         const text = (await page.locator("#root").innerText().catch(() => "")).trim();
-        // The screen's own absence handles, counted rather than named. Adding a
-        // new one must not make this test redder.
+        // The screen's own absence handles, counted rather than named, so adding a
+        // new one cannot make this test redder.
         const absent =
           (await page.locator("[data-testid$='-unknown']").count()) +
-          (await page.locator("[data-testid$='-absent']").count());
+          (await page.locator("[data-testid$='-absent']").count()) +
+          (await page.locator("[data-testid='never-seen']").count());
         return { text, absent };
       } finally {
         await context.close().catch(() => {});
       }
     }
 
-    // Sent: an active status. Omitted: no `status` key at all.
-    const sent = await rowOf({ ...base, status: "active" });
+    // Sent: a presence record from an hour ago. Omitted: no `last_seen_at` key.
+    const anHourAgo = new Date(Date.now() - 3600_000).toISOString();
+    const sent = await rowOf({ ...base, last_seen_at: anHourAgo });
     const omitted = await rowOf({ ...base });
 
     // Neither render may be empty, or the pair says nothing — the vacuous pass
@@ -2383,18 +2393,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       "the row never rendered, so nothing was compared",
     ).toEqual({ sentDrew: true, omittedDrew: true });
 
-    // The value the present case showed. If the screen stopped saying it, this
-    // test is measuring nothing and says so rather than passing.
-    expect(sent.text, "the sent status no longer renders as ONLINE — this pair has nothing to compare")
-      .toContain("ONLINE");
+    // The value the present case showed. If the screen stops saying it, this test
+    // is measuring nothing and says so rather than passing.
+    expect(sent.text, "the sent presence no longer renders as a time — this pair has nothing to compare")
+      .toContain("시간 전 접속");
 
-    // **The omitted case must not borrow it.** This is `I-062` exactly.
+    // **The omitted case must not borrow it**, and must not translate silence into
+    // a verdict: SPEC § 9.1 says `last_seen_at: null` is the absence of a record,
+    // not a report that the identity is offline.
     expect(
-      { drewTheValueItWasNotSent: omitted.text.includes("ONLINE") },
-      "a row with no status drew the status of one that had it",
-    ).toEqual({ drewTheValueItWasNotSent: false });
+      { drewATime: /전 접속/.test(omitted.text), drewAVerdict: /오프라인|OFFLINE|ONLINE/.test(omitted.text) },
+      "a row with no presence record was drawn as one that had one",
+    ).toEqual({ drewATime: false, drewAVerdict: false });
 
-    // And it must say so with the screen's own handle rather than falling blank.
+    // And it says so with the screen's own handle rather than falling blank.
     expect(
       { absentHandles: omitted.absent > sent.absent },
       "omitting the field produced no additional absence marker — the screen went quiet instead of answering",

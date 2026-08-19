@@ -8,7 +8,7 @@ import {
 } from "@/components/index.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
+import { fetchAgents, type RegistryAgent, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
 import { sendMessageApi } from "@/api/messages.ts";
 
 interface RegisteredAgent {
@@ -16,14 +16,10 @@ interface RegisteredAgent {
   name: string;
   /** `a.type` — the kind of agent. Labelled 종류 on screen, not 소속. */
   group: string;
-  /**
-   * `null` when the list did not report one.
-   *
-   * `GET /api/v1/agents` sends no status, and this used to collapse the absence
-   * to `"offline"` — the mirror of the agent list's `"active"` default, and
-   * still a statement the server never made.
-   */
-  status: "online" | "offline" | null;
+  /** Whether the mesh has ever seen this identity. Measured; not "online". */
+  seen: boolean;
+  /** When, in words — "접속 기록 없음" when there is no record. */
+  lastSeen: string;
   fingerprint: string | null;
 }
 
@@ -70,10 +66,11 @@ export function PlaygroundPage() {
         // sender filter below compared it to the signed-in id — so the filter
         // passed everything for one username and nothing for the rest, while
         // reading as ownership.
-        status: (a.status === "active" ? "online" : a.status === "inactive" ? "offline" : null) as
-          | "online"
-          | "offline"
-          | null,
+          // **No `status`.** The route does not send one (SPEC § 9.1) and these
+          // comparisons read a key that never arrived, so every agent came out
+          // `null` — a judgement dressed as a reading. `last_seen_at` is measured.
+          seen: hasBeenSeen(a),
+          lastSeen: lastSeenLabel(a.last_seen_at),
         // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,
       }));
@@ -239,14 +236,14 @@ export function PlaygroundPage() {
               >
                 {senderAgents.map((agt) => (
                   <option key={agt.id} value={agt.id}>
-                    {agt.status === "online" ? "🟢" : "⚪"} {agt.name} ({agt.id}) — [{agt.group}]
+                    {agt.seen ? "🟢" : "⚪"} {agt.name} ({agt.id}) — [{agt.group}]
                   </option>
                 ))}
               </select>
               {selectedSenderObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
                   <span>종류: <strong>{selectedSenderObj.group}</strong></span>
-                  <span>상태: <strong style={{ color: selectedSenderObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.status?.toUpperCase() ?? "미보고"}</strong></span>
+                  <span>마지막 접속: <strong style={{ color: selectedSenderObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.lastSeen}</strong></span>
                   <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : "지문 없음"}</span>
                 </div>
               )}
@@ -275,14 +272,14 @@ export function PlaygroundPage() {
               >
                 {recipientAgents.map((agt) => (
                   <option key={agt.id} value={agt.id}>
-                    {agt.status === "online" ? "🟢" : "⚪"} {agt.name} ({agt.id}) — [{agt.group}]
+                    {agt.seen ? "🟢" : "⚪"} {agt.name} ({agt.id}) — [{agt.group}]
                   </option>
                 ))}
               </select>
               {selectedRecipientObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
                   <span>종류: <strong>{selectedRecipientObj.group}</strong></span>
-                  <span>상태: <strong style={{ color: selectedRecipientObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.status?.toUpperCase() ?? "미보고"}</strong></span>
+                  <span>마지막 접속: <strong style={{ color: selectedRecipientObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.lastSeen}</strong></span>
                 </div>
               )}
             </div>

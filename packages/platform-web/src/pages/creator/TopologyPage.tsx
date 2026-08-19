@@ -3,7 +3,7 @@ import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
-import { fetchAgents, type RegistryAgent } from "@/api/agents.ts";
+import { fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
 
 interface ClusterConfig {
   id: string;
@@ -23,7 +23,8 @@ interface TopoNode {
   group: string;
   groupName: string;
   type: string;
-  status: "Online" | "Socketless" | "Gateway";
+  /** Measured presence, not health. `Seen` = the mesh has a record; `NoRecord` = it does not. */
+  status: "Seen" | "NoRecord" | "Gateway";
   badgeClass?: string | undefined;
   desc: string;
   /**
@@ -267,7 +268,11 @@ export function TopologyPage() {
         const agentObj = liveAgents.find((a) => a.identity === agentIdentity);
         const icon = ICONS_PALETTE[(i + cfg.name.length) % ICONS_PALETTE.length] || "🤖";
         const type = agentObj?.type || "runtime";
-        const status: "Online" | "Socketless" = agentObj?.status === "inactive" ? "Socketless" : "Online";
+        // **Measured, not judged.** This read `agentObj.status`, a key the route
+        // does not send (SPEC § 9.1), so every node came out "Online" — the
+        // topology said the whole mesh was up regardless of what the mesh knew.
+        // `last_seen_at` is what it does know: seen at some point, or no record.
+        const status: "Seen" | "NoRecord" = hasBeenSeen(agentObj ?? {}) ? "Seen" : "NoRecord";
         const displayName = agentObj?.description || agentIdentity;
         const desc = `${cfg.name} 그룹 소속 활성 에이전트 [${agentIdentity}]입니다.`;
 
@@ -1279,7 +1284,7 @@ export function TopologyPage() {
               const isSelected = selectedNode?.identity === node.identity;
               const isPeer = selectedNode?.directPeers.includes(node.identity);
               const isMatch = filteredNodeIds.includes(node.identity);
-              const isOnline = node.status === "Online";
+              const isOnline = node.status === "Seen";
 
               if (node.type === "gateway-bridge") {
                 return (
@@ -1594,8 +1599,8 @@ export function TopologyPage() {
             </div>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: selectedNode.status === "Online" ? "#ECFDF5" : "#EFF6FF", color: selectedNode.status === "Online" ? "#059669" : "#2563EB", fontWeight: 700 }}>
-                ● {selectedNode.status}
+              <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: selectedNode.status === "Seen" ? "#ECFDF5" : "#EFF6FF", color: selectedNode.status === "Seen" ? "#059669" : "#2563EB", fontWeight: 700 }}>
+                ● {selectedNode.status === "Seen" ? "접속 기록 있음" : "접속 기록 없음"}
               </span>
               <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: "var(--color-bg-surface-sub)", color: "var(--color-text-secondary)", fontWeight: 600 }}>
                 Type: {selectedNode.type}

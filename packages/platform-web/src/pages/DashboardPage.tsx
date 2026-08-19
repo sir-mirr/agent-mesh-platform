@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
-import { fetchAgents, fetchPendingKeys, type RegistryAgent } from "@/api/agents.ts";
+import { fetchAgents, fetchPendingKeys, type RegistryAgent, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
@@ -134,7 +134,11 @@ function PlatformAdminDashboard() {
   }, []);
 
   const totalAgents = agents.length || (telemetry?.total_agents ?? 0);
-  const activeSockets = telemetry?.active_sockets ?? agents.filter((a) => a.status === "active").length;
+  // **No fallback that counts a status the route does not send.** When telemetry
+  // has not answered, the socket count is unknown, and an agent list cannot
+  // stand in for it — `last_seen_at` says when the mesh last saw someone, not
+  // whether a socket is open now.
+  const activeSockets = telemetry?.active_sockets ?? null;
 
   return (
     <>
@@ -490,7 +494,7 @@ function GroupAdminDashboard() {
         />
         <KpiCard
           label={t("dash.ga.health", "온라인 에이전트 비율")}
-          value={agents.length > 0 ? `${Math.round((agents.filter(a => a.status === "active").length / agents.length) * 100)}%` : "0%"}
+          value={agents.length > 0 ? `${Math.round((agents.filter(hasBeenSeen).length / agents.length) * 100)}%` : "—"}
           subValue="소켓 연결 기준"
           color="#6366F1"
           icon="💚"
@@ -594,7 +598,7 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.sockets", "온라인 소켓")}
-          value={String(agents.filter(a => a.status === "active").length)}
+          value={String(agents.filter(hasBeenSeen).length)}
           subValue={t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
@@ -682,14 +686,14 @@ function AgentOperatorDashboard() {
                       status at all.
                     */}
                     종류: <strong>{agt.type ?? "—"}</strong> · 상태:{" "}
-                    {agt.status === "active" ? "온라인" : agt.status === "inactive" ? "오프라인" : "미보고"}
+                    {lastSeenLabel(agt.last_seen_at)}
                   </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <StatusBadge
-                    label={agt.status === "active" ? "ONLINE" : "OFFLINE"}
-                    status={agt.status === "active" ? "online" : "offline"}
+                    label={hasBeenSeen(agt) ? "접속 기록 있음" : "접속 기록 없음"}
+                    status={hasBeenSeen(agt) ? "online" : "pending"}
                     size="sm"
                   />
                   <Link to="/creator/playground">

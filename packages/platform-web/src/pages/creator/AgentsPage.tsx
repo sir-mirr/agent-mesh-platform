@@ -24,7 +24,8 @@ interface AgentItem {
    * show which agents are not healthy. Unknown and down are different answers
    * and only one of them is true here.
    */
-  status: "online" | "offline" | "pending" | null;
+  /** Whether the mesh has ever seen this identity. Measured; not "online". */
+  seen: boolean;
   fingerprint: string | null;
   /**
    * `null` — this list has never carried it.
@@ -34,10 +35,11 @@ interface AgentItem {
    * checked was also the one nobody would question.
    */
   inboxDepth: number | null;
-  lastSeen: string | null;
+  /** When, in words. "접속 기록 없음" when the mesh has no record. */
+  lastSeen: string;
 }
 
-import { fetchAgents, teardownAgentApi } from "@/api/agents.ts";
+import { fetchAgents, teardownAgentApi, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { t } = useI18n();
@@ -58,13 +60,14 @@ export function AgentsPage() {
           id: a.identity,
           name: a.description || a.identity,
           groupName: a.type ?? "—",
-          status: a.status === "active" ? "online" : a.status === "pending" ? "pending" : a.status === "inactive" ? "offline" : null,
+          // `status` is gone from the route on purpose (SPEC § 9.1). What the mesh
+          // measured is when it last saw the identity.
+          lastSeen: lastSeenLabel(a.last_seen_at),
+          seen: hasBeenSeen(a),
           // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,
           // `GET /api/v1/agents` does not report queue depth. See the type.
           inboxDepth: null,
-          // Was "최근 접속" — a claim about when, from a field that was not sent.
-          lastSeen: a.last_seen_at ? new Date(a.last_seen_at).toLocaleTimeString() : null,
         }))
       );
     } catch {
@@ -141,19 +144,20 @@ export function AgentsPage() {
       ),
     },
     {
-      key: "status",
-      header: t("agents.col.status", "상태"),
+      key: "seen",
+      header: t("agents.col.lastSeen", "마지막 접속"),
       render: (item: AgentItem) =>
-        item.status === null ? (
-          <span data-testid="status-unknown" style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
-            — 미보고
+        item.seen ? (
+          <span data-testid="last-seen" style={{ fontSize: "0.8rem", color: "var(--color-text-primary)" }}>
+            {item.lastSeen}
           </span>
         ) : (
-          <StatusBadge
-            label={item.status === "online" ? "ONLINE" : item.status === "offline" ? "OFFLINE" : "PENDING"}
-            status={item.status}
-            size="sm"
-          />
+          // Not "offline". SPEC § 9.1: `last_seen_at: null` means the mesh holds
+          // no presence record, and calling that offline is a judgement this
+          // screen is not entitled to make.
+          <span data-testid="never-seen" style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
+            {item.lastSeen}
+          </span>
         ),
     },
     {
