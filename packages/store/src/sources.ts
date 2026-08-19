@@ -36,16 +36,6 @@ export function recordSource(db: Database, identity: string, observed: string | 
   ).run(identity, observed);
 }
 
-/** Most recently used first — which is the order an operator reads them in. */
-export function listSources(db: Database, identity: string): AgentSource[] {
-  return db
-    .prepare(
-      `SELECT observed, first_seen, last_seen, requests
-         FROM agent_sources WHERE identity = ? ORDER BY last_seen DESC`,
-    )
-    .all(identity) as AgentSource[];
-}
-
 /**
  * Whether this identity has been seen at this place before (SPEC § 8.11.2).
  *

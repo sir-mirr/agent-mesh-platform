@@ -162,7 +162,12 @@ describe("every code the hub emits is classified", () => {
     );
     expect(emitted.size).toBeGreaterThan(8);
 
-    // `-32700`/`-32603` are JSON-RPC's own; `-32042` is retired and burned.
+    // `-32700`/`-32603` are JSON-RPC's own; `-32042` is retired and burned —
+    // `RETIRED_AUDIT_SEQUENCE_CONFLICT` in `packages/hub/src/rpc/audit.ts` is
+    // the tombstone that reserves it. Written out rather than imported: this
+    // test reads the hub as text, in a subprocess, so that a code emitted but
+    // never exported still counts. Importing it would pull the module's own
+    // startup in and make the scan the smaller of two answers.
     const jsonRpcReserved = new Set([-32700, -32600, -32601, -32603]);
     const unclassified = [...emitted].filter(
       (code) => code !== -32042 && !jsonRpcReserved.has(code) && !Object.hasOwn(ERROR_CLASS, code),

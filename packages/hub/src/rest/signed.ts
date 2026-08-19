@@ -111,6 +111,11 @@ export function authenticate(
   // Spent here, before anything else can fail. A request whose signature then
   // fails has still consumed it, so a retry needs a fresh one — recording only
   // on success would leave a captured request replayable without limit.
+  // **Keyed on the fingerprint, not the identity.** On the JSON-RPC path the
+  // identity is resolved first and keys the window. Here the nonce is claimed
+  // *before* resolution, because a request whose key is not approved must not
+  // get a free replay of the same nonce once it is. `auth.kid` names the same
+  // holder and is available earlier.
   if (!nonceWindow.claim(auth.kid, auth.nonce, auth.iat)) {
     return refuse(401, MESH_ERROR.SIGNATURE_INVALID, "nonce already seen in this window", "SIGNATURE_INVALID");
   }
@@ -158,13 +163,3 @@ export function authenticate(
 
   return { ok: true, caller: { identity, kid: auth.kid } };
 }
-
-/**
- * The nonce window is keyed on the fingerprint rather than the identity here.
- *
- * On the JSON-RPC path the identity is resolved first and keys the window. Here
- * the nonce is claimed *before* resolution, because a request whose key is not
- * approved must not get a free replay of the same nonce once it is. The
- * fingerprint names the same holder and is available earlier.
- */
-export const NONCE_KEYED_ON = "fingerprint" as const;

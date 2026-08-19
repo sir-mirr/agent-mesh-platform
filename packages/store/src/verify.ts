@@ -49,7 +49,7 @@ function publicKeyObject(rawBase64Url: string) {
  * differently on "the signature was garbage" than on "the signature was wrong",
  * and giving it two paths invites one of them to be handled less carefully.
  */
-export function verifySignature(
+function verifySignature(
   publicKey: string,
   preimage: Uint8Array,
   signature: string,

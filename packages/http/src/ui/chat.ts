@@ -917,7 +917,6 @@ function updateSendBtnState() {
   btn.disabled = input.value.trim().length === 0;
 }
 
-let pendingFilePath = null;
 
 function triggerFileUpload() {
   document.getElementById('fileUploadInput').click();
@@ -942,13 +941,8 @@ function clearFileUpload() {
   row.style.display = 'none';
   btn.style.borderColor = '#0f3460';
   btn.style.color = '#888';
-  pendingFilePath = null;
 }
 
-function clearFilePath() {
-  document.getElementById('filePathInput').value = '';
-  toggleFileInput();
-}
 
 // --- FR-017: Relative time + Date grouping (KST) ---
 function relativeTime(ts) {
@@ -1021,7 +1015,6 @@ async function loadMessages() {
     const msgs = data.messages || [];
     // Update if messages changed (compare last message ID)
     const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-    const prevLastId = lastMsgCount > 0 ? String(lastMsgCount) : '';
     const newKey = msgs.length + ':' + lastId;
     if (newKey !== lastMsgKey) {
       // Check if the new message is from the agent (not from me)
@@ -1094,7 +1087,6 @@ function renderMessages(msgs) {
 async function sendMessage() {
   const input = document.getElementById('msgInput');
   const btn = document.getElementById('sendBtn');
-  const fileInput = document.getElementById('filePathInput');
   const text = input.value.trim();
   if (!text || !currentAgent) return;
 

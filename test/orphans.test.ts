@@ -80,6 +80,28 @@ function reference(stateDir: string, blobKey: string): void {
   db.close();
 }
 
+/** An upload grant, expired or live, of the kind § 15.4 writes before the bytes. */
+function nonce(stateDir: string, value: string, expiresInMinutes: number): void {
+  const db = openTestDb(join(stateDir, "agents.db"), { readwrite: true });
+  const when = new Date(Date.now() + expiresInMinutes * 60_000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  db.prepare(
+    `INSERT INTO upload_nonces (nonce, identity, blob_key, size, sha256, expires_at)
+     VALUES (?, 'agent-alpha', ?, 1, ?, ?)`,
+  ).run(value, KEY_A, KEY_A.slice(0, 64), when);
+  db.close();
+}
+
+/** The nonces still in the table, so a sweep can be told from a no-op. */
+function nonces(stateDir: string): string[] {
+  const db = openTestDb(join(stateDir, "agents.db"), { readwrite: true });
+  const rows = db.prepare(`SELECT nonce FROM upload_nonces ORDER BY nonce`).all() as Array<{ nonce: string }>;
+  db.close();
+  return rows.map((r) => r.nonce);
+}
+
 describe("§ 15.6 orphan collection", () => {
   test("an old unreferenced blob is collected", async () => {
     mesh = await startMesh({ withHttp: false });
@@ -241,6 +263,61 @@ describe("§ 15.6 orphan collection", () => {
       "the audit store is opened without readonly: true, so a future write would succeed",
     ).toContain("readonly: true");
   });
+});
+
+describe("the grants those bytes came with", () => {
+  // `sweepExpired` is the only statement that deletes from `upload_nonces`, and
+  // for the life of this repository nothing called it — so the table could only
+  // grow. Not dead code: a scheduled job with no schedule, whose symptom is a
+  // table nobody reads. Wiring it here without a test would leave it exactly as
+  // provable as it was.
+  test("an expired upload grant is swept", async () => {
+    mesh = await startMesh({ withHttp: false });
+    mkdirSync(join(mesh.stateDir, "uploads"), { recursive: true });
+    nonce(mesh.stateDir, "expired-one", -60);
+
+    const run = await collect(mesh.stateDir);
+
+    expect(run.code).toBe(0);
+    expect(run.out).toContain("swept 1 expired upload nonce");
+    expect(nonces(mesh.stateDir)).not.toContain("expired-one");
+  }, 30_000);
+
+  test("and is swept even when there is no uploads directory to scan", async () => {
+    // The state of a deployment nobody has uploaded to. The blob half exits 1
+    // there, so a sweep placed after it would never run on precisely the
+    // machines that look healthiest — which is where this was first written.
+    mesh = await startMesh({ withHttp: false });
+    rmSync(join(mesh.stateDir, "uploads"), { recursive: true, force: true });
+    nonce(mesh.stateDir, "expired-one", -60);
+
+    const run = await collect(mesh.stateDir);
+
+    expect(run.out).toContain("swept 1 expired upload nonce");
+    expect(nonces(mesh.stateDir)).not.toContain("expired-one");
+  }, 30_000);
+
+  test("a grant that has not expired is left alone", async () => {
+    // The other half. A sweep that takes everything passes the test above and
+    // deletes the authorisation of an upload that is still in flight.
+    mesh = await startMesh({ withHttp: false });
+    nonce(mesh.stateDir, "expired-one", -60);
+    nonce(mesh.stateDir, "still-live", 15);
+
+    await collect(mesh.stateDir);
+
+    expect(nonces(mesh.stateDir)).toEqual(["still-live"]);
+  }, 30_000);
+
+  test("--dry-run says what it would sweep and sweeps nothing", async () => {
+    mesh = await startMesh({ withHttp: false });
+    nonce(mesh.stateDir, "expired-one", -60);
+
+    const run = await collect(mesh.stateDir, ["--dry-run"]);
+
+    expect(run.out).toContain("would sweep");
+    expect(nonces(mesh.stateDir)).toContain("expired-one");
+  }, 30_000);
 });
 
 describe("§ 15.6 scheduling", () => {

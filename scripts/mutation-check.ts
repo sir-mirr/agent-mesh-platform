@@ -943,6 +943,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
   {
+    id: "nonce-sweep-unscheduled",
+    defect:
+      "`sweepExpired` is the only statement in the tree that deletes from `upload_nonces`, and nothing called it, so the table could only grow for the life of a deployment. Not dead code — a scheduled job with no schedule, whose symptom is a table nobody reads. The dead-code sweep that found it proposed deleting it.",
+    file: "scripts/collect-orphan-blobs.ts",
+    from: "  const swept = nonces.sweepExpired(openStore(\"agents\"));",
+    to: "  const swept = 0;",
+    suite: "test/orphans.test.ts",
+    expect: ["an expired upload grant is swept", "swept 1 expired upload nonce"],
+  },
+  {
     id: "route-renames-a-field-callers-send",
     defect:
       "A route that renames the field it reads leaves every caller sending the old one, and the callers are told 201. This is the group-create silence from the server's side: nothing in the suite compares what a route reads against what anyone sends it.",

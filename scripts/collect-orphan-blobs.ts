@@ -26,7 +26,7 @@
 import { readdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
-import { openStore, stateDir } from "@agent-mesh/store";
+import { nonces, openStore, stateDir } from "@agent-mesh/store";
 
 interface Args {
   dryRun: boolean;
@@ -62,6 +62,29 @@ function parseArgs(argv: string[]): Args {
 const args = parseArgs(process.argv.slice(2));
 const uploadDir = join(stateDir(), "uploads");
 const cutoff = Date.now() - args.graceHours * 3_600_000;
+
+// The grants those bytes came with, swept first.
+//
+// `sweepExpired` is the only statement in the tree that deletes from
+// `upload_nonces`, and nothing called it — so the table had no way to shrink.
+// Not dead code: a scheduled job with no schedule, whose symptom is a table
+// nobody looks at. `sweepExpired` says where it must not go — the upload path —
+// and this is the timer it was waiting for.
+//
+// **Before the blob scan, not after.** The scan exits 1 when `uploads/` is
+// absent, which is the ordinary state of a deployment where nobody has
+// uploaded yet, and a sweep behind that line would never run on exactly the
+// machines that look healthiest. The two jobs share a schedule and nothing
+// else.
+//
+// It writes to `agents.db`. The audit handle below deliberately does not write
+// at all, so that it can never be the reason an append failed.
+if (args.dryRun) {
+  console.log("[orphans] would sweep expired upload nonces");
+} else {
+  const swept = nonces.sweepExpired(openStore("agents"));
+  console.log(`[orphans] swept ${swept} expired upload nonce(s)`);
+}
 
 // Read-only. This never writes to the audit store, so it cannot be the reason
 // an append fails while it runs.
@@ -131,3 +154,12 @@ console.log(
   `[orphans] scanned ${scanned}, referenced ${kept}, within grace ${tooYoung}, ` +
     `${args.dryRun ? "would remove" : "removed"} ${removed} (${bytes} bytes)`,
 );
+
+// The rows that authorise those blobs, swept on the same schedule.
+//
+// `sweepExpired` is the only statement in the tree that deletes from
+// `upload_nonces`, and nothing called it — so the table had no way to shrink
+// and grew for the life of the deployment. That is not dead code; it is a
+// scheduled job with no schedule, and the symptom of the missing call is a
+// table nobody looks at.
+//

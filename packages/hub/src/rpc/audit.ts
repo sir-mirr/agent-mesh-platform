@@ -150,6 +150,11 @@ export const AUDIT_MISSING_BLOBS = -32040;
 export const AUDIT_EVENT_CONFLICT = -32041;
 /** Retired. § 8.9.3 forbids reuse: an old client would read one meaning as the other. */
 export const RETIRED_AUDIT_SEQUENCE_CONFLICT = -32042;
+// Nothing calls this, and nothing should: it is a tombstone reserving the code
+// against reuse, and deleting it is how the code gets used again by someone who
+// has no way to know it was burned. `test/versioning.test.ts` excludes the same
+// number by value — it reads this file as text rather than importing it — so
+// the two are linked by name here and by comment there.
 export const AUDIT_BUSY = -32043;
 export const AUDIT_STORAGE_EXHAUSTED = -32044;
 

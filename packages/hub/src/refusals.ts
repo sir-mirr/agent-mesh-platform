@@ -101,8 +101,3 @@ export function refusalCounts(): RefusalCount[] {
     })
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
-
-/** Tests only. Production never resets — see the note on losing history. */
-export function resetRefusalCounts(): void {
-  counts.clear();
-}

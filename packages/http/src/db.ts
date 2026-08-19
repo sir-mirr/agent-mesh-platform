@@ -320,18 +320,6 @@ export function getConversation(agent1: string, agent2: string, limit: number = 
   return rows.reverse() // chronological order
 }
 
-export function getAllMessages(limit: number = 100): DbMessage[] {
-  const db = getDb()
-  const stmt = db.prepare(`
-    SELECT id, from_agent, to_agent, content, reply_to, file_path, status, ts
-    FROM messages
-    ORDER BY ts DESC
-    LIMIT ?
-  `)
-  const rows = stmt.all(limit) as DbMessage[]
-  return rows.reverse()
-}
-
 // --- User management ---
 
 export type DbUser = {
@@ -512,7 +500,7 @@ export async function seedLocalUsers(): Promise<void> {
   const row = db.prepare('SELECT COUNT(*) as cnt FROM local_users').get() as { cnt: number }
   if (row.cnt === 0) {
     const hash = await Bun.password.hash('admin', { algorithm: 'bcrypt' })
-    db.prepare('INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)').run('admin', hash, 'Admin', 'admin')
+    createLocalUser('admin', hash, 'Admin', 'admin')
     console.log('[db] seeded default admin local user')
   }
 
