@@ -19,7 +19,8 @@ import { apiClient } from "./client.ts";
  */
 export interface SystemTelemetry {
   active_sockets: number;
-  total_agents: number;
+  /** `null` when `/api/v1/health` did not answer. Not the registry's length. */
+  total_agents: number | null;
   total_messages: number | null;
   health_status?: string | undefined;
   server_uptime_seconds?: number | undefined;
@@ -98,7 +99,14 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   }
 
   const agentList: any[] = Array.isArray(agents) ? agents : agents?.agents ?? [];
-  const totalAgents = health?.agent_count != null ? health.agent_count : agentList.length;
+  // **Two tables, two questions.** `health.agent_count` counts mesh identities
+  // that are alive (`agents`, `deleted_at IS NULL`); `agentList.length` counts
+  // rows in this server's own chat registry. Neither contains the other — a
+  // hub-only identity is not in the registry and a web user is only there — so
+  // substituting one for the other puts a different quantity under the same
+  // label and nothing says it changed. Measured on the standing stack the day
+  // this was written: 12 against 13.
+  const totalAgents = health?.agent_count ?? null;
   const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;
 
   return {

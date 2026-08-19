@@ -1623,6 +1623,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "count-answered-from-another-table",
+    defect:
+      "`health?.agent_count ?? agentList.length` — mesh identities that are alive, or rows in this server's chat registry, whichever answered. Neither set contains the other (12 against 13 when this was written), so the number under the label changes quantity when a route stops answering and nothing says it did.",
+    file: "packages/platform-web/src/api/telemetry.ts",
+    from: "  const totalAgents = health?.agent_count ?? null",
+    to: "  const totalAgents = health?.agent_count ?? agentList.length",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-05", "answered from another table"],
+  },
+  {
     id: "screen-calls-the-registry-the-viewers-own",
     defect:
       "`GET /api/v1/agents` hands a member with no capability the whole registry — measured, identical to the platform admin's twelve rows. Calling that list \"My Agents\" tells a person twelve identities are theirs, including other people's.",

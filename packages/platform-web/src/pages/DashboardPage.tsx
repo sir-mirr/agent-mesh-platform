@@ -165,7 +165,12 @@ function PlatformAdminDashboard() {
     });
   }, []);
 
-  const totalAgents = agents.length || (telemetry?.total_agents ?? 0);
+  // This card's own subtitle says "live registry", so it counts the registry —
+  // one source, named. It used to prefer the registry and fall back to
+  // telemetry's `total_agents`, which counts mesh identities, and then to `0`;
+  // three different answers under one label, and `||` meant an empty registry
+  // took the second of them.
+  const totalAgents = agents.length;
   // **No fallback that counts a status the route does not send.** When telemetry
   // has not answered, the socket count is unknown, and an agent list cannot
   // stand in for it — `last_seen_at` says when the mesh last saw someone, not

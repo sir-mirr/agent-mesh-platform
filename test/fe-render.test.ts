@@ -2706,6 +2706,56 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-INVENT-05 — one label, one source.
+   *
+   * `total_agents` was `health?.agent_count ?? agentList.length`, and those two
+   * count different things: mesh identities that are alive, against rows in this
+   * server's own chat registry. Neither set contains the other. Measured on the
+   * standing stack while writing this — 12 against 13 — so when `/api/v1/health`
+   * stopped answering, the number under the label changed quantity rather than
+   * going missing, and nothing on the page said so.
+   *
+   * That is the quietest shape of the four this file now guards: a screen that
+   * draws a plausible number for a question it could not ask.
+   */
+  it("[SC-INVENT-05] leaves the count unmeasured rather than answering it from another table", async () => {
+    const read = async (blockHealth: boolean) => {
+      const { page, context } = await createAuthedPage("/platform/telemetry");
+      try {
+        if (blockHealth) {
+          await page.route("**/api/v1/health", (route) =>
+            route.fulfill({ status: 502, contentType: "text/html", body: "<html>502</html>" }),
+          );
+          await page.reload({ waitUntil: "networkidle" });
+          await settled(page);
+        }
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        const m = text.match(/total_agents=(\S+)/);
+        return m?.[1] ?? "";
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    // What each source actually says, asked of the server rather than assumed.
+    const health = (await (await fetch(`${mesh.http.url}/api/v1/health`, { headers: { cookie: `mesh_token=${jwtToken}` } })).json()) as any;
+    const registry = (await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie: `mesh_token=${jwtToken}` } })).json()) as any;
+    const registryCount = (Array.isArray(registry) ? registry : registry.agents ?? []).length;
+
+    const healthy = await read(false);
+    const refused = await read(true);
+
+    expect(
+      {
+        healthy,
+        refusedIsRegistryCount: refused === String(registryCount),
+        refusedSaysUnmeasured: refused.startsWith("—"),
+      },
+      "the count answered from another table when its own source did not answer",
+    ).toEqual({ healthy: String(health.agent_count), refusedIsRegistryCount: false, refusedSaysUnmeasured: true });
+  }, 30000);
+
+  /**
    * SC-CAP-06 — the screen does not call the mesh's registry the viewer's own.
    *
    * `GET /api/v1/agents` answers a member holding no capability at all with the
