@@ -2213,6 +2213,128 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 20000);
 
+  /**
+   * SC-PWCHG-01 … 04 — a first login can change its password and nothing else.
+   *
+   * The seeded account arrives with `must_change_password`, and the server
+   * answers `403 { must_change_password: true }` to every route but three. The
+   * screen's job is to say so instead of leaving somebody in a dashboard of
+   * refusals — **it is not the thing doing the refusing**, and `SC-PWCHG-02`
+   * is what keeps that distinction honest: it calls the API with the cookie and
+   * no browser at all. A guard that only redirects passes every test that goes
+   * through a page, which is `I-065` and is what this suite spent a day
+   * deleting.
+   *
+   * The suite's own admin has the flag cleared by the harness, so these make
+   * their own account rather than reusing it.
+   */
+  async function flaggedAccount(username: string, password: string): Promise<string> {
+    const db = openTestDb(path.join(mesh.stateDir, "agent-mesh.db"));
+    db.prepare("DELETE FROM local_users WHERE username = ?").run(username);
+    db.prepare(
+      "INSERT INTO local_users (username, password_hash, display_name, role, must_change_password) VALUES (?, ?, ?, 'admin', 1)",
+    ).run(username, await Bun.password.hash(password, { algorithm: "bcrypt" }), username);
+    db.close();
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      redirect: "manual",
+    });
+    const cookie = res.headers.get("set-cookie")?.split(";")[0] ?? "";
+    // A 302 is not a session — the cookie is what says so.
+    if (!cookie.startsWith("mesh_token=")) throw new Error(`${username} could not sign in: ${res.status}`);
+    return cookie;
+  }
+
+  it("[SC-PWCHG-01] sends a first login to the change screen, and opens the product once it changes", async () => {
+    const cookie = await flaggedAccount("pwchg-one", "seeded-one-1");
+    await withViewerPage(cookie, "/dashboard", async ({ page }) => {
+      await page.waitForURL("**/change-password", { timeout: 6000 }).catch(() => {});
+      expect(
+        { at: page.url().includes("/change-password"), screen: (await page.locator("[data-testid='change-password']").count()) > 0 },
+        "a first login was left somewhere other than the change screen",
+      ).toEqual({ at: true, screen: true });
+
+      // **The other half.** Without it a product that opens nothing for anybody
+      // satisfies the reading above.
+      await page.locator("input[type='password']").nth(0).fill("seeded-one-1");
+      await page.locator("input[type='password']").nth(1).fill("chosen-one-99");
+      await page.locator("input[type='password']").nth(2).fill("chosen-one-99");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForURL("**/dashboard", { timeout: 8000 }).catch(() => {});
+      // **Reading the URL here is too early.** `navigate` puts `/dashboard` in
+      // the bar and the guard can send it back on the next render, so a screen
+      // that never releases the session still shows `/dashboard` for an instant
+      // — measured: a mutation that never clears the flag passed this check
+      // until it waited for the redirect to settle. Settle on the change screen
+      // being gone, which is the thing that would come back.
+      await page.waitForTimeout(600);
+      expect(
+        { at: page.url().includes("/dashboard"), stillChanging: (await page.locator("[data-testid='change-password']").count()) > 0 },
+        "changing the password did not open the product",
+      ).toEqual({ at: true, stillChanging: false });
+    });
+  }, 30000);
+
+  it("[SC-PWCHG-02] is refused by the server, not by the screen", async () => {
+    const cookie = await flaggedAccount("pwchg-two", "seeded-two-2");
+    // No browser. If this passes only through a page, the guard is decoration.
+    const blocked = await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } });
+    const body = (await blocked.json()) as { must_change_password?: boolean };
+    expect(
+      { status: blocked.status, flagged: body.must_change_password === true },
+      "a locked session reached a protected route without a browser in the way",
+    ).toEqual({ status: 403, flagged: true });
+
+    const changed = await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ current: "seeded-two-2", next: "chosen-two-99" }),
+    });
+    expect(changed.status, "the one route it may use refused it").toBe(200);
+
+    const after = await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } });
+    expect(after.status, "the same call is still refused after the change").toBe(200);
+  }, 20000);
+
+  it("[SC-PWCHG-03] says why a change failed instead of leaving the form silent", async () => {
+    const cookie = await flaggedAccount("pwchg-three", "seeded-three-3");
+    await withViewerPage(cookie, "/change-password", async ({ page }) => {
+      await page.locator("input[type='password']").nth(0).fill("not-the-password");
+      await page.locator("input[type='password']").nth(1).fill("chosen-three-9");
+      await page.locator("input[type='password']").nth(2).fill("chosen-three-9");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForTimeout(700);
+
+      const err = page.locator("[data-testid='change-password-error']");
+      expect(
+        { said: (await err.count()) > 0, left: !page.url().includes("/change-password") },
+        "the change button did nothing and said nothing",
+      ).toEqual({ said: true, left: false });
+    });
+  }, 20000);
+
+  it("[SC-PWCHG-04] stops accepting the password it was seeded with", async () => {
+    const cookie = await flaggedAccount("pwchg-four", "seeded-four-4");
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ current: "seeded-four-4", next: "chosen-four-99" }),
+    });
+    const login = async (password: string) =>
+      (await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ username: "pwchg-four", password }),
+        redirect: "manual",
+      })).status;
+    expect(
+      { old: await login("seeded-four-4"), next: await login("chosen-four-99") },
+      "the seeded password still works, or the chosen one does not",
+    ).toEqual({ old: 401, next: 200 });
+  }, 20000);
+
   // SC-AUTH-01: Session authentication & cookie injection
   it("[SC-AUTH-01] verifies session auth and redirect flow", async () => {
     await withUnauthedPage("/login", async ({ page }) => {

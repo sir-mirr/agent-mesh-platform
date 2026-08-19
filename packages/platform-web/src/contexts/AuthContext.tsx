@@ -17,6 +17,16 @@ interface AuthContextType {
    * where every screen became the login form and logging in did nothing.
    */
   authFailure: "unauthenticated" | "unreachable" | null;
+  /**
+   * The server says this account must set a password before it may do anything
+   * else. `null` while nothing has been asked yet — the screen must not decide
+   * "no" on its own, because the server answers `403` to every other route and
+   * a page that guessed wrong would show an operator a dashboard of errors.
+   */
+  mustChangePassword: boolean | null;
+  /** Ask `/auth/me` again — used after a password change, so the screen learns
+   *  the flag cleared from the server rather than assuming it did. */
+  refreshSession: () => Promise<void>;
   loginWithLocal: (id: string, pass: string) => Promise<void>;
   loginWithGitHub: () => void;
   logout: () => void;
@@ -106,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [authFailure, setAuthFailure] = useState<"unauthenticated" | "unreachable" | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean | null>(null);
 
   // Validate session on mount via /auth/me
   useEffect(() => {
@@ -123,6 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 ? "PLATFORM_ADMIN"
                 : "AGENT_OPERATOR";
             const resolvedCaps = capabilitiesFrom(me.capabilities);
+            setMustChangePassword(me.must_change_password === true);
 
             return {
               id: `usr_${me.github_login}`,
@@ -170,6 +182,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * sidebar drew the choice as the person's title, so a screen deployed to a
    * real server showed a self-declared 플랫폼 관리자.
    */
+  const refreshSession = async (): Promise<void> => {
+    try {
+      const me = await fetchAuthMe();
+      setMustChangePassword(me.must_change_password === true);
+    } catch {
+      setMustChangePassword(null);
+    }
+  };
+
   const loginWithLocal = async (id: string, pass: string) => {
     setIsLoading(true);
     try {
@@ -187,8 +208,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authProvider: "local",
       };
       setUser(newUser);
+      // **The login response does not carry it.** Measured against the running
+      // server: `POST /auth/local` answers `{ok, user:{…}}` and nothing else,
+      // so the flag has to be asked for. Reading it from a field that is not
+      // there would leave `mustChangePassword` false and walk a locked session
+      // into a dashboard where every panel is a 403.
+      try {
+        const me = await fetchAuthMe();
+        setMustChangePassword(me.must_change_password === true);
+      } catch {
+        setMustChangePassword(null);
+      }
     } catch (err: any) {
       setUser(null);
+      setMustChangePassword(null);
       throw err;
     } finally {
       setIsLoading(false);
@@ -214,6 +247,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         authFailure: user ? null : authFailure,
+        mustChangePassword,
+        refreshSession,
         loginWithLocal,
         loginWithGitHub,
         logout,

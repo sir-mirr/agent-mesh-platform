@@ -5,6 +5,7 @@ import { RbacProvider } from "@/contexts/RbacContext.tsx";
 import { I18nProvider } from "@/contexts/I18nContext.tsx";
 import { RootLayout } from "@/layouts/RootLayout.tsx";
 import { GuardedRoute } from "@/components/index.ts";
+import { ChangePasswordPage } from "@/pages/ChangePasswordPage.tsx";
 
 // Pages
 import { LoginPage } from "@/pages/LoginPage.tsx";
@@ -37,6 +38,10 @@ export function App() {
           <Routes>
             {/* Public — 통합 단일 로그인 게이트웨이 */}
             <Route path="/login" element={<LoginPage />} />
+
+            {/* Outside the guard on purpose: the guard sends people *here*, so
+                putting it behind the same check redirects to itself for ever. */}
+            <Route path="/change-password" element={<ChangePasswordPage />} />
 
             {/* Authenticated Shell — RBAC 기반 동적 사이드바 */}
             <Route

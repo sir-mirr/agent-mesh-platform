@@ -15,7 +15,7 @@ export function GuardedRoute({
   requiredCapability,
   redirectTo = "/dashboard",
 }: GuardedRouteProps) {
-  const { isAuthenticated, isLoading, authFailure } = useAuth();
+  const { isAuthenticated, isLoading, authFailure, mustChangePassword } = useAuth();
   const { hasCapability } = useRbac();
 
   if (isLoading) {
@@ -62,6 +62,16 @@ export function GuardedRoute({
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // **The server is already refusing everything else.** This redirect does not
+  // create the restriction — `403 { must_change_password: true }` comes back
+  // from every other route while the flag is set — it stops the person from
+  // reading a dashboard of refusals and having to work out why. A screen that
+  // only redirected would be a guard that guards nothing; the check that says
+  // otherwise is the one calling the API with the cookie and no browser.
+  if (mustChangePassword === true) {
+    return <Navigate to="/change-password" replace />;
   }
 
   if (requiredCapability && !hasCapability(requiredCapability)) {

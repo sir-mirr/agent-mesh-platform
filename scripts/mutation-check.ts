@@ -1450,6 +1450,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-AUTH-06", "the login screen still lets a person pick or be handed what they are"],
   },
   {
+    id: "pwchg-guard-does-not-send",
+    defect:
+      "The server answers `403 { must_change_password: true }` to every route but three while a first login still holds the password it was seeded with. Without the redirect the person lands on a dashboard where every panel is a refusal and nothing says why.",
+    file: "packages/platform-web/src/components/common/GuardedRoute.tsx",
+    from: "  if (mustChangePassword === true) {",
+    to: "  if (false) {",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-PWCHG-01", "a first login was left somewhere other than the change screen"],
+  },
+  {
+    id: "pwchg-never-releases",
+    defect:
+      "The other half: a screen that sends everybody to the change form and never lets go satisfies the redirect check completely. Reading the URL right after `navigate` is not enough either — `/dashboard` is in the bar for an instant before the guard sends it back, and this mutation passed until the check waited for the change screen to be gone.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: "      const me = await fetchAuthMe();\n      setMustChangePassword(me.must_change_password === true);\n    } catch {\n      setMustChangePassword(null);\n    }\n  };\n\n  const loginWithLocal",
+    to: "      const me = await fetchAuthMe();\n      setMustChangePassword(true);\n    } catch {\n      setMustChangePassword(null);\n    }\n  };\n\n  const loginWithLocal",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-PWCHG-01", "changing the password did not open the product"],
+  },
+  {
+    id: "pwchg-form-says-nothing",
+    defect:
+      "A wrong `current` answers `403` and the form has to say so. Silence here is the shape this suite removed from the login form the same day: the button is pressed, nothing happens, and nothing explains it.",
+    file: "packages/platform-web/src/pages/ChangePasswordPage.tsx",
+    from: "        {error && (",
+    to: "        {false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-PWCHG-03", "the change button did nothing and said nothing"],
+  },
+  {
     id: "login-picks-its-own-role",
     defect:
       "The login screen offered a `<select>` labelled 시뮬레이션 역할 whose top option read 👑 플랫폼 관리자, and passed the choice to `loginWithLocal`. It granted nothing — `GuardedRoute` and the sidebar both ask `hasCapability`, and `POST /auth/local` reads only the username and password — but the sidebar drew the choice as the person's title, so a deployment to a real server showed a self-declared platform administrator.",
