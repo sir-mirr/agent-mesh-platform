@@ -91,10 +91,23 @@ export function TelemetryPage() {
             window the refusal counts were taken over travels with them: those
             counters are per-process and reset with the hub.
           */}
+          {/*
+            **A panel that cannot be drawn says so.** `behaviour` is `null` when
+            that one route did not answer, and this used to render nothing at
+            all: on a monitoring screen the six counters simply vanished, which
+            is the moment an operator most needs to be told. Measured with only
+            `/api/v1/admin/telemetry/behaviour` refusing and the rest healthy —
+            eighteen fragments of the page disappeared and nothing replaced them.
+          */}
+          {!telemetry.behaviour && (
+            <div data-testid="behaviour-unreachable" style={{ marginBottom: 16, fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+              {t("tel.behaviour", "행동 지표")}: {t("common.errorLoad", "불러오지 못함")}
+            </div>
+          )}
           {telemetry.behaviour && (
             <div data-testid="behaviour-metrics" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>행동 지표</span>
+                <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{t("tel.behaviour", "행동 지표")}</span>
                 <span data-testid="counting-since" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
                   {telemetry.behaviour.counting_since
                     ? `거절 집계 기준: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} 부터 (허브 재기동 시 초기화)`

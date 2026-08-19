@@ -1623,6 +1623,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "telemetry-panel-vanishes-without-a-word",
+    defect:
+      "A monitoring panel that disappears when its source refuses. Nothing false is claimed, which is why it survived: the page just gets shorter, and an operator watching for refusals sees a screen with no refusals on it.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "          {!telemetry.behaviour && (",
+    to: "          {false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-14", "vanished without a word"],
+  },
+  {
+    id: "telemetry-panel-always-claims-unreachable",
+    defect:
+      "The other direction: a screen that says the source did not answer while it is answering. The same assertion has to hold both ways, or a permanently pessimistic panel passes.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "          {!telemetry.behaviour && (",
+    to: "          {true && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-14", "claims to be unreachable while the route answers"],
+  },
+  {
     id: "member-dashboard-draws-zero-for-a-refusal",
     defect:
       "The panel an ordinary account lands on, telling them they own nothing when the read was refused. The platform admin's panel has said `—` for months; this one drew `0`, and every existing SC-DOWN scenario measures the admin's.",

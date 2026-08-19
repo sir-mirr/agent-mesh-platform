@@ -2705,6 +2705,49 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-DOWN-14 — a panel that cannot be drawn says so instead of vanishing.
+   *
+   * `/platform/telemetry` builds itself from five routes, and one of them
+   * failing left `telemetry.behaviour` null — which rendered nothing at all.
+   * Measured with only that route refusing: eighteen fragments of the page
+   * disappeared, the rest was byte-identical, and no sentence anywhere said a
+   * source had not answered. On a monitoring screen that is the moment somebody
+   * most needs to be told.
+   *
+   * It is a milder shape than the bell's — nothing false is claimed — and it is
+   * the same question underneath: a screen has four states to distinguish, and
+   * an absent panel distinguishes none of them.
+   */
+  it("[SC-DOWN-14] keeps the panel and says the source did not answer", async () => {
+    const read = async (block: boolean) => {
+      const { page, context } = await createAuthedPage("/platform/telemetry");
+      try {
+        if (block) {
+          await page.route("**/api/v1/admin/telemetry/behaviour", (route) =>
+            route.fulfill({ status: 502, contentType: "text/html", body: "<html>502</html>" }),
+          );
+          await page.reload({ waitUntil: "networkidle" });
+          await settled(page);
+        }
+        return {
+          said: await page.locator('[data-testid="behaviour-unreachable"]').count(),
+          drew: await page.locator('[data-testid="behaviour-metrics"]').count(),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const refused = await read(true);
+    const healthy = await read(false);
+
+    expect(
+      { refusedSaid: refused.said, refusedDrew: refused.drew, healthySaid: healthy.said, healthyDrew: healthy.drew },
+      "the panel vanished without a word, or claims to be unreachable while the route answers",
+    ).toEqual({ refusedSaid: 1, refusedDrew: 0, healthySaid: 0, healthyDrew: 1 });
+  }, 30000);
+
+  /**
    * SC-DOWN-13 — the dashboard an ordinary account lands on.
    *
    * `SC-DOWN-02` and the eight beside it measure the platform admin's panel.
