@@ -2749,6 +2749,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const unreachable = await read("unreachable");
     const saysCapability = (t: string) => /key\.approve|권한이 없습니다|may not read/i.test(t);
     const saysSilent = (t: string) => /서버 연결 실패|서버가 답하지|did not answer|연결 실패/i.test(t);
+    // The panel's own heading said `(unreachable)` while the body underneath it
+    // named the capability — one screen, two answers about the same request.
+    const headingContradicts = (t: string) => /\(unreachable\)|\(통신 불가\)/.test(t);
 
     expect(
       {
@@ -2756,6 +2759,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         refusedSaysSilent: saysSilent(refused),
         unreachableSaysCapability: saysCapability(unreachable),
         unreachableSaysSilent: saysSilent(unreachable),
+        refusedHeadingContradicts: headingContradicts(refused),
       },
       "a refusal was drawn as silence, or silence was drawn as a permission problem",
     ).toEqual({
@@ -2763,6 +2767,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       refusedSaysSilent: false,
       unreachableSaysCapability: false,
       unreachableSaysSilent: true,
+      refusedHeadingContradicts: false,
     });
   }, 30000);
 

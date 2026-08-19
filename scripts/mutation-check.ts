@@ -1623,6 +1623,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "panel-heading-contradicts-its-own-body",
+    defect:
+      "The heading said `(unreachable)` while the message under it named the capability — one screen, two answers about the same request. Whichever a person reads first is the one they act on.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: 'isError ? (failure === "refused" ? `(${t("common.refused", "권한 없음")})` : t("common.unreachable", "(통신 불가)"))',
+    to: 'isError ? t("common.unreachable", "(통신 불가)")',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-07", "a refusal was drawn as silence"],
+  },
+  {
     id: "refusal-drawn-as-silence",
     defect:
       "One message for both: the server answered `403` and the screen said it did not answer. A person then waits for a backend that is up, instead of asking for the capability they are missing.",
