@@ -683,25 +683,56 @@ export async function teardown(
  * The username is the subject: `/auth/local` writes it into `users` as
  * `github_login`, and `requireCapability` reads exactly that.
  *
- * `local_users` is written directly because no route creates one. That is the
- * only place this harness reaches past the API, and it is here rather than
- * scattered so a reader can see the whole of it.
+ * **It goes through the routes, all of it.** This used to write `local_users`
+ * directly, with a comment saying no route created one. That stopped being true
+ * the day `POST /api/v1/admin/users` landed, and the difference was not
+ * cosmetic: `seedLocalUsers` approves every local account it finds **at boot**,
+ * so a row inserted while the server is already up is never approved, and
+ * `isUserApproved` — which reads `agent_registry`, never `users.approved` — says
+ * no. Every viewer built that way was a member the signup path could not
+ * produce, and checks counting rows on their screens were counting an empty
+ * page. `agent-mesh-local-pm` measured it twice (mail #1104) while I argued from
+ * a column the gate does not read.
  */
 export async function capabilityViewer(
   mesh: Mesh,
   ...capabilities: string[]
 ): Promise<string> {
   const username = `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
-  // The http server is serving from this file while this writes to it.
-  const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
-  if (!db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(username)) {
-    db.prepare(
-      "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
-    ).run(username, await Bun.password.hash(username, { algorithm: "bcrypt" }), username, "member");
-  }
-  db.close();
-
+  const password = `${username}-password`;
   const admin = await loginAsAdmin(mesh.http);
+
+  const admitted = await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: admin },
+    body: JSON.stringify({ username, display_name: username, role: "member" }),
+  });
+  // **201, not 200.** The route answers Created, and a check for 200 sent every
+  // first admission down the error path — caught by printing the body in the
+  // message rather than the status alone.
+  if (admitted.ok) {
+    // Admission hands back a password that must be changed before anything else
+    // opens, which is the first thing a real account does.
+    const { temporary_password: temporary } = (await admitted.json()) as { temporary_password: string };
+    const first = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username, password: temporary }),
+      redirect: "manual",
+    });
+    const firstCookie = (first.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const changed = await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: firstCookie },
+      body: JSON.stringify({ current: temporary, next: password }),
+    });
+    if (changed.status !== 200) {
+      throw new Error(`${username} could not leave the password gate: ${changed.status}`);
+    }
+  } else if (admitted.status !== 409) {
+    throw new Error(`admitting ${username} answered ${admitted.status}: ${await admitted.text()}`);
+  }
+
   for (const capability of capabilities) {
     const res = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
       method: "POST",
@@ -714,7 +745,7 @@ export async function capabilityViewer(
   const login = await fetch(`${mesh.http.url}/auth/local`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify({ username, password: username }),
+    body: JSON.stringify({ username, password }),
     redirect: "manual",
   });
   const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";

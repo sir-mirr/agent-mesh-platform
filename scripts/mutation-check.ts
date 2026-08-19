@@ -2348,6 +2348,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/http.test.ts",
     expect: ["can change it, and is then let through"],
   },
+  {
+    id: "admitted-is-approved-reaches-the-harness",
+    defect:
+      "`admitLocalUser` calling `upsertApprovedWebUser` is what makes an admitted account able to load a screen, and nothing measured it from the outside. Thirteen scenarios built their member by writing `local_users` directly, which misses the boot-time approval loop, so `/api/v1/agents` answered 403 and every table above it was empty — and every one of those checks passed, because counting rows on an empty page counts zero without complaint. `agent-mesh-local-pm` measured it twice (mail #1104). Removing the approval here makes the harness produce that member again.",
+    file: "packages/http/src/db.ts",
+    from: "  upsertApprovedWebUser(input.username)",
+    to: "  // upsertApprovedWebUser(input.username)",
+    suite: "test/harness-viewer.test.ts",
+    expect: ["a route that gates on approval lets them in"],
+  },
 ];
 
 /**
