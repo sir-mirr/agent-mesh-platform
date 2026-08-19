@@ -2238,7 +2238,20 @@ app.get('/api/v1/admin/mailbox', async (c) => {
      GROUP BY to_agent
      ORDER BY pending DESC
   `).all()
-  return c.json({ ok: true, mailboxes: rows })
+  // Counted here rather than summed by the reader.
+  //
+  // The console summed the rows itself, over a field named `depth` that this
+  // route has never emitted, so its "messages queued" tile read `0` whether the
+  // mesh was idle or backed up. A total the caller derives is a total the caller
+  // can derive from the wrong column, and `0` is the answer that looks calm.
+  //
+  // Its own `count(*)`, not a sum of the grouped rows: the two agree today
+  // because nothing above limits the grouping, and a `LIMIT` added later would
+  // make the sum quietly small while this stays right.
+  const total = getHubDb()
+    .prepare(`SELECT count(*) AS n FROM messages WHERE status = 'pending'`)
+    .get() as { n: number }
+  return c.json({ ok: true, mailboxes: rows, total_queued: total.n })
 })
 
 app.get('/api/v1/admin/mailbox/:identity', async (c) => {

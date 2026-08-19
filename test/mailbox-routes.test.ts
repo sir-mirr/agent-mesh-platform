@@ -352,6 +352,27 @@ describe("the operator surface", () => {
     expect(JSON.stringify(one)).not.toContain("operator must not read this");
   });
 
+  test("counts the queue itself, and names its columns", async () => {
+    // The console read `m.depth` and summed it. No route has ever emitted
+    // `depth`, so the sum was `0` for an idle mesh and `0` for a backed-up one,
+    // and a dashboard tile showed the same calm number either way.
+    const { a, idb } = await pair();
+    for (const n of [1, 2, 3]) {
+      await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: `queued ${n}` });
+    }
+
+    const body = await (await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, { headers: { cookie } })).json();
+    const row = body.mailboxes.find((i: any) => i.identity === idb);
+
+    expect(row, "the identity with three queued messages is missing from the listing").toBeDefined();
+    expect(row.pending).toBe(3);
+    expect(body.total_queued, "the route counts the queue so the caller does not have to").toBeGreaterThanOrEqual(3);
+
+    // The columns by name. A reader that guesses one gets `undefined`, which
+    // arithmetic turns into a number rather than an error.
+    expect(Object.keys(row).sort()).toEqual(["identity", "leased", "oldest", "pending"]);
+  });
+
   test("reports whether a message is leased, so a stuck queue is legible", async () => {
     const { a, b, idb } = await pair();
     await call(a, "POST", "/api/v1/mailbox/out", { to: idb, content: "held" });

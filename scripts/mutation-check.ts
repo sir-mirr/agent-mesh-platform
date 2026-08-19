@@ -963,6 +963,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
   },
   {
+    id: "queue-total-left-to-the-caller",
+    defect:
+      "The route emitted per-identity rows and no total, so the console summed them itself over a field named `depth` that no route has ever emitted. Its `messages queued` tile read 0 for an idle mesh and 0 for a backed-up one, and 0 is the answer that looks calm.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, mailboxes: rows, total_queued: total.n })",
+    to: "  return c.json({ ok: true, mailboxes: rows })",
+    suite: "test/mailbox-routes.test.ts",
+    expect: ["counts the queue itself", "the route counts the queue so the caller does not have to"],
+  },
+  {
+    id: "queue-column-renamed",
+    defect:
+      "A caller reads these columns by name, and a name it guesses wrong yields `undefined` — which arithmetic turns into a number rather than an error. That is exactly how `depth` became a queue total of zero.",
+    file: "packages/http/src/main.ts",
+    from: "           count(*) AS pending,",
+    to: "           count(*) AS depth,",
+    suite: "test/mailbox-routes.test.ts",
+    expect: ["counts the queue itself, and names its columns"],
+  },
+  {
     id: "every-message-recorded-failed",
     defect:
       "`failed` and `pending` only mean something if both are reachable. The suite pinned the refused case alone, so a handler that recorded every message as failed passed it — and a comment in this file claimed the opposite mapping for long enough that the front end nearly labelled the console from it.",
