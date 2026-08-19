@@ -2096,6 +2096,77 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 25000);
 
+  /**
+   * SC-CONSIST-01 — a screen that states a count states the count of what it drew.
+   *
+   * `I-064` was this: the topology said `3개 에이전트` in its heading, `Agents: 2`
+   * on a card and `default (1)` on a badge, while the server held **one**. It was
+   * fixed in `3b651ff`, and the check that came with it reads the *source* for
+   * fabricated digests. Nothing asserted the numbers on the rendered page agree,
+   * so the fix is a fix and not a guard — and `I-062` is what an ungiuarded fix
+   * costs: it came back with no test and nobody knew until a build was opened.
+   *
+   * ## The comparison is between two things the product made
+   *
+   * agent-mesh-local-pm's `audit/selfconsistent.mjs` compares two *texts* and
+   * needs a synonym table (`에이전트` ↔ `Agents`) to do it. That table is a guess,
+   * and its own header says so: meet a new name and doubt the table, not the
+   * screen. This compares **what the heading claims** against **what the canvas
+   * drew**, so both sides come from the product and nothing here decides what
+   * the right answer is.
+   *
+   * ## Gateways are counted apart on purpose
+   *
+   * They are drawn and are deliberately not in `totalAgentCount` — the heading's
+   * own comment says adding them made it disagree with the counter beside it. So
+   * they carry a different `data-testid`, and when any are present this asserts
+   * the agent count did **not** absorb them. With none present that assertion
+   * says nothing, and it is skipped rather than counted as passing.
+   *
+   * ## It refuses to pass on an empty screen
+   *
+   * `0 === 0` is the failure this repository has met most often — a check that
+   * saw nothing and read it as agreement. The suite seeds `agent-alpha` and
+   * `agent-beta`, so a zero here means the screen never drew, and that is
+   * reported rather than absorbed.
+   */
+  it("[SC-CONSIST-01] states the count of what it drew, on /creator/topology", async () => {
+    await withPage("/creator/topology", async ({ page }) => {
+      await page.locator("[data-testid='topology-cluster']").first().waitFor({ state: "attached", timeout: 15_000 })
+        .catch(() => {});
+
+      const heading = (await page.locator("#root").innerText().catch(() => "")).trim();
+      const claim = /(\d+)\s*개\s*그룹[\s\S]{0,40}?(\d+)\s*개\s*에이전트/.exec(heading);
+      // A heading that stopped saying it would otherwise make every comparison
+      // below vacuous — the shape this test exists to refuse.
+      expect(claim, `the heading no longer states both counts: ${JSON.stringify(heading.slice(0, 160))}`).not.toBeNull();
+      const statedGroups = Number(claim![1]);
+      const statedAgents = Number(claim![2]);
+
+      const drawnClusters = await page.locator("[data-testid='topology-cluster']").count();
+      const drawnAgents = await page.locator("[data-testid='topology-agent']").count();
+      const drawnGateways = await page.locator("[data-testid='topology-gateway']").count();
+
+      // Nothing drawn is not agreement. The suite seeds two agents, so a zero
+      // here is the screen failing to draw, not the mesh being empty.
+      expect(
+        { groups: statedGroups > 0, agents: statedAgents > 0, drew: drawnClusters > 0 },
+        "the screen claimed nothing or drew nothing — 0 === 0 is not agreement",
+      ).toEqual({ groups: true, agents: true, drew: true });
+
+      expect({ stated: statedGroups, drawn: drawnClusters }).toEqual({ stated: statedGroups, drawn: statedGroups });
+      expect({ stated: statedAgents, drawn: drawnAgents }).toEqual({ stated: statedAgents, drawn: statedAgents });
+
+      // Only says something when there are gateways to absorb.
+      if (drawnGateways > 0) {
+        expect(
+          { agentsIncludeGateways: drawnAgents === statedAgents + drawnGateways },
+          "the agent count absorbed the gateways the heading excludes",
+        ).toEqual({ agentsIncludeGateways: false });
+      }
+    });
+  }, 30_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

@@ -205,7 +205,6 @@ export function TopologyPage() {
 
     const nodeDict: Record<string, TopoNode> = {};
     const edgeList: TopoEdge[] = [];
-    let agentSum = 0;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -213,8 +212,6 @@ export function TopologyPage() {
     let maxY = -Infinity;
 
     rawClusters.forEach((cfg) => {
-      agentSum += cfg.count;
-
       // Track bounding box of cluster orbital circle & header badge
       minX = Math.min(minX, cfg.cx - cfg.r);
       maxX = Math.max(maxX, cfg.cx + cfg.r);
@@ -255,7 +252,6 @@ export function TopologyPage() {
       }
 
       const count = memberList.length || cfg.count;
-      agentSum += count;
 
       const memberIds: string[] = [];
 
@@ -395,7 +391,19 @@ export function TopologyPage() {
       clusters: rawClusters,
       nodes: nodeDict,
       edges: edgeList,
-      totalAgentCount: agentSum,
+      // **Counted from what was drawn, not accumulated while drawing.**
+      //
+      // It was `agentSum`, added to twice in the same pass — once from the
+      // group's declared `member_count` and once from the member list actually
+      // used — so every cluster contributed twice. And even one of those counts
+      // memberships while `nodeDict` is keyed by identity, so an agent placed in
+      // two clusters was two in the heading and one on the canvas.
+      //
+      // Measured: the heading said `6개 에이전트` over a canvas holding two, on a
+      // mesh with two agents. `I-064` was the same fact told three ways; this is
+      // the half of it that survived the fix, because nothing compared the
+      // heading against the drawing. `SC-CONSIST-01` does.
+      totalAgentCount: Object.values(nodeDict).filter((n) => n.type !== "gateway-bridge").length,
       bounds: {
         minX,
         maxX,
@@ -1180,7 +1188,10 @@ export function TopologyPage() {
           <g transform={`translate(${panX}, ${panY}) scale(${scale})`}>
             {/* 1. Galaxy Orbital Background Circles */}
             {clusters.map((c) => (
-              <g key={c.id}>
+              /* `data-testid` so a scenario can count what is drawn rather than
+                 re-deriving it. The heading states these counts, and the two
+                 disagreeing is what `I-064` was. */
+              <g key={c.id} data-testid="topology-cluster">
                 <circle
                   cx={c.cx}
                   cy={c.cy}
@@ -1267,6 +1278,10 @@ export function TopologyPage() {
                 return (
                   <g
                     key={node.identity}
+                    /* Gateways are drawn and are **not** in `totalAgentCount` —
+                       the heading says so. Named apart so a scenario counting
+                       agents cannot pick them up by accident. */
+                    data-testid="topology-gateway"
                     className="node-clickable"
                     onClick={() => focusAndFlyToNode(node)}
                     style={{ cursor: "pointer", opacity: isMatch ? 1 : 0.2 }}
@@ -1308,6 +1323,7 @@ export function TopologyPage() {
               return (
                 <g
                   key={node.identity}
+                  data-testid="topology-agent"
                   className="node-clickable"
                   onClick={() => focusAndFlyToNode(node)}
                   style={{
