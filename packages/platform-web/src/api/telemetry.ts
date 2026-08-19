@@ -1,13 +1,26 @@
 import { apiClient } from "./client.ts";
 
+/**
+ * **What `/api/v1/admin/ai-usage` actually answers.**
+ *
+ * This carried `cpu_usage_pct`, `memory_used_mb`, `memory_total_mb` and
+ * `p99_latency_ms` for as long as it existed, and no producer in this repository
+ * ever wrote them: the ingest route reads `accounts`, `schema_version`, `source`
+ * and `ts`, and `AiUsageSnapshot` holds those plus `last_updated_at`. AI account
+ * usage and machine telemetry are different domains, and a route cannot invent
+ * what nothing sends it — `platform-claude` confirmed there is no plan to add
+ * them, so these were not a contract in transit.
+ *
+ * Every `!= null` guard reading them was therefore dead, and about twenty-five
+ * of them across three screens each rendered a fallback that looked like a
+ * measurement: `0ms`, `0%`, a dash where a number belongs. What is measured and
+ * carries its own unknowns is `GET /api/v1/admin/telemetry/behaviour`, whose
+ * every metric is `{value, unavailable}`.
+ */
 export interface SystemTelemetry {
-  cpu_usage_pct: number | null;
-  memory_used_mb: number | null;
-  memory_total_mb: number | null;
   active_sockets: number;
   total_agents: number;
   total_messages: number | null;
-  p99_latency_ms: number | null;
   health_status?: string | undefined;
   server_uptime_seconds?: number | undefined;
   build_version?: string | undefined;
@@ -89,13 +102,9 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;
 
   return {
-    cpu_usage_pct: usage?.cpu_pct ?? null,
-    memory_used_mb: usage?.memory_mb ?? null,
-    memory_total_mb: usage?.memory_total_mb ?? null,
     active_sockets: activeSockets,
     total_agents: totalAgents,
     total_messages: mailbox?.total_queued != null ? mailbox.total_queued : (Array.isArray(mailbox?.mailboxes) && mailbox.mailboxes.length > 0 ? mailbox.mailboxes.reduce((acc: number, m: any) => acc + (m.depth || 0), 0) : null),
-    p99_latency_ms: usage?.p99_latency_ms ?? null,
     health_status: health?.status ?? undefined,
     server_uptime_seconds: health?.uptime ?? undefined,
     build_version: health?.version ?? undefined,

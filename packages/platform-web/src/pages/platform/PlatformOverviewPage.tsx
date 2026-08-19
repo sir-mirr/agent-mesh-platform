@@ -154,32 +154,15 @@ export function PlatformOverviewPage() {
           color="var(--color-leased)"
           icon="📡"
         />
-        <KpiCard
-          label={t("server.kpi.latency", "허브 지연 (p95)")}
-          value={isOnline ? (telemetry?.p99_latency_ms != null ? `${telemetry.p99_latency_ms} ms` : "—") : "-"}
-          subValue={isOnline ? (telemetry?.p99_latency_ms != null ? t("server.kpi.latencySub", "정상 응답 속도") : "미측정") : t("common.disconnected", "통신 불가")}
-          color="var(--color-warning)"
-          icon="⏱️"
-        />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-        <TelemetryCard
-          label={t("server.chart.cpu", "CPU 사용률")}
-          currentValue={isOnline && telemetry?.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct.toFixed(1)}%` : "—"}
-          percentage={telemetry?.cpu_usage_pct ?? 0}
-          barColor="var(--color-success)"
-          statusText={isOnline && telemetry?.cpu_usage_pct != null ? "정상 부하 범위" : (isOnline ? "서버 미측정 (D-1 행동 기반 지표 전환)" : "연결 불가")}
-        />
-        <TelemetryCard
-          label={t("server.chart.memory", "메모리 점유 (RSS)")}
-          currentValue={isOnline && telemetry?.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
-          maxLabel={telemetry?.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
-          percentage={telemetry?.memory_used_mb != null && telemetry?.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
-          barColor="var(--color-primary)"
-          statusText={isOnline && telemetry?.memory_used_mb != null ? "메모리 모니터링" : (isOnline ? "서버 미측정 (D-1 행동 기반 지표 전환)" : "연결 불가")}
-        />
-      </div>
+        {/* **CPU, RSS and p95 are gone, not hidden.** They read
+            `/api/v1/admin/ai-usage`, which answers AI account usage; no producer
+            in this repository writes machine telemetry and there is no plan to
+            add it, so those guards could never be true. Each card drew `—` at 0%
+            beside a caption that read like a healthy reading. The measured
+            counterpart is `GET /api/v1/admin/telemetry/behaviour`, where every
+            value carries its own `unavailable`. */}
 
       <div style={{ marginTop: 8 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 12 }}>

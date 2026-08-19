@@ -165,34 +165,14 @@ function PlatformAdminDashboard() {
           color="#6366F1"
           icon="🏢"
         />
-        <KpiCard
-          label={t("dash.pa.latency", "허브 p99 지연")}
-          value={isLoading ? "..." : telemetry && !isError ? `${telemetry.p99_latency_ms || 0}ms` : "—"}
-          subValue={isLoading ? t("common.loading", "조회 중...") : telemetry && !isError ? t("dash.pa.p99Sub", "실시간 p99 측정치") : t("common.disconnected", "통신 불가")}
-          color="var(--color-warning)"
-          icon="⏱️"
-        />
       </div>
 
       {/* Live Server Telemetry */}
       {!isLoading && !isError && telemetry && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-          <TelemetryCard
-            label="서버 CPU 부하"
-            currentValue={telemetry.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct}%` : "—"}
-            maxLabel="100%"
-            percentage={telemetry.cpu_usage_pct ?? 0}
-            barColor="var(--color-success)"
-            statusText={telemetry.cpu_usage_pct != null ? "정상 가동 중" : "서버 미측정 (D-1 지표 전환)"}
-          />
-          <TelemetryCard
-            label="프로세스 메모리 (RAM)"
-            currentValue={telemetry.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
-            maxLabel={telemetry.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
-            percentage={telemetry.memory_used_mb != null && telemetry.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
-            barColor="var(--color-primary)"
-            statusText={telemetry.memory_used_mb != null ? "여유 공간 충분" : "서버 미측정 (D-1 지표 전환)"}
-          />
+            {/* CPU / RAM / p99 removed: `/api/v1/admin/ai-usage` answers AI account
+                usage and no producer writes machine telemetry, so those guards were
+                dead and each card drew `—` at 0% under a healthy-sounding caption. */}
           <TelemetryCard
             label="허브 활성 세션"
             currentValue={`${telemetry.active_sockets} sessions`}

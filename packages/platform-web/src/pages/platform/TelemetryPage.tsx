@@ -131,40 +131,24 @@ export function TelemetryPage() {
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-            <TelemetryCard
-              label={t("telem.cpu", "CPU 사용률 (Process)")}
-              currentValue={telemetry.cpu_usage_pct != null ? `${telemetry.cpu_usage_pct}%` : "—"}
-              maxLabel="100%"
-              percentage={telemetry.cpu_usage_pct ?? 0}
-              barColor="var(--color-success)"
-              statusText={telemetry.cpu_usage_pct != null ? t("telem.cpuStatus", "정상 (안정적)") : "서버 미측정 (D-1 지표 전환)"}
-            />
-            <TelemetryCard
-              label={t("telem.rss", "RSS 메모리 (Resident Set)")}
-              currentValue={telemetry.memory_used_mb != null ? `${telemetry.memory_used_mb} MB` : "—"}
-              maxLabel={telemetry.memory_total_mb != null ? `${telemetry.memory_total_mb} MB` : undefined}
-              percentage={telemetry.memory_used_mb != null && telemetry.memory_total_mb ? (telemetry.memory_used_mb / telemetry.memory_total_mb) * 100 : 0}
-              barColor="var(--color-primary)"
-              statusText={telemetry.memory_used_mb != null ? `Active Sockets: ${telemetry.active_sockets}` : "서버 미측정 (D-1 지표 전환)"}
-            />
-            <TelemetryCard
-              label="활성 소켓 연결 수"
-              currentValue={`${telemetry.active_sockets}`}
-              maxLabel="Max 500"
-              percentage={(telemetry.active_sockets / 500) * 100}
-              barColor="var(--color-success)"
-              statusText="웹소켓 정상 세션"
-            />
-            <TelemetryCard
-              label="허브 p99 지연 시간"
-              currentValue={telemetry.p99_latency_ms != null ? `${telemetry.p99_latency_ms} ms` : "—"}
-              maxLabel="50 ms"
-              percentage={telemetry.p99_latency_ms != null ? Math.min(100, (telemetry.p99_latency_ms / 50) * 100) : 0}
-              barColor="#8B5CF6"
-              statusText={telemetry.p99_latency_ms != null ? "초저지연 라우팅" : "서버 미측정 (D-1 지표 전환)"}
-            />
-          </div>
+            {/* **Three of the four gauges here read fields nobody sends.** CPU, RSS
+                and p99 came from `/api/v1/admin/ai-usage`, which answers AI account
+                usage — no producer in this repository writes machine telemetry, and
+                there is no plan to add it. Each card drew `—` with a bar at 0% and a
+                caption that read like a measurement of a healthy machine.
+
+                What is measured sits below: the behavioural metrics, where every
+                value is `{value, unavailable}` and an unknown says so. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+              <TelemetryCard
+                label="활성 소켓 연결 수"
+                currentValue={`${telemetry.active_sockets}`}
+                maxLabel="Max 500"
+                percentage={(telemetry.active_sockets / 500) * 100}
+                barColor="var(--color-success)"
+                statusText="웹소켓 정상 세션"
+              />
+            </div>
 
           <div
             style={{
@@ -193,7 +177,7 @@ export function TelemetryPage() {
                 lineHeight: 1.6,
               }}
             >
-              <div>[INFO telemetry.tick] cpu={telemetry.cpu_usage_pct}% rss_mb={telemetry.memory_used_mb} active_sockets={telemetry.active_sockets} total_agents={telemetry.total_agents} p99_latency_ms={telemetry.p99_latency_ms}</div>
+              <div>[INFO telemetry.tick] active_sockets={telemetry.active_sockets} total_agents={telemetry.total_agents}</div>
             </div>
           </div>
         </>
