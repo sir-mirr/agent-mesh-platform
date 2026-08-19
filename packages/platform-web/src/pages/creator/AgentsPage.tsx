@@ -12,6 +12,7 @@ import {
   Toast,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentItem {
   id: string;
@@ -43,6 +44,8 @@ interface AgentItem {
 import { fetchAgents, teardownAgentApi, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
 
 export function AgentsPage() {
+  const { hasCapability } = useRbac();
+  const canTeardown = hasCapability("agent.teardown");
   const { t } = useI18n();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -208,16 +211,30 @@ export function AgentsPage() {
               {t("nav.playground", "메시지 테스트")}
             </Button>
           </Link>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => {
-              setTeardownTarget(item);
-              setIsTeardownOpen(true);
-            }}
-          >
-            {t("agents.teardownBtn", "Teardown")}
-          </Button>
+          {/*
+            **Shown only to a session the server gave `agent.teardown`.**
+            Measured with a member holding nothing: the button was there, the
+            modal opened on the `admin` identity, the confirmation accepted the
+            typed name, and the server refused at the last step. The screen
+            reported that honestly — and every other write control on this
+            console is hidden without its capability, so this one walked a
+            person through an irreversible flow that could not have worked.
+
+            `hasCapability` reads what `/auth/me` granted, not a role.
+          */}
+          {canTeardown && (
+            <Button
+              variant="danger"
+              size="sm"
+              data-testid={`teardown-${item.id}`}
+              onClick={() => {
+                setTeardownTarget(item);
+                setIsTeardownOpen(true);
+              }}
+            >
+              {t("agents.teardownBtn", "Teardown")}
+            </Button>
+          )}
         </div>
       ),
     },

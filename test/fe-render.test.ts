@@ -2709,6 +2709,81 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-CAP-08 — an irreversible control is not offered to a session that cannot use it.
+   *
+   * Measured on the running product with a member holding nothing: the Teardown
+   * button was drawn for every identity, the modal opened on `admin`, the
+   * confirmation accepted the typed name, and the server refused at the last
+   * step with `agent.teardown`. Nothing false was claimed — the screen reported
+   * the refusal — and a person had still been walked through an irreversible
+   * flow that could not have worked.
+   *
+   * Every other write control on this console is already hidden without its
+   * capability; this one was the exception. Both sides are asserted, because a
+   * screen that hides it from everybody is the other way to pass.
+   */
+  it("[SC-CAP-08] offers teardown only to a session the server gave it", async () => {
+    // **Admitted through the route, as in `SC-CAP-06`.** `capabilityViewer`
+    // inserts a `local_users` row with SQL and skips the approval that
+    // `admitLocalUser` performs, so `GET /api/v1/agents` answers it `403` — the
+    // table draws nothing, there are no rows to carry a control, and the check
+    // would have passed by measuring an empty page.
+    const admitAndSignIn = async (name: string, capability?: string) => {
+      const admin = { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" };
+      const created = (await (
+        await fetch(`${mesh.http.url}/api/v1/admin/users`, { method: "POST", headers: admin, body: JSON.stringify({ username: name }) })
+      ).json()) as any;
+      const signIn = async (password: string) =>
+        (
+          await fetch(`${mesh.http.url}/auth/local`, {
+            method: "POST",
+            headers: { accept: "application/json", "content-type": "application/json" },
+            body: JSON.stringify({ username: name, password }),
+            redirect: "manual",
+          })
+        ).headers.get("set-cookie")?.split(";")[0] ?? "";
+      const locked = await signIn(created.temporary_password);
+      await fetch(`${mesh.http.url}/auth/local/password`, {
+        method: "POST",
+        headers: { cookie: locked, "content-type": "application/json" },
+        body: JSON.stringify({ current: created.temporary_password, next: `${name}-chosen` }),
+      });
+      if (capability) {
+        await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+          method: "POST",
+          headers: admin,
+          body: JSON.stringify({ subject: name, capability, scope: "*" }),
+        });
+      }
+      return await signIn(`${name}-chosen`);
+    };
+    const stamp = Date.now().toString(36).slice(-5);
+    const withCapability = await admitAndSignIn(`cap8-yes-${stamp}`, "agent.teardown");
+    const withNothing = await admitAndSignIn(`cap8-no-${stamp}`);
+
+    const count = async (cookie: string) => {
+      const { page, context } = await createViewerAuthedPage(cookie, "/creator");
+      try {
+        await settled(page);
+        return {
+          buttons: await page.locator('[data-testid^="teardown-"]').count(),
+          rows: await page.locator("table tbody tr, [class*='row']").count(),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const granted = await count(withCapability);
+    const held = await count(withNothing);
+
+    expect(
+      { grantedSeesControls: granted.buttons > 0, withoutSeesControls: held.buttons },
+      "the teardown control was offered to a session that cannot use it, or to nobody at all",
+    ).toEqual({ grantedSeesControls: true, withoutSeesControls: 0 });
+  }, 30000);
+
+  /**
    * SC-CAP-07 — refused and unreachable are different sentences.
    *
    * Every list on this console caught its error and drew one message: the

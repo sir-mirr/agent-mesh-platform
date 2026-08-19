@@ -1643,6 +1643,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-07", "a refusal was drawn as silence"],
   },
   {
+    id: "teardown-offered-to-a-session-that-cannot-use-it",
+    defect:
+      "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "          {canTeardown && (",
+    to: "          {true && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-08", "offered to a session that cannot use it"],
+  },
+  {
+    id: "teardown-hidden-from-everybody",
+    defect:
+      "The other way to pass: hide it from every session, including the one the server gave `agent.teardown`. A console where nothing dangerous is possible also cannot do the job.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "          {canTeardown && (",
+    to: "          {false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-08", "or to nobody at all"],
+  },
+  {
     id: "admission-route-points-somewhere-unchecked",
     defect:
       "The four admission screens are named in `SC-I18N-04` by a path somebody typed. Pointing a route at a different component leaves that list holding the old files to zero while the screen a person actually sees drifts — and every check stays green.",
