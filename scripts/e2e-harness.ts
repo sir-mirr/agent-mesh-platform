@@ -25,6 +25,7 @@
  */
 
 import { spawn } from "bun";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -276,6 +277,30 @@ try {
     JWT_SECRET,
   });
   await waitForHealth(`http://127.0.0.1:${httpPort}/api/v1/health`);
+
+  /**
+   * The seeded admin, already past its first-login password change.
+   *
+   * That account is created with `must_change_password`, and a session holding
+   * it is refused everywhere but three routes — so `admin_test_handle` handed
+   * out a login that could not approve a key, and fourteen of eighteen
+   * scenarios died on the same 403. `client-claude` found it within minutes of
+   * the commit and read the server's own sentence back rather than reporting a
+   * failure.
+   *
+   * **Seeded past it, not walked through it.** The alternative was to describe
+   * the change in `admin_test_handle` and have every runner implement it, which
+   * puts the same three requests in every client and makes the gate something
+   * each of them can get subtly wrong. The gate keeps its meaning where it
+   * belongs — a first login by a person — and the harness stands where that
+   * already happened, exactly as `test/harness.ts` does for this repository's
+   * own suites.
+   */
+  {
+    const db = new Database(join(stateDir, "agent-mesh.db"));
+    db.prepare(`UPDATE local_users SET must_change_password = 0`).run();
+    db.close();
+  }
 
   writeAtomic(
     args.readyFile,
