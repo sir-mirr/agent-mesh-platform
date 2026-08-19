@@ -1110,8 +1110,14 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`POST /api/v1/messages` answers `{ ok, message: { id, from, to, ts, status } }` and the front end declared the flat shape, so `res.id` read off the envelope and came back `undefined` on every send. Each receipt field had a local fallback behind `||`, and the fallback is what the person saw every time: their own inputs, the browser\u2019s clock, and the literal `영수증 미발급` where the server\u2019s id belongs. The receipt agreed with itself and said nothing about the send.",
     file: "packages/platform-web/src/api/messages.ts",
-    from: "  const message = body?.message;",
-    to: "  const message = body as unknown as MessageReceipt;",
+    // The whole block, not its first line. Replacing only the assignment left
+    // the `typeof message.id` throw standing below it, so the planted defect
+    // threw exactly as the fixed code does and the entry was reported `not
+    // caught` — the mutation had been neutralised by the half of the fix it did
+    // not remove. Both hand-run mutations were right; this manifest is a
+    // *re-typing* of them, and the re-typing is where it drifted.
+    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(\"서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다\");\n  }\n  return message;",
+    to: "  return body as unknown as MessageReceipt;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-05", "renders playground receipt with real server response fields", "expect(received).toBe(expected)"],
   },
@@ -1125,8 +1131,8 @@ const MUTATIONS: Mutation[] = [
     // success path, so `?? body` returns it and the suite is green for the
     // right reason. Measured twice before this comment was written.
     file: "packages/platform-web/src/api/messages.ts",
-    from: "  const message = body?.message;",
-    to: "  const message = (body?.message ?? body) as MessageReceipt;",
+    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(\"서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다\");\n  }\n  return message;",
+    to: "  return (body?.message ?? body) as MessageReceipt;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-09", "a 201 carrying no message drew a receipt instead of saying none came"],
   },
