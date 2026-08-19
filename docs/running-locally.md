@@ -189,7 +189,15 @@ password: $AGENT_MESH_ADMIN_PASSWORD, or `admin` when that is unset
 **Set it before the first boot on any host somebody else can reach.** The seed
 runs once, when `local_users` is empty, so a password supplied later does not
 replace one already stored — the row is there and the variable is not consulted
-again. On this laptop leaving it unset is the documented path and is what every
+again.
+
+**The same is true of the first-login requirement.** The seed is what marks the
+account as having to choose a password, so an account that already exists keeps
+whatever password it has and is never asked — which is right for an upgrade, and
+is a hole if a host is brought up by **copying a state directory** from
+somewhere else. Measured: the standing lab stack signs `admin` straight into the
+dashboard, because that row predates the column and never went through the seed.
+A host that starts on an empty state directory does not have this. On this laptop leaving it unset is the documented path and is what every
 test in this repository signs in with.
 
 ```bash
