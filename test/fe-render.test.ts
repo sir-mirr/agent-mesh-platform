@@ -16,6 +16,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * shape that let `name` and `members: [...]` be dropped by this suite's group
    * creation for four months. `SC-HARNESS-03` is the reader. */
   const setupSaid: string[] = [];
+
+  /** One write, and what it answered when it did not answer OK.
+   *
+   * Every setup write goes through here. Three of them did not, and all three
+   * were dead: a group create whose `name`/`members` the route dropped, a key
+   * approval addressed by identity when the route wants a fingerprint, and an
+   * egress rule sent as `PUT` to a path with no `PUT`. Each answered, and each
+   * answer was thrown away at the call site — so the mesh these scenarios read
+   * was never the mesh this file describes. */
+  async function setupWrite(what: string, url: string, body: unknown): Promise<void> {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) setupSaid.push(`${what} -> ${res.status} ${(await res.text()).slice(0, 120)}`);
+  }
   let mesh: Awaited<ReturnType<typeof startMesh>>;
   let viteProc: ChildProcess;
   let browser: Browser;
@@ -51,31 +68,34 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const keyPairB = newKeyPair();
 
     // 1. Propose key for agent-alpha & agent-beta
-    await fetch(`${mesh.hub.url}/api/v1/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identity: "agent-alpha",
-        public_key: keyPairA.publicKey,
-        type: "ai-claude",
-      }),
+    await setupWrite("provision agent-alpha", `${mesh.hub.url}/api/v1/agents`, {
+      identity: "agent-alpha",
+      public_key: keyPairA.publicKey,
+      type: "ai-claude",
     });
 
-    await fetch(`${mesh.hub.url}/api/v1/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identity: "agent-beta",
-        public_key: keyPairB.publicKey,
-        type: "ai-custom",
-      }),
+    // **`ai-custom` is not a type this mesh has.** The recorder above caught it
+    // on its first run: `type must be one of: ai-antigravity, ai-claude,
+    // ai-codex, human, service`. So `agent-beta` was never provisioned, and
+    // every scenario naming it has been reading a mesh without it — the fourth
+    // dead write in this setup and the first one nothing had reported.
+    await setupWrite("provision agent-beta", `${mesh.hub.url}/api/v1/agents`, {
+      identity: "agent-beta",
+      public_key: keyPairB.publicKey,
+      type: "ai-codex",
     });
 
-    // 2. Approve agent-alpha
-    await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-      body: JSON.stringify({ identity: "agent-alpha", public_key: keyPairA.publicKey }),
+    // 2. Approve agent-alpha.
+    //
+    // **Addressed by fingerprint, never by identity.** This sent `identity` and
+    // `public_key`, the route requires `fingerprint`, and it answered 400 —
+    // so `agent-alpha`'s key has never been approved and every scenario about
+    // an approved key has run against a pending one. The route's own comment
+    // gives the reason for the shape: approving "whatever is pending for X"
+    // approves whatever arrived last, including a proposal that landed between
+    // reading the screen and clicking.
+    await setupWrite("approve agent-alpha key", `${mesh.http.url}/api/v1/admin/keys/approve`, {
+      fingerprint: keyPairA.fingerprint,
     });
 
     // 3. Create directional groups (engineering -> security)
@@ -92,36 +112,38 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // of dropping it, which turns these into 400s — so they are corrected here
     // first, and that ordering is the point: a setup that does not read its own
     // responses cannot tell a 400 from a 201.
-    const createGroup = async (groupId: string, description: string) => {
-      const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-        body: JSON.stringify({ group_id: groupId, description }),
+    const createGroup = (groupId: string, description: string) =>
+      setupWrite(`create group ${groupId}`, `${mesh.http.url}/api/v1/admin/groups`, {
+        group_id: groupId,
+        description,
       });
-      if (!res.ok) setupSaid.push(`create ${groupId} -> ${res.status}`);
-    };
     // The group has to exist first: this route answers 404 for one that does
     // not, rather than creating it somewhere no rule can name.
-    const addMember = async (groupId: string, identity: string) => {
-      const res = await fetch(`${mesh.http.url}/api/v1/admin/groups/${groupId}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-        body: JSON.stringify({ identity }),
+    const addMember = (groupId: string, identity: string) =>
+      setupWrite(`add ${identity} to ${groupId}`, `${mesh.http.url}/api/v1/admin/groups/${groupId}/members`, {
+        identity,
       });
-      if (!res.ok) setupSaid.push(`member ${identity} -> ${groupId} -> ${res.status}`);
-    };
 
     await createGroup("engineering", "Engineering Division");
     await addMember("engineering", "agent-alpha");
     await createGroup("security", "Security Division");
     await addMember("security", "agent-beta");
 
-    // Set directional egress engineering -> security
-    await fetch(`${mesh.http.url}/api/v1/admin/groups/engineering/egress`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-      body: JSON.stringify({ allowed_targets: ["security"] }),
-    });
+    // Set directional egress engineering -> security.
+    //
+    // **This was `PUT` with `allowed_targets`, and neither exists.** The only
+    // `app.put` in the server is the audit blob route; egress is `POST` with a
+    // single `to_group`, because the rule is directional and one-at-a-time —
+    // the same shape as membership, for the same reason. So this 404'd, the
+    // rule was never written, and every screen that reads the egress matrix has
+    // been reading an empty one. `platform-claude` found it by sweeping callers
+    // against routes; nothing here would have said so, because the response was
+    // dropped like the two before it.
+    await setupWrite(
+      "egress engineering -> security",
+      `${mesh.http.url}/api/v1/admin/groups/engineering/egress`,
+      { to_group: "security" },
+    );
 
     // 4. Seed message stats for tenant traffic table
     try {
