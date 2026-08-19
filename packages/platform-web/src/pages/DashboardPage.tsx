@@ -46,8 +46,10 @@ import { fetchGroups, type GroupItem } from "@/api/groups.ts";
  * deleted, because the question of whether this platform grows tenant and group
  * roles is not one this file can answer — but nothing draws them today.
  */
+const UNMEASURED = "— 미측정";
+
 function queueValue(total: number | null | undefined): string {
-  return total != null ? String(total) : "— 미측정";
+  return total != null ? String(total) : UNMEASURED;
 }
 
 export function DashboardPage() {
@@ -211,12 +213,12 @@ function PlatformAdminDashboard() {
                 usage and no producer writes machine telemetry, so those guards were
                 dead and each card drew `—` at 0% under a healthy-sounding caption. */}
           <TelemetryCard
-            label="허브 활성 세션"
+            label={t("dash.pa.hub", "허브 활성 세션")}
             currentValue={`${telemetry.active_sockets} sessions`}
             maxLabel="500"
             percentage={(telemetry.active_sockets / 500) * 100}
             barColor="var(--color-leased)"
-            statusText="정상 수신 대기"
+            statusText={t("dash.pa.hubOk", "정상 수신 대기")}
           />
         </div>
       )}
@@ -236,7 +238,7 @@ function PlatformAdminDashboard() {
               {t("dash.pa.tenantTrafficTitle", "테넌트 조직별 트래픽 및 그룹 할당 현황")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              SPEC § 8.11 테넌트별 Egress 격리 및 처리량 모니터링
+              {t("dash.pa.tenantSub", "SPEC § 8.11 테넌트별 Egress 격리 및 처리량 모니터링")}
             </p>
           </div>
           <Link to="/platform/tenants">
@@ -248,15 +250,15 @@ function PlatformAdminDashboard() {
 
         {isLoading ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-            테넌트 조직 데이터를 불러오는 중입니다...
+            {t("dash.pa.tenantLoading", "테넌트 조직 데이터를 불러오는 중입니다...")}
           </div>
         ) : isError ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-danger)", fontSize: "0.85rem" }}>
-            테넌트 조직 정보를 불러오지 못했습니다 (서버 통신 실패).
+            {t("dash.pa.tenantError", "테넌트 조직 정보를 불러오지 못했습니다 (서버 통신 실패).")}
           </div>
         ) : groups.length === 0 ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-            현재 등록된 테넌트 조직 데이터가 없습니다.
+            {t("dash.pa.tenantEmpty", "현재 등록된 테넌트 조직 데이터가 없습니다.")}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
@@ -282,8 +284,8 @@ function PlatformAdminDashboard() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "flex", gap: 12 }}>
-                  <span>에이전트: <strong>{g.member_count || g.members?.length || 0}노드</strong></span>
-                  <span>Egress 허용: <strong>{g.egress_allowed?.length || 0}건</strong></span>
+                  <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count ?? g.members?.length ?? 0}</strong></span>
+                  <span>{t("dash.pa.egressLabel", "Egress 허용")}: <strong>{g.egress_allowed?.length ?? 0}</strong></span>
                 </div>
               </div>
             ))}
@@ -701,7 +703,7 @@ function AgentOperatorDashboard() {
               {t("dash.op.fleetTitle", "소유 에이전트 플릿 상태 요약")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              SPEC § 8.11 관측 출처 및 실시간 프레임 상태
+              {t("dash.op.fleetSub", "SPEC § 8.11 관측 출처 및 실시간 프레임 상태")}
             </p>
           </div>
           <Link to="/creator">
@@ -768,14 +770,14 @@ function AgentOperatorDashboard() {
                       read as one that is down. `GET /api/v1/agents` sends no
                       status at all.
                     */}
-                    종류: <strong>{agt.type ?? "—"}</strong> · 상태:{" "}
+                    {t("dash.op.kind", "종류")}: <strong>{agt.type ?? "—"}</strong> · {t("dash.op.state", "상태")}:{" "}
                     {lastSeenLabel(agt.last_seen_at)}
                   </div>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <StatusBadge
-                    label={hasBeenSeen(agt) ? "접속 기록 있음" : "접속 기록 없음"}
+                    label={hasBeenSeen(agt) ? t("dash.op.seen", "접속 기록 있음") : t("dash.op.neverSeen", "접속 기록 없음")}
                     status={hasBeenSeen(agt) ? "online" : "pending"}
                     size="sm"
                   />
