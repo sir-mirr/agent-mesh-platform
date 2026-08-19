@@ -1147,6 +1147,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["a rate-limited request arrives as a number that went up"],
   },
   {
+    id: "reminder-stored-in-a-form-that-never-fires",
+    defect:
+      "§ 8.5 states `next_fire_at` as ISO-8601 and `mesh.schedule_reminder` stored exactly what arrived. The scheduler selects due rows with `next_fire_at <= sqliteTime(now)` — `YYYY-MM-DD HH:MM:SS` — and compares strings, so an ISO timestamp never sorted as due: `T` is 0x54 and the space is 0x20. A caller following the contract got `{ok: true}`, a stored row, and a reminder that never fired. Measured: the same test passed in 522ms with a space-separated timestamp and timed out at thirty seconds with the ISO one, nothing else changed. Nothing caught it because the two sides were tested apart — and every example in this repository used the form that does not work.",
+    file: "packages/hub/src/rpc/reminders.ts",
+    from: "  const storedFireAt = fireAt.toISOString().replace(\"T\", \" \").slice(0, 19);",
+    to: "  const storedFireAt = fireAt.toISOString();",
+    suite: "test/reminder-fires.test.ts",
+    expect: ["a scheduled reminder is fired by the daemon and reaches its owner"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

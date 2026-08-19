@@ -37,6 +37,36 @@ export function handleScheduleReminder(
     return rpcError(id, INVALID_PARAMS, `schedule_spec: ${schedule.reason}`);
   }
 
+  /**
+   * Stored in the form the scheduler compares against, not the form § 8.5
+   * states.
+   *
+   * § 8.5 says `next_fire_at` is ISO-8601 and this used to store exactly what
+   * arrived. The scheduler selects due rows with
+   * `next_fire_at <= sqliteTime(now)` — `YYYY-MM-DD HH:MM:SS` — and the
+   * comparison is on strings, so an ISO timestamp never sorts as due: `T` is
+   * `0x54` and the space is `0x20`. **A caller following the contract got
+   * `{ok: true}`, a stored row, and a reminder that never fired.**
+   *
+   * Measured rather than reasoned: the same test passed in 522ms with a
+   * space-separated timestamp and timed out at thirty seconds with the ISO one,
+   * with nothing else changed.
+   *
+   * Nothing caught it because the two sides were tested apart —
+   * `scheduler.test.ts` writes its own rows in the store's format, and
+   * `reminders.test.ts` schedules in ISO and never runs a scheduler. Every
+   * example in this repository used the form that does not work.
+   *
+   * Normalised here rather than compared loosely there: the column is a
+   * `DATETIME` and every other writer already uses this form, so the boundary
+   * is where the two vocabularies meet.
+   */
+  const fireAt = new Date(String(next_fire_at));
+  if (Number.isNaN(fireAt.getTime())) {
+    return rpcError(id, INVALID_PARAMS, `next_fire_at: not a timestamp`);
+  }
+  const storedFireAt = fireAt.toISOString().replace("T", " ").slice(0, 19);
+
   try {
     srDb()
       .prepare(
@@ -53,7 +83,7 @@ export function handleScheduleReminder(
         payload,
         context ?? null,
         idempotency_key ?? null,
-        next_fire_at,
+        storedFireAt,
         agent_id
       );
   } catch (err) {
