@@ -968,6 +968,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
   },
   {
+    id: "session-cookie-never-secure",
+    defect:
+      "A session cookie without `Secure` is sent over plain http as well, so a session issued behind TLS can still leave on a request that has none. The deployment terminates TLS in front, so the process only ever sees http and the proxy's header is the only evidence there was any.",
+    file: "packages/http/src/main.ts",
+    from: "  const secure = proto === 'https' ? '; Secure' : ''",
+    to: "  const secure = ''",
+    suite: "test/http.test.ts",
+    expect: ["is marked Secure when the request arrived over TLS"],
+  },
+  {
+    id: "session-cookie-always-secure",
+    defect:
+      "Unconditional `Secure` is worse than none here: a browser drops such a cookie arriving over http, so every local login stops working while the response still looks like a success. The failure is invisible from the server's side, which is why both halves are pinned.",
+    file: "packages/http/src/main.ts",
+    from: "  const secure = proto === 'https' ? '; Secure' : ''",
+    to: "  const secure = '; Secure'",
+    suite: "test/http.test.ts",
+    expect: ["and is not, over plain http"],
+  },
+  {
     id: "env-file-made-optional-again",
     defect:
       "`EnvironmentFile=-path` is systemd's optional form: the file may be absent, the service starts anyway, and every variable in it takes a default. The http server refuses without `JWT_SECRET` and fails loudly; the hub starts on the default state directory and hands every client `http://127.0.0.1:3000` for attachment uploads — right on the quickstart's machine, wrong on the unit's, and not visible until an attachment fails for somebody else.",

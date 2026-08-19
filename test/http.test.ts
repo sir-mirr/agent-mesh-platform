@@ -86,6 +86,41 @@ describe("health", () => {
   });
 });
 
+describe("the session cookie", () => {
+  const login = (headers: Record<string, string> = {}) =>
+    fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
+      body: "username=admin&password=admin",
+      redirect: "manual",
+    });
+
+  test("is marked Secure when the request arrived over TLS", async () => {
+    // The deployment terminates TLS in front, so the process only ever sees
+    // http and the proxy's header is the only evidence there was any.
+    const res = await login({ "x-forwarded-proto": "https" });
+    expect(res.headers.get("set-cookie") ?? "").toContain("Secure");
+  });
+
+  test("and is not, over plain http, or nobody could log in locally", async () => {
+    // The other half, and the reason this is conditional rather than always on:
+    // a browser drops a `Secure` cookie arriving over http, so setting it
+    // unconditionally would break every local login — silently, since the
+    // response still looks like a success.
+    const res = await login();
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("Secure");
+  });
+
+  test("stays readable to the pages this server renders itself", async () => {
+    // `/chat` and `/admin` are served from this process and their scripts read
+    // the token out of `document.cookie`. `HttpOnly` would take it away from
+    // them and they would fail quietly, so its absence here is a decision and
+    // this is where it is written down.
+    const res = await login();
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("HttpOnly");
+  });
+});
+
 describe("authentication gates", () => {
   test("an API route without a session is 401, not a redirect", async () => {
     expect((await get("/api/v1/agents")).status).toBe(401);

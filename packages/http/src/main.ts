@@ -31,6 +31,7 @@ try {
 } catch {}
 
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie } from 'hono/cookie'
 import { randomBytes, createHash, timingSafeEqual } from 'crypto'
@@ -693,6 +694,34 @@ app.get('/auth/github', (c) => {
  * does not repeat the token: a caller that has the cookie does not need it, and
  * a caller that keeps it somewhere else has made it a thing to steal.
  */
+/**
+ * `Secure` when the request arrived over TLS, and not otherwise.
+ *
+ * A cookie without it is sent over plain http too, so a session issued behind
+ * https can still leave on a request that is not — which is the whole of what
+ * `Secure` prevents. Unconditional would be worse than absent here: the
+ * quickstart and every test speak http to `127.0.0.1`, and a browser drops a
+ * `Secure` cookie on those, so nobody could log in and the reason would be
+ * invisible.
+ *
+ * `X-Forwarded-Proto` because the deployment terminates TLS in front — the
+ * process itself always sees http. Trusted for the same reason § 8.11's
+ * `forwarded` values are: the proxy is the deployment's own, and a header from
+ * further out cannot reach here without passing through it.
+ *
+ * **No `HttpOnly`.** This server renders `/chat` and `/admin` itself, and their
+ * scripts read the token out of `document.cookie` — `ui/chat.ts:111`, `:699`,
+ * `ui/admin.ts:806` — and clear it there to log out. Adding the attribute
+ * would take the token away from those pages and they would fail silently, not
+ * loudly. Removing that dependency is a separate change to those two surfaces,
+ * not a line here.
+ */
+function sessionCookie(c: Context, jwt: string, maxAge: number): string {
+  const proto = c.req.header('x-forwarded-proto') ?? new URL(c.req.url).protocol.replace(':', '')
+  const secure = proto === 'https' ? '; Secure' : ''
+  return `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+}
+
 app.post('/auth/local', async (c) => {
   const wantsJson = (c.req.header('accept') ?? '').includes('application/json')
   const fail = (status: 400 | 401, error: string, redirect: string) =>
@@ -732,7 +761,7 @@ app.post('/auth/local', async (c) => {
   })
 
   const maxAge = 60 * 60 * 24 * 30 // 30 days
-  const cookie = `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`
+  const cookie = sessionCookie(c, jwt, maxAge)
 
   if (wantsJson) {
     // The same fields `/auth/me` answers with, so a client has a session
@@ -789,7 +818,7 @@ app.get('/auth/github/callback', async (c) => {
       status: 302,
       headers: {
         'Location': '/chat',
-        'Set-Cookie': `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax`,
+        'Set-Cookie': sessionCookie(c, jwt, maxAge),
       },
     })
   } catch (err) {
