@@ -1673,6 +1673,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-06", "drew a message id the server never sent"],
   },
   {
+    id: "refusal-drops-the-capability-on-the-screen-that-lacks-it",
+    defect:
+      "The refusal without the name, seen by the session that actually lacks the capability. `SC-CAP-07` fulfills a 403 to test this; here the server issues it, so the screen and the mesh have to agree about which capability is missing.",
+    file: "packages/platform-web/src/api/client.ts",
+    from: "  return capability ? `${base} (${capability}).` : `${base}.`;",
+    to: "  return `${base}.`;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-09", "told silence where the server refused"],
+  },
+  {
+    id: "audit-screen-shows-bodies-to-a-metadata-holder",
+    defect:
+      "§ 11.0's privacy boundary drawn from a constant instead of the grant. A session holding `audit.read.metadata` would read every message body, and the screen's own subtitle would still promise the redaction.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '  const canReadContent = hasCapability("audit.read.content");',
+    to: "  const canReadContent = true;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-09", "the session was refused on the screen it holds"],
+  },
+  {
     id: "teardown-offered-to-a-session-that-cannot-use-it",
     defect:
       "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",

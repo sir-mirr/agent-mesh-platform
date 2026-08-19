@@ -2814,6 +2814,106 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 30000);
 
   /**
+   * SC-CAP-09 — the middle role: one capability, and the screens on both sides of it.
+   *
+   * Every scenario in this file runs as the platform admin or as an account
+   * holding nothing. Between them is the role the product actually sells — a
+   * person granted exactly what they need — and walking the console as one is
+   * how the notification bell was caught calling a `403` "could not ask": the
+   * refusal path had been fixed on ten screens and had never been *walked*.
+   *
+   * The refusals here are the server's own, not `route.fulfill`. A fulfilled
+   * 403 proves the screen reads a status; a granted capability proves the mesh
+   * and the screen agree about what this person may do.
+   */
+  it("[SC-CAP-09] shows a one-capability session its screen, and names what it lacks on the others", async () => {
+    const admin = { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" };
+    const who = `cap9-${Date.now().toString(36).slice(-5)}`;
+    const created = (await (
+      await fetch(`${mesh.http.url}/api/v1/admin/users`, { method: "POST", headers: admin, body: JSON.stringify({ username: who }) })
+    ).json()) as any;
+    const signIn = async (password: string) =>
+      (
+        await fetch(`${mesh.http.url}/auth/local`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ username: who, password }),
+          redirect: "manual",
+        })
+      ).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const locked = await signIn(created.temporary_password);
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: locked, "content-type": "application/json" },
+      body: JSON.stringify({ current: created.temporary_password, next: `${who}-chosen` }),
+    });
+    await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ subject: who, capability: "audit.read.metadata", scope: "*" }),
+    });
+    const cookie = await signIn(`${who}-chosen`);
+
+    // What the server says this session holds — asserted, because a grant that
+    // did not take would make everything below a test of an empty account.
+    const me = (await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie } })).json()) as any;
+    expect(
+      { holds: me.capabilities ?? [] },
+      "the grant did not take, so the rest of this scenario measures an account holding nothing",
+    ).toEqual({ holds: ["audit.read.metadata"] });
+
+    // The screen it holds: rows are drawn, and the bodies are withheld because
+    // `audit.read.content` is a different capability.
+    const held = await (async () => {
+      const { page, context } = await createViewerAuthedPage(cookie, "/tenant/audits");
+      try {
+        await settled(page);
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        // **부제가 그 기능을 설명한다** — `[content withheld]` 라는 문자열은 이 화면의
+        // 소개문에도 있어서, 본문을 다 보여주는 판에서도 페이지에는 그 말이 있다.
+        // 첫 판이 그래서 통과했다(같은 화면, 같은 함정, 기록된 유형 10④).
+        // 그래서 **셀을 센다**: 가려진 칸이 있고 본문 칸이 없어야 한다.
+        return {
+          drewRows: (await page.locator('[data-testid="audit-withheld"], [data-testid="audit-body"]').count()) > 0,
+          withheldCells: await page.locator('[data-testid="audit-withheld"]').count(),
+          bodyCells: await page.locator('[data-testid="audit-body"]').count(),
+          blamedPermission: /권한이 없습니다|may not read/.test(text),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    })();
+
+    // A screen it does not hold: the queue it may not read says so, and names
+    // the capability the server named.
+    const lacked = await (async () => {
+      const { page, context } = await createViewerAuthedPage(cookie, "/creator/register");
+      try {
+        await settled(page);
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        return {
+          namesCapability: text.includes("key.approve"),
+          claimsSilence: /did not answer|서버가 답하지|연결 실패/.test(text),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    })();
+
+    expect(
+      { ...held, ...lacked },
+      "the session was refused on the screen it holds, or told silence where the server refused",
+    ).toEqual({
+      drewRows: true,
+      withheldCells: held.withheldCells,
+      bodyCells: 0,
+      blamedPermission: false,
+      namesCapability: true,
+      claimsSilence: false,
+    });
+  }, 40000);
+
+  /**
    * SC-CAP-08 — an irreversible control is not offered to a session that cannot use it.
    *
    * Measured on the running product with a member holding nothing: the Teardown

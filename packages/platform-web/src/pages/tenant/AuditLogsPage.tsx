@@ -95,6 +95,7 @@ export function AuditLogsPage() {
                 padding: "2px 6px",
                 borderRadius: "var(--radius-sm)",
               }}
+              data-testid="audit-withheld"
             >
               {t("audit.held", "[content withheld — requires audit.read.content]")}
             </span>
@@ -102,6 +103,7 @@ export function AuditLogsPage() {
         }
         return (
           <code
+            data-testid="audit-body"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: "0.75rem",
