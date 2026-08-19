@@ -1464,6 +1464,94 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 40000);
 
+  /**
+   * SC-DOWN-09 / SC-DOWN-10 — the deployment's failure, which is not this
+   * suite's usual one.
+   *
+   * Every other scenario in this family aborts `**\/api/v1/**` and leaves
+   * `/auth/me` answering, so the session survives and the screens stay drawn.
+   * A real deployment fails differently: the proxy is up and the backend is
+   * not, so **every** path behind it answers `502` — including the two the
+   * session depends on. Measured with nginx 1.31.3 in front of a built `dist`:
+   * all thirteen screens became the login form, and pressing the login button
+   * on it did nothing at all, silently, because the throw left through an
+   * unguarded submit handler.
+   *
+   * So the screen had two states where it needed three. `401` is being signed
+   * out. `502` is not being able to ask, and telling somebody to sign in about
+   * a backend that is restarting sends them to fix the wrong thing.
+   */
+  it("[SC-DOWN-09] says the backend is unreachable rather than sending a signed-in operator to /login", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        { name: "mesh_token", value: jwtToken, domain: "127.0.0.1", path: "/", httpOnly: false, secure: false, sameSite: "Lax" },
+      ]);
+      // What a proxy in front of a stopped backend returns — status and an HTML
+      // body, not a refused connection. The body matters: the client parses
+      // before it decides, and this is the shape it gets.
+      await page.route("**/auth/me", (route) =>
+        route.fulfill({ status: 502, contentType: "text/html", body: "<html><body>502 Bad Gateway</body></html>" }),
+      );
+      await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(400);
+
+      const said = page.locator("[data-testid='auth-unreachable']");
+      expect(
+        { said: (await said.count()) > 0, bounced: page.url().includes("/login") },
+        "a 502 from /auth/me was read as being signed out",
+      ).toEqual({ said: true, bounced: false });
+      expect(await said.innerText()).toContain("연결할 수 없습니다");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 15000);
+
+  it("[SC-DOWN-11] still sends a refused session to /login, so the two are not one branch", async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await context.addCookies([
+        { name: "mesh_token", value: jwtToken, domain: "127.0.0.1", path: "/", httpOnly: false, secure: false, sameSite: "Lax" },
+      ]);
+      // The other half. Without it the screen could call everything unreachable
+      // and pass the test above while never signing anybody out again.
+      await page.route("**/auth/me", (route) =>
+        route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) }),
+      );
+      await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+      await page.waitForURL("**/login", { timeout: 5000 }).catch(() => {});
+      expect(
+        { bounced: page.url().includes("/login"), said: (await page.locator("[data-testid='auth-unreachable']").count()) > 0 },
+        "a 401 stopped being treated as a refused session",
+      ).toEqual({ bounced: true, said: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 15000);
+
+  it("[SC-DOWN-10] says why a login failed instead of leaving the form silent", async () => {
+    await withUnauthedPage("/login", async ({ page }) => {
+      await page.route("**/auth/local", (route) =>
+        route.fulfill({ status: 502, contentType: "text/html", body: "<html><body>502 Bad Gateway</body></html>" }),
+      );
+      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='password']").first().fill("admin");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForTimeout(600);
+
+      const err = page.locator("[data-testid='login-error']");
+      expect(
+        { said: (await err.count()) > 0, left: !page.url().includes("/login") },
+        "the login button did nothing and said nothing",
+      ).toEqual({ said: true, left: false });
+      // Naming the cause, because "wrong id or password" about a stopped
+      // backend sends the person to retype credentials that were fine.
+      expect(await err.innerText()).toContain("서버에 연결할 수 없습니다");
+    });
+  }, 15000);
+
   // SC-DOWN-08: /platform/telemetry does not show active_sockets=0 or info cards when disconnected
   it("[SC-DOWN-08] renders /platform/telemetry with connection error and no 0 sessions when disconnected", async () => {
     const context = await browser.newContext();

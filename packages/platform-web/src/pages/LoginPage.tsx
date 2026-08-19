@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ApiError } from "@/api/client.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
@@ -41,9 +42,26 @@ export function LoginPage() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // **The throw used to leave through here.** `loginWithLocal` rejects when the
+  // server refuses *and* when there is no server, the exception escaped the
+  // handler, `navigate` never ran, and the form sat there having said nothing.
+  // On a deployment with the backend down that is the only screen reachable,
+  // and pressing the button on it did nothing at all, silently.
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await loginWithLocal(username, password, selectedRole);
+    setLoginError(null);
+    try {
+      await loginWithLocal(username, password, selectedRole);
+    } catch (err: any) {
+      setLoginError(
+        err instanceof ApiError && !err.refused
+          ? "서버에 연결할 수 없습니다 — 아이디·비밀번호 문제가 아닙니다."
+          : err?.message || "로그인에 실패했습니다.",
+      );
+      return;
+    }
     navigate("/dashboard");
   };
 
@@ -653,6 +671,21 @@ export function LoginPage() {
               <option value="AGENT_OPERATOR">🤖 일반 에이전트 운영자 (Agent Operator - 관리자 메뉴 은닉)</option>
             </select>
           </div>
+
+          {loginError && (
+            <div
+              data-testid="login-error"
+              style={{
+                border: "1px solid var(--color-danger, #EF4444)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 12px",
+                fontSize: "0.85rem",
+                color: "var(--color-danger, #EF4444)",
+              }}
+            >
+              {loginError}
+            </div>
+          )}
 
           <button type="submit" style={btnPrimaryStyle}>
             로그인하기

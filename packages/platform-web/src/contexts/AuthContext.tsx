@@ -1,10 +1,22 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import type { User, UserRole, Capability } from "@/types/auth.ts";
+import { ApiError } from "@/api/client.ts";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /**
+   * Why there is no user — refused, or never asked successfully.
+   *
+   * `null` while a session exists. `"unauthenticated"` when `/auth/me` answered
+   * and said no. `"unreachable"` when it did not answer: a `502` from the
+   * deployment's proxy, a `504`, or no connection at all. Those used to share
+   * one branch, and sharing it signs people out of a running deployment the
+   * moment the backend restarts — measured on nginx in front of a real build,
+   * where every screen became the login form and logging in did nothing.
+   */
+  authFailure: "unauthenticated" | "unreachable" | null;
   loginWithLocal: (id: string, pass: string, role?: UserRole) => Promise<void>;
   loginWithGitHub: () => void;
   logout: () => void;
@@ -93,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [isLoading, setIsLoading] = useState(true);
+  const [authFailure, setAuthFailure] = useState<"unauthenticated" | "unreachable" | null>(null);
 
   // Validate session on mount via /auth/me
   useEffect(() => {
@@ -118,10 +131,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         } else {
           setUser(null);
+          setAuthFailure("unauthenticated");
         }
-      } catch {
-        // Not authenticated
+      } catch (err) {
+        // **Not every failure here is "not authenticated".** That phrase was
+        // this comment while the branch under it also caught a proxy's `502`,
+        // and on a deployment that means a backend restart signs every operator
+        // out — measured with nginx in front of a real build: all thirteen
+        // screens became the login form, and logging in did nothing.
         setUser(null);
+        setAuthFailure(err instanceof ApiError && err.refused ? "unauthenticated" : "unreachable");
       } finally {
         setIsLoading(false);
       }
@@ -180,6 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        authFailure: user ? null : authFailure,
         loginWithLocal,
         loginWithGitHub,
         logout,

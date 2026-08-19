@@ -15,7 +15,7 @@ export function GuardedRoute({
   requiredCapability,
   redirectTo = "/dashboard",
 }: GuardedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authFailure } = useAuth();
   const { hasCapability } = useRbac();
 
   if (isLoading) {
@@ -30,6 +30,32 @@ export function GuardedRoute({
         }}
       >
         인증 상태를 확인하는 중입니다...
+      </div>
+    );
+  }
+
+  // **Being unable to ask is not being signed out.** `/auth/me` answering `502`
+  // used to land here and send the person to a login form that could not log
+  // them in, because the same proxy was in front of `/auth/local`. The screen
+  // said "sign in" about a backend that was restarting.
+  if (!isAuthenticated && authFailure === "unreachable") {
+    return (
+      <div
+        data-testid="auth-unreachable"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "50vh",
+          gap: 10,
+          color: "var(--color-text-muted)",
+          textAlign: "center",
+        }}
+      >
+        <span style={{ fontSize: "2rem" }}>🔌</span>
+        <strong>백엔드에 연결할 수 없습니다</strong>
+        <span>세션이 만료된 것이 아니라 서버가 응답하지 않습니다. 서버가 돌아오면 새로고침하십시오.</span>
       </div>
     );
   }

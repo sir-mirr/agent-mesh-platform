@@ -1250,6 +1250,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["no /api or /auth call found in platform-web — the extraction broke"],
   },
   {
+    id: "auth-unreachable-fold",
+    defect:
+      "`checkSession` caught every failure of `/auth/me` and recorded it as not being signed in — the comment on the branch said `// Not authenticated` while a proxy's `502` went down it too. On a deployment that means a backend restart signs every operator out. Measured with nginx in front of a built `dist`: all thirteen screens became the login form.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: 'setAuthFailure(err instanceof ApiError && err.refused ? "unauthenticated" : "unreachable");',
+    to: 'setAuthFailure("unauthenticated");',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-09", "a 502 from /auth/me was read as being signed out"],
+  },
+  {
+    id: "auth-refused-fold",
+    defect:
+      "The other direction of the same split. A screen that called every failure unreachable would satisfy the scenario above and never sign anybody out again — the counter-case is what makes either half mean something.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: 'setAuthFailure(err instanceof ApiError && err.refused ? "unauthenticated" : "unreachable");',
+    to: 'setAuthFailure("unreachable");',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-11", "a 401 stopped being treated as a refused session"],
+  },
+  {
+    id: "auth-unreachable-screen",
+    defect:
+      "Splitting the two states in the context is only half of it: the guard still has to draw the difference. Without this branch an unreachable backend falls through to the redirect and the person is sent to a login form served by the same proxy that cannot reach the thing it would log them into.",
+    file: "packages/platform-web/src/components/common/GuardedRoute.tsx",
+    from: 'if (!isAuthenticated && authFailure === "unreachable") {',
+    to: "if (false) {",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-09", "a 502 from /auth/me was read as being signed out"],
+  },
+  {
+    id: "login-silent-throw",
+    defect:
+      "`handleSubmit` had no `catch`, so `loginWithLocal` rejecting left through the handler, `navigate` never ran, and the form sat there having said nothing. With the backend down that is the only screen reachable, and pressing the button on it did nothing at all — no message, no change, silently.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "          {loginError && (",
+    to: "          {false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-10", "the login button did nothing and said nothing"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
