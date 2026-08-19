@@ -1390,6 +1390,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no start command found for the hub in running-locally.md"],
   },
   {
+    id: "built-login-prefills",
+    defect:
+      "`SC-AUTH-06` reads the dev server and what a deployment serves is `dist`. A credential typed into the built login screen would satisfy every scenario in this repository and still ship — the same distinction `I-060` cost a night to find, where the production build called a host no dev run ever called.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: '  const [username, setUsername] = useState("");',
+    to: '  const [username, setUsername] = useState("admin");',
+    suite: "test/production-bundle.test.ts",
+    expect: ["the built login screen still hands out an identity", '"typed": true'],
+  },
+  {
+    id: "built-login-has-no-form",
+    defect:
+      "The reading is `nothing is typed in the boxes`, and a page with no boxes satisfies it. Both fields have to be found for the emptiness to be about a form somebody can sign in with.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: '              type="password"',
+    to: '              type="hidden"',
+    suite: "test/production-bundle.test.ts",
+    expect: ["the built login screen still hands out an identity", '"boxes": false'],
+  },
+  {
     id: "login-prefills-a-credential",
     defect:
       "The login form arrived with `admin` typed into both fields, so one click signed anybody who reached the page in as the platform administrator. In a lab that is convenience; on a deployment it is the account name and the password printed on the login screen. The same half-measure as the 시뮬레이션 역할 picker: neither raised a privilege, and both handed out an identity nobody proved they had.",

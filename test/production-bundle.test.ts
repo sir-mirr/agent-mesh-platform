@@ -148,6 +148,40 @@ test("a loaded page sends its API calls to its own origin", async () => {
     // the ones it actually makes.
     const rendered = await page.evaluate(() => document.querySelector("#root")?.innerHTML.length ?? 0);
     expect({ rendered: rendered > 400 }).toEqual({ rendered: true });
+
+    // **The built login screen hands out nothing.**
+    //
+    // The form used to arrive with `admin` typed into both boxes and a
+    // `<select>` labelled 시뮬레이션 역할 above them, and both were removed —
+    // but `SC-AUTH-06` reads the dev server, and what a deployment serves is
+    // this directory. `I-060` is the reason that distinction gets its own file:
+    // the production build called a host that no dev run ever called, and it
+    // took building and reading to see it.
+    //
+    // Read off the page rather than grepped out of the bundle. `"admin"` is in
+    // there either way — every `/api/v1/admin/…` path contains it — so the
+    // question a string search answers is not the one worth asking. What a
+    // person sees when the page finishes loading is.
+    const login = await page.evaluate(() => {
+      const value = (sel: string) => (document.querySelector(sel) as HTMLInputElement | null)?.value ?? null;
+      return {
+        user: value("input[type='text'], input[name='username']"),
+        pass: value("input[type='password']"),
+        selects: document.querySelectorAll("select").length,
+        text: document.querySelector("#root")?.textContent ?? "",
+      };
+    });
+    expect(
+      {
+        typed: (login.user ?? "").length > 0 || (login.pass ?? "").length > 0,
+        // Both boxes have to exist, or "nothing is typed in them" is a reading
+        // of a page with no form on it.
+        boxes: login.user !== null && login.pass !== null,
+        picker: login.selects > 0,
+        simulated: /시뮬레이션 역할|RBAC Role|플랫폼 관리자 \(Platform Admin/.test(login.text),
+      },
+      "the built login screen still hands out an identity",
+    ).toEqual({ typed: false, boxes: true, picker: false, simulated: false });
   } finally {
     await browser.close();
   }
