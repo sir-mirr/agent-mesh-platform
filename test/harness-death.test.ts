@@ -21,7 +21,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { provision, startMesh, type Mesh } from "./harness";
+import { PORT_TAKEN, provision, startMesh, type Mesh } from "./harness";
 
 /**
  * Collect `console.error` while something runs.
@@ -135,3 +135,30 @@ function isDead(pid: number): boolean {
     return true;
   }
 }
+
+describe("the line that decides a start is worth retrying", () => {
+  // **Written against what the runtime prints, and pinned here because the
+  // first version was not.** That one tested the message for `EADDRINUSE`, a
+  // token nothing in this tree emits, so the retry could never fire and read
+  // like a guard for a day. The string below is copied from a real failure of
+  // this harness rather than imagined.
+  test("matches a port conflict as the runtime words it", () => {
+    const observed =
+      "service at http://127.0.0.1:60147/health never became healthy: Unable to connect\n" +
+      "--- hub output ---\n" +
+      "error: Failed to start server. Is port 60147 in use?\n" +
+      "Bun v1.3.13 (macOS arm64)";
+    expect(PORT_TAKEN.test(observed)).toBe(true);
+    expect(PORT_TAKEN.test("EADDRINUSE: address already in use")).toBe(true);
+  });
+
+  test("does not match a service that died of its own bug", () => {
+    // The other half. A pattern loose enough to match any failure turns every
+    // red start into three, and the last one is reported as the first.
+    const crash =
+      "service at http://127.0.0.1:5000/health never became healthy: Unable to connect\n" +
+      "--- hub output ---\n" +
+      "SQLiteError: no such table: agents\n  at openAt (packages/store/src/open.ts:70:14)";
+    expect(PORT_TAKEN.test(crash)).toBe(false);
+  });
+});

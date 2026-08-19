@@ -282,8 +282,8 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
     //
     // **Both of them.** This appended the hub's output alone, so an http server
     // that died on startup was reported with the hub's healthy log underneath
-    // it — and the retry above, which reads this message for `EADDRINUSE`,
-    // could only ever see half the races.
+    // it — and the retry above, which reads this message for the port-taken
+    // line, could only ever see half the races.
     hubProc.stop();
     httpProc?.stop();
     const said = err instanceof Error ? err.message : String(err);
@@ -329,15 +329,27 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
  * number is free at the instant it is returned and not a moment longer. One
  * suite alone never loses that gap. Two — this one and a second checkout's,
  * which is the ordinary state of this machine — do, and the child then exits
- * with `EADDRINUSE` while every test in the file reports `Unable to connect`.
+ * saying the port is taken, while every test in the file reports `Unable to
+ * connect`.
  *
  * That is not merely a red file. `bun test` counted such a run as **`1 fail`**
  * while thirty tests in `audit.test.ts` never ran at all, so the number at the
  * bottom of the suite was smaller than it looked and said nothing about it.
  *
- * Narrow on purpose: only an exit whose output names `EADDRINUSE` is retried.
- * A service that crashes for its own reasons must still fail loudly and once.
+ * Narrow on purpose: only an exit that says the port was taken is retried. A
+ * service that crashes for its own reasons must still fail loudly and once.
+ *
+ * **Matched against what the runtime actually prints**, which is not the errno.
+ * This read the message for `EADDRINUSE` and could never have fired: Bun says
+ *
+ *     error: Failed to start server. Is port 60147 in use?
+ *
+ * and never the name. That line is from a real failure of this harness, not
+ * from a guess about one — the first version of this retry was written against
+ * a token no service in this tree emits, and shipped looking like a guard.
  */
+export const PORT_TAKEN = /EADDRINUSE|Failed to start server|address (already )?in use/i;
+
 export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
   let last: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -346,7 +358,7 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     } catch (err) {
       last = err;
       const said = err instanceof Error ? err.message : String(err);
-      if (!said.includes("EADDRINUSE")) throw err;
+      if (!PORT_TAKEN.test(said)) throw err;
       console.error(`[harness] lost the port race (attempt ${attempt}/3); taking another port`);
     }
   }
