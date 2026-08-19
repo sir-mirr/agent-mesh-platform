@@ -37,6 +37,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { loginWithLocal, loginWithGitHub } = useAuth();
   const { language, setLanguage, t } = useI18n();
+  const [langOpen, setLangOpen] = useState(false);
   // **Empty, because this screen is served to a real server's operators.**
   //
   // They arrived as `useState("admin")` — the form came up with a working
@@ -396,36 +397,95 @@ export function LoginPage() {
         padding: 24,
       }}
     >
-      {/* **The only control on this page that is not the form.** The toggle
+      {/* **The only control on this page that is not the form.** The switcher
           otherwise lives in the sidebar, and the sidebar is behind the login —
           so a visitor who cannot read this screen could not reach the thing
-          that would translate it. Top right, flags, nothing else. */}
-      <div
-        data-testid="lang-toggle"
-        style={{ position: "absolute", top: 16, right: 20, zIndex: 50, display: "flex", gap: 6 }}
-      >
-        {(["en", "ko"] as const).map((lang) => (
-          <button
-            key={lang}
-            type="button"
-            aria-label={lang === "en" ? "English" : "한국어"}
-            data-lang={lang}
-            data-active={language === lang ? "yes" : "no"}
-            onClick={() => setLanguage(lang)}
+          that would translate it.
+
+          A combo rather than two flags side by side: the sidebar already picks
+          languages this way (trigger, panel, a check on the active one), and a
+          screen that invents a second idiom for the same job teaches the reader
+          that they are different jobs. */}
+      <div data-testid="lang-toggle" style={{ position: "absolute", top: 16, right: 20, zIndex: 50 }}>
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={langOpen}
+          aria-label={language === "en" ? "Language: English" : "언어: 한국어"}
+          data-testid="lang-trigger"
+          onClick={() => setLangOpen((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,0.25)",
+            background: "rgba(255,255,255,0.10)",
+            color: "#E2E8F0",
+            fontSize: "0.82rem",
+            fontFamily: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ fontSize: "1.05rem", lineHeight: 1 }}>{language === "en" ? "\u{1F1FA}\u{1F1F8}" : "\u{1F1F0}\u{1F1F7}"}</span>
+          <span>{language === "en" ? "English" : "\ud55c\uad6d\uc5b4"}</span>
+          <span style={{ fontSize: "0.7rem", opacity: 0.75 }}>{langOpen ? "\u25B2" : "\u25BC"}</span>
+        </button>
+
+        {langOpen && (
+          <div
+            role="listbox"
+            data-testid="lang-menu"
             style={{
-              border: language === lang ? "1px solid #38BDF8" : "1px solid rgba(255,255,255,0.25)",
-              background: language === lang ? "rgba(255,255,255,0.12)" : "transparent",
-              borderRadius: 8,
-              padding: "4px 8px",
-              fontSize: "1.05rem",
-              lineHeight: 1,
-              cursor: "pointer",
-              opacity: language === lang ? 1 : 0.6,
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              right: 0,
+              minWidth: 160,
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "#0F172A",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+              overflow: "hidden",
             }}
           >
-            {lang === "en" ? "\u{1F1FA}\u{1F1F8}" : "\u{1F1F0}\u{1F1F7}"}
-          </button>
-        ))}
+            {(["en", "ko"] as const).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                role="option"
+                aria-selected={language === lang}
+                data-lang={lang}
+                data-active={language === lang ? "yes" : "no"}
+                onClick={() => {
+                  setLanguage(lang);
+                  setLangOpen(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  gap: 10,
+                  padding: "9px 12px",
+                  border: "none",
+                  background: language === lang ? "rgba(56,189,248,0.16)" : "transparent",
+                  color: "#E2E8F0",
+                  fontSize: "0.85rem",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: "1.05rem", lineHeight: 1 }}>{lang === "en" ? "\u{1F1FA}\u{1F1F8}" : "\u{1F1F0}\u{1F1F7}"}</span>
+                  <span>{lang === "en" ? "English" : "\ud55c\uad6d\uc5b4"}</span>
+                </span>
+                {language === lang && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>\u2713</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {/* ── Softly Blurred Dynamic Ambient Background (Canvas + Character Overlay) ── */}
       <div

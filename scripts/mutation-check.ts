@@ -1520,6 +1520,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["has 2 ids and no row in § 0", "SC-I18N"],
   },
   {
+    id: "landing-combo-is-two-buttons",
+    defect:
+      "A panel that is always open is two buttons wearing a combo. The switcher matches the sidebar's idiom — trigger, panel, a check on the active one — because a screen that invents a second idiom for the same job teaches the reader that they are different jobs.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "        {langOpen && (",
+    to: "        {true && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-I18N-02", "the menu was open before anything was pressed"],
+  },
+  {
     id: "landing-defaults-to-korean",
     defect:
       "The default language was Korean and the toggle lived in the sidebar, which is behind the login. A visitor who could not read the login form could not reach the control that would have translated it.",
@@ -1534,8 +1544,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A flag in the corner that does not change the page is a control that looks like it works — the same shape as a guard that guards nothing, which is the thing this suite spends its time removing. Rendering English and offering a switch satisfies `the default is English` completely without the switch ever having to work.",
     file: "packages/platform-web/src/pages/LoginPage.tsx",
-    from: "            onClick={() => setLanguage(lang)}",
-    to: "            onClick={() => {}}",
+    from: "                  setLanguage(lang);",
+    to: "                  void lang;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-I18N-02", "the flag was pressed and the page did not change"],
   },

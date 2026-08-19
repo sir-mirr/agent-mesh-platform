@@ -2219,7 +2219,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const pass = page.locator("input[type='password']").first();
       expect(
         {
-          picker: (await page.locator("select").count()) > 0,
+          // **The role picker, not any `select`.** This read `select` count and
+          // meant "no role picker" — a sentence about one control, enforced on
+          // every control of that kind. The language combo is a different job
+          // and would have failed a check whose message says the screen still
+          // lets a person pick what they are.
+          picker: (await page.locator("select[name*='role' i], [data-testid='role-picker']").count()) > 0
+            || /시뮬레이션 역할|RBAC Role/.test(body),
           label: /시뮬레이션 역할|RBAC Role/.test(body),
           claim: /플랫폼 관리자 \(Platform Admin/.test(body),
           // The other half of the same thing: the form used to arrive with a
@@ -2389,7 +2395,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const before = await body();
       expect(
         {
-          toggle: (await page.locator("[data-testid='lang-toggle']").count()) > 0,
+          toggle: (await page.locator("[data-testid='lang-trigger']").count()) > 0,
           english: /Sign in|Username/.test(before),
           // The page used to be Korean literals with no dictionary entry at
           // all, so "the default is English" was unreachable however the
@@ -2399,6 +2405,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         "the landing screen is not in English, or has no way to change that",
       ).toEqual({ toggle: true, english: true, korean: false });
 
+      // A combo, so it has to be opened first — and the panel not being there
+      // until it is opened is part of what makes it a combo rather than two
+      // buttons wearing one.
+      expect(await page.locator("[data-testid='lang-menu']").count(), "the menu was open before anything was pressed").toBe(0);
+      await page.locator("[data-testid='lang-trigger']").click();
       await page.locator("[data-lang='ko']").click();
       await page.waitForTimeout(300);
       const after = await body();
