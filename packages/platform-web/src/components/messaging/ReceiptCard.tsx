@@ -1,28 +1,51 @@
 import React from "react";
 import { StatusBadge } from "@/components/common/StatusBadge.tsx";
-import { FingerprintBox } from "@/components/data/FingerprintBox.tsx";
+import type { MessageReceipt } from "@/api/messages.ts";
 
 export interface ReceiptCardProps {
   messageId: string;
   sender: string;
   recipient: string;
   timestamp: string;
-  signatureVerified: boolean;
-  sha256Digest: string;
-  leaseStatus?: "Available" | "Leased" | "Acked" | "DeadLetter";
+  /**
+   * The status the server stored for this message, in the server's own words.
+   * Taken from `MessageReceipt` so a word that stops existing over there
+   * becomes a type error here rather than an unreachable branch.
+   */
+  status: MessageReceipt["status"];
 }
+
+/**
+ * The card used to carry two more rows: an `Ed25519 서명 검증됨` badge and a
+ * `SHA-256 다이제스트` box. Neither had a producer — no route on this platform
+ * sends a signature or a per-message digest, which is the same finding that
+ * removed `signature_verified` from the audit screen. The badge was therefore
+ * always `서명 미검증` in red, and the digest box fell back to the *sender's*
+ * agent fingerprint, so a real sha256 sat under a label saying it was the
+ * digest of this message. Absent is a better statement than a value that is
+ * some other thing's hash.
+ */
+const STATUS_TEXT: Record<MessageReceipt["status"], { label: string; tone: "success" | "pending" | "danger" }> = {
+  pending: { label: "허브 접수 · 수신 대기", tone: "pending" },
+  delivered: { label: "배달됨", tone: "success" },
+  read: { label: "읽음", tone: "success" },
+  failed: { label: "허브가 거절함", tone: "danger" },
+};
 
 export function ReceiptCard({
   messageId,
   sender,
   recipient,
   timestamp,
-  signatureVerified,
-  sha256Digest,
-  leaseStatus = "Acked",
+  status,
 }: ReceiptCardProps) {
+  const stated = STATUS_TEXT[status];
+
   return (
     <div
+      data-testid="receipt-card"
+      data-message-id={messageId}
+      data-status={status}
       style={{
         background: "var(--color-bg-surface)",
         border: "1px solid var(--color-border)",
@@ -54,28 +77,11 @@ export function ReceiptCard({
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <StatusBadge
-            label={signatureVerified ? "Ed25519 서명 검증됨" : "서명 미검증"}
-            status={signatureVerified ? "success" : "danger"}
-            size="sm"
-          />
-          {leaseStatus && (
-            <StatusBadge
-              label={leaseStatus}
-              status={
-                leaseStatus === "Acked"
-                  ? "success"
-                  : leaseStatus === "Leased"
-                  ? "leased"
-                  : leaseStatus === "Available"
-                  ? "pending"
-                  : "danger"
-              }
-              size="sm"
-            />
-          )}
-        </div>
+        <StatusBadge
+          label={stated ? stated.label : `알 수 없는 상태: ${status}`}
+          status={stated ? stated.tone : "neutral"}
+          size="sm"
+        />
       </div>
 
       {/* Meta Grid */}
@@ -103,12 +109,6 @@ export function ReceiptCard({
           <span>{timestamp}</span>
         </div>
       </div>
-
-      <FingerprintBox
-        label="SHA-256 다이제스트"
-        fingerprint={sha256Digest}
-        prefix="sha256:"
-      />
     </div>
   );
 }

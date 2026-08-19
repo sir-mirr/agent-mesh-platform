@@ -9,7 +9,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { fetchAgents, type RegistryAgent, lastSeenLabel, hasBeenSeen } from "@/api/agents.ts";
-import { sendMessageApi } from "@/api/messages.ts";
+import { sendMessageApi, type MessageReceipt } from "@/api/messages.ts";
 
 interface RegisteredAgent {
   id: string;
@@ -124,41 +124,29 @@ export function PlaygroundPage() {
     JSON.stringify(PAYLOAD_PRESETS[0]?.data || {}, null, 2)
   );
 
-  const [receipt, setReceipt] = useState<{
-    messageId: string;
-    sender: string;
-    recipient: string;
-    timestamp: string;
-    signatureVerified: boolean;
-    sha256Digest: string;
-    leaseStatus: "Available" | "Leased" | "Acked";
-  } | null>(null);
+  const [receipt, setReceipt] = useState<MessageReceipt | null>(null);
+
+  // Shown in the panel where the receipt would go, rather than through an
+  // `alert()`. The failure a person most needs to see here is the server
+  // answering `201` without a receipt in it, and an alert leaves the panel
+  // sitting on its "send a message and the receipt appears here" prompt — the
+  // same thing it says before anything has been tried at all.
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSending(true);
-    const senderObj = agentsList.find((a) => a.id === sender);
+    setSendError(null);
     try {
-      const res = await sendMessageApi({
-        to: recipient,
-        text: payloadText,
-      });
-      setReceipt({
-        messageId: res.id || "영수증 미발급",
-        sender: res.from || sender,
-        recipient: res.to || recipient,
-        timestamp: res.ts || new Date().toISOString(),
-        signatureVerified: typeof (res as any).signature_verified === "boolean"
-          ? (res as any).signature_verified
-          : typeof (res as any).verified === "boolean"
-          ? (res as any).verified
-          : false,
-        sha256Digest: (res as any).digest || (res as any).sha256 || senderObj?.fingerprint || "—",
-        leaseStatus: res.status === "delivered" ? "Acked" : "Available",
-      });
+      // Drawn as it arrived. Every field used to have a local fallback behind
+      // `||`, and because the envelope was never unwrapped the fallback is what
+      // the person saw every single time: their own inputs, the browser's
+      // clock, and the literal `영수증 미발급` where the server's id belongs.
+      // The receipt agreed with itself and said nothing about the send.
+      setReceipt(await sendMessageApi({ to: recipient, text: payloadText }));
     } catch (err: any) {
       setReceipt(null);
-      alert(`메시지 발송 실패: ${err.message}`);
+      setSendError(err?.message || "서버 통신 오류");
     } finally {
       setIsSending(false);
     }
@@ -345,16 +333,38 @@ export function PlaygroundPage() {
           {receipt ? (
             <>
               <ReceiptCard
-                messageId={receipt.messageId}
-                sender={receipt.sender}
-                recipient={receipt.recipient}
-                timestamp={receipt.timestamp}
-                signatureVerified={receipt.signatureVerified}
-                sha256Digest={receipt.sha256Digest}
-                leaseStatus={receipt.leaseStatus}
+                messageId={receipt.id}
+                sender={receipt.from}
+                recipient={receipt.to}
+                timestamp={receipt.ts}
+                status={receipt.status}
               />
               <JsonViewer data={JSON.parse(payloadText || "{}")} title="발송된 메시지 본문 (Dispatched Payload)" />
             </>
+          ) : sendError ? (
+            <div
+              data-testid="receipt-error"
+              style={{
+                background: "var(--color-bg-surface)",
+                border: "1px solid var(--color-danger, #EF4444)",
+                borderRadius: "var(--radius-xl)",
+                padding: 40,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+                color: "var(--color-text-muted)",
+                fontSize: "0.9rem",
+                height: "100%",
+                minHeight: 380,
+                textAlign: "center",
+              }}
+            >
+              <span style={{ fontSize: "2rem" }}>⚠️</span>
+              <strong>영수증 미발급</strong>
+              <span>{sendError}</span>
+            </div>
           ) : (
             <div
               style={{

@@ -1106,6 +1106,51 @@ const MUTATIONS: Mutation[] = [
     expect: ["every family with more than one id has a row", "SC-HARNESS-* has", "ids and no row in § 0"],
   },
   {
+    id: "receipt-envelope",
+    defect:
+      "`POST /api/v1/messages` answers `{ ok, message: { id, from, to, ts, status } }` and the front end declared the flat shape, so `res.id` read off the envelope and came back `undefined` on every send. Each receipt field had a local fallback behind `||`, and the fallback is what the person saw every time: their own inputs, the browser\u2019s clock, and the literal `영수증 미발급` where the server\u2019s id belongs. The receipt agreed with itself and said nothing about the send.",
+    file: "packages/platform-web/src/api/messages.ts",
+    from: "  const message = body?.message;",
+    to: "  const message = body as unknown as MessageReceipt;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-05", "renders playground receipt with real server response fields", "expect(received).toBe(expected)"],
+  },
+  {
+    id: "receipt-silent-flat",
+    defect:
+      "Unwrapping with `body.message ?? body` looks like the fix and reproduces the defect: on a `201` that carries no `message` the screen draws a receipt out of the envelope, every field `undefined`, next to a success. The throw is the point \u2014 falling back quietly is the state this issue was opened about.",
+    // `??` differs from the throw *only* when the envelope is absent, which is
+    // why the entry runs SC-WRITE-09 and not SC-WRITE-05. Planted against
+    // SC-WRITE-05 it is not a mutation at all: `body.message` is present on the
+    // success path, so `?? body` returns it and the suite is green for the
+    // right reason. Measured twice before this comment was written.
+    file: "packages/platform-web/src/api/messages.ts",
+    from: "  const message = body?.message;",
+    to: "  const message = (body?.message ?? body) as MessageReceipt;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-09", "a 201 carrying no message drew a receipt instead of saying none came"],
+  },
+  {
+    id: "receipt-digest-claim",
+    defect:
+      "The receipt card carried an `Ed25519 서명 검증됨` badge and a `SHA-256 다이제스트` box for fields no route on this platform sends \u2014 the same finding that removed `signature_verified` from the audit screen, left standing on the screen beside it. The badge was therefore always `서명 미검증` in red, and the digest box fell back to the *sender\u2019s* agent fingerprint, so a real sha256 sat under a label saying it was the digest of this message.",
+    file: "packages/platform-web/src/components/messaging/ReceiptCard.tsx",
+    from: "        </div>\n      </div>\n    </div>\n  );",
+    to: "        </div>\n      </div>\n      <div>SHA-256 다이제스트</div>\n    </div>\n  );",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-05", "renders playground receipt with real server response fields", "\"digest\": true"],
+  },
+  {
+    id: "scenario-id-twice",
+    defect:
+      "`scenario-ids.test.ts` said in prose that the case which must not happen is two different scenarios wearing one id, and then compared full titles \u2014 which two different scenarios never share. So the rule most likely to be believed was the one nothing checked, and the defect it names went in green: `SC-WRITE-07` was minted a second time for the playground receipt while it already named an RBAC grant abort. It was found by `-t SC-WRITE-07` running two tests.",
+    file: "test/fe-render.test.ts",
+    from: "it(\"[SC-WRITE-09] says 영수증 미발급",
+    to: "it(\"[SC-WRITE-07] says 영수증 미발급",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["one id on two `it(` lines is two scenarios that cannot disagree", "SC-WRITE-07 at fe-render.test.ts"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",

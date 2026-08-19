@@ -83,6 +83,36 @@ describe("scenario ids", () => {
     expect(shared, "one id covering two layers cannot report that they disagree").toEqual([]);
   });
 
+  test("an id is registered from one `it(` line, so a repeat is a loop and not a second scenario", () => {
+    // **The test below states this rule in prose and does not implement it.**
+    // Its comment says the case that must not happen is "two *different*
+    // scenarios wearing one id", and then it compares full titles — which two
+    // different scenarios never share, because they are different. So the rule
+    // most likely to be believed here was the one nothing checked, and the
+    // defect it names went in and stayed green: `SC-WRITE-07` was minted a
+    // second time in `fe-render.test.ts` for the playground receipt while it
+    // already named an RBAC grant abort, and every suite stayed green. It was
+    // found by `-t SC-WRITE-07` running two tests, not by this file.
+    //
+    // The distinction the prose is reaching for is on the source, not the
+    // titles: `SC-DOWN-ALL` is thirteen registrations from **one** `it(` inside
+    // a loop over routes, and two scenarios sharing an id are **two** `it(`
+    // lines. One line is a check applied to many subjects; two lines are two
+    // checks that cannot report disagreeing with each other.
+    for (const f of FILES) {
+      const source = readFileSync(join(TESTS, f), "utf8");
+      const lines: Map<string, number[]> = new Map();
+      source.split("\n").forEach((line, i) => {
+        const m = /\bit(?:\.skip)?\(\s*["`]\[([A-Z0-9-]+)\]/.exec(line);
+        if (m) lines.set(m[1]!, [...(lines.get(m[1]!) ?? []), i + 1]);
+      });
+      const twice = [...lines.entries()]
+        .filter(([, at]) => at.length > 1)
+        .map(([id, at]) => `${id} at ${f}:${at.join(", ")}`);
+      expect(twice, "one id on two `it(` lines is two scenarios that cannot disagree").toEqual([]);
+    }
+  });
+
   test("an id repeated in one file is one check over many subjects, not two checks", () => {
     // **Repetition inside a file is not automatically wrong.** `SC-DOWN-ALL`
     // is registered thirteen times, once per screen, and that is one check

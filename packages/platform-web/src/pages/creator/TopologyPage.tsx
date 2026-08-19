@@ -893,11 +893,19 @@ export function TopologyPage() {
   const handleSendQuickMessage = async () => {
     if (!selectedNode) return;
     try {
-      await sendMessageApi({
+      // `201` is not delivery. The server writes `failed` into this same
+      // response when the hub refuses the message, and this toast used to say
+      // "성공적으로 전송되었습니다" over that word — a refusal reported as a
+      // success, in green, with nothing else on the screen to contradict it.
+      const receipt = await sendMessageApi({
         to: selectedNode.identity,
         text: quickMsg,
       });
-      setToastMsg(`'${selectedNode.displayName}' 에이전트로 실시간 메시지가 백엔드에 성공적으로 전송되었습니다!`);
+      setToastMsg(
+        receipt.status === "failed"
+          ? `'${selectedNode.displayName}' 로 보낸 메시지를 허브가 거절했습니다 (${receipt.id})`
+          : `'${selectedNode.displayName}' 로 메시지를 보냈습니다 — 허브 접수됨 (${receipt.id})`
+      );
     } catch (err: any) {
       console.warn("[Topology] Quick send error:", err.message);
       setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지 전송 실패: ${err.message || "서버 통신 오류"}`);

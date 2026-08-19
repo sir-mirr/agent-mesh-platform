@@ -1987,17 +1987,84 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 30000);
 
   // SC-WRITE-05: /creator/playground receipt displays real server fields
+  //
+  // This assertion used to be `not.toContain("msg_undefined")` plus the presence
+  // of the string `발송된 메시지 본문` — which is the JsonViewer's own title, a
+  // literal in the page, drawn whenever a receipt renders at all. So a test
+  // named for real server fields passed on a receipt that carried none of them:
+  // the id said `영수증 미발급`, the timestamp was the browser's clock, and the
+  // sender and recipient were the form's own inputs echoed back. The expected
+  // value now comes off the wire, so nothing in this file can supply it.
   it("[SC-WRITE-05] renders playground receipt with real server response fields", async () => {
     await withPage("/creator/playground", async ({ page }) => {
       const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
       expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
-      await sendBtn.click();
-      await shows(page, "발송된 메시지 본문");
-      const mainText = await page.locator("#root").innerText();
-      expect(mainText).toContain("발송된 메시지 본문");
-      expect(mainText).not.toContain("msg_undefined");
+
+      const [resp] = await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/api/v1/messages") && r.request().method() === "POST", { timeout: 8000 }),
+        sendBtn.click(),
+      ]);
+      const body = await resp.json();
+      expect({ status: resp.status(), enveloped: typeof body?.message?.id === "string" })
+        .toEqual({ status: 201, enveloped: true });
+
+      const card = page.locator("[data-testid='receipt-card']");
+      await card.waitFor({ timeout: 5000 });
+
+      // The id the server minted, not a shape that resembles one.
+      expect(await card.getAttribute("data-message-id")).toBe(body.message.id);
+      expect(await page.locator("#root").innerText()).toContain(body.message.id);
+
+      // And the status in the server's vocabulary. `sent` is a word this
+      // platform never writes; the screen used to declare it in its own type.
+      expect(await card.getAttribute("data-status")).toBe(body.message.status);
+      expect(["pending", "delivered", "read", "failed"]).toContain(body.message.status);
+
+      // Two claims came off this card because nothing produces them. A revival
+      // of either is a regression whether or not it draws a plausible value.
+      const cardText = await card.innerText();
+      expect({
+        signature: /서명 검증됨|서명 미검증|Ed25519/.test(cardText),
+        digest: /SHA-256 다이제스트/.test(cardText),
+      }).toEqual({ signature: false, digest: false });
     });
-  });
+  }, 20000);
+
+  // SC-WRITE-09: a 201 without a receipt in it is said, not drawn over (I-073)
+  //
+  // The reverse of SC-WRITE-05. `sendMessageApi` throws when the envelope is
+  // absent rather than falling back to the flat body, because the fallback is
+  // indistinguishable from the bug it replaced: a receipt of local placeholders
+  // rendered next to a success. The screen has to say the receipt did not come.
+  it("[SC-WRITE-09] says 영수증 미발급 when the server answers 201 without a message", async () => {
+    await withPage("/creator/playground", async ({ page }) => {
+      await page.route("**/api/v1/messages", (route) =>
+        route.request().method() === "POST"
+          ? route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+          : route.continue()
+      );
+
+      const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
+      await sendBtn.click();
+
+      const err = page.locator("[data-testid='receipt-error']");
+      await err.waitFor({ timeout: 5000 }).catch(() => {});
+
+      // Stated as one assertion rather than a `waitFor` that throws, because a
+      // timeout says only that five seconds passed. The manifest pins entries
+      // on the words of the check, and `Timeout 5000ms exceeded` is the same
+      // sentence whether the screen drew a receipt it should not have or the
+      // mesh never came up.
+      expect(
+        {
+          said: (await err.count()) > 0,
+          drew: (await page.locator("[data-testid='receipt-card']").count()) > 0,
+        },
+        "a 201 carrying no message drew a receipt instead of saying none came",
+      ).toEqual({ said: true, drew: false });
+      expect(await err.innerText()).toContain("영수증 미발급");
+    });
+  }, 20000);
 
   // SC-WRITE-06: /tenant/egress-acl rule toggle abort does not show success and reports failure (W-07)
   it("[SC-WRITE-06] handles egress rule toggle abort by reverting state and reporting failure", async () => {
