@@ -14,7 +14,7 @@ export function runLint(options?: {
   mockRbac?: string;
   minFloorOverride?: number;
   silent?: boolean;
-}): { errors: number; totalRoutesFound: number; totalAllowedRoutes: number } {
+}): { errors: number; totalRoutesFound: number; totalAllowedRoutes: number; capabilityCount: number } {
   let errors = 0;
   let totalRoutesFound = 0;
   const silent = options?.silent ?? false;
@@ -112,19 +112,31 @@ export function runLint(options?: {
     errors++;
   }
 
-  // 4. Verify all 9 capabilities exist in RBAC
+  // 4. Verify the capability vocabulary appears in RBAC — **read from the
+  //    contract, never restated here.**
+  //
+  //    This was a nine-name list written by hand, and it printed
+  //    `✓ Verified all 9 capabilities` while the contract held twelve:
+  //    `tenant.read.stats`, `user.admit` and `usage.read` had arrived and this
+  //    file did not know. A guard whose denominator is its own copy of the
+  //    answer reports agreement with itself — the same shape as `rbacapi.mjs`'s
+  //    hand-copied map and `scenario-ids`' hand-written FILES list, which is
+  //    three of these in one repository.
+  //
+  //    So it is imported, and if it cannot be imported the lint fails rather
+  //    than falling back to a list — falling back is what it is here to prevent.
   const rbacHtml = options?.mockRbac ?? readFileSync('preview/tenant/organization-rbac.html', 'utf-8');
-  const CAPABILITIES = [
-    'key.approve',
-    'agent.provision',
-    'agent.teardown',
-    'audit.read.metadata',
-    'audit.read.content',
-    'mailbox.read.depth',
-    'group.manage',
-    'role.grant',
-    'source.read'
-  ];
+  let CAPABILITIES: string[];
+  try {
+    const contract = require('@agent-mesh/contracts');
+    CAPABILITIES = [...new Set(Object.values(contract.CAPABILITY as Record<string, string>))];
+    if (CAPABILITIES.length === 0) throw new Error('CAPABILITY is empty');
+  } catch (err) {
+    console.error(`❌ Could not read CAPABILITY from @agent-mesh/contracts: ${err instanceof Error ? err.message : String(err)}`);
+    console.error('   Not falling back to a hand-written list — that is the defect this check exists to catch.');
+    errors++;
+    CAPABILITIES = [];
+  }
 
   CAPABILITIES.forEach(cap => {
     if (!rbacHtml.includes(cap)) {
@@ -133,84 +145,94 @@ export function runLint(options?: {
     }
   });
 
-  return { errors, totalRoutesFound, totalAllowedRoutes: rawAllowedRoutes.length };
+  return { errors, totalRoutesFound, totalAllowedRoutes: rawAllowedRoutes.length , capabilityCount: CAPABILITIES.length };
 }
 
 // Self-Test Mode (Meta-Testing the Linter against Mutations & Degradations)
-if (isTestMode) {
-  console.log('🧪 --- Running Linter Mutation & Degradation Self-Test Suite ---');
-  let testFailures = 0;
+// **Only when run, never when imported.**
+//
+// Everything below prints and calls `process.exit`. `test/preview-lint.test.ts`
+// imports `runLint` from this file, and without this guard that import executed
+// the whole script and exited the process — the suite stopped at that file and
+// reported success, because the exit code was 0 and there was nobody left to
+// disagree. A green run that ended early looks exactly like a green run.
+if (import.meta.main) {
+  if (isTestMode) {
+    console.log('🧪 --- Running Linter Mutation & Degradation Self-Test Suite ---');
+    let testFailures = 0;
 
-  // Test 1: Unregistered route MUST fail (errors > 0)
-  const mut1 = runLint({
-    mockHtmlFiles: { 'test.html': '<div>POST /api/v1/tenants/acme/quota</div>' },
-    minFloorOverride: 1,
-    silent: true
-  });
-  if (mut1.errors === 0) {
-    console.error('❌ Mutation Test 1 Failed: Invented route did not trigger error!');
-    testFailures++;
-  } else {
-    console.log('✓ Mutation Test 1 Passed: Invented route was caught.');
+    // Test 1: Unregistered route MUST fail (errors > 0)
+    const mut1 = runLint({
+      mockHtmlFiles: { 'test.html': '<div>POST /api/v1/tenants/acme/quota</div>' },
+      minFloorOverride: 1,
+      silent: true
+    });
+    if (mut1.errors === 0) {
+      console.error('❌ Mutation Test 1 Failed: Invented route did not trigger error!');
+      testFailures++;
+    } else {
+      console.log('✓ Mutation Test 1 Passed: Invented route was caught.');
+    }
+
+    // Test 2: Degraded extraction (e.g. only 7 routes when floor is 60) MUST fail
+    const mut2 = runLint({
+      mockHtmlFiles: { 'test.html': '<div>' + Array(7).fill('/api/v1/inbox').join(' ') + '</div>' },
+      minFloorOverride: 60,
+      silent: true
+    });
+    if (mut2.errors === 0) {
+      console.error('❌ Mutation Test 2 Failed: Degraded extraction (7 < 60) did not trigger error!');
+      testFailures++;
+    } else {
+      console.log('✓ Mutation Test 2 Passed: Degraded route extraction (below floor of 60) was caught.');
+    }
+
+    // Test 3: Missing RBAC capability MUST fail (errors > 0)
+    const mut3 = runLint({
+      mockRbac: '<div>key.approve only</div>',
+      silent: true
+    });
+    if (mut3.errors === 0) {
+      console.error('❌ Mutation Test 3 Failed: Missing capabilities did not trigger error!');
+      testFailures++;
+    } else {
+      console.log('✓ Mutation Test 3 Passed: Missing capability was caught.');
+    }
+
+    // Test 4: SPEC header change resulting in 0 allowed routes MUST fail
+    const mut4 = runLint({
+      mockSpec: '# Invalid SPEC with no 9.1 section',
+      silent: true
+    });
+    if (mut4.errors === 0) {
+      console.error('❌ Mutation Test 4 Failed: Corrupted SPEC did not trigger error!');
+      testFailures++;
+    } else {
+      console.log('✓ Mutation Test 4 Passed: Corrupted SPEC was caught.');
+    }
+
+    if (testFailures === 0) {
+      console.log('🎉 ALL 4 LINTER MUTATION & DEGRADATION SELF-TESTS PASSED!\n');
+    } else {
+      console.error(`❌ Total Mutation Failures: ${testFailures}`);
+      process.exit(1);
+    }
   }
 
-  // Test 2: Degraded extraction (e.g. only 7 routes when floor is 60) MUST fail
-  const mut2 = runLint({
-    mockHtmlFiles: { 'test.html': '<div>' + Array(7).fill('/api/v1/inbox').join(' ') + '</div>' },
-    minFloorOverride: 60,
-    silent: true
-  });
-  if (mut2.errors === 0) {
-    console.error('❌ Mutation Test 2 Failed: Degraded extraction (7 < 60) did not trigger error!');
-    testFailures++;
-  } else {
-    console.log('✓ Mutation Test 2 Passed: Degraded route extraction (below floor of 60) was caught.');
-  }
+  // Normal Linter Execution
+  console.log('--- Running Allowlist-Based Preview & Contract Linter ---');
+  const result = runLint();
 
-  // Test 3: Missing RBAC capability MUST fail (errors > 0)
-  const mut3 = runLint({
-    mockRbac: '<div>key.approve only</div>',
-    silent: true
-  });
-  if (mut3.errors === 0) {
-    console.error('❌ Mutation Test 3 Failed: Missing capabilities did not trigger error!');
-    testFailures++;
+  if (result.errors === 0) {
+    console.log(`✓ Verified 60 files in deliverables manifest exist.`);
+    console.log(`✓ Parsed ${result.totalAllowedRoutes} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1).`);
+    console.log(`✓ Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files (Floor: >= ${MIN_ROUTE_REFERENCES_FLOOR}).`);
+    console.log(`✓ Verified all ${result.capabilityCount} capabilities from @agent-mesh/contracts exist in RBAC.`);
+    console.log(`\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${result.totalRoutesFound} routes verified)`);
+    process.exit(0);
   } else {
-    console.log('✓ Mutation Test 3 Passed: Missing capability was caught.');
-  }
-
-  // Test 4: SPEC header change resulting in 0 allowed routes MUST fail
-  const mut4 = runLint({
-    mockSpec: '# Invalid SPEC with no 9.1 section',
-    silent: true
-  });
-  if (mut4.errors === 0) {
-    console.error('❌ Mutation Test 4 Failed: Corrupted SPEC did not trigger error!');
-    testFailures++;
-  } else {
-    console.log('✓ Mutation Test 4 Passed: Corrupted SPEC was caught.');
-  }
-
-  if (testFailures === 0) {
-    console.log('🎉 ALL 4 LINTER MUTATION & DEGRADATION SELF-TESTS PASSED!\n');
-  } else {
-    console.error(`❌ Total Mutation Failures: ${testFailures}`);
+    console.error(`\n❌ Total Lint Errors: ${result.errors}`);
     process.exit(1);
   }
-}
 
-// Normal Linter Execution
-console.log('--- Running Allowlist-Based Preview & Contract Linter ---');
-const result = runLint();
-
-if (result.errors === 0) {
-  console.log(`✓ Verified 60 files in deliverables manifest exist.`);
-  console.log(`✓ Parsed ${result.totalAllowedRoutes} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1).`);
-  console.log(`✓ Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files (Floor: >= ${MIN_ROUTE_REFERENCES_FLOOR}).`);
-  console.log(`✓ Verified all 9 capabilities (Contracts v0.9.1) exist in RBAC.`);
-  console.log(`\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${result.totalRoutesFound} routes verified)`);
-  process.exit(0);
-} else {
-  console.error(`\n❌ Total Lint Errors: ${result.errors}`);
-  process.exit(1);
 }

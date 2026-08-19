@@ -19,6 +19,7 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "../scripts/mutation-verdict.ts"
+    "../scripts/mutation-verdict.ts",
+    "../scripts/lint-preview.ts"
   ]
 }
