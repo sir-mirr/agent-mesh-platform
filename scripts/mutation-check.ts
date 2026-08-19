@@ -2338,6 +2338,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/versioning.test.ts",
     expect: ["JSON Parse error"],
   },
+  {
+    id: "password-gate-change-measures-a-transition",
+    defect:
+      "`can change it, and is then let through` asserted only that the route answered 200 after the change. On an account that was never flagged that is true without a gate ever existing, and the harness clears the flag at boot — so the fixture and the test both plant the state, and whichever plants last decides what is being measured. `agent-mesh-local-pm` named the shape in their own suite the same day (mail #1090): a check that believed it had asked for English was reading Korean, because the reload re-planted the language. This mutation removes the test's own planting; the pre-assertion is what notices.",
+    file: "test/http.test.ts",
+    from: "    flag(true);\n    const cookie = await login();\n    try {\n      // **The gate has to be shut",
+    to: "    // flag(true);\n    const cookie = await login();\n    try {\n      // **The gate has to be shut",
+    suite: "test/http.test.ts",
+    expect: ["can change it, and is then let through"],
+  },
 ];
 
 /**

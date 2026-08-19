@@ -175,6 +175,14 @@ describe("a session that must change its password", () => {
     flag(true);
     const cookie = await login();
     try {
+      // **The gate has to be shut for "let through" to mean anything.** Without
+      // this line the test passes on an account that was never flagged: the
+      // change succeeds, the route answers 200, and nothing measured a
+      // transition. `agent-mesh-local-pm` named the shape (mail #1090) — when
+      // two places plant a state, the one that plants last decides what the
+      // check is looking at, and this harness clears the flag at boot.
+      expect((await get("/api/v1/agents", cookie)).status, "the gate was already open, so being let through proves nothing").toBe(403);
+
       const wrong = await fetch(`${mesh.http.url}/auth/local/password`, {
         method: "POST",
         headers: { "content-type": "application/json", cookie },
