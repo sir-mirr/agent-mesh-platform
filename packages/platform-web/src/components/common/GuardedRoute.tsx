@@ -7,18 +7,16 @@ import type { Capability } from "@/types/auth.ts";
 export interface GuardedRouteProps {
   children: React.ReactNode;
   requiredCapability?: Capability;
-  requiredAnyCapability?: Capability[];
   redirectTo?: string;
 }
 
 export function GuardedRoute({
   children,
   requiredCapability,
-  requiredAnyCapability,
   redirectTo = "/dashboard",
 }: GuardedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth();
-  const { hasCapability, hasAnyCapability } = useRbac();
+  const { hasCapability } = useRbac();
 
   if (isLoading) {
     return (
@@ -44,9 +42,6 @@ export function GuardedRoute({
     return <Navigate to={redirectTo} replace />;
   }
 
-  if (requiredAnyCapability && !hasAnyCapability(requiredAnyCapability)) {
-    return <Navigate to={redirectTo} replace />;
-  }
 
   return <>{children}</>;
 }

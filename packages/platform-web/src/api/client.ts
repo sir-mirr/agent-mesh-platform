@@ -1,11 +1,5 @@
 import { ENV } from "@/config/env.ts";
 
-export interface ApiResponse<T = any> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  detail?: string;
-}
 
 export async function apiClient<T = any>(
   path: string,

@@ -4,16 +4,12 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   label?: string;
   error?: string;
   helperText?: string;
-  leftElement?: React.ReactNode;
-  rightElement?: React.ReactNode;
 }
 
 export function Input({
   label,
   error,
   helperText,
-  leftElement,
-  rightElement,
   style,
   id,
   ...props
@@ -44,28 +40,14 @@ export function Input({
           width: "100%",
         }}
       >
-        {leftElement && (
-          <div
-            style={{
-              position: "absolute",
-              left: 12,
-              display: "flex",
-              alignItems: "center",
-              pointerEvents: "none",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            {leftElement}
-          </div>
-        )}
 
         <input
           id={inputId}
           style={{
             width: "100%",
             padding: "9px 12px",
-            paddingLeft: leftElement ? 36 : 12,
-            paddingRight: rightElement ? 36 : 12,
+            paddingLeft: 12,
+            paddingRight: 12,
             background: "var(--color-bg-surface)",
             border: `1px solid ${error ? "var(--color-danger)" : "var(--color-border)"}`,
             borderRadius: "var(--radius-md)",
@@ -79,19 +61,6 @@ export function Input({
           {...props}
         />
 
-        {rightElement && (
-          <div
-            style={{
-              position: "absolute",
-              right: 12,
-              display: "flex",
-              alignItems: "center",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            {rightElement}
-          </div>
-        )}
       </div>
 
       {error ? (

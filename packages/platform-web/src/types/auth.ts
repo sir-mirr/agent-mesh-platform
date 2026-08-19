@@ -19,8 +19,3 @@ export interface User {
   authProvider: "github" | "local";
 }
 
-export interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-}

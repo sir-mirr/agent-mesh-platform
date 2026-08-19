@@ -20,7 +20,6 @@ export interface FingerprintBoxProps {
   label?: string;
   showCopy?: boolean;
   /** What to say when there is none. Named, because "—" alone reads as zero. */
-  absentLabel?: string;
 }
 
 export function FingerprintBox({
@@ -28,7 +27,6 @@ export function FingerprintBox({
   prefix = "sha256:",
   label,
   showCopy = true,
-  absentLabel = "지문 없음 (서버가 이 목록에 싣지 않습니다)",
 }: FingerprintBoxProps) {
   const [copied, setCopied] = useState(false);
 
@@ -44,7 +42,7 @@ export function FingerprintBox({
           data-testid="fingerprint-absent"
           style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "var(--color-text-muted)" }}
         >
-          — {absentLabel}
+          — 지문 없음 (서버가 이 목록에 싣지 않습니다)
         </span>
       </div>
     );

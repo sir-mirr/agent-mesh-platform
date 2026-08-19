@@ -7,8 +7,6 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
 }
 
 export function Button({
@@ -16,8 +14,6 @@ export function Button({
   variant = "primary",
   size = "md",
   isLoading = false,
-  leftIcon,
-  rightIcon,
   disabled,
   style,
   className = "",
@@ -90,11 +86,8 @@ export function Button({
             animation: "spin 0.6s linear infinite",
           }}
         />
-      ) : (
-        leftIcon
-      )}
+        ) : null}
       {children}
-      {!isLoading && rightIcon}
     </button>
   );
 }

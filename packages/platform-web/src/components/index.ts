@@ -3,7 +3,6 @@ export * from "./common/Input.tsx";
 export * from "./common/StatusBadge.tsx";
 export * from "./common/Toast.tsx";
 export * from "./common/GuardedRoute.tsx";
-export { Can } from "@/contexts/RbacContext.tsx";
 
 // Layout
 export * from "./layout/PageHeader.tsx";
