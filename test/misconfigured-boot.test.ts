@@ -20,11 +20,13 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { freePort, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
+const UNITS = join(REPO_ROOT, "ops", "systemd");
 
 let mesh: Mesh | null = null;
 afterAll(() => mesh?.stop());
@@ -79,3 +81,29 @@ test("the http server refuses to start without a JWT secret", async () => {
     expect({ says: said.includes("Refusing to start") }).toEqual({ says: true });
   }
 }, 60_000);
+
+test("a unit refuses to start without the env file it was given", () => {
+  // `EnvironmentFile=-path` is systemd's *optional* form: a missing file is not
+  // an error, the service starts, and every variable in it takes a default.
+  //
+  // For these units that is silence with a wrong answer underneath. The http
+  // server refuses without `JWT_SECRET` — the test above — so it fails loudly.
+  // The hub does not: it starts, writes to the default state directory, and
+  // hands every client `http://127.0.0.1:3000` as the place to upload
+  // attachments, which is right on the machine the quickstart describes and
+  // wrong on the one the unit is for. Nothing observable disagrees until an
+  // attachment fails, later, for somebody else.
+  //
+  // agent-mesh-local-pm measured it: env examples copied as documented, three
+  // variables absent, and only one of the three failures announced itself.
+  const units = readdirSync(UNITS).filter((f) => f.endsWith(".service"));
+  expect(units.length, "no unit files were read, so this test compared nothing").toBeGreaterThan(2);
+
+  const optional = units.flatMap((file) =>
+    readFileSync(join(UNITS, file), "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("EnvironmentFile=-"))
+      .map((line) => `${file}: ${line}`),
+  );
+  expect(optional, "a missing env file would start the service on defaults instead of failing").toEqual([]);
+});

@@ -10,8 +10,8 @@ User=ubuntu
 WorkingDirectory=/srv/agent-mesh-platform
 Environment=BUN_INSTALL=/home/ubuntu/.bun
 Environment=PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin
-EnvironmentFile=-/srv/agent-mesh-lab/env/shared/common.env
-EnvironmentFile=-/srv/agent-mesh-lab/env/shared/hub.env
+EnvironmentFile=/srv/agent-mesh-lab/env/shared/common.env
+EnvironmentFile=/srv/agent-mesh-lab/env/shared/hub.env
 ExecStart=/home/ubuntu/.bun/bin/bun packages/hub/src/main.ts
 ExecStartPost=/srv/agent-mesh-platform/ops/bin/bootstrap-hub-service-identities.sh
 Restart=always

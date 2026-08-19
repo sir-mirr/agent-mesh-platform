@@ -968,6 +968,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
   },
   {
+    id: "env-file-made-optional-again",
+    defect:
+      "`EnvironmentFile=-path` is systemd's optional form: the file may be absent, the service starts anyway, and every variable in it takes a default. The http server refuses without `JWT_SECRET` and fails loudly; the hub starts on the default state directory and hands every client `http://127.0.0.1:3000` for attachment uploads — right on the quickstart's machine, wrong on the unit's, and not visible until an attachment fails for somebody else.",
+    file: "ops/systemd/agent-mesh-hub-lab.service",
+    from: "EnvironmentFile=/srv/agent-mesh-lab/env/shared/hub.env",
+    to: "EnvironmentFile=-/srv/agent-mesh-lab/env/shared/hub.env",
+    suite: "test/misconfigured-boot.test.ts",
+    expect: ["a unit refuses to start without the env file it was given", "start the service on defaults"],
+  },
+  {
     id: "health-counts-the-torn-down",
     defect:
       "`/api/v1/health` counted every row in `agents`, including the soft-deleted ones every other reader filters out, so the one number an operator can get before authenticating only ever rose. Teardown answered `200 soft-deleted` and the count did not move. The route's own docstring says it answers *how many identities exist*, and a torn-down identity does not.",
