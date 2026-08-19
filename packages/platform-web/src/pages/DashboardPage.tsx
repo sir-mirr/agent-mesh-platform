@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
 import { Link } from "react-router-dom";
 import {
   PageHeader,
@@ -154,6 +154,8 @@ function PlatformAdminDashboard() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
   React.useEffect(() => {
     setIsLoading(true);
@@ -165,6 +167,7 @@ function PlatformAdminDashboard() {
     ]).catch((err: unknown) => {
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
     }).finally(() => {
       setIsLoading(false);
     });
@@ -312,12 +315,15 @@ function TenantAdminDashboard() {
   // rule anyway: a refused read is not an empty one.
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
 React.useEffect(() => {
     fetchGroups().then(setGroups).catch((err: unknown) => {
       setGroups([]);
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
     });
     fetchAgents().then(setAgents).catch(() => {
       setAgents([]);
@@ -503,12 +509,15 @@ function GroupAdminDashboard() {
   // rule anyway: a refused read is not an empty one.
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
 React.useEffect(() => {
     fetchGroups().then(setGroups).catch((err: unknown) => {
       setGroups([]);
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
     });
     fetchAgents().then(setAgents).catch(() => {
       setAgents([]);
@@ -639,6 +648,8 @@ function AgentOperatorDashboard() {
    */
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   /**
    * **The third state.** `agents` starts as `[]`, and an empty list drew `0` —
    * so on a slow link this panel said "Agents 0 registered" until the answer
@@ -656,6 +667,7 @@ function AgentOperatorDashboard() {
         setAgents([]);
         setIsError(true);
         setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
       })
       .finally(() => setIsLoading(false));
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));

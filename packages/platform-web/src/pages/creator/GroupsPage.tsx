@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -31,6 +31,8 @@ export function GroupsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
@@ -60,6 +62,7 @@ export function GroupsPage() {
     } catch (err: unknown) {
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
       setGroups([]);
     } finally {
       setIsLoading(false);
@@ -252,7 +255,7 @@ export function GroupsPage() {
         isError={isError}
         errorMessage={
           failure === "refused"
-            ? t("groups.refused", "이 계정은 그룹 목록을 볼 권한이 없습니다 (group.manage).")
+            ? refusedText(t, missing)
             : t("groups.error", "그룹 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
         emptyMessage="현재 등록된 그룹 데이터가 없습니다."

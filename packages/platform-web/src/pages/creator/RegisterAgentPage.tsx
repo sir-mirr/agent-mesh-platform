@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -28,6 +28,8 @@ export function RegisterAgentPage() {
   const [isError, setIsError] = useState<boolean>(false);
   /** `refused` 와 `unreachable` 은 사람에게 다른 문장이다 — 하나는 권한, 하나는 서버다. */
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<PendingAgentRequest | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export function RegisterAgentPage() {
       })
       .catch((err: unknown) => {
         setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
         setIsError(true);
         setPendingList([]);
       })
@@ -378,7 +381,7 @@ curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem \\
           isError={isError}
           errorMessage={
             failure === "refused"
-              ? t("reg.queue.refused", "이 계정은 등록 요청 큐를 볼 권한이 없습니다 (key.approve).")
+              ? refusedText(t, missing)
               : t("reg.queue.error", "대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패).")
           }
           emptyMessage={t("reg.queue.empty", "현재 대기 중인 공개키 제안 데이터가 없습니다.")}

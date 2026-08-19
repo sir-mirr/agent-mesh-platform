@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -15,6 +15,8 @@ export function TenantTrafficPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -29,6 +31,7 @@ export function TenantTrafficPage() {
         console.warn("[TenantTraffic] error:", err);
         setIsError(true);
         setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
         setTenants([]);
       })
       .finally(() => setIsLoading(false));
@@ -111,7 +114,7 @@ export function TenantTrafficPage() {
         isError={isError}
         errorMessage={
           failure === "refused"
-            ? t("tenants.refused", "이 계정은 테넌트 통계를 볼 권한이 없습니다 (tenant.read.stats).")
+            ? refusedText(t, missing)
             : t("tenants.error", "테넌트 통계를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
         emptyMessage="현재 등록된 테넌트 조직 데이터가 없습니다."

@@ -12,10 +12,21 @@ import { ENV } from "@/config/env.ts";
 export class ApiError extends Error {
   /** The HTTP status, or `null` when the request never got an answer. */
   readonly status: number | null;
-  constructor(message: string, status: number | null) {
+  /**
+   * The capability the server named, when it named one.
+   *
+   * § 11.3's refusal carries `capability` and `scope` as fields precisely so a
+   * client does not parse them out of the sentence. Every screen that says
+   * "you may not read this" had the name written into its own copy instead —
+   * six hand-typed guesses that go stale the moment a route's requirement
+   * changes, and the answer was in the response the whole time.
+   */
+  readonly capability: string | null;
+  constructor(message: string, status: number | null, capability: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.capability = capability;
   }
   /** The server answered and refused. A different thing from being unreachable. */
   get refused(): boolean {
@@ -62,7 +73,11 @@ export async function apiClient<T = any>(
       errorData = { error: response.statusText };
     }
     const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-    throw new ApiError(errorMsg, response.status);
+    throw new ApiError(
+      errorMsg,
+      response.status,
+      typeof errorData.capability === "string" ? errorData.capability : null,
+    );
   }
 
   return (await response.json()) as T;
@@ -81,4 +96,28 @@ export type FailureKind = "refused" | "unreachable";
 
 export function failureKind(err: unknown): FailureKind {
   return err instanceof ApiError && err.refused ? "refused" : "unreachable";
+}
+
+/**
+ * What the server said was missing, or `null` when it did not say.
+ *
+ * A screen showing this is repeating the server rather than remembering what a
+ * route used to require.
+ */
+export function refusedCapability(err: unknown): string | null {
+  return err instanceof ApiError ? err.capability : null;
+}
+
+/**
+ * The sentence a screen shows when the server refused, with the server's own
+ * word for what is missing.
+ *
+ * Nine screens had the capability typed into their copy — `(key.approve)`,
+ * `(group.manage)`, `(mailbox.read.depth)` — nine guesses that were right on
+ * the day they were written. § 11.3's refusal carries the name; this repeats it
+ * and says only "not allowed" when the server did not name one.
+ */
+export function refusedText(t: (key: string, fallback: string) => string, capability: string | null): string {
+  const base = t("common.refusedRead", "이 계정에는 이 화면을 볼 권한이 없습니다");
+  return capability ? `${base} (${capability}).` : `${base}.`;
 }

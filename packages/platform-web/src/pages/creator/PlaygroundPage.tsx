@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -52,6 +52,8 @@ export function PlaygroundPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
 
   // Load real agents from backend
@@ -85,6 +87,7 @@ export function PlaygroundPage() {
     }).catch((err: unknown) => {
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
       setAgentsList([]);
     }).finally(() => {
       setIsLoading(false);

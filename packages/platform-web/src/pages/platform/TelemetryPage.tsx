@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -16,6 +16,8 @@ export function TelemetryPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
   const loadTelemetry = () => {
     setIsLoading(true);
@@ -29,6 +31,7 @@ export function TelemetryPage() {
         console.warn("[Telemetry] fetch error:", err);
         setIsError(true);
         setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
         setTelemetry(null);
       })
       .finally(() => setIsLoading(false));

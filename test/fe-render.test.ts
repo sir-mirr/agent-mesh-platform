@@ -2764,7 +2764,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await context.close().catch(() => {});
       }
     })();
-    const saysCapability = (t: string) => /key\.approve|권한이 없습니다|may not read/i.test(t);
+    // The name comes off the wire: the fulfilled body below says `key.approve`
+    // and the screen has to repeat that, not a word typed into its own copy.
+    const saysCapability = (t: string) => t.includes("key.approve");
     const saysSilent = (t: string) => /서버 연결 실패|서버가 답하지|did not answer|연결 실패/i.test(t);
     // The panel's own heading said `(unreachable)` while the body underneath it
     // named the capability — one screen, two answers about the same request.
@@ -2796,7 +2798,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         unreachableSaysCapability: saysCapability(unreachable),
         unreachableSaysSilent: saysSilent(unreachable),
         refusedHeadingContradicts: headingContradicts(refused),
-        usersBlamesPermission: /user\.admit|권한이 없습니다|may not read/i.test(usersUnreachable),
+        usersBlamesPermission: /권한이 없습니다|may not read this screen/i.test(usersUnreachable),
         usersSaysSilent: saysSilent(usersUnreachable),
       },
       "a refusal was drawn as silence, or silence was drawn as a permission problem",

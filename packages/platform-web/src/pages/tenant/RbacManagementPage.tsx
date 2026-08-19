@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -35,6 +35,8 @@ export function RbacManagementPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
 
   const loadGrantsAndMembers = async () => {
     try {
@@ -73,6 +75,7 @@ export function RbacManagementPage() {
       console.warn("[RBAC] fetchGrants error:", err.message);
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
       setMembers([]);
       setAvailableCaps([]);
       setRolesBySubject(null);
@@ -209,7 +212,7 @@ export function RbacManagementPage() {
           isError={isError}
           errorMessage={
             failure === "refused"
-              ? t("rbac.refused", "이 계정은 권한 목록을 볼 수 없습니다 (role.grant).")
+              ? refusedText(t, missing)
               : t("rbac.error", "권한 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
           }
           emptyMessage={t("rbac.empty", "현재 등록된 조직원 데이터가 없습니다.")}

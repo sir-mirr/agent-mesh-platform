@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -17,6 +17,8 @@ export function TenantEgressAclPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real groups and their allowed egress rules on mount
@@ -53,6 +55,7 @@ export function TenantEgressAclPage() {
         console.warn("[Egress] fetchGroups error:", err);
         setIsError(true);
         setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
         setGroups([]);
         setRules({});
       })
@@ -127,7 +130,7 @@ export function TenantEgressAclPage() {
           <div style={{ padding: "24px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
             ⚠️{" "}
             {failure === "refused"
-              ? t("egress.refused", "이 계정은 이그레스 그룹을 볼 권한이 없습니다 (group.manage).")
+              ? refusedText(t, missing)
               : t("egress.error", "이그레스 그룹을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
           </div>
         ) : groups.length === 0 ? (

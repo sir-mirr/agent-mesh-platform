@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { fetchLocalUsers, admitLocalUserApi, type LocalUser } from "@/api/users.ts";
-import { ApiError, failureKind, type FailureKind } from "@/api/client.ts";
+import { ApiError, failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 
 /**
  * Admitting a person, from a screen rather than from `curl`.
@@ -23,6 +23,8 @@ export function UserAdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
+  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
+  const [missing, setMissing] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,6 +42,7 @@ export function UserAdminPage() {
       setUsers([]);
       setIsError(true);
       setFailure(failureKind(err));
+        setMissing(refusedCapability(err));
     } finally {
       setIsLoading(false);
     }
@@ -226,7 +229,7 @@ export function UserAdminPage() {
         isError={isError}
         errorMessage={
           failure === "refused"
-            ? t("users.refused", "이 계정은 계정 목록을 볼 권한이 없습니다 (user.admit).")
+            ? refusedText(t, missing)
             : t("users.error", "계정 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
         emptyMessage={t("users.empty", "No local accounts yet.")}

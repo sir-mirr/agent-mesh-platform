@@ -1643,6 +1643,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-07", "a refusal was drawn as silence"],
   },
   {
+    id: "client-drops-the-capability-the-server-named",
+    defect:
+      "§ 11.3's refusal carries `capability` as a field so a client does not parse it out of a sentence. Dropping it sends every screen back to the name typed into its own copy — nine guesses that were right on the day they were written.",
+    file: "packages/platform-web/src/api/client.ts",
+    from: '      typeof errorData.capability === "string" ? errorData.capability : null,',
+    to: "      null,",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-07", "a refusal was drawn as silence"],
+  },
+  {
     id: "users-blames-permission-when-the-server-is-gone",
     defect:
       "The rendering half of the same mistake: the screen still asks which kind of failure it was and then draws the permission sentence either way. It reads as the more careful message and sends somebody to request a capability that would not have helped.",
