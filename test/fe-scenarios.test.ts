@@ -695,6 +695,17 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     // "everything" — so the refusal it produces is asserted rather than assumed.
     const groups = await fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie } });
     expect(groups.status, "an account holding nothing reached a guarded route").toBe(403);
+
+    // The other side, without which the two assertions above hold for a server
+    // that answers `[]` and `403` to everyone — including one that has lost the
+    // ability to say yes. `I-055` was read as a screen defect; a server stuck
+    // on "no" is the same sentence from the other end and nothing here saw it.
+    const admins = await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie: admin } })).json();
+    const theirGroups = await fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie: admin } });
+    expect(
+      { some: (admins.capabilities ?? []).length > 0, reaches: theirGroups.status },
+      "nobody holds anything and nobody reaches anything — then the emptiness above is not an answer",
+    ).toEqual({ some: true, reaches: 200 });
   }, 20000);
 
   it("[SC-USER-B5] opens a route when the capability is granted, and closes it when taken back", async () => {
@@ -721,6 +732,46 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       { before, after, revoked },
       "granting or revoking did not change what the account may do",
     ).toEqual({ before: 403, after: 200, revoked: 403 });
+  }, 25000);
+
+  it("[SC-USER-B3] refuses everything but the password change, until the password changes", async () => {
+    const admin = await adminCookie();
+    const created = await admit(admin, "b3-carol");
+    const temporary = created.body.temporary_password as string;
+    const locked = (await signIn("b3-carol", temporary)).cookie;
+
+    const reason = async (cookie: string) => {
+      const res = await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } });
+      return { status: res.status, gate: ((await res.json()) as any).must_change_password === true };
+    };
+
+    // **The status is the same on both sides of the change.** After choosing a
+    // password this account is still `approved: false`, so `/api/v1/agents`
+    // answers `403` either way — with a different reason. A scenario that read
+    // the status would call the gate permanent; one that reads the reason sees
+    // it lift. Measured, not assumed: `{"error":"Account pending approval"}`.
+    const before = await reason(locked);
+
+    const changed = await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: locked, "content-type": "application/json" },
+      body: JSON.stringify({ current: temporary, next: "b3-carol-88" }),
+    });
+
+    const stale = await signIn("b3-carol", temporary);
+    const fresh = await signIn("b3-carol", "b3-carol-88");
+    const after = await reason(fresh.cookie);
+
+    expect(
+      {
+        gatedBefore: before.gate,
+        changeAllowed: changed.status,
+        oldPassword: stale.status,
+        newPassword: fresh.status,
+        gatedAfter: after.gate,
+      },
+      "the password gate did not hold, or did not lift once the password was chosen",
+    ).toEqual({ gatedBefore: true, changeAllowed: 200, oldPassword: 401, newPassword: 200, gatedAfter: false });
   }, 25000);
 
   // GL-05 / SC-I18N-01: Localization dictionary completeness & consistency

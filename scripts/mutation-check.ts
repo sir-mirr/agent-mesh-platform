@@ -1590,6 +1590,28 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "password-gate-lets-everybody-through",
+    defect:
+      "The gate is one `if` in one middleware, and deleting it is silent: every route still answers, the account still holds no capabilities, and the only visible change is that somebody who was handed a temporary password can go on using it forever.",
+    file: "packages/http/src/main.ts",
+    from: "  if (payload && mustChangePassword(payload.github_login)) {",
+    to: "  if (false && payload && mustChangePassword(payload.github_login)) {",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-USER-B3", "the password gate did not hold, or did not lift once the password was chosen"],
+  },
+  {
+    id: "auth-me-tells-everyone-they-hold-nothing",
+    defect:
+      "`capabilities: []` for everybody passes any check that only asserts a fresh account is empty. A server that has lost the ability to say yes reads exactly like a server enforcing a rule, and the screen greys out every control for the platform admin too.",
+    file: "packages/http/src/main.ts",
+    from: `    capabilities: grants
+      .listFor(agentsDb(), user.github_login)`,
+    to: `    capabilities: ([] as string[])
+      .concat(grants.listFor(agentsDb(), 'nobody-at-all').map((g) => g.capability))`,
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-USER-B4", "nobody holds anything and nobody reaches anything"],
+  },
+  {
     id: "user-listing-carries-the-secret",
     defect:
       "A person is admitted with one password, once, and the listing is where `once` stops being true. Nothing else in this suite notices a listing that carries password material — the creation response is the only place it is supposed to appear.",
