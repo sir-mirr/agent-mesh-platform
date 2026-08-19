@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -63,6 +63,26 @@ describe("health", () => {
 
     const after = (await (await get("/api/v1/health")).json()).agent_count;
     expect(after, "provisioning two identities did not move the count").toBe(before + 2);
+  });
+
+  test("`agent_count` falls when an identity is torn down", async () => {
+    // **Three motions, and the test above named two.** Provisioning moves it,
+    // logging in does not — and tearing down was never asserted, so the count
+    // went on including identities the operator had removed. Found by
+    // agent-mesh-local-pm walking `running-locally.md` on an isolated stack:
+    // 2 → 3 on provision, still 3 after a `200 soft-deleted`, while the store
+    // itself said alive=2.
+    //
+    // The docstring on the route had the diagnosis already — it says this is
+    // *how many identities exist*, and a torn-down identity does not. A number
+    // that only ever rises is not a count of what is there.
+    const provisioned = (await (await get("/api/v1/health")).json()).agent_count;
+
+    const gone = await teardown(mesh.http, "health-count-a");
+    expect(gone.status, "teardown did not succeed, so this proves nothing").toBe(200);
+
+    const after = (await (await get("/api/v1/health")).json()).agent_count;
+    expect(after, "the identity was torn down and the count did not fall").toBe(provisioned - 1);
   });
 });
 

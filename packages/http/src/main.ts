@@ -906,8 +906,13 @@ async function extractJwt(c: any): Promise<JwtPayload | null> {
  * identities exist* is what they are asking when they ask.
  */
 app.get('/api/v1/health', (c) => {
+  // Alive only. Teardown soft-deletes — the row stays so an audit trail can
+  // still name the identity — and every other reader of this table filters on
+  // it: `hub/db.ts`, the agent routes here, and `store/entitlement.ts`. This
+  // one did not, so a torn-down identity kept being counted as existing, which
+  // is the opposite of what teardown was asked to do.
   const registered = agentsDb()
-    .prepare('SELECT count(*) AS n FROM agents')
+    .prepare('SELECT count(*) AS n FROM agents WHERE deleted_at IS NULL')
     .get() as { n: number }
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000)
 

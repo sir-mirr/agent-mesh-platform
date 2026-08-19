@@ -847,8 +847,13 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`GET /api/v1/health` answered `agent_count` from `agent_registry`, the http server's messaging directory, whose only writers are a legacy JSON import and one that inserts a person. It reported 1 — the `admin` human — on a deployment holding fourteen mesh identities: a number that moves when somebody logs in and not when an agent is provisioned.",
     file: "packages/http/src/main.ts",
-    from: "    .prepare('SELECT count(*) AS n FROM agents')",
-    to: "    .prepare('SELECT 1 AS n')",
+    // Re-anchored when the query gained `WHERE deleted_at IS NULL`. The
+    // manifest reported `not measured` rather than `caught`, which is the one
+    // thing a stale entry must do — but the entry above it changed this line
+    // in the same commit, so the pair is a reminder that editing a guarded line
+    // means checking who else is holding on to it.
+    from: "  const registered = agentsDb()",
+    to: "  const registered = { n: 1 } as { n: number }; void agentsDb; if (false) agentsDb()",
     suite: "test/http.test.ts",
     expect: ["`agent_count` counts mesh identities, and moves when one is provisioned"],
   },
@@ -961,6 +966,16 @@ const MUTATIONS: Mutation[] = [
     to: "    fingerprint: `sha256:${entry.id}`,",
     suite: "test/http.test.ts",
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
+  },
+  {
+    id: "health-counts-the-torn-down",
+    defect:
+      "`/api/v1/health` counted every row in `agents`, including the soft-deleted ones every other reader filters out, so the one number an operator can get before authenticating only ever rose. Teardown answered `200 soft-deleted` and the count did not move. The route's own docstring says it answers *how many identities exist*, and a torn-down identity does not.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare('SELECT count(*) AS n FROM agents WHERE deleted_at IS NULL')",
+    to: "    .prepare('SELECT count(*) AS n FROM agents')",
+    suite: "test/http.test.ts",
+    expect: ["falls when an identity is torn down", "the count did not fall"],
   },
   {
     id: "queue-total-left-to-the-caller",
