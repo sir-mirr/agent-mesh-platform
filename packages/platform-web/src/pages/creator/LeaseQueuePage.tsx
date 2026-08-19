@@ -17,20 +17,31 @@ interface AgentIdentity {
   group: string;
 }
 
-interface LeaseItem {
-  id: string;
-  sender: AgentIdentity;
-  recipient: AgentIdentity;
-  status: "Available" | "Leased" | "Acked";
-  ttlRemaining: number; // in seconds
-  enqueuedAt: string;
+/**
+ * **A mailbox, which is what the route returns.**
+ *
+ * This used to be a `LeaseItem` with a message id, a lease state, a TTL and an
+ * enqueue time — none of which `GET /api/v1/admin/mailbox` carries. It answers
+ * one row per *mailbox* with `pending`, `leased` and `oldest`, and the screen
+ * turned each of those into one invented message: `msg_mb_1`, "Available",
+ * `300s`, `new Date()`. Measured with eleven messages queued for one agent, the
+ * page said **"Available 1건"** and drew a single row.
+ *
+ * `I-062` is the same shape a screen away. What the server did not send is not
+ * drawn, and the counts are the server's sums rather than a row count.
+ */
+interface MailboxRow {
+  identity: string;
+  pending: number;
+  leased: number;
+  oldest: string | null;
 }
 
 import { fetchAdminMailbox } from "@/api/mailbox.ts";
 
 export function LeaseQueuePage() {
   const { t } = useI18n();
-  const [queue, setQueue] = useState<LeaseItem[]>([]);
+  const [queue, setQueue] = useState<MailboxRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
@@ -45,18 +56,14 @@ export function LeaseQueuePage() {
       setFailure(null);
     fetchAdminMailbox()
       .then((res) => {
-        if (res && res.mailboxes && res.mailboxes.length > 0) {
-          setQueue(
-            res.mailboxes.map((m: any, idx: number) => ({
-              id: `msg_mb_${idx + 1}`,
-              sender: { id: "hub", name: t("lease.col.hub", "Mesh hub"), group: "System" },
-              recipient: { id: m.agentId || m.identity || "agent", name: m.agentId || m.identity, group: "General" },
-              status: "Available",
-              ttlRemaining: m.ttlSeconds || 300,
-              enqueuedAt: new Date().toLocaleTimeString(),
-            }))
-          );
-        }
+        setQueue(
+          (res?.mailboxes ?? []).map((m: any) => ({
+            identity: String(m.identity ?? m.agentId ?? ""),
+            pending: Number(m.pending ?? 0),
+            leased: Number(m.leased ?? 0),
+            oldest: m.oldest ?? null,
+          })),
+        );
       })
       .catch((err: unknown) => {
         setIsError(true);
@@ -67,163 +74,72 @@ export function LeaseQueuePage() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  // Countdown timer simulation
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setQueue((prev) =>
-        prev.map((item) => {
-          if (item.status === "Leased" && item.ttlRemaining > 0) {
-            return { ...item, ttlRemaining: item.ttlRemaining - 1 };
-          }
-          return item;
-        })
-      );
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  /**
+   * The countdown ticker is gone with the fake rows.
+   *
+   * It decremented a `ttlRemaining` this screen had invented, once a second,
+   * on rows that stood for mailboxes rather than messages — a clock counting
+   * down something the server never started. Anything the mesh actually leases
+   * is timed by the hub (SPEC § 9); a console that draws its own countdown is
+   * telling the operator a number no one else holds.
+   */
 
-  const handleAck = (id: string) => {
-    setQueue(queue.map((item) => (item.id === id ? { ...item, status: "Acked" } : item)));
-    setToastMessage(`메시지 [${id}] ACK 확인 완료 (메일함 큐에서 해제)`);
-  };
 
-  const handleNack = (id: string) => {
-    setQueue(
-      queue.map((item) =>
-        item.id === id ? { ...item, status: "Available", ttlRemaining: 300 } : item
-      )
-    );
-    setToastMessage(`메시지 [${id}] NACK 반환 (Available 상태로 재적체)`);
-  };
 
-  const leasedCount = queue.filter((i) => i.status === "Leased").length;
-  const availableCount = queue.filter((i) => i.status === "Available").length;
 
+  // The server's sums, not a count of rows. Eleven messages in one mailbox is
+  // eleven, and it used to be one.
+  const leasedCount = queue.reduce((n, m) => n + m.leased, 0);
+  const availableCount = queue.reduce((n, m) => n + m.pending, 0);
+
+  /**
+   * **Four columns, all of them the route's.**
+   *
+   * The table used to carry a message id, a `from → to` route, a lease state
+   * badge and a 300-second countdown bar — none of which the server sends. It
+   * also carried three buttons (Lease 획득 · ACK 승인 · NACK 반환) that called no
+   * route at all: each one edited local state, so the row changed and the mesh
+   * did not. Measured with eleven queued messages, the screen said "Available
+   * 1건" and offered to lease a message that does not exist as a row anywhere.
+   *
+   * They are gone rather than disabled, and the reason is written here so the
+   * next person does not restore them from the shape of the file: leasing is
+   * something a worker does over the agent transport (SPEC § 9), not something
+   * an operator console can do on that worker's behalf.
+   */
   const columns = [
     {
-      key: "id",
-      header: t("lease.col.id", "Message ID"),
-      render: (item: LeaseItem) => (
-        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "0.85rem" }}>
-          {item.id}
+      key: "identity",
+      header: t("lease.col.identity", "메일함"),
+      render: (item: MailboxRow) => (
+        <span data-testid={`mailbox-${item.identity}`} style={{ fontWeight: 700, fontSize: "0.85rem" }}>
+          📥 {item.identity}
         </span>
       ),
     },
     {
-      key: "route",
-      header: t("lease.col.route", "Route (from → to)"),
-      render: (item: LeaseItem) => (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem" }}>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
-              🤖 {item.sender.name}
-            </span>
-            <code style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-              {item.sender.id}
-            </code>
-          </div>
-          <span style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.95rem" }}>➔</span>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
-              📥 {item.recipient.name}
-            </span>
-            <code style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-              {item.recipient.id}
-            </code>
-          </div>
-        </div>
+      key: "pending",
+      header: t("lease.col.pending", "대기"),
+      render: (item: MailboxRow) => (
+        <span data-testid={`pending-${item.identity}`} style={{ fontFamily: "var(--font-mono)" }}>
+          {item.pending}
+        </span>
       ),
     },
     {
-      key: "status",
-      header: t("lease.col.state", "Lease state"),
-      render: (item: LeaseItem) => (
-        <StatusBadge
-          label={
-            item.status === "Leased"
-              ? `Leased (${item.ttlRemaining}s)`
-              : item.status === "Available"
-              ? "Available"
-              : "Acked"
-          }
-          status={
-            item.status === "Leased"
-              ? "leased"
-              : item.status === "Available"
-              ? "pending"
-              : "success"
-          }
-          size="sm"
-        />
+      key: "leased",
+      header: t("lease.col.leased", "임대 중"),
+      render: (item: MailboxRow) => (
+        <span style={{ fontFamily: "var(--font-mono)" }}>{item.leased}</span>
       ),
     },
     {
-      key: "ttl",
-      header: t("lease.col.count", "300s countdown"),
-      render: (item: LeaseItem) => (
-        <div style={{ width: 140 }}>
-          <div
-            style={{
-              height: 6,
-              background: "var(--color-bg-surface-sub)",
-              borderRadius: "var(--radius-full)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${(item.ttlRemaining / 300) * 100}%`,
-                background:
-                  item.ttlRemaining < 60
-                    ? "var(--color-danger)"
-                    : "var(--color-primary)",
-              }}
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "actions",
-      header: t("lease.col.batch", "Atomic batch action"),
-      align: "right" as const,
-      render: (item: LeaseItem) => (
-        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          {item.status === "Leased" && (
-            <>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => handleAck(item.id)}
-              >
-                ACK 승인
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => handleNack(item.id)}
-              >
-                NACK 반환
-              </Button>
-            </>
-          )}
-          {item.status === "Available" && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setQueue(
-                  queue.map((q) =>
-                    q.id === item.id ? { ...q, status: "Leased", ttlRemaining: 300 } : q
-                  )
-                );
-              }}
-            >
-              Lease 획득
-            </Button>
-          )}
-        </div>
+      key: "oldest",
+      header: t("lease.col.oldest", "가장 오래된 것"),
+      render: (item: MailboxRow) => (
+        <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+          {item.oldest ?? t("common.unmeasured", "— 미측정")}
+        </span>
       ),
     },
   ];
@@ -288,27 +204,28 @@ export function LeaseQueuePage() {
       {/* Telemetry row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <TelemetryCard
-          label="임대 중인 메시지 (Leased)"
-          currentValue={isError ? "측정 불가" : `${leasedCount}건`}
-          maxLabel="총 적체"
+          label={t("lease.kpi.leased", "임대 중인 메시지")}
+          currentValue={isError ? t("common.unmeasurable", "측정 불가") : String(leasedCount)}
+          maxLabel={t("lease.total", "총 적체")}
           percentage={isError ? 0 : (leasedCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-leased)"
           statusText={isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("lease.down", "서버 연결 불가")) : t("lease.working", "워커가 처리 중 (300s TTL 카운트다운)")}
         />
         <TelemetryCard
-          label="대기 중인 메시지 (Available)"
-          currentValue={isError ? "측정 불가" : `${availableCount}건`}
-          maxLabel="총 적체"
+          label={t("lease.kpi.available", "대기 중인 메시지")}
+          currentValue={isError ? t("common.unmeasurable", "측정 불가") : String(availableCount)}
+          valueTestId="lease-available"
+          maxLabel={t("lease.total", "총 적체")}
           percentage={isError ? 0 : (availableCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-warning)"
-          statusText={isError ? "서버 연결 불가" : "즉시 Lease 획득 가능"}
+          statusText={isError ? t("lease.down", "서버 연결 불가") : t("lease.ready", "워커가 가져갈 수 있는 상태")}
         />
       </div>
 
       <DataTable
         columns={columns}
         data={queue}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: MailboxRow) => item.identity}
         isLoading={isLoading}
         isError={isError}
         errorMessage={
@@ -316,7 +233,7 @@ export function LeaseQueuePage() {
             ? refusedText(t, missing)
             : t("lease.error", "메일함 리스 큐를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
-        emptyMessage="현재 대기 중인 메일박스 메시지 데이터가 없습니다."
+        emptyMessage={t("lease.empty", "대기 중인 메일함이 없습니다.")}
       />
     </div>
   );

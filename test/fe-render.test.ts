@@ -2709,6 +2709,69 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-INVENT-06 — the lease screen counts what the server queued, not its own rows.
+   *
+   * `GET /api/v1/admin/mailbox` answers one row per mailbox with `pending`,
+   * `leased` and `oldest`. The screen turned each row into one invented message
+   * — `msg_mb_1`, state "Available", a 300-second TTL, an enqueue time of
+   * `new Date()` — and counted those. Measured on the standing stack with
+   * eleven messages queued for one agent: **"Available 1건"**, one row, and
+   * three buttons (Lease · ACK · NACK) that called no route at all.
+   *
+   * This scenario only became possible once something was queued. Until then
+   * the screen said `0` and the route said `0`, and `0 === 0` is the comparison
+   * that cannot fail.
+   */
+  it("[SC-INVENT-06] shows the queue depth the route reported, not a count of rows", async () => {
+    // Queue for an identity nothing is connected to, through the hub the way an
+    // agent would — the http server has no route that enqueues.
+    const identity = `queued-${Date.now().toString(36).slice(-5)}`;
+    const provisioned = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity, type: "service", description: "never connects" }),
+    });
+    expect(provisioned.status, "the hub did not provision the recipient").toBe(201);
+    // **Two tables, § 9.1.** The hub knows this identity; the http server's own
+    // registry does not, and `/api/v1/messages` refuses `404` until it does —
+    // measured, three times, before this line existed. `SC-INVENT-03` seeds the
+    // same way two hundred lines below.
+    const db = openTestDb(path.join(mesh.stateDir, "agent-mesh.db"));
+    db.prepare("INSERT OR IGNORE INTO agent_registry (id, name, type, approved) VALUES (?, ?, 'agent', 1)").run(identity, identity);
+    db.close();
+
+    const sent: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await fetch(`${mesh.http.url}/api/v1/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `mesh_token=${jwtToken}` },
+        body: JSON.stringify({ to: identity, text: `SC-INVENT-06 ${i}` }),
+      });
+      sent.push(res.status);
+    }
+    const wire = (await (
+      await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, { headers: { cookie: `mesh_token=${jwtToken}` } })
+    ).json()) as any;
+    const depth = (wire.mailboxes ?? []).reduce((n: number, m: any) => n + (m.pending ?? 0), 0);
+
+    // If nothing queued, this scenario would be comparing 0 against 0.
+    expect({ sent: [...new Set(sent)], depth: depth > 1 }, "nothing was queued, so the comparison below cannot fail")
+      .toEqual({ sent: [201], depth: true });
+
+    await withPage("/creator/lease-queue", async ({ page }) => {
+      const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const rowDepth = await page.locator(`[data-testid="pending-${identity}"]`).textContent();
+      // **The card, not the page.** Reading `text.includes(depth)` passed while
+      // the KPI counted rows, because the row beside it carried the same digit.
+      const kpi = await page.locator('[data-testid="lease-available"]').textContent();
+      expect(
+        { rowDepth: Number(rowDepth), kpi: Number(kpi), inventsIds: /msg_mb_/.test(text) },
+        "the screen counted its rows, or drew a message id the server never sent",
+      ).toEqual({ rowDepth: depth, kpi: depth, inventsIds: false });
+    });
+  }, 30000);
+
+  /**
    * SC-CAP-08 — an irreversible control is not offered to a session that cannot use it.
    *
    * Measured on the running product with a member holding nothing: the Teardown

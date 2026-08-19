@@ -3,6 +3,8 @@ import React from "react";
 export interface TelemetryCardProps {
   label: string;
   currentValue: string | number;
+  /** 이 카드의 숫자만 집어서 재고 싶을 때. 본문 어딘가에 같은 숫자가 있어도 이건 이 카드다. */
+  valueTestId?: string;
   maxLabel?: string | undefined;
   percentage: number; // 0 to 100
   barColor?: string | undefined;
@@ -12,6 +14,7 @@ export interface TelemetryCardProps {
 export function TelemetryCard({
   label,
   currentValue,
+  valueTestId,
   maxLabel,
   percentage,
   barColor = "var(--color-primary)",
@@ -56,7 +59,7 @@ export function TelemetryCard({
             color: "var(--color-text-primary)",
           }}
         >
-          {currentValue} {maxLabel && <span style={{ color: "var(--color-text-muted)", fontSize: "0.75rem" }}>/ {maxLabel}</span>}
+          <span data-testid={valueTestId}>{currentValue}</span> {maxLabel && <span style={{ color: "var(--color-text-muted)", fontSize: "0.75rem" }}>/ {maxLabel}</span>}
         </span>
       </div>
 

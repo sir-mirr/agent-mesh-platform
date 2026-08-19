@@ -1653,6 +1653,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-08", "not in the session's language"],
   },
   {
+    id: "lease-screen-counts-rows-not-messages",
+    defect:
+      "One mailbox holding eleven messages drawn as one waiting message. The route answers a summary per mailbox; counting rows turns a backlog into a single item, and the number is plausible enough that nobody re-reads it.",
+    file: "packages/platform-web/src/pages/creator/LeaseQueuePage.tsx",
+    from: "  const availableCount = queue.reduce((n, m) => n + m.pending, 0);",
+    to: "  const availableCount = queue.length;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-06", "counted its rows"],
+  },
+  {
+    id: "lease-screen-invents-a-message-id",
+    defect:
+      "`msg_mb_1` — an identifier for a message the server never sent, on a screen whose subject is messages. An operator reading it believes there is a message with that id.",
+    file: "packages/platform-web/src/pages/creator/LeaseQueuePage.tsx",
+    from: "          📥 {item.identity}",
+    to: "          📥 msg_mb_1 · {item.identity}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-06", "drew a message id the server never sent"],
+  },
+  {
     id: "teardown-offered-to-a-session-that-cannot-use-it",
     defect:
       "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",
