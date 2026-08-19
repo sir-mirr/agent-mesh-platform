@@ -1137,6 +1137,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["an egress denial arrives as a number that went up"],
   },
   {
+    id: "rate-limit-never-counted",
+    defect:
+      "The second source the same route reports, and it can break alone. `rate_limited` sums the hub limiters' own refusals rather than `recordRefusal`, so the egress guard beside it would stay green while this number never moved — a different field, read from the same response.",
+    file: "packages/http/src/behaviour-metrics.ts",
+    from: "{ value: (s.limits.limiters ?? []).reduce((n, l) => n + (l.refusals ?? 0), 0) },",
+    to: "{ value: 0 },",
+    suite: "test/behaviour-metrics.test.ts",
+    expect: ["a rate-limited request arrives as a number that went up"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

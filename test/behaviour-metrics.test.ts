@@ -90,3 +90,48 @@ test("an egress denial arrives as a number that went up", async () => {
   // restarted between them would reset to zero and read as a fall.
   expect(after.counting_since).toBe(before.counting_since);
 }, 60_000);
+
+/**
+ * And the other counter the same route reports.
+ *
+ * `rate_limited` sums every limiter's refusals, so the cheapest wire to prove
+ * is the provisioning one — plain POSTs, no signature preimage to rebuild here
+ * from the one in `ratelimit.test.ts`. What is being checked is not that the
+ * limiter works, which that file covers over the wire, but that its count
+ * reaches the screen's route: a different source from the refusals above, read
+ * through the same hub response, and able to break on its own.
+ *
+ * Its own mesh, with the limit lowered to something a test can reach. The
+ * shared one leaves provisioning generous on purpose.
+ */
+test("a rate-limited request arrives as a number that went up", async () => {
+  const strict = await startMesh({
+    env: { AGENT_MESH_PROVISION_BURST: "2", AGENT_MESH_PROVISION_PER_MINUTE: "1" },
+  });
+  try {
+    const cookie = await loginAsAdmin(strict.http);
+    const read = async () => {
+      const res = await fetch(`${strict.http.url}/api/v1/admin/telemetry/behaviour`, { headers: { cookie } });
+      expect({ status: res.status }).toEqual({ status: 200 });
+      return (await res.json()) as { rate_limited: { value: number | null } };
+    };
+
+    const before = await read();
+    expect({ read: before.rate_limited.value !== null }).toEqual({ read: true });
+
+    const seen: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const res = await provision(strict.hub, `rl-metric-${i}`, "service");
+      seen.push(res.status);
+    }
+    // Asserted, so a run where nothing was refused reports itself rather than
+    // reporting the wiring broken.
+    expect(seen, `every provisioning was served: ${seen.join(", ")}`).toContain(429);
+
+    const after = await read();
+    expect({ counted: (after.rate_limited.value ?? 0) > (before.rate_limited.value ?? 0) })
+      .toEqual({ counted: true });
+  } finally {
+    strict.stop();
+  }
+}, 60_000);
