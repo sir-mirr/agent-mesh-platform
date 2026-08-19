@@ -319,6 +319,59 @@ describe("running-locally's proxy blocks", () => {
  * rather than shrinking: no paths found is a failure, because a green run over
  * an empty set is what this whole file exists to refuse.
  */
+/**
+ * The env layout can start what the document starts.
+ *
+ * `ops/env/shared/*.env.example` is the configuration an administrator copies,
+ * and it did not name three of the variables § 3 and § 4 hand to the same two
+ * services. Measured by starting a stack from exactly that set:
+ *
+ *   `JWT_SECRET` absent      the http server refuses to start — correctly, and
+ *                            about a variable nothing here told anyone to set
+ *   `AGENT_MESH_BLOB_BASE_URL` absent
+ *                            the hub advertised `http://127.0.0.1:3000` for
+ *                            uploads while the http server was elsewhere.
+ *                            Nothing refuses; an attachment fails later, for
+ *                            somebody else
+ *   `AGENT_MESH_PROXY_IDENTITIES` absent
+ *                            the first message sent from the admin UI came back
+ *                            `status: "failed"`
+ *
+ * The denominator is the document's own start commands rather than a list kept
+ * here, because a list here would have been written from the same reading of
+ * the same files that produced the gap.
+ */
+describe("the env examples can start what the document starts", () => {
+  const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
+  const ENV_DIR = join(REPO_ROOT, "ops", "env", "shared");
+
+  /** Assignments in the fenced block that actually launches this service. */
+  function documentedFor(service: "hub" | "http"): string[] {
+    const blocks = [...DOC.matchAll(/```bash\n([\s\S]*?)```/g)]
+      .map((m) => m[1]!)
+      .filter((b) => b.includes(`bun packages/${service}/src/main.ts`));
+    return [...new Set(blocks.flatMap((b) => [...b.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]!)))].sort();
+  }
+
+  function named(file: string): Set<string> {
+    return new Set(
+      [...readFileSync(join(ENV_DIR, file), "utf8").matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]!),
+    );
+  }
+
+  for (const [service, file] of [["hub", "hub.env.example"], ["http", "http.env.example"]] as const) {
+    test(`${file} names every variable the document gives the ${service}`, () => {
+      const wanted = documentedFor(service);
+      // A block that stopped matching would make this compare an empty set and
+      // agree with an env file that names nothing at all.
+      expect(wanted.length, `no start command found for the ${service} in running-locally.md`).toBeGreaterThan(2);
+
+      const have = new Set([...named(file), ...named("common.env.example")]);
+      expect(wanted.filter((v) => !have.has(v)), `${file} cannot start the ${service} as documented`).toEqual([]);
+    });
+  }
+});
+
 describe("running-locally's proxy blocks cover the front end", () => {
   const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
   const WEB = join(REPO_ROOT, "packages", "platform-web", "src");

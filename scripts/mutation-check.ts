@@ -1310,6 +1310,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["no routes read out of main.ts — the extraction broke"],
   },
   {
+    id: "env-example-jwt-secret",
+    defect:
+      "`ops/env/shared/http.env.example` is the configuration an administrator copies, and it did not name `JWT_SECRET`. A stack started from exactly that set refuses to come up — correctly, since signing sessions with a default would let anyone who has read the source forge them — but about a variable nothing in the env layout told them to set. Measured.",
+    file: "ops/env/shared/http.env.example",
+    from: "JWT_SECRET=replace-me-with-a-long-random-string",
+    to: "#JWT_SECRET=replace-me-with-a-long-random-string",
+    suite: "test/readme.test.ts",
+    expect: ["http.env.example cannot start the http as documented", "JWT_SECRET"],
+  },
+  {
+    id: "env-example-blob-base",
+    defect:
+      "The same file set for the hub omitted `AGENT_MESH_BLOB_BASE_URL`, and unset it falls back to `http://127.0.0.1:3000`. Measured on a stack started from these files with the http server elsewhere: the hub advertised an upload address with nothing behind it. Nothing refuses — the first thing that disagrees is an attachment, later, for somebody else.",
+    file: "ops/env/shared/hub.env.example",
+    from: "AGENT_MESH_BLOB_BASE_URL=http://127.0.0.1:3200",
+    to: "#AGENT_MESH_BLOB_BASE_URL=http://127.0.0.1:3200",
+    suite: "test/readme.test.ts",
+    expect: ["hub.env.example cannot start the hub as documented", "AGENT_MESH_BLOB_BASE_URL"],
+  },
+  {
+    id: "env-example-denominator",
+    defect:
+      "The check above takes its list from the document's own start commands. A list written into the test would have been written from the same reading of the same files that produced the gap, and a block that stops matching makes it compare an empty set and agree with an env file naming nothing.",
+    file: "test/readme.test.ts",
+    from: ".filter((b) => b.includes(`bun packages/${service}/src/main.ts`));",
+    to: ".filter(() => false);",
+    suite: "test/readme.test.ts",
+    expect: ["no start command found for the hub in running-locally.md"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
