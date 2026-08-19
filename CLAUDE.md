@@ -92,8 +92,18 @@ curl -s -X POST http://localhost:3300/api/mail \
 ```
 
 Bodies are plain strings up to 10 MB, so a diff, a schema or a full error
-transcript can go in one. Response shape is
-`{id, from, to, body, createdAt}`.
+transcript can go in one. The reply is `201` with the created message
+**wrapped**, which is not what this file said until it was measured:
+
+```json
+{"success": true,
+ "message": {"id": 892, "from": "…", "to": "…", "body": "…",
+             "createdAt": 1787110511810, "readAt": null, "isRead": false}}
+```
+
+`createdAt` is epoch milliseconds, not ISO. Code that reads `.id` off the top
+level gets `undefined` and reports a send it cannot point at — the id is at
+`message.id`.
 
 ### What is worth sending
 
