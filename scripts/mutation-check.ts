@@ -1200,6 +1200,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["does not use a bunx flag that bunx reads as a package"],
   },
   {
+    id: "doc-points-at-a-merged-branch",
+    defect:
+      "§ 8 told readers `packages/platform-web` is not on `main` and to take it from `fe-admin-requirements`, after that branch had been merged and `main` had gone 51 commits past it. **A command that dies stops a reader; a wrong location lets them finish** — everything succeeded on a front end without the last three weeks in it. agent-mesh-local-pm lost a piece of work to it: they built a screen the inventory listed as missing, reached a clean typecheck, and found on the first adversarial check that `main` already had it, better tested.",
+    file: "docs/running-locally.md",
+    from: "git fetch origin\nbun install --frozen-lockfile",
+    to: "git fetch origin\ngit worktree add /tmp/fe origin/fe-admin-requirements\ncd /tmp/fe && bun install --frozen-lockfile",
+    suite: "test/readme.test.ts",
+    expect: ["does not send a reader to a ref main already contains", "fe-admin-requirements"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

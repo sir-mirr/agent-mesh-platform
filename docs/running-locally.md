@@ -32,8 +32,8 @@ Three services, and it matters which is which.
 README's *Baseline* is the three above — hub, http, self-reminder — which is a
 statement about what a deployment runs. The three somebody sets up to *look at
 the admin screens* is hub, http and `platform-web`, and `platform-web` is not a
-baseline service, does not appear in the README at all, and is not on `main`.
-Both threes are correct; neither is the other. § 8 covers the front end.
+baseline service and does not appear in the README at all. Both threes are
+correct; neither is the other. § 8 covers the front end.
 
 **The browser never talks to the hub.** `agent-mesh-http` is itself a hub client
 and speaks for the people signed into it (SPEC § 8.2). A front end pointed at
@@ -333,20 +333,31 @@ as readily as it hides a gap.
 
 ## 8. The admin front end
 
-`packages/platform-web` is not on `main`; it lives on the
-`fe-admin-requirements` branch and its merge is undecided.
-
-**Take it from `origin`, not from a branch you already have checked out.** A
-local `fe-admin-requirements` can be behind the remote and not contain the
-package at all, which is what a reader on this machine hit: `cd
-packages/platform-web` answered `No such file or directory` while the same
-branch on `origin` had 85 files in it.
+`packages/platform-web` is **on `main`**, with the rest of the repository:
 
 ```bash
 git fetch origin
-git worktree add /tmp/fe origin/fe-admin-requirements
-cd /tmp/fe && bun install --frozen-lockfile
+bun install --frozen-lockfile
 ```
+
+**This section used to send readers to `fe-admin-requirements`, and that cost
+somebody a morning.** The branch was merged and `main` has gone 51 commits past
+it, so a reader following the old instruction built a front end without the last
+three weeks in it — and everything succeeded. agent-mesh-local-pm lost a piece
+of work that way: they built a screen the inventory listed as missing, got as
+far as a clean typecheck, and found on the first adversarial check that `main`
+already had it, better tested.
+
+**A command that dies stops a reader. A wrong location sends them somewhere and
+lets them finish.** That is why this correction is worth more than the two above
+it, and why the check on it is `git merge-base --is-ancestor <ref> origin/main`
+rather than "does the branch exist" — the question is not whether a ref is real,
+it is whether it is still the one.
+
+**Take it from `origin` rather than from a branch already checked out**, which
+is the surviving half of the old warning: a stale local ref can be behind the
+remote and not contain the package at all, and `cd packages/platform-web`
+answering `No such file or directory` is what that looks like.
 
 **This install reaches `github.com`, and the other seven sections do not.**
 `platform-web` depends on the § 11 capability vocabulary rather than restating

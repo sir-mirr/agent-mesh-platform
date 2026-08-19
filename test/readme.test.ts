@@ -338,4 +338,35 @@ describe("running-locally's commands", () => {
       .map((m) => m[0].trim());
     expect(hardcoded, "a proxy target names a port instead of $HTTP_PORT").toEqual([]);
   });
+
+  test("does not send a reader to a ref main already contains", async () => {
+    // **A command that dies stops a reader; a wrong location lets them
+    // finish.** § 8 pointed at `fe-admin-requirements` after it was merged and
+    // `main` had gone 51 commits past it, so anyone following built a front end
+    // without the last three weeks in it and everything succeeded.
+    // agent-mesh-local-pm lost a piece of work that way — built a screen the
+    // inventory listed as missing, reached a clean typecheck, and found `main`
+    // already had it.
+    //
+    // The question is not whether a ref exists. It is whether it is still the
+    // one, which is what `merge-base --is-ancestor` answers and a spell-check
+    // of branch names does not.
+    const { spawnSync } = await import("node:child_process");
+    const refs = [...new Set([...DOC.matchAll(/\borigin\/([A-Za-z0-9._\/-]+)/g)].map((m) => m[1]!))];
+    expect(refs.length, "no refs found — the section's shape changed").toBeGreaterThan(0);
+
+    const superseded = refs.filter((ref) => {
+      if (ref === "main") return false;
+      const exists = spawnSync("git", ["rev-parse", "--verify", `origin/${ref}`], { cwd: REPO_ROOT });
+      // A ref this clone does not have says nothing either way.
+      if (exists.status !== 0) return false;
+      const merged = spawnSync(
+        "git",
+        ["merge-base", "--is-ancestor", `origin/${ref}`, "origin/main"],
+        { cwd: REPO_ROOT },
+      );
+      return merged.status === 0;
+    });
+    expect(superseded, "the document points at a branch main already contains").toEqual([]);
+  });
 });
