@@ -1184,7 +1184,10 @@ const MUTATIONS: Mutation[] = [
     from: 'export API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT"',
     to: 'export API_PROXY_TARGET="http://127.0.0.1:3000"',
     suite: "test/readme.test.ts",
-    expect: ["every vite it starts is told where the backend is", "a proxy target names a port instead of"],
+    // `"declared"` and not the hardcoded-port message: the declaration check
+    // throws first, so the second assertion never runs and its message never
+    // appears. Naming it would have demanded a line the run cannot reach.
+    expect: ["every vite it starts is told where the backend is", '"declared": false'],
   },
   {
     id: "bunx-cwd-in-a-command",
