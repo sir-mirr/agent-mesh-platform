@@ -2308,6 +2308,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/capability-prose.test.ts",
     expect: ["every namespaced name shown to a user is in the contract"],
   },
+  {
+    id: "versioning-walk-finds-packages",
+    defect:
+      "Every assertion in `versioning.test.ts` is a loop over `manifests()`, and a loop over an empty list passes. The walk was already derived — this is the floor under it, added while fixing the sibling case in `capability-prose`, because `0 manifests, all declaring the right version` is the same green as the truth.",
+    file: "test/versioning.test.ts",
+    from: "const found = [{ name: \"root\"",
+    to: "const found: Array<{ name: string; path: string; json: Record<string, any> }> = []; const unused = [{ name: \"root\"",
+    suite: "test/versioning.test.ts",
+    expect: ["the walk found the packages, rather than none"],
+  },
+  {
+    id: "versioning-manifest-that-will-not-parse",
+    defect:
+      "`catch {}` around `readJson` was commented `Not a package directory` — true for a missing file, false for a malformed or unreadable one, which was dropped from the version check in silence. The denominator shrinking without saying so, on the check whose whole job is that every package agrees on one number. The fix distinguishes ENOENT; this mutation makes a real manifest unparseable and the run must fail rather than skip it.",
+    file: "packages/store/package.json",
+    from: "\"name\": \"@agent-mesh/store\",",
+    to: "\"name\" \"@agent-mesh/store\",",
+    suite: "test/versioning.test.ts",
+    expect: ["JSON Parse error"],
+  },
 ];
 
 /**

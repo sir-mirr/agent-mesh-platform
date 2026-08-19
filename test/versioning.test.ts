@@ -46,14 +46,25 @@ function manifests(): Array<{ name: string; path: string; json: Record<string, a
     const path = join(packagesDir, entry, "package.json");
     try {
       found.push({ name: entry, path, json: readJson(path) });
-    } catch {
-      // Not a package directory.
+    } catch (err) {
+      // A directory with no manifest is not a package. Anything else — a
+      // malformed manifest, a permission error — is a package this check then
+      // silently stops covering, which is the same green as one that passes.
+      if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
     }
   }
   return found;
 }
 
 describe("§ 13 version declarations", () => {
+  test("the walk found the packages, rather than none", () => {
+    // Every assertion below is a loop over `manifests()`, and a loop over an
+    // empty list passes.
+    const names = manifests().map((m) => m.name);
+    expect(names.length, "no manifests found — every check below is vacuous").toBeGreaterThan(4);
+    expect(names, "the workspace root is the one entry that is not walked").toContain("root");
+  });
+
   test("every manifest declares the SPEC version it targets", () => {
     // SHOULD in § 13, and treated as MUST here: this repository is the
     // reference implementation, so an undeclared version is a client reading a
