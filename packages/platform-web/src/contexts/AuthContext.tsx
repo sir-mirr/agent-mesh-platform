@@ -8,7 +8,6 @@ interface AuthContextType {
   loginWithLocal: (id: string, pass: string, role?: UserRole) => Promise<void>;
   loginWithGitHub: () => void;
   logout: () => void;
-  switchRole: (role: UserRole) => void;
 }
 
 import { ALL_CAPABILITIES } from "@/types/auth.ts";
@@ -173,16 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("agent_mesh_user");
   };
 
-  const switchRole = (role: UserRole) => {
-    if (!user) return;
-    setUser({
-      ...user,
-      role,
-      // The label changes; what the session may do does not. Capabilities come
-      // from the server, and a control in the browser cannot grant any.
-      capabilities: user.capabilities,
-    });
-  };
+
 
   return (
     <AuthContext.Provider
@@ -193,7 +183,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithLocal,
         loginWithGitHub,
         logout,
-        switchRole,
       }}
     >
       {children}

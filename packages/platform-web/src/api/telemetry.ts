@@ -104,7 +104,13 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   return {
     active_sockets: activeSockets,
     total_agents: totalAgents,
-    total_messages: mailbox?.total_queued != null ? mailbox.total_queued : (Array.isArray(mailbox?.mailboxes) && mailbox.mailboxes.length > 0 ? mailbox.mailboxes.reduce((acc: number, m: any) => acc + (m.depth || 0), 0) : null),
+    // `fetchAdminMailbox` has already summed the route's own `pending`
+    // column and left `null` for "the route did not answer with a list".
+    // Re-deriving it here is what produced the second copy of the defect:
+    // both this line and the one it called read `total_queued` and `depth`,
+    // two names no route sends, so the panel showed `0` messages queued on a
+    // mesh with a backlog.
+    total_messages: mailbox?.total_queued ?? null,
     health_status: health?.status ?? undefined,
     server_uptime_seconds: health?.uptime ?? undefined,
     build_version: health?.version ?? undefined,

@@ -1177,6 +1177,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["one id on two `it(` lines is two scenarios that cannot disagree", "SC-WRITE-07 at fe-render.test.ts"],
   },
   {
+    id: "mailbox-depth-name",
+    defect:
+      "`GET /api/v1/admin/mailbox` answers rows aliased `identity`, `pending`, `leased`, `oldest`. The front end declared `depth`, `unacked_count`, `oldest_message_ts` and `leased_count` — four names nothing on this platform sends — and summed `depth`, so the total was `0` on an idle mesh and on a backed-up one alike. The dashboard drew that `0` as the queue.",
+    file: "packages/platform-web/src/api/mailbox.ts",
+    from: "acc + (m.pending ?? 0)",
+    to: "acc + ((m as any).depth ?? 0)",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-03", "states the queue the mailbox route reported", "expect(received).toContain(expected)"],
+  },
+  {
+    id: "queue-zero-for-unknown",
+    defect:
+      "`?? 0` on the queue card folded three states into one digit: an idle mesh, a backed-up one, and a route that never answered all read `0`. A person watching for a backlog cannot tell a quiet queue from a screen that failed to ask.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: 'value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}',
+    to: "value={String(mailbox?.total_queued ?? 0)}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-04", "a refused route was drawn as an empty queue"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",

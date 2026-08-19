@@ -19,7 +19,7 @@ import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 
 export function DashboardPage() {
-  const { user, switchRole } = useAuth();
+  const { user } = useAuth();
   const { t } = useI18n();
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -467,7 +467,11 @@ function GroupAdminDashboard() {
         />
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
-          value={String(mailbox?.total_queued ?? 0)}
+          // `?? 0` sat on top of two dead reads, so this card said `0` queued
+          // whether the mesh was idle, backed up, or unreachable. `null` now
+          // means the route did not answer with a list of mailboxes, and the
+          // screen says so in the words /platform/telemetry already uses.
+          value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
           icon="📥"
@@ -586,7 +590,11 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
-          value={String(mailbox?.total_queued ?? 0)}
+          // `?? 0` sat on top of two dead reads, so this card said `0` queued
+          // whether the mesh was idle, backed up, or unreachable. `null` now
+          // means the route did not answer with a list of mailboxes, and the
+          // screen says so in the words /platform/telemetry already uses.
+          value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"

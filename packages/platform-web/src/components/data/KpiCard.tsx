@@ -22,6 +22,9 @@ export function KpiCard({
 }: KpiCardProps) {
   return (
     <div
+      // The label, so a scenario can name the card it is reading. Locating a
+      // KPI by surrounding text matches whatever else shares the container.
+      data-kpi={label}
       style={{
         background: "var(--color-bg-surface)",
         border: "1px solid var(--color-border)",

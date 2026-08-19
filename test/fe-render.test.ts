@@ -2640,6 +2640,85 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       .toContain("서명 있음");
   }, 45_000);
 
+  /**
+   * SC-INVENT-03 — the queue the route reported, not a sum of a field it never sent.
+   *
+   * `/api/v1/admin/mailbox` answers rows aliased `identity`, `pending`, `leased`,
+   * `oldest`. The front end declared `depth`, `unacked_count`, `oldest_message_ts`
+   * and `leased_count`, summed `depth`, and got `0` — then read `data.total_queued`
+   * first, a name no route sends either, so both branches were dead. The dashboard
+   * drew that `0` as the queue on an idle mesh and on a backed-up one alike, and
+   * `?? 0` on top folded "the route did not answer" into the same digit.
+   *
+   * **A queue is seeded first**, to an identity that is provisioned and never
+   * connects, so the row is written `pending` and stays. Comparing `shown` with
+   * `reported` on an empty mesh is `0` against `0` and passes against the defect
+   * exactly as it passes against the fix — which is what the old screen was.
+   *
+   * **And the operator's dashboard, not the admin's.** `/dashboard` renders one
+   * of four panels by role and the mailbox card is on two of them; a session
+   * whose role is not `admin` resolves to `AGENT_OPERATOR`. Read as an admin,
+   * this card is not on the page at all — the first version of this scenario
+   * timed out looking for it and would have been written off as a flake.
+   */
+  it("[SC-INVENT-03] states the queue the mailbox route reported, on the panel that draws it", async () => {
+    const queued = "invent03-never-connects";
+    await setupWrite("provision invent03 recipient", `${mesh.hub.url}/api/v1/agents`, {
+      identity: queued,
+      type: "service",
+      description: "provisioned and never connected, so its mailbox keeps a depth",
+    });
+    const db = openTestDb(path.join(mesh.stateDir, "agent-mesh.db"));
+    db.prepare("INSERT OR IGNORE INTO agent_registry (id, name, type, approved) VALUES (?, ?, 'agent', 1)").run(queued, queued);
+    db.close();
+
+    const sent = await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
+      body: JSON.stringify({ to: queued, text: "SC-INVENT-03 queue seed" }),
+    });
+    const sentBody = (await sent.json()) as { message?: { status?: string } };
+    // `failed` would mean the hub refused it and nothing is queued; `delivered`
+    // would mean the recipient took it. Either way the comparison below would
+    // be 0 against 0, so it is checked rather than assumed.
+    expect({ status: sent.status, stored: sentBody.message?.status }, "nothing was left queued, so the comparison below is 0 against 0")
+      .toEqual({ status: 201, stored: "pending" });
+
+    const cookie = await capabilityViewer(mesh, "mailbox.read.depth");
+    await withViewerPage(cookie, "/dashboard", async ({ page }) => {
+      // The expected value comes off the wire. Writing the sum in this file
+      // would be the screen agreeing with the test instead of with the route.
+      const wire = await page.evaluate(async () => {
+        const r = await fetch("/api/v1/admin/mailbox", { credentials: "include" });
+        return { ok: r.ok, body: await r.json() };
+      });
+      const reported = (wire.body?.mailboxes ?? []).reduce((a: number, m: any) => a + (m.pending ?? 0), 0);
+      expect({ ok: wire.ok, positive: reported > 0 }, "the route did not report the message it had just accepted")
+        .toEqual({ ok: true, positive: true });
+
+      const card = page.locator("[data-kpi='미수신 메일함']");
+      await card.waitFor({ timeout: 5000 });
+      expect(await card.innerText()).toContain(String(reported));
+    });
+  }, 45_000);
+
+  // SC-INVENT-04: the reverse — a route that did not answer is not an empty queue
+  it("[SC-INVENT-04] says 미측정 rather than 0 when the mailbox route refuses", async () => {
+    const cookie = await capabilityViewer(mesh, "mailbox.read.depth");
+    await withViewerPage(cookie, "/dashboard", async ({ page }) => {
+      await page.route("**/api/v1/admin/mailbox", (r) => r.abort());
+      await page.reload({ waitUntil: "domcontentloaded" });
+
+      const card = page.locator("[data-kpi='미수신 메일함']");
+      await card.waitFor({ timeout: 5000 });
+      const text = await card.innerText();
+      expect(
+        { said: text.includes("미측정"), drewZero: /(?:^|[^0-9])0(?:[^0-9]|$)/.test(text) },
+        "a refused route was drawn as an empty queue",
+      ).toEqual({ said: true, drewZero: false });
+    });
+  }, 30_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

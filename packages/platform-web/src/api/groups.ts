@@ -13,19 +13,29 @@ export interface GroupItem {
 export async function fetchGroups(): Promise<GroupItem[]> {
   const data = await apiClient<any>("/api/v1/admin/groups");
   const list = Array.isArray(data) ? data : data.groups ?? [];
-  const egressList = Array.isArray(data.egress) ? data.egress : [];
+  // Whether the route answered with egress rules at all, kept apart from the
+  // rules being empty. Without it every group on a response carrying no
+  // `egress` reads as "allowed to reach nothing", which is a claim.
+  const egressKnown = Array.isArray(data.egress);
+  const egressList: any[] = egressKnown ? data.egress : [];
   return list.map((g: any) => {
     const groupId = g.group_id || g.id || `grp_${g.name?.toLowerCase().replace(/\s+/g, "_")}`;
+    // `source_group` / `target_group` / `member_count` / `egress_allowed` were
+    // the leading half of four fallbacks here and no package on this platform
+    // sends any of them, so the trailing half ran every time. They stayed
+    // quiet because those trailing halves are the real computation — unlike
+    // the receipt's digest, which fell back to a value that was some other
+    // thing's hash. Left in place they read as a description of the route.
     const groupEgress = egressList
-      .filter((e: any) => (e.from_group || e.source_group) === groupId)
-      .map((e: any) => e.to_group || e.target_group);
+      .filter((e: any) => e.from_group === groupId)
+      .map((e: any) => e.to_group);
     return {
       id: groupId,
       name: g.name || g.group_id,
       description: g.description ?? null,
-      member_count: g.member_count ?? (Array.isArray(g.members) ? g.members.length : null),
+      member_count: Array.isArray(g.members) ? g.members.length : null,
       members: Array.isArray(g.members) ? g.members : [],
-      egress_allowed: groupEgress.length > 0 ? groupEgress : (Array.isArray(g.egress_allowed) ? g.egress_allowed : null),
+      egress_allowed: egressKnown ? groupEgress : null,
       created_at: g.created_at ?? null,
     };
   });
