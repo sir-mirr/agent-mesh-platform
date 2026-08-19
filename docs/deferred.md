@@ -744,3 +744,36 @@ that did not exist until the checkpoint did. agent-mesh-local-pm named the shape
 on the harness defect in the same cycle: making an operation do more turns
 everything that raced with it harmlessly into something that races with it for
 real.
+
+### Nothing puts an agent in the http registry
+
+`POST /api/v1/messages` refuses a recipient that is not in `agent_registry`, the
+http server's own table, with `Agent "<id>" not found in registry`. Two things
+write that table: the one-time `registry.json` import on first boot after the
+upgrade, and `upsertApprovedWebUser`, which runs when a web user is approved and
+when local accounts are admitted or seeded.
+
+Neither is an agent. An identity provisioned on the hub — the documented route,
+§ 10.1 — is on the mesh, can connect, can hold an approved key, and is not
+addressable through http at all. `GET /api/v1/agents` says so already ("an
+identity provisioned on the hub and never added here is not listed"), which
+reads as a statement about listing and is in fact a statement about reachability.
+
+`agent-mesh-local-pm` met the 404 three times while seeding a stack (mail #1147),
+each time reading it as a mistake in what they had sent.
+
+**Not obviously a defect, which is why it is here rather than fixed.** Two
+registries on one namespace is a deliberate split: the hub brokers, http decides
+who its users may address, and an admin-curated list is a plausible thing to
+want. What is missing is not necessarily an auto-import — it might be a route
+that adds an existing hub identity to this server's registry, under
+`agent.register` or `user.admit`, so the curation stays explicit and stops being
+impossible.
+
+Deciding needs the answer to the same question as `I-093`/`I-094`: what separates
+a platform administrator from a tenant administrator. A route that adds any hub
+identity to the registry is a route that needs to say whose registry.
+
+Until then the workaround is the fixture path — `bun run fixtures:screens` seeds
+through the product, and a hand-written row is the alternative anybody reaching
+for it should know is a hand-written row.
