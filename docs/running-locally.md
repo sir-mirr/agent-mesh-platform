@@ -576,13 +576,18 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
   }
 
-  # § 8.9 audit streams over SSE, and a proxy that buffers turns a live view
-  # into a page that updates when the connection closes.
-  location /api/v1/audit/stream {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_buffering off;
-    proxy_read_timeout 1h;
-  }
+  # **No per-stream exemption, and that is measured rather than assumed.** This
+  # block used to carry `proxy_buffering off` for `/api/v1/audit/stream` — a
+  # path that exists nowhere else in this repository, so the one stanza written
+  # to protect a live view protected nothing. The three routes that do stream
+  # (`/api/v1/admin/keys/stream`, `/api/v1/admin/chat-audits/stream`,
+  # `/api/v1/admin/ai-usage/stream`) each answer with `X-Accel-Buffering: no`,
+  # which nginx acts on itself. Timed through this block: a `key-proposed`
+  # event arrived 0.58s after the provisioning call, against 0.55s with the
+  # proxy out of the path.
+  #
+  # A proxy that ignores that header needs the exemption back, on those three
+  # names. Caddy does not — it streams `text/event-stream` without being told.
 }
 ```
 

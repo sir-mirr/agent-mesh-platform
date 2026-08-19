@@ -1290,6 +1290,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-10", "the login button did nothing and said nothing"],
   },
   {
+    id: "proxy-block-phantom-route",
+    defect:
+      "The nginx block carried `proxy_buffering off` for `/api/v1/audit/stream`, a path that exists nowhere else in this repository — no route, no SPEC reference, no call from the front end. The one stanza written to keep a live view live protected nothing, and read as though it did. The three routes that actually stream answer with `X-Accel-Buffering: no`, which nginx acts on itself: measured through this block, a `key-proposed` event arrived 0.58s after the provisioning call against 0.55s with the proxy out of the path.",
+    file: "docs/running-locally.md",
+    from: "  location /api/ {",
+    to: "  location /api/v1/audit/stream {\n    proxy_pass http://127.0.0.1:3000;\n    proxy_buffering off;\n  }\n\n  location /api/ {",
+    suite: "test/readme.test.ts",
+    expect: ["the nginx block configures a path the http server does not serve", "/api/v1/audit/stream"],
+  },
+  {
+    id: "proxy-route-denominator",
+    defect:
+      "The check above compares the block against the routes `main.ts` declares, and an extraction that finds none agrees with any block at all — the same empty-set pass this file exists to refuse.",
+    file: "test/readme.test.ts",
+    from: "[...main.matchAll(/app\\.(?:get|post|put|patch|delete)\\(\\s*'([^']+)'/g)].map((m) => m[1]!),",
+    to: "[] as string[],",
+    suite: "test/readme.test.ts",
+    expect: ["no routes read out of main.ts — the extraction broke"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",

@@ -358,6 +358,29 @@ describe("running-locally's proxy blocks cover the front end", () => {
       .toEqual(["/api", "/auth"]);
   });
 
+  test("every full path the nginx block names is a route the server serves", () => {
+    // **The block named `/api/v1/audit/stream` and no such route exists.** It
+    // carried `proxy_buffering off` and a comment about § 8.9 keeping a live
+    // view live, so the one stanza written to protect streaming protected
+    // nothing — and read as though it did, which is the more expensive half.
+    // The three routes that do stream set `X-Accel-Buffering: no` themselves.
+    //
+    // Prefixes (`/api/`, `/auth/`) are checked by the tests around this one.
+    // What this asks is narrower and is the thing that went wrong: a `location`
+    // deep enough to name one route has to name one that is there.
+    const named = [...DOC.matchAll(/^\s*location\s+(\/api\/v1\/\S+?)\s*\{/gm)].map((m) => m[1]!);
+    const main = readFileSync(join(REPO_ROOT, "packages", "http", "src", "main.ts"), "utf8");
+    const served = new Set(
+      [...main.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*'([^']+)'/g)].map((m) => m[1]!),
+    );
+    // The extraction has to find routes at all; an empty set agrees with any
+    // block, which is the failure this file keeps refusing.
+    expect(served.size, "no routes read out of main.ts — the extraction broke").toBeGreaterThan(20);
+
+    const absent = named.filter((route) => !served.has(route));
+    expect(absent, "the nginx block configures a path the http server does not serve").toEqual([]);
+  });
+
   test("nginx forwards every prefix the front end calls", () => {
     const forwarded = [...DOC.matchAll(/^\s*location\s+(\/[a-z]+)\/\s*\{/gm)].map((m) => m[1]!);
     const missing = calledPrefixes().filter((p) => !forwarded.includes(p));
