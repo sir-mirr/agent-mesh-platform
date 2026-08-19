@@ -1643,6 +1643,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-07", "a refusal was drawn as silence"],
   },
   {
+    id: "shared-dialog-warns-in-one-language",
+    defect:
+      "The warning on an irreversible action, in a language the session did not ask for. The modal's own strings went through the dictionary and the shared dialog's did not, so an English reader saw an English title over a Korean warning and a Korean confirmation prompt.",
+    file: "packages/platform-web/src/components/feedback/ConfirmDialog.tsx",
+    from: '⚠️ {t("confirm.irreversible", "이 작업은 되돌릴 수 없습니다.")}',
+    to: "⚠️ 이 작업은 되돌릴 수 없습니다.",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-08", "not in the session's language"],
+  },
+  {
     id: "teardown-offered-to-a-session-that-cannot-use-it",
     defect:
       "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",

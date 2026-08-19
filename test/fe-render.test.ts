@@ -2781,6 +2781,36 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       { grantedSeesControls: granted.buttons > 0, withoutSeesControls: held.buttons },
       "the teardown control was offered to a session that cannot use it, or to nobody at all",
     ).toEqual({ grantedSeesControls: true, withoutSeesControls: 0 });
+
+    // **What the dialog says, in the language the session asked for.** The
+    // modal's own strings went through the dictionary and the shared dialog's
+    // did not: "이 작업은 되돌릴 수 없으며 …" and "확인을 위해 … 입력하세요" sat
+    // under an English title. A person reading an irreversible warning they
+    // cannot read is the one place on this console where language is not
+    // cosmetic. The screen is the file plus everything it draws.
+    // The context seeds a language on every load, so setting it from inside the
+    // page and reloading loses to the init script. English is asked for at the
+    // context, the way `SC-I18N-02` does it.
+    const context = await newContext("en");
+    await context.addCookies([
+      { name: "mesh_token", value: withCapability.replace(/^mesh_token=/, ""), domain: "127.0.0.1", path: "/", httpOnly: false, secure: false, sameSite: "Lax" },
+    ]);
+    const page = await context.newPage();
+    try {
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+      await settled(page);
+      await page.locator('[data-testid^="teardown-"]').first().click();
+      await settled(page);
+      const dialog = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const opened = /cannot be undone|되돌릴 수 없습니다/.test(dialog);
+      const korean = (dialog.match(/[가-힣]/g) ?? []).length;
+      expect(
+        { opened, koreanInEnglishDialog: /되돌릴 수 없습니다|입력하세요|취소/.test(dialog) },
+        `the irreversible dialog is not in the session's language (${korean} Korean characters on the page)`,
+      ).toEqual({ opened: true, koreanInEnglishDialog: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
   }, 30000);
 
   /**

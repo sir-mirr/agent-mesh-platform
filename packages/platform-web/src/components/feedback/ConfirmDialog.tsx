@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 import { Modal } from "./Modal.tsx";
 import { Button } from "@/components/common/Button.tsx";
 
@@ -21,12 +22,13 @@ export function ConfirmDialog({
   onConfirm,
   title,
   description,
-  confirmLabel = "확인",
-  cancelLabel = "취소",
+  confirmLabel,
+  cancelLabel,
   isDestructive = false,
   isLoading = false,
   confirmPromptMatch,
 }: ConfirmDialogProps) {
+  const { t } = useI18n();
   const [matchInput, setMatchInput] = React.useState("");
 
   React.useEffect(() => {
@@ -43,7 +45,7 @@ export function ConfirmDialog({
       footer={
         <>
           <Button variant="secondary" size="sm" onClick={onClose} disabled={isLoading}>
-            {cancelLabel}
+            {cancelLabel ?? t("confirm.cancel", "취소")}
           </Button>
           <Button
             variant={isDestructive ? "danger" : "primary"}
@@ -52,7 +54,7 @@ export function ConfirmDialog({
             isLoading={isLoading}
             disabled={!isMatchValid}
           >
-            {confirmLabel}
+            {confirmLabel ?? t("confirm.ok", "확인")}
           </Button>
         </>
       }
@@ -80,7 +82,7 @@ export function ConfirmDialog({
               fontWeight: 600,
             }}
           >
-            ⚠️ 이 작업은 되돌릴 수 없으며, 플랫폼 SPEC § 9.3에 따라 영구 삭제(409 재등록 불가)됩니다.
+            ⚠️ {t("confirm.irreversible", "이 작업은 되돌릴 수 없습니다.")}
           </div>
         )}
 
@@ -93,7 +95,7 @@ export function ConfirmDialog({
                 fontWeight: 600,
               }}
             >
-              확인을 위해 <strong>`{confirmPromptMatch}`</strong>을 입력하세요:
+              {t("confirm.type", "확인하려면 다음을 그대로 입력하세요")}: <strong>`{confirmPromptMatch}`</strong>
             </label>
             <input
               type="text"
