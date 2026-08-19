@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -26,19 +26,19 @@ interface RegisteredAgent {
 
 const PAYLOAD_PRESETS = [
   {
-    label: "정산 쿼리 (Settlement)",
+    label: "Settlement",
     data: { action: "QUERY_SETTLEMENT", order_id: "ORD-98214", currency: "KRW" },
   },
   {
-    label: "헬스체크 핑 (Heartbeat)",
+    label: "Heartbeat",
     data: { action: "PING_HEARTBEAT", timestamp: Date.now(), client_version: "v1.0.4" },
   },
   {
-    label: "상태 동기화 (Sync State)",
+    label: "Sync state",
     data: { action: "SYNC_STATE", cluster_id: "grp_support", epoch: 4029 },
   },
   {
-    label: "보안 알림 (Security Alert)",
+    label: "Security alert",
     data: { action: "SECURITY_ALERT", code: "EGRESS_CHECK", target_group: "grp_billing" },
   },
 ];
@@ -153,7 +153,7 @@ export function PlaygroundPage() {
       setReceipt(await sendMessageApi({ to: recipient, text: payloadText }));
     } catch (err: any) {
       setReceipt(null);
-      setSendError(err?.message || "서버 통신 오류");
+      setSendError(err?.message || t("common.errorLoad", "불러오지 못함"));
     } finally {
       setIsSending(false);
     }
@@ -195,15 +195,15 @@ export function PlaygroundPage() {
 
           {isLoading ? (
             <div style={{ padding: "12px 16px", background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontSize: "0.82rem", textAlign: "center" }}>
-              에이전트 목록을 불러오는 중입니다...
+              {t("play.loading", "에이전트 목록을 불러오는 중입니다...")}
             </div>
           ) : isError ? (
             <div style={{ padding: "12px 16px", background: "var(--status-warning-bg)", borderRadius: "var(--radius-md)", border: "1px solid var(--status-warning-br)", color: "var(--color-text-primary)", fontSize: "0.82rem", textAlign: "center" }}>
-              에이전트 목록을 불러오지 못했습니다 (서버 연결 실패 또는 권한 오류).
+              {failure === "refused" ? refusedText(t, missing) : t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
             </div>
           ) : agentsList.length === 0 ? (
             <div style={{ padding: "12px 16px", background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", fontSize: "0.82rem", textAlign: "center" }}>
-              현재 등록된 에이전트 데이터가 없습니다. 먼저 에이전트를 등록하세요.
+              {t("play.empty", "등록된 에이전트가 없습니다. 먼저 에이전트를 등록하세요.")}
             </div>
           ) : null}
 
@@ -237,8 +237,8 @@ export function PlaygroundPage() {
               </select>
               {selectedSenderObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
-                  <span>종류: <strong>{selectedSenderObj.group}</strong></span>
-                  <span>마지막 접속: <strong style={{ color: selectedSenderObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.lastSeen}</strong></span>
+                  <span>{t("dash.op.kind", "종류")}: <strong>{selectedSenderObj.group}</strong></span>
+                  <span>{t("play.lastSeen", "마지막 접속")}: <strong style={{ color: selectedSenderObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.lastSeen}</strong></span>
                   <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : "지문 없음"}</span>
                 </div>
               )}
@@ -273,8 +273,8 @@ export function PlaygroundPage() {
               </select>
               {selectedRecipientObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
-                  <span>종류: <strong>{selectedRecipientObj.group}</strong></span>
-                  <span>마지막 접속: <strong style={{ color: selectedRecipientObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.lastSeen}</strong></span>
+                  <span>{t("dash.op.kind", "종류")}: <strong>{selectedRecipientObj.group}</strong></span>
+                  <span>{t("play.lastSeen", "마지막 접속")}: <strong style={{ color: selectedRecipientObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.lastSeen}</strong></span>
                 </div>
               )}
             </div>
@@ -282,7 +282,7 @@ export function PlaygroundPage() {
             {/* Preset Payload Buttons */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
-                빠른 페이로드 템플릿:
+                {t("play.templates", "페이로드 템플릿")}:
               </label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {PAYLOAD_PRESETS.map((preset) => (
@@ -310,7 +310,7 @@ export function PlaygroundPage() {
             {/* JSON Payload Input */}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                메시지 페이로드 (JSON)
+                {t("play.payload", "메시지 페이로드 (JSON)")}
               </label>
               <textarea
                 value={payloadText}
@@ -346,7 +346,7 @@ export function PlaygroundPage() {
                 timestamp={receipt.ts}
                 status={receipt.status}
               />
-              <JsonViewer data={JSON.parse(payloadText || "{}")} title="발송된 메시지 본문 (Dispatched Payload)" />
+              <JsonViewer data={JSON.parse(payloadText || "{}")} title={t("play.dispatched", "보낸 본문")} />
             </>
           ) : sendError ? (
             <div
@@ -369,7 +369,7 @@ export function PlaygroundPage() {
               }}
             >
               <span style={{ fontSize: "2rem" }}>⚠️</span>
-              <strong>영수증 미발급</strong>
+              <strong>{t("play.noReceipt", "영수증 없음")}</strong>
               <span>{sendError}</span>
             </div>
           ) : (

@@ -53,7 +53,7 @@ export function GroupsPage() {
         (list || []).map((g) => ({
           id: g.id,
           name: g.name,
-          description: g.description || "에이전트 클러스터 그룹",
+          description: g.description ?? "",
           memberCount: g.member_count || g.members?.length || 0,
           members: g.members || [],
           createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
@@ -85,13 +85,13 @@ export function GroupsPage() {
       setNewGroupName("");
       setNewGroupDesc("");
       if (res.created) {
-        setToastMessage(`그룹 [${targetName}]이(가) 성공적으로 생성되었습니다.`);
+        setToastMessage(`${t("groups.created", "그룹 생성")}: ${targetName}`);
       } else {
-        setToastMessage(`그룹 [${targetName}]은(는) 이미 등록되어 있습니다.`);
+        setToastMessage(`${t("groups.exists", "이미 있는 그룹")}: ${targetName}`);
       }
       await loadGroups();
     } catch (err: any) {
-      setToastMessage(`그룹 생성 실패: ${err.message || "서버 통신 오류"}`);
+      setToastMessage(`${t("groups.createFailed", "그룹 생성 실패")}: ${err.message ?? ""}`);
     }
   };
 
@@ -110,7 +110,7 @@ export function GroupsPage() {
     setGroups(updated);
     setIsAssignOpen(false);
     setAssignAgentId("");
-    setToastMessage(`에이전트 [${assignAgentId}]이(가) [${selectedGroup.name}]에 배속되었습니다.`);
+    setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assignAgentId} → ${selectedGroup.name}`);
   };
 
   const columns = [
@@ -258,7 +258,7 @@ export function GroupsPage() {
             ? refusedText(t, missing)
             : t("groups.error", "그룹 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
-        emptyMessage="현재 등록된 그룹 데이터가 없습니다."
+        emptyMessage={t("groups.empty", "등록된 그룹이 없습니다.")}
       />
 
       {/* Create Group Modal */}
@@ -305,7 +305,7 @@ export function GroupsPage() {
             </p>
             <Input
               label={t("groups.modal.agentIdLabel", "배속할 에이전트 ID (agt_*)")}
-              placeholder="예: agt_support_01"
+              placeholder={t("groups.agentPh", "예: agt_support_01")}
               value={assignAgentId}
               onChange={(e) => setAssignAgentId(e.target.value)}
               required

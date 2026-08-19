@@ -395,6 +395,10 @@ describe("copy landmarks", () => {
     for (const f of FILES) {
       const text = readFileSync(join(import.meta.dir, f), "utf8");
       for (const m of text.matchAll(/shows\(page,\s*"([^"]*[가-힣][^"]*)"\)/g)) pins.add(m[1]!);
+      // **`toContain` 도 기다림이다.** 오늘 `shows()` 만 보게 해뒀더니 문구를 바꾼 판에서
+      // `toContain` 두 개가 남아 스윗이 90 fail 로 죽었다 — 이 검사는 1초에 이름을 대는데
+      // 그 둘을 안 보고 있었다. `not.toContain` 은 **없어야 맞는 것**이라 뺀다.
+      for (const m of text.matchAll(/(?<!not\.)toContain\(\s*"([^"]*[가-힣][^"]*)"\s*\)/g)) pins.add(m[1]!);
     }
     const ROOT = join(import.meta.dir, "..", "packages", "platform-web", "src");
     const walk = (dir: string): string[] =>
@@ -407,8 +411,21 @@ describe("copy landmarks", () => {
       .join("\n");
 
     expect(pins.size, "no landmarks were found — the pattern stopped matching").toBeGreaterThan(10);
+    // **보간을 넘는 앵커가 있다.** `서명 있음 · ed25519` 는 제품에서
+    // `서명 있음 · ${alg}` 로 조립되므로 소스에 그 문자열은 없다 — 통째로 찾으면
+    // 멀쩡한 앵커가 빨개진다. 그래서 **네 글자 이상 한글 덩어리 하나라도** 소스에
+    // 있으면 통과로 본다: 문구가 통째로 바뀐 경우(오늘 넷)는 그 덩어리도 사라진다.
+    // 한글 덩어리 **전부** 가 소스에 있어야 한다. `서명 있음 · ed25519` 는 제품에서
+    // `서명 있음 · ${alg}` 로 조립되므로 통째로는 없지만 `서명`·`있음` 은 있다.
+    // 문구를 바꾼 앵커는 덩어리 하나가 사라지므로(`불러올` → `불러오지`) 그대로 잡힌다.
+    // ⚠ **한계**: 소스 전체에서 찾으므로, 바뀐 문구의 조각이 **다른 화면에 남아 있으면**
+    // 그 앵커는 통과한다. 심어본 판(`불러오지` → `불러올`)이 실제로 그렇게 통과했다 —
+    // 다른 화면이 아직 `불러올` 을 쓰고 있었다. 이 검사는 *문구가 트리에서 통째로 사라진 경우*
+    // 를 1초에 잡는 것이고, **파일 단위 귀속은 못 한다**.
+    const chunks = (pin: string) => (pin.match(/[가-힣]{2,}/g) ?? [pin]);
+    const missing = [...pins].filter((pin) => !chunks(pin).every((c) => source.includes(c)));
     expect(
-      [...pins].filter((p) => !source.includes(p)),
+      missing,
       "a scenario waits for a sentence no screen contains — it will time out instead of failing",
     ).toEqual([]);
   });

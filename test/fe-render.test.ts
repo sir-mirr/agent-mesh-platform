@@ -738,9 +738,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const sendBtn = page.locator("button:has-text('발송'), button:has-text('Send'), button[type='submit']").first();
     expect(await sendBtn.count()).toBeGreaterThanOrEqual(1);
     await sendBtn.click();
-    await shows(page, "발송된 메시지 본문");
+    await shows(page, "보낸 본문");
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("발송된 메시지 본문");
+    expect(mainText).toContain("보낸 본문");
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -958,7 +958,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // With no window the refusal counts cannot be read, and the heading says
       // so rather than printing a date it does not have.
       const since = (await page.locator("[data-testid='counting-since']").textContent()) ?? "";
-      expect({ saysUnknown: since.includes("미상") }).toEqual({ saysUnknown: true });
+      // 문구가 "집계 시작 시각 미상" 에서 "집계 시작 시각을 모른다" 로 바뀌었다 —
+      // 랜드마크는 문구를 따라간다.
+      expect({ saysUnknown: since.includes("모른다") }).toEqual({ saysUnknown: true });
     } finally {
       await context.close();
     }
@@ -1604,11 +1606,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
       await settled(page);
-      await shows(page, "텔레메트리 서버와 연결할 수 없습니다");
+      await shows(page, "텔레메트리를 불러오지 못했습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("active_sockets=0");
       expect(downText).not.toContain("0 sessions");
-      expect(downText).toContain("텔레메트리 서버와 연결할 수 없습니다");
+      expect(downText).toContain("텔레메트리를 불러오지 못했습니다");
     } finally {
       await context.close().catch(() => {});
     }
@@ -2110,7 +2112,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // SC-WRITE-05: /creator/playground receipt displays real server fields
   //
   // This assertion used to be `not.toContain("msg_undefined")` plus the presence
-  // of the string `발송된 메시지 본문` — which is the JsonViewer's own title, a
+  // of the string `보낸 본문` — which is the JsonViewer's own title, a
   // literal in the page, drawn whenever a receipt renders at all. So a test
   // named for real server fields passed on a receipt that carried none of them:
   // the id said `영수증 미발급`, the timestamp was the browser's clock, and the
@@ -2157,7 +2159,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // absent rather than falling back to the flat body, because the fallback is
   // indistinguishable from the bug it replaced: a receipt of local placeholders
   // rendered next to a success. The screen has to say the receipt did not come.
-  it("[SC-WRITE-09] says 영수증 미발급 when the server answers 201 without a message", async () => {
+  it("[SC-WRITE-09] says 영수증 없음 when the server answers 201 without a message", async () => {
     await withPage("/creator/playground", async ({ page }) => {
       await page.route("**/api/v1/messages", (route) =>
         route.request().method() === "POST"
@@ -2183,7 +2185,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         },
         "a 201 carrying no message drew a receipt instead of saying none came",
       ).toEqual({ said: true, drew: false });
-      expect(await err.innerText()).toContain("영수증 미발급");
+      expect(await err.innerText()).toContain("영수증 없음");
     });
   }, 20000);
 

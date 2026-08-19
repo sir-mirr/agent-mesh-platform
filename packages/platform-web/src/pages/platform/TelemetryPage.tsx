@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -60,11 +60,11 @@ export function TelemetryPage() {
 
       {isLoading ? (
         <div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>
-          서버 텔레메트리 메트릭을 수집 중입니다...
+          {t("tel.loading", "텔레메트리를 모으는 중입니다...")}
         </div>
       ) : isError || !telemetry ? (
         <div style={{ padding: "30px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
-          ⚠️ 텔레메트리 서버와 연결할 수 없습니다 (오류 발생).
+          ⚠️ {failure === "refused" ? refusedText(t, missing) : t("tel.error", "텔레메트리를 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
         </div>
       ) : (
         <>
@@ -81,9 +81,9 @@ export function TelemetryPage() {
               data-testid="telemetry-refused"
               style={{ padding: "14px 18px", marginBottom: 16, background: "var(--color-bg-surface)", border: "1px solid var(--color-warning, var(--color-danger))", borderRadius: "var(--radius-lg)", color: "var(--color-text-secondary)" }}
             >
-              일부 지표를 볼 권한이 없습니다 —{" "}
+              {t("tel.partial", "일부 지표는 볼 권한이 없습니다")} —{" "}
               {telemetry.refused.map((r) => `${r.panel} (${r.capability})`).join(" · ")}
-              . 아래 값이 비어 있는 것은 데이터가 없어서가 아닙니다.
+              . {t("tel.partial.note", "아래가 비어 있는 것은 데이터가 없어서가 아닙니다.")}
             </div>
           )}
 
@@ -117,18 +117,18 @@ export function TelemetryPage() {
                 <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{t("tel.behaviour", "행동 지표")}</span>
                 <span data-testid="counting-since" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
                   {telemetry.behaviour.counting_since
-                    ? `거절 집계 기준: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} 부터 (허브 재기동 시 초기화)`
-                    : "집계 시작 시각 미상 — 아래 거절 수치는 읽을 수 없습니다"}
+                    ? `${t("tel.since", "거절 집계 시작")}: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} (${t("tel.since.note", "허브가 재기동하면 0 부터")})`
+                    : t("tel.since.unknown", "집계 시작 시각을 모른다 — 아래 거절 수치는 읽을 수 없다")}
                 </span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 {([
-                  ["대기 키", telemetry.behaviour.pending_keys, ""],
-                  ["최고 경과", telemetry.behaviour.oldest_pending_ms, "ms"],
-                  ["서명 거절", telemetry.behaviour.signature_refusals, ""],
+                  [t("tel.m.pending", "대기 키"), telemetry.behaviour.pending_keys, ""],
+                  [t("tel.m.oldest", "최고 경과"), telemetry.behaviour.oldest_pending_ms, "ms"],
+                  [t("tel.m.sig", "서명 거절"), telemetry.behaviour.signature_refusals, ""],
                   ["rate limit", telemetry.behaviour.rate_limited, ""],
-                  ["egress 거절", telemetry.behaviour.egress_refusals, ""],
-                  ["수락 수", telemetry.behaviour.accepted, ""],
+                  [t("tel.m.egress", "egress 거절"), telemetry.behaviour.egress_refusals, ""],
+                  [t("tel.m.accepted", "수락 수"), telemetry.behaviour.accepted, ""],
                 ] as const).map(([label, metric, unit]) => (
                   <div
                     key={label}
@@ -137,7 +137,7 @@ export function TelemetryPage() {
                     <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>{label}</div>
                     {metric.value === null ? (
                       <div data-testid="metric-unmeasured" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }} title={metric.unavailable}>
-                        — 미측정
+                        {t("common.unmeasured", "— 미측정")}
                       </div>
                     ) : (
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.15rem", fontWeight: 700 }}>
@@ -161,12 +161,12 @@ export function TelemetryPage() {
                 value is `{value, unavailable}` and an unknown says so. */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
               <TelemetryCard
-                label="활성 소켓 연결 수"
+                label={t("tel.sockets", "활성 소켓 연결 수")}
                 currentValue={`${telemetry.active_sockets}`}
                 maxLabel="Max 500"
                 percentage={(telemetry.active_sockets / 500) * 100}
                 barColor="var(--color-success)"
-                statusText="웹소켓 정상 세션"
+                statusText={t("tel.sockets.ok", "웹소켓 정상")}
               />
             </div>
 

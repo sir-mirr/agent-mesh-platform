@@ -1627,8 +1627,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A copy landmark left behind by a rename. The scenario waits thirty seconds and then every scenario after it reports `Target page, context or browser has been closed` — the suite reads as a crash, and twice this was nearly filed as contention on an idle machine.",
     file: "test/fe-render.test.ts",
+    // **조각이 트리에 남아 있으면 안 잡힌다** — 첫 판이 `불러올` 로 바꿨는데 다른 화면이
+    // 아직 그 낱말을 쓰고 있어 통과했다. 트리 어디에도 없는 낱말로 바꾼다.
     from: 'await shows(page, "그룹 목록을 불러오지 못했습니다");',
-    to: 'await shows(page, "그룹 목록을 불러올 수 없습니다");',
+    to: 'await shows(page, "그룹 목록을 가져오지 못했습니다");',
     suite: "test/scenario-ids.test.ts",
     expect: ["copy landmarks", "waits for a sentence no screen contains"],
   },
