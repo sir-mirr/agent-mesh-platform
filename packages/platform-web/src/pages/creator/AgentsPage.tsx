@@ -229,7 +229,7 @@ export function AgentsPage() {
         actions={
           <Link to="/creator/register">
             <Button variant="primary" size="sm">
-              {t("nav.register", "➕ 신규 에이전트 등록")}
+              {t("dash.registerLink", "➕ Register an agent")}
             </Button>
           </Link>
         }

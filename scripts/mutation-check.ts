@@ -1560,6 +1560,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-PWCHG-05", "the change screen is not in the language the product defaults to"],
   },
   {
+    id: "one-key-two-meanings",
+    defect:
+      "Seven keys were called with different fallbacks at different call sites — `common.errorLoad` meant both `불러오지 못함` and `조직 정보 불러오지 못함`. Defining such a key makes one of them win everywhere, so adding the missing entries changed wording on screens nobody was touching and timed out a scenario waiting for the older text. A key whose meaning depends on the call site is not a translation key.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: 't("dash.tenants.errorLoad", "Could not load tenants")',
+    to: 't("common.errorLoad", "조직 정보 불러오지 못함")',
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["one key is asked to mean two things", "common.errorLoad"],
+  },
+  {
+    id: "key-defined-nowhere-falls-back-to-korean",
+    defect:
+      "`t(key, fallback)` returns the fallback when the key is defined nowhere, and every fallback in this front end is Korean — so an English reader saw Korean through the translation function itself, on seventeen call sites including `common.loading` and `common.manage`, which appear on nearly every screen. The dictionary symmetry check stayed green throughout, because the missing keys were missing from both sides.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: '    "common.loading": "Loading…",\n',
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["a screen falls back to Korean because its key is defined nowhere", "common.loading"],
+  },
+  {
+    id: "i18n-callsite-denominator",
+    defect:
+      "The check reads the call sites out of `platform-web` and compares them against the English dictionary. With nothing collected it agrees with any dictionary at all — which is precisely how the older symmetry check managed to be green while seventeen screens fell back to Korean.",
+    file: "test/fe-scenarios.test.ts",
+    from: '    walk("packages/platform-web/src");',
+    to: "    // walk disabled",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["no translated call sites found — the pattern went stale"],
+  },
+  {
     id: "landing-defaults-to-korean",
     defect:
       "The default language was Korean and the toggle lived in the sidebar, which is behind the login. A visitor who could not read the login form could not reach the control that would have translated it.",

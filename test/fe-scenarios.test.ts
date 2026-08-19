@@ -523,6 +523,71 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(found).toBe(true);
   });
 
+  /**
+   * SC-I18N-03 — a `t()` call whose key nobody defined shows its fallback, and
+   * every fallback in this front end is Korean.
+   *
+   * `SC-I18N-01` compares the two dictionaries and was green: the keys match
+   * because the missing ones are missing from **both**. So `t()` returned the
+   * Korean fallback, and an English reader saw Korean *through the translation
+   * function itself* — seventeen call sites across the console, including
+   * `common.loading` and `common.manage`, which appear on nearly every screen.
+   *
+   * The denominator of the older check is the dictionary. This one's is the
+   * call sites, which is where the defect was.
+   */
+  it("[SC-I18N-03] defines every key its screens ask for", async () => {
+    const dict = await Bun.file("packages/platform-web/src/contexts/I18nContext.tsx").text();
+    const block = (name: string) => {
+      const m = dict.match(new RegExp(`${name}:\\s*\\{\\n`));
+      if (!m) throw new Error(`no ${name} dictionary block`);
+      const seg = dict.slice(m.index! + m[0].length);
+      return new Set([...seg.slice(0, seg.indexOf("\n  },")).matchAll(/"([^"]+)":/g)].map((x) => x[1]!));
+    };
+    const ko = block("ko");
+    const en = block("en");
+    expect({ ko: ko.size > 100, en: en.size > 100 }, "a dictionary read as empty — the file's shape changed").toEqual({ ko: true, en: true });
+
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const calls: Array<{ file: string; key: string; fallback: string }> = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(e.name)) continue;
+        const src = readFileSync(full, "utf8");
+        // `\bt(` so a `fetch(` header object does not read as a translation.
+        for (const m of src.matchAll(/\bt\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*\)/g)) {
+          if (/[가-힣]/.test(m[2]!)) calls.push({ file: full, key: m[1]!, fallback: m[2]! });
+        }
+      }
+    };
+    walk("packages/platform-web/src");
+    expect(calls.length, "no translated call sites found — the pattern went stale").toBeGreaterThan(50);
+
+    const undefinedInEnglish = calls
+      .filter((c) => !en.has(c.key))
+      .map((c) => `${c.file.split("/src/")[1]} asks for ${c.key}, which no English entry defines`);
+    expect(undefinedInEnglish, "a screen falls back to Korean because its key is defined nowhere").toEqual([]);
+
+    // **One key, one meaning.** Seven of them were called with different
+    // fallbacks at different call sites — `common.errorLoad` meant both
+    // "불러오지 못함" and "조직 정보 불러오지 못함" — so defining the key made one
+    // of them win everywhere and changed wording on screens nobody was
+    // touching. A key whose meaning depends on the call site is not a
+    // translation key, and the dictionary cannot be right for both.
+    const byKey = new Map<string, Set<string>>();
+    for (const c of calls) {
+      if (!byKey.has(c.key)) byKey.set(c.key, new Set());
+      byKey.get(c.key)!.add(c.fallback);
+    }
+    const overloaded = [...byKey]
+      .filter(([, fallbacks]) => fallbacks.size > 1)
+      .map(([key, fallbacks]) => `${key} is called with ${fallbacks.size} different fallbacks`);
+    expect(overloaded, "one key is asked to mean two things").toEqual([]);
+  });
+
   // GL-05 / SC-I18N-01: Localization dictionary completeness & consistency
   it("[SC-I18N-01] verifies localization dictionary key symmetry", async () => {
     const text = await Bun.file("packages/platform-web/src/contexts/I18nContext.tsx").text();

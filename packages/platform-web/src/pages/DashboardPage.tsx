@@ -102,7 +102,7 @@ export function DashboardPage() {
             {currentRole === "AGENT_OPERATOR" && (
               <Link to="/creator/register">
                 <Button variant="primary" size="sm">
-                  {t("nav.register", "➕ 신규 에이전트 등록")}
+                  {t("dash.registerLink", "➕ Register an agent")}
                 </Button>
               </Link>
             )}
@@ -116,14 +116,14 @@ export function DashboardPage() {
             {currentRole === "TENANT_ADMIN" && (
               <Link to="/tenant/egress-acl">
                 <Button variant="primary" size="sm">
-                  {t("nav.egress", "🛡️ Egress ACL 설정")}
+                  {t("dash.egressLink", "🛡️ Egress ACL settings")}
                 </Button>
               </Link>
             )}
             {currentRole === "PLATFORM_ADMIN" && (
               <Link to="/creator/topology">
                 <Button variant="primary" size="sm">
-                  {t("nav.topology", "🌐 토폴로지 열기")}
+                  {t("dash.topologyLink", "🌐 Open topology")}
                 </Button>
               </Link>
             )}
@@ -193,7 +193,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.tenants", "활성 테넌트 조직")}
           value={isLoading ? "..." : isError ? "—" : String(groups.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "조직 정보 불러오지 못함") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("dash.tenants.errorLoad", "Could not load tenants") : (groups.length > 0 ? `${groups.length}개 조직 등록` : "등록된 테넌트 없음")}
           color="#6366F1"
           icon="🏢"
         />
@@ -423,7 +423,7 @@ function TenantAdminDashboard() {
               {t("dash.ta.pendingApproval", "신규 에이전트 공개키 승인 대기 큐")}
             </h3>
             <Link to="/creator/register">
-              <Button variant="ghost" size="sm">{t("common.manage", "허브 열기 →")}</Button>
+              <Button variant="ghost" size="sm">{t("dash.openHub", "Open hub →")}</Button>
             </Link>
           </div>
 

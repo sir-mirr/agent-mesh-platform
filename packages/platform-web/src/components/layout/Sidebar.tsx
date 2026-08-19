@@ -118,7 +118,7 @@ export function Sidebar({
           icon: "🌐",
         },
         {
-          label: t("nav.playground", "메시지 플레이그라운드"),
+          label: t("dash.playgroundLink", "Message playground"),
           description: t("nav.playground.desc", "JWT 프록시 발송 및 실시간 영수증"),
           href: "/creator/playground",
           icon: "💬",

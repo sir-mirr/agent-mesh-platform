@@ -44,7 +44,7 @@ export function LeaseQueuePage() {
           setQueue(
             res.mailboxes.map((m: any, idx: number) => ({
               id: `msg_mb_${idx + 1}`,
-              sender: { id: "hub", name: "메시 허브", group: "System" },
+              sender: { id: "hub", name: t("lease.col.hub", "Mesh hub"), group: "System" },
               recipient: { id: m.agentId || m.identity || "agent", name: m.agentId || m.identity, group: "General" },
               status: "Available",
               ttlRemaining: m.ttlSeconds || 300,
@@ -95,7 +95,7 @@ export function LeaseQueuePage() {
   const columns = [
     {
       key: "id",
-      header: "메시지 ID",
+      header: t("lease.col.id", "Message ID"),
       render: (item: LeaseItem) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "0.85rem" }}>
           {item.id}
@@ -104,7 +104,7 @@ export function LeaseQueuePage() {
     },
     {
       key: "route",
-      header: "경로 (발신 에이전트 → 수신 에이전트)",
+      header: t("lease.col.route", "Route (from → to)"),
       render: (item: LeaseItem) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem" }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
@@ -129,7 +129,7 @@ export function LeaseQueuePage() {
     },
     {
       key: "status",
-      header: "리스 상태",
+      header: t("lease.col.state", "Lease state"),
       render: (item: LeaseItem) => (
         <StatusBadge
           label={
@@ -152,7 +152,7 @@ export function LeaseQueuePage() {
     },
     {
       key: "ttl",
-      header: "300s 리스 카운트다운",
+      header: t("lease.col.count", "300s countdown"),
       render: (item: LeaseItem) => (
         <div style={{ width: 140 }}>
           <div
@@ -179,7 +179,7 @@ export function LeaseQueuePage() {
     },
     {
       key: "actions",
-      header: "원자적 일괄 작업",
+      header: t("lease.col.batch", "Atomic batch action"),
       align: "right" as const,
       render: (item: LeaseItem) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
@@ -257,10 +257,10 @@ export function LeaseQueuePage() {
           <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>⏱️</div>
           <div>
             <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
-              Lease (독점 임대) 상태란?
+              {t("lease.what.title", "What a lease is")}
             </strong>
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
-              비동기/서버리스 워커 에이전트가 메시지를 꺼내갈 때, 즉시 삭제하지 않고 <strong>다른 워커의 중복 처리를 방지하기 위해 일정 시간 동안 독점 잠금(Lock)</strong>하는 개념입니다.
+              {t("lease.what.body", "When an asynchronous or serverless worker takes a message it is not deleted straight away — it is locked for a time so no other worker processes it twice.")}
             </p>
           </div>
         </div>
@@ -269,10 +269,10 @@ export function LeaseQueuePage() {
           <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>🛡️</div>
           <div>
             <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
-              300초 TTL (At-Least-Once 안전장치)
+              {t("lease.ttl.title", "300s TTL (the at-least-once safeguard)")}
             </strong>
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
-              워커가 정상 완료 시 <code>ACK</code>를 보내면 영구 해제되며, 만약 워커 프로세스가 비정상 종료되어 300초 동안 응답이 없으면 <strong>메시지가 자동 복구(Available)되어 유실 없이 재처리</strong>됩니다.
+              {t("lease.ttl.body", "An ACK from a worker that finished releases it for good. If the worker dies and nothing answers for 300 seconds the message returns to Available and is processed again rather than lost.")}
             </p>
           </div>
         </div>

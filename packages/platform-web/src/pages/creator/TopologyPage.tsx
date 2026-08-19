@@ -975,7 +975,7 @@ export function TopologyPage() {
         title={t("topo.title", "에이전트 토폴로지")}
         subtitle={
           isLoading
-            ? t("common.loading", "토폴로지 데이터를 불러오는 중입니다...")
+            ? t("topology.loading", "Loading topology…")
             : isError
             ? t("common.loadError", "토폴로지 데이터를 불러오지 못했습니다.")
             : t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount}개 에이전트 라우팅 토폴로지`)
@@ -1030,7 +1030,7 @@ export function TopologyPage() {
         >
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: isLoading ? "#F59E0B" : (isError ? "#EF4444" : "#10B981"), display: "inline-block", boxShadow: "0 0 6px #10B981" }} />
           {isLoading ? (
-            <span>{t("common.loading", "토폴로지 불러오는 중...")}</span>
+            <span>{t("topology.loadingShort", "Loading topology…")}</span>
           ) : isError ? (
             <span style={{ color: "var(--color-danger)" }}>{t("common.disconnected", "통신 불가")}</span>
           ) : (
