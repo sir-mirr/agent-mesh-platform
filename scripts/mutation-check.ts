@@ -988,6 +988,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["and is not, over plain http"],
   },
   {
+    id: "admin-password-ignores-the-deployment",
+    defect:
+      "The seeded `admin` account took the password `admin` and nothing else could be stated. That is the quickstart's login and every test's, so it is right on the machine it was written for and a published password on any host others can reach — where the login form filled both boxes in for the visitor until the front end stopped doing it.",
+    file: "packages/http/src/db.ts",
+    from: "    const hash = await Bun.password.hash(supplied ?? 'admin', { algorithm: 'bcrypt' })",
+    to: "    const hash = await Bun.password.hash('admin', { algorithm: 'bcrypt' })",
+    suite: "test/misconfigured-boot.test.ts",
+    expect: ["takes the deployment's password when it states one", "the stated password did not work"],
+  },
+  {
     id: "unit-runs-a-file-that-moved",
     defect:
       "A unit's `ExecStart` is resolved against `WorkingDirectory`, so it names a path in this repository — and a unit pointing at a file that moved fails on the host at deploy time, with the operator holding it. Two of these units have no other test at all, and fourteen scripts were deleted from this tree in one day.",

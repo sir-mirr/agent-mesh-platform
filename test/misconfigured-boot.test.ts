@@ -20,7 +20,8 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { freePort, startMesh, type Mesh } from "./harness";
@@ -142,3 +143,64 @@ test("a unit runs a file this repository actually has", () => {
     .map((t) => `${t.file} runs ${t.path}, which is not in this repository`);
   expect(missing).toEqual([]);
 });
+
+test("the seeded admin takes the deployment's password when it states one", async () => {
+  // `admin`/`admin` is the quickstart's login and every test's, so it stays the
+  // default. What was missing is a way for a deployment not to have it: on a
+  // host others can reach it is a published password, and the login form filled
+  // both boxes in for the visitor until `963465a`.
+  //
+  // Refusing to start without one would take the local path away to close a
+  // hole the local path does not have. A random password would be printed once
+  // and lost. So: stated, or defaulted and said out loud.
+  //
+  // **A real mesh's state directory** — the same reason as the test above, and
+  // the first version of this one ignored that comment sitting ten lines up. An
+  // empty temp dir cannot boot the http server at all, so it measured *the
+  // server did not start* and called it *the password did not take*.
+  const own = await startMesh({ withHttp: false });
+  try {
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
+    env.AGENT_MESH_STATE_DIR = own.stateDir;
+    env.AGENT_MESH_HTTP_PORT = String(await freePort());
+    env.JWT_SECRET = "integration-test-secret";
+    env.AGENT_MESH_ADMIN_PASSWORD = "not-the-default";
+
+    const proc = Bun.spawn(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], {
+      cwd: REPO_ROOT,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    try {
+      const url = `http://127.0.0.1:${env.AGENT_MESH_HTTP_PORT}`;
+      let up = false;
+      for (let i = 0; i < 200 && !up; i++) {
+        try {
+          up = (await fetch(`${url}/api/v1/health`)).ok;
+        } catch {}
+        if (!up) await Bun.sleep(50);
+      }
+      // Asserted, not assumed: every claim below is about a server that answers.
+      expect(up, "the http server never became healthy, so nothing below measured a password").toBe(true);
+
+      const login = (password: string) =>
+        fetch(`${url}/auth/local`, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: `username=admin&password=${password}`,
+          redirect: "manual",
+        });
+
+      expect((await login("not-the-default")).headers.get("set-cookie") ?? "", "the stated password did not work").toContain("mesh_token=");
+      // The half that makes the other half worth anything.
+      expect((await login("admin")).headers.get("set-cookie") ?? "", "`admin` still works, so stating one changed nothing").not.toContain("mesh_token=");
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+  } finally {
+    own.stop();
+  }
+}, 40_000);

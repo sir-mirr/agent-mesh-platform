@@ -499,9 +499,29 @@ export async function seedLocalUsers(): Promise<void> {
   const db = getDb()
   const row = db.prepare('SELECT COUNT(*) as cnt FROM local_users').get() as { cnt: number }
   if (row.cnt === 0) {
-    const hash = await Bun.password.hash('admin', { algorithm: 'bcrypt' })
+    // **`admin`/`admin` unless the deployment says otherwise.**
+    //
+    // The quickstart signs in with it and so does every test, so removing it
+    // would break the documented path on the machine it was written for. On a
+    // host that is not that machine it is a published password: anyone who can
+    // reach the page can try it, and the front end used to fill both boxes in
+    // for them (fixed by agent-mesh-local-pm in `963465a`).
+    //
+    // So a deployment states one, and one that does not is told what it has.
+    // Not a refusal to start — that would take the local path away to close a
+    // hole the local path does not have — and not a random password either,
+    // which would only be printed once and lost.
+    const supplied = process.env.AGENT_MESH_ADMIN_PASSWORD
+    const hash = await Bun.password.hash(supplied ?? 'admin', { algorithm: 'bcrypt' })
     createLocalUser('admin', hash, 'Admin', 'admin')
-    console.log('[db] seeded default admin local user')
+    if (supplied) {
+      console.log('[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD')
+    } else {
+      console.warn(
+        '[db] seeded admin local user with the default password `admin`. ' +
+          'Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.',
+      )
+    }
   }
 
   // Every local user is also a web user, and therefore a mesh participant.
