@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
@@ -174,7 +174,7 @@ export function TopologyPage() {
             // Named for what it is — a placeholder the screen drew because the
             // server reported no groups — rather than "Default Group", which
             // reads as a group the mesh has.
-            name: "(그룹 없음)",
+            name: t("topo.noGroup", "(그룹 없음)"),
             member_count: liveAgents.length,
             members: liveAgents.map((a) => a.identity),
           },
@@ -233,7 +233,7 @@ export function TopologyPage() {
         groupName: `${cfg.name} (Gateway)`,
         type: "gateway-bridge",
         status: "Gateway",
-        desc: `은하계 간 패킷 라우팅 및 SPEC § 12 Egress ACL 보안 정책을 전담하는 ${cfg.name} 백본 게이트웨이 브릿지입니다.`,
+        desc: `${cfg.name} — ${t("topo.gateway", "그룹 간 라우팅과 Egress ACL 을 맡는 게이트웨이")}`,
         // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
         // put a synthesised node in the same list as real agents wearing the
         // same kind of value.
@@ -281,7 +281,7 @@ export function TopologyPage() {
         // `last_seen_at` is what it does know: seen at some point, or no record.
         const status: "Seen" | "NoRecord" = hasBeenSeen(agentObj ?? {}) ? "Seen" : "NoRecord";
         const displayName = agentObj?.description || agentIdentity;
-        const desc = `${cfg.name} 그룹 소속 활성 에이전트 [${agentIdentity}]입니다.`;
+        const desc = `${agentIdentity} — ${cfg.name}`;
 
         // Radial orbital layout coordinates
         let nx = cfg.cx;
@@ -910,12 +910,12 @@ export function TopologyPage() {
       });
       setToastMsg(
         receipt.status === "failed"
-          ? `'${selectedNode.displayName}' 로 보낸 메시지를 허브가 거절했습니다 (${receipt.id})`
-          : `'${selectedNode.displayName}' 로 메시지를 보냈습니다 — 허브 접수됨 (${receipt.id})`
+          ? `${t("topo.send.refused", "허브가 거절했습니다")}: ${selectedNode.displayName} (${receipt.id})`
+          : `${t("topo.send.accepted", "허브가 접수했습니다")}: ${selectedNode.displayName} (${receipt.id})`
       );
     } catch (err: any) {
       console.warn("[Topology] Quick send error:", err.message);
-      setToastMsg(`'${selectedNode.displayName}' 에이전트로 메시지 전송 실패: ${err.message || "서버 통신 오류"}`);
+      setToastMsg(`${t("topo.send.failed", "전송 실패")}: ${selectedNode.displayName} — ${err.message || t("common.errorLoad", "불러오지 못함")}`);
     }
     setTimeout(() => setToastMsg(null), 3500);
   };
@@ -1058,14 +1058,14 @@ export function TopologyPage() {
         {totalAgentCount === 0 && (
           <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", padding: "20px 32px", background: "rgba(255,255,255,0.96)", border: `1px solid ${isError ? "var(--color-danger)" : "var(--color-border)"}`, borderRadius: "var(--radius-lg)", color: isError ? "var(--color-danger)" : "var(--color-text-muted)", fontSize: "0.88rem", zIndex: 40, boxShadow: "0 10px 25px rgba(0,0,0,0.08)", textAlign: "center", display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
             {isLoading ? (
-              <span>토폴로지 데이터를 불러오는 중입니다...</span>
+              <span>{t("topo.loading", "토폴로지를 불러오는 중입니다...")}</span>
             ) : isError ? (
               <>
-                <span>⚠️ 토폴로지 서버와 통신할 수 없습니다 (오류 발생).</span>
-                <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>↻ 재시도</Button>
+                <span>⚠️ {failure === "refused" ? refusedText(t, missing) : t("topo.error", "토폴로지를 불러오지 못했습니다 (서버가 답하지 않았습니다).")}</span>
+                <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>↻ {t("common.retry", "재시도")}</Button>
               </>
             ) : (
-              <span>현재 토폴로지에 등록된 에이전트 데이터가 없습니다.</span>
+              <span>{t("topo.empty", "토폴로지에 그릴 에이전트가 없습니다.")}</span>
             )}
           </div>
         )}
@@ -1155,7 +1155,7 @@ export function TopologyPage() {
                 }}
               >
                 <div style={{ padding: "6px 10px", fontSize: "0.7rem", fontWeight: 800, color: "var(--color-text-muted)", background: "var(--color-bg-surface-sub)", borderBottom: "1px solid var(--color-border)" }}>
-                  검색 결과 ({searchResults.length}) · 클릭 시 즉시 비행 포커싱
+                  {t("topo.results", "검색 결과")} ({searchResults.length})
                 </div>
                 {searchResults.map((node) => (
                   <div
@@ -1465,11 +1465,11 @@ export function TopologyPage() {
             zIndex: 40,
           }}
         >
-          <button onClick={zoomIn} style={hudBtnStyle} title="확대 (+)">➕</button>
+          <button onClick={zoomIn} style={hudBtnStyle} title={t("topo.zoomIn", "확대")}>➕</button>
           <span style={{ fontSize: "0.75rem", fontWeight: 700, minWidth: 44, textAlign: "center", color: "var(--color-text-primary)", fontFamily: "var(--font-mono)" }}>
             {Math.round(scale * 100)}%
           </span>
-          <button onClick={zoomOut} style={hudBtnStyle} title="축소 (-)">➖</button>
+          <button onClick={zoomOut} style={hudBtnStyle} title={t("topo.zoomOut", "축소")}>➖</button>
           <button
             onClick={fitToScreen}
             style={{
@@ -1481,7 +1481,7 @@ export function TopologyPage() {
               background: "var(--color-primary-light)",
               borderRadius: "var(--radius-sm)",
             }}
-            title="화면 맞춤 (Fit - 5% 여백)"
+            title={t("topo.fit", "화면 맞춤")}
           >
             Fit
           </button>
@@ -1507,7 +1507,7 @@ export function TopologyPage() {
             userSelect: "none",
           }}
           onMouseDown={handleMinimapMouseDown}
-          title="미니맵: 클릭 또는 드래그하여 해당 구역으로 즉시 이동"
+          title={t("topo.minimap", "미니맵 — 클릭하거나 끌어서 이동")}
         >
           {/* Static Background Cluster Map */}
           <svg
@@ -1615,7 +1615,7 @@ export function TopologyPage() {
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: selectedNode.status === "Seen" ? "#ECFDF5" : "#EFF6FF", color: selectedNode.status === "Seen" ? "#059669" : "#2563EB", fontWeight: 700 }}>
-                ● {selectedNode.status === "Seen" ? "접속 기록 있음" : "접속 기록 없음"}
+                ● {selectedNode.status === "Seen" ? t("dash.op.seen", "접속 기록 있음") : t("dash.op.neverSeen", "접속 기록 없음")}
               </span>
               <span style={{ fontSize: "0.7rem", padding: "2px 8px", borderRadius: "var(--radius-full)", background: "var(--color-bg-surface-sub)", color: "var(--color-text-secondary)", fontWeight: 600 }}>
                 Type: {selectedNode.type}
@@ -1629,7 +1629,7 @@ export function TopologyPage() {
             {/* Quick Message Box */}
             <div style={{ background: "var(--color-bg-surface-sub)", padding: 12, borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: 8 }}>
               <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
-                ✉ 메시지 즉시 발송 테스트
+                ✉ {t("topo.send", "메시지 보내보기")}
               </label>
               <input
                 type="text"
@@ -1653,7 +1653,7 @@ export function TopologyPage() {
             {/* Connected Peers */}
             <div>
               <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-                연결된 피어 목록 ({selectedNode.directPeers.length}):
+                {t("topo.peers", "연결된 피어")} ({selectedNode.directPeers.length}):
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflowY: "auto" }}>
                 {selectedNode.directPeers.map((peer) => (
@@ -1675,7 +1675,7 @@ export function TopologyPage() {
                       transition: "all 0.15s ease",
                       boxShadow: "0 1px 3px rgba(37, 99, 235, 0.15)",
                     }}
-                    title={`${peer} 노드로 카메라 비행 이동`}
+                    title={peer}
                   >
                     🔗 {peer}
                   </button>
