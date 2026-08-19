@@ -85,13 +85,23 @@ const emitTo = flag("--emit");
  * mesh. The file is written atomically by the thing that knows all four.
  *
  * To seed a mesh this script did not start — a standing dev stack — hand it a
- * file of the same shape:
+ * file of the same shape. **Copy the login handle from what `e2e:harness`
+ * writes, not from memory:** it is a form post whose session cookie rides a
+ * `302`, and the JSON shape written here first answered `200` with HTML and no
+ * cookie, which reached `agent-mesh-local-pm` as `null is not an object`
+ * (mail #1143).
  *
  *   { "base_url": "http://127.0.0.1:3000", "api_http": "http://127.0.0.1:3100",
  *     "state_dir": "…/state",
- *     "admin_test_handle": { "login_url": "http://127.0.0.1:3000/auth/local",
- *       "content_type": "application/json",
- *       "body": "{\"username\":\"admin\",\"password\":\"…\"}" } }
+ *     "admin_test_handle": {
+ *       "login_url": "http://127.0.0.1:3000/auth/local",
+ *       "method": "POST",
+ *       "content_type": "application/x-www-form-urlencoded",
+ *       "body": "username=admin&password=…",
+ *       "login_expect_status": 302 } }
+ *
+ * A JSON body works too, but only with `accept: application/json` — without it
+ * the route answers the browser flow, and the browser flow is a page.
  */
 const readyFile = flag("--ready-file") ?? "/tmp/agent-mesh-fe-fixture.json";
 const readyBlob = Bun.file(readyFile);
@@ -129,9 +139,28 @@ const newKey = () => {
 
 const h = ready.admin_test_handle;
 const login = await fetch(h.login_url, {
-  method: "POST", headers: { "content-type": h.content_type }, body: h.body, redirect: "manual",
+  method: "POST",
+  headers: { "content-type": h.content_type, ...(h.content_type?.includes("json") ? { accept: "application/json" } : {}) },
+  body: h.body,
+  redirect: "manual",
 });
-const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+// **A 200 with no cookie is the failure this used to die on.** `!` on the header
+// turned a hand-written ready file with the wrong content type into
+// `null is not an object`, which says nothing about ready files. The route
+// answers the browser flow when it is not asked for JSON, and the browser flow
+// is a page.
+const setCookie = login.headers.get("set-cookie");
+if (!setCookie) {
+  throw new Error(
+    `admin login answered ${login.status} with no Set-Cookie, using the handle in ${readyFile} ` +
+      `(content-type ${h.content_type}).\n` +
+      (login.status === 401
+        ? "401 is the password: the account exists and the credentials in that file do not match it."
+        : "A redirect or a 200 carrying no cookie is the content type: `/auth/local` answers the browser flow — " +
+          "a page — unless the request is a form post or accepts JSON. Copy the handle from what `e2e:harness` writes."),
+  );
+}
+const cookie = setCookie.split(";")[0]!;
 
 const provision = (identity: string, publicKey: string) =>
   fetch(`${HUB}/api/v1/agents`, {
