@@ -988,6 +988,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["and is not, over plain http"],
   },
   {
+    id: "unit-runs-a-file-that-moved",
+    defect:
+      "A unit's `ExecStart` is resolved against `WorkingDirectory`, so it names a path in this repository — and a unit pointing at a file that moved fails on the host at deploy time, with the operator holding it. Two of these units have no other test at all, and fourteen scripts were deleted from this tree in one day.",
+    file: "ops/systemd/agent-mesh-self-reminder-lab.service",
+    from: "ExecStart=/home/ubuntu/.bun/bin/bun packages/self-reminder/src/main.ts",
+    to: "ExecStart=/home/ubuntu/.bun/bin/bun packages/self-reminder/src/daemon.ts",
+    suite: "test/misconfigured-boot.test.ts",
+    expect: ["a unit runs a file this repository actually has", "which is not in this repository"],
+  },
+  {
     id: "env-file-made-optional-again",
     defect:
       "`EnvironmentFile=-path` is systemd's optional form: the file may be absent, the service starts anyway, and every variable in it takes a default. The http server refuses without `JWT_SECRET` and fails loudly; the hub starts on the default state directory and hands every client `http://127.0.0.1:3000` for attachment uploads — right on the quickstart's machine, wrong on the unit's, and not visible until an attachment fails for somebody else.",

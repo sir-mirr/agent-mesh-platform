@@ -20,7 +20,7 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { freePort, startMesh, type Mesh } from "./harness";
@@ -106,4 +106,39 @@ test("a unit refuses to start without the env file it was given", () => {
       .map((line) => `${file}: ${line}`),
   );
   expect(optional, "a missing env file would start the service on defaults instead of failing").toEqual([]);
+});
+
+test("a unit runs a file this repository actually has", () => {
+  // systemd resolves these against `WorkingDirectory=/srv/agent-mesh-platform`,
+  // so every one is a path in this tree — and a unit pointing at a file that
+  // moved fails on the host, at deploy time, with the operator holding it.
+  //
+  // Two of these units have no test of any other kind, which is what
+  // agent-mesh-local-pm was about to check with real systemd in a container
+  // before that path was dropped. This is the part of it that needs no systemd:
+  // the names can be checked here, the behaviour cannot.
+  //
+  // Fourteen scripts were deleted from this repository today. None was named by
+  // a unit — checked by hand at the time, and by this from now on.
+  const units = readdirSync(UNITS).filter((f) => f.endsWith(".service"));
+  expect(units.length, "no unit files were read, so this test compared nothing").toBeGreaterThan(2);
+
+  const targets = units.flatMap((file) => {
+    const text = readFileSync(join(UNITS, file), "utf8");
+    return [...text.matchAll(/^ExecStart(?:Pre|Post)?=(.+)$/gm)].flatMap((m) => {
+      // `ExecStart=/abs/bun packages/hub/src/main.ts` — the interpreter is the
+      // host's, the arguments are ours. Absolute paths belong to the deployment
+      // image and cannot be checked from here; relative ones are this repo.
+      const parts = m[1]!.trim().split(/\s+/).filter((a) => !a.startsWith("-"));
+      return parts
+        .filter((a) => !a.startsWith("/home/") && a.includes("/"))
+        .map((a) => ({ file, path: a.replace(/^\/srv\/agent-mesh-platform\//, "") }));
+    });
+  });
+  expect(targets.length, "no ExecStart target was parsed out of any unit").toBeGreaterThan(3);
+
+  const missing = targets
+    .filter((t) => !existsSync(join(REPO_ROOT, t.path)))
+    .map((t) => `${t.file} runs ${t.path}, which is not in this repository`);
+  expect(missing).toEqual([]);
 });
