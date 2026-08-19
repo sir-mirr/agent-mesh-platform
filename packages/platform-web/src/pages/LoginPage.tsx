@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/client.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
-import type { UserRole } from "@/types/auth.ts";
 
 interface NodeDef {
   id: string;
@@ -38,7 +37,6 @@ export function LoginPage() {
   const { loginWithLocal, loginWithGitHub } = useAuth();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin");
-  const [selectedRole, setSelectedRole] = useState<UserRole>("PLATFORM_ADMIN");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -53,7 +51,7 @@ export function LoginPage() {
     e.preventDefault();
     setLoginError(null);
     try {
-      await loginWithLocal(username, password, selectedRole);
+      await loginWithLocal(username, password);
     } catch (err: any) {
       setLoginError(
         err instanceof ApiError && !err.refused
@@ -658,20 +656,6 @@ export function LoginPage() {
             />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>
-            <select
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-              style={inputStyle}
-            >
-              <option value="PLATFORM_ADMIN">👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option>
-              <option value="TENANT_ADMIN">🏢 테넌트 관리자 (Tenant Admin - 테넌트 메뉴 노출)</option>
-              <option value="GROUP_ADMIN">👥 그룹 관리자 (Group Admin - 그룹 관리)</option>
-              <option value="AGENT_OPERATOR">🤖 일반 에이전트 운영자 (Agent Operator - 관리자 메뉴 은닉)</option>
-            </select>
-          </div>
-
           {loginError && (
             <div
               data-testid="login-error"
@@ -700,7 +684,7 @@ export function LoginPage() {
             lineHeight: 1.4,
           }}
         >
-          단일 계정(Single ID) 체계로, 선택된 역할에 따라 사이드바 메뉴가 자동으로 동적 활성화/은닉됩니다.
+          사이드바 메뉴는 서버가 이 계정에 부여한 capability 로 갈립니다. 화면이 고르는 것이 아닙니다.
         </p>
       </div>
     </div>

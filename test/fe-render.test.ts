@@ -2169,6 +2169,42 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   });
 
+  /**
+   * SC-AUTH-06 — the login screen does not let a person choose their own role.
+   *
+   * It offered a `<select>` labelled 시나리오 역할 with four options, the top one
+   * reading 👑 플랫폼 관리자, and passed the choice to `loginWithLocal`. It granted
+   * nothing — `GuardedRoute` and the sidebar both ask `hasCapability`, and
+   * `POST /auth/local` reads only the username and password — but the sidebar
+   * drew the choice as the person's title, so a deployment to a real server
+   * showed a self-declared platform administrator. The owner's call was to
+   * remove it.
+   *
+   * **Both halves are asserted.** A screen with no picker that also stopped
+   * signing anybody in would pass a check for the picker's absence alone.
+   */
+  it("[SC-AUTH-06] offers no role picker, and the role that arrives is the server's", async () => {
+    await withUnauthedPage("/login", async ({ page }) => {
+      const body = (await page.locator("#root").innerText()) ?? "";
+      expect(
+        {
+          picker: (await page.locator("select").count()) > 0,
+          label: /시뮬레이션 역할|RBAC Role/.test(body),
+          claim: /플랫폼 관리자 \(Platform Admin/.test(body),
+        },
+        "the login screen still lets a person pick what they are",
+      ).toEqual({ picker: false, label: false, claim: false });
+
+      // And it still signs in — the half that a "no select on the page" check
+      // cannot see on its own.
+      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='password']").first().fill("admin");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForURL("**/dashboard", { timeout: 8000 }).catch(() => {});
+      expect(page.url(), "removing the picker also stopped the login").toContain("/dashboard");
+    });
+  }, 20000);
+
   // SC-AUTH-01: Session authentication & cookie injection
   it("[SC-AUTH-01] verifies session auth and redirect flow", async () => {
     await withUnauthedPage("/login", async ({ page }) => {

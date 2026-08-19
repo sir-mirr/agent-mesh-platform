@@ -31,12 +31,20 @@ import { fetchGroups, type GroupItem } from "@/api/groups.ts";
  * first of them — `replace()` with a string argument changes one occurrence. One
  * copy was measured and the other could regress in silence.
  *
- * An earlier version of this comment said the group panel is unreachable by any
- * session. That is wrong and was never measured: `LoginPage` offers a role
- * `<select>` and passes the choice to `loginWithLocal`, so all four panels open.
- * What *was* measured is narrower — the server never hands out a role other than
- * `admin`, and everything else resolves to `AGENT_OPERATOR`. Two different
- * sentences, and the unmeasured one is the one that got written down.
+ * The history of this comment is worth keeping, because it was wrong twice in
+ * opposite directions. It first said the group panel is unreachable by any
+ * session — unmeasured, and false at the time: `LoginPage` offered a role
+ * `<select>` and passed the choice to `loginWithLocal`, so all four panels
+ * opened. That picker has since been removed, on the grounds that a screen
+ * deployed to a real server must not let a person choose their own title. So
+ * the sentence is true *now*, for a reason that did not exist when it was
+ * written: the server hands out `admin` or nothing, and everything else
+ * resolves to `AGENT_OPERATOR`.
+ *
+ * `TenantAdminDashboard` and `GroupAdminDashboard` are therefore unreachable
+ * until the server issues those roles. They are left in place rather than
+ * deleted, because the question of whether this platform grows tenant and group
+ * roles is not one this file can answer — but nothing draws them today.
  */
 function queueValue(total: number | null | undefined): string {
   return total != null ? String(total) : "— 미측정";

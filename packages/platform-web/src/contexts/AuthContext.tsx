@@ -17,7 +17,7 @@ interface AuthContextType {
    * where every screen became the login form and logging in did nothing.
    */
   authFailure: "unauthenticated" | "unreachable" | null;
-  loginWithLocal: (id: string, pass: string, role?: UserRole) => Promise<void>;
+  loginWithLocal: (id: string, pass: string) => Promise<void>;
   loginWithGitHub: () => void;
   logout: () => void;
 }
@@ -114,16 +114,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const me = await fetchAuthMe();
         if (me && me.github_login) {
           setUser((prev) => {
+            // `prev?.role` was the fallback here, which is what let a role the
+            // screen had picked survive a reload. With the picker gone there is
+            // nothing for it to carry but the server's own answer, so it is
+            // computed from `me` every time and the client keeps no role of its own.
             const roleKey: UserRole =
               (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
                 ? "PLATFORM_ADMIN"
-                : (prev?.role || "AGENT_OPERATOR");
+                : "AGENT_OPERATOR";
             const resolvedCaps = capabilitiesFrom(me.capabilities);
 
             return {
               id: `usr_${me.github_login}`,
               name: `${me.github_login} (운영자)`,
-              role: prev?.role || roleKey,
+              role: roleKey,
               capabilities: resolvedCaps,
               tenantId: "tenant_default",
               authProvider: "local",
@@ -156,12 +160,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  const loginWithLocal = async (id: string, pass: string, role: UserRole = "PLATFORM_ADMIN") => {
+  /**
+   * **The role comes from the account, not from the form.**
+   *
+   * This took a `role` argument, defaulting to `PLATFORM_ADMIN`, and the login
+   * page passed whatever a `<select>` labelled 시뮬레이션 역할 was set to. It
+   * granted nothing — `GuardedRoute` and the sidebar both ask `hasCapability`,
+   * and `POST /auth/local` reads only the username and password — but the
+   * sidebar drew the choice as the person's title, so a screen deployed to a
+   * real server showed a self-declared 플랫폼 관리자.
+   */
+  const loginWithLocal = async (id: string, pass: string) => {
     setIsLoading(true);
     try {
       const res = await loginLocalApi(id, pass);
       const mappedRole: UserRole =
-        res.user.role === "admin" ? "PLATFORM_ADMIN" : role;
+        res.user.role === "admin" ? "PLATFORM_ADMIN" : "AGENT_OPERATOR";
       const resolvedCaps = capabilitiesFrom(res.user.capabilities);
 
       const newUser: User = {

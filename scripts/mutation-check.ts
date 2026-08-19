@@ -1380,6 +1380,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no start command found for the hub in running-locally.md"],
   },
   {
+    id: "login-picks-its-own-role",
+    defect:
+      "The login screen offered a `<select>` labelled 시뮬레이션 역할 whose top option read 👑 플랫폼 관리자, and passed the choice to `loginWithLocal`. It granted nothing — `GuardedRoute` and the sidebar both ask `hasCapability`, and `POST /auth/local` reads only the username and password — but the sidebar drew the choice as the person's title, so a deployment to a real server showed a self-declared platform administrator.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "          {loginError && (",
+    to: "          <div>\n            <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>\n            <select style={inputStyle}><option>👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option></select>\n          </div>\n\n          {loginError && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-06", "the login screen still lets a person pick what they are"],
+  },
+  {
+    id: "login-stops-signing-in",
+    defect:
+      "The other half. A login screen with no role picker that also signed nobody in would satisfy a check for the picker's absence, and that check is the one this change invites somebody to write.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "      await loginWithLocal(username, password);",
+    to: '      if (true) { setLoginError("차단"); return; }\n      await loginWithLocal(username, password);',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-06", "removing the picker also stopped the login"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
