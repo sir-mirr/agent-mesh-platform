@@ -1679,7 +1679,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/admin/grants`            | JWT\*  | `201`   | Grant a capability to a subject (§ 11). |
 | DELETE | `/api/v1/admin/grants`            | JWT\*  | `200`   | Revoke one. Absent is not an error (§ 11). |
 | GET    | `/api/v1/admin/keys/pending`      | JWT\*  | `200`   | Keys awaiting an approval decision (§ 10.2.1). |
-| GET    | `/api/v1/admin/keys/stream`       | JWT\*  | `200`   | Key proposals as they arrive, SSE (§ 10.2.1). |
+| GET    | `/api/v1/admin/keys/stream`       | JWT\*  | `200`   | Key proposals as they arrive, SSE (§ 10.2.1). **A second source for the same fact as `/api/v1/admin/keys/pending`**, and a client is expected to hold both: the list on load, the stream after. A pending key therefore reaches the screen from whichever arrives first, so blocking one of them does not stop the count from filling and is not a measurement of the feature. `agent-mesh-local-pm` found this as a race — two runs of one tool against one commit disagreed on five pairs, all of them this route — and it is written here because the alternative is each reader rediscovering it from a flake. |
 | GET    | `/api/v1/admin/keys/{identity}`   | JWT\*  | `200`   | One identity's key history (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/approve`      | JWT\*  | `200`   | Approve a proposed key, by fingerprint (§ 10.2.1). |
 | POST   | `/api/v1/admin/keys/deny`         | JWT\*  | `200`   | Deny a proposed key, by fingerprint (§ 10.2.1). |
