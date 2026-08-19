@@ -104,6 +104,27 @@ describe("a session that must change its password", () => {
     return (res.headers.get("set-cookie") ?? "").split(";")[0]!;
   };
 
+  test("is told so by the response that handed it the session", async () => {
+    // `/auth/me` answers it too, and one place would be enough — except that
+    // the login handler says in its own comment that it returns the same fields
+    // so the two cannot describe the same user differently. Missing here, that
+    // sentence was false, and a client reading a fresh session would take the
+    // absent flag for `false`.
+    flag(true);
+    try {
+      const res = await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        // `accept`, not `content-type`: the handler picks its shape from what
+        // the caller says it will read, which is what the console sends.
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ username: "admin", password: "admin" }),
+      });
+      expect((await res.json()).must_change_password, "the login response did not say the account is flagged").toBe(true);
+    } finally {
+      flag(false);
+    }
+  });
+
   test("is refused everywhere else, by the server and not by a redirect", async () => {
     // A screen that redirects is what the operator sees. It is not what stops
     // `curl` holding the same cookie, and a guard that only moves a page is the

@@ -988,6 +988,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["and is not, over plain http"],
   },
   {
+    id: "login-response-omits-the-flag",
+    defect:
+      "The login handler's own comment says it returns the fields `/auth/me` answers with, so the two cannot describe the same user differently. The first-login flag was missing from it, which made that sentence false: a client reading the session it had just been handed finds no flag, takes the absence for `false`, and walks a locked account into a console that refuses every request.",
+    file: "packages/http/src/main.ts",
+    from: "        must_change_password: mustChangePassword(user.username),",
+    to: "",
+    suite: "test/http.test.ts",
+    expect: ["is told so by the response that handed it the session", "the login response did not say the account is flagged"],
+  },
+  {
     id: "password-gate-only-redirects",
     defect:
       "A first-login password change enforced by the screen alone is decoration: the same cookie in `curl` reaches everything. That is the shape removed from four screens in this repository on the day this was written, and the front end declined to build against it until the server refused first.",

@@ -775,6 +775,14 @@ app.post('/auth/local', async (c) => {
           github_login: user.username,
           role: user.role,
         },
+        // The line above says these are the fields `/auth/me` answers with, so
+        // that the two cannot describe the same user differently. This one was
+        // missing and made that sentence false: a client reading a session it
+        // had just been handed would find no flag, take the absence for `false`,
+        // and walk a locked account into a console that refuses every request.
+        // agent-mesh-local-pm found it by measuring the response instead of
+        // building from what I told them it contained.
+        must_change_password: mustChangePassword(user.username),
       }),
       { status: 200, headers: { 'content-type': 'application/json', 'Set-Cookie': cookie } },
     )
