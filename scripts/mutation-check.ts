@@ -1396,8 +1396,19 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/pages/LoginPage.tsx",
     from: "      await loginWithLocal(username, password);",
     to: '      if (true) { setLoginError("차단"); return; }\n      await loginWithLocal(username, password);',
+    // **Pinned on SC-ACT-01, not on SC-AUTH-06's own half.** Running the whole
+    // file, `SC-ACT-01` signs in long before SC-AUTH-06 does, fails at its
+    // `waitForURL`, and takes the browser context down with it — every later
+    // scenario then dies on `Target page, context or browser has been closed`,
+    // SC-AUTH-06 included. So the sentence this entry can honestly wait for is
+    // the earlier scenario's.
+    //
+    // A third reason for `not caught` that is not the check being weak: not a
+    // bad anchor, not a mutation that changes nothing, but **another check
+    // firing first and ending the run**. SC-AUTH-06 keeps its second assertion
+    // regardless — it is what makes that scenario mean something on its own.
     suite: "test/fe-render.test.ts",
-    expect: ["SC-AUTH-06", "removing the picker also stopped the login"],
+    expect: ["SC-ACT-01", "performs interactive login form submission"],
   },
   {
     id: "proxy-block-target",
