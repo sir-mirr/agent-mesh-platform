@@ -185,6 +185,13 @@ export function Sidebar({
           requiredCapability: "audit.read.metadata",
         },
         {
+          label: t("nav.users", "로컬 계정"),
+          description: t("nav.users.desc", "사람을 들이고 임시 비밀번호를 한 번 발급"),
+          href: "/platform/users",
+          icon: "👤",
+          requiredCapability: "user.admit",
+        },
+        {
           label: t("nav.rbac", "조직 멤버 RBAC"),
           description: t("nav.rbac.desc", "계정별 권한 부여 및 회수"),
           href: "/tenant/rbac",

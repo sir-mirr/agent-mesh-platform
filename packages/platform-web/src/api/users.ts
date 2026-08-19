@@ -24,3 +24,17 @@ export interface LocalUsersResponse {
 export async function fetchLocalUsers(): Promise<LocalUsersResponse> {
   return await apiClient<LocalUsersResponse>("/api/v1/admin/users", { method: "GET" });
 }
+
+export interface AdmittedUser {
+  ok: boolean;
+  user: LocalUser;
+  /** Shown once, at the top of the response, and never returned again. */
+  temporary_password: string;
+}
+
+export async function admitLocalUserApi(username: string, displayName?: string): Promise<AdmittedUser> {
+  return await apiClient<AdmittedUser>("/api/v1/admin/users", {
+    method: "POST",
+    body: JSON.stringify({ username, display_name: displayName || undefined }),
+  });
+}

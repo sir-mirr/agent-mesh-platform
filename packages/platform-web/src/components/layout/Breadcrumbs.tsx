@@ -92,6 +92,12 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           { label: t("bc.governance", "플랫폼 거버넌스"), href: "/tenant/audits" },
           { label: t("bc.audit", "보안 감사 로그") },
         ];
+      case "/platform/users":
+        return [
+          { label: t("bc.home", "홈"), href: "/" },
+          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/platform/users" },
+          { label: t("bc.users", "로컬 계정") },
+        ];
       case "/tenant/rbac":
         return [
           { label: t("bc.home", "홈"), href: "/" },

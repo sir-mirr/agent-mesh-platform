@@ -745,11 +745,13 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       return { status: res.status, gate: ((await res.json()) as any).must_change_password === true };
     };
 
-    // **The status is the same on both sides of the change.** After choosing a
-    // password this account is still `approved: false`, so `/api/v1/agents`
-    // answers `403` either way — with a different reason. A scenario that read
-    // the status would call the gate permanent; one that reads the reason sees
-    // it lift. Measured, not assumed: `{"error":"Account pending approval"}`.
+    // **Read the reason, not the status.** When this was written the account was
+    // still `approved: false` after choosing a password, so `/api/v1/agents`
+    // answered `403` on both sides of the change with different reasons, and a
+    // scenario reading the status would have called the gate permanent.
+    // `252c02e` then made admission approve, so today the same request opens.
+    // The assertion did not have to change, which is the whole argument for
+    // asserting on `must_change_password` rather than on `403`.
     const before = await reason(locked);
 
     const changed = await fetch(`${mesh.http.url}/auth/local/password`, {

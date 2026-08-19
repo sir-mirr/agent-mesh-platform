@@ -2627,6 +2627,85 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 25000);
 
   /**
+   * SC-USER-D1 / D2 — the screen that admits a person.
+   *
+   * Before this screen the only way to admit anybody was `curl`, and the two
+   * things worth measuring about it are both about honesty rather than layout:
+   *
+   * - **Once has to mean once.** The password is in component state and nowhere
+   *   else, so D1 reloads the page and asserts it is gone. A screen that kept it
+   *   in `localStorage` would look identical and be false.
+   * - **The refusal is the server's sentence.** D2 asks the API for the same
+   *   duplicate name and compares the two strings. Writing the expected text in
+   *   this file would be the test agreeing with itself; the server is the other
+   *   side of the comparison.
+   *
+   * D1 also signs in with what was drawn. A screen showing a plausible-looking
+   * string would pass any check that only read its shape — `SC-ADDR-02` is the
+   * scar: a base64url fingerprint is one third letters, and a check that judged
+   * by shape called real values fabricated a third of the time.
+   */
+  it("[SC-USER-D1] shows the temporary password once, and it is the real one", async () => {
+    const person = `d1-grace-${Date.now().toString(36).slice(-5)}`;
+
+    const shown = await withPage("/platform/users", async ({ page }) => {
+      await page.waitForSelector('[data-testid="admit-form"]', { timeout: 8000 });
+      await page.locator('[data-testid="admit-username"]').fill(person);
+      await page.locator('[data-testid="admit-submit"]').click();
+      await page.waitForSelector('[data-testid="issued-value"]', { timeout: 8000 });
+      const value = ((await page.locator('[data-testid="issued-value"]').textContent()) ?? "").trim();
+
+      // The other half of "once". A reload is the cheapest thing a person does.
+      await page.reload({ waitUntil: "networkidle" });
+      await settled(page);
+      const afterReload = await page.locator('[data-testid="issued-password"]').count();
+      const stillListed = await page.locator(`[data-testid="user-row-${person}"]`).count();
+      return { value, afterReload, stillListed };
+    });
+
+    // Ask the server whether that string is the password. Shape proves nothing.
+    const signIn = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username: person, password: shown.value }),
+      redirect: "manual",
+    });
+
+    expect(
+      { gave: shown.value.length > 0, works: signIn.status, keptAfterReload: shown.afterReload, listed: shown.stillListed },
+      "the screen showed no password, showed one that does not work, or kept it across a reload",
+    ).toEqual({ gave: true, works: 200, keptAfterReload: 0, listed: 1 });
+  }, 30000);
+
+  it("[SC-USER-D2] repeats the server's refusal rather than composing its own", async () => {
+    const taken = `d2-heidi-${Date.now().toString(36).slice(-5)}`;
+    const admin = { Cookie: `mesh_token=${jwtToken}`, "Content-Type": "application/json" };
+    await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ username: taken }),
+    });
+    const wire = (await (
+      await fetch(`${mesh.http.url}/api/v1/admin/users`, { method: "POST", headers: admin, body: JSON.stringify({ username: taken }) })
+    ).json()) as { error?: string };
+
+    const seen = await withPage("/platform/users", async ({ page }) => {
+      await page.waitForSelector('[data-testid="admit-form"]', { timeout: 8000 });
+      await page.locator('[data-testid="admit-username"]').fill(taken);
+      await page.locator('[data-testid="admit-submit"]').click();
+      await page.waitForSelector('[data-testid="admit-error"]', { timeout: 8000 });
+      const message = ((await page.locator('[data-testid="admit-error"]').textContent()) ?? "").trim();
+      const issued = await page.locator('[data-testid="issued-password"]').count();
+      return { message, issued };
+    });
+
+    expect(
+      { message: seen.message, issuedAnyway: seen.issued, serverSaid: (wire.error ?? "").length > 0 },
+      "the screen invented a refusal, or claimed success on one",
+    ).toEqual({ message: wire.error ?? "", issuedAnyway: 0, serverSaid: true });
+  }, 30000);
+
+  /**
    * SC-USER-D3 — the capability table is the server's list, and the role beside
    * a subject is the server's word for that subject.
    *

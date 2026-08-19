@@ -23,6 +23,7 @@ import { RegisterAgentPage } from "@/pages/creator/RegisterAgentPage.tsx";
 import { PlatformOverviewPage } from "@/pages/platform/PlatformOverviewPage.tsx";
 import { TelemetryPage } from "@/pages/platform/TelemetryPage.tsx";
 import { TenantTrafficPage } from "@/pages/platform/TenantTrafficPage.tsx";
+import { UserAdminPage } from "@/pages/platform/UserAdminPage.tsx";
 
 // Tenant Suite Pages
 import { TenantEgressAclPage } from "@/pages/tenant/TenantEgressAclPage.tsx";
@@ -65,6 +66,14 @@ export function App() {
               {/* 2. 실시간 서버 모니터링 콘솔 (인증된 사용자/운영자) */}
               <Route path="/platform" element={<PlatformOverviewPage />} />
               <Route path="/platform/telemetry" element={<TelemetryPage />} />
+              <Route
+                path="/platform/users"
+                element={
+                  <GuardedRoute requiredCapability="user.admit">
+                    <UserAdminPage />
+                  </GuardedRoute>
+                }
+              />
               <Route
                 path="/platform/tenants"
                 element={

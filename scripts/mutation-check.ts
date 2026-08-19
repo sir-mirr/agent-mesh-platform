@@ -1600,6 +1600,33 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "issued-password-survives-a-reload",
+    defect:
+      "Keeping the one-time password somewhere a reload can find it. The screen looks the same and the word `once` becomes false — and the place it would be kept, `localStorage`, is readable by anything else running on the origin.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: "  const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);",
+    to: `  const [issuedKept, setIssuedKept] = useState<{ username: string; password: string } | null>(
+    () => JSON.parse(localStorage.getItem("agent_mesh_issued") ?? "null"),
+  );
+  const issued = issuedKept;
+  const setIssued = (v: { username: string; password: string } | null) => {
+    localStorage.setItem("agent_mesh_issued", JSON.stringify(v));
+    setIssuedKept(v);
+  };`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D1", "kept it across a reload"],
+  },
+  {
+    id: "admit-screen-composes-its-own-refusal",
+    defect:
+      "A friendlier sentence than the server's. The duplicate-name case says which name is taken; a screen that replaces it sends somebody to guess, and the same replacement hides every other refusal the route can give.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: "          : String(err?.message ?? err),",
+    to: '          : "That did not work. Please try a different username.",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D2", "the screen invented a refusal, or claimed success on one"],
+  },
+  {
     id: "rbac-invents-the-role-column",
     defect:
       "The screen writing somebody's role itself. `I-055` and `I-077` are this sentence about other fields; here it printed \"Operator\" beside every subject that was not literally `admin`, including agent ids the server holds no account for.",
