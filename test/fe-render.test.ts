@@ -2242,6 +2242,94 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 30_000);
 
+  /**
+   * SC-INVENT-01 — a field the server did not send is not drawn as a value.
+   *
+   * `I-062` was this: the agent list invented the whole row — a status of
+   * `ONLINE` for agents that reported none, a `sha256:` fingerprint from a route
+   * that carries no fingerprint, a `created_at` of *now*. It was fixed by
+   * reading the source, and **no scenario asks the screen the question**, which
+   * is why `I-062` reached the branch at all: it went in with no test and nobody
+   * knew until a build was opened.
+   *
+   * ## Neither a label map nor a blocklist
+   *
+   * agent-mesh-local-pm's `audit/fabricated.mjs` compares columns to response
+   * keys and needs a vocabulary of absence to do it. That vocabulary is a guess,
+   * and it punished two honest fixes: `지문 없음` and `미보고` were not in it, so
+   * correcting the screen made the harness redder. A list of forbidden strings
+   * has the same defect pointed the other way.
+   *
+   * So this asks **the same field twice** — once with the server sending it,
+   * once with the server omitting it — and requires the two renders to differ in
+   * a specific way: the omitted case must show the screen's own absence handle
+   * and **must not show the value the present case showed**. The comparison is
+   * between two renders of the product, so nothing here decides what "absent"
+   * should look like.
+   *
+   * ## Both halves are needed
+   *
+   * Only the omitted case, and a screen that always renders `— 미보고` passes.
+   * Only the present case, and a screen that always renders a value passes. It
+   * is the pair that says anything, and `I-062` was precisely a screen where the
+   * absent case rendered the present case's answer.
+   */
+  it("[SC-INVENT-01] draws an omitted field as absent, never as the value it would have had", async () => {
+    const tag = "inv" + String(Date.now()).slice(-6);
+    const base = { identity: `pm-${tag}`, description: `DESC-${tag}`, type: `TYPE-${tag}` };
+
+    async function rowOf(agent: Record<string, unknown>): Promise<{ text: string; absent: number }> {
+      const context = await browser.newContext();
+      await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
+      const page = await context.newPage();
+      try {
+        await page.route("**/api/v1/agents", (route) =>
+          route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ agents: [agent] }) }),
+        );
+        await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
+        await settled(page);
+        await shows(page, `pm-${tag}`);
+        const text = (await page.locator("#root").innerText().catch(() => "")).trim();
+        // The screen's own absence handles, counted rather than named. Adding a
+        // new one must not make this test redder.
+        const absent =
+          (await page.locator("[data-testid$='-unknown']").count()) +
+          (await page.locator("[data-testid$='-absent']").count());
+        return { text, absent };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    }
+
+    // Sent: an active status. Omitted: no `status` key at all.
+    const sent = await rowOf({ ...base, status: "active" });
+    const omitted = await rowOf({ ...base });
+
+    // Neither render may be empty, or the pair says nothing — the vacuous pass
+    // this repository keeps meeting.
+    expect(
+      { sentDrew: sent.text.includes(`pm-${tag}`), omittedDrew: omitted.text.includes(`pm-${tag}`) },
+      "the row never rendered, so nothing was compared",
+    ).toEqual({ sentDrew: true, omittedDrew: true });
+
+    // The value the present case showed. If the screen stopped saying it, this
+    // test is measuring nothing and says so rather than passing.
+    expect(sent.text, "the sent status no longer renders as ONLINE — this pair has nothing to compare")
+      .toContain("ONLINE");
+
+    // **The omitted case must not borrow it.** This is `I-062` exactly.
+    expect(
+      { drewTheValueItWasNotSent: omitted.text.includes("ONLINE") },
+      "a row with no status drew the status of one that had it",
+    ).toEqual({ drewTheValueItWasNotSent: false });
+
+    // And it must say so with the screen's own handle rather than falling blank.
+    expect(
+      { absentHandles: omitted.absent > sent.absent },
+      "omitting the field produced no additional absence marker — the screen went quiet instead of answering",
+    ).toEqual({ absentHandles: true });
+  }, 45_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();
