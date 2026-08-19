@@ -299,6 +299,79 @@ describe("running-locally's proxy blocks", () => {
 });
 
 /**
+ * Every origin-relative path the front end calls is proxied by both blocks.
+ *
+ * The first version of them forwarded `/api/` and nothing else, and the front
+ * end signs in at `/auth/local` and restores its session from `/auth/me`. Those
+ * fell through to the SPA fallback, so **nginx answered the login POST itself
+ * with `405 Not Allowed`** — no file to serve, and `try_files` does not forward.
+ *
+ * Every other check passed: the page rendered, the assets loaded, and
+ * `/api/v1/health` answered *through the proxy* with the same body as the http
+ * server direct. A deployment that satisfies this document's own verification
+ * and that nobody can log into. It was found by opening the page and signing in,
+ * which is a thing no command in that document did.
+ *
+ * **The denominator is the front end, not a list kept here.** A hand-written set
+ * of prefixes would have said `/api` in exactly the same way the blocks did. So
+ * the paths are read out of `packages/platform-web/src` — the literal argument
+ * of every `fetch`, `apiClient` and `EventSource` — and the extraction refuses
+ * rather than shrinking: no paths found is a failure, because a green run over
+ * an empty set is what this whole file exists to refuse.
+ */
+describe("running-locally's proxy blocks cover the front end", () => {
+  const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
+  const WEB = join(REPO_ROOT, "packages", "platform-web", "src");
+
+  function calledPrefixes(): string[] {
+    const found = new Set<string>();
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        const src = readFileSync(full, "utf8");
+        const calls = [
+          ...src.matchAll(/(?:fetch|apiClient(?:<[^>]*>)?)\(\s*[`"\']([^`"\'$]*)/g),
+          ...src.matchAll(/new EventSource\(\s*[`"\']([^`"\'$]*)/g),
+          // A browser navigation is a request too, and `/auth/github` is one:
+          // it is not fetched, it is assigned to `location`, and a block that
+          // does not forward it serves the SPA shell instead of the redirect.
+          ...src.matchAll(/location(?:\.href)?\s*=\s*[`"\']([^`"\'$]*)/g),
+        ];
+        for (const m of calls) {
+          const path = m[1] ?? "";
+          if (path.startsWith("/api") || path.startsWith("/auth")) {
+            found.add("/" + path.replace(/^\//, "").split("/")[0]!);
+          }
+        }
+      }
+    };
+    walk(WEB);
+    return [...found].sort();
+  }
+
+  test("the front end's origin-relative calls can be read at all", () => {
+    // Without this the two assertions below compare an empty set against the
+    // blocks and agree with anything they say.
+    expect(calledPrefixes(), "no /api or /auth call found in platform-web — the extraction broke")
+      .toEqual(["/api", "/auth"]);
+  });
+
+  test("nginx forwards every prefix the front end calls", () => {
+    const forwarded = [...DOC.matchAll(/^\s*location\s+(\/[a-z]+)\/\s*\{/gm)].map((m) => m[1]!);
+    const missing = calledPrefixes().filter((p) => !forwarded.includes(p));
+    expect(missing, "the nginx block does not forward a prefix the front end calls").toEqual([]);
+  });
+
+  test("caddy forwards every prefix the front end calls", () => {
+    const forwarded = [...DOC.matchAll(/^\s*handle\s+(\/[a-z]+)\/\*\s*\{/gm)].map((m) => m[1]!);
+    const missing = calledPrefixes().filter((p) => !forwarded.includes(p));
+    expect(missing, "the caddy block does not forward a prefix the front end calls").toEqual([]);
+  });
+});
+
+/**
  * The local-run document does not hand out a command that cannot run, and does
  * not start a front end without telling it where the backend is.
  *

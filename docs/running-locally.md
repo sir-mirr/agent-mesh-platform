@@ -552,6 +552,20 @@ server {
     try_files $uri $uri/ /index.html;
   }
 
+  # **Signing in does not go through `/api/`.** The front end posts to
+  # `/auth/local` and reads `/auth/me`, and a block that proxies only `/api/`
+  # hands those to `try_files` above: nginx answers the login POST itself with
+  # `405 Not Allowed`, having found no file to serve. Every other check in this
+  # document still passes — the page renders, the assets load, `/api/v1/health`
+  # answers through the proxy — and nobody can log in. Measured, on this block
+  # as it was first written.
+  location /auth/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
   # **The http server, not the hub.** Pointing this at 3100 is the mistake at
   # the top of this document, and it fails as a page that renders and cannot
   # log in.
@@ -577,6 +591,9 @@ Caddy, the same thing:
 ```caddyfile
 mesh.example.internal {
   root * /srv/agent-mesh-web
+  handle /auth/* {
+    reverse_proxy 127.0.0.1:3000
+  }
   handle /api/* {
     reverse_proxy 127.0.0.1:3000
   }
@@ -587,9 +604,15 @@ mesh.example.internal {
 }
 ```
 
-**Neither block is deployed or tested by anything in this repository.** They are
-written from what the front end asks for and what § 8.9 needs, and the check
-below is what says whether the one you installed works.
+**Neither block is deployed by anything in this repository, and until now
+neither had been run.** The nginx one has been, once, on a laptop: nginx 1.31.3
+in front of a real `dist` with the two services on their documented ports.
+Everything below passed and **signing in did not**, because the first version of
+these blocks proxied `/api/` only. That is the paragraph above this one.
+
+They are otherwise written from what the front end asks for and what § 8.9
+needs, and the check below is what says whether the one you installed works —
+including, now, the part that found this.
 
 Two properties of the build to know before choosing a URL for it:
 
@@ -642,6 +665,23 @@ curl -s "http://127.0.0.1:3000/api/v1/health"
 The same answer through both means the proxy is wired. A different one, or an
 empty reply, means the screen is talking to something else — which is the whole
 failure this document is about, one layer up.
+
+**`/api/v1/health` alone is not enough**, because signing in is not under
+`/api/`. Ask for a session through the same origin the screen is served from:
+
+```bash
+curl -si -X POST "https://mesh.example.internal/auth/local" \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"admin"}' | grep -i '^set-cookie'
+```
+
+```
+set-cookie: mesh_token=eyJhbGciOiJIUzI1N...
+```
+
+A `405` here is the web server answering instead of the http server, and it is
+what a block that forwards only `/api/` produces. The page still renders, so
+this is the one command that distinguishes *deployed* from *reachable*.
 
 **Two commands pointed at the same host prove nothing.** They agree without a
 proxy in the path, the answer looks like success, and nothing was ever routed.

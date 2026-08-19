@@ -1220,6 +1220,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-04", "a refused route was drawn as an empty queue"],
   },
   {
+    id: "proxy-block-auth-nginx",
+    defect:
+      "The documented nginx block forwarded `/api/` and nothing else, and the front end signs in at `/auth/local` and restores its session from `/auth/me`. Those fell through to the SPA fallback, so nginx answered the login POST itself with `405 Not Allowed`. The page rendered, the assets loaded, and `/api/v1/health` answered through the proxy with the same body as the http server direct — every check this document printed passed, and nobody could log in.",
+    file: "docs/running-locally.md",
+    from: "  location /auth/ {",
+    to: "  location /authXX/ {",
+    suite: "test/readme.test.ts",
+    expect: ["the nginx block does not forward a prefix the front end calls", "/auth"],
+  },
+  {
+    id: "proxy-block-auth-caddy",
+    defect:
+      "The Caddy block had the same hole as the nginx one: `handle /api/*` and a `try_files` fallback for everything else, so signing in was served the SPA shell instead of being forwarded. Both blocks are printed for copying and only one of them being right is the same deployment failure.",
+    file: "docs/running-locally.md",
+    from: "  handle /auth/* {",
+    to: "  handle /authXX/* {",
+    suite: "test/readme.test.ts",
+    expect: ["the caddy block does not forward a prefix the front end calls", "/auth"],
+  },
+  {
+    id: "proxy-coverage-denominator",
+    defect:
+      "The check above compares the blocks against the paths the front end calls, and a hand-written list of prefixes would have said `/api` in exactly the way the blocks did. It reads them out of `packages/platform-web/src` instead — and an extraction that finds nothing agrees with any block at all, which is the shape this suite exists to refuse.",
+    file: "test/readme.test.ts",
+    from: 'if (path.startsWith("/api") || path.startsWith("/auth")) {',
+    to: "if (false) {",
+    suite: "test/readme.test.ts",
+    expect: ["no /api or /auth call found in platform-web — the extraction broke"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
