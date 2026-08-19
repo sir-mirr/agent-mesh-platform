@@ -177,6 +177,53 @@ describe("a session that must change its password", () => {
   });
 });
 
+describe("admitting a person", () => {
+  const admit = (body: unknown, cookie = adminCookie) =>
+    fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(body),
+    });
+
+  test("hands back a password nobody chose, and it works", async () => {
+    const res = await admit({ username: "admitted-one", display_name: "Admitted One" });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(typeof body.temporary_password, "no temporary password was returned").toBe("string");
+    expect(body.temporary_password.length, "the temporary password is too short to be random").toBeGreaterThan(16);
+    expect(body.user.tenant).toBe("default");
+
+    const login = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: `username=admitted-one&password=${encodeURIComponent(body.temporary_password)}`,
+    });
+    expect(login.status, "the password this route handed out does not sign in").toBe(200);
+    // Handed to a person, so their first move is to replace it.
+    expect((await login.json()).must_change_password).toBe(true);
+  });
+
+  test("and never says it again", async () => {
+    // **The property, not the wording.** A second route being helpful is how
+    // "shown once" stops being true, and it stops being true quietly — the
+    // first test still passes. So the listing is read back and searched for the
+    // exact string, rather than trusted to omit a field nobody added yet.
+    const body = await (await admit({ username: "admitted-twice" })).json();
+    const secret = body.temporary_password as string;
+
+    const listing = await (await get("/api/v1/admin/users", adminCookie)).text();
+    expect(listing.includes(secret), "the listing repeated the temporary password").toBe(false);
+    expect(listing.includes("password_hash"), "the listing carried the hash").toBe(false);
+    expect(listing).toContain("admitted-twice");
+  });
+
+  test("refuses a name that is already taken, rather than replacing them", async () => {
+    await admit({ username: "admitted-once-only" });
+    const again = await admit({ username: "admitted-once-only" });
+    expect(again.status, "admitting an existing name overwrote or duplicated it").toBe(409);
+  });
+});
+
 describe("the session cookie", () => {
   const login = (headers: Record<string, string> = {}) =>
     fetch(`${mesh.http.url}/auth/local`, {

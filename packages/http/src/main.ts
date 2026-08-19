@@ -61,7 +61,7 @@ import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { readPushFailure } from './push'
-import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -2407,6 +2407,68 @@ app.get('/api/v1/admin/agent-types', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)
   if (typeof actor !== 'string') return actor
   return c.json({ ok: true, types: agentsSchema.listTypes(agentsDb()) })
+})
+
+/**
+ * Admit a person to this deployment with a password nobody chose.
+ *
+ * **The password is in this response and nowhere else.** Not in the listing,
+ * not in a read, not in the log. What is stored is its hash, so it cannot be
+ * recovered from the database either — an operator who loses it admits the
+ * account again. The way this property breaks is a second route being helpful,
+ * so the listing below is tested for its absence rather than trusted.
+ *
+ * The account is flagged, so its first login lands on the change screen and can
+ * do nothing else until it passes — the same gate the seeded admin goes
+ * through, rather than a second path beside it.
+ */
+app.post('/api/v1/admin/users', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+
+  let body: any
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ ok: false, error: 'invalid JSON body' }, 400)
+  }
+  const username = body?.username
+  if (typeof username !== 'string' || !IDENTITY_RE.test(username)) {
+    return c.json({ ok: false, error: 'username must match ^[A-Za-z0-9][A-Za-z0-9-]*$' }, 400)
+  }
+  if (getLocalUser(username)) {
+    return c.json({ ok: false, error: `a local account named '${username}' already exists` }, 409)
+  }
+
+  // The admitting operator's own tenant unless they name one. A tenant admin
+  // creating people can only put them where they are, and that is enforced by
+  // what this reads rather than by what the screen sends.
+  const actorRow = getLocalUser(actor)
+  const tenant = typeof body?.tenant === 'string' ? body.tenant : (actorRow?.tenant ?? 'default')
+
+  const { user, temporaryPassword } = await admitLocalUser({
+    username,
+    displayName: typeof body?.display_name === 'string' ? body.display_name : undefined,
+    tenant,
+    role: typeof body?.role === 'string' ? body.role : undefined,
+  })
+  console.log(`[http-server] ${actor} admitted ${username} to tenant ${tenant}`)
+
+  return c.json(
+    {
+      ok: true,
+      user: { username: user.username, display_name: user.display_name, tenant: user.tenant, role: user.role },
+      temporary_password: temporaryPassword,
+    },
+    201,
+  )
+})
+
+/** Who has a local account. Never any password material — see the route above. */
+app.get('/api/v1/admin/users', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+  return c.json({ ok: true, users: listLocalUsers() })
 })
 
 app.post('/api/v1/admin/agent-types', async (c) => {

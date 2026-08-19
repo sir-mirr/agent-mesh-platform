@@ -988,6 +988,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["and is not, over plain http"],
   },
   {
+    id: "temporary-password-said-twice",
+    defect:
+      "A password handed out once is only handed out once while no other route repeats it, and a route that repeats it breaks the property quietly — the test that the value works still passes. The listing is read back and searched for the exact string for that reason.",
+    file: "packages/http/src/db.ts",
+    from: "      `SELECT username, display_name, role, created_at,",
+    to: "      `SELECT username, display_name, role, created_at, password_hash,",
+    suite: "test/http.test.ts",
+    expect: ["and never says it again", "the listing carried the hash"],
+  },
+  {
+    id: "admitted-account-not-flagged",
+    defect:
+      "An account admitted with a password nobody chose has to change it before doing anything else — that is the whole reason the password is temporary. Creating it unflagged leaves a working account on a password an operator read out loud.",
+    file: "packages/http/src/db.ts",
+    from: "    VALUES (?, ?, ?, ?, ?, 1)",
+    to: "    VALUES (?, ?, ?, ?, ?, 0)",
+    suite: "test/http.test.ts",
+    expect: ["hands back a password nobody chose, and it works"],
+  },
+  {
     id: "login-response-omits-the-flag",
     defect:
       "The login handler's own comment says it returns the fields `/auth/me` answers with, so the two cannot describe the same user differently. The first-login flag was missing from it, which made that sentence false: a client reading the session it had just been handed finds no flag, takes the absence for `false`, and walks a locked account into a console that refuses every request.",

@@ -108,6 +108,12 @@ export function getDb(): Database {
     if (!columns.some((c) => c.name === 'must_change_password')) {
       _db.exec(`ALTER TABLE local_users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
     }
+    // Every account belongs to a tenant, and the installation has one before
+    // anybody creates a second: the default is what "the install makes a
+    // `default` tenant" means here, rather than a row somebody has to write.
+    if (!columns.some((c) => c.name === 'tenant')) {
+      _db.exec(`ALTER TABLE local_users ADD COLUMN tenant TEXT NOT NULL DEFAULT 'default'`)
+    }
   }
 
   ensureAgentRegistrySchema(_db)
@@ -484,6 +490,8 @@ export type DbLocalUser = {
   created_at: string
   /** 1 until this account's first password change. Absent on rows written before the column existed. */
   must_change_password?: number
+  /** Which tenant this account administers or belongs to. `default` until somebody says otherwise. */
+  tenant?: string
 }
 
 export function createLocalUser(username: string, passwordHash: string, displayName?: string, role?: string): DbLocalUser {
@@ -632,4 +640,54 @@ export function mustChangePassword(username: string): boolean {
     .prepare(`SELECT must_change_password AS flag FROM local_users WHERE username = ?`)
     .get(username) as { flag: number } | undefined
   return row?.flag === 1
+}
+
+/**
+ * A new local account with a password nobody chose, returned once.
+ *
+ * **Once.** The caller sees it in this response and nowhere else — no list, no
+ * read, no log. What is stored is the hash, so the value cannot be recovered
+ * from the database either; an operator who loses it creates the account again
+ * or has it reset. That is the property the scenario measures, and the way it
+ * breaks is a second route helpfully including it.
+ *
+ * The account is flagged, so the person it is handed to lands on the change
+ * screen and cannot do anything else first — the same gate the seeded admin
+ * passes through, not a second path beside it.
+ */
+export async function admitLocalUser(input: {
+  username: string
+  displayName?: string
+  tenant?: string
+  role?: string
+}): Promise<{ user: DbLocalUser; temporaryPassword: string }> {
+  // 24 bytes of randomness, base64url. Long enough that guessing it is not the
+  // way in, short enough to read out loud once.
+  const temporaryPassword = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('base64url')
+  const hash = await Bun.password.hash(temporaryPassword, { algorithm: 'bcrypt' })
+
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO local_users (username, password_hash, display_name, role, tenant, must_change_password)
+    VALUES (?, ?, ?, ?, ?, 1)
+  `).run(input.username, hash, input.displayName ?? null, input.role ?? 'member', input.tenant ?? 'default')
+
+  const user = getLocalUser(input.username)
+  if (!user) throw new Error(`admitLocalUser: '${input.username}' was not written`)
+  return { user, temporaryPassword }
+}
+
+/** Local accounts, without a hash in sight. The temporary password is never readable here. */
+export function listLocalUsers(): Array<Pick<DbLocalUser, 'username' | 'display_name' | 'role' | 'created_at'> & {
+  tenant: string
+  must_change_password: number
+}> {
+  return getDb()
+    .prepare(
+      `SELECT username, display_name, role, created_at,
+              COALESCE(tenant, 'default') AS tenant,
+              COALESCE(must_change_password, 0) AS must_change_password
+         FROM local_users ORDER BY username ASC`,
+    )
+    .all() as any
 }
