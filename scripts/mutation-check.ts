@@ -1833,6 +1833,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "nothing records that it failed"],
   },
   {
+    id: "bell-calls-a-refusal-an-unanswered-question",
+    defect:
+      "The bell saying \"could not ask\" when the server answered `403`. Found by walking the console as a session holding one capability — the middle role nothing had measured, between the platform admin and an account holding nothing.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: '                {failure === "refused"',
+    to: "                {false",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-12", "reported an unanswered question as an answer"],
+  },
+  {
     id: "bell-calls-an-unanswered-question-an-answer",
     defect:
       "`.catch(() => setRequests([]))` — an empty list draws \"no requests are waiting\", which is a sentence about the server's answer written when there was no answer. An operator sees a quiet bell while agents wait to be admitted, and nothing else on any screen mentions it.",

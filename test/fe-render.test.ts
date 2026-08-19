@@ -2688,6 +2688,40 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const refused = await load(null);
     const answeredEmpty = await load(JSON.stringify({ ok: true, pending: [] }));
 
+    // **거절은 침묵이 아니다 — 벨에서도.** `audit.read.metadata` 하나만 든 세션으로
+    // 걸어보니 벨이 `403` 을 받고 "물어보지 못했습니다" 라고 말했다: 서버는 답했고
+    // 그 답은 *너는 이걸 볼 수 없다* 였다. 열 화면에서 갈라둔 구분이 이 컴포넌트에는
+    // 안 들어와 있었고, 가운데 역할로 걷기 전에는 아무도 그 자리를 지나지 않았다.
+    const forbidden = await (async () => {
+      const { page, context } = await createAuthedPage("/tenant/rbac");
+      try {
+        const deny = (route: import("playwright").Route) =>
+          route.fulfill({
+            status: 403,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }),
+          });
+        await page.route("**/api/v1/admin/keys/pending", deny);
+        await page.route("**/api/v1/admin/keys/stream", deny);
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        await page.locator('[data-testid="bell"]').click();
+        await settled(page);
+        // **testid 는 자리를 찾는 것이고, 사람이 읽는 것은 문장이다.** 처음엔 testid 만
+        // 셌고, 문구를 되돌리는 뮤테이션이 잡히지 않았다 — 같은 칸이 다른 말을 해도
+        // 그 칸은 여전히 거기 있기 때문이다.
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        return {
+          saidRefused: await page.locator('[data-testid="bell-empty-refused"]').count(),
+          saidUnknown: await page.locator('[data-testid="bell-empty-unreachable"]').count(),
+          readsRefused: /may not see registration requests|등록 요청을 볼 수 없습니다/.test(text),
+          readsUnknown: /Could not ask the server|물어보지 못했습니다/.test(text),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    })();
+
     expect(
       {
         refusedBadge: refused.unknownBadge,
@@ -2696,6 +2730,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         emptyBadge: answeredEmpty.unknownBadge,
         emptySaidNone: answeredEmpty.saidNone,
         emptySaidUnknown: answeredEmpty.saidUnknown,
+        forbiddenSaidRefused: forbidden.saidRefused,
+        forbiddenSaidUnknown: forbidden.saidUnknown,
+        forbiddenReadsRefused: forbidden.readsRefused,
+        forbiddenReadsUnknown: forbidden.readsUnknown,
       },
       "the bell reported an unanswered question as an answer, or reports every answer as unanswered",
     ).toEqual({
@@ -2705,6 +2743,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       emptyBadge: 0,
       emptySaidNone: 1,
       emptySaidUnknown: 0,
+      forbiddenSaidRefused: 1,
+      forbiddenSaidUnknown: 0,
+      forbiddenReadsRefused: true,
+      forbiddenReadsUnknown: false,
     });
   }, 40000);
 
@@ -3295,7 +3337,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         catches++;
         const body = bodyAt(src, m.index);
         if (!/set[A-Za-z]*\(\s*\[\s*\]\s*\)/.test(body)) continue;
-        if (/setIsError|setUnreachable|setError|setFailed/.test(body)) continue;
+        // `setFailure` 는 이 규칙이 쓰인 뒤에 생긴 이름이다 — 벨이 그것으로 실패를
+        // 적기 시작하자 규칙이 벨을 *아무것도 안 적는다* 로 찍었다. **가드의 어휘가
+        // 코드보다 늦으면, 옳게 고친 자리가 빨개진다.** 접두사로 둔다.
+        if (/setIsError|setUnreachable|setError|setFail/.test(body)) continue;
         silent.push(`${file.slice(ROOT.length + 1)}:${src.slice(0, m.index).split("\n").length}`);
       }
     }

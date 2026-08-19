@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { AgentPairingModal, type PendingAgentRequest } from "@/components/feedback/AgentPairingModal.tsx";
 
@@ -16,7 +17,15 @@ export function NotificationBell() {
    * everything else healthy: the bell was silent and identical to a quiet mesh,
    * while agents could be waiting to be admitted.
    */
-  const [unreachable, setUnreachable] = useState(false);
+  /**
+   * **거절과 못 닿음을 여기서도 가른다.**
+   *
+   * `audit.read.metadata` 하나만 든 세션으로 걸어보니 벨이 `403` 을 받고 *물어보지
+   * 못했습니다* 라고 말했다 — 서버는 답했고, 그 답은 *너는 이걸 볼 수 없다* 였다.
+   * 열 화면에서 갈라둔 그 구분이 이 컴포넌트에는 안 들어와 있었다.
+   */
+  const [failure, setFailure] = useState<FailureKind | null>(null);
+  const unreachable = failure !== null;
   const [isOpen, setIsOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<PendingAgentRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,9 +50,9 @@ export function NotificationBell() {
           }))
         );
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         setRequests([]);
-        setUnreachable(true);
+        setFailure(failureKind(e));
       });
 
     // Subscribe to SSE /api/v1/admin/keys/stream
@@ -160,7 +169,7 @@ export function NotificationBell() {
         {pendingCount === 0 && unreachable && (
           <span
             data-testid="bell-unreachable"
-            title={t("bell.unreachable", "등록 요청을 물어보지 못했습니다")}
+            title={failure === "refused" ? t("bell.refused", "이 계정은 등록 요청을 볼 수 없습니다") : t("bell.unreachable", "등록 요청을 물어보지 못했습니다")}
             style={{
               position: "absolute",
               top: -3,
@@ -245,10 +254,12 @@ export function NotificationBell() {
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {requests.length === 0 ? (
               <div
-                data-testid={unreachable ? "bell-empty-unreachable" : "bell-empty"}
+                data-testid={failure === "refused" ? "bell-empty-refused" : unreachable ? "bell-empty-unreachable" : "bell-empty"}
                 style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.8rem" }}
               >
-                {unreachable
+                {failure === "refused"
+                  ? t("bell.refused", "이 계정은 등록 요청을 볼 수 없습니다")
+                  : unreachable
                   ? t("bell.unreachable", "등록 요청을 물어보지 못했습니다")
                   : t("bell.empty", "대기 중인 등록 요청이 없습니다.")}
               </div>
