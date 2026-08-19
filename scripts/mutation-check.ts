@@ -1127,6 +1127,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["counts without a window are not offered as counts"],
   },
   {
+    id: "egress-refusal-never-counted",
+    defect:
+      "The wiring between a real § 12 denial and the number reporting it. The shaping can be right and the count still never move — `recordRefusal` not called, the hub's `/api/v1/limits` not read, or the kinds filtered by the wrong name — and every unit test would stay green because they all supply the count themselves. agent-mesh-local-pm named it: seeing a refusal counted is worth more than reading the line that counts it.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: '    recordRefusal("egress", `${egress.fromGroup}->${egress.toGroup}`);',
+    to: "    void egress;",
+    suite: "test/behaviour-metrics.test.ts",
+    expect: ["an egress denial arrives as a number that went up"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",
