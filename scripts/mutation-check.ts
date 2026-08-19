@@ -1191,8 +1191,14 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`?? 0` on the queue card folded three states into one digit: an idle mesh, a backed-up one, and a route that never answered all read `0`. A person watching for a backlog cannot tell a quiet queue from a screen that failed to ask.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: 'value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}',
-    to: "value={String(mailbox?.total_queued ?? 0)}",
+    // The card's expression appeared twice — once per panel — and `replace()`
+    // with a string argument changes the first occurrence only. The entry
+    // mutated the group panel's copy, which no session can reach, and reported
+    // `not caught` while the operator's card kept the fix. The two panels share
+    // one helper now, so one mutation reaches both and neither can regress in
+    // silence.
+    from: 'return total != null ? String(total) : "— 미측정";',
+    to: "return String(total ?? 0);",
     suite: "test/fe-render.test.ts",
     expect: ["SC-INVENT-04", "a refused route was drawn as an empty queue"],
   },

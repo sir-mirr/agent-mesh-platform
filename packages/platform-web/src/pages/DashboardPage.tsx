@@ -18,6 +18,24 @@ import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 
+/**
+ * The queue card's three states, in one place because two panels draw it.
+ *
+ * `?? 0` used to sit here, on top of two dead reads, so the card said `0`
+ * whether the mesh was idle, backed up, or unreachable. `null` means the route
+ * did not answer with a list of mailboxes, and the screen says so in the words
+ * /platform/telemetry already uses.
+ *
+ * **Shared rather than repeated.** The group panel and the operator panel each
+ * had their own copy, and only the operator's is reachable by a test session —
+ * `/dashboard` picks a panel from `user.role`, which resolves to `admin` or to
+ * `AGENT_OPERATOR` and never to `GROUP_ADMIN`. Two copies meant one measured
+ * card and one that could regress in silence.
+ */
+function queueValue(total: number | null | undefined): string {
+  return total != null ? String(total) : "— 미측정";
+}
+
 export function DashboardPage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -467,11 +485,7 @@ function GroupAdminDashboard() {
         />
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
-          // `?? 0` sat on top of two dead reads, so this card said `0` queued
-          // whether the mesh was idle, backed up, or unreachable. `null` now
-          // means the route did not answer with a list of mailboxes, and the
-          // screen says so in the words /platform/telemetry already uses.
-          value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}
+          value={queueValue(mailbox?.total_queued)}
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
           icon="📥"
@@ -590,11 +604,7 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
-          // `?? 0` sat on top of two dead reads, so this card said `0` queued
-          // whether the mesh was idle, backed up, or unreachable. `null` now
-          // means the route did not answer with a list of mailboxes, and the
-          // screen says so in the words /platform/telemetry already uses.
-          value={mailbox?.total_queued != null ? String(mailbox.total_queued) : "— 미측정"}
+          value={queueValue(mailbox?.total_queued)}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
