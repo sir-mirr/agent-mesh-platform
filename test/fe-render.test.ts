@@ -2780,8 +2780,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // `0` on its own is the sentence this is against — as a card's value it is
       // a claim about the mesh, and there is no answer behind it.
       const claimsZero = /소유 에이전트\s*🤖?\s*0|Owned Agents\s*🤖?\s*0/i.test(text);
-      expect({ said, claimsZero }, "the member's dashboard drew 0 for a read that was refused")
-        .toEqual({ said: true, claimsZero: false });
+      // The table one panel down was still inviting them to register their
+      // first agent — the same claim in a friendlier voice.
+      const invited = await page.locator('[data-testid="operator-agents-empty"]').count();
+      const admitted = await page.locator('[data-testid="operator-agents-unreachable"]').count();
+      expect({ said, claimsZero, invited, admitted }, "the member's dashboard drew 0 for a read that was refused")
+        .toEqual({ said: true, claimsZero: false, invited: 0, admitted: 1 });
     } finally {
       await context.close().catch(() => {});
     }

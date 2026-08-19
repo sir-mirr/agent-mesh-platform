@@ -698,8 +698,23 @@ function AgentOperatorDashboard() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {agents.length === 0 ? (
-            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-              등록된 소유 에이전트가 없습니다. <Link to="/creator/register" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>새 에이전트를 등록하세요</Link>.
+            <div
+              data-testid={isError ? "operator-agents-unreachable" : "operator-agents-empty"}
+              style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}
+            >
+              {/*
+                The cards above already say `—` when the read was refused, and
+                this line went on inviting the person to register their first
+                agent — an empty list and an unanswered question drawn as the
+                same sentence, one panel apart.
+              */}
+              {isError ? (
+                t("common.errorLoad", "불러오지 못함")
+              ) : (
+                <>
+                  {t("dash.op.empty", "등록된 소유 에이전트가 없습니다.")} <Link to="/creator/register" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>{t("dash.op.register", "새 에이전트를 등록하세요")}</Link>.
+                </>
+              )}
             </div>
           ) : (
             agents.map((agt) => (

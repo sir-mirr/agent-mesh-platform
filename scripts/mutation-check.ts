@@ -1613,6 +1613,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "operator-table-invites-a-first-agent-after-a-refusal",
+    defect:
+      "The cards say `—` and the table below them says \"no agents are registered to you yet — register one\". The friendlier voice makes the same claim, and a person acts on the table rather than on the dash.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: '              data-testid={isError ? "operator-agents-unreachable" : "operator-agents-empty"}',
+    to: '              data-testid="operator-agents-empty"',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
+  },
+  {
     id: "member-dashboard-draws-zero-for-a-refusal",
     defect:
       "The panel an ordinary account lands on, telling them they own nothing when the read was refused. The platform admin's panel has said `—` for months; this one drew `0`, and every existing SC-DOWN scenario measures the admin's.",
