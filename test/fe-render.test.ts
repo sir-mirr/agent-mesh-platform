@@ -2333,6 +2333,30 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(after.status, "the same call is still refused after the change").toBe(200);
   }, 20000);
 
+  it("[SC-PWCHG-05] shows the change screen in the language the landing screen used", async () => {
+    // The landing screen defaults to English, and the change screen is the very
+    // next thing a first login sees. It was Korean literals with no dictionary
+    // entry — the same gap the login page had, one screen further in, and it
+    // would have shipped as an English product whose second screen is not.
+    const cookie = await flaggedAccount("pwchg-lang", "seeded-lang-5");
+    const context = await newContext(null);
+    try {
+      await context.addCookies([
+        { name: "mesh_token", value: cookie.replace("mesh_token=", ""), domain: "127.0.0.1", path: "/", httpOnly: false, secure: false, sameSite: "Lax" },
+      ]);
+      const page = await context.newPage();
+      await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+      await page.waitForURL("**/change-password", { timeout: 6000 }).catch(() => {});
+      const text = await page.locator("#root").innerText();
+      expect(
+        { at: page.url().includes("/change-password"), english: /Choose a password|Current password/.test(text), korean: /비밀번호를 바꿔야|현재 비밀번호/.test(text) },
+        "the change screen is not in the language the product defaults to",
+      ).toEqual({ at: true, english: true, korean: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 25000);
+
   it("[SC-PWCHG-03] says why a change failed instead of leaving the form silent", async () => {
     const cookie = await flaggedAccount("pwchg-three", "seeded-three-3");
     await withViewerPage(cookie, "/change-password", async ({ page }) => {

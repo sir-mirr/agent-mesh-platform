@@ -10,6 +10,16 @@ interface I18nContextType {
 
 export const DICTIONARY: Record<Language, Record<string, string>> = {
   ko: {
+    "pwchg.title": "비밀번호를 바꿔야 합니다",
+    "pwchg.why": "이 계정은 배포가 정한 초기 비밀번호를 그대로 쓰고 있습니다. 바꾸기 전까지 다른 화면은 열리지 않습니다 — 화면이 막는 것이 아니라 서버가 거절합니다.",
+    "pwchg.current": "현재 비밀번호",
+    "pwchg.next": "새 비밀번호 (8자 이상)",
+    "pwchg.confirm": "새 비밀번호 확인",
+    "pwchg.submit": "비밀번호 변경",
+    "pwchg.busy": "바꾸는 중…",
+    "pwchg.mismatch": "새 비밀번호가 확인란과 다릅니다.",
+    "pwchg.unreachable": "서버에 연결할 수 없습니다 — 입력 문제가 아닙니다.",
+    "pwchg.failed": "비밀번호를 바꾸지 못했습니다.",
     "login.subtitle": "단일 로그인 및 RBAC 통합 관리 게이트웨이",
     "login.github": "GitHub 계정으로 계속하기",
     "login.or": "또는 로컬 계정",
@@ -227,6 +237,16 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "traffic.col.routes": "24h 메시지 라우팅 건수",
   },
   en: {
+    "pwchg.title": "Choose a password",
+    "pwchg.why": "This account is still using the password the deployment gave it. Nothing else opens until it is changed — the screen is not what refuses, the server is.",
+    "pwchg.current": "Current password",
+    "pwchg.next": "New password (8 characters or more)",
+    "pwchg.confirm": "Confirm new password",
+    "pwchg.submit": "Change password",
+    "pwchg.busy": "Changing…",
+    "pwchg.mismatch": "The new password and its confirmation do not match.",
+    "pwchg.unreachable": "The server cannot be reached — this is not a problem with what you typed.",
+    "pwchg.failed": "The password was not changed.",
     "login.subtitle": "Single sign-on and RBAC administration gateway",
     "login.github": "Continue with GitHub",
     "login.or": "or a local account",

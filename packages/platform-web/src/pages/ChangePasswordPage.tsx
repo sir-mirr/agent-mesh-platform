@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/client.ts";
 import { changePasswordApi } from "@/api/auth.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 /**
  * The one screen a first login can reach.
@@ -19,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 export function ChangePasswordPage() {
   const navigate = useNavigate();
   const { refreshSession } = useAuth();
+  const { t } = useI18n();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -29,7 +31,7 @@ export function ChangePasswordPage() {
     e.preventDefault();
     setError(null);
     if (next !== confirm) {
-      setError("새 비밀번호가 확인란과 다릅니다.");
+      setError(t("pwchg.mismatch", "The new password and its confirmation do not match."));
       return;
     }
     setBusy(true);
@@ -40,8 +42,8 @@ export function ChangePasswordPage() {
       // the shape this repository spent a day removing.
       setError(
         err instanceof ApiError && !err.refused
-          ? "서버에 연결할 수 없습니다 — 입력 문제가 아닙니다."
-          : err?.message || "비밀번호를 바꾸지 못했습니다.",
+          ? t("pwchg.unreachable", "The server cannot be reached — this is not a problem with what you typed.")
+          : err?.message || t("pwchg.failed", "The password was not changed."),
       );
       setBusy(false);
       return;
@@ -90,23 +92,25 @@ export function ChangePasswordPage() {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <strong style={{ fontSize: "1.05rem" }}>비밀번호를 바꿔야 합니다</strong>
+          <strong style={{ fontSize: "1.05rem" }}>{t("pwchg.title", "Choose a password")}</strong>
           <span style={label}>
-            이 계정은 배포가 정한 초기 비밀번호를 그대로 쓰고 있습니다. 바꾸기 전까지 다른 화면은
-            열리지 않습니다 — 화면이 막는 것이 아니라 서버가 거절합니다.
+            {t(
+              "pwchg.why",
+              "This account is still using the password the deployment gave it. Nothing else opens until it is changed — the screen is not what refuses, the server is.",
+            )}
           </span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={label}>현재 비밀번호</label>
+          <label style={label}>{t("pwchg.current", "Current password")}</label>
           <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} style={input} required />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={label}>새 비밀번호 (8자 이상)</label>
+          <label style={label}>{t("pwchg.next", "New password (8 characters or more)")}</label>
           <input type="password" value={next} onChange={(e) => setNext(e.target.value)} style={input} required />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={label}>새 비밀번호 확인</label>
+          <label style={label}>{t("pwchg.confirm", "Confirm new password")}</label>
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} style={input} required />
         </div>
 
@@ -126,7 +130,7 @@ export function ChangePasswordPage() {
         )}
 
         <button type="submit" disabled={busy} style={{ ...input, cursor: busy ? "wait" : "pointer", fontWeight: 700 }}>
-          {busy ? "바꾸는 중…" : "비밀번호 변경"}
+          {busy ? t("pwchg.busy", "Changing…") : t("pwchg.submit", "Change password")}
         </button>
       </form>
     </div>

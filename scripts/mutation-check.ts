@@ -1530,6 +1530,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-02", "the menu was open before anything was pressed"],
   },
   {
+    id: "change-screen-not-translated",
+    defect:
+      "The landing screen defaults to English and the change screen is the next thing a first login sees. It was Korean literals with no dictionary entry — the same gap the login page had, one screen further in, and it would have shipped as an English product whose second screen is not.",
+    file: "packages/platform-web/src/pages/ChangePasswordPage.tsx",
+    from: '{t("pwchg.title", "Choose a password")}',
+    to: "비밀번호를 바꿔야 합니다",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-PWCHG-05", "the change screen is not in the language the product defaults to"],
+  },
+  {
     id: "landing-defaults-to-korean",
     defect:
       "The default language was Korean and the toggle lived in the sidebar, which is behind the login. A visitor who could not read the login form could not reach the control that would have translated it.",
