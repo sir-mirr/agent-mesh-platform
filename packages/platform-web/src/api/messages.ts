@@ -37,6 +37,12 @@ export interface MessageReceipt {
  * reporting success. Falling back quietly reproduces exactly that. A thrown
  * error reaches the person; a receipt of placeholders does not.
  */
+/**
+ * Thrown when a `201` carries no `message`. A marker rather than a sentence:
+ * the screen that catches it owns the words, and this file has no dictionary.
+ */
+export const NO_RECEIPT = "no-receipt-in-201";
+
 export async function sendMessageApi(payload: SendMessagePayload): Promise<MessageReceipt> {
   const body = await apiClient<{ ok?: boolean; message?: MessageReceipt }>("/api/v1/messages", {
     method: "POST",
@@ -44,7 +50,7 @@ export async function sendMessageApi(payload: SendMessagePayload): Promise<Messa
   });
   const message = body?.message;
   if (!message || typeof message.id !== "string") {
-    throw new Error("서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다");
+    throw new Error(NO_RECEIPT);
   }
   return message;
 }

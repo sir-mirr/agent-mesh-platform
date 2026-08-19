@@ -47,8 +47,8 @@ export function PlatformOverviewPage() {
 
   const isHealthy = telemetry?.health_status === "ok";
   const uptimeLabel = telemetry?.server_uptime_seconds != null
-    ? `${Math.floor(telemetry.server_uptime_seconds / 60)}분 ${telemetry.server_uptime_seconds % 60}초`
-    : (isOnline ? "정상 가동 중" : "통신 불가");
+    ? `${Math.floor(telemetry.server_uptime_seconds / 60)}${t("agents.unit.minute", "분")} ${telemetry.server_uptime_seconds % 60}${t("agents.unit.second", "초")}`
+    : (isOnline ? t("overview.up", "정상 가동 중") : t("overview.down", "통신 불가"));
 
   const serverNodes = isOnline
     ? [
@@ -180,7 +180,7 @@ export function PlatformOverviewPage() {
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
           isError={isError}
-          errorMessage="서버 인프라 상태를 조회할 수 없습니다 (통신 오류)."
+          errorMessage={t("overview.error", "서버 인프라 상태를 조회할 수 없습니다 (통신 오류).")}
         />
       </div>
     </div>

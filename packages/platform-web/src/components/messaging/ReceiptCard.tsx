@@ -1,5 +1,6 @@
 import React from "react";
 import { StatusBadge } from "@/components/common/StatusBadge.tsx";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { MessageReceipt } from "@/api/messages.ts";
 
 export interface ReceiptCardProps {
@@ -25,11 +26,11 @@ export interface ReceiptCardProps {
  * digest of this message. Absent is a better statement than a value that is
  * some other thing's hash.
  */
-const STATUS_TEXT: Record<MessageReceipt["status"], { label: string; tone: "success" | "pending" | "danger" }> = {
-  pending: { label: "허브 접수 · 수신 대기", tone: "pending" },
-  delivered: { label: "배달됨", tone: "success" },
-  read: { label: "읽음", tone: "success" },
-  failed: { label: "허브가 거절함", tone: "danger" },
+const STATUS_TONE: Record<MessageReceipt["status"], "success" | "pending" | "danger"> = {
+  pending: "pending",
+  delivered: "success",
+  read: "success",
+  failed: "danger",
 };
 
 export function ReceiptCard({
@@ -39,7 +40,17 @@ export function ReceiptCard({
   timestamp,
   status,
 }: ReceiptCardProps) {
-  const stated = STATUS_TEXT[status];
+  const { t } = useI18n();
+  // The sentences sit at the call site, not in the table above: the fallback of
+  // a `t(...)` is where this repo keeps Korean, and a `ko:` field in a const is
+  // a second place for it that the dictionary check cannot see.
+  const STATUS_LABEL: Record<MessageReceipt["status"], string> = {
+    pending: t("receipt.pending", "허브가 접수함 · 수신 대기"),
+    delivered: t("receipt.delivered", "배달됨"),
+    read: t("receipt.read", "읽음"),
+    failed: t("receipt.failed", "허브가 거절함"),
+  };
+  const stated = STATUS_LABEL[status] ? { label: STATUS_LABEL[status], tone: STATUS_TONE[status] } : null;
 
   return (
     <div
@@ -78,7 +89,7 @@ export function ReceiptCard({
         </div>
 
         <StatusBadge
-          label={stated ? stated.label : `알 수 없는 상태: ${status}`}
+          label={stated ? stated.label : `${t("receipt.unknown", "알 수 없는 상태")}: ${status}`}
           status={stated ? stated.tone : "neutral"}
           size="sm"
         />
@@ -97,15 +108,15 @@ export function ReceiptCard({
         }}
       >
         <div>
-          <span style={{ color: "var(--color-text-muted)" }}>보낸이: </span>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("receipt.from", "보낸이")}: </span>
           <strong style={{ fontFamily: "var(--font-mono)" }}>{sender}</strong>
         </div>
         <div>
-          <span style={{ color: "var(--color-text-muted)" }}>받는이: </span>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("receipt.to", "받는이")}: </span>
           <strong style={{ fontFamily: "var(--font-mono)" }}>{recipient}</strong>
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <span style={{ color: "var(--color-text-muted)" }}>타임스탬프: </span>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("receipt.at", "시각")}: </span>
           <span>{timestamp}</span>
         </div>
       </div>

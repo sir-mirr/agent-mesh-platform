@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export interface FingerprintBoxProps {
   /**
@@ -28,6 +29,7 @@ export function FingerprintBox({
   label,
   showCopy = true,
 }: FingerprintBoxProps) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   if (fingerprint === null || fingerprint === "") {
@@ -122,7 +124,7 @@ export function FingerprintBox({
               whiteSpace: "nowrap",
             }}
           >
-            {copied ? "✓ 복사됨" : "복사"}
+            {copied ? `✓ ${t("reg.copied", "복사됨")}` : t("fp.copy", "복사")}
           </button>
         )}
       </div>

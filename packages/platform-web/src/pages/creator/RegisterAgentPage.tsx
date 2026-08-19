@@ -358,12 +358,7 @@ export function RegisterAgentPage() {
             title={t("reg.cmd.terminal", "에이전트 터미널 실행")}
             language="bash"
             code={`# ${t("reg.cmd.comment", "발급받은 페어링 코드로 소유권 바인딩")}
-curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "code": "${generatedCode || "PAIR-9412-SETTLEMENT"}",
-    "owner": "admin"
-  }'`}
+curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem -H 'Content-Type: application/json' -d '{"code": "${generatedCode || "PAIR-9412-SETTLEMENT"}", "owner": "admin"}'`}
           />
         </div>
       </div>

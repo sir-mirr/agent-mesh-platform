@@ -689,7 +689,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     // new ones drifted, and nothing would say so. So the four routes are read
     // out of `App.tsx` and their components resolved through its imports.
     const ADMISSION = ["/login", "/change-password", "/platform/users", "/tenant/rbac"];
-    const RATCHET = 54;
+    const RATCHET = 0;
     const ROOT = "packages/platform-web/src";
     const KOREAN = /[가-힣]/;
     const LITERAL = /"([^"\\\n]*)"|'([^'\\\n]*)'|`([^`\\]*)`/gs;

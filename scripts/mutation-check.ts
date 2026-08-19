@@ -1294,7 +1294,7 @@ const MUTATIONS: Mutation[] = [
     // caught` — the mutation had been neutralised by the half of the fix it did
     // not remove. Both hand-run mutations were right; this manifest is a
     // *re-typing* of them, and the re-typing is where it drifted.
-    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(\"서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다\");\n  }\n  return message;",
+    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(NO_RECEIPT);\n  }\n  return message;",
     to: "  return body as unknown as MessageReceipt;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-05", "renders playground receipt with real server response fields", "expect(received).toBe(expected)"],
@@ -1309,7 +1309,7 @@ const MUTATIONS: Mutation[] = [
     // success path, so `?? body` returns it and the suite is green for the
     // right reason. Measured twice before this comment was written.
     file: "packages/platform-web/src/api/messages.ts",
-    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(\"서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다\");\n  }\n  return message;",
+    from: "  const message = body?.message;\n  if (!message || typeof message.id !== \"string\") {\n    throw new Error(NO_RECEIPT);\n  }\n  return message;",
     to: "  return (body?.message ?? body) as MessageReceipt;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-09", "a 201 carrying no message drew a receipt instead of saying none came"],

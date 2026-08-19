@@ -62,7 +62,7 @@ export async function apiClient<T = any>(
   } catch (cause: any) {
     // No answer at all — offline, DNS, connection refused. `status: null` is
     // the reading, and it is not zero and not a refusal.
-    throw new ApiError(cause?.message || "서버에 연결할 수 없습니다", null);
+    throw new ApiError(cause?.message || "no response from the server", null);
   }
 
   if (!response.ok) {

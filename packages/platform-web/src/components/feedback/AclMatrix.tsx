@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export interface AclMatrixProps {
   groups: Array<{ id: string; name: string }>;
@@ -14,6 +15,7 @@ export function AclMatrix({
   onToggleRule,
   readOnly = false,
 }: AclMatrixProps) {
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -130,7 +132,7 @@ export function AclMatrix({
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {isAllowed ? "ALLOW (허용)" : "DENY (차단)"}
+                        {isAllowed ? t("acl.allow", "ALLOW (허용)") : t("acl.deny", "DENY (차단)")}
                       </button>
                     )}
                   </td>

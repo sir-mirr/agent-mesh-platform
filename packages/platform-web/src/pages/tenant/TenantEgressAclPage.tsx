@@ -82,7 +82,7 @@ export function TenantEgressAclPage() {
       const targetName = groups.find((g) => g.id === targetId)?.name || targetId;
 
       setToastMessage(
-        `이그레스 통신 정책 갱신: [${sourceName}] → [${targetName}] : ${nextAllowed ? "ALLOW (허용됨)" : "DENY (차단됨)"}`
+        `${t("egress.toast.updated", "이그레스 통신 정책 갱신")}: [${sourceName}] → [${targetName}] : ${nextAllowed ? t("acl.allow", "ALLOW (허용)") : t("acl.deny", "DENY (차단)")}`
       );
     } catch (err: any) {
       console.warn("[Egress] Rule toggle error:", err.message);
@@ -93,7 +93,7 @@ export function TenantEgressAclPage() {
           [targetId]: currentAllowed,
         },
       }));
-      setToastMessage(`이그레스 정책 변경 실패: ${err.message || "서버 통신 오류"}`);
+      setToastMessage(`${t("egress.toast.failed", "이그레스 정책 변경 실패")}: ${err.message || t("overview.down", "통신 불가")}`);
     }
   };
 

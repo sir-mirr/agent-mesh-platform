@@ -44,7 +44,7 @@ export function NotificationBell() {
             identity: p.identity,
             name: `${p.identity} (Agent)`,
             groupName: p.type ?? "General",
-            requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : "방금 전",
+            requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : t("bell.justNow", "방금 전"),
             fingerprint: p.fingerprint,
             status: "pending",
           }))
@@ -71,7 +71,7 @@ export function NotificationBell() {
                 identity: p.identity,
                 name: `${p.identity} (Agent)`,
                 groupName: p.type ?? "General",
-                requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : "대기 중",
+                requestedAt: p.proposed_at ? new Date(p.proposed_at).toLocaleTimeString() : t("reg.pending", "대기 중"),
                 fingerprint: p.fingerprint,
                 status: "pending",
               }))
@@ -88,7 +88,7 @@ export function NotificationBell() {
             identity: p.identity,
             name: `${p.identity} (Agent)`,
             groupName: p.type ?? "General",
-            requestedAt: "방금 전",
+            requestedAt: t("bell.justNow", "방금 전"),
             fingerprint: p.fingerprint,
             status: "pending",
           };
@@ -244,10 +244,10 @@ export function NotificationBell() {
             }}
           >
             <strong style={{ fontSize: "0.85rem", color: "var(--color-text-primary)" }}>
-              🔔 신규 에이전트 등록 알림
+              🔔 {t("bell.title2", "에이전트 등록 요청")}
             </strong>
             <span style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-              대기 {pendingCount}건
+              {t("reg.queue.waiting", "대기")} {pendingCount}
             </span>
           </div>
 
@@ -296,11 +296,11 @@ export function NotificationBell() {
                     </span>
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-                    식별자: <code>{req.identity}</code>
+                    {t("bell.identity", "식별자")}: <code>{req.identity}</code>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
                     <span style={{ fontSize: "0.72rem", color: "var(--color-primary)", fontWeight: 600 }}>
-                      소속: {req.groupName}
+                      {t("bell.group", "소속")}: {req.groupName}
                     </span>
                     {req.status === "pending" ? (
                       <span
@@ -313,11 +313,11 @@ export function NotificationBell() {
                           borderRadius: "var(--radius-sm)",
                         }}
                       >
-                        인증코드 발급 ➔
+                        {t("bell.issue", "인증코드 발급")} ➔
                       </span>
                     ) : (
                       <span style={{ fontSize: "0.72rem", color: "var(--color-success)", fontWeight: 600 }}>
-                        {req.status === "approved" ? "✓ 승인됨" : "✕ 거절됨"}
+                        {req.status === "approved" ? `✓ ${t("bell.approved", "승인됨")}` : `✕ ${t("bell.denied", "거절됨")}`}
                       </span>
                     )}
                   </div>

@@ -74,7 +74,7 @@ const PANELS = [
   { key: "agents", path: "/api/v1/agents", panel: "agents", capability: "" },
   { key: "mailbox", path: "/api/v1/admin/mailbox", panel: "queue depth", capability: "mailbox.read.depth" },
   { key: "health", path: "/api/v1/health", panel: "health", capability: "" },
-  { key: "behaviour", path: "/api/v1/admin/telemetry/behaviour", panel: "행동 지표 6종", capability: "usage.read" },
+  { key: "behaviour", path: "/api/v1/admin/telemetry/behaviour", panel: "behaviour metrics", capability: "usage.read" },
 ] as const;
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {

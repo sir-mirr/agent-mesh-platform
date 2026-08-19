@@ -133,7 +133,7 @@ export function AgentPairingModal({
                 {request.name}
               </h3>
             </div>
-            <StatusBadge label="대기 중 (Pending)" status="pending" size="sm" />
+            <StatusBadge label={t("reg.pending", "대기 중")} status="pending" size="sm" />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: "0.8rem" }}>
@@ -182,7 +182,7 @@ export function AgentPairingModal({
 
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 10 }}>
             <Button variant="primary" size="sm" onClick={handleCopyCode}>
-              {copied ? "✓ 복사 완료!" : "📋 인증코드 복사"}
+              {copied ? `✓ ${t("reg.copied", "복사됨")}` : `📋 ${t("reg.copy", "코드 복사")}`}
             </Button>
             <span style={{ fontSize: "0.78rem", color: ttl < 60 ? "var(--color-danger)" : "var(--color-text-muted)" }}>
               ⏱️ 유효시간: <strong>{ttl}초</strong>

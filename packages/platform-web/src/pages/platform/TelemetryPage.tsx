@@ -197,7 +197,7 @@ export function TelemetryPage() {
                 lineHeight: 1.6,
               }}
             >
-              <div>[INFO telemetry.tick] active_sockets={telemetry.active_sockets} total_agents={telemetry.total_agents ?? "— 미측정"}</div>
+              <div>[INFO telemetry.tick] active_sockets={telemetry.active_sockets} total_agents={telemetry.total_agents ?? t("common.unmeasured", "— 미측정")}</div>
             </div>
           </div>
         </>

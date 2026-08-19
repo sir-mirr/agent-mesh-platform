@@ -47,10 +47,8 @@ import { fetchGroups, type GroupItem } from "@/api/groups.ts";
  * deleted, because the question of whether this platform grows tenant and group
  * roles is not one this file can answer — but nothing draws them today.
  */
-const UNMEASURED = "— 미측정";
-
-function queueValue(total: number | null | undefined): string {
-  return total != null ? String(total) : UNMEASURED;
+function queueValue(t: (key: string, fallback: string) => string, total: number | null | undefined): string {
+  return total != null ? String(total) : t("common.unmeasured", "— 미측정");
 }
 
 export function DashboardPage() {
@@ -343,7 +341,7 @@ React.useEffect(() => {
         <KpiCard
           label={t("dash.ta.groups", "조직 소속 그룹")}
           value={String(groups.length)}
-          subValue={groups.length > 0 ? `${groups.length}개 그룹 활성` : "등록된 그룹 없음"}
+          subValue={groups.length > 0 ? `${groups.length} ${t("dash.ta.groupsActive", "개 그룹 활성")}` : t("dash.ta.noGroups", "등록된 그룹 없음")}
           color="var(--color-primary)"
           icon="👥"
         />
@@ -364,7 +362,7 @@ React.useEffect(() => {
         <KpiCard
           label={t("dash.ta.approval", "미승인 키 대기 큐")}
           value={String(pendingKeys.length)}
-          subValue={pendingKeys.length > 0 ? "검토 필요" : "대기 없음"}
+          subValue={pendingKeys.length > 0 ? t("dash.ta.review", "검토 필요") : t("dash.ta.noPending", "대기 없음")}
           color="var(--color-warning)"
           icon="🔑"
         />
@@ -416,7 +414,7 @@ React.useEffect(() => {
                     {g.name}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-                    {g.description || "조직 에이전트 클러스터"}
+                    {g.description || t("dash.ta.clusterDesc", "조직 에이전트 클러스터")}
                   </div>
                 </div>
                 <span
@@ -539,13 +537,13 @@ React.useEffect(() => {
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
           value={String(agents.length)}
-          subValue={agents.length > 0 ? `${agents.length}개 노드 등록` : "에이전트 없음"}
+          subValue={agents.length > 0 ? `${agents.length} ${t("dash.ga.nodes", "개 노드 등록")}` : t("dash.ga.noAgents", "에이전트 없음")}
           color="var(--color-success)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
-          value={queueValue(mailbox?.total_queued)}
+          value={queueValue(t, mailbox?.total_queued)}
           subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
           color="var(--color-warning)"
           icon="📥"
@@ -553,7 +551,7 @@ React.useEffect(() => {
         <KpiCard
           label={t("dash.ga.health", "온라인 에이전트 비율")}
           value={agents.length > 0 ? `${Math.round((agents.filter(hasBeenSeen).length / agents.length) * 100)}%` : "—"}
-          subValue="소켓 연결 기준"
+          subValue={t("dash.ga.socketBasis", "소켓 연결 기준")}
           color="#6366F1"
           icon="💚"
         />
@@ -692,7 +690,7 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
-          value={queueValue(mailbox?.total_queued)}
+          value={queueValue(t, mailbox?.total_queued)}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
@@ -702,7 +700,7 @@ function AgentOperatorDashboard() {
           // A literal `0`, on a card whose number no request ever asked for.
           // There is no route behind it, so it cannot become anything else —
           // and a number that cannot change is not a measurement.
-          value={queueValue(null)}
+          value={queueValue(t, null)}
           subValue={t("dash.kpi.latencySub", "건 완료")}
           color="#6366F1"
           icon="🔄"

@@ -52,40 +52,40 @@ export function TenantTrafficPage() {
       header: t("traffic.col.routes", `${hours}h 수신 메시지 건수`),
       render: (item: TenantTrafficItem) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-primary)" }}>
-          {item.received}건
+          {item.received}
         </span>
       ),
     },
     {
       key: "senders",
-      header: "활성 발신자 (Senders)",
+      header: t("tt.senders", "발신자"),
       render: (item: TenantTrafficItem) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-          {item.senders}명
+          {item.senders}
         </span>
       ),
     },
     {
       key: "recipients",
-      header: "활성 수신자 (Recipients)",
+      header: t("tt.recipients", "수신자"),
       render: (item: TenantTrafficItem) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-          {item.recipients}명
+          {item.recipients}
         </span>
       ),
     },
     {
       key: "via_mailbox",
-      header: "메일함 경유 큐 (Mailbox)",
+      header: t("tt.viaMailbox", "메일함 경유"),
       render: (item: TenantTrafficItem) => (
         <span style={{ fontFamily: "var(--font-mono)", color: item.via_mailbox > 0 ? "var(--color-warning)" : "var(--color-text-muted)" }}>
-          {item.via_mailbox}건
+          {item.via_mailbox}
         </span>
       ),
     },
     {
       key: "last_at",
-      header: "최근 라우팅 시각",
+      header: t("tt.lastAt", "마지막 전달"),
       render: (item: TenantTrafficItem) => (
         <span style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
           {item.last_at || "-"}
@@ -103,7 +103,7 @@ export function TenantTrafficPage() {
         suiteBadgeColor="leased"
         screenId="12"
         title={t("traffic.title", "테넌트 라우팅 처리량 분석")}
-        subtitle="테넌트 조직별 메시지 수신 건수, 발신/수신 주체 수 및 메일함 경유 트래픽 분석"
+        subtitle={t("tt.subtitle", "테넌트별 수신 건수 · 발신/수신 주체 수 · 메일함 경유 트래픽")}
       />
 
       <DataTable
@@ -117,7 +117,7 @@ export function TenantTrafficPage() {
             ? refusedText(t, missing)
             : t("tenants.error", "테넌트 통계를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
-        emptyMessage="현재 등록된 테넌트 조직 데이터가 없습니다."
+        emptyMessage={t("tt.empty", "트래픽을 낸 테넌트가 없습니다.")}
       />
     </div>
   );

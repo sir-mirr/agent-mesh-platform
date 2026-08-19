@@ -207,7 +207,7 @@ export function AuditLogsPage() {
             ? refusedText(t, missing)
             : t("audit.error", "감사 로그를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
-        emptyMessage="현재 기록된 감사 로그 데이터가 없습니다."
+        emptyMessage={t("audit.empty", "현재 기록된 감사 로그 데이터가 없습니다.")}
       />
     </div>
   );

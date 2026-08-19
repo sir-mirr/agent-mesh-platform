@@ -139,7 +139,11 @@ export function lastSeen(lastSeenAt: string | null | undefined): LastSeen {
 export function lastSeenText(t: (key: string, fallback: string) => string, at: string | null | undefined): string {
   const v = lastSeen(at);
   if (v.kind === "never") return t("agents.neverSeen", "접속 기록 없음");
-  const unit = t(`agents.unit.${v.unit}`, { second: "초", minute: "분", hour: "시간", day: "일" }[v.unit]);
+  const unit =
+    v.unit === "second" ? t("agents.unit.second", "초")
+    : v.unit === "minute" ? t("agents.unit.minute", "분")
+    : v.unit === "hour" ? t("agents.unit.hour", "시간")
+    : t("agents.unit.day", "일");
   return `${v.value}${unit} ${t("agents.ago", "전 접속")}`;
 }
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 export interface ColumnDef<T> {
   key: string;
@@ -24,9 +25,10 @@ export function DataTable<T>({
   keyExtractor,
   isLoading = false,
   isError = false,
-  errorMessage = "데이터를 불러오는 중 오류가 발생했습니다.",
-  emptyMessage = "표시할 데이터가 없습니다.",
+  errorMessage,
+  emptyMessage,
 }: DataTableProps<T>) {
+  const { t } = useI18n();
   return (
     <div
       style={{
@@ -112,9 +114,9 @@ export function DataTable<T>({
             background: "var(--color-bg-surface)",
           }}
         >
-          {isLoading ? "데이터를 불러오는 중입니다..." : isError ? (
-            <span style={{ color: "var(--color-danger)" }}>⚠️ {errorMessage}</span>
-          ) : emptyMessage}
+          {isLoading ? t("table.loading", "데이터를 불러오는 중입니다...") : isError ? (
+            <span style={{ color: "var(--color-danger)" }}>⚠️ {errorMessage ?? t("table.error", "데이터를 불러오는 중 오류가 발생했습니다.")}</span>
+          ) : emptyMessage ?? t("table.empty", "표시할 데이터가 없습니다.")}
         </div>
       )}
     </div>

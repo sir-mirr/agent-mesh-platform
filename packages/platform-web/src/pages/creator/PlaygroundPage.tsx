@@ -10,7 +10,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { fetchAgents, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
-import { sendMessageApi, type MessageReceipt } from "@/api/messages.ts";
+import { sendMessageApi, NO_RECEIPT, type MessageReceipt } from "@/api/messages.ts";
 
 interface RegisteredAgent {
   id: string;
@@ -153,7 +153,11 @@ export function PlaygroundPage() {
       setReceipt(await sendMessageApi({ to: recipient, text: payloadText }));
     } catch (err: any) {
       setReceipt(null);
-      setSendError(err?.message || t("common.errorLoad", "불러오지 못함"));
+      setSendError(
+        err?.message === NO_RECEIPT
+          ? t("play.noReceiptIn201", "서버가 영수증을 주지 않았습니다 — 201 응답에 message 가 없습니다")
+          : err?.message || t("common.errorLoad", "불러오지 못함"),
+      );
     } finally {
       setIsSending(false);
     }
@@ -239,7 +243,7 @@ export function PlaygroundPage() {
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
                   <span>{t("dash.op.kind", "종류")}: <strong>{selectedSenderObj.group}</strong></span>
                   <span>{t("play.lastSeen", "마지막 접속")}: <strong style={{ color: selectedSenderObj.seen ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.lastSeen}</strong></span>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : "지문 없음"}</span>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : t("play.noFingerprint", "지문 없음")}</span>
                 </div>
               )}
             </div>
