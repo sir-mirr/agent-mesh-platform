@@ -943,6 +943,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
   {
+    id: "group-create-refuse-unsupported",
+    defect:
+      "`POST /api/v1/admin/groups` read `group_id` and `description` and dropped every other field in silence. The front end's own fixture sent `members` and `name` for four months and was answered 201 each time, so its groups were empty — and the topology screen filled them by inventing members, which is why neither defect was visible while the other stood.",
+    file: "packages/http/src/main.ts",
+    from: "  if (unsupported.length > 0) {",
+    to: "  if (false) {",
+    suite: "test/group-create-fields.test.ts",
+    expect: ["refuses `members`, and says where membership is written instead", "refuses `name`"],
+  },
+  {
+    id: "group-create-field-list",
+    defect:
+      "Widening the accepted set restores the same silence with an allow-list in front of it: with `members` back in the set the body is accepted, nothing is written from it, and the caller is told 201 again.",
+    file: "packages/http/src/main.ts",
+    from: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description'])",
+    to: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description', 'members', 'name'])",
+    suite: "test/group-create-fields.test.ts",
+    expect: ["refuses `members`, and says where membership is written instead", "refuses `name`"],
+  },
+  {
+    id: "group-create-refuse-before-create",
+    defect:
+      "Refusing after the row is written is the same silence one step later: the caller is told 400 and the group exists anyway, so the retry meets a group it does not know it made. The refusal has to come before the write, not merely happen.",
+    file: "packages/http/src/main.ts",
+    from: "  const unsupported = Object.keys(body).filter",
+    to: "  groupsStore.createGroup(db_(), { groupId, description: null, createdBy: actor }); const unsupported = Object.keys(body).filter",
+    suite: "test/group-create-fields.test.ts",
+    expect: ["creates nothing when it refuses", "not-created"],
+  },
+  {
     id: "wal-reminder-unhandled",
     defect:
       "The self-reminder daemon installed no signal handler at all, so `systemctl stop` killed it mid-poll and `self-reminder.db-wal` outlived every restart. Nothing complained, because the store is written for abrupt death — `firing` rows are recovered on the way up — so 'no data is lost' was true and 'nothing is left behind' was not, and only the first was ever checked.",

@@ -1657,6 +1657,12 @@ app.get('/api/v1/admin/groups', async (c) => {
   })
 })
 
+/**
+ * What `POST /api/v1/admin/groups` implements. A body may say only this much,
+ * and a field outside it is refused rather than dropped — see the route.
+ */
+const GROUP_CREATE_FIELDS = new Set(['group_id', 'description'])
+
 app.post('/api/v1/admin/groups', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
   if (typeof actor !== 'string') return actor
@@ -1665,6 +1671,22 @@ app.post('/api/v1/admin/groups', async (c) => {
   const groupId = body?.group_id
   if (typeof groupId !== 'string' || !IDENTITY_RE.test(groupId)) {
     return c.json({ ok: false, error: 'group_id must match ^[A-Za-z0-9][A-Za-z0-9-]*$' }, 400)
+  }
+  // A field this route does not implement is refused, not dropped. Answering
+  // 201 to a body that asked for more than it got reports that the whole of it
+  // happened: this repository's own fixture sent `members` and `name` here for
+  // four months and was told 201 every time, which is why nobody noticed the
+  // groups were empty. Membership is singular and is a move, so it has its own
+  // route (SPEC § 12), and a group has a `description`, not a `name`.
+  const unsupported = Object.keys(body).filter((k) => !GROUP_CREATE_FIELDS.has(k))
+  if (unsupported.length > 0) {
+    const hint = unsupported.includes('members')
+      ? ' Membership is singular: POST /api/v1/admin/groups/{group_id}/members, one identity per call.'
+      : ''
+    return c.json({
+      ok: false,
+      error: `unsupported field(s): ${unsupported.join(', ')}. This route accepts group_id and description.${hint}`,
+    }, 400)
   }
   const created = groupsStore.createGroup(db_(), {
     groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,
