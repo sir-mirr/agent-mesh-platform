@@ -53,6 +53,14 @@ test("the http server refuses to start without a JWT secret", async () => {
     const said = out + err;
 
     expect({ code, tail: said.slice(-500) }).toMatchObject({ code: 1 });
+
+    // **It never served.** The message is printed before the exit, so a version
+    // that warned and carried on with a default would still satisfy the two
+    // assertions below — the first draft of this test did exactly that and the
+    // mutation went uncaught. What separates refusing from complaining is
+    // whether the port was ever opened.
+    expect({ served: said.includes("listening") }).toEqual({ served: false });
+
     // Naming the variable is the difference between a fixable start-up failure
     // and one an operator has to bisect.
     expect({ names: said.includes("JWT_SECRET") }).toEqual({ names: true });
