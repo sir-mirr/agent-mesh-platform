@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const TESTS = join(import.meta.dir);
@@ -247,5 +247,44 @@ describe("the inventory's axis table", () => {
       .filter(([family]) => !table.has(family))
       .map(([family, n]) => `${family}-* has ${n} ids and no row in § 0`);
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * `FILES` is a hand-written list, and a hand-written list of what to measure is
+ * the shape that goes quietly wrong in the one direction nobody checks.
+ *
+ * Everything above compares the inventory's numbers against what `FILES`
+ * registers. So a scenario written into a file that is not on that list is not
+ * "uncounted" — it is **invisible**, and every check above stays green over a
+ * denominator that shrank. agent-mesh-local-pm measured that rather than
+ * reasoning about it: a probe file registering `SC-DOWN-98` and a whole new
+ * family `SC-NEWFAM-01` left this suite at **8 pass, 0 fail**.
+ *
+ * The same PM had the same hole in `audit/rbacapi.mjs` this morning — a
+ * hard-coded route list that would have reported 434/434 while never testing
+ * the route that had just been added. The fix there was to derive the list and
+ * refuse when the derivation looks wrong; this is the cheaper half of that,
+ * which keeps `FILES` explicit (it is also the parser's input, and widening it
+ * silently would change what the counts mean) while making an omission loud.
+ *
+ * It asks the directory rather than the list, so it fails differently from
+ * everything above — the same reason `idsOf` reads each file twice.
+ */
+describe("the list of files this suite reads", () => {
+  test("covers every test file that registers a scenario id", () => {
+    const registrar = /\bit(?:\.skip)?\(\s*["`]\[[A-Z0-9-]+\]/;
+    const found = readdirSync(TESTS)
+      .filter((name) => name.endsWith(".ts"))
+      .filter((name) => registrar.test(readFileSync(join(TESTS, name), "utf8")));
+
+    // A directory read that matched nothing would make the comparison vacuous —
+    // which is exactly the failure this test exists to catch, one level up.
+    expect(found.length, "no file in test/ registers a scenario id — the pattern stopped matching").toBeGreaterThan(1);
+
+    const unread = found.filter((name) => !FILES.includes(name));
+    expect(
+      unread.map((name) => `${name} registers scenario ids and is not in FILES, so nothing above sees them`),
+    ).toEqual([]);
   });
 });
