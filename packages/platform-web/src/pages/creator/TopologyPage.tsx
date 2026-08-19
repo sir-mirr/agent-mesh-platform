@@ -247,11 +247,18 @@ export function TopologyPage() {
         ? groupData.members
         : liveAgents.filter((a) => a.type === cfg.id || a.type === cfg.name).map((a) => a.identity);
 
-      if (memberList.length === 0 && liveAgents.length > 0) {
-        liveAgents.forEach((a) => memberList.push(a.identity));
-      }
-
-      const count = memberList.length || cfg.count;
+      // **An empty membership is an empty membership**, which the cluster sizing
+      // above already says in those words. What stood here contradicted it
+      // seventy lines later: when a group held nobody, every live agent was
+      // pushed into it — no condition, no `type` match, all of them. So an empty
+      // group drew as holding the whole mesh, and it drew them again for the
+      // next empty group.
+      //
+      // `SC-CONSIST-01` cannot see this. It compares the heading against the
+      // canvas, and both read the same inflated list — two views of one wrong
+      // answer agree. `SC-SCR05-03` asks the different question: a group the
+      // server says is empty draws nobody.
+      const count = memberList.length;
 
       const memberIds: string[] = [];
 

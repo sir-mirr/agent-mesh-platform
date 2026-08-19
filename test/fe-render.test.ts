@@ -92,6 +92,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       }),
     });
 
+    // **`POST /api/v1/admin/groups` ignores `members`.** It takes `group_id` and
+    // `description` and nothing else, so the two calls above created empty
+    // groups and the `members` arrays were dropped in silence. Membership is its
+    // own route because it is a move — an identity is in one group at a time.
+    //
+    // Nothing noticed for as long as it did because `TopologyPage` filled any
+    // empty group with every live agent, so the screen looked populated and the
+    // fixture looked applied. Removing that fallback is what surfaced this.
+    for (const [groupId, identity] of [["engineering", "agent-alpha"], ["security", "agent-beta"]] as const) {
+      await fetch(`${mesh.http.url}/api/v1/admin/groups/${groupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
+        body: JSON.stringify({ identity }),
+      });
+    }
+
     // Set directional egress engineering -> security
     await fetch(`${mesh.http.url}/api/v1/admin/groups/engineering/egress`, {
       method: "PUT",
@@ -2123,6 +2139,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * the agent count did **not** absorb them. With none present that assertion
    * says nothing, and it is skipped rather than counted as passing.
    *
+   * ## What it cannot see
+   *
+   * **Two views of one wrong answer agree.** The heading and the canvas read the
+   * same member list, so a list that is wrong in both is consistent and passes
+   * here. `TopologyPage` had exactly that beside the fault this caught: every
+   * live agent was pushed into any empty group, and the heading counted the same
+   * inflated list it drew. `SC-SCR05-03` asks that different question — a group
+   * the server says is empty draws nobody — because consistency cannot.
+   *
    * ## It refuses to pass on an empty screen
    *
    * `0 === 0` is the failure this repository has met most often — a check that
@@ -2165,6 +2190,56 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         ).toEqual({ agentsIncludeGateways: false });
       }
     });
+  }, 30_000);
+
+  /**
+   * SC-SCR05-03 — a group the server says is empty draws nobody.
+   *
+   * The cluster sizing already said it in those words — *an empty membership is
+   * an empty membership* — and seventy lines later the code contradicted it:
+   * when a group held nobody, every live agent was pushed into it, with no
+   * condition and no `type` match. An empty group drew as holding the whole
+   * mesh, and drew them again for the next empty group.
+   *
+   * **`SC-CONSIST-01` is blind to this by construction.** It compares the
+   * heading against the canvas, and both read that same inflated list, so the
+   * screen was consistently wrong. Agreement between two views is not truth when
+   * both views come from one source.
+   *
+   * The group is emptied in the response rather than in the mesh: the layer
+   * under test is the screen, and other scenarios share this mesh.
+   */
+  it("[SC-SCR05-03] draws no agents inside a group the server reports as empty", async () => {
+    const context = await browser.newContext();
+    await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
+    const page = await context.newPage();
+    try {
+      await page.route("**/api/v1/admin/groups", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ groups: [{ group_id: "empty-grp", name: "빈 그룹", members: [] }], egress: [] }),
+        }),
+      );
+      await page.goto(`${viteBaseUrl}/creator/topology`, { waitUntil: "networkidle" });
+      await settled(page);
+      await page.locator("[data-testid='topology-cluster']").first().waitFor({ state: "attached", timeout: 15_000 })
+        .catch(() => {});
+
+      const clusters = await page.locator("[data-testid='topology-cluster']").count();
+      const agents = await page.locator("[data-testid='topology-agent']").count();
+
+      // The cluster must be there, or "no agents drawn" is just "nothing drawn"
+      // — the vacuous pass this repository keeps meeting.
+      expect({ clusterDrawn: clusters > 0 }, "the empty group was not drawn at all, so nothing was tested").toEqual({
+        clusterDrawn: true,
+      });
+      expect({ agentsInEmptyGroup: agents }, "an empty group drew agents the server did not put in it").toEqual({
+        agentsInEmptyGroup: 0,
+      });
+    } finally {
+      await context.close().catch(() => {});
+    }
   }, 30_000);
 
   // SC-HARNESS-01: Harness reliability check
