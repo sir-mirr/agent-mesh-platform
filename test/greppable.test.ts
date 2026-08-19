@@ -311,8 +311,16 @@ describe("cryptographic identifiers", () => {
  * different names — a reader takes that as two different facts. agent-mesh-
  * local-pm found the leftovers by reading the diff rather than the issue.
  *
- * Deliberately narrow. It cannot tell whether a label matches its value in
- * general; it knows this one pairing, which is the one that has recurred.
+ * Deliberately narrow, and narrower than it first looked. It sees a `.type`
+ * rendered under a 소속 label — the dashboard's form. **It cannot see the
+ * playground's**, where the field was renamed to `group` while still holding a
+ * type, so the value and the label agree textually and disagree in fact. The
+ * first mutation written for this rule pointed there and was not caught, which
+ * is how the blind spot was found rather than assumed.
+ *
+ * That half stays covered by reading. A rule that inferred meaning from a field
+ * name would be a rule about naming discipline, and this repository has already
+ * decided such things are worth a comment rather than a checker.
  */
 describe("labels and the values under them", () => {
   test("no screen calls an agent's type its membership", async () => {

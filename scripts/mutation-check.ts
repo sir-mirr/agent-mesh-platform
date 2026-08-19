@@ -1110,11 +1110,11 @@ const MUTATIONS: Mutation[] = [
     id: "type-labelled-as-membership",
     defect:
       "Three screens printed an agent's `type` — the kind of agent — under a heading reading 소속, its membership, one of them with `|| \"General\"` invented for anything the server had not typed. The half-fix was worse than the defect: the agent list and the playground's sender were corrected and its recipient was not, leaving one screen calling the same field two names, which a reader takes as two facts. Found by agent-mesh-local-pm reading the diff rather than the issue.",
-    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
-    from: "<span>종류: <strong>{selectedRecipientObj.group}</strong></span>",
-    to: "<span>소속: <strong>{selectedRecipientObj.group ?? agentsList[0]?.group}</strong></span>",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "                    종류: <strong>{agt.type ?? \"—\"}</strong> · 상태:{\" \"}",
+    to: "                    소속: <strong>{agt.type ?? \"—\"}</strong> · 상태:{\" \"}",
     suite: "test/greppable.test.ts",
-    expect: ["no screen calls an agent's type its membership"],
+    expect: ["no screen calls an agent's type its membership", "a screen is calling an agent's kind its group"],
   },
   {
     id: "counts-without-a-window",
