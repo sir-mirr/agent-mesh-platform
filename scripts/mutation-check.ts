@@ -1600,6 +1600,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "logout-leaves-the-cookie",
+    defect:
+      "Signing out that ends nothing. The browser goes to `/login`, `mesh_token` stays set, and the next person to type `/dashboard` on that machine is inside the previous session. It looks correct from the seat of the person who clicked.",
+    file: "packages/http/src/main.ts",
+    from: "    headers: { 'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0) },",
+    to: "    headers: { 'content-type': 'application/json' },",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-07", "signing out left the session usable"],
+  },
+  {
+    id: "client-signs-out-without-telling-the-server",
+    defect:
+      "The client clearing its own state and leaving the cookie — the exact shape this repository shipped until now. The redirect makes it look finished, and every check that reads the URL agrees.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: '    void apiClient("/auth/logout", { method: "POST" }).catch(() => {});',
+    to: "    // (nothing)",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-07", "signing out left the session usable"],
+  },
+  {
     id: "korean-straight-into-a-screen",
     defect:
       "A string written into a component instead of the dictionary. It renders in Korean with the language set to English, and neither dictionary check sees it: `SC-I18N-01` compares two dictionaries and `SC-I18N-03` checks keys that exist. Text between tags is the shape that walked through the first version of this guard.",

@@ -850,6 +850,28 @@ app.get('/auth/github/callback', async (c) => {
  */
 const OPEN_WHILE_FLAGGED = new Set(['/auth/local/password', '/auth/me', '/auth/logout'])
 
+/**
+ * Signing out, which until now the allowlist above named and nothing answered.
+ *
+ * `POST /auth/logout` was `404`, and the front end's `logout()` cleared its own
+ * state and left the cookie alone: the browser went to `/login` still holding a
+ * valid session, and typing `/dashboard` walked straight back in. On a shared
+ * machine that is the next person's session.
+ *
+ * **What this does and does not do.** It clears the browser's copy. The token
+ * is a stateless JWT, so one already copied out keeps working until it expires
+ * — revoking that needs somewhere to record the revocation, which is a change
+ * to how sessions are stored rather than a line here. The scenario asserts the
+ * browser has no session, which is what this makes true.
+ */
+app.post('/auth/logout', (c) => {
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0) },
+  })
+})
+
+
 app.use('*', async (c, next) => {
   const path = new URL(c.req.url).pathname
   if (OPEN_WHILE_FLAGGED.has(path) || path.startsWith('/auth/local') || path === '/login') return next()

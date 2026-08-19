@@ -19,7 +19,7 @@ import { useI18n } from "@/contexts/I18nContext.tsx";
  */
 export function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { refreshSession } = useAuth();
+  const { refreshSession, logout } = useAuth();
   const { t } = useI18n();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -131,6 +131,24 @@ export function ChangePasswordPage() {
 
         <button type="submit" disabled={busy} style={{ ...input, cursor: busy ? "wait" : "pointer", fontWeight: 700 }}>
           {busy ? t("pwchg.busy", "Changing…") : t("pwchg.submit", "Change password")}
+        </button>
+
+        {/*
+          The way out. Every other route answers 403 to this session and the
+          sidebar is not drawn here, so without this the only exit from the
+          screen is closing the browser — and until the cookie was cleared,
+          not even that ended the session on a shared machine.
+        */}
+        <button
+          type="button"
+          data-testid="pwchg-signout"
+          onClick={() => {
+            logout();
+            navigate("/login", { replace: true });
+          }}
+          style={{ ...input, cursor: "pointer", background: "transparent", fontWeight: 600 }}
+        >
+          {t("pwchg.signout", "Sign out")}
         </button>
       </form>
     </div>

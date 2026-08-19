@@ -698,6 +698,7 @@ export function Sidebar({
                   whiteSpace: "nowrap",
                 }}
                 title={t("common.logout", "로그아웃")}
+                data-testid="logout"
               >
                 {t("common.logout", "로그아웃")}
               </button>
@@ -740,6 +741,7 @@ export function Sidebar({
                 justifyContent: "center",
               }}
               title={t("nav.logout", "로그아웃")}
+              data-testid="logout"
             >
               🚪
             </button>

@@ -2627,6 +2627,64 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 25000);
 
   /**
+   * SC-AUTH-07 — signing out ends the session in the browser.
+   *
+   * Measured on the running product before this existed: clicking Logout put
+   * the browser on `/login` and left everything else intact — `mesh_token` was
+   * still set, `/auth/me` answered `200`, and typing `/dashboard` opened it
+   * again. The client cleared its own state; the cookie is the session and it
+   * belongs to the server, which had no `/auth/logout` route at all. The gate's
+   * allowlist named that route and its comment said the session could "simply
+   * be abandoned" — a sentence that was true about the allowlist and false
+   * about the server.
+   *
+   * **Both sides are asserted.** A screen that can never reach `/dashboard`
+   * would pass the half that matters most here, and it would pass it while
+   * being broken in the opposite direction.
+   *
+   * What this does not claim: the token is not revoked. It is a stateless JWT,
+   * so a copy taken before the click keeps working until it expires — that is
+   * `I-095`, and it needs somewhere to record revocations rather than a line in
+   * a handler.
+   */
+  it("[SC-AUTH-07] ends the session in the browser when the person signs out", async () => {
+    const { page, context } = await createAuthedPage("/dashboard");
+    try {
+      const opened = page.url();
+      const before = (await context.cookies()).filter((c) => c.name === "mesh_token").length;
+      const meBefore = await page.evaluate(async () => (await fetch("/auth/me", { credentials: "include" })).status);
+
+      // By test id, not by label: this file seeds Korean by default, and the
+      // first version looked for "Logout" and waited thirty seconds for a
+      // button that was there the whole time saying 로그아웃.
+      await page.locator('[data-testid="logout"]').first().click();
+      await page.waitForURL("**/login", { timeout: 8000 }).catch(() => {});
+      await settled(page);
+
+      const after = (await context.cookies()).filter((c) => c.name === "mesh_token").length;
+      const meAfter = await page.evaluate(async () => (await fetch("/auth/me", { credentials: "include" })).status);
+
+      // The half that the redirect hides: going back to a guarded route.
+      await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
+      await settled(page);
+
+      expect(
+        {
+          openedBefore: opened.includes("/dashboard"),
+          cookieBefore: before,
+          meBefore,
+          cookieAfter: after,
+          meAfter,
+          landsOn: page.url().includes("/login"),
+        },
+        "signing out left the session usable, or the session was never usable to begin with",
+      ).toEqual({ openedBefore: true, cookieBefore: 1, meBefore: 200, cookieAfter: 0, meAfter: 401, landsOn: true });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 30000);
+
+  /**
    * SC-USER-D1 / D2 — the screen that admits a person.
    *
    * Before this screen the only way to admit anybody was `curl`, and the two

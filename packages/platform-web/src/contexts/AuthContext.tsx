@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import type { User, UserRole, Capability } from "@/types/auth.ts";
-import { ApiError } from "@/api/client.ts";
+import { ApiError, apiClient } from "@/api/client.ts";
 
 interface AuthContextType {
   user: User | null;
@@ -237,7 +237,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    // **The cookie is the session, and it is the server's.** Clearing local
+    // state alone sent the browser to `/login` still signed in — measured on
+    // the running product: `mesh_token` survived, `/auth/me` answered `200`,
+    // and `/dashboard` opened again.
+    void apiClient("/auth/logout", { method: "POST" }).catch(() => {});
     setUser(null);
+    setMustChangePassword(null);
+    setAuthFailure(null);
     localStorage.removeItem("agent_mesh_user");
   };
 
