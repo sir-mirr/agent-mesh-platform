@@ -19,18 +19,30 @@
  * directory this test also has to supply.
  */
 
-import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { afterAll, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { freePort } from "./harness";
+import { freePort, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
+let mesh: Mesh | null = null;
+afterAll(() => mesh?.stop());
+
 test("the http server refuses to start without a JWT secret", async () => {
-  const stateDir = mkdtempSync(join(tmpdir(), "no-secret-"));
-  try {
+  /**
+   * **A real mesh's state directory, so the secret is the only thing missing.**
+   *
+   * The first version pointed at an empty temporary directory and passed — and
+   * kept passing with the check removed, because the server cannot boot there
+   * at all: the hub owns the DDL, so `agents.db` does not exist and the open
+   * fails with `unable to open database file`. The test was measuring *the
+   * server did not start*, which is true for many reasons, rather than *this
+   * check stopped it*. The mutation is what found that.
+   */
+  mesh = await startMesh({ withHttp: false });
+  const stateDir = mesh.stateDir;
+  {
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
     // Removed rather than emptied: an empty string is falsy here too, and the
@@ -65,7 +77,5 @@ test("the http server refuses to start without a JWT secret", async () => {
     // and one an operator has to bisect.
     expect({ names: said.includes("JWT_SECRET") }).toEqual({ names: true });
     expect({ says: said.includes("Refusing to start") }).toEqual({ says: true });
-  } finally {
-    rmSync(stateDir, { recursive: true, force: true });
   }
 }, 60_000);
