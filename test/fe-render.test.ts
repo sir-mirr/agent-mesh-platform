@@ -9,6 +9,13 @@ import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
 
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
+  /** What the setup's own writes answered, when they did not answer OK.
+   *
+   * Collected here rather than logged, because a setup that pipes its responses
+   * somewhere nobody reads is the same as one that does not read them — the
+   * shape that let `name` and `members: [...]` be dropped by this suite's group
+   * creation for four months. `SC-HARNESS-03` is the reader. */
+  const setupSaid: string[] = [];
   let mesh: Awaited<ReturnType<typeof startMesh>>;
   let viteProc: ChildProcess;
   let browser: Browser;
@@ -72,41 +79,42 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     // 3. Create directional groups (engineering -> security)
-    await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-      body: JSON.stringify({
-        group_id: "engineering",
-        name: "Engineering Division",
-        members: ["agent-alpha"],
-      }),
-    });
-
-    await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
-      body: JSON.stringify({
-        group_id: "security",
-        name: "Security Division",
-        members: ["admin"],
-      }),
-    });
-
-    // **`POST /api/v1/admin/groups` ignores `members`.** It takes `group_id` and
-    // `description` and nothing else, so the two calls above created empty
-    // groups and the `members` arrays were dropped in silence. Membership is its
-    // own route because it is a move — an identity is in one group at a time.
     //
-    // Nothing noticed for as long as it did because `TopologyPage` filled any
-    // empty group with every live agent, so the screen looked populated and the
-    // fixture looked applied. Removing that fallback is what surfaced this.
-    for (const [groupId, identity] of [["engineering", "agent-alpha"], ["security", "agent-beta"]] as const) {
-      await fetch(`${mesh.http.url}/api/v1/admin/groups/${groupId}/members`, {
+    // **Two calls, because membership is a move and not a field.**
+    // `POST /api/v1/admin/groups` reads `group_id` and `description`. This setup
+    // used to send `name` and `members: [...]` as well, and the route dropped
+    // both without a word — for four months. The groups were empty the whole
+    // time, `TopologyPage` filled any empty group with every live agent, and so
+    // the screen looked populated while the fixture looked applied. Removing
+    // that fallback is what surfaced it.
+    //
+    // `platform-claude` is making the route refuse an unsupported field instead
+    // of dropping it, which turns these into 400s — so they are corrected here
+    // first, and that ordering is the point: a setup that does not read its own
+    // responses cannot tell a 400 from a 201.
+    const createGroup = async (groupId: string, description: string) => {
+      const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
+        body: JSON.stringify({ group_id: groupId, description }),
+      });
+      if (!res.ok) setupSaid.push(`create ${groupId} -> ${res.status}`);
+    };
+    // The group has to exist first: this route answers 404 for one that does
+    // not, rather than creating it somewhere no rule can name.
+    const addMember = async (groupId: string, identity: string) => {
+      const res = await fetch(`${mesh.http.url}/api/v1/admin/groups/${groupId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Cookie: `mesh_token=${jwtToken}` },
         body: JSON.stringify({ identity }),
       });
-    }
+      if (!res.ok) setupSaid.push(`member ${identity} -> ${groupId} -> ${res.status}`);
+    };
+
+    await createGroup("engineering", "Engineering Division");
+    await addMember("engineering", "agent-alpha");
+    await createGroup("security", "Security Division");
+    await addMember("security", "agent-beta");
 
     // Set directional egress engineering -> security
     await fetch(`${mesh.http.url}/api/v1/admin/groups/engineering/egress`, {
@@ -2329,6 +2337,25 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       "omitting the field produced no additional absence marker — the screen went quiet instead of answering",
     ).toEqual({ absentHandles: true });
   }, 45_000);
+
+  /**
+   * SC-HARNESS-03 — the fixtures this suite rests on actually applied.
+   *
+   * Every scenario below reads a mesh this file wrote, with `fetch` calls whose
+   * responses were never looked at. `POST /api/v1/admin/groups` reads `group_id`
+   * and `description`; the setup also sent `name` and `members: [...]`, and the
+   * route dropped both in silence. The groups were empty for four months while
+   * every group-shaped scenario ran against them and passed.
+   *
+   * **A green suite over an unapplied fixture is the widest form of the failure
+   * this repository keeps meeting** — not one check reading nothing, but every
+   * check reading the same nothing. So the setup keeps what its writes answered
+   * and this reads it.
+   */
+  it("[SC-HARNESS-03] wrote the fixtures it says it wrote", async () => {
+    expect(setupSaid, "a setup write did not succeed, so every scenario below reads a mesh that was not built")
+      .toEqual([]);
+  });
 
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
