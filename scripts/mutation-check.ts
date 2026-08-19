@@ -1018,6 +1018,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["can change it, and is then let through"],
   },
   {
+    id: "upgrade-leaves-the-default-unflagged",
+    defect:
+      "The seed marks the first-login flag inside the branch that runs only when no account exists, so a database written before the column never passes it. A deployment that upgraded rather than started fresh kept `admin`/`admin` with no gate — which is exactly what the decision was written to close, and was true of the standing stack when agent-mesh-local-pm signed in like a person and landed on the dashboard.",
+    file: "packages/http/src/db.ts",
+    from: "      if (await Bun.password.verify(initial, admin.password_hash)) {",
+    to: "      if (false) {",
+    suite: "test/misconfigured-boot.test.ts",
+    expect: ["an account still on its initial password was left unflagged"],
+  },
+  {
+    id: "upgrade-flags-a-chosen-password",
+    defect:
+      "Marking every existing account on upgrade locks out the operator who already chose a password, and satisfies the test that an unchanged one gets marked. The question the seed asks is whether the hash still verifies against the initial password, and answering it `true` for everybody is the same as not asking.",
+    file: "packages/http/src/db.ts",
+    from: "      if (await Bun.password.verify(initial, admin.password_hash)) {",
+    to: "      if (true) {",
+    suite: "test/misconfigured-boot.test.ts",
+    expect: ["an account whose password was already changed was flagged anyway"],
+  },
+  {
     id: "admin-password-ignores-the-deployment",
     defect:
       "The seeded `admin` account took the password `admin` and nothing else could be stated. That is the quickstart's login and every test's, so it is right on the machine it was written for and a published password on any host others can reach — where the login form filled both boxes in for the visitor until the front end stopped doing it.",

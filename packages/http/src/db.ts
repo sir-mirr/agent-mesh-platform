@@ -482,6 +482,8 @@ export type DbLocalUser = {
   display_name: string | null
   role: string
   created_at: string
+  /** 1 until this account's first password change. Absent on rows written before the column existed. */
+  must_change_password?: number
 }
 
 export function createLocalUser(username: string, passwordHash: string, displayName?: string, role?: string): DbLocalUser {
@@ -536,6 +538,38 @@ export async function seedLocalUsers(): Promise<void> {
         '[db] seeded admin local user with the default password `admin`. ' +
           'Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.',
       )
+    }
+  } else {
+    /**
+     * An account seeded before the flag existed still has whatever password it
+     * was seeded with, and none of the above ran for it.
+     *
+     * agent-mesh-local-pm found this by signing in like a person on a stack
+     * that predates the change and landing on `/dashboard`: the row is dated
+     * before the column, so it never passed the branch that marks it. Their
+     * reading was that this is correct — an upgrade must not lock out an
+     * operator who has already chosen a password — and that half is right.
+     *
+     * The other half is not. If the password is *still the initial one*, the
+     * account is exactly what the decision was written to close, and leaving
+     * it unflagged keeps `admin`/`admin` alive on every deployment that
+     * upgraded rather than started fresh. That was true of the stack they were
+     * looking at.
+     *
+     * So: ask. A row whose hash still verifies against the initial password has
+     * not been changed by anybody, and is marked. A row whose hash does not is
+     * one somebody already set, and is left alone. Nobody is locked out who
+     * made a choice, and nobody keeps the default by accident.
+     */
+    const admin = getLocalUser('admin')
+    if (admin && admin.must_change_password !== 1) {
+      const initial = process.env.AGENT_MESH_ADMIN_PASSWORD ?? 'admin'
+      if (await Bun.password.verify(initial, admin.password_hash)) {
+        db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
+        console.warn(
+          '[db] the admin account still has its initial password; it must be changed at the next login',
+        )
+      }
     }
   }
 

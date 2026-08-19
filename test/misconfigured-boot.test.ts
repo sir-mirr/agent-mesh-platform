@@ -20,6 +20,7 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -204,3 +205,69 @@ test("the seeded admin takes the deployment's password when it states one", asyn
     own.stop();
   }
 }, 40_000);
+
+test("an account seeded before the flag existed is marked only if its password is still the initial one", async () => {
+  // The seed's flag is set inside the `no rows yet` branch, so a database
+  // written before the column existed never passes it. agent-mesh-local-pm
+  // found that by signing in like a person on such a stack and landing on the
+  // dashboard.
+  //
+  // Half of that is right: an upgrade must not lock out an operator who has
+  // already chosen a password. The other half is not — if the password is
+  // still the one it was seeded with, the account is exactly what the gate was
+  // written for, and leaving it keeps `admin`/`admin` alive on every
+  // deployment that upgraded rather than started fresh.
+  //
+  // So the pair: unchanged is marked, changed is left alone. Without the second
+  // half a boot that marked every account would pass the first.
+  const own = await startMesh({ withHttp: false });
+  const dbPath = join(own.stateDir, "agent-mesh.db");
+  const boot = async () => {
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
+    env.AGENT_MESH_STATE_DIR = own.stateDir;
+    env.AGENT_MESH_HTTP_PORT = String(await freePort());
+    env.JWT_SECRET = "integration-test-secret";
+    const proc = Bun.spawn(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], {
+      cwd: REPO_ROOT, env, stdout: "pipe", stderr: "pipe",
+    });
+    const url = `http://127.0.0.1:${env.AGENT_MESH_HTTP_PORT}`;
+    let up = false;
+    for (let i = 0; i < 200 && !up; i++) {
+      try { up = (await fetch(`${url}/api/v1/health`)).ok; } catch {}
+      if (!up) await Bun.sleep(50);
+    }
+    proc.kill();
+    await proc.exited;
+    return up;
+  };
+  const flag = () => {
+    const db = new Database(dbPath);
+    const row = db.prepare(`SELECT must_change_password AS f FROM local_users WHERE username = 'admin'`)
+      .get() as { f: number } | undefined;
+    db.close();
+    return row?.f;
+  };
+  const setRow = async (password: string) => {
+    const db = new Database(dbPath);
+    db.prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = 'admin'`)
+      .run(await Bun.password.hash(password, { algorithm: "bcrypt" }));
+    db.close();
+  };
+
+  try {
+    expect(await boot(), "the first boot did not come up, so nothing below measured a seed").toBe(true);
+
+    // Still `admin`: the row somebody upgraded and never touched.
+    await setRow("admin");
+    expect(await boot()).toBe(true);
+    expect(flag(), "an account still on its initial password was left unflagged").toBe(1);
+
+    // Already chosen: the operator who set one must not be locked out.
+    await setRow("an-operator-chose-this");
+    expect(await boot()).toBe(true);
+    expect(flag(), "an account whose password was already changed was flagged anyway").toBe(0);
+  } finally {
+    own.stop();
+  }
+}, 60_000);
