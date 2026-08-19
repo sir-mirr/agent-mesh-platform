@@ -251,6 +251,50 @@ describe("the inventory's axis table", () => {
 });
 
 /**
+ * Every check above asks whether the inventory's *numbers* are right. None asks
+ * whether a scenario the tests register is in the document at all.
+ *
+ * The two are not the same question, and the gap has a shape: the axis check
+ * skips `SC-SCR*` and `SC-RENDER` because those live in the screen and render
+ * matrices, and § 4's count reads ids **out of the document** rather than out of
+ * the tests. So an id registered under one of the skipped families, and never
+ * written into its screen's table, is in neither denominator — every number
+ * agrees and the scenario is invisible.
+ *
+ * It had happened. `SC-SCR10-02` was registered by `187d500` and appeared
+ * nowhere in the inventory; agent-mesh-local-pm found it by asking this
+ * question of every id rather than of the families.
+ *
+ * An id counts as accounted for when the document names it, or when § 0 holds a
+ * row for its family — those rows are checked against the registered count
+ * above, so a family row is a real accounting and not a wildcard.
+ */
+describe("the inventory as a denominator", () => {
+  const INVENTORY = join(import.meta.dir, "..", "packages", "platform-web", "COVERAGE_INVENTORY.md");
+
+  test("accounts for every scenario the tests register", () => {
+    const doc = readFileSync(INVENTORY, "utf8");
+    const named = new Set([...doc.matchAll(/`(SC-[A-Z0-9-]+)`/g)].map((m) => m[1]!));
+    const families = new Set(
+      [...doc.matchAll(/^\| `(SC-[A-Z-]+)-\*` \|[^|]*\| [0-9]+ \|$/gm)].map((m) => m[1]!),
+    );
+    // Both readings must have found something. A document that stopped matching
+    // would otherwise make every id below look unaccounted, which reads as a
+    // pile of new work rather than as a broken check.
+    expect(named.size, "no ids were named in the inventory — its formatting changed").toBeGreaterThan(20);
+    expect(families.size, "no axis family rows were found — the table's shape changed").toBeGreaterThan(8);
+
+    const registered = [...new Set(FILES.flatMap(idsOf))];
+    expect(registered.length, "no scenario ids were registered — the parser changed").toBeGreaterThan(50);
+
+    const orphans = registered
+      .filter((id) => !named.has(id) && !families.has(id.replace(/-[A-Z0-9]+$/, "")))
+      .map((id) => `${id} is registered by the tests and appears nowhere in the inventory`);
+    expect(orphans).toEqual([]);
+  });
+});
+
+/**
  * `FILES` is a hand-written list, and a hand-written list of what to measure is
  * the shape that goes quietly wrong in the one direction nobody checks.
  *
