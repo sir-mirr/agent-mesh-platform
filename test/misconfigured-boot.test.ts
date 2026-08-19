@@ -24,13 +24,57 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { freePort, openTestDb, startMesh, type Mesh } from "./harness";
+import { PORT_TAKEN, freePort, openTestDb, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const UNITS = join(REPO_ROOT, "ops", "systemd");
 
 let mesh: Mesh | null = null;
 afterAll(() => mesh?.stop());
+
+
+/**
+ * Spawn the http server on a free port, retrying when it loses the race.
+ *
+ * `freePort` releases the port before the child binds it, and two meshes in one
+ * suite run can pick the same number — this file's own tests hit that with the
+ * machine otherwise idle. `startMesh` retries for exactly this reason; these
+ * tests spawn directly and inherited the gap rather than the fix.
+ *
+ * Narrow: only an exit whose output says the port was taken. A server that
+ * refuses for its own reason — which is what two of these tests are about —
+ * must still fail once and loudly.
+ */
+async function spawnHttp(
+  env: Record<string, string>,
+): Promise<{ proc: ReturnType<typeof Bun.spawn>; url: string; up: boolean; said: string }> {
+  let last = { proc: null as any, url: "", up: false, said: "" };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const port = await freePort();
+    const proc = Bun.spawn(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], {
+      cwd: REPO_ROOT,
+      env: { ...env, AGENT_MESH_HTTP_PORT: String(port) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const url = `http://127.0.0.1:${port}`;
+    let up = false;
+    for (let i = 0; i < 200 && !up; i++) {
+      try {
+        up = (await fetch(`${url}/api/v1/health`)).ok;
+      } catch {}
+      if (!up) await Bun.sleep(50);
+    }
+    if (up) return { proc, url, up, said: "" };
+
+    const said = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
+    proc.kill();
+    await proc.exited;
+    last = { proc, url, up, said };
+    if (!PORT_TAKEN.test(said)) return last;
+  }
+  return last;
+}
 
 test("the http server refuses to start without a JWT secret", async () => {
   /**
@@ -225,19 +269,10 @@ test("an account seeded before the flag existed is marked only if its password i
     const env: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
     env.AGENT_MESH_STATE_DIR = own.stateDir;
-    env.AGENT_MESH_HTTP_PORT = String(await freePort());
     env.JWT_SECRET = "integration-test-secret";
-    const proc = Bun.spawn(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], {
-      cwd: REPO_ROOT, env, stdout: "pipe", stderr: "pipe",
-    });
-    const url = `http://127.0.0.1:${env.AGENT_MESH_HTTP_PORT}`;
-    let up = false;
-    for (let i = 0; i < 200 && !up; i++) {
-      try { up = (await fetch(`${url}/api/v1/health`)).ok; } catch {}
-      if (!up) await Bun.sleep(50);
-    }
-    proc.kill();
-    await proc.exited;
+    const { proc, up } = await spawnHttp(env);
+    proc?.kill();
+    await proc?.exited;
     return up;
   };
   const flag = () => {

@@ -1654,6 +1654,8 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
 | GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval. |
+| POST   | `/api/v1/admin/users`             | JWT\*  | `201`   | Admit a local account. Answers a generated password **once** — it is in this response and in no listing, read or log, and only its hash is stored. The account is created with `must_change_password`, so its first login lands on the change screen and can do nothing else until it passes. Gated on `user.admit`. |
+| GET    | `/api/v1/admin/users`             | JWT\*  | `200`   | Local accounts, with no password material of any kind. Gated on `user.admit`. |
 | DELETE | `/api/v1/admin/agents/{identity}` | JWT\*  | `200`   | Identity teardown — a soft delete (§ 9.3). |
 | GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
