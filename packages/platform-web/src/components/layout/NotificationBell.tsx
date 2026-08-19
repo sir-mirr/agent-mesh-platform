@@ -7,6 +7,16 @@ import { fetchPendingKeys, approveKeyProposal, denyKeyProposal } from "@/api/age
 export function NotificationBell() {
   const { t } = useI18n();
   const [requests, setRequests] = useState<PendingAgentRequest[]>([]);
+  /**
+   * `[]` and "could not ask" were the same value here.
+   *
+   * The fetch's `.catch` set the list to empty, and an empty list draws "there
+   * are no requests waiting" — a sentence about the server's answer, produced
+   * when there was no answer. Measured with only this one route failing and
+   * everything else healthy: the bell was silent and identical to a quiet mesh,
+   * while agents could be waiting to be admitted.
+   */
+  const [unreachable, setUnreachable] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<PendingAgentRequest | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,7 +41,10 @@ export function NotificationBell() {
           }))
         );
       })
-      .catch(() => setRequests([]));
+      .catch(() => {
+        setRequests([]);
+        setUnreachable(true);
+      });
 
     // Subscribe to SSE /api/v1/admin/keys/stream
     let es: EventSource | null = null;
@@ -140,9 +153,34 @@ export function NotificationBell() {
           fontSize: "1.1rem",
           transition: "all 0.15s ease",
         }}
-        title="에이전트 등록 요청 알림"
+        data-testid="bell"
+        title={t("bell.title", "에이전트 등록 요청 알림")}
       >
         🔔
+        {pendingCount === 0 && unreachable && (
+          <span
+            data-testid="bell-unreachable"
+            title={t("bell.unreachable", "등록 요청을 물어보지 못했습니다")}
+            style={{
+              position: "absolute",
+              top: -3,
+              right: -3,
+              background: "var(--color-text-muted)",
+              color: "var(--color-bg-surface)",
+              fontSize: "0.68rem",
+              fontWeight: 800,
+              borderRadius: "var(--radius-full)",
+              minWidth: 18,
+              height: 18,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 4px",
+            }}
+          >
+            ?
+          </span>
+        )}
         {pendingCount > 0 && (
           <span
             style={{
@@ -206,8 +244,13 @@ export function NotificationBell() {
 
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {requests.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
-                대기 중인 등록 요청이 없습니다.
+              <div
+                data-testid={unreachable ? "bell-empty-unreachable" : "bell-empty"}
+                style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.8rem" }}
+              >
+                {unreachable
+                  ? t("bell.unreachable", "등록 요청을 물어보지 못했습니다")
+                  : t("bell.empty", "대기 중인 등록 요청이 없습니다.")}
               </div>
             ) : (
               requests.map((req) => (

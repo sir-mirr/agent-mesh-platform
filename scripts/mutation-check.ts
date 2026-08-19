@@ -1613,6 +1613,29 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "bell-calls-an-unanswered-question-an-answer",
+    defect:
+      "`.catch(() => setRequests([]))` — an empty list draws \"no requests are waiting\", which is a sentence about the server's answer written when there was no answer. An operator sees a quiet bell while agents wait to be admitted, and nothing else on any screen mentions it.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: `      .catch(() => {
+        setRequests([]);
+        setUnreachable(true);
+      });`,
+    to: "      .catch(() => setRequests([]));",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-12", "reported an unanswered question as an answer"],
+  },
+  {
+    id: "bell-calls-every-answer-unanswered",
+    defect:
+      "The other direction, which the same check has to hold: a bell stuck on \"could not ask\" tells an operator nothing and looks exactly like caution. One assertion catching only the first direction would pass on it.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "  const [unreachable, setUnreachable] = useState(false);",
+    to: "  const [unreachable, setUnreachable] = useState(true);",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-12", "reports every answer as unanswered"],
+  },
+  {
     id: "logout-leaves-the-cookie",
     defect:
       "Signing out that ends nothing. The browser goes to `/login`, `mesh_token` stays set, and the next person to type `/dashboard` on that machine is inside the previous session. It looks correct from the seat of the person who clicked.",

@@ -2627,6 +2627,84 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 25000);
 
   /**
+   * SC-DOWN-12 — one route failing, and the bell that said nothing about it.
+   *
+   * The nine `SC-DOWN-*` above abort `**\/api/v1/**`: the whole backend is gone.
+   * A deployment fails the other way far more often — one route answers `502`
+   * while the session and every other read are healthy — and a screen that
+   * handles the first case can still be wrong about the second.
+   *
+   * `audit/partialsweep.mjs` swept fourteen screens against every route each of
+   * them reads, failing one at a time. Every screen said something, except this
+   * one: `fetchPendingKeys().catch(() => setRequests([]))`, and an empty list
+   * draws "no requests are waiting" — a sentence about the server's answer,
+   * written when there was no answer. On a deployed mesh that is an operator
+   * looking at a quiet bell while agents wait to be admitted.
+   *
+   * Three states now, and the scenario asserts all three, because a bell that
+   * always said "could not ask" would pass the half that matters.
+   */
+  it("[SC-DOWN-12] says it could not ask, rather than that nothing is waiting", async () => {
+    // **The bell has two sources.** A fetch on mount and an SSE snapshot, and
+    // the first version of this blocked only the fetch — the stream delivered a
+    // proposal and the bell was right, so the check measured the stream.
+    // `audit/partialsweep.mjs` made the same mistake at a larger scale: it
+    // failed one route at a time and called this screen swallowed, when what it
+    // had actually found was redundancy. Both are stopped here.
+    const load = async (pendingBody: string | null) => {
+      const { page, context } = await createAuthedPage("/tenant/rbac");
+      try {
+        const fail = (route: import("playwright").Route) =>
+          route.fulfill({ status: 502, contentType: "text/html", body: "<html>502</html>" });
+        if (pendingBody === null) {
+          await page.route("**/api/v1/admin/keys/pending", fail);
+          await page.route("**/api/v1/admin/keys/stream", fail);
+        } else {
+          await page.route("**/api/v1/admin/keys/pending", (route) =>
+            route.fulfill({ status: 200, contentType: "application/json", body: pendingBody }),
+          );
+          await page.route("**/api/v1/admin/keys/stream", (route) =>
+            route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: snapshot\ndata: {\"proposals\":[]}\n\n" }),
+          );
+        }
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        await page.locator('[data-testid="bell"]').click();
+        await settled(page);
+        return {
+          unknownBadge: await page.locator('[data-testid="bell-unreachable"]').count(),
+          saidNone: await page.locator('[data-testid="bell-empty"]').count(),
+          saidUnknown: await page.locator('[data-testid="bell-empty-unreachable"]').count(),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const refused = await load(null);
+    const answeredEmpty = await load(JSON.stringify({ ok: true, pending: [] }));
+
+    expect(
+      {
+        refusedBadge: refused.unknownBadge,
+        refusedSaidNone: refused.saidNone,
+        refusedSaidUnknown: refused.saidUnknown,
+        emptyBadge: answeredEmpty.unknownBadge,
+        emptySaidNone: answeredEmpty.saidNone,
+        emptySaidUnknown: answeredEmpty.saidUnknown,
+      },
+      "the bell reported an unanswered question as an answer, or reports every answer as unanswered",
+    ).toEqual({
+      refusedBadge: 1,
+      refusedSaidNone: 0,
+      refusedSaidUnknown: 1,
+      emptyBadge: 0,
+      emptySaidNone: 1,
+      emptySaidUnknown: 0,
+    });
+  }, 40000);
+
+  /**
    * SC-AUTH-07 — signing out ends the session in the browser.
    *
    * Measured on the running product before this existed: clicking Logout put
