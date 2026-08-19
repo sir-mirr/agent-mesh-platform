@@ -1690,6 +1690,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/ingest/ai-usage`         | Token  | `200`   | AI-usage snapshot ingest (`AI_USAGE_INGEST_TOKEN`). |
 | GET    | `/api/v1/admin/ai-usage`          | JWT\*  | `200`   | Latest AI-usage snapshot. |
 | GET    | `/api/v1/admin/ai-usage/stream`   | JWT\*  | `200`   | SSE stream of AI-usage updates. |
+| GET    | `/api/v1/admin/telemetry/behaviour` | JWT\*  | `200`   | The six behavioural metrics (§ D-1): pending keys, oldest pending message, signature refusals, rate-limited, egress refusals, accepted. Each is a number **or** an absence naming what could not be read — never a substituted `0`, because four of the six read `0` when all is well. Carries `counting_since`, since the hub's refusal counts are per-process and a count without its window cannot be read. |
 | GET    | `/api/v1/push/vapid-key`          | None   | `200`   | VAPID public key (PWA registration). |
 | POST   | `/api/v1/push/subscribe`          | JWT    | `200`   | Register a Web Push subscription. |
 | POST   | `/api/v1/push/unsubscribe`        | JWT    | `200`   | Drop a Web Push subscription. |
