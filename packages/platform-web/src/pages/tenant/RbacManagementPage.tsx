@@ -8,13 +8,13 @@ import {
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
+import { fetchLocalUsers } from "@/api/users.ts";
 import { fetchGrants, addGrantApi, deleteGrantApi, type GrantItem } from "@/api/grants.ts";
 
 interface OrgMember {
   id: string;
   name: string;
   email: string;
-  role: string;
   capabilities: string[];
 }
 
@@ -24,6 +24,12 @@ export function RbacManagementPage() {
   const canGrant = hasCapability("role.grant");
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [availableCaps, setAvailableCaps] = useState<string[]>([]);
+  /**
+   * `null` is not "no role" — it is *this screen was not able to ask*. The two
+   * were the same value here until now: every subject the grants list named got
+   * the word "Operator", including subjects the server has no account for.
+   */
+  const [rolesBySubject, setRolesBySubject] = useState<Record<string, string> | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
@@ -35,6 +41,14 @@ export function RbacManagementPage() {
       const res = await fetchGrants();
       const caps = res.capabilities || [];
       setAvailableCaps(caps);
+
+      // Asked separately and allowed to fail: a viewer who may read grants but
+      // not accounts still gets the table, with the role column saying it does
+      // not know rather than filling itself in.
+      const roles = await fetchLocalUsers()
+        .then((r) => Object.fromEntries((r.users ?? []).map((u) => [u.username, u.role])))
+        .catch(() => null);
+      setRolesBySubject(roles);
 
       // Group grants by subject strictly from server response
       const subjectMap = new Map<string, string[]>();
@@ -48,7 +62,6 @@ export function RbacManagementPage() {
         id: subj,
         name: subj,
         email: subj,
-        role: subj === "admin" ? "Platform Admin" : "Operator",
         capabilities: assignedCaps,
       }));
 
@@ -58,6 +71,7 @@ export function RbacManagementPage() {
       setIsError(true);
       setMembers([]);
       setAvailableCaps([]);
+      setRolesBySubject(null);
     } finally {
       setIsLoading(false);
     }
@@ -91,7 +105,7 @@ export function RbacManagementPage() {
       key: "name",
       header: t("rbac.col.name", "멤버 ID / 주체 (Subject)"),
       render: (item: OrgMember) => (
-        <div>
+        <div data-testid={`rbac-subject-${item.id}`}>
           <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</div>
         </div>
       ),
@@ -101,6 +115,7 @@ export function RbacManagementPage() {
       header: t("rbac.col.role", "역할 (Role)"),
       render: (item: OrgMember) => (
         <span
+          data-testid={`rbac-role-${item.id}`}
           style={{
             padding: "3px 8px",
             background: "var(--color-bg-surface-sub)",
@@ -109,7 +124,7 @@ export function RbacManagementPage() {
             fontWeight: 600,
           }}
         >
-          {item.role}
+          {rolesBySubject === null ? "\u2014" : (rolesBySubject[item.id] ?? "\u2014")}
         </span>
       ),
     },
@@ -125,6 +140,7 @@ export function RbacManagementPage() {
               <button
                 key={capId}
                 type="button"
+                data-testid={`rbac-cap-${item.id}-${capId}`}
                 disabled={!canGrant}
                 onClick={() => handleToggleCapability(item.id, capId)}
                 style={{

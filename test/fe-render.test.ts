@@ -2627,6 +2627,77 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 25000);
 
   /**
+   * SC-USER-D3 — the capability table is the server's list, and the role beside
+   * a subject is the server's word for that subject.
+   *
+   * This screen used to write the role itself:
+   *
+   * ```
+   * role: subj === "admin" ? "Platform Admin" : "Operator"
+   * ```
+   *
+   * Every subject in the grants list that was not literally `admin` was called
+   * an Operator — an agent id, a service, a person the server holds no account
+   * for. The word is not in the platform's vocabulary and the server was never
+   * asked. `I-055` and `I-077` are the same sentence about a different field.
+   *
+   * So the check reads both sides off the wire: the capability axis is compared
+   * against `GET /api/v1/admin/grants`, and each role cell against the accounts
+   * list. The em dash is asserted too, because "the server has no account for
+   * this subject" and "this subject is an Operator" are different answers and
+   * only one of them is true.
+   */
+  it("[SC-USER-D3] draws the capability axis and each role from what the server said", async () => {
+    const admin = { Cookie: `mesh_token=${jwtToken}`, "Content-Type": "application/json" };
+    const person = "d3-frank";
+    await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ username: person, display_name: "Frank" }),
+    });
+    // A subject the accounts list does not hold. Grants take any string, which
+    // is how "Operator" came to be printed beside things that are not people.
+    const stranger = "agent-alpha";
+    for (const subject of [person, stranger]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+        method: "POST",
+        headers: admin,
+        body: JSON.stringify({ subject, capability: "group.manage", scope: "*" }),
+      });
+    }
+
+    const wire = (await (await fetch(`${mesh.http.url}/api/v1/admin/grants`, { headers: admin })).json()) as {
+      capabilities?: string[];
+    };
+    const accounts = (await (await fetch(`${mesh.http.url}/api/v1/admin/users`, { headers: admin })).json()) as {
+      users?: Array<{ username: string; role: string }>;
+    };
+    const serverRole = (accounts.users ?? []).find((u) => u.username === person)?.role;
+    expect(
+      { caps: (wire.capabilities ?? []).length > 0, role: serverRole },
+      "the server said nothing to compare the screen against",
+    ).toEqual({ caps: true, role: "member" });
+
+    await withPage("/tenant/rbac", async ({ page }) => {
+      await page.waitForSelector(`[data-testid="rbac-role-${person}"]`, { timeout: 8000 });
+
+      const drawnCaps = await page.evaluate((subject: string) => {
+        const prefix = `rbac-cap-${subject}-`;
+        return [...document.querySelectorAll(`[data-testid^="${prefix}"]`)]
+          .map((el) => (el.getAttribute("data-testid") ?? "").slice(prefix.length))
+          .sort();
+      }, person);
+      const roleShown = (await page.locator(`[data-testid="rbac-role-${person}"]`).textContent())?.trim();
+      const strangerShown = (await page.locator(`[data-testid="rbac-role-${stranger}"]`).textContent())?.trim();
+
+      expect(
+        { axis: drawnCaps, role: roleShown, stranger: strangerShown },
+        "the screen drew a capability axis or a role that the server did not give it",
+      ).toEqual({ axis: [...(wire.capabilities ?? [])].sort(), role: serverRole, stranger: "\u2014" });
+    });
+  }, 30000);
+
+  /**
    * SC-CONSIST-01 — a screen that states a count states the count of what it drew.
    *
    * `I-064` was this: the topology said `3개 에이전트` in its heading, `Agents: 2`

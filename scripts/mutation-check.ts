@@ -1590,6 +1590,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "rbac-invents-the-role-column",
+    defect:
+      "The screen writing somebody's role itself. `I-055` and `I-077` are this sentence about other fields; here it printed \"Operator\" beside every subject that was not literally `admin`, including agent ids the server holds no account for.",
+    file: "packages/platform-web/src/pages/tenant/RbacManagementPage.tsx",
+    from: '{rolesBySubject === null ? "\\u2014" : (rolesBySubject[item.id] ?? "\\u2014")}',
+    to: '{item.id === "admin" ? "Platform Admin" : "Operator"}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D3", "the screen drew a capability axis or a role that the server did not give it"],
+  },
+  {
+    id: "rbac-invents-the-capability-axis",
+    defect:
+      "A capability list written into the client goes stale silently: the platform gains a capability, every table keeps its old columns, and the screen agrees with itself forever.",
+    file: "packages/platform-web/src/pages/tenant/RbacManagementPage.tsx",
+    from: "      setAvailableCaps(caps);",
+    to: '      setAvailableCaps(caps.length ? ["group.manage", "audit.read.metadata"] : [])',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D3", "the screen drew a capability axis or a role that the server did not give it"],
+  },
+  {
     id: "password-gate-lets-everybody-through",
     defect:
       "The gate is one `if` in one middleware, and deleting it is silent: every route still answers, the account still holds no capabilities, and the only visible change is that somebody who was handed a temporary password can go on using it forever.",
