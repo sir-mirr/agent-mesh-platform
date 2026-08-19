@@ -86,28 +86,28 @@ export function AclMatrix({
               </td>
 
               {groups.map((target) => {
-                const isSelf = source.id === target.id;
                 const isAllowed = rules[source.id]?.[target.id] ?? false;
 
                 return (
                   <td
                     key={target.id}
+                      data-testid={`acl-${source.id}-${target.id}`}
+                      data-allowed={isAllowed ? "yes" : "no"}
                     style={{
                       padding: "8px",
                       textAlign: "center",
                       verticalAlign: "middle",
                     }}
                   >
-                    {isSelf ? (
-                      <span
-                        style={{
-                          fontSize: "0.72rem",
-                          color: "var(--color-text-muted)",
-                        }}
-                      >
-                        자체(허용)
-                      </span>
-                    ) : (
+                      {(
+                        /* **The diagonal is an ordinary cell.** It used to render
+                           the literal `자체(허용)` — a claim, not a reading, and the
+                           one the operator actually sees. `maySend` requires a rule
+                           for same-group sends like any other pair, and a group
+                           someone creates has none until they say so; only `default`
+                           is seeded, which is why this looked right. Toggleable for
+                           the same reason: granting a group egress to itself is a
+                           rule someone can make. */
                       <button
                         type="button"
                         disabled={readOnly}

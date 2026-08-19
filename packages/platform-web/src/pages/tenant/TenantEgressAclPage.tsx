@@ -29,8 +29,14 @@ export function TenantEgressAclPage() {
           for (const g of list) {
             const row: Record<string, boolean> = {};
             for (const target of list) {
-              row[target.id] =
-                g.id === target.id || (g.egress_allowed && g.egress_allowed.includes(target.id)) || false;
+                // **No self-exception.** `maySend` has none either — its query is
+                // `from_group = ? AND to_group = ?` and nothing else, and the comment
+                // above it says so in words: *same-group sends still require a rule;
+                // `default` has one, seeded; a group someone creates does not until
+                // they say so, which is the point of asking.* Drawing the diagonal as
+                // allowed said the opposite of what the server would answer for every
+                // group but `default` — and `default` agreeing is why it went unseen.
+                row[target.id] = (g.egress_allowed && g.egress_allowed.includes(target.id)) || false;
             }
             nextRules[g.id] = row;
           }

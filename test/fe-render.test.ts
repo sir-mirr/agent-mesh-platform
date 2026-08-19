@@ -2379,6 +2379,140 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       .toEqual([]);
   });
 
+  /**
+   * SC-SCR12-03 — the egress matrix reads the server, including its diagonal.
+   *
+   * The diagonal was drawn as allowed unconditionally, in two places: the page
+   * built `row[target.id] = g.id === target.id || …`, and `AclMatrix` rendered
+   * the literal `자체(허용)` for it, which is the one an operator sees. `maySend`
+   * has no such exception — its query is `from_group = ? AND to_group = ?` and
+   * its comment says *same-group sends still require a rule; `default` has one,
+   * seeded; a group someone creates does not until they say so.* So every group
+   * but `default` was drawn as able to talk to itself when the server would
+   * refuse, and `default` agreeing is why it went unseen.
+   *
+   * ## Four cells, and each is somebody else's reverse
+   *
+   * ```
+   * engineering → security      rule exists   allowed      the fixture writes it
+   * security → engineering      no rule       not allowed  direction is the point
+   * engineering → engineering   no rule       not allowed  the defect
+   * default → default           seeded rule   allowed      the reverse of the defect
+   * ```
+   *
+   * Without the last one, a screen that draws every diagonal as DENY passes —
+   * the same pairing `SC-INVENT-01` uses, for the same reason.
+   */
+  it("[SC-SCR12-03] draws each egress cell from the server, diagonal included", async () => {
+    await withPage("/tenant/egress-acl", async ({ page }) => {
+      await page.locator("[data-testid^='acl-']").first().waitFor({ state: "attached", timeout: 15_000 })
+        .catch(() => {});
+
+      const cell = async (from: string, to: string) => {
+        const el = page.locator(`[data-testid='acl-${from}-${to}']`);
+        if ((await el.count()) === 0) return "(missing)";
+        return (await el.first().getAttribute("data-allowed")) ?? "(no attribute)";
+      };
+
+      const seen = {
+        "engineering->security": await cell("engineering", "security"),
+        "security->engineering": await cell("security", "engineering"),
+        "engineering->engineering": await cell("engineering", "engineering"),
+        "default->default": await cell("default", "default"),
+      };
+
+      // A missing cell would make every comparison below vacuous, and reads as
+      // "not allowed" if compared loosely — so it is named rather than absorbed.
+      expect(
+        Object.entries(seen).filter(([, v]) => v === "(missing)" || v === "(no attribute)").map(([k]) => k),
+        "the matrix did not draw these cells at all, so nothing was compared",
+      ).toEqual([]);
+
+      expect(seen).toEqual({
+        "engineering->security": "yes",
+        "security->engineering": "no",
+        "engineering->engineering": "no",
+        "default->default": "yes",
+      });
+    });
+  }, 30_000);
+
+  /**
+   * SC-INVENT-02 — a signature that is present is not a signature that was verified.
+   *
+   * `audit-query.ts` returns the attestation and says why, at that line: *a
+   * screen must not read this as proof; the hub verified it at ingest and this
+   * route does not re-verify, because it cannot always.* A rotated key's row is
+   * deleted, so an event signed by one can never be verified again — and the
+   * screen turned presence into `true` and painted it with `--color-success`.
+   * On the security audit screen, where "signature verified" is the whole point.
+   *
+   * The pair is the same shape as `SC-INVENT-01`: the field is withheld in one
+   * render and sent in the other, and only the difference between them says
+   * anything. Without the second, a screen that never claims verification passes.
+   */
+  it("[SC-INVENT-02] calls a signature verified only when the server says so", async () => {
+    const tag = "sig" + String(Date.now()).slice(-6);
+    const event = (extra: Record<string, unknown>) => ({
+      event_id: `evt_${tag}`,
+      event_type: "channel.message.received",
+      occurred_at: new Date().toISOString(),
+      identity: `who-${tag}`,
+      payload: { message: { from: `who-${tag}`, to: "admin", content: `body-${tag}` } },
+      // Signed on arrival — a measured fact, and the one the screen used to read as proof.
+      attestation: { sig: { alg: "ed25519", kid: `kid-${tag}` } },
+      ...extra,
+    });
+
+    async function auditRow(extra: Record<string, unknown>): Promise<{ text: string; verified: number }> {
+      const context = await browser.newContext();
+      await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
+      const page = await context.newPage();
+      try {
+        await page.route("**/api/v1/audit/events**", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ events: [event(extra)], next_cursor: null }),
+          }),
+        );
+        await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
+        await settled(page);
+        await shows(page, `who-${tag}`);
+        const text = (await page.locator("#root").innerText().catch(() => "")).trim();
+        // The screen paints a verified signature with the success colour, so that
+        // is what "claimed verified" means here — read from the DOM, not guessed.
+        const verified = await page
+          .locator("span[style*='--color-success']")
+          .filter({ hasText: "서명" })
+          .count();
+        return { text, verified };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    }
+
+    // Withheld: the server sends the attestation and no verdict — today's shape.
+    const withheld = await auditRow({});
+    // Sent: the verdict is stated. This is the branch the screen may act on.
+    const stated = await auditRow({ signature_verified: true });
+
+    expect(
+      { withheldDrew: withheld.text.includes(`who-${tag}`), statedDrew: stated.text.includes(`who-${tag}`) },
+      "the audit row never rendered, so nothing was compared",
+    ).toEqual({ withheldDrew: true, statedDrew: true });
+
+    expect(
+      { claimedVerified: withheld.verified > 0 },
+      "the screen called a signature verified from its presence alone",
+    ).toEqual({ claimedVerified: false });
+
+    expect(
+      { claimedVerified: stated.verified > 0 },
+      "the screen ignored a verdict the server did state — this pair has nothing to compare",
+    ).toEqual({ claimedVerified: true });
+  }, 45_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

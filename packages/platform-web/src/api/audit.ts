@@ -35,7 +35,15 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     const sig = attestationObj?.sig;
     const attestationAlgorithm = sig?.alg ?? null;
     const keyId = sig?.kid ?? null;
-    const signatureVerified = item.signature_verified != null ? Boolean(item.signature_verified) : (sig ? true : null);
+    // **Present is not verified**, which `audit-query.ts` says where it returns
+    // this: *a screen must not read this as proof; the hub verified it at ingest
+    // and this route does not re-verify, because it cannot always.* A rotated
+    // key's row is deleted, so an event signed by one can never be verified
+    // again — and `sig ? true : null` painted exactly those green.
+    //
+    // Presence is a measured fact and already has somewhere to go: the
+    // `signatureInfo` line below says `서명 있음 · <alg> · <kid>`.
+    const signatureVerified = item.signature_verified != null ? Boolean(item.signature_verified) : null;
     
     const signatureInfo = sig != null
       ? `서명 있음 · ${attestationAlgorithm || "알 수 없음"}${keyId ? ` · ${keyId}` : ""}`
