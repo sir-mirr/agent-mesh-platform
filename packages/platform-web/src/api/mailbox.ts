@@ -30,10 +30,13 @@ export interface AdminMailboxResponse {
 
 export async function fetchAdminMailbox(): Promise<AdminMailboxResponse> {
   const data = await apiClient<any>("/api/v1/admin/mailbox");
-  const known = Array.isArray(data?.mailboxes);
-  const mailboxes: MailboxSummary[] = known ? data.mailboxes : [];
   return {
-    mailboxes,
-    total_queued: known ? mailboxes.reduce((acc, m) => acc + (m.pending ?? 0), 0) : null,
+    mailboxes: Array.isArray(data?.mailboxes) ? data.mailboxes : [],
+    // The route's own `count(*)`, not a sum taken here. Summing the rows is
+    // what produced the defect — over `depth`, a column this route has never
+    // emitted — and it would go quietly small the day the grouping takes a
+    // `LIMIT`. `null` when the field is absent, because a total that did not
+    // arrive is not a queue of zero.
+    total_queued: typeof data?.total_queued === "number" ? data.total_queued : null,
   };
 }

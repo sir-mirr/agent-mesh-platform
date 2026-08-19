@@ -2692,9 +2692,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         const r = await fetch("/api/v1/admin/mailbox", { credentials: "include" });
         return { ok: r.ok, body: await r.json() };
       });
-      const reported = (wire.body?.mailboxes ?? []).reduce((a: number, m: any) => a + (m.pending ?? 0), 0);
-      expect({ ok: wire.ok, positive: reported > 0 }, "the route did not report the message it had just accepted")
-        .toEqual({ ok: true, positive: true });
+      // The route counts this itself now, so the screen and this scenario read
+      // the same number from the same place rather than each deriving one.
+      const reported = wire.body?.total_queued;
+      expect({ ok: wire.ok, reported: typeof reported === "number" && reported > 0 }, "the route did not report the message it had just accepted")
+        .toEqual({ ok: true, reported: true });
 
       const card = page.locator("[data-kpi='미수신 메일함']");
       await card.waitFor({ timeout: 5000 });

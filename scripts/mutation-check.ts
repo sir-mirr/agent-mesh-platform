@@ -1181,8 +1181,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`GET /api/v1/admin/mailbox` answers rows aliased `identity`, `pending`, `leased`, `oldest`. The front end declared `depth`, `unacked_count`, `oldest_message_ts` and `leased_count` — four names nothing on this platform sends — and summed `depth`, so the total was `0` on an idle mesh and on a backed-up one alike. The dashboard drew that `0` as the queue.",
     file: "packages/platform-web/src/api/mailbox.ts",
-    from: "acc + (m.pending ?? 0)",
-    to: "acc + ((m as any).depth ?? 0)",
+    // The route counts the total itself now, so the defect's shape is reading
+    // the wrong name off the response rather than summing the wrong column.
+    from: 'typeof data?.total_queued === "number" ? data.total_queued : null',
+    to: 'typeof data?.depth === "number" ? data.depth : null',
     suite: "test/fe-render.test.ts",
     expect: ["SC-INVENT-03", "states the queue the mailbox route reported", "expect(received).toContain(expected)"],
   },
