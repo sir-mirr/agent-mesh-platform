@@ -341,6 +341,57 @@ describe("running-locally's proxy blocks", () => {
  * here, because a list here would have been written from the same reading of
  * the same files that produced the gap.
  */
+/**
+ * Every service log line the document quotes is one the source prints.
+ *
+ * § 5 showed `[db] seeded default admin local user` for months after `651597e`
+ * replaced it with two lines that say *which password was used*. A reader
+ * following the document and not seeing the quoted line has no way to know
+ * whether they are looking at a defect, a version skew, or the one output that
+ * matters here — the warning that this deployment is running on the published
+ * default.
+ *
+ * Quoted output is the part of a document a reader compares against their
+ * terminal, so it is the part that must not drift. The prose around it can be
+ * approximate; this cannot.
+ */
+describe("running-locally's quoted log lines", () => {
+  const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
+
+  test("every `[service]` line it quotes is printed by this source", () => {
+    // Only lines that open a quoted block line with a bracketed service tag —
+    // the shape a reader matches against their own terminal.
+    const quoted = [...DOC.matchAll(/^\[(?:db|hub|http-server|self-reminder)\] ([^\n]+)$/gm)].map((m) => m[1]!.trim());
+    expect(quoted.length, "no quoted service log line found — the pattern went stale").toBeGreaterThan(1);
+
+    const sources = new Map<string, string>();
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === "dist") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.ts$/.test(entry.name)) continue;
+        sources.set(full, readFileSync(full, "utf8"));
+      }
+    };
+    walk(join(REPO_ROOT, "packages"));
+    expect(sources.size, "no sources read — the walk broke").toBeGreaterThan(20);
+    // **Adjacent string literals are one line at runtime.** The warning this
+    // check was written for is printed as `'… `admin`. ' + 'Set AGENT_MESH…'`,
+    // and searching the source verbatim reports it missing — a false red from
+    // the reader, not a drifted document. Joining the halves is what makes the
+    // comparison about what the process prints rather than how it is typed.
+    const all = [...sources.values()].join("\n").replace(/'\s*\+\s*'/g, "").replace(/"\s*\+\s*"/g, "");
+
+    // The distinctive head of the line, because the tail carries interpolation
+    // (`{"poll_ms":1000,…}`) that no literal in the source contains.
+    const missing = quoted
+      .map((line) => line.split(/\s{2,}|\s+\{/)[0]!.trim())
+      .filter((head) => head.length > 12 && !all.includes(head));
+    expect(missing, "the document quotes a log line this source does not print").toEqual([]);
+  });
+});
+
 describe("the env examples can start what the document starts", () => {
   const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
   const ENV_DIR = join(REPO_ROOT, "ops", "env", "shared");

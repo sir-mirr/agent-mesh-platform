@@ -1481,6 +1481,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-ACT-01", "performs interactive login form submission"],
   },
   {
+    id: "doc-quotes-a-line-nothing-prints",
+    defect:
+      "§ 5 quoted `[db] seeded default admin local user` after `651597e` replaced it with two lines that say *which password was used*. Quoted output is the part of a document a reader compares against their own terminal, so a reader who does not see it has no way to tell a defect from a version skew — and here the line they would miss is the warning that the deployment is running on the published default.",
+    file: "docs/running-locally.md",
+    from: "[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD",
+    to: "[db] seeded default admin local user",
+    suite: "test/readme.test.ts",
+    expect: ["the document quotes a log line this source does not print", "seeded default admin local user"],
+  },
+  {
+    id: "doc-log-quote-denominator",
+    defect:
+      "The check reads the quoted lines out of the document and the printable strings out of `packages`. Either side going empty makes it agree with anything: no quoted line is a green run over nothing, and no source is a green run against nothing.",
+    file: "test/readme.test.ts",
+    from: '    walk(join(REPO_ROOT, "packages"));',
+    to: "    // walk disabled",
+    suite: "test/readme.test.ts",
+    expect: ["no sources read — the walk broke"],
+  },
+  {
     id: "proxy-block-target",
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",

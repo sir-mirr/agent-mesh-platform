@@ -183,8 +183,14 @@ approval step for this one.
 
 ```
 username: admin
-password: admin
+password: $AGENT_MESH_ADMIN_PASSWORD, or `admin` when that is unset
 ```
+
+**Set it before the first boot on any host somebody else can reach.** The seed
+runs once, when `local_users` is empty, so a password supplied later does not
+replace one already stored — the row is there and the variable is not consulted
+again. On this laptop leaving it unset is the documented path and is what every
+test in this repository signs in with.
 
 ```bash
 curl -s -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
@@ -194,7 +200,14 @@ curl -s -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
 
 ```
 set-cookie: mesh_token=eyJhbGciOiJIUzI1N...
-[db] seeded default admin local user      <- in the http server's own log
+```
+
+And in the http server's own log, one of these — **which one tells you whether
+this deployment stated a password**:
+
+```
+[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD
+[db] seeded admin local user with the default password `admin`. Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.
 ```
 
 Keep it, if you are going to call an admin route:
