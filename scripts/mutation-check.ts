@@ -1623,6 +1623,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "member-panel-answers-zero-while-waiting",
+    defect:
+      "`agents` starts empty and the card reads its length, so on a slow link the panel says \"Agents 0 registered\" and then jumps to fourteen. The window is short on a fast machine and is the whole experience on a bad connection.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: '          value={isLoading ? "..." : isError ? "—" : String(agents.length)}',
+    to: '          value={isError ? "—" : String(agents.length)}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-LOAD-06", "answered 0 before the answer arrived"],
+  },
+  {
+    id: "member-panel-never-stops-waiting",
+    defect:
+      "The other direction: a panel that stays on \"...\" forever looks patient and says nothing. One assertion catching only the first direction passes on it.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "      .finally(() => setIsLoading(false));",
+    to: "      .finally(() => {});",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-LOAD-06", "never stopped waiting"],
+  },
+  {
     id: "count-answered-from-another-table",
     defect:
       "`health?.agent_count ?? agentList.length` — mesh identities that are alive, or rows in this server's chat registry, whichever answered. Neither set contains the other (12 against 13 when this was written), so the number under the label changes quantity when a route stops answering and nothing says it did.",

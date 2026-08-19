@@ -629,6 +629,15 @@ function AgentOperatorDashboard() {
    * three panels below it did not.
    */
   const [isError, setIsError] = useState(false);
+  /**
+   * **The third state.** `agents` starts as `[]`, and an empty list drew `0` —
+   * so on a slow link this panel said "Agents 0 registered" until the answer
+   * arrived and then jumped to 14. Measured with the route delayed 2.5s.
+   *
+   * A screen has four things to tell apart: there are none, there are some, the
+   * answer has not come back yet, and it never will. This panel had two.
+   */
+  const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
     fetchAgents()
@@ -636,7 +645,8 @@ function AgentOperatorDashboard() {
       .catch(() => {
         setAgents([]);
         setIsError(true);
-      });
+      })
+      .finally(() => setIsLoading(false));
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
@@ -645,15 +655,15 @@ function AgentOperatorDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.kpi.agents", "소유 에이전트")}
-          value={isError ? "—" : String(agents.length)}
-          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}
+          value={isLoading ? "..." : isError ? "—" : String(agents.length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.kpi.sockets", "온라인 소켓")}
-          value={isError ? "—" : String(agents.filter(hasBeenSeen).length)}
-          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.socketsSub", "연결 활성")}
+          value={isLoading ? "..." : isError ? "—" : String(agents.filter(hasBeenSeen).length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
         />
@@ -704,7 +714,7 @@ function AgentOperatorDashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {agents.length === 0 ? (
             <div
-              data-testid={isError ? "operator-agents-unreachable" : "operator-agents-empty"}
+              data-testid={isLoading ? "operator-agents-loading" : isError ? "operator-agents-unreachable" : "operator-agents-empty"}
               style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}
             >
               {/*
@@ -713,7 +723,9 @@ function AgentOperatorDashboard() {
                 agent — an empty list and an unanswered question drawn as the
                 same sentence, one panel apart.
               */}
-              {isError ? (
+              {isLoading ? (
+                t("common.loading", "조회 중...")
+              ) : isError ? (
                 t("common.errorLoad", "불러오지 못함")
               ) : (
                 <>

@@ -2706,6 +2706,73 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-LOAD-06 — the answer that has not come back yet.
+   *
+   * The panel a member lands on started with `agents = []` and drew `0`, so on
+   * a slow link it said "Agents 0 registered" and then jumped to fourteen when
+   * the answer arrived. Measured with the route delayed 2.5 seconds. The
+   * platform admin's panel has had `isLoading` since it was written; this one
+   * had two states where four are needed — and the two it had were the two that
+   * look alike.
+   *
+   * Both sides: a panel stuck on "..." would pass the first half and tell an
+   * operator nothing forever.
+   */
+  it("[SC-LOAD-06] does not answer with 0 while the request is still in flight", async () => {
+    const me = `load6-${Date.now().toString(36).slice(-5)}`;
+    const admitted = (await (
+      await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+        method: "POST",
+        headers: { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ username: me }),
+      })
+    ).json()) as any;
+    const signIn = async (password: string) =>
+      (
+        await fetch(`${mesh.http.url}/auth/local`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ username: me, password }),
+          redirect: "manual",
+        })
+      ).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const locked = await signIn(admitted.temporary_password);
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: locked, "content-type": "application/json" },
+      body: JSON.stringify({ current: admitted.temporary_password, next: `${me}-chosen` }),
+    });
+    const cookie = await signIn(`${me}-chosen`);
+
+    const { page, context } = await createViewerAuthedPage(cookie, "/dashboard");
+    try {
+      await page.route("**/api/v1/agents", async (route) => {
+        await new Promise((r) => setTimeout(r, 2000));
+        await route.continue();
+      });
+      await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(600);
+      const during = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const loadingRow = await page.locator('[data-testid="operator-agents-loading"]').count();
+
+      await page.waitForTimeout(2200);
+      await settled(page);
+      const after = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const emptyRow = await page.locator('[data-testid="operator-agents-empty"]').count();
+
+      const claimsZero = /(Agents|에이전트)\s*🤖?\s*0/.test(during);
+      const answersAfter = /(Agents|에이전트)\s*🤖?\s*[1-9]/.test(after);
+
+      expect(
+        { claimsZero, loadingRow, answersAfter, emptyRow },
+        "the panel answered 0 before the answer arrived, or never stopped waiting",
+      ).toEqual({ claimsZero: false, loadingRow: 1, answersAfter: true, emptyRow: 0 });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 40000);
+
+  /**
    * SC-INVENT-05 — one label, one source.
    *
    * `total_agents` was `health?.agent_count ?? agentList.length`, and those two
