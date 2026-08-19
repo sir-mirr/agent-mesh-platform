@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -15,12 +16,14 @@ export function TenantEgressAclPage() {
   const [rules, setRules] = useState<Record<string, Record<string, boolean>>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real groups and their allowed egress rules on mount
   React.useEffect(() => {
     setIsLoading(true);
     setIsError(false);
+    setFailure(null);
     fetchGroups()
       .then((list) => {
         if (list && list.length > 0) {
@@ -49,6 +52,7 @@ export function TenantEgressAclPage() {
       .catch((err) => {
         console.warn("[Egress] fetchGroups error:", err);
         setIsError(true);
+        setFailure(failureKind(err));
         setGroups([]);
         setRules({});
       })
@@ -121,7 +125,10 @@ export function TenantEgressAclPage() {
           </div>
         ) : isError ? (
           <div style={{ padding: "24px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
-            ⚠️ 이그레스 그룹 데이터를 불러올 수 없습니다 (서버 통신 오류).
+            ⚠️{" "}
+            {failure === "refused"
+              ? t("egress.refused", "이 계정은 이그레스 그룹을 볼 권한이 없습니다 (group.manage).")
+              : t("egress.error", "이그레스 그룹을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
           </div>
         ) : groups.length === 0 ? (
           <div style={{ padding: "30px", textAlign: "center", color: "var(--color-text-muted)", background: "var(--color-bg-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>

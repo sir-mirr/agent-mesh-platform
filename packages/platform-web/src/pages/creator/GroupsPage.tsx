@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -29,6 +30,7 @@ export function GroupsPage() {
   const [groups, setGroups] = useState<AgentGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
@@ -42,6 +44,7 @@ export function GroupsPage() {
   const loadGroups = async () => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     try {
       const list = await fetchGroups();
       setGroups(
@@ -54,8 +57,9 @@ export function GroupsPage() {
           createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
         }))
       );
-    } catch {
+    } catch (err: unknown) {
       setIsError(true);
+      setFailure(failureKind(err));
       setGroups([]);
     } finally {
       setIsLoading(false);
@@ -246,7 +250,11 @@ export function GroupsPage() {
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
         isError={isError}
-        errorMessage="그룹 목록을 불러올 수 없습니다 (서버 연결 실패 또는 권한 부족)."
+        errorMessage={
+          failure === "refused"
+            ? t("groups.refused", "이 계정은 그룹 목록을 볼 권한이 없습니다 (group.manage).")
+            : t("groups.error", "그룹 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage="현재 등록된 그룹 데이터가 없습니다."
       />
 

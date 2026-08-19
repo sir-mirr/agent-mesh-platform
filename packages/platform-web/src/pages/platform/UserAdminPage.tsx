@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { fetchLocalUsers, admitLocalUserApi, type LocalUser } from "@/api/users.ts";
-import { ApiError } from "@/api/client.ts";
+import { ApiError, failureKind, type FailureKind } from "@/api/client.ts";
 
 /**
  * Admitting a person, from a screen rather than from `curl`.
@@ -22,6 +22,7 @@ export function UserAdminPage() {
   const [users, setUsers] = useState<LocalUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,9 +35,11 @@ export function UserAdminPage() {
       const res = await fetchLocalUsers();
       setUsers(res.users ?? []);
       setIsError(false);
-    } catch {
+      setFailure(null);
+    } catch (err: unknown) {
       setUsers([]);
       setIsError(true);
+      setFailure(failureKind(err));
     } finally {
       setIsLoading(false);
     }
@@ -221,7 +224,11 @@ export function UserAdminPage() {
         keyExtractor={(u: LocalUser) => u.username}
         isLoading={isLoading}
         isError={isError}
-        errorMessage={t("users.error", "Could not read the accounts list (user.admit required, or the server refused).")}
+        errorMessage={
+          failure === "refused"
+            ? t("users.refused", "이 계정은 계정 목록을 볼 권한이 없습니다 (user.admit).")
+            : t("users.error", "계정 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage={t("users.empty", "No local accounts yet.")}
       />
     </div>

@@ -14,7 +14,7 @@
  * coverage is to copy a scenario into the other file and keep its name.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, it } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -367,6 +367,49 @@ describe("the list of files this suite reads", () => {
     const unread = found.filter((name) => !FILES.includes(name));
     expect(
       unread.map((name) => `${name} registers scenario ids and is not in FILES, so nothing above sees them`),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * A landmark that no longer exists on the screen.
+ *
+ * Three commits in a row renamed a message and left a scenario waiting for the
+ * old sentence. The failure that produces is a thirty-second timeout followed
+ * by `Target page, context or browser has been closed` for every scenario after
+ * it — the whole suite reads as a crash, and twice it was nearly filed as
+ * contention on a machine that was idle.
+ *
+ * A positive landmark (`shows(page, "…")`) is a claim that the product says
+ * this. If no source file contains the string, the claim is already false and
+ * the check can say so in a second instead of a minute.
+ *
+ * Negative landmarks are deliberately excluded: `not.toContain("0개 그룹")` is
+ * about a sentence that *should* be absent, and its absence from the source is
+ * the fix working.
+ */
+describe("copy landmarks", () => {
+  it("waits only for sentences the product still says", () => {
+    const FILES = ["fe-render.test.ts", "fe-scenarios.test.ts"];
+    const pins = new Set<string>();
+    for (const f of FILES) {
+      const text = readFileSync(join(import.meta.dir, f), "utf8");
+      for (const m of text.matchAll(/shows\(page,\s*"([^"]*[가-힣][^"]*)"\)/g)) pins.add(m[1]!);
+    }
+    const ROOT = join(import.meta.dir, "..", "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const source = walk(ROOT)
+      .filter((f) => /\.tsx?$/.test(f))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+
+    expect(pins.size, "no landmarks were found — the pattern stopped matching").toBeGreaterThan(10);
+    expect(
+      [...pins].filter((p) => !source.includes(p)),
+      "a scenario waits for a sentence no screen contains — it will time out instead of failing",
     ).toEqual([]);
   });
 });

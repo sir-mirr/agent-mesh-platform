@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -14,10 +15,12 @@ export function TelemetryPage() {
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
   const loadTelemetry = () => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     fetchTelemetry()
       .then((data) => {
         setTelemetry(data);
@@ -25,6 +28,7 @@ export function TelemetryPage() {
       .catch((err) => {
         console.warn("[Telemetry] fetch error:", err);
         setIsError(true);
+        setFailure(failureKind(err));
         setTelemetry(null);
       })
       .finally(() => setIsLoading(false));

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -33,11 +34,13 @@ export function RbacManagementPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
   const loadGrantsAndMembers = async () => {
     try {
       setIsLoading(true);
       setIsError(false);
+      setFailure(null);
       const res = await fetchGrants();
       const caps = res.capabilities || [];
       setAvailableCaps(caps);
@@ -69,6 +72,7 @@ export function RbacManagementPage() {
     } catch (err: any) {
       console.warn("[RBAC] fetchGrants error:", err.message);
       setIsError(true);
+      setFailure(failureKind(err));
       setMembers([]);
       setAvailableCaps([]);
       setRolesBySubject(null);
@@ -203,7 +207,11 @@ export function RbacManagementPage() {
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
           isError={isError}
-          errorMessage={t("rbac.error", "RBAC 권한 데이터를 불러올 수 없습니다 (role.grant 권한 부족 또는 서버 오류).")}
+          errorMessage={
+            failure === "refused"
+              ? t("rbac.refused", "이 계정은 권한 목록을 볼 수 없습니다 (role.grant).")
+              : t("rbac.error", "권한 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+          }
           emptyMessage={t("rbac.empty", "현재 등록된 조직원 데이터가 없습니다.")}
         />
       </div>

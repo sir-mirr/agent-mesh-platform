@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
@@ -72,6 +73,7 @@ export function TopologyPage() {
   const [liveAgents, setLiveAgents] = useState<RegistryAgent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
@@ -81,6 +83,7 @@ export function TopologyPage() {
   useEffect(() => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     Promise.all([fetchGroups(), fetchAgents()])
       .then(([groups, agents]) => {
         setLiveGroups(groups || []);
@@ -89,6 +92,7 @@ export function TopologyPage() {
       .catch((err) => {
         console.warn("[Topology] API load error:", err);
         setIsError(true);
+        setFailure(failureKind(err));
       })
       .finally(() => setIsLoading(false));
   }, []);

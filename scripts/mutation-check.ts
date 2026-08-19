@@ -1623,6 +1623,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "scenario-waits-for-a-sentence-nobody-says",
+    defect:
+      "A copy landmark left behind by a rename. The scenario waits thirty seconds and then every scenario after it reports `Target page, context or browser has been closed` — the suite reads as a crash, and twice this was nearly filed as contention on an idle machine.",
+    file: "test/fe-render.test.ts",
+    from: 'await shows(page, "그룹 목록을 불러오지 못했습니다");',
+    to: 'await shows(page, "그룹 목록을 불러올 수 없습니다");',
+    suite: "test/scenario-ids.test.ts",
+    expect: ["copy landmarks", "waits for a sentence no screen contains"],
+  },
+  {
     id: "panel-heading-contradicts-its-own-body",
     defect:
       "The heading said `(unreachable)` while the message under it named the capability — one screen, two answers about the same request. Whichever a person reads first is the one they act on.",
@@ -1631,6 +1641,16 @@ const MUTATIONS: Mutation[] = [
     to: 'isError ? t("common.unreachable", "(통신 불가)")',
     suite: "test/fe-render.test.ts",
     expect: ["SC-CAP-07", "a refusal was drawn as silence"],
+  },
+  {
+    id: "users-blames-permission-when-the-server-is-gone",
+    defect:
+      "The rendering half of the same mistake: the screen still asks which kind of failure it was and then draws the permission sentence either way. It reads as the more careful message and sends somebody to request a capability that would not have helped.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '          failure === "refused"',
+    to: "          true",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-07", "silence was drawn as a permission problem"],
   },
   {
     id: "refusal-drawn-as-silence",
@@ -1648,11 +1668,14 @@ const MUTATIONS: Mutation[] = [
     id: "silence-drawn-as-a-refusal",
     defect:
       "The other direction: a screen that blames the viewer's permissions when the backend is simply gone. It reads as the more careful message and sends somebody to ask for a capability that would not help.",
-    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
-    from: "        setFailure(failureKind(err));",
-    to: '        setFailure("refused");',
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: "      setFailure(failureKind(err));",
+    to: '      setFailure("refused");',
     suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-07", "silence was drawn as a permission problem"],
+    // Caught by the rule rather than the case: dropping `failureKind` is what a
+    // screen looks like when it decides the answer itself, and the source half
+    // names it before the browser half gets there.
+    expect: ["SC-CAP-07", "without recording which kind of failure it was"],
   },
   {
     id: "member-panel-answers-zero-while-waiting",

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import { Link } from "react-router-dom";
 import {
   PageHeader,
@@ -152,6 +153,7 @@ function PlatformAdminDashboard() {
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
   React.useEffect(() => {
     setIsLoading(true);
@@ -160,8 +162,9 @@ function PlatformAdminDashboard() {
       fetchTelemetry().then(setTelemetry),
       fetchGroups().then(setGroups),
       fetchAgents().then(setAgents),
-    ]).catch(() => {
+    ]).catch((err: unknown) => {
       setIsError(true);
+      setFailure(failureKind(err));
     }).finally(() => {
       setIsLoading(false);
     });
@@ -186,7 +189,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.nodes", "전체 에이전트 노드")}
           value={isLoading ? "..." : isError ? "—" : String(totalAgents)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.pa.nodesSub", "실시간 레지스트리")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "실시간 레지스트리")}
           color="var(--color-primary)"
           icon="🌐"
         />
@@ -308,11 +311,13 @@ function TenantAdminDashboard() {
     // Unreachable until the server issues this role, and held to the same
   // rule anyway: a refused read is not an empty one.
   const [isError, setIsError] = useState(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
 React.useEffect(() => {
-    fetchGroups().then(setGroups).catch(() => {
+    fetchGroups().then(setGroups).catch((err: unknown) => {
       setGroups([]);
       setIsError(true);
+      setFailure(failureKind(err));
     });
     fetchAgents().then(setAgents).catch(() => {
       setAgents([]);
@@ -497,11 +502,13 @@ function GroupAdminDashboard() {
     // Unreachable until the server issues this role, and held to the same
   // rule anyway: a refused read is not an empty one.
   const [isError, setIsError] = useState(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
 React.useEffect(() => {
-    fetchGroups().then(setGroups).catch(() => {
+    fetchGroups().then(setGroups).catch((err: unknown) => {
       setGroups([]);
       setIsError(true);
+      setFailure(failureKind(err));
     });
     fetchAgents().then(setAgents).catch(() => {
       setAgents([]);
@@ -631,6 +638,7 @@ function AgentOperatorDashboard() {
    * three panels below it did not.
    */
   const [isError, setIsError] = useState(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   /**
    * **The third state.** `agents` starts as `[]`, and an empty list drew `0` —
    * so on a slow link this panel said "Agents 0 registered" until the answer
@@ -644,9 +652,10 @@ function AgentOperatorDashboard() {
   React.useEffect(() => {
     fetchAgents()
       .then(setAgents)
-      .catch(() => {
+      .catch((err: unknown) => {
         setAgents([]);
         setIsError(true);
+        setFailure(failureKind(err));
       })
       .finally(() => setIsLoading(false));
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));

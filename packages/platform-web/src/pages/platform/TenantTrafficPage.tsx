@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -13,10 +14,12 @@ export function TenantTrafficPage() {
   const [hours, setHours] = useState<number>(24);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
   useEffect(() => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     fetchTenantTraffic()
       .then((res) => {
         setTenants(res.tenants || []);
@@ -25,6 +28,7 @@ export function TenantTrafficPage() {
       .catch((err) => {
         console.warn("[TenantTraffic] error:", err);
         setIsError(true);
+        setFailure(failureKind(err));
         setTenants([]);
       })
       .finally(() => setIsLoading(false));
@@ -105,7 +109,11 @@ export function TenantTrafficPage() {
         keyExtractor={(item) => item.tenant}
         isLoading={isLoading}
         isError={isError}
-        errorMessage="테넌트 통계 데이터를 불러올 수 없습니다 (서버 통신 오류)."
+        errorMessage={
+          failure === "refused"
+            ? t("tenants.refused", "이 계정은 테넌트 통계를 볼 권한이 없습니다 (tenant.read.stats).")
+            : t("tenants.error", "테넌트 통계를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage="현재 등록된 테넌트 조직 데이터가 없습니다."
       />
     </div>

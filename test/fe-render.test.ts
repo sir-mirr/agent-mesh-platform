@@ -1099,10 +1099,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
     await settled(page);
 
-    await shows(page, "메일함 리스 큐 데이터를 불러올 수 없습니다");
+    await shows(page, "메일함 리스 큐를 불러오지 못했습니다");
 
     const downText = await page.locator("#root").innerText();
-    expect(downText).toContain("메일함 리스 큐 데이터를 불러올 수 없습니다");
+    expect(downText).toContain("메일함 리스 큐를 불러오지 못했습니다");
     expect(downText).toContain("측정 불가");
 
     await context.close();
@@ -1157,11 +1157,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/groups`, { waitUntil: "networkidle" });
     await settled(page);
 
-    await shows(page, "그룹 목록을 불러올 수 없습니다");
+    await shows(page, "그룹 목록을 불러오지 못했습니다");
 
     const downText = await page.locator("#root").innerText();
     expect(downText).not.toContain("현재 등록된 그룹 데이터가 없습니다");
-    expect(downText).toContain("그룹 목록을 불러올 수 없습니다");
+    expect(downText).toContain("그룹 목록을 불러오지 못했습니다");
 
     await context.close();
   });
@@ -1380,10 +1380,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       await settled(page);
-      await shows(page, "에이전트 목록을 불러올 수 없습니다");
+      await shows(page, "에이전트 목록을 불러오지 못했습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 등록된 에이전트 데이터가 없습니다");
-      expect(downText).toContain("에이전트 목록을 불러올 수 없습니다");
+      expect(downText).toContain("에이전트 목록을 불러오지 못했습니다");
     } finally {
       await context.close().catch(() => {});
     }
@@ -1487,11 +1487,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       }
 
       await settled(cold);
-      await shows(cold, "에이전트 목록을 불러올 수 없습니다");
+      await shows(cold, "에이전트 목록을 불러오지 못했습니다");
       const text = await cold.locator("#root").innerText();
       expect(text, "the assertion read the interim screen instead of the one it came for")
         .not.toContain("인증 상태를 확인하는 중");
-      expect(text).toContain("에이전트 목록을 불러올 수 없습니다");
+      expect(text).toContain("에이전트 목록을 불러오지 못했습니다");
     } finally {
       await context.close().catch(() => {});
     }
@@ -2747,11 +2747,47 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const refused = await read("refused");
     const unreachable = await read("unreachable");
+
+    // **A second screen, because the first one is spoken for.** `SC-DOWN-06`
+    // already waits on /creator/register for the unreachable sentence, so a
+    // mutation that makes that screen always say "refused" kills SC-DOWN-06
+    // first — by timeout, which takes the browser down and hides whichever
+    // check was supposed to name it. /platform/users has no such landmark.
+    const usersUnreachable = await (async () => {
+      const { page, context } = await createAuthedPage("/platform/users");
+      try {
+        await page.route("**/api/v1/admin/users", (route) => route.abort());
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        return ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      } finally {
+        await context.close().catch(() => {});
+      }
+    })();
     const saysCapability = (t: string) => /key\.approve|권한이 없습니다|may not read/i.test(t);
     const saysSilent = (t: string) => /서버 연결 실패|서버가 답하지|did not answer|연결 실패/i.test(t);
     // The panel's own heading said `(unreachable)` while the body underneath it
     // named the capability — one screen, two answers about the same request.
     const headingContradicts = (t: string) => /\(unreachable\)|\(통신 불가\)/.test(t);
+
+    // **The rule, not the one screen.** Four more screens carried the same
+    // single message, and two of them wrote both possibilities into one string
+    // — "연결 실패 또는 권한 오류" — which is the ambiguity stated out loud. A
+    // screen that records a failure has to record which kind it was.
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const ROOT = join(import.meta.dir, "..", "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f));
+    const marksFailure = sources.filter((f) => readFileSync(f, "utf8").includes("setIsError(true)"));
+    const asksWhich = marksFailure.filter((f) => readFileSync(f, "utf8").includes("failureKind("));
+    expect(
+      { screens: marksFailure.length > 3, silent: marksFailure.filter((f) => !asksWhich.includes(f)).map((f) => f.slice(ROOT.length + 1)) },
+      "a screen records that a read failed without recording which kind of failure it was",
+    ).toEqual({ screens: true, silent: [] });
 
     expect(
       {
@@ -2760,6 +2796,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         unreachableSaysCapability: saysCapability(unreachable),
         unreachableSaysSilent: saysSilent(unreachable),
         refusedHeadingContradicts: headingContradicts(refused),
+        usersBlamesPermission: /user\.admit|권한이 없습니다|may not read/i.test(usersUnreachable),
+        usersSaysSilent: saysSilent(usersUnreachable),
       },
       "a refusal was drawn as silence, or silence was drawn as a permission problem",
     ).toEqual({
@@ -2768,6 +2806,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       unreachableSaysCapability: false,
       unreachableSaysSilent: true,
       refusedHeadingContradicts: false,
+      usersBlamesPermission: false,
+      usersSaysSilent: true,
     });
   }, 30000);
 

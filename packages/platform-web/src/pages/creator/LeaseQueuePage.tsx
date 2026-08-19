@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -32,12 +33,14 @@ export function LeaseQueuePage() {
   const [queue, setQueue] = useState<LeaseItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real admin mailbox metrics on mount
   useEffect(() => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     fetchAdminMailbox()
       .then((res) => {
         if (res && res.mailboxes && res.mailboxes.length > 0) {
@@ -53,8 +56,9 @@ export function LeaseQueuePage() {
           );
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         setIsError(true);
+        setFailure(failureKind(err));
         setQueue([]);
       })
       .finally(() => setIsLoading(false));
@@ -286,7 +290,7 @@ export function LeaseQueuePage() {
           maxLabel="총 적체"
           percentage={isError ? 0 : (leasedCount / Math.max(1, queue.length)) * 100}
           barColor="var(--color-leased)"
-          statusText={isError ? "서버 연결 불가" : "워커가 처리 중 (300s TTL 카운트다운)"}
+          statusText={isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("lease.down", "서버 연결 불가")) : t("lease.working", "워커가 처리 중 (300s TTL 카운트다운)")}
         />
         <TelemetryCard
           label="대기 중인 메시지 (Available)"
@@ -304,7 +308,11 @@ export function LeaseQueuePage() {
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
         isError={isError}
-        errorMessage="메일함 리스 큐 데이터를 불러올 수 없습니다 (서버 연결 실패)."
+        errorMessage={
+          failure === "refused"
+            ? t("lease.refused", "이 계정은 메일함 리스 큐를 볼 권한이 없습니다 (mailbox.read.depth).")
+            : t("lease.error", "메일함 리스 큐를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage="현재 대기 중인 메일박스 메시지 데이터가 없습니다."
       />
     </div>

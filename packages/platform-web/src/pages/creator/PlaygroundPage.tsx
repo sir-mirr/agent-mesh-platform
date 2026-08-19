@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -50,12 +51,14 @@ export function PlaygroundPage() {
   const [agentsList, setAgentsList] = useState<RegisteredAgent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [isSending, setIsSending] = useState(false);
 
   // Load real agents from backend
   React.useEffect(() => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     fetchAgents().then((list) => {
       const mapped = (list || []).map((a) => ({
         id: a.identity,
@@ -79,8 +82,9 @@ export function PlaygroundPage() {
         setSender(mapped[0]!.id);
         setRecipient(mapped[1]?.id || mapped[0]!.id);
       }
-    }).catch(() => {
+    }).catch((err: unknown) => {
       setIsError(true);
+      setFailure(failureKind(err));
       setAgentsList([]);
     }).finally(() => {
       setIsLoading(false);

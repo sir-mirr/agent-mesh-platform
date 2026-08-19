@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -17,6 +18,7 @@ export function PlatformOverviewPage() {
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
 
   const loadPlatformTelemetry = () => {
     setIsLoading(true);
@@ -28,6 +30,7 @@ export function PlatformOverviewPage() {
       .catch((err) => {
         console.warn("[PlatformOverview] error:", err);
         setIsError(true);
+        setFailure(failureKind(err));
         setTelemetry(null);
       })
       .finally(() => setIsLoading(false));

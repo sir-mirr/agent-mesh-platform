@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import { Link } from "react-router-dom";
 import {
   PageHeader,
@@ -46,6 +47,7 @@ export function AgentsPage() {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export function AgentsPage() {
   const loadAgents = async () => {
     setIsLoading(true);
     setIsError(false);
+      setFailure(null);
     try {
       const list = await fetchAgents();
       setAgents(
@@ -70,8 +73,9 @@ export function AgentsPage() {
           inboxDepth: null,
         }))
       );
-    } catch {
+    } catch (err: unknown) {
       setIsError(true);
+      setFailure(failureKind(err));
       setAgents([]);
     } finally {
       setIsLoading(false);
@@ -241,7 +245,11 @@ export function AgentsPage() {
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
         isError={isError}
-        errorMessage="에이전트 목록을 불러올 수 없습니다 (서버 연결 실패 또는 권한 오류)."
+        errorMessage={
+          failure === "refused"
+            ? t("agents.refused", "이 계정은 에이전트 목록을 볼 권한이 없습니다.")
+            : t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage="현재 등록된 에이전트 데이터가 없습니다."
       />
 
