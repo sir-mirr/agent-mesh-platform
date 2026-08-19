@@ -762,7 +762,7 @@ reads as a statement about listing and is in fact a statement about reachability
 `agent-mesh-local-pm` met the 404 three times while seeding a stack (mail #1147),
 each time reading it as a mistake in what they had sent.
 
-**Not obviously a defect, which is why it is here rather than fixed.** Two
+**Why deferred:** it is not obviously a defect, and the fix cannot be designed yet. Two
 registries on one namespace is a deliberate split: the hub brokers, http decides
 who its users may address, and an admin-curated list is a plausible thing to
 want. What is missing is not necessarily an auto-import — it might be a route
