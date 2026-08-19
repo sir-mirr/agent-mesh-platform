@@ -1087,6 +1087,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["a hub that did not answer produces no numbers at all"],
   },
   {
+    id: "screen-draws-null-as-zero",
+    defect:
+      "The same rule at the screen. The shaping can return `{value: null}` correctly and the page still print `0` — `null` renders as nothing in JSX and a numeric cell would show an empty box, or a `?? 0` anywhere between would turn it into the number the reader is hoping for. agent-mesh-local-pm measured the data half by SIGSTOPping the hub and named this half as the last square.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "                    {metric.value === null ? (",
+    to: "                    {false ? (",
+    suite: "test/fe-render.test.ts",
+    expect: ["draws an unreadable metric as unmeasured, never as 0"],
+  },
+  {
     id: "counts-without-a-window",
     defect:
       "Refusal counts served without saying when counting began. The hub holds them in memory and they reset with it, so `0 refusals` and `this hub started ninety seconds ago` are the same figure — and on a screen the second one looks like health. The window has to travel with the numbers or the numbers cannot be read.",

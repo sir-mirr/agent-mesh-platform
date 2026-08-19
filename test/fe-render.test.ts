@@ -789,6 +789,62 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30_000);
 
+  // SC-SCR10-02: the screen half of the same rule — a null from the server must
+  // not become a zero on the page
+  it("[SC-SCR10-02] draws an unreadable metric as unmeasured, never as 0", async () => {
+    // **The route is intercepted rather than the hub stopped.** Stopping it
+    // would answer the same question and break every other scenario sharing
+    // this mesh; and the layer under test is the screen, so the honest place to
+    // inject is the response it reads. agent-mesh-local-pm measured the data
+    // half by SIGSTOPping the hub and left this half open.
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await context.addCookies([
+        { name: "mesh_token", value: jwtToken, domain: "127.0.0.1", path: "/", httpOnly: false, secure: false },
+      ]);
+      await page.route("**/api/v1/admin/telemetry/behaviour", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            counting_since: null,
+            pending_keys: { value: 4 },
+            oldest_pending_ms: { value: null, unavailable: "message store could not be read" },
+            signature_refusals: { value: null, unavailable: "hub did not answer /api/v1/limits" },
+            rate_limited: { value: null, unavailable: "hub did not answer /api/v1/limits" },
+            egress_refusals: { value: null, unavailable: "hub did not answer /api/v1/limits" },
+            accepted: { value: 0 },
+          }),
+        }),
+      );
+
+      await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
+      const panel = page.locator("[data-testid='behaviour-metrics']");
+      await panel.waitFor({ state: "visible", timeout: 10_000 });
+
+      // Four unreadable metrics, four "미측정" cells. Counted rather than
+      // matched on text, because one marker with three zeros beside it would
+      // satisfy a contains-check.
+      expect(await page.locator("[data-testid='metric-unmeasured']").count()).toBe(4);
+
+      // **And the real zero survives.** `accepted` was measured and is 0; a fix
+      // that drew every zero as unmeasured would pass the line above and be
+      // just as wrong in the other direction.
+      const said = (await panel.textContent()) ?? "";
+      expect({ realZeroKept: /수락 수[\s\S]{0,40}0/.test(said) }).toEqual({ realZeroKept: true });
+      expect({ pendingKept: said.includes("4") }).toEqual({ pendingKept: true });
+
+      // With no window the refusal counts cannot be read, and the heading says
+      // so rather than printing a date it does not have.
+      const since = (await page.locator("[data-testid='counting-since']").textContent()) ?? "";
+      expect({ saysUnknown: since.includes("미상") }).toEqual({ saysUnknown: true });
+    } finally {
+      await context.close();
+    }
+  }, 30_000);
+
   // SC-CAP-04: Telemetry says which panels it was refused, rather than showing
   // an empty mesh (I-061)
   it("[SC-CAP-04] names the refused panels on /platform/telemetry instead of rendering blanks", async () => {
