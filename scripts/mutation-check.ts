@@ -998,6 +998,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["and never says it again", "the listing carried the hash"],
   },
   {
+    id: "admitted-account-not-approved",
+    defect:
+      "`approved` is the gate for GitHub sign-in, where anybody may authenticate and a person decides who stays. An operator holding `user.admit` decided by creating the row, and no route exists to approve afterwards — so an admission that does not also approve produces an account that can never be used, and whose messages are refused by entitlement without saying so.",
+    file: "packages/http/src/db.ts",
+    from: "  upsertApprovedWebUser(input.username)",
+    to: "  void input.username",
+    suite: "test/http.test.ts",
+    expect: ["can work once it has changed the password, without a second approval", "still refused after the change"],
+  },
+  {
     id: "admitted-account-not-flagged",
     defect:
       "An account admitted with a password nobody chose has to change it before doing anything else — that is the whole reason the password is temporary. Creating it unflagged leaves a working account on a password an operator read out loud.",

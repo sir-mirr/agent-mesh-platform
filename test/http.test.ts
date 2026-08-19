@@ -217,6 +217,32 @@ describe("admitting a person", () => {
     expect(listing).toContain("admitted-twice");
   });
 
+  test("can work once it has changed the password, without a second approval", async () => {
+    // `approved` is for the other door — GitHub sign-in, where anybody may
+    // authenticate and a person decides who stays. An operator holding
+    // `user.admit` decided by creating the row, and there is no route to
+    // approve afterwards, so an unapproved admission is an account that can
+    // never be used. agent-mesh-local-pm found it by taking one through its
+    // whole first day.
+    const admitted = await (await admit({ username: "admitted-works" })).json();
+    const login = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: `username=admitted-works&password=${encodeURIComponent(admitted.temporary_password)}`,
+      redirect: "manual",
+    });
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ current: admitted.temporary_password, next: "a-chosen-password" }),
+    });
+
+    const res = await get("/api/v1/agents", cookie);
+    expect(res.status, `still refused after the change: ${await res.text()}`).toBe(200);
+  });
+
   test("refuses a name that is already taken, rather than replacing them", async () => {
     await admit({ username: "admitted-once-only" });
     const again = await admit({ username: "admitted-once-only" });

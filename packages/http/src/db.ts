@@ -672,6 +672,25 @@ export async function admitLocalUser(input: {
     VALUES (?, ?, ?, ?, ?, 1)
   `).run(input.username, hash, input.displayName ?? null, input.role ?? 'member', input.tenant ?? 'default')
 
+  /**
+   * Admitted **is** approved.
+   *
+   * `approved` exists for the door this is not: GitHub sign-in lets anyone with
+   * an account authenticate, so a person decides who may stay. An operator
+   * holding `user.admit` has already made that decision by creating the row —
+   * asking them to approve it afterwards is a gate with nobody behind it, and
+   * there is no route to satisfy it, so the account could never work.
+   *
+   * `seedLocalUsers` already does this for every local account, with the reason
+   * written beside it: a local user who is not in the registry is not in the
+   * http server's `proxy_for`, and every message they send is refused by
+   * entitlement — silently. This path was added without it, which is the
+   * "second path beside the first" the commit that added it said it was
+   * avoiding. agent-mesh-local-pm found it by taking a new account through its
+   * whole first day.
+   */
+  upsertApprovedWebUser(input.username)
+
   const user = getLocalUser(input.username)
   if (!user) throw new Error(`admitLocalUser: '${input.username}' was not written`)
   return { user, temporaryPassword }
