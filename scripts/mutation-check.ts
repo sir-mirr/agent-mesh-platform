@@ -1177,6 +1177,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["the http server refuses to start without a JWT secret"],
   },
   {
+    id: "preview-without-a-proxy-target",
+    defect:
+      "The preview section started a front end without `API_PROXY_TARGET`, so `vite.config.ts` fell back to `http://localhost:3000` and attached to whatever was on that port — on a machine already running a mesh, somebody else's. **Every check the document prints still returned 200**; agent-mesh-local-pm caught it by reading `uptime` (68724 from a nineteen-hour-old stack, versus 99 from the one the procedure started). The third time this document meets that shape, in the one section that had not applied it.",
+    file: "docs/running-locally.md",
+    from: 'export API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT"',
+    to: 'export API_PROXY_TARGET="http://127.0.0.1:3000"',
+    suite: "test/readme.test.ts",
+    expect: ["every vite it starts is told where the backend is", "a proxy target names a port instead of"],
+  },
+  {
+    id: "bunx-cwd-in-a-command",
+    defect:
+      "`bunx --cwd <dir> vite …` reads `--cwd` as the package to fetch on the bun version this document names, and dies with `GET https://api.github.com/repos/packages/platform-web/tarball/ - 404`. A reader who meets that stops there and never reaches the three correct observations printed under it — the command was wrong and the findings around it were right, which is the expensive combination.",
+    file: "docs/running-locally.md",
+    from: "cd packages/platform-web && bunx vite preview --port 3041",
+    to: "bunx --cwd packages/platform-web vite preview --port 3041",
+    suite: "test/readme.test.ts",
+    expect: ["does not use a bunx flag that bunx reads as a package"],
+  },
+  {
     id: "invented-fingerprint",
     defect:
       "Every row of `/creator` showed `sha256:verified_mesh_identity` under a column headed `Ed25519 공개키 지문`, because `GET /api/v1/agents` carries no fingerprint and three call sites defaulted to that literal. A fingerprint is what an operator compares to decide an identity is who it claims to be: a constant makes every agent match, and the word `verified` inside it invites skipping the comparison, so a genuine mismatch was invisible. A class apart from drawing nothing where nothing is known — this drew a confirmation. Found by agent-mesh-local-pm re-reading a finding they had already closed.",

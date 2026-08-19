@@ -297,3 +297,45 @@ describe("running-locally's proxy blocks", () => {
     expect(hub, "a proxy block points at the hub; the browser talks to the http server").toEqual([]);
   });
 });
+
+/**
+ * The local-run document does not hand out a command that cannot run, and does
+ * not start a front end without telling it where the backend is.
+ *
+ * Two failures found by agent-mesh-local-pm following it literally:
+ *
+ * `bunx --cwd <dir> vite …` reads `--cwd` as the *package to fetch* on the bun
+ * version this document names, and dies with a 404 from the GitHub API. A
+ * reader meeting that stops there — the three correct observations under it are
+ * never reached.
+ *
+ * And a `vite preview` started without `API_PROXY_TARGET` falls back to
+ * `http://localhost:3000` and attaches to whatever is on that port. On a
+ * machine already running a mesh that is somebody else's, and **every check the
+ * document prints still returns 200** — it was caught by reading `uptime`, not
+ * the status code. The same shape the document itself teaches twice, in the
+ * section that did not apply it.
+ */
+describe("running-locally's commands", () => {
+  const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
+
+  test("does not use a bunx flag that bunx reads as a package", () => {
+    // Anchored to the start of the line, so the paragraph explaining why the
+    // flag is wrong does not count as using it. That self-catch has happened
+    // twice already in this suite — a rule that flags its own rule text is a
+    // rule nobody can state the reason for.
+    expect([...DOC.matchAll(/^\s*bunx\s+--cwd\b.*$/gm)].map((m) => m[0].trim())).toEqual([]);
+  });
+
+  test("every vite it starts is told where the backend is", () => {
+    // Exported once in § 0 rather than repeated per command, so the check is
+    // that the variable is declared and that no invocation overrides it with a
+    // literal port — a hardcoded target is the same defect wearing a value.
+    expect({ declared: /export API_PROXY_TARGET="http:\/\/127\.0\.0\.1:\$HTTP_PORT"/.test(DOC) })
+      .toEqual({ declared: true });
+
+    const hardcoded = [...DOC.matchAll(/^.*API_PROXY_TARGET="?http:\/\/[^$\s"]*\d{4}.*$/gm)]
+      .map((m) => m[0].trim());
+    expect(hardcoded, "a proxy target names a port instead of $HTTP_PORT").toEqual([]);
+  });
+});

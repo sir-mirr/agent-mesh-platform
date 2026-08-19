@@ -88,6 +88,10 @@ cat > .mesh-local.env <<'ENV'
 export AGENT_MESH_STATE_DIR="$HOME/.agent-mesh/local"
 export HUB_PORT=3100
 export HTTP_PORT=3000
+# Where the front end looks for the backend. Derived from HTTP_PORT rather than
+# repeated, and exported here rather than per-command, because a front end
+# pointed at the wrong backend passes every check below — see § 8.
+export API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT"
 ENV
 source .mesh-local.env
 mkdir -p "$AGENT_MESH_STATE_DIR"
@@ -372,7 +376,7 @@ bun pm ls | grep contracts
 
 ```bash
 cd packages/platform-web
-API_PROXY_TARGET="http://127.0.0.1:$HTTP_PORT" bun run dev
+bun run dev                              # API_PROXY_TARGET comes from § 0
 ```
 
 **Read the port off vite's own output, not off this page.** `package.json` asks
@@ -417,13 +421,31 @@ did not look. The port is in the log; the bind address is not.
 
 ```bash
 bun run build:web                       # packages/platform-web/dist
-bunx --cwd packages/platform-web vite preview --port 3041
+cd packages/platform-web && bunx vite preview --port 3041
 ```
+
+`cd` rather than `bunx --cwd`: on bun 1.3.13 — the version this was executed on
+— `bunx` reads `--cwd` as the *package to fetch*, and the command fails with
+`GET https://api.github.com/repos/packages/platform-web/tarball/ - 404`. A reader
+meeting that stops there and does not reach the three correct lines below it.
 
 ```
 http://localhost:3041/                 200   the built page
 http://localhost:3041/api/v1/health    200   {"status":"ok",...}
 ```
+
+**Both lines pass against the wrong backend**, which is why `API_PROXY_TARGET`
+is set in § 0 and not here. `vite.config.ts` falls back to
+`http://localhost:3000`, so a preview started without it attaches to whatever is
+on that port — on a machine already running a mesh, somebody else's. Measured:
+without the variable the health route answered `uptime 68724` from a stack that
+had been up for nineteen hours; with it, `uptime 99` from the one this procedure
+started. **Both were `200`.**
+
+That is the third time this document meets the same shape — § 0 has it for the
+state directory and § 6 for `AGENT_MESH_BLOB_BASE_URL`, and this section is
+where the lesson was not applied. agent-mesh-local-pm found it by reading
+`uptime` rather than the status code.
 
 **The second line is the surprising one.** `vite.config.ts` sets `server.proxy`
 and nothing under `preview`, yet the API is reachable through the preview
