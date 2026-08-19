@@ -1097,6 +1097,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["draws an unreadable metric as unmeasured, never as 0"],
   },
   {
+    id: "playground-filters-what-it-was-given",
+    defect:
+      "The playground's sender list compared a hardcoded `ownerId` — the literal `\"admin\"` on every row — to the signed-in id, and its recipient list excluded a group name from a field holding the agent's *type*. One passed everything for a single username and nothing for every other; the other excluded nothing at all. Both read as authorisation and neither was: `GET /api/v1/agents` carries no capability guard, so the server had already handed the whole list over. Not a hole — a false statement about where the gate is, which is worse than an absent one because a reader stops looking. Found by agent-mesh-local-pm.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "  const senderAgents = agentsList;",
+    to: '  const senderAgents = agentsList.filter((a) => a.group === "Support Group");',
+    suite: "test/fe-render.test.ts",
+    expect: ["lists exactly the agents /api/v1/agents returned for that session"],
+  },
+  {
     id: "counts-without-a-window",
     defect:
       "Refusal counts served without saying when counting began. The hub holds them in memory and they reset with it, so `0 refusals` and `this hub started ninety seconds ago` are the same figure — and on a screen the second one looks like health. The window has to travel with the numbers or the numbers cannot be read.",

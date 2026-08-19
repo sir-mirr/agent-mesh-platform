@@ -14,9 +14,16 @@ import { sendMessageApi } from "@/api/messages.ts";
 interface RegisteredAgent {
   id: string;
   name: string;
+  /** `a.type` — the kind of agent. Labelled 종류 on screen, not 소속. */
   group: string;
-  ownerId: string;
-  status: "online" | "offline";
+  /**
+   * `null` when the list did not report one.
+   *
+   * `GET /api/v1/agents` sends no status, and this used to collapse the absence
+   * to `"offline"` — the mirror of the agent list's `"active"` default, and
+   * still a statement the server never made.
+   */
+  status: "online" | "offline" | null;
   fingerprint: string | null;
 }
 
@@ -59,8 +66,14 @@ export function PlaygroundPage() {
         name: a.description || a.identity,
         // `type` is the kind of agent, not a membership. See AgentsPage.
         group: a.type ?? "—",
-        ownerId: "admin",
-        status: (a.status === "active" ? "online" : "offline") as "online" | "offline",
+        // `ownerId` is gone. It was the literal "admin" for every row, and the
+        // sender filter below compared it to the signed-in id — so the filter
+        // passed everything for one username and nothing for the rest, while
+        // reading as ownership.
+        status: (a.status === "active" ? "online" : a.status === "inactive" ? "offline" : null) as
+          | "online"
+          | "offline"
+          | null,
         // Absent, not invented — see `fetchAgents`.
           fingerprint: a.fingerprint ?? null,
       }));
@@ -77,23 +90,31 @@ export function PlaygroundPage() {
     });
   }, []);
 
-  // 1. Filter sender agents visible/permitted to the current user
-  const senderAgents = useMemo(() => {
-    if (currentRole === "PLATFORM_ADMIN" || currentRole === "TENANT_ADMIN") {
-      return agentsList;
-    }
-    return agentsList.filter(
-      (a) => a.ownerId === user?.id || a.group === "Support Group"
-    );
-  }, [currentRole, user, agentsList]);
-
-  // 2. Filter recipient agents visible/reachable to the current user
-  const recipientAgents = useMemo(() => {
-    if (currentRole === "PLATFORM_ADMIN" || currentRole === "TENANT_ADMIN") {
-      return agentsList;
-    }
-    return agentsList.filter((a) => a.group !== "Security Mesh");
-  }, [currentRole, agentsList]);
+  /**
+   * **The filters here did nothing, and looked like authorisation.**
+   *
+   * The sender list compared `a.ownerId` — the literal `"admin"` on every row —
+   * to the signed-in id, so it passed everything for one username and nothing
+   * for every other, by accident rather than by rule. Its second clause tested
+   * `a.group === "Support Group"` against a field holding `a.type`, which is
+   * the kind of agent and never that string. The recipient list excluded
+   * `"Security Mesh"` from the same field and therefore excluded nothing. Both
+   * were preceded by a `currentRole === "PLATFORM_ADMIN"` short circuit, and
+   * § 11 authorises by capability rather than by role.
+   *
+   * **Removing them widens nothing.** `GET /api/v1/agents` carries no
+   * capability guard — none of § 11's twelve names reading the registry — so
+   * every signed-in caller already receives the whole list, and the screen was
+   * not hiding anything the API had withheld. What it was doing was telling a
+   * reader that a restriction existed here. The server authorises; this screen
+   * does not, and now does not claim to.
+   *
+   * agent-mesh-local-pm found it while chasing something else and marked it P2
+   * for exactly that reason: not a hole, a false statement about where the
+   * gate is.
+   */
+  const senderAgents = agentsList;
+  const recipientAgents = agentsList;
 
   const [sender, setSender] = useState<string>(
     senderAgents[0]?.id || "agt_support_01"
@@ -224,8 +245,8 @@ export function PlaygroundPage() {
               </select>
               {selectedSenderObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
-                  <span>소속: <strong>{selectedSenderObj.group}</strong></span>
-                  <span>상태: <strong style={{ color: selectedSenderObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.status.toUpperCase()}</strong></span>
+                  <span>종류: <strong>{selectedSenderObj.group}</strong></span>
+                  <span>상태: <strong style={{ color: selectedSenderObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedSenderObj.status?.toUpperCase() ?? "미보고"}</strong></span>
                   <span style={{ fontFamily: "var(--font-mono)" }}>{selectedSenderObj.fingerprint ? `${selectedSenderObj.fingerprint.substring(0, 20)}...` : "지문 없음"}</span>
                 </div>
               )}
@@ -261,7 +282,7 @@ export function PlaygroundPage() {
               {selectedRecipientObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
                   <span>소속: <strong>{selectedRecipientObj.group}</strong></span>
-                  <span>상태: <strong style={{ color: selectedRecipientObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.status.toUpperCase()}</strong></span>
+                  <span>상태: <strong style={{ color: selectedRecipientObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.status?.toUpperCase() ?? "미보고"}</strong></span>
                 </div>
               )}
             </div>

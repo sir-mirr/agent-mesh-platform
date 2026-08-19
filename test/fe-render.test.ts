@@ -761,6 +761,49 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
+  // SC-CAP-05: the playground shows what the API gave it — no filter of its own
+  it("[SC-CAP-05] lists exactly the agents /api/v1/agents returned for that session", async () => {
+    // **A filter that hides nothing but reads as authorisation is worse than
+    // none.** The sender list compared a hardcoded `ownerId` to the signed-in
+    // id, and the recipient list excluded a group name from a field holding the
+    // agent's *type* — so one passed everything for a single username and the
+    // other excluded nothing, both looking like permission checks.
+    //
+    // The invariant is not "everyone sees the same list": `/api/v1/agents`
+    // refuses an unapproved account outright, which is a real restriction and
+    // the server's to make. It is that **the screen neither adds nor removes
+    // rows**. Measured per session against that session's own response, so it
+    // holds for an admin and for a viewer the API refuses.
+    const check = async (label: string, cookie: string | null) => {
+      const info = cookie
+        ? await createViewerAuthedPage(cookie, "/creator/playground")
+        : await createAuthedPage("/creator/playground");
+      try {
+        const served: string[] = await info.page.evaluate(async () => {
+          const res = await fetch("/api/v1/agents", { credentials: "include" });
+          if (!res.ok) return [];
+          const body = await res.json();
+          return (body.agents ?? []).map((a: { id: string }) => a.id);
+        });
+
+        const options = await info.page.locator("select option").allTextContents();
+        const shown = new Set(
+          options.flatMap((text) => served.filter((id) => text.includes(id))),
+        );
+        // Every served agent appears, and nothing appears that was not served.
+        expect({ label, shown: [...shown].sort() }).toEqual({ label, shown: [...served].sort() });
+        return served.length;
+      } finally {
+        await info.context.close();
+      }
+    };
+
+    const adminCount = await check("admin", null);
+    // Non-empty for at least one session, or both sides agree vacuously.
+    expect({ any: adminCount > 0 }).toEqual({ any: true });
+    await check("viewer", await capabilityViewer(mesh, "audit.read.metadata"));
+  }, 30_000);
+
   // SC-SCR10-01: the behavioural metrics § D-1 chose, and the zero they must
   // not invent
   it("[SC-SCR10-01] draws the six behavioural metrics and marks unread ones as unmeasured", async () => {

@@ -163,7 +163,10 @@ export function TopologyPage() {
       : [
           {
             id: "default",
-            name: "Default Group",
+            // Named for what it is — a placeholder the screen drew because the
+            // server reported no groups — rather than "Default Group", which
+            // reads as a group the mesh has.
+            name: "(그룹 없음)",
             member_count: liveAgents.length,
             members: liveAgents.map((a) => a.identity),
           },
