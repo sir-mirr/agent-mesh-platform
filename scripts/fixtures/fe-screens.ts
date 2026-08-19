@@ -65,9 +65,45 @@ import { generateKeyPairSync, randomUUID, randomInt, sign as edSign } from "node
 import { keyFingerprint, requestSignaturePreimage } from "@agent-mesh/contracts";
 
 const argv = process.argv.slice(2);
-const emitTo = argv.includes("--emit") ? argv[argv.indexOf("--emit") + 1] : null;
+const flag = (name: string): string | null => {
+  const at = argv.indexOf(name);
+  return at >= 0 ? (argv[at + 1] ?? null) : null;
+};
+const emitTo = flag("--emit");
 
-const ready = JSON.parse(await Bun.file("/tmp/agent-mesh-fe-fixture.json").text());
+/**
+ * Where to seed.
+ *
+ * The path was written into this line, so the fixture reached exactly one
+ * harness invocation: `e2e:harness` takes `--ready-file <path>` and this took
+ * none, so the pair worked only on the default path.
+ *
+ * It stays a ready file rather than a pair of `--hub`/`--http` flags, which is
+ * what I tried first. Seeding needs four things, not two — the admin handle to
+ * approve nothing and log in, and the state directory to reach the database —
+ * and a flag per field is four chances to pass a set that does not describe one
+ * mesh. The file is written atomically by the thing that knows all four.
+ *
+ * To seed a mesh this script did not start — a standing dev stack — hand it a
+ * file of the same shape:
+ *
+ *   { "base_url": "http://127.0.0.1:3000", "api_http": "http://127.0.0.1:3100",
+ *     "state_dir": "…/state",
+ *     "admin_test_handle": { "login_url": "http://127.0.0.1:3000/auth/local",
+ *       "content_type": "application/json",
+ *       "body": "{\"username\":\"admin\",\"password\":\"…\"}" } }
+ */
+const readyFile = flag("--ready-file") ?? "/tmp/agent-mesh-fe-fixture.json";
+const readyBlob = Bun.file(readyFile);
+if (!(await readyBlob.exists())) {
+  console.error(
+    `no ready file at ${readyFile}.\n` +
+      "Start one:  bun run e2e:harness -- --ready-file <path> --keep-state\n" +
+      "or write one describing a mesh that is already up — base_url, api_http, state_dir, admin_test_handle.",
+  );
+  process.exit(2);
+}
+const ready = JSON.parse(await readyBlob.text());
 const HUB = ready.api_http, HTTP = ready.base_url;
 
 /**
@@ -181,20 +217,38 @@ console.log(`queued       ${QUEUED} messages for ${recipientId}`);
 // ---------------------------------------------------------------------------
 
 const VIEWER = "audit-viewer";
+const VIEWER_PASSWORD = "audit-viewer-password";
 {
-  // `openAt` rather than `new Database`: the http server is running and writing
-  // this same file, and `openAt` is where `busy_timeout` lives. Without it a
-  // concurrent write here is an immediate SQLITE_BUSY rather than a short wait,
-  // which would surface as a fixture that fails sometimes.
-  const { openAt } = await import("@agent-mesh/store");
-  const db = openAt(`${ready.state_dir}/agent-mesh.db`, {});
-  const exists = db.prepare("SELECT 1 FROM local_users WHERE username = ?").get(VIEWER);
-  if (!exists) {
-    db.prepare(
-      "INSERT INTO local_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
-    ).run(VIEWER, await Bun.password.hash("audit-viewer", { algorithm: "bcrypt" }), "Audit viewer", "member");
+  // **Admission, not an INSERT.** This wrote `local_users` directly and then
+  // proved itself with `/auth/me`, which answers for anyone signed in and says
+  // nothing about approval. `seedLocalUsers` approves local accounts at boot, so
+  // a row written while the server is up is never approved, `isUserApproved`
+  // reads `agent_registry` and refuses, and every approval-gated screen this
+  // viewer opens is empty. The harness had the identical bug in
+  // `capabilityViewer`; `agent-mesh-local-pm` measured it there (mail #1104).
+  const admitted = await fetch(`${HTTP}/api/v1/admin/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ username: VIEWER, display_name: "Audit viewer", role: "member" }),
+  });
+  if (admitted.ok) {
+    const { temporary_password: temporary } = (await admitted.json()) as { temporary_password: string };
+    const first = await fetch(`${HTTP}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username: VIEWER, password: temporary }),
+      redirect: "manual",
+    });
+    const firstCookie = (first.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const changed = await fetch(`${HTTP}/auth/local/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: firstCookie },
+      body: JSON.stringify({ current: temporary, next: VIEWER_PASSWORD }),
+    });
+    if (changed.status !== 200) throw new Error(`${VIEWER} could not leave the password gate: ${changed.status}`);
+  } else if (admitted.status !== 409) {
+    throw new Error(`admitting ${VIEWER} answered ${admitted.status}: ${await admitted.text()}`);
   }
-  db.close();
 }
 
 // The grant goes through the route, because granting is a thing the product
@@ -213,7 +267,7 @@ if (granted.status >= 400) throw new Error(`granting audit.read.metadata answere
 const viewerLogin = await fetch(`${HTTP}/auth/local`, {
   method: "POST",
   headers: { accept: "application/json", "content-type": "application/json" },
-  body: JSON.stringify({ username: VIEWER, password: "audit-viewer" }),
+  body: JSON.stringify({ username: VIEWER, password: VIEWER_PASSWORD }),
   redirect: "manual",
 });
 const viewerCookie = viewerLogin.headers.get("set-cookie")?.split(";")[0] ?? "";
@@ -222,7 +276,17 @@ if (!viewerCookie.startsWith("mesh_token=")) {
 }
 const viewerMe = await fetch(`${HTTP}/auth/me`, { headers: { cookie: viewerCookie } });
 if (viewerMe.status !== 200) throw new Error(`${VIEWER} signed in but /auth/me answered ${viewerMe.status}`);
-console.log(`seeded       ${VIEWER} (audit.read.metadata only) — /auth/me ${viewerMe.status}`);
+
+// **`/auth/me` is not the check.** It answers for anyone with a session and
+// never consults approval, which is why the account above looked fine for as
+// long as it was broken. Ask a route that gates on approval instead.
+const viewerAgents = await fetch(`${HTTP}/api/v1/agents`, { headers: { cookie: viewerCookie } });
+if (viewerAgents.status !== 200) {
+  throw new Error(
+    `${VIEWER} signed in but an approval-gated route answered ${viewerAgents.status}: ${await viewerAgents.text()}`,
+  );
+}
+console.log(`seeded       ${VIEWER} (audit.read.metadata only) — /auth/me 200, /api/v1/agents 200`);
 
 // ---------------------------------------------------------------------------
 // Read the numbers back off the routes rather than trusting the loop above.
