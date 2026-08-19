@@ -819,7 +819,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     await page.waitForURL(/\/dashboard/, { timeout: 5000 });
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("소유 에이전트 운영 대시보드");
+    // The heading, which `SC-CAP-06` renamed: this list is not the viewer's own.
+    expect(mainText).toContain("에이전트 운영 대시보드");
 
     await context.close();
   });
@@ -2703,6 +2704,109 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       emptySaidUnknown: 0,
     });
   }, 40000);
+
+  /**
+   * SC-CAP-06 — the screen does not call the mesh's registry the viewer's own.
+   *
+   * `GET /api/v1/agents` answers a member holding no capability at all with the
+   * whole registry: measured, twelve identities, byte-identical to what the
+   * platform admin gets, including every other person's. Whether the server
+   * should scope that list is `I-101` and is not a question this file can
+   * answer — but for as long as it does not, the screen must not put the word
+   * *my* or *owned* on it. A person reading "Owned Agents 12" concludes twelve
+   * things are theirs.
+   *
+   * The check is in two parts on purpose. That the list is unscoped is asserted
+   * against the server rather than assumed, so if scoping arrives this fails
+   * and someone reads this comment. The words are a literal list, which is the
+   * only way to check copy — kept short, and each one is a claim of ownership
+   * rather than a style preference.
+   */
+  it("[SC-CAP-06] does not call an unscoped registry the viewer's own agents", async () => {
+    // **Admitted through the route, not inserted.** `capabilityViewer` writes a
+    // `local_users` row with SQL, which skips the approval `admitLocalUser`
+    // performs — that viewer gets `403 Account pending approval` and would have
+    // made this scenario pass by measuring nothing. A person let in through the
+    // screen is the subject here.
+    const me = `cap6-${Date.now().toString(36).slice(-5)}`;
+    const admitted = (await (
+      await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+        method: "POST",
+        headers: { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ username: me }),
+      })
+    ).json()) as any;
+    const signIn = async (password: string) =>
+      (
+        await fetch(`${mesh.http.url}/auth/local`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ username: me, password }),
+          redirect: "manual",
+        })
+      ).headers.get("set-cookie")?.split(";")[0] ?? "";
+    const locked = await signIn(admitted.temporary_password);
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: locked, "content-type": "application/json" },
+      body: JSON.stringify({ current: admitted.temporary_password, next: `${me}-chosen` }),
+    });
+    const cookie = await signIn(`${me}-chosen`);
+
+    const rows = (await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } })).json()) as any;
+    const list: any[] = Array.isArray(rows) ? rows : rows.agents ?? [];
+    const others = list.filter((a) => String(a.identity ?? a.id ?? "") !== me);
+
+    // If this ever fails, the server has started scoping and the wording below
+    // may honestly say "yours" again.
+    expect(
+      { returned: list.length > 0, notMine: others.length > 0 },
+      "the registry came back scoped or empty — this scenario's premise no longer holds",
+    ).toEqual({ returned: true, notMine: true });
+
+    const { page, context } = await createViewerAuthedPage(cookie, "/creator");
+    try {
+      await settled(page);
+      const text = ((await page.locator("body").textContent()) ?? "");
+      const drewSomebodyElse = others.some((a) => text.includes(String(a.identity ?? a.id ?? "")));
+
+      // **Both dictionaries, not the rendered page.** The first version read the
+      // page for the English words while this file seeds Korean, so renaming the
+      // English heading back to "My Agents" changed nothing it could see — the
+      // same language-dependent blindness that cost thirty seconds on the logout
+      // button, here costing a mutation that went uncaught.
+      const { readFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const dict = readFileSync(
+        join(import.meta.dir, "..", "packages", "platform-web", "src", "contexts", "I18nContext.tsx"),
+        "utf8",
+      );
+      // **Every key, not a list of six.** The first version named the keys it
+      // knew about and passed while `dash.op.fleetTitle` said "Owned Agent Fleet
+      // Summary" one panel below — a denominator written by hand covers what the
+      // person writing it remembered.
+      // `그룹 내 에이전트` is "agents in the group" and contains `내 에이전트`
+      // as a substring — a claim of ownership only when the syllable starts the
+      // phrase, so the Korean patterns carry a boundary.
+      // `그룹 내 에이전트` is "agents in the group": `내` there is a postposition,
+      // not a possessive, and it follows a space like the possessive would. So
+      // the possessive is only matched at the start of a value — which is how
+      // this dictionary writes it (`"내 에이전트"`, `"내 에이전트 관리"`).
+      const CLAIMS = [/My Agent/i, /Owned Agent/i, /(^|[^가-힣])소유 에이전트/, /^내 에이전트/];
+      const entries = [...dict.matchAll(/"([\w.]+)":\s*"([^"]*)"/g)];
+      expect(entries.length, "no dictionary entries were read — the scan matched nothing").toBeGreaterThan(200);
+      const claims = entries
+        .map((m) => ({ key: m[1] ?? "", value: m[2] ?? "" }))
+        .filter(({ value }) => CLAIMS.some((c) => c.test(value)))
+        .map(({ key, value }) => `${key}: ${value}`);
+      expect(
+        { claims, drewSomebodyElse },
+        "the screen drew somebody else's identity under a heading that calls it the viewer's own",
+      ).toEqual({ claims: [], drewSomebodyElse: true });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 30000);
 
   /**
    * SC-DOWN-14 — a panel that cannot be drawn says so instead of vanishing.

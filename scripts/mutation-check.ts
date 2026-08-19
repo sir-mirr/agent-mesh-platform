@@ -1623,6 +1623,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "screen-calls-the-registry-the-viewers-own",
+    defect:
+      "`GET /api/v1/agents` hands a member with no capability the whole registry — measured, identical to the platform admin's twelve rows. Calling that list \"My Agents\" tells a person twelve identities are theirs, including other people's.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: '    "agents.title": "에이전트 레지스트리",',
+    to: '    "agents.title": "내 에이전트 관리",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-06", "under a heading that calls it the viewer's own"],
+  },
+  {
     id: "telemetry-panel-vanishes-without-a-word",
     defect:
       "A monitoring panel that disappears when its source refuses. Nothing false is claimed, which is why it survived: the page just gets shorter, and an operator watching for refusals sees a screen with no refusals on it.",
