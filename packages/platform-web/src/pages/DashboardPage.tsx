@@ -298,10 +298,23 @@ function TenantAdminDashboard() {
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [pendingKeys, setPendingKeys] = useState<any[]>([]);
 
-  React.useEffect(() => {
-    fetchGroups().then(setGroups).catch(() => setGroups([]));
-    fetchAgents().then(setAgents).catch(() => setAgents([]));
-    fetchPendingKeys().then(setPendingKeys).catch(() => setPendingKeys([]));
+    // Unreachable until the server issues this role, and held to the same
+  // rule anyway: a refused read is not an empty one.
+  const [isError, setIsError] = useState(false);
+
+React.useEffect(() => {
+    fetchGroups().then(setGroups).catch(() => {
+      setGroups([]);
+      setIsError(true);
+    });
+    fetchAgents().then(setAgents).catch(() => {
+      setAgents([]);
+      setIsError(true);
+    });
+    fetchPendingKeys().then(setPendingKeys).catch(() => {
+      setPendingKeys([]);
+      setIsError(true);
+    });
   }, []);
 
   const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);
@@ -474,9 +487,19 @@ function GroupAdminDashboard() {
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
-  React.useEffect(() => {
-    fetchGroups().then(setGroups).catch(() => setGroups([]));
-    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    // Unreachable until the server issues this role, and held to the same
+  // rule anyway: a refused read is not an empty one.
+  const [isError, setIsError] = useState(false);
+
+React.useEffect(() => {
+    fetchGroups().then(setGroups).catch(() => {
+      setGroups([]);
+      setIsError(true);
+    });
+    fetchAgents().then(setAgents).catch(() => {
+      setAgents([]);
+      setIsError(true);
+    });
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
@@ -592,9 +615,23 @@ function AgentOperatorDashboard() {
   const { t } = useI18n();
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
+  /**
+   * **This is the dashboard an ordinary account lands on**, and until now a
+   * refused read drew `0` on it: "Owned Agents 0", "Online Sockets 0". Measured
+   * with a real member account and only `/api/v1/agents` failing — the screen
+   * said nothing was there, which is a statement about the mesh made without an
+   * answer from it. The platform admin's panel already had this state; the
+   * three panels below it did not.
+   */
+  const [isError, setIsError] = useState(false);
 
   React.useEffect(() => {
-    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    fetchAgents()
+      .then(setAgents)
+      .catch(() => {
+        setAgents([]);
+        setIsError(true);
+      });
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
@@ -603,18 +640,17 @@ function AgentOperatorDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.kpi.agents", "소유 에이전트")}
-          value={String(agents.length)}
-          subValue={t("dash.kpi.agentsSub", "개 등록됨")}
+          value={isError ? "—" : String(agents.length)}
+          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
           icon="🤖"
         />
         <KpiCard
           label={t("dash.kpi.sockets", "온라인 소켓")}
-          value={String(agents.filter(hasBeenSeen).length)}
-          subValue={t("dash.kpi.socketsSub", "연결 활성")}
+          value={isError ? "—" : String(agents.filter(hasBeenSeen).length)}
+          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.socketsSub", "연결 활성")}
           color="var(--color-success)"
           icon="⚡"
-          trend={{ value: "+1", isPositive: true }}
         />
         <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
@@ -625,7 +661,10 @@ function AgentOperatorDashboard() {
         />
         <KpiCard
           label={t("dash.kpi.latency", "오늘의 전송량")}
-          value="0"
+          // A literal `0`, on a card whose number no request ever asked for.
+          // There is no route behind it, so it cannot become anything else —
+          // and a number that cannot change is not a measurement.
+          value={queueValue(null)}
           subValue={t("dash.kpi.latencySub", "건 완료")}
           color="#6366F1"
           icon="🔄"

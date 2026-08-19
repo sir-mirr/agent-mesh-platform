@@ -1613,6 +1613,31 @@ const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "member-dashboard-draws-zero-for-a-refusal",
+    defect:
+      "The panel an ordinary account lands on, telling them they own nothing when the read was refused. The platform admin's panel has said `—` for months; this one drew `0`, and every existing SC-DOWN scenario measures the admin's.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: `          value={isError ? "—" : String(agents.length)}
+          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}`,
+    to: `          value={String(agents.length)}
+          subValue={t("dash.kpi.agentsSub", "개 등록됨")}`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
+  },
+  {
+    id: "catch-empties-a-list-and-says-nothing",
+    defect:
+      "The shape itself, on any screen: `.catch(() => setX([]))`. It is one line, it reads as defensive, and it converts *the server did not answer* into *there is nothing* — the source rule exists because three panels carried it and only one was ever measured.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: `      .catch(() => {
+        setAgents([]);
+        setIsError(true);
+      });`,
+    to: "      .catch(() => setAgents([]));",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-13", "nothing records that it failed"],
+  },
+  {
     id: "bell-calls-an-unanswered-question-an-answer",
     defect:
       "`.catch(() => setRequests([]))` — an empty list draws \"no requests are waiting\", which is a sentence about the server's answer written when there was no answer. An operator sees a quiet bell while agents wait to be admitted, and nothing else on any screen mentions it.",

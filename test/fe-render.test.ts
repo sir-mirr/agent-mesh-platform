@@ -2705,6 +2705,89 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-DOWN-13 — the dashboard an ordinary account lands on.
+   *
+   * `SC-DOWN-02` and the eight beside it measure the platform admin's panel.
+   * The file draws four, chosen by role, and the other three each carried
+   *
+   * ```
+   * fetchAgents().then(setAgents).catch(() => setAgents([]))
+   * ```
+   *
+   * so a refused read drew `0`: "Owned Agents 0", "Online Sockets 0". Measured
+   * on the running product with a real member account and one route failing —
+   * the screen said the mesh was empty, having never been told anything.
+   *
+   * Two halves, because the live one can only reach the panel a member gets:
+   * the operator panel is asserted through the browser, and the rule itself —
+   * *a catch that empties a list records that it failed* — is read off the
+   * source for every screen, including the two no session can open today.
+   */
+  it("[SC-DOWN-13] tells a member the read failed, rather than that they own nothing", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const ROOT = join(import.meta.dir, "..", "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f));
+
+    // The `catch` body, brace-matched. A regex that stopped at the first `}`
+    // would read half of `catch { setX([]); setIsError(true); }` and report the
+    // half it read.
+    const bodyAt = (src: string, at: number): string => {
+      const open = src.indexOf("{", at);
+      if (open < 0 || open - at > 40) return src.slice(at, at + 220);
+      let depth = 0;
+      for (let i = open; i < Math.min(src.length, open + 3000); i++) {
+        if (src[i] === "{") depth++;
+        else if (src[i] === "}" && --depth === 0) return src.slice(at, i + 1);
+      }
+      return src.slice(at, at + 400);
+    };
+
+    let catches = 0;
+    const silent: string[] = [];
+    for (const file of sources) {
+      const src = readFileSync(file, "utf8");
+      for (const m of src.matchAll(/\.catch\s*\(|catch\s*(\([^)]*\))?\s*\{/g)) {
+        catches++;
+        const body = bodyAt(src, m.index);
+        if (!/set[A-Za-z]*\(\s*\[\s*\]\s*\)/.test(body)) continue;
+        if (/setIsError|setUnreachable|setError|setFailed/.test(body)) continue;
+        silent.push(`${file.slice(ROOT.length + 1)}:${src.slice(0, m.index).split("\n").length}`);
+      }
+    }
+
+    // **The guard's own denominator.** A walk or a pattern that matched nothing
+    // would report zero silent catches and mean nothing by it.
+    expect({ scanned: sources.length > 40, catches: catches > 20 }, "the scan found nothing to read")
+      .toEqual({ scanned: true, catches: true });
+    expect(silent, "a refused read is emptied into a list and nothing records that it failed").toEqual([]);
+
+    // The live half: the panel a member actually gets.
+    const cookie = await capabilityViewer(mesh);
+    const { page, context } = await createViewerAuthedPage(cookie, "/dashboard");
+    try {
+      await page.route("**/api/v1/agents", (route) =>
+        route.fulfill({ status: 502, contentType: "text/html", body: "<html>502</html>" }),
+      );
+      await page.reload({ waitUntil: "networkidle" });
+      await settled(page);
+      const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const said = /불러오지 못함|could not load/i.test(text);
+      // `0` on its own is the sentence this is against — as a card's value it is
+      // a claim about the mesh, and there is no answer behind it.
+      const claimsZero = /소유 에이전트\s*🤖?\s*0|Owned Agents\s*🤖?\s*0/i.test(text);
+      expect({ said, claimsZero }, "the member's dashboard drew 0 for a read that was refused")
+        .toEqual({ said: true, claimsZero: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 40000);
+
+  /**
    * SC-AUTH-07 — signing out ends the session in the browser.
    *
    * Measured on the running product before this existed: clicking Logout put
