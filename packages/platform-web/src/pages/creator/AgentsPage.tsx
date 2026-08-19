@@ -100,12 +100,12 @@ export function AgentsPage() {
       setIsTeardownOpen(false);
       const targetId = teardownTarget.id;
       setTeardownTarget(null);
-      setToastMessage(`에이전트 [${targetId}]이(가) 성공적으로 영구 삭제(Teardown)되었습니다.`);
+      setToastMessage(`${t("agents.teardown.done", "영구 삭제 완료")}: ${targetId}`);
       await loadAgents();
     } catch (err: any) {
       setIsTeardownOpen(false);
       setTeardownTarget(null);
-      setToastMessage(`에이전트 삭제 실패: ${err.message || "서버 통신 오류"}`);
+      setToastMessage(`${t("agents.teardown.failed", "삭제 실패")}: ${err.message || t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}`);
     }
   };
 
@@ -186,7 +186,7 @@ export function AgentsPage() {
           // printing it for an unknown makes the one unverifiable cell the one
           // nobody questions.
           <span data-testid="inbox-unknown" style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>
-            — 미보고
+            {t("agents.notReported", "— 미보고")}
           </span>
         ) : (
           <span
@@ -270,7 +270,7 @@ export function AgentsPage() {
             ? refusedText(t, missing)
             : t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
-        emptyMessage="현재 등록된 에이전트 데이터가 없습니다."
+        emptyMessage={t("agents.empty", "등록된 에이전트가 없습니다.")}
       />
 
       {teardownTarget && (
@@ -278,9 +278,9 @@ export function AgentsPage() {
           isOpen={isTeardownOpen}
           onClose={() => setIsTeardownOpen(false)}
           onConfirm={handleTeardownConfirm}
-          title={`에이전트 영구 Teardown (§ 9.3)`}
-          description={`에이전트 [${teardownTarget.name}] (${teardownTarget.id})의 신원을 영구 파괴합니다. 승인된 공개키는 침해 보관소로 이동하며, 동일 ID로의 재등록이 영구 차단(409)됩니다.`}
-          confirmLabel="영구 Teardown 실행"
+          title={t("agents.teardown.title", "에이전트 영구 Teardown (§ 9.3)")}
+          description={`${teardownTarget.name} (${teardownTarget.id}) — ${t("agents.teardown.body", "이 신원을 영구히 파괴합니다. 승인된 공개키는 침해 보관소로 옮겨지고, 같은 ID 로는 다시 등록할 수 없습니다 (409).")}`}
+          confirmLabel={t("agents.teardown.confirm", "영구 Teardown 실행")}
           isDestructive={true}
           confirmPromptMatch={teardownTarget.id}
         />
