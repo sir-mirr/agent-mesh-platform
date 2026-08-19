@@ -2288,6 +2288,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
   },
+  {
+    id: "prose-scope-walks-the-tree",
+    defect:
+      "The scan's file list was three paths typed into the test. `agent-mesh-local-pm` found the same shape in four of their sweeps the same day (mail #1078) and fixed theirs first. A hand-written list covers what its author had already seen, so the day a screen is added the scan silently stops covering it — and the sentence the test prints is \"every namespaced name shown to a user is in the contract\", which is then false while green. The walk replaces the list; this entry removes the walk.",
+    file: "test/capability-prose.test.ts",
+    from: "const FILES = screenFiles(WEB);",
+    to: "const FILES: string[] = [];",
+    suite: "test/capability-prose.test.ts",
+    expect: ["the scan reaches every screen file, and the three it was built on"],
+  },
+  {
+    id: "prose-reaches-past-the-old-three",
+    defect:
+      "The other half, and the one that matters: a wrong capability name on a page **outside** the three the check was built against. `GroupsPage.tsx` writes `group.manage` into a subtitle a person reads; yesterday that file was not scanned at all, so this mutation would have passed green. It is here rather than on an anchor file because an anchor proves the rule works, not that the scope does.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "\u00a7 12 group.manage)",
+    to: "\u00a7 12 policy.manage)",
+    suite: "test/capability-prose.test.ts",
+    expect: ["every namespaced name shown to a user is in the contract"],
+  },
 ];
 
 /**

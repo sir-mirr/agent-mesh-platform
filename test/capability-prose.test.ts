@@ -19,21 +19,52 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 
 const WEB = join(import.meta.dir, "..", "packages", "platform-web", "src");
 
-/** Files whose strings reach a screen. */
-const FILES = [
+/**
+ * Files whose strings reach a screen — **read from the tree, not typed here.**
+ *
+ * The three named below used to *be* this list. A hand-written list covers what
+ * the person writing it had already seen: a page added tomorrow that names
+ * `policy.read` in its subtitle would not be scanned, and the test would stay
+ * green while claiming "every namespaced name shown to a user is in the
+ * contract". `agent-mesh-local-pm` found this shape in four of their sweeps on
+ * the same day (mail #1078); this is its twin in mine.
+ *
+ * Widening cost nothing to run — 57 files, 0 offenders — because the rule is
+ * about shape rather than scope: `displayStrings` already separates a key from
+ * a sentence, so a file that is all translation keys contributes nothing.
+ */
+function screenFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    return statSync(full).isDirectory()
+      ? screenFiles(full)
+      : /\.tsx?$/.test(full)
+        ? [full.slice(WEB.length + 1)]
+        : [];
+  });
+}
+
+const FILES = screenFiles(WEB);
+
+/**
+ * The three the check was built against, kept as a tripwire.
+ *
+ * Each was added for a reason worth not losing: `I18nContext.tsx` is where the
+ * strings live, `Sidebar.tsx` is where the last wrong name was found, and
+ * `RbacManagementPage.tsx` writes its subtitle as a JSX attribute — the shape
+ * that defeated the first, positional rule. A rename leaves the derivation
+ * green; these say so.
+ */
+const ANCHORS = [
   "contexts/I18nContext.tsx",
   "components/layout/Sidebar.tsx",
-  // Added once the rule stopped depending on position: this page writes its
-  // subtitle as a JSX attribute, which the previous rule could not see. It
-  // names `role.grant` four times, correctly, and is the shape that would have
-  // slipped through.
   "pages/tenant/RbacManagementPage.tsx",
 ];
 
@@ -85,12 +116,12 @@ function displayStrings(line: string): string[] {
 }
 
 describe("capability names in text a person reads", () => {
-  test("the files are there and hold text", () => {
-    // The loop below reports nothing for a file it could not read, and nothing
-    // is what a clean file also reports.
-    for (const f of FILES) {
-      const source = readFileSync(join(WEB, f), "utf8");
-      expect(source.length, `${f} is empty or missing`).toBeGreaterThan(500);
+  test("the scan reaches every screen file, and the three it was built on", () => {
+    // The loop below reports nothing for a directory it did not walk, and
+    // nothing is what a clean tree also reports.
+    expect(FILES.length, "no screen files found — the walk is the whole scope").toBeGreaterThan(20);
+    for (const anchor of ANCHORS) {
+      expect(FILES, `${anchor} is gone or moved; the case it covers needs a new home`).toContain(anchor);
     }
   });
 
