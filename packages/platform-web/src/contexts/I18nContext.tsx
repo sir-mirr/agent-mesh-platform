@@ -10,6 +10,14 @@ interface I18nContextType {
 
 export const DICTIONARY: Record<Language, Record<string, string>> = {
   ko: {
+    "login.subtitle": "단일 로그인 및 RBAC 통합 관리 게이트웨이",
+    "login.github": "GitHub 계정으로 계속하기",
+    "login.or": "또는 로컬 계정",
+    "login.id": "아이디 (ID)",
+    "login.idPlaceholder": "아이디",
+    "login.password": "비밀번호 (Password)",
+    "login.submit": "로그인하기",
+    "login.capNote": "사이드바 메뉴는 서버가 이 계정에 부여한 capability 로 갈립니다. 화면이 고르는 것이 아닙니다.",
     // Navigation Sections
     "nav.sec.overview": "핵심 개요",
     "nav.sec.studio": "에이전트 운영 스튜디오",
@@ -219,6 +227,14 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "traffic.col.routes": "24h 메시지 라우팅 건수",
   },
   en: {
+    "login.subtitle": "Single sign-on and RBAC administration gateway",
+    "login.github": "Continue with GitHub",
+    "login.or": "or a local account",
+    "login.id": "Username",
+    "login.idPlaceholder": "username",
+    "login.password": "Password",
+    "login.submit": "Sign in",
+    "login.capNote": "The sidebar shows what the server granted this account. The screen does not choose it.",
     // Navigation Sections
     "nav.sec.overview": "Overview",
     "nav.sec.studio": "Agent Operations Studio",
@@ -432,12 +448,22 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
 const I18nContext = createContext<I18nContextType | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
+  /**
+   * **English until somebody chooses otherwise.**
+   *
+   * The default was Korean, which is right for the room this was written in and
+   * wrong for a deployment an operator elsewhere opens: the first screen they
+   * see is the login page, and until this change that page had no way to switch
+   * at all — the toggle lives in the sidebar, and the sidebar is behind the
+   * login. A visitor who could not read the form could not reach the control
+   * that would have translated it.
+   */
   const [language, setLanguageState] = useState<Language>(() => {
     try {
       const saved = localStorage.getItem("agent_mesh_lang");
-      return (saved === "en" || saved === "ko") ? saved : "ko";
+      return (saved === "en" || saved === "ko") ? saved : "en";
     } catch {
-      return "ko";
+      return "en";
     }
   });
 

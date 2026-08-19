@@ -380,7 +380,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   });
 
   async function createAuthedPage(route: string) {
-    const context = await browser.newContext();
+    const context = await newContext();
     await context.addCookies([
       {
         name: "mesh_token",
@@ -402,6 +402,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // Seed localStorage for frontend auth context
     await page.goto(`${viteBaseUrl}/login`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
+      // **Chosen, not inherited.** Sixty-seven assertions in this file read
+      // Korean labels, and until the default changed to English they were
+      // resting on it without saying so — a screen that asserts a language it
+      // never asked for is measuring the default as much as the screen. The
+      // default is now `SC-I18N-02`'s subject and nothing else's.
       localStorage.setItem(
         "agent_mesh_user",
         JSON.stringify({
@@ -452,7 +457,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }
 
   async function createViewerAuthedPage(cookie: string, route: string) {
-    const context = await browser.newContext();
+    const context = await newContext();
     const rawToken = cookie.replace(/^mesh_token=/, "");
     await context.addCookies([
       {
@@ -473,8 +478,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     return { page, context, errors };
   }
 
+  /**
+   * A context that has chosen its language.
+   *
+   * The default became English, and sixty-seven assertions in this file read
+   * Korean labels. They are not tests *about* language — they were resting on
+   * the default without saying so, and the moment it moved five of them
+   * measured the wrong thing at once. So every context says which language it
+   * reads. The default itself is `SC-I18N-02`'s subject, and that scenario
+   * builds its own context with no seed, which is the only way to see it.
+   */
+  async function newContext(lang: "ko" | "en" | null = "ko") {
+    const ctx = await browser.newContext();
+    if (lang) {
+      await ctx.addInitScript((chosen) => {
+        try {
+          localStorage.setItem("agent_mesh_lang", chosen as string);
+        } catch {
+          /* storage unavailable — the page falls back to the default */
+        }
+      }, lang);
+    }
+    return ctx;
+  }
+
   async function withUnauthedPage<T>(route: string, fn: (pageInfo: { page: import("playwright").Page; errors: string[] }) => Promise<T>): Promise<T> {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
@@ -503,7 +532,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SCR-01 / SC-RENDER-01: Login Form Live Render
   it("[SC-RENDER-01] renders /login with live form controls and zero page errors", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
@@ -669,7 +698,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-ACT-01: Interactive Form Login Action & Redirection (D-91, D-101)
   it("[SC-ACT-01] performs interactive login form submission and redirects to dashboard", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
@@ -886,7 +915,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // this mesh; and the layer under test is the screen, so the honest place to
     // inject is the response it reads. agent-mesh-local-pm measured the data
     // half by SIGSTOPping the hub and left this half open.
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     try {
       await context.addCookies([
@@ -1051,7 +1080,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-01: Disconnected Backend Differentiation on Lease Queue (D-114, D-116)
   it("[SC-DOWN-01] distinguishes between empty and disconnected states on /creator/lease-queue", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1080,7 +1109,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-02: Disconnected Backend Differentiation on Dashboard (D-114, D-116)
   it("[SC-DOWN-02] does not claim 0 registered tenants when disconnected on /dashboard", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1109,7 +1138,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-03: Disconnected Backend Differentiation on Groups (D-114, D-116)
   it("[SC-DOWN-03] distinguishes between empty groups and disconnected server on /creator/groups", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1138,7 +1167,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-LOAD-01: In-Flight Delayed API Response on Topology (D-123, D-124)
   it("[SC-LOAD-01] shows loading state and does not claim 0 groups/agents while waiting on /creator/topology", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1171,7 +1200,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-LOAD-02: In-Flight Delayed API Response on Dashboard (D-123, D-124)
   it("[SC-LOAD-02] shows loading state and does not claim 0 tenants while waiting on /dashboard", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1204,7 +1233,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-LOAD-03: In-Flight Delayed API Response on Playground (D-123, D-124)
   it("[SC-LOAD-03] shows loading state and does not claim empty agents while waiting on /creator/playground", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
       {
@@ -1249,7 +1278,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-04: /platform does not show both DEGRADED and "정상 가동 중" when disconnected
   it("[SC-DOWN-04] renders /platform without contradictory 정상 가동 중 when disconnected", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1277,7 +1306,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-05: /tenant/audits says cannot read instead of saying no data
   it("[SC-DOWN-05] renders /tenant/audits with error message instead of no data when disconnected", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1305,7 +1334,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-06: /creator/register handles disconnected state safely
   it("[SC-DOWN-06] renders /creator/register safely when disconnected", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1330,7 +1359,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-07: /creator says cannot read instead of claiming empty list
   it("[SC-DOWN-07] renders /creator with error message instead of empty agents when disconnected", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1376,7 +1405,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // about the guard, and a test that cannot tell those apart is a test of the
   // machine.
   it("[SC-HARNESS-02] a starved CPU does not make a disconnected screen read as authenticating", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1482,7 +1511,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * a backend that is restarting sends them to fix the wrong thing.
    */
   it("[SC-DOWN-09] says the backend is unreachable rather than sending a signed-in operator to /login", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1509,7 +1538,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 15000);
 
   it("[SC-DOWN-11] still sends a refused session to /login, so the two are not one branch", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1554,7 +1583,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-DOWN-08: /platform/telemetry does not show active_sockets=0 or info cards when disconnected
   it("[SC-DOWN-08] renders /platform/telemetry with connection error and no 0 sessions when disconnected", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1583,7 +1612,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-LOAD-04: In-Flight Delayed API Response on Dashboard eliminates ZERO pattern
   it("[SC-LOAD-04] does not show ZERO patterns or empty tenant table messages while waiting on /dashboard", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1615,7 +1644,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-LOAD-05: In-Flight Delayed API Response on /tenant/rbac does not render (0명)
   it("[SC-LOAD-05] does not show (0명) while waiting on /tenant/rbac", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1672,7 +1701,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
 
       // 2. Down text
-      const context = await browser.newContext();
+      const context = await newContext();
       try {
         const page = await context.newPage();
         await context.addCookies([
@@ -1892,7 +1921,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // refused read is never rendered as an empty list. The redirect target does
   // not claim emptiness either, which is what makes it still checkable here.
   it("[SC-AUTH-04] an expired session reports a failed read and does not claim empty", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -1964,7 +1993,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // read must not be reported as an empty list either way, so that assertion
   // survives the decision that overturned this one.
   it("[SC-AUTH-05] an expired session is sent to /login", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     try {
       const page = await context.newPage();
       await context.addCookies([
@@ -2335,6 +2364,56 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ).toEqual({ old: 401, next: 200 });
   }, 20000);
 
+  /**
+   * SC-I18N-02 — the landing screen can be read, and can be switched.
+   *
+   * The toggle lived in the sidebar and the sidebar is behind the login, so a
+   * visitor who could not read the form could not reach the control that would
+   * have translated it. The default was Korean, which is right for the room this
+   * was written in and wrong for an operator opening a deployment elsewhere.
+   *
+   * **Both halves.** A page that renders English and has a toggle that does
+   * nothing satisfies "the default is English" completely — and that toggle
+   * would be a control that looks like it works, which is the shape this suite
+   * spends its time removing. So the switch is pressed and the page has to
+   * change.
+   */
+  it("[SC-I18N-02] opens in English and switches from the flag in the corner", async () => {
+    // **No seed.** Every other context in this file chooses a language; this one
+    // must not, because the default is what it is measuring.
+    const context = await newContext(null);
+    try {
+      const page = await context.newPage();
+      await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
+      const body = () => page.locator("#root").innerText();
+      const before = await body();
+      expect(
+        {
+          toggle: (await page.locator("[data-testid='lang-toggle']").count()) > 0,
+          english: /Sign in|Username/.test(before),
+          // The page used to be Korean literals with no dictionary entry at
+          // all, so "the default is English" was unreachable however the
+          // default was set.
+          korean: /로그인하기|비밀번호 \(Password\)/.test(before),
+        },
+        "the landing screen is not in English, or has no way to change that",
+      ).toEqual({ toggle: true, english: true, korean: false });
+
+      await page.locator("[data-lang='ko']").click();
+      await page.waitForTimeout(300);
+      const after = await body();
+      expect(
+        { korean: /로그인하기/.test(after), stillEnglish: /Sign in/.test(after) },
+        "the flag was pressed and the page did not change",
+      ).toEqual({ korean: true, stillEnglish: false });
+
+      // And it is remembered, which is what makes the control worth pressing.
+      expect(await page.evaluate(() => localStorage.getItem("agent_mesh_lang"))).toBe("ko");
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 20000);
+
   // SC-AUTH-01: Session authentication & cookie injection
   it("[SC-AUTH-01] verifies session auth and redirect flow", async () => {
     await withUnauthedPage("/login", async ({ page }) => {
@@ -2610,7 +2689,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * under test is the screen, and other scenarios share this mesh.
    */
   it("[SC-SCR05-03] draws no agents inside a group the server reports as empty", async () => {
-    const context = await browser.newContext();
+    const context = await newContext();
     await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
     const page = await context.newPage();
     try {
@@ -2679,7 +2758,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const base = { id: `pm-${tag}`, name: `NAME-${tag}`, description: `DESC-${tag}`, type: `TYPE-${tag}` };
 
     async function rowOf(agent: Record<string, unknown>): Promise<{ text: string; absent: number }> {
-      const context = await browser.newContext();
+      const context = await newContext();
       await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
       const page = await context.newPage();
       try {
@@ -2840,7 +2919,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     async function row(integrity: unknown): Promise<{ text: string; digest: string | null }> {
-      const context = await browser.newContext();
+      const context = await newContext();
       await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
       const page = await context.newPage();
       try {

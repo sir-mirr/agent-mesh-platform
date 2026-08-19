@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/client.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 
 interface NodeDef {
   id: string;
@@ -35,6 +36,7 @@ interface PacketDef {
 export function LoginPage() {
   const navigate = useNavigate();
   const { loginWithLocal, loginWithGitHub } = useAuth();
+  const { language, setLanguage, t } = useI18n();
   // **Empty, because this screen is served to a real server's operators.**
   //
   // They arrived as `useState("admin")` — the form came up with a working
@@ -394,6 +396,37 @@ export function LoginPage() {
         padding: 24,
       }}
     >
+      {/* **The only control on this page that is not the form.** The toggle
+          otherwise lives in the sidebar, and the sidebar is behind the login —
+          so a visitor who cannot read this screen could not reach the thing
+          that would translate it. Top right, flags, nothing else. */}
+      <div
+        data-testid="lang-toggle"
+        style={{ position: "absolute", top: 16, right: 20, zIndex: 50, display: "flex", gap: 6 }}
+      >
+        {(["en", "ko"] as const).map((lang) => (
+          <button
+            key={lang}
+            type="button"
+            aria-label={lang === "en" ? "English" : "한국어"}
+            data-lang={lang}
+            data-active={language === lang ? "yes" : "no"}
+            onClick={() => setLanguage(lang)}
+            style={{
+              border: language === lang ? "1px solid #38BDF8" : "1px solid rgba(255,255,255,0.25)",
+              background: language === lang ? "rgba(255,255,255,0.12)" : "transparent",
+              borderRadius: 8,
+              padding: "4px 8px",
+              fontSize: "1.05rem",
+              lineHeight: 1,
+              cursor: "pointer",
+              opacity: language === lang ? 1 : 0.6,
+            }}
+          >
+            {lang === "en" ? "\u{1F1FA}\u{1F1F8}" : "\u{1F1F0}\u{1F1F7}"}
+          </button>
+        ))}
+      </div>
       {/* ── Softly Blurred Dynamic Ambient Background (Canvas + Character Overlay) ── */}
       <div
         style={{
@@ -579,7 +612,7 @@ export function LoginPage() {
               marginTop: 4,
             }}
           >
-            단일 로그인 및 RBAC 통합 관리 게이트웨이
+            {t("login.subtitle", "Single sign-on and RBAC administration gateway")}
           </p>
         </div>
 
@@ -605,7 +638,7 @@ export function LoginPage() {
           }}
         >
           <GitHubIcon />
-          GitHub 계정으로 계속하기
+          {t("login.github", "Continue with GitHub")}
         </button>
 
         <div
@@ -624,7 +657,7 @@ export function LoginPage() {
               borderTop: "1px solid var(--color-border)",
             }}
           />
-          또는 로컬 계정
+          {t("login.or", "or a local account")}
           <hr
             style={{
               flex: 1,
@@ -640,12 +673,12 @@ export function LoginPage() {
           onSubmit={handleSubmit}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={labelStyle}>아이디 (ID)</label>
+            <label style={labelStyle}>{t("login.id", "Username")}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="아이디"
+              placeholder={t("login.idPlaceholder", "username")}
               autoComplete="username"
               style={inputStyle}
               required
@@ -653,7 +686,7 @@ export function LoginPage() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={labelStyle}>비밀번호 (Password)</label>
+            <label style={labelStyle}>{t("login.password", "Password")}</label>
             <input
               type="password"
               value={password}
@@ -681,7 +714,7 @@ export function LoginPage() {
           )}
 
           <button type="submit" style={btnPrimaryStyle}>
-            로그인하기
+            {t("login.submit", "Sign in")}
           </button>
         </form>
 
@@ -693,7 +726,7 @@ export function LoginPage() {
             lineHeight: 1.4,
           }}
         >
-          사이드바 메뉴는 서버가 이 계정에 부여한 capability 로 갈립니다. 화면이 고르는 것이 아닙니다.
+          {t("login.capNote", "The sidebar shows what the server granted this account. The screen does not choose it.")}
         </p>
       </div>
     </div>

@@ -1490,6 +1490,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-PWCHG-03", "the change button did nothing and said nothing"],
   },
   {
+    id: "axis-pattern-cannot-see-digits",
+    defect:
+      "The axis table's family pattern was `SC-[A-Z-]+`, which cannot match a family with a digit in its name. `SC-I18N-*` was the first, and its row was in the table the whole time — the check simply did not see it, so the family read as declared nowhere and its ids as unaccounted. The same pattern was written twice, so widening one of them left the other blind. It is the blindness this file already records twice: a pattern written from the ids in front of the author.",
+    file: "test/scenario-ids.test.ts",
+    from: "    const rows = [...doc.matchAll(/^\\| `(SC-[A-Z0-9-]+)-\\*` \\|[^|]*\\| ([0-9]+) \\|$/gm)];",
+    to: "    const rows = [...doc.matchAll(/^\\| `(SC-[A-Z-]+)-\\*` \\|[^|]*\\| ([0-9]+) \\|$/gm)];",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["has 2 ids and no row in § 0", "SC-I18N"],
+  },
+  {
+    id: "landing-defaults-to-korean",
+    defect:
+      "The default language was Korean and the toggle lived in the sidebar, which is behind the login. A visitor who could not read the login form could not reach the control that would have translated it.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: '      return (saved === "en" || saved === "ko") ? saved : "en";',
+    to: '      return (saved === "en" || saved === "ko") ? saved : "ko";',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-I18N-02", "the landing screen is not in English, or has no way to change that"],
+  },
+  {
+    id: "landing-toggle-does-nothing",
+    defect:
+      "A flag in the corner that does not change the page is a control that looks like it works — the same shape as a guard that guards nothing, which is the thing this suite spends its time removing. Rendering English and offering a switch satisfies `the default is English` completely without the switch ever having to work.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "            onClick={() => setLanguage(lang)}",
+    to: "            onClick={() => {}}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-I18N-02", "the flag was pressed and the page did not change"],
+  },
+  {
     id: "login-picks-its-own-role",
     defect:
       "The login screen offered a `<select>` labelled 시뮬레이션 역할 whose top option read 👑 플랫폼 관리자, and passed the choice to `loginWithLocal`. It granted nothing — `GuardedRoute` and the sidebar both ask `hasCapability`, and `POST /auth/local` reads only the username and password — but the sidebar drew the choice as the person's title, so a deployment to a real server showed a self-declared platform administrator.",

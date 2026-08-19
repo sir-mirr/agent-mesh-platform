@@ -252,7 +252,12 @@ describe("the inventory's axis table", () => {
   /** What § 0's table claims, per family. */
   function claimed(): Map<string, number> {
     const doc = readFileSync(INVENTORY, "utf8");
-    const rows = [...doc.matchAll(/^\| `(SC-[A-Z-]+)-\*` \|[^|]*\| ([0-9]+) \|$/gm)];
+    // **`[A-Z-]+` could not see a family with a digit in its name.** `SC-I18N-*`
+    // was the first, and the row was there — this pattern simply did not match
+    // it, so the family read as *declared nowhere* while sitting in the table.
+    // The blindness is the one this file already records twice: a pattern
+    // written from the ids in front of the author, and confident about the rest.
+    const rows = [...doc.matchAll(/^\| `(SC-[A-Z0-9-]+)-\*` \|[^|]*\| ([0-9]+) \|$/gm)];
     return new Map(rows.map((m) => [m[1]!, Number(m[2]!)]));
   }
 
@@ -306,7 +311,10 @@ describe("the inventory as a denominator", () => {
     const doc = readFileSync(INVENTORY, "utf8");
     const named = new Set([...doc.matchAll(/`(SC-[A-Z0-9-]+)`/g)].map((m) => m[1]!));
     const families = new Set(
-      [...doc.matchAll(/^\| `(SC-[A-Z-]+)-\*` \|[^|]*\| [0-9]+ \|$/gm)].map((m) => m[1]!),
+      // Same widening as above, and **the same pattern written twice** is why
+      // fixing one of them left this one blind: `SC-I18N-02` still read as
+      // unaccounted while its family row sat in the table.
+      [...doc.matchAll(/^\| `(SC-[A-Z0-9-]+)-\*` \|[^|]*\| [0-9]+ \|$/gm)].map((m) => m[1]!),
     );
     // Both readings must have found something. A document that stopped matching
     // would otherwise make every id below look unaccounted, which reads as a
