@@ -943,6 +943,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
   {
+    id: "agents-listing-drops-presence",
+    defect:
+      "`GET /api/v1/agents` answered five columns of the http server's own registry and none of the mesh's, so the console had no way to learn when an agent was last seen and drew `ONLINE` for everyone. The server knew — the heartbeat writes `agents.last_seen`, before the registry on a disconnect (SPEC § 3.1) — and the route did not carry it.",
+    file: "packages/http/src/main.ts",
+    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
+    to: "    last_seen_at: null,",
+    suite: "test/http.test.ts",
+    expect: ["carries what the mesh measured", "2026-01-02 03:04:05"],
+  },
+  {
+    id: "agents-listing-invents-a-fingerprint",
+    defect:
+      "A synthesised `sha256:` key is the shape this repository removed from the front end twice: it reads as a measured identity and is a string built from the row's own id. Answering it from the server rather than the screen moves the invention one layer up.",
+    file: "packages/http/src/main.ts",
+    from: "    fingerprint: fingerprints.get(entry.id) ?? null,",
+    to: "    fingerprint: `sha256:${entry.id}`,",
+    suite: "test/http.test.ts",
+    expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
+  },
+  {
     id: "nonce-sweep-unscheduled",
     defect:
       "`sweepExpired` is the only statement in the tree that deletes from `upload_nonces`, and nothing called it, so the table could only grow for the life of a deployment. Not dead code — a scheduled job with no schedule, whose symptom is a table nobody reads. The dead-code sweep that found it proposed deleting it.",

@@ -158,6 +158,63 @@ describe("agent registry", () => {
     expect(body.agents.map((a: any) => a.id)).not.toContain("hub-only-agent");
   });
 
+  test("carries what the mesh measured, and invents no status", async () => {
+    // The console drew `ONLINE` for everyone because this route answered five
+    // columns of its own table and none of the hub's. The presence the mesh
+    // records — `last_seen`, written by the heartbeat and before the registry
+    // on a disconnect (SPEC § 3.1) — was there the whole time.
+    const agents = openTestDb(join(mesh.stateDir, "agents.db"), { readwrite: true });
+    agents
+      .prepare(
+        `INSERT INTO agents (identity, last_seen) VALUES ('admin', '2026-01-02 03:04:05')
+           ON CONFLICT(identity) DO UPDATE SET last_seen = excluded.last_seen`,
+      )
+      .run();
+    agents
+      .prepare(
+        `INSERT INTO agent_keys (fingerprint, identity, public_key, status)
+         VALUES ('sha256:deadbeef', 'admin', 'pk', 'approved')
+           ON CONFLICT(fingerprint) DO UPDATE SET status = 'approved'`,
+      )
+      .run();
+    agents.close();
+
+    const body = await (await get("/api/v1/agents", adminCookie)).json();
+    const entry = body.agents.find((a: any) => a.id === "admin");
+
+    expect(entry.last_seen_at).toBe("2026-01-02 03:04:05");
+    expect(entry.fingerprint).toBe("sha256:deadbeef");
+    expect(entry.created_at).toBeTruthy();
+
+    // The judgement stays out of the server. `active`/`inactive` is a policy
+    // about how long silence may last, and a route that answered it would be
+    // shipping an opinion where the screens were just taught to stop making
+    // one up.
+    expect(Object.keys(entry)).not.toContain("status");
+  });
+
+  test("says nothing rather than `offline` for an identity the mesh has never seen", async () => {
+    // The other half. A route that reported every unknown identity as offline
+    // would pass the test above and be wrong about every web user who has not
+    // connected — which is what `null` is for.
+    const http = openTestDb(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
+    http
+      .prepare(
+        `INSERT INTO agent_registry (id, name, channel, type, approved)
+         VALUES ('never-connected', 'Never Connected', 'web', 'user', 1)
+           ON CONFLICT(id) DO NOTHING`,
+      )
+      .run();
+    http.close();
+
+    const body = await (await get("/api/v1/agents", adminCookie)).json();
+    const entry = body.agents.find((a: any) => a.id === "never-connected");
+
+    expect(entry, "the registry row this test wrote should be listed").toBeDefined();
+    expect(entry.last_seen_at).toBeNull();
+    expect(entry.fingerprint).toBeNull();
+  });
+
   test("rejects a message to an agent it does not know", async () => {
     const res = await fetch(`${mesh.http.url}/api/v1/messages`, {
       method: "POST",

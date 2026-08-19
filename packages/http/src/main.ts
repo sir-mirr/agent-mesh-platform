@@ -930,12 +930,50 @@ app.get('/api/v1/agents', async (c) => {
     return c.json({ error: 'Account pending approval' }, 403)
   }
 
+  // **Two registries, one namespace.** `agent_registry` is this server's own
+  // list — who can be addressed from the console — and the mesh's `agents`
+  // table is where the hub records presence, updated by the heartbeat and
+  // written before the registry when a socket goes (SPEC § 3.1). They are
+  // keyed on the same identity string, so the facts join.
+  //
+  // This route read only the first of them, which is why the console had no
+  // way to learn when an agent was last seen and drew `ONLINE` for everyone
+  // instead. The server knew; the route did not carry it.
+  const mesh = agentsDb()
+  const lastSeen = new Map(
+    (
+      mesh.prepare(`SELECT identity, last_seen FROM agents WHERE deleted_at IS NULL`).all() as Array<{
+        identity: string
+        last_seen: string | null
+      }>
+    ).map(row => [row.identity, row.last_seen] as const),
+  )
+  const fingerprints = new Map(
+    (
+      mesh.prepare(`SELECT identity, fingerprint FROM agent_keys WHERE status = 'approved'`).all() as Array<{
+        identity: string
+        fingerprint: string
+      }>
+    ).map(row => [row.identity, row.fingerprint] as const),
+  )
+
   const agents = listRegistryAgents().map(entry => ({
     id: entry.id,
     name: entry.name,
     description: entry.description,
     channel: entry.channel,
     type: entry.type,
+    created_at: entry.created_at,
+    // `null` means the mesh holds no presence record for this identity — a web
+    // user who has never connected has none — and it does not mean offline.
+    //
+    // **No `status` field, deliberately.** Whether silence for five minutes is
+    // `inactive` is an operating policy, and a route answering it here would
+    // ship a judgement dressed as a measurement. That is the defect the screens
+    // were fixed for in `71afcdb` and `189f4ab`; putting it in the server moves
+    // the invention one layer up rather than removing it.
+    last_seen_at: lastSeen.get(entry.id) ?? null,
+    fingerprint: fingerprints.get(entry.id) ?? null,
   }))
 
   return c.json({ agents })
