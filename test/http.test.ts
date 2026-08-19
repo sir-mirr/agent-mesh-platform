@@ -10,9 +10,12 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, teardown, type Mesh } from "./harness";
+
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -123,6 +126,28 @@ describe("a session that must change its password", () => {
     } finally {
       flag(false);
     }
+  });
+
+  test("covers every api route, which is a fact about where it is registered", () => {
+    // Hono composes a request's handlers in registration order, so this
+    // middleware guards what is declared *below* it and nothing above. That is
+    // true today by accident of layout — the seven routes above it are `/auth`
+    // and the pages — and it stops being true the moment somebody adds an
+    // `/api/v1` route near the top of the file, which is a natural thing to do
+    // and produces a route that is silently outside the gate.
+    const source = readFileSync(join(REPO_ROOT, "packages/http/src/main.ts"), "utf8");
+    const lines = source.split("\n");
+    const gate = lines.findIndex((l: string) => l.startsWith("app.use('*'"));
+    expect(gate, "the password gate's middleware was not found, so this test compared nothing").toBeGreaterThan(0);
+
+    const above = lines
+      .slice(0, gate)
+      .map((l: string, i: number) => ({ line: i + 1, text: l }))
+      .filter((l: { line: number; text: string }) => /^app\.(get|post|put|delete|patch)\('\/api\/v1/.test(l.text));
+
+    expect(
+      above.map((l: { line: number }) => `main.ts:${l.line} registers an /api/v1 route above the password gate`),
+    ).toEqual([]);
   });
 
   test("is refused everywhere else, by the server and not by a redirect", async () => {

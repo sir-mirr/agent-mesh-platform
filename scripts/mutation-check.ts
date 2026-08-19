@@ -1028,6 +1028,19 @@ const MUTATIONS: Mutation[] = [
     expect: ["is told so by the response that handed it the session", "the login response did not say the account is flagged"],
   },
   {
+    id: "api-route-above-the-gate",
+    defect:
+      "Hono composes a request's handlers in registration order, so the password gate guards what is declared below it and nothing above. An `/api/v1` route added near the top of the file — a natural place to put one — is silently outside the gate, and every test of the gate still passes because they use routes that happen to sit below it.",
+    file: "packages/http/src/main.ts",
+    // A complete route, because a mutation that does not compile measures
+    // nothing: the first version of this one broke the file, a hook died, and
+    // the manifest answered `not measured` rather than pretending to a verdict.
+    from: "app.post('/auth/logout', (c) => {",
+    to: "app.get('/api/v1/gate-probe', (c) => c.json({ ok: true }))\napp.post('/auth/logout', (c) => {",
+    suite: "test/http.test.ts",
+    expect: ["covers every api route, which is a fact about where it is registered", "above the password gate"],
+  },
+  {
     id: "password-gate-only-redirects",
     defect:
       "A first-login password change enforced by the screen alone is decoration: the same cookie in `curl` reaches everything. That is the shape removed from four screens in this repository on the day this was written, and the front end declined to build against it until the server refused first.",
