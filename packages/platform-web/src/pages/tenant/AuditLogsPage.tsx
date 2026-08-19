@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { failureKind, type FailureKind } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -18,16 +19,20 @@ export function AuditLogsPage() {
   const [events, setEvents] = useState<AuditEventItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  /** `refused` 와 `unreachable` 은 사람에게 다른 문장이다 — 하나는 권한, 하나는 서버다. */
+  const [failure, setFailure] = useState<FailureKind | null>(null);
   const canReadContent = hasCapability("audit.read.content");
 
   const loadAuditEvents = () => {
     setIsLoading(true);
     setIsError(false);
+    setFailure(null);
     fetchAuditEvents()
       .then((list) => {
         setEvents(list || []);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        setFailure(failureKind(err));
         setIsError(true);
         setEvents([]);
       })
@@ -184,7 +189,13 @@ export function AuditLogsPage() {
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
         isError={isError}
-        errorMessage="감사 로그 데이터를 불러올 수 없습니다 (서버 연결 실패 또는 권한 오류)."
+        errorMessage={
+          // "연결 실패 **또는** 권한 오류" — 둘 다 적어두면 사람은 어느 쪽인지 모른다.
+          // 서버는 이미 갈라서 답했고, `ApiError.refused` 가 그것을 들고 있다.
+          failure === "refused"
+            ? t("audit.refused", "이 계정은 감사 로그를 볼 권한이 없습니다 (audit.read.metadata).")
+            : t("audit.error", "감사 로그를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+        }
         emptyMessage="현재 기록된 감사 로그 데이터가 없습니다."
       />
     </div>

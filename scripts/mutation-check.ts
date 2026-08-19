@@ -1623,6 +1623,28 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
   },
   {
+    id: "refusal-drawn-as-silence",
+    defect:
+      "One message for both: the server answered `403` and the screen said it did not answer. A person then waits for a backend that is up, instead of asking for the capability they are missing.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: `            failure === "refused"
+              ? t("reg.queue.refused", "이 계정은 등록 요청 큐를 볼 권한이 없습니다 (key.approve).")
+              : t("reg.queue.error", "대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패).")`,
+    to: '            t("reg.queue.error", "대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패).")',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-07", "a refusal was drawn as silence"],
+  },
+  {
+    id: "silence-drawn-as-a-refusal",
+    defect:
+      "The other direction: a screen that blames the viewer's permissions when the backend is simply gone. It reads as the more careful message and sends somebody to ask for a capability that would not help.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: "        setFailure(failureKind(err));",
+    to: '        setFailure("refused");',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-07", "silence was drawn as a permission problem"],
+  },
+  {
     id: "member-panel-answers-zero-while-waiting",
     defect:
       "`agents` starts empty and the card reads its length, so on a slow link the panel says \"Agents 0 registered\" and then jumps to fourteen. The window is short on a fast machine and is the whole experience on a bad connection.",

@@ -67,3 +67,18 @@ export async function apiClient<T = any>(
 
   return (await response.json()) as T;
 }
+
+/**
+ * Why a read failed, in the two words a screen has to tell apart.
+ *
+ * Every list on this console caught its error and drew one sentence: "the
+ * server did not answer". Measured with a member session — the server answered,
+ * with `403`, and the screen told them the backend was down. `ApiError` has
+ * carried `refused` since the day a `502` was read as a signed-out session; the
+ * screens had not started asking.
+ */
+export type FailureKind = "refused" | "unreachable";
+
+export function failureKind(err: unknown): FailureKind {
+  return err instanceof ApiError && err.refused ? "refused" : "unreachable";
+}

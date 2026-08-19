@@ -1324,10 +1324,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/tenant/audits`, { waitUntil: "networkidle" });
       await settled(page);
-      await shows(page, "감사 로그 데이터를 불러올 수 없습니다");
+      // `SC-CAP-07` split this message in two: aborting every request is the
+      // unreachable half, and the refused half now names the capability. The
+      // landmark moved with the copy, which is what a copy landmark does.
+      await shows(page, "감사 로그를 불러오지 못했습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("현재 기록된 감사 로그 데이터가 없습니다");
-      expect(downText).toContain("감사 로그 데이터를 불러올 수 없습니다");
+      expect(downText).toContain("감사 로그를 불러오지 못했습니다");
     } finally {
       await context.close().catch(() => {});
     }
@@ -2704,6 +2707,64 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       emptySaidUnknown: 0,
     });
   }, 40000);
+
+  /**
+   * SC-CAP-07 — refused and unreachable are different sentences.
+   *
+   * Every list on this console caught its error and drew one message: the
+   * server did not answer. Measured with a member session on /creator/register
+   * — the server answered `403`, and the screen told them the backend was down.
+   * The audit screen wrote both into one string, "연결 실패 또는 권한 오류",
+   * which is the same problem with the ambiguity made explicit.
+   *
+   * `ApiError.refused` has carried the distinction since a `502` was read as a
+   * signed-out session and threw operators at a login form. The screens had not
+   * started asking.
+   *
+   * Both directions, in one scenario: a `403` must not be drawn as silence, and
+   * a server that never answers must not be drawn as a permission problem.
+   */
+  it("[SC-CAP-07] says refused when refused and unreachable when unreachable", async () => {
+    const read = async (mode: "refused" | "unreachable") => {
+      const { page, context } = await createAuthedPage("/creator/register");
+      try {
+        await page.route("**/api/v1/admin/keys/pending", (route) =>
+          mode === "refused"
+            ? route.fulfill({
+                status: 403,
+                contentType: "application/json",
+                body: JSON.stringify({ error: "Missing capability: key.approve", capability: "key.approve", scope: "*" }),
+              })
+            : route.abort(),
+        );
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        return ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const refused = await read("refused");
+    const unreachable = await read("unreachable");
+    const saysCapability = (t: string) => /key\.approve|권한이 없습니다|may not read/i.test(t);
+    const saysSilent = (t: string) => /서버 연결 실패|서버가 답하지|did not answer|연결 실패/i.test(t);
+
+    expect(
+      {
+        refusedSaysCapability: saysCapability(refused),
+        refusedSaysSilent: saysSilent(refused),
+        unreachableSaysCapability: saysCapability(unreachable),
+        unreachableSaysSilent: saysSilent(unreachable),
+      },
+      "a refusal was drawn as silence, or silence was drawn as a permission problem",
+    ).toEqual({
+      refusedSaysCapability: true,
+      refusedSaysSilent: false,
+      unreachableSaysCapability: false,
+      unreachableSaysSilent: true,
+    });
+  }, 30000);
 
   /**
    * SC-LOAD-06 — the answer that has not come back yet.
