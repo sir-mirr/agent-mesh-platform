@@ -53,9 +53,12 @@
  * ## What this deliberately does not do
  *
  * It does not check any screen. Nothing here knows the front end exists, and
- * that is on purpose — this repository cannot see `packages/platform-web`, which
- * lives in a clone whose branch has never been pushed. A check written here
- * against a screen would be a check that cannot run.
+ * that is still the split, though not for the reason written here first: the
+ * admin front end used to live in a clone whose branch had never been pushed,
+ * and `packages/platform-web` is in this repository now. What survives the move
+ * is the separation of concerns — this file produces data and states what the
+ * screens must show; whoever checks a screen reads `--emit` and owns the
+ * assertion.
  */
 
 import { generateKeyPairSync, randomUUID, randomInt, sign as edSign } from "node:crypto";

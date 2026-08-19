@@ -741,3 +741,42 @@ health check then blamed the hub for.
 does (`scripts/tree-lock.ts`) — it builds from the tree and a mutated guard would
 produce failures that look like defects in whatever called it. These three
 commands do not check, so do not start them mid-mutation either.
+
+---
+
+## 8. Give the screens something to judge
+
+Two operator screens cannot be measured on an empty mesh, and that is not a
+defect in either of them: `/creator/register` lists keys awaiting a decision and
+`/creator/lease-queue` lists messages nobody has taken. With neither present they
+draw the same thing whether the backend is reachable or not, and an audit against
+that stack correctly reports "cannot judge" — twice, and then for every check
+downstream of them.
+
+`agent-mesh-local-pm` measured the cost of not knowing this: their sweep judged
+13 pairs against an empty stack and **32 against a seeded one**, same code, same
+tool. Screens fully judged went from 0 of 14 to 11.
+
+```bash
+bun run e2e:harness -- --ready-file /tmp/agent-mesh-fe-fixture.json --keep-state
+bun run fixtures:screens -- --emit /tmp/agent-mesh-fe-expect.json
+```
+
+The first brings up a real hub and http on ephemeral ports and writes the ready
+file. **It seeds nothing** — the second reads that file and does the seeding:
+pending keys that are deliberately never approved, and messages queued for a
+recipient that never collects them.
+
+The counts **change every run**, on purpose. Seeding one of each would leave the
+cheapest lie undetected — a screen rendering `1` from a constant passes, and
+every front-end defect found here on 2026-08-18 was of exactly that shape
+(`139` sessions, `1024` MB, `99.99%`, a bell reading "2 awaiting" forever). None
+of them failed a typecheck, because a constant is perfectly well-typed.
+
+`--emit` writes what the screens must show, as JSON, so a check compares against
+a file rather than a number somebody copied out of a terminal an hour ago. Read
+the whole expectation, not one field: any single count can repeat.
+
+To seed a plain identity without any of this — one that just needs to exist —
+use the provisioning call from § 7. It is the hub's route, not the http server's;
+`POST /api/v1/agents` on the http port answers `404`.

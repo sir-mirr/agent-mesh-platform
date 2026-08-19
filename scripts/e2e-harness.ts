@@ -15,6 +15,14 @@
  *
  *   { base_url, rpc_ws, api_http, admin_test_handle, state_dir, pid }
  *
+ * **It brings up an empty mesh.** No agents, no pending keys, no queued mail —
+ * a runner that needs those seeds them itself, and `scripts/fixtures/fe-screens.ts`
+ * (`bun run fixtures:screens`) is the one that does it against this harness's
+ * ready file. `agent-mesh-local-pm` expected the harness to carry data, measured
+ * an empty `keys/pending` on it, and spent a round on the wrong hypothesis
+ * (mail #1126) — the two are separate on purpose, and separate is only useful
+ * when it is written down.
+ *
  * `admin_test_handle` carries the credentials for the local admin account, so a
  * scenario can approve a key. That is the one thing a runner cannot do for
  * itself: § 10.2 puts approval behind the admin gate precisely so that a caller

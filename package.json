@@ -27,7 +27,8 @@
     "e2e:harness": "bun scripts/e2e-harness.ts",
     "mail": "bun scripts/mesh-mail.ts",
     "collect-orphans": "bun scripts/collect-orphan-blobs.ts",
-    "mutation-check": "bun scripts/mutation-check.ts"
+    "mutation-check": "bun scripts/mutation-check.ts",
+    "fixtures:screens": "bun scripts/fixtures/fe-screens.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.1.13",
