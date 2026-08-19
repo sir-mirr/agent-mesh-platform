@@ -20,12 +20,11 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { freePort, startMesh, type Mesh } from "./harness";
+import { freePort, openTestDb, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const UNITS = join(REPO_ROOT, "ops", "systemd");
@@ -242,14 +241,14 @@ test("an account seeded before the flag existed is marked only if its password i
     return up;
   };
   const flag = () => {
-    const db = new Database(dbPath);
+    const db = openTestDb(dbPath, { readonly: true });
     const row = db.prepare(`SELECT must_change_password AS f FROM local_users WHERE username = 'admin'`)
       .get() as { f: number } | undefined;
     db.close();
     return row?.f;
   };
   const setRow = async (password: string) => {
-    const db = new Database(dbPath);
+    const db = openTestDb(dbPath, { readwrite: true });
     db.prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = 'admin'`)
       .run(await Bun.password.hash(password, { algorithm: "bcrypt" }));
     db.close();
