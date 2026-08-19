@@ -58,11 +58,15 @@ describe("Heartbeat", () => {
     const a = socket();
     online.set("agent-a", a);
 
-    for (let i = 0; i < 5; i++) {
+    // Twenty rather than a handful, because this is where "many sweeps" is
+    // proven. The integration test used to carry that claim by sleeping for
+    // eight real intervals, which measured whether the machine could answer a
+    // ping on time as much as whether the hub kept the socket.
+    for (let i = 0; i < 20; i++) {
       heartbeat.sweep();
       heartbeat.alive(a);
     }
-    expect(a.pings).toBe(5);
+    expect(a.pings).toBe(20);
     expect(a.closed).toEqual([]);
     expect(online.get("agent-a")).toBe(a);
   });

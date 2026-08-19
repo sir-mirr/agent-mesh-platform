@@ -171,10 +171,20 @@ describe("heartbeat", () => {
     );
     expect(await waitFor(async () => (await onlineCount(hub)) === 1)).toBe(true);
 
-    // Long enough for many sweeps. A heartbeat that dropped healthy sockets
-    // would be a far worse regression than the one it replaces.
-    await Bun.sleep(SWEEP_MS * 8);
-    expect(await onlineCount(hub)).toBe(1);
+    // Three sweeps: grace, ping, judge. This test is here for the one thing
+    // the unit tests cannot fake — that a real socket's automatic pong reaches
+    // the hub and counts as proof of life — and one judge cycle shows it.
+    //
+    // **Not eight.** Sleeping for eight intervals asserted "survives many
+    // sweeps" by holding the machine to a schedule: the pong comes from this
+    // process, so a stalled event loop under load produces a drop that is
+    // correct behaviour and a red test. `Heartbeat` proves the many-sweep
+    // property directly, twenty sweeps with no clock in it.
+    await Bun.sleep(SWEEP_MS * 3);
+    expect(
+      await onlineCount(hub),
+      "the peer was dropped despite answering; if the machine was loaded, its pong may simply have been late — check `hub.output()` below and what else was running",
+    ).toBe(1);
     expect(hub.output()).not.toContain("chatty-agent did not answer");
 
     ws.close();
