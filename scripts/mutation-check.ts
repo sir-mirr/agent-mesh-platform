@@ -1107,6 +1107,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["lists exactly the agents /api/v1/agents returned for that session"],
   },
   {
+    id: "type-labelled-as-membership",
+    defect:
+      "Three screens printed an agent's `type` — the kind of agent — under a heading reading 소속, its membership, one of them with `|| \"General\"` invented for anything the server had not typed. The half-fix was worse than the defect: the agent list and the playground's sender were corrected and its recipient was not, leaving one screen calling the same field two names, which a reader takes as two facts. Found by agent-mesh-local-pm reading the diff rather than the issue.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "<span>종류: <strong>{selectedRecipientObj.group}</strong></span>",
+    to: "<span>소속: <strong>{selectedRecipientObj.group ?? agentsList[0]?.group}</strong></span>",
+    suite: "test/greppable.test.ts",
+    expect: ["no screen calls an agent's type its membership"],
+  },
+  {
     id: "counts-without-a-window",
     defect:
       "Refusal counts served without saying when counting began. The hub holds them in memory and they reset with it, so `0 refusals` and `this hub started ninety seconds ago` are the same figure — and on a screen the second one looks like health. The window has to travel with the numbers or the numbers cannot be read.",

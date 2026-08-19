@@ -672,7 +672,17 @@ function AgentOperatorDashboard() {
                     </span>
                   </div>
                   <div style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 2 }}>
-                    소속: <strong>{agt.type || "General"}</strong> · 상태: {agt.status === "active" ? "온라인" : "오프라인"}
+                    {/*
+                      Three things were wrong in one line. The label said 소속 —
+                      membership — over `agt.type`, which is the kind of agent;
+                      `|| "General"` invented a membership for anything the
+                      server did not type; and the status collapsed an absent
+                      value to 오프라인, so an agent the list says nothing about
+                      read as one that is down. `GET /api/v1/agents` sends no
+                      status at all.
+                    */}
+                    종류: <strong>{agt.type ?? "—"}</strong> · 상태:{" "}
+                    {agt.status === "active" ? "온라인" : agt.status === "inactive" ? "오프라인" : "미보고"}
                   </div>
                 </div>
 

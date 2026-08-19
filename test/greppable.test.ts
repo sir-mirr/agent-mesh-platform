@@ -296,3 +296,46 @@ describe("cryptographic identifiers", () => {
     expect(offenders, "a literal announces a digest and is not one").toEqual([]);
   });
 });
+
+/**
+ * No screen labels an agent's `type` as its membership.
+ *
+ * `type` is the kind of agent and a group is what it belongs to. Three screens
+ * printed the first under a heading naming the second, one of them with
+ * `|| "General"` invented for anything the server had not typed — so an agent
+ * with no type read as a member of a group called General.
+ *
+ * **The half-fix was worse than the whole defect.** The agent list and the
+ * playground's sender were corrected while the playground's recipient and the
+ * dashboard row were not, which left one screen calling the same field two
+ * different names — a reader takes that as two different facts. agent-mesh-
+ * local-pm found the leftovers by reading the diff rather than the issue.
+ *
+ * Deliberately narrow. It cannot tell whether a label matches its value in
+ * general; it knows this one pairing, which is the one that has recurred.
+ */
+describe("labels and the values under them", () => {
+  test("no screen calls an agent's type its membership", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const root = join(REPO_ROOT, "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const path = join(dir, name);
+        return statSync(path).isDirectory() ? walk(path) : path.match(/\.tsx?$/) ? [path] : [];
+      });
+
+    const offenders: string[] = [];
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) return;
+        // 소속 — membership — on the same line as a `.type` being rendered.
+        if (/소속/.test(line) && /\.type\b/.test(line)) {
+          offenders.push(`${file.slice(REPO_ROOT.length)}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    expect(offenders, "a screen is calling an agent's kind its group").toEqual([]);
+  });
+});

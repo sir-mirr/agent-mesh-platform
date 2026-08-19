@@ -281,7 +281,7 @@ export function PlaygroundPage() {
               </select>
               {selectedRecipientObj && (
                 <div style={{ fontSize: "0.74rem", color: "var(--color-text-muted)", display: "flex", gap: 8, marginTop: 2 }}>
-                  <span>소속: <strong>{selectedRecipientObj.group}</strong></span>
+                  <span>종류: <strong>{selectedRecipientObj.group}</strong></span>
                   <span>상태: <strong style={{ color: selectedRecipientObj.status === "online" ? "var(--color-success)" : "var(--color-text-muted)" }}>{selectedRecipientObj.status?.toUpperCase() ?? "미보고"}</strong></span>
                 </div>
               )}
