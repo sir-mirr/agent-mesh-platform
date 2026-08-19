@@ -27,10 +27,16 @@ import { fetchGroups, type GroupItem } from "@/api/groups.ts";
  * /platform/telemetry already uses.
  *
  * **Shared rather than repeated.** The group panel and the operator panel each
- * had their own copy, and only the operator's is reachable by a test session —
- * `/dashboard` picks a panel from `user.role`, which resolves to `admin` or to
- * `AGENT_OPERATOR` and never to `GROUP_ADMIN`. Two copies meant one measured
- * card and one that could regress in silence.
+ * had their own copy, and a mutation planted on this expression reaches only the
+ * first of them — `replace()` with a string argument changes one occurrence. One
+ * copy was measured and the other could regress in silence.
+ *
+ * An earlier version of this comment said the group panel is unreachable by any
+ * session. That is wrong and was never measured: `LoginPage` offers a role
+ * `<select>` and passes the choice to `loginWithLocal`, so all four panels open.
+ * What *was* measured is narrower — the server never hands out a role other than
+ * `admin`, and everything else resolves to `AGENT_OPERATOR`. Two different
+ * sentences, and the unmeasured one is the one that got written down.
  */
 function queueValue(total: number | null | undefined): string {
   return total != null ? String(total) : "— 미측정";

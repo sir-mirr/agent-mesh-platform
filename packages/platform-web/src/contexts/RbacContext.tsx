@@ -1,10 +1,17 @@
 import React, { createContext, useContext } from "react";
 import { useAuth } from "./AuthContext.tsx";
-import type { Capability, UserRole } from "@/types/auth.ts";
+import type { Capability } from "@/types/auth.ts";
 
+/**
+ * `role` used to sit here beside these two and nothing ever read it.
+ *
+ * It is worth naming rather than deleting quietly: authorisation on this screen
+ * layer is capability-only — `GuardedRoute` and the sidebar both ask
+ * `hasCapability`, and neither has ever asked the role. A role exposed from the
+ * RBAC context reads as though it were part of that decision.
+ */
 interface RbacContextType {
   capabilities: Capability[];
-  role: UserRole | null;
   hasCapability: (capability: Capability) => boolean;
 }
 
@@ -14,7 +21,6 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
   const capabilities = user?.capabilities || [];
-  const role = user?.role || null;
 
   const hasCapability = (capability: Capability): boolean => {
     if (!user) return false;
@@ -27,7 +33,6 @@ export function RbacProvider({ children }: { children: React.ReactNode }) {
     <RbacContext.Provider
       value={{
         capabilities,
-        role,
         hasCapability,
       }}
     >
