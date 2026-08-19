@@ -988,6 +988,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["and is not, over plain http"],
   },
   {
+    id: "password-gate-only-redirects",
+    defect:
+      "A first-login password change enforced by the screen alone is decoration: the same cookie in `curl` reaches everything. That is the shape removed from four screens in this repository on the day this was written, and the front end declined to build against it until the server refused first.",
+    file: "packages/http/src/main.ts",
+    from: "  if (payload && mustChangePassword(payload.github_login)) {",
+    to: "  if (false) {",
+    suite: "test/http.test.ts",
+    expect: ["is refused everywhere else, by the server and not by a redirect", "a flagged session reached a route it should not"],
+  },
+  {
+    id: "password-gate-never-opens",
+    defect:
+      "A gate that refuses every session forever satisfies the test that it refuses one. The change has to let the session through, and the old password has to stop working — otherwise the change is a no-op that reports success.",
+    file: "packages/http/src/db.ts",
+    from: "    .prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = ?`)",
+    to: "    .prepare(`UPDATE local_users SET password_hash = password_hash, must_change_password = 1 WHERE username = ?`)",
+    suite: "test/http.test.ts",
+    expect: ["can change it, and is then let through"],
+  },
+  {
     id: "admin-password-ignores-the-deployment",
     defect:
       "The seeded `admin` account took the password `admin` and nothing else could be stated. That is the quickstart's login and every test's, so it is right on the machine it was written for and a published password on any host others can reach — where the login form filled both boxes in for the visitor until the front end stopped doing it.",

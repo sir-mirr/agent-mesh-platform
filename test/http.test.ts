@@ -86,6 +86,76 @@ describe("health", () => {
   });
 });
 
+describe("a session that must change its password", () => {
+  // The harness clears this flag once per mesh, so it is set again here — the
+  // gate is the thing under test and a fixture standing past it proves nothing.
+  const flag = (on: boolean) => {
+    const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
+    db.prepare(`UPDATE local_users SET must_change_password = ?`).run(on ? 1 : 0);
+    db.close();
+  };
+  const login = async () => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "username=admin&password=admin",
+      redirect: "manual",
+    });
+    return (res.headers.get("set-cookie") ?? "").split(";")[0]!;
+  };
+
+  test("is refused everywhere else, by the server and not by a redirect", async () => {
+    // A screen that redirects is what the operator sees. It is not what stops
+    // `curl` holding the same cookie, and a guard that only moves a page is the
+    // shape this repository removed from four screens today.
+    flag(true);
+    try {
+      const cookie = await login();
+      const res = await get("/api/v1/agents", cookie);
+      expect(res.status, "a flagged session reached a route it should not").toBe(403);
+      expect((await res.json()).must_change_password, "the refusal did not say why").toBe(true);
+
+      // And it can still ask why, which is the only reason the console can act.
+      const me = await (await get("/auth/me", cookie)).json();
+      expect(me.must_change_password).toBe(true);
+    } finally {
+      flag(false);
+    }
+  });
+
+  test("can change it, and is then let through", async () => {
+    // The other half. Without it a server that refused every session forever
+    // would pass the test above.
+    flag(true);
+    const cookie = await login();
+    try {
+      const wrong = await fetch(`${mesh.http.url}/auth/local/password`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ current: "not-it", next: "a-longer-password" }),
+      });
+      expect(wrong.status, "the current password was not checked").toBe(403);
+
+      const ok = await fetch(`${mesh.http.url}/auth/local/password`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ current: "admin", next: "a-longer-password" }),
+      });
+      expect(ok.status).toBe(200);
+
+      expect((await get("/api/v1/agents", cookie)).status, "still refused after the change").toBe(200);
+
+      // The old password is gone, which is what makes the change a change.
+      expect(await login(), "`admin` still signs in after it was replaced").toBe("");
+    } finally {
+      const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"), { readwrite: true });
+      db.prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0`)
+        .run(await Bun.password.hash("admin", { algorithm: "bcrypt" }));
+      db.close();
+    }
+  });
+});
+
 describe("the session cookie", () => {
   const login = (headers: Record<string, string> = {}) =>
     fetch(`${mesh.http.url}/auth/local`, {

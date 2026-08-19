@@ -100,6 +100,16 @@ export function getDb(): Database {
     )
   `)
 
+  // Added rather than assumed: a database written before this existed has the
+  // table already, so the `CREATE TABLE IF NOT EXISTS` above does nothing and
+  // the column would be missing. `PRAGMA table_info` lists what is there.
+  {
+    const columns = _db.prepare(`PRAGMA table_info(local_users)`).all() as Array<{ name: string }>
+    if (!columns.some((c) => c.name === 'must_change_password')) {
+      _db.exec(`ALTER TABLE local_users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`)
+    }
+  }
+
   ensureAgentRegistrySchema(_db)
   importLegacyRegistry(_db)
 
@@ -514,6 +524,11 @@ export async function seedLocalUsers(): Promise<void> {
     const supplied = process.env.AGENT_MESH_ADMIN_PASSWORD
     const hash = await Bun.password.hash(supplied ?? 'admin', { algorithm: 'bcrypt' })
     createLocalUser('admin', hash, 'Admin', 'admin')
+    // **Whatever password was used.** The owner's decision is that the first
+    // login always lands on the change screen; a stated password is an
+    // *initial* one, not a final one. Marking it only for the default would
+    // leave every deployment's first password permanent.
+    db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
     if (supplied) {
       console.log('[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD')
     } else {
@@ -548,4 +563,39 @@ export function closeDb(): void {
     _db.close()
     _db = null
   }
+}
+
+/**
+ * Set a local user's password, and clear the first-login flag.
+ *
+ * Named `set` rather than `change` because `naming.test.ts` reads function
+ * names for whether they admit to writing, and `change` is not in that
+ * vocabulary. It caught this one on the run that added it.
+ *
+ * The current password is required even though the caller already holds a
+ * session: a screen left open is not a decision to hand the account over, and
+ * this is the one route a flagged session can reach.
+ */
+export async function setLocalPassword(
+  username: string,
+  current: string,
+  next: string,
+): Promise<'ok' | 'wrong-current' | 'no-user'> {
+  const user = getLocalUser(username)
+  if (!user) return 'no-user'
+  if (!(await Bun.password.verify(current, user.password_hash))) return 'wrong-current'
+
+  const hash = await Bun.password.hash(next, { algorithm: 'bcrypt' })
+  getDb()
+    .prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = ?`)
+    .run(hash, username)
+  return 'ok'
+}
+
+/** Whether this account still has to change its password before doing anything else. */
+export function mustChangePassword(username: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT must_change_password AS flag FROM local_users WHERE username = ?`)
+    .get(username) as { flag: number } | undefined
+  return row?.flag === 1
 }

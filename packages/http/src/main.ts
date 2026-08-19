@@ -61,7 +61,7 @@ import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { readPushFailure } from './push'
-import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -827,6 +827,68 @@ app.get('/auth/github/callback', async (c) => {
   }
 })
 
+/**
+ * A session that has to change its password can do that and nothing else.
+ *
+ * **The server refuses, not the screen.** A redirect is what the operator sees;
+ * it is not what stops `curl` with the same cookie. A guard that only moves a
+ * page is the shape this repository removed from four screens today — it looks
+ * like authorisation and is decoration.
+ *
+ * Three routes stay open, and each for a reason: the change itself, `/auth/me`
+ * so the console can ask *why* it is being refused, and logout so the session
+ * can simply be abandoned. Everything else answers `403` with the same flag, so
+ * a client learns the reason from whichever request it happened to make.
+ */
+const OPEN_WHILE_FLAGGED = new Set(['/auth/local/password', '/auth/me', '/auth/logout'])
+
+app.use('*', async (c, next) => {
+  const path = new URL(c.req.url).pathname
+  if (OPEN_WHILE_FLAGGED.has(path) || path.startsWith('/auth/local') || path === '/login') return next()
+
+  const payload = await extractJwt(c)
+  if (payload && mustChangePassword(payload.github_login)) {
+    return c.json(
+      { error: 'This account must change its password before anything else', must_change_password: true },
+      403,
+    )
+  }
+  return next()
+})
+
+/**
+ * Change the password of the signed-in local account.
+ *
+ * The current password is asked for again even though the caller holds a
+ * session: a screen left open is not a decision to hand the account over.
+ */
+app.post('/auth/local/password', async (c) => {
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+
+  let body: any
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400)
+  }
+  const current = body?.current
+  const next = body?.next
+  if (typeof current !== 'string' || typeof next !== 'string' || next.length < 8) {
+    return c.json({ error: '`current` and `next` are required, and `next` must be at least 8 characters' }, 400)
+  }
+  if (next === current) {
+    return c.json({ error: '`next` must differ from `current`' }, 400)
+  }
+
+  const outcome = await setLocalPassword(payload.github_login, current, next)
+  if (outcome === 'no-user') return c.json({ error: 'no local account for this session' }, 404)
+  if (outcome === 'wrong-current') return c.json({ error: '`current` is not this account\'s password' }, 403)
+
+  console.log(`[http-server] ${payload.github_login} changed their password`)
+  return c.json({ ok: true, must_change_password: false })
+})
+
 app.get('/auth/me', async (c) => {
   const payload = await extractJwt(c)
   if (!payload) {
@@ -840,6 +902,9 @@ app.get('/auth/me', async (c) => {
 
   const approved = isUserApproved(user.github_login, user.role)
   return c.json({
+    // Why a session that is refused everywhere else is refused. Answered here
+    // because this is one of the three routes such a session can still reach.
+    must_change_password: mustChangePassword(user.github_login),
     github_id: user.github_id,
     github_login: user.github_login,
     role: user.role,

@@ -264,6 +264,24 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
       });
       http = addressable(httpProc, `http://127.0.0.1:${httpPort}`);
       await waitForHealth(`${http.url}/api/v1/health`);
+
+      /**
+       * Past the first-login password gate, in the file rather than through the
+       * product.
+       *
+       * The seeded account is created with `must_change_password`, so a session
+       * that has not changed it is refused everywhere but three routes
+       * (§ I-085). Every suite here wants the session after that point.
+       *
+       * **Cleared, not performed.** Doing the change for real would rotate the
+       * password out from under the twenty-odd tests that sign in with
+       * `admin`/`admin` themselves, and the harness would be deciding what
+       * their credentials are. The gate has its own tests; this is a fixture
+       * standing where a first login already happened.
+       */
+      const httpDb = new Database(join(stateDir, "agent-mesh.db"));
+      httpDb.prepare(`UPDATE local_users SET must_change_password = 0`).run();
+      httpDb.close();
     } else {
       http = {
         port: 0,
