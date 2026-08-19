@@ -1380,6 +1380,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["no start command found for the hub in running-locally.md"],
   },
   {
+    id: "login-prefills-a-credential",
+    defect:
+      "The login form arrived with `admin` typed into both fields, so one click signed anybody who reached the page in as the platform administrator. In a lab that is convenience; on a deployment it is the account name and the password printed on the login screen. The same half-measure as the 시뮬레이션 역할 picker: neither raised a privilege, and both handed out an identity nobody proved they had.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: '  const [username, setUsername] = useState("");',
+    to: '  const [username, setUsername] = useState("admin");',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-06", "the login screen still lets a person pick or be handed what they are"],
+  },
+  {
+    id: "login-placeholder-names-the-account",
+    defect:
+      "The weaker version of the same thing: with the prefill gone, the username field's placeholder still read `admin`, so the screen went on printing the account name to anyone who loaded it.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: '              placeholder="아이디"',
+    to: '              placeholder="admin"',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-06", "the login screen still lets a person pick or be handed what they are"],
+  },
+  {
     id: "login-picks-its-own-role",
     defect:
       "The login screen offered a `<select>` labelled 시뮬레이션 역할 whose top option read 👑 플랫폼 관리자, and passed the choice to `loginWithLocal`. It granted nothing — `GuardedRoute` and the sidebar both ask `hasCapability`, and `POST /auth/local` reads only the username and password — but the sidebar drew the choice as the person's title, so a deployment to a real server showed a self-declared platform administrator.",

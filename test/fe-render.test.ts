@@ -2186,14 +2186,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   it("[SC-AUTH-06] offers no role picker, and the role that arrives is the server's", async () => {
     await withUnauthedPage("/login", async ({ page }) => {
       const body = (await page.locator("#root").innerText()) ?? "";
+      const user = page.locator("input[type='text'], input[name='username']").first();
+      const pass = page.locator("input[type='password']").first();
       expect(
         {
           picker: (await page.locator("select").count()) > 0,
           label: /시뮬레이션 역할|RBAC Role/.test(body),
           claim: /플랫폼 관리자 \(Platform Admin/.test(body),
+          // The other half of the same thing: the form used to arrive with a
+          // working credential typed into it, and the placeholder printed the
+          // account name. Neither raised a privilege; both handed out an
+          // identity nobody proved they had.
+          typed: ((await user.inputValue()) + (await pass.inputValue())).length > 0,
+          hint: (await user.getAttribute("placeholder")) === "admin",
         },
-        "the login screen still lets a person pick what they are",
-      ).toEqual({ picker: false, label: false, claim: false });
+        "the login screen still lets a person pick or be handed what they are",
+      ).toEqual({ picker: false, label: false, claim: false, typed: false, hint: false });
 
       // And it still signs in — the half that a "no select on the page" check
       // cannot see on its own.

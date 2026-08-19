@@ -35,8 +35,17 @@ interface PacketDef {
 export function LoginPage() {
   const navigate = useNavigate();
   const { loginWithLocal, loginWithGitHub } = useAuth();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin");
+  // **Empty, because this screen is served to a real server's operators.**
+  //
+  // They arrived as `useState("admin")` — the form came up with a working
+  // credential already typed, and one click signed anybody who reached the page
+  // in as the platform administrator. In a lab that is convenience; on a
+  // deployment it is the account name and the password printed on the login
+  // screen. It is the other half of the 시뮬레이션 역할 picker removed alongside
+  // it: neither raised a privilege, and both handed out an identity nobody
+  // proved they had.
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -636,7 +645,7 @@ export function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="admin"
+              placeholder="아이디"
               autoComplete="username"
               style={inputStyle}
               required
