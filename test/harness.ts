@@ -222,7 +222,7 @@ export interface StartOptions {
 }
 
 /** Start a mesh on a fresh state directory. Always pair with `stop()`. */
-export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
+async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
   const withHttp = opts.withHttp ?? true;
   const stateDir = mkdtempSync(join(tmpdir(), "agent-mesh-it-"));
   const hubPort = await freePort();
@@ -245,11 +245,12 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
   const hub: Service = addressable(hubProc, `http://127.0.0.1:${hubPort}`);
 
   let http: Service;
+  let httpProc: ReturnType<typeof spawnService> | undefined;
   try {
     await waitForHealth(`${hub.url}/health`);
 
     if (withHttp) {
-      const httpProc = spawnService("packages/http/src/main.ts", httpPort, {
+      httpProc = spawnService("packages/http/src/main.ts", httpPort, {
         ...shared,
         AGENT_MESH_HTTP_PORT: String(httpPort),
         AGENT_MESH_HUB_URL: `ws://127.0.0.1:${hubPort}/ws`,
@@ -278,8 +279,16 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     }
   } catch (err) {
     // Surface what the process said; a bare timeout tells you nothing.
+    //
+    // **Both of them.** This appended the hub's output alone, so an http server
+    // that died on startup was reported with the hub's healthy log underneath
+    // it — and the retry above, which reads this message for `EADDRINUSE`,
+    // could only ever see half the races.
     hubProc.stop();
-    throw new Error(`${err instanceof Error ? err.message : String(err)}\n--- hub output ---\n${hubProc.output()}`);
+    httpProc?.stop();
+    const said = err instanceof Error ? err.message : String(err);
+    const httpSaid = httpProc ? `\n--- http output ---\n${httpProc.output()}` : "";
+    throw new Error(`${said}\n--- hub output ---\n${hubProc.output()}${httpSaid}`);
   }
 
   return {
@@ -312,6 +321,38 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
 
 /** Provision an identity, which every connecting agent must have (SPEC § 8.1). */
 /** A real Ed25519 public key, base64url — SPKI wraps the raw 32 bytes. */
+/**
+ * The same, retried when another process took the port between choosing it and
+ * binding it.
+ *
+ * `freePort` binds an ephemeral port, reads its number and lets it go, so the
+ * number is free at the instant it is returned and not a moment longer. One
+ * suite alone never loses that gap. Two — this one and a second checkout's,
+ * which is the ordinary state of this machine — do, and the child then exits
+ * with `EADDRINUSE` while every test in the file reports `Unable to connect`.
+ *
+ * That is not merely a red file. `bun test` counted such a run as **`1 fail`**
+ * while thirty tests in `audit.test.ts` never ran at all, so the number at the
+ * bottom of the suite was smaller than it looked and said nothing about it.
+ *
+ * Narrow on purpose: only an exit whose output names `EADDRINUSE` is retried.
+ * A service that crashes for its own reasons must still fail loudly and once.
+ */
+export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await startMeshOnce(opts);
+    } catch (err) {
+      last = err;
+      const said = err instanceof Error ? err.message : String(err);
+      if (!said.includes("EADDRINUSE")) throw err;
+      console.error(`[harness] lost the port race (attempt ${attempt}/3); taking another port`);
+    }
+  }
+  throw last;
+}
+
 export interface KeyPair {
   /** Raw Ed25519 public key, base64url — what `public_key` carries. */
   publicKey: string;
