@@ -1005,3 +1005,127 @@ describe("who may fetch an attachment", () => {
     expect(res.status).toBe(403);
   });
 });
+
+/**
+ * What the key-proposal stream says on its first two frames.
+ *
+ * **The live half is not here, deliberately.** `test/key-proposals.test.ts`
+ * drives a real server and asserts that a proposal made while an operator is
+ * watching arrives without a reload, and that an unauthenticated caller is
+ * refused — both against a socket, which is the only place those mean
+ * anything. Repeating them in-process would catch nothing and would trade a
+ * real assertion for a timer.
+ *
+ * What no test anywhere pins is the shape of what the stream *says*, and that
+ * is where its one shipped defect lived: § 9.2 called this route "a second
+ * source for the same fact as `/api/v1/admin/keys/pending`" without saying
+ * what either one sends, so the rename moved the list and left the stream, and
+ * the bell read `keys` from one channel and `proposals` from the other.
+ *
+ * In-process `app.fetch` hands back the very `ReadableStream` the handler
+ * built, and every `push()` is its own `enqueue` — so one `reader.read()` is
+ * one SSE frame, in order, with no server and no socket in between.
+ */
+describe("what the key stream says first", () => {
+  const WATCHED = "in-process-stream-proposer";
+
+  /** The first `n` frames, decoded, then the stream is dropped. */
+  const frames = async (res: Response, n: number): Promise<string[]> => {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const out: string[] = [];
+    try {
+      while (out.length < n) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        out.push(decoder.decode(value));
+      }
+    } finally {
+      // Cancelling is what clears the 20 s heartbeat and stops the watcher;
+      // left open they outlive the test and the file never exits.
+      await reader.cancel();
+    }
+    return out;
+  };
+
+  beforeAll(() => {
+    agentsDb()
+      .prepare(`INSERT OR REPLACE INTO agent_keys (fingerprint, identity, public_key, status)
+                VALUES (?, ?, ?, 'pending')`)
+      .run("sha256:in-process-stream-pending", WATCHED, "in-process-stream-public-key");
+  });
+
+  test("answers as a stream, and tells a proxy not to hold it", async () => {
+    const res = await asAdmin("/api/v1/admin/keys/stream", "GET");
+    expect(res.status).toBe(200);
+    const headers = {
+      type: res.headers.get("content-type") ?? "",
+      // Without this an nginx in front buffers the response and the operator
+      // sees nothing until the connection closes — which for a stream is
+      // never. The symptom is a bell that works locally and not in production.
+      accel: res.headers.get("x-accel-buffering") ?? "",
+    };
+    await res.body?.cancel();
+    expect({ stream: headers.type.includes("text/event-stream"), accel: headers.accel })
+      .toEqual({ stream: true, accel: "no" });
+  });
+
+  test("calls the queue `keys`, the name the list route uses", async () => {
+    const res = await asAdmin("/api/v1/admin/keys/stream", "GET");
+    const [, second] = await frames(res, 2);
+    const payload = JSON.parse(second!.slice(second!.indexOf("data: ") + 6));
+    // Two channels for one fact have to call it the same thing. They did not,
+    // and the bell went quiet for exactly as long as nobody compared them.
+    expect({ event: second!.startsWith("event: snapshot"), key: Object.keys(payload) })
+      .toEqual({ event: true, key: ["keys"] });
+  });
+
+  test("hands what was already waiting as a snapshot, not as arrivals", async () => {
+    const res = await asAdmin("/api/v1/admin/keys/stream", "GET");
+    const [, second] = await frames(res, 2);
+    const { keys } = JSON.parse(second!.slice(second!.indexOf("data: ") + 6));
+    // A backlog replayed as `key-proposed` announces keys that have been
+    // sitting for a day as though they had just landed — an alert for
+    // something nobody is about to do anything about.
+    expect({
+      event: second!.split("\n")[0],
+      present: (keys as Array<{ identity: string }>).some(k => k.identity === WATCHED),
+    }).toEqual({ event: "event: snapshot", present: true });
+  });
+
+  test("sends no public key material to the browser", async () => {
+    const res = await asAdmin("/api/v1/admin/keys/stream", "GET");
+    const [, second] = await frames(res, 2);
+    const { keys } = JSON.parse(second!.slice(second!.indexOf("data: ") + 6));
+    const mine = (keys as Array<Record<string, unknown>>).find(k => k.identity === WATCHED)!;
+    // An operator decides on a *fingerprint*. The key itself is not part of
+    // that decision and does not need to be in a console, a browser cache or
+    // anyone's devtools history.
+    expect({ fields: Object.keys(mine).sort() })
+      .toEqual({ fields: ["fingerprint", "identity", "proposed_at", "type"] });
+  });
+
+  test("names the grant a refused operator is missing", async () => {
+    const admitted = await asAdmin("/api/v1/admin/users", "POST", { username: "in-process-nokeys" });
+    const { temporary_password } = await admitted.json();
+    const login = await call("/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: "in-process-nokeys", password: temporary_password }).toString(),
+    });
+    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    await call("/auth/local/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: theirs },
+      body: JSON.stringify({ current: temporary_password, next: "in-process-nokeys-pw" }),
+    });
+
+    const res = await call("/api/v1/admin/keys/stream", { headers: { cookie: theirs } });
+    expect(res.status).toBe(403);
+    // An operator told which grant is missing can ask for that one; one told
+    // "forbidden" asks for everything.
+    const body = await res.json();
+    expect({ capability: body.capability, mentions: String(body.error).includes(body.capability) })
+      .toEqual({ capability: "key.approve", mentions: true });
+  });
+});

@@ -211,6 +211,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "keystream-not-a-stream",
+    defect:
+      "The key-proposal stream was served as text, so no browser would treat it as SSE and the operator bell went silent.",
+    file: "packages/http/src/main.ts",
+    from: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n",
+    to: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/plain',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["answers as a stream"],
+  },
+  {
+    id: "keystream-proxy-buffers",
+    defect:
+      "The stream stopped telling a proxy not to buffer it, so behind nginx the operator saw nothing until the connection closed \u2014 which for a stream is never.",
+    file: "packages/http/src/main.ts",
+    from: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n    },\n  })\n})",
+    to: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n    },\n  })\n})",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["tells a proxy not to hold it"],
+  },
+  {
+    id: "keystream-queue-renamed",
+    defect:
+      "The stream called the queue something the list route does not, so the bell read `keys` from one channel and `proposals` from the other (\u00a7 9.2).",
+    file: "packages/http/src/main.ts",
+    from: "      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })",
+    to: "      push('snapshot', { proposals: keyProposals.pendingSince(agentsDb()) })",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["calls the queue `keys`"],
+  },
+  {
+    id: "keystream-backlog-as-arrivals",
+    defect:
+      "A backlog was replayed as arrivals, announcing keys that had been waiting for a day as though they had just landed.",
+    file: "packages/http/src/main.ts",
+    from: "      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })",
+    to: "      for (const p of keyProposals.pendingSince(agentsDb())) push('key-proposed', p)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["as a snapshot, not as arrivals"],
+  },
+  {
+    id: "keystream-leaks-public-key",
+    defect:
+      "Public key material was sent to the browser, where an operator only ever decides on a fingerprint.",
+    file: "packages/http/src/key-proposals.ts",
+    from: "      `SELECT k.identity, k.fingerprint, a.type, k.proposed_at",
+    to: "      `SELECT k.identity, k.fingerprint, k.public_key, a.type, k.proposed_at",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["no public key material"],
+  },
+  {
+    id: "refusal-hides-capability",
+    defect:
+      "A refusal stopped naming the missing grant, so an operator told 'Forbidden' asks for everything instead of for the one thing (\u00a7 11).",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: `Missing capability: ${capability}`, capability, scope }, 403)",
+    to: "    return c.json({ error: 'Forbidden', capability, scope }, 403)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["names the grant a refused operator is missing"],
+  },
+  {
     id: "attachment-signature-ignored",
     defect:
       "A valid signature over an approved key was refused, so a signing caller could never fetch an attachment at all (§ 9.2.1).",
