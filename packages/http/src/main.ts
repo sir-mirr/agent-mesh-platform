@@ -1149,8 +1149,24 @@ app.get('/api/v1/agents', async (c) => {
    * It lives here rather than in `docs/deferred.md` because the next person to
    * read this line is the person who can replace it, and they will be reading
    * this file.
+   *
+   * **Read from the row, not from the token.** The owner's answer to where
+   * scope comes from was "the database, not the capability table", and a JWT is
+   * neither: it is a copy of what the row said when the session began. An
+   * account demoted from `admin` keeps its old claim until the token expires,
+   * which is the whole class of bug where a screen and a server describe the
+   * same person differently. `local_users` first because a local account is the
+   * one that can be re-roled here; `users` for a GitHub login that has no local
+   * row.
+   *
+   * **Not covered by a check, and here is why rather than a silence:** nothing
+   * changes an account's role after admission — `role.grant` grants
+   * capabilities, not roles — so no route can make the token and the row
+   * disagree today, and a test would have to reach past the API to build the
+   * state it claims to measure. The day a re-role route exists, the check is
+   * "demote an administrator, and their listing narrows without a new login".
    */
-  const seesEverything = payload.role === 'admin'
+  const seesEverything = (getLocalUser(actor)?.role ?? getUser(payload.github_id)?.role) === 'admin'
 
   const visible = new Set<string>()
   if (!seesEverything) {
