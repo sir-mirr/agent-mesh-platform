@@ -211,6 +211,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "change-password-behind-the-guard",
+    defect:
+      "The page the guard sends people to went behind the same guard, so anyone holding a temporary password was redirected to it for ever and could neither sign in nor reach the page that would let them.",
+    file: "packages/platform-web/src/App.tsx",
+    from: "            <Route path=\"/change-password\" element={<ChangePasswordPage />} />",
+    to: "            <Route path=\"/change-password\" element={<GuardedRoute><ChangePasswordPage /></GuardedRoute>} />",
+    suite: "packages/platform-web/src/App.test.tsx",
+    expect: ["does not guard the page the guard sends people to"],
+  },
+  {
+    id: "route-table-has-no-fallback",
+    defect:
+      "An unrouted path rendered blank instead of redirecting, so a wrong link looked like a broken screen.",
+    file: "packages/platform-web/src/App.tsx",
+    from: "            <Route path=\"*\" element={<Navigate to=\"/\" replace />} />",
+    to: "",
+    suite: "packages/platform-web/src/App.test.tsx",
+    expect: ["does not leave a person on a path it does not know"],
+  },
+  {
+    id: "sidebar-offers-a-dead-link",
+    defect:
+      "The sidebar offered a path the router does not know. Nothing errors: it matches `*`, redirects, and the person lands on the dashboard wondering what they clicked.",
+    file: "packages/platform-web/src/components/layout/Sidebar.tsx",
+    from: "          href: \"/creator/topology\",",
+    to: "          href: \"/creator/topologie\",",
+    suite: "packages/platform-web/src/App.test.tsx",
+    expect: ["routes every path the sidebar offers"],
+  },
+  {
     id: "files-prefix-has-no-boundary",
     defect:
       "A path prefix with no separator boundary let any approved session read a sibling directory: `<STATE_DIR>-backup/secret` matched `<STATE_DIR>` and the route answered 200 with the bytes.",
