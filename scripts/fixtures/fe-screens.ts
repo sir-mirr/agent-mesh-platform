@@ -360,6 +360,16 @@ const expectation = {
     queuedFor: { identity: recipientId, exactly: QUEUED },
     tenants: { atLeast: 1, includes: "default" },
   },
+  // **What the routes said at emit time, and the only way to tell a stale file
+  // from a wrong screen.** A consumer that compares these against the routes
+  // *now* knows whether it is holding an expectation for a mesh that has since
+  // been seeded again: same values, the file still describes this mesh; different
+  // values, somebody re-ran the seeder and the right answer is "cannot judge"
+  // rather than a failure.
+  //
+  // `agent-mesh-local-pm` reached for the file's age instead and marked a correct
+  // screen FAIL — 1.8 minutes old, and the seeder had run inside those minutes
+  // (mail #1149). Age is a proxy for staleness; these are staleness itself.
   observed: {
     pendingTotal: (pending.pending ?? []).length,
     queuedForRecipient: mineQueued?.pending ?? mineQueued?.depth ?? null,
