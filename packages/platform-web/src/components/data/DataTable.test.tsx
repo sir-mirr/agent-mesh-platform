@@ -15,6 +15,7 @@ if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register
 
 const { render, cleanup } = await import("@testing-library/react");
 const { DataTable } = await import("./DataTable.tsx");
+const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 
 afterEach(cleanup);
 
@@ -23,14 +24,20 @@ const COLUMNS = [
   { key: "identity", header: "Identity" },
   { key: "type", header: "Type", render: (r: Row) => <em>{r.type}</em> },
 ];
+// Inside the provider, so the words are the dictionary's rather than the
+// fallbacks compiled into the component — which are Korean, and a Korean
+// literal in an assertion is the thing `SC-I18N-04` holds this tree to zero
+// on. It caught this file.
 const table = (props: Record<string, unknown>) =>
   render(
-    <DataTable<Row>
-      columns={COLUMNS}
-      keyExtractor={(r) => r.identity}
-      data={[]}
-      {...props}
-    />,
+    <I18nProvider>
+      <DataTable<Row>
+        columns={COLUMNS}
+        keyExtractor={(r) => r.identity}
+        data={[]}
+        {...props}
+      />
+    </I18nProvider>,
   ).container;
 
 describe("DataTable", () => {
@@ -48,7 +55,7 @@ describe("DataTable", () => {
 
   it("says it is loading rather than empty", () => {
     const c = table({ isLoading: true });
-    expect(c.textContent).toMatch(/불러오는 중|loading/i);
+    expect(c.textContent).toContain(DICTIONARY.en["table.loading"]!);
   });
 
   it("says the read failed rather than that there is nothing", () => {
@@ -67,6 +74,6 @@ describe("DataTable", () => {
     expect(table({ data: [], emptyMessage: "no agents in this group" }).textContent)
       .toContain("no agents in this group");
     cleanup();
-    expect(table({ data: [] }).textContent).toBeTruthy();
+    expect(table({ data: [] }).textContent).toContain(DICTIONARY.en["table.empty"]!);
   });
 });
