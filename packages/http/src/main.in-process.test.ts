@@ -1129,3 +1129,179 @@ describe("what the key stream says first", () => {
       .toEqual({ capability: "key.approve", mentions: true });
   });
 });
+
+/**
+ * What a browser gets back when it reconnects to the audit stream.
+ *
+ * The replay is built synchronously inside `start()`, before the response is
+ * returned, so everything below is decided by seeded rows rather than by a
+ * timer — the 1.5 s poller only ever produces *live* frames, and the live half
+ * is not what this checks.
+ *
+ * **The seed is swallowed before any stream opens, on purpose.** That poller
+ * has run since `startup()` and marks what it has seen; rows it consumes while
+ * nothing is listening are never delivered again. Opening a stream before it
+ * has caught up would mix live frames into a replay and make every index below
+ * a coin toss.
+ *
+ * `hub.db` is not the database `insertMessage` writes to. These rows go into
+ * the file the route reads, with `status='delivered'` so they never land in the
+ * queue depth `/api/v1/admin/mailbox` reports, and with names and a content
+ * token unique to this file — the state directory is shared with every other
+ * suite in the run.
+ */
+describe("what a reconnecting audit stream replays", () => {
+  const A = "in-process-audit-a";
+  const B = "in-process-audit-b";
+  const BULK = "in-process-audit-bulk";
+  const ANCHOR = "in-process-audit-anchor";
+
+  /** Frames until the stream goes quiet, then it is dropped. */
+  const replay = async (path: string, headers: Record<string, string>): Promise<string[]> => {
+    const res = await call(path, { headers: { cookie, ...headers } });
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const out: string[] = [];
+    try {
+      // The replay is already enqueued when the response is handed back, so
+      // reading drains it without waiting for anything. A `:keepalive` is
+      // 30 s away and never arrives inside this loop.
+      while (true) {
+        const race = await Promise.race([
+          reader.read(),
+          new Promise<null>(r => setTimeout(() => r(null), 250)),
+        ]);
+        if (!race || race.done) break;
+        out.push(decoder.decode(race.value));
+      }
+    } finally {
+      await reader.cancel();
+    }
+    return out;
+  };
+
+  const dataOf = (frame: string) => JSON.parse(frame.slice(frame.indexOf("data: ") + 6));
+
+  beforeAll(async () => {
+    const hub = new Database(join(STATE, "hub.db"), { readwrite: true });
+    const put = hub.prepare(
+      `INSERT OR REPLACE INTO messages (id, from_agent, to_agent, content, status, ts) VALUES (?, ?, ?, ?, 'delivered', ?)`,
+    );
+    // Space-separated, the format `datetime('now')` writes. `ts` is TEXT and
+    // every comparison here is lexical, so an ISO `T` sorts after a space and
+    // would corrupt both the gap predicate and the poller's high-water mark.
+    const at = (secondsAgo: number) =>
+      new Date(Date.now() - secondsAgo * 1000).toISOString().replace("T", " ").slice(0, 19);
+
+    put.run(ANCHOR, A, B, "in-process-audit-anchor-body", at(300));
+    put.run("in-process-audit-first", A, B, "in-process-audit-body-first", at(299));
+    put.run("in-process-audit-second", A, B, "in-process-audit-body-second", at(298));
+    // Enough on the far side of the anchor that an unfiltered reconnect is a
+    // flood rather than a replay.
+    for (let i = 0; i < 101; i++) {
+      put.run(`in-process-audit-bulk-${i}`, BULK, B, `in-process-audit-bulk-body-${i}`, at(200 - i));
+    }
+    hub.close();
+
+    // Let the poller take the seed while nothing is listening.
+    await Bun.sleep(2000);
+  });
+
+  test("refuses an operator who does not hold audit.read.content, and names it", async () => {
+    const admitted = await asAdmin("/api/v1/admin/users", "POST", { username: "in-process-noaudit" });
+    const { temporary_password } = await admitted.json();
+    const login = await call("/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: "in-process-noaudit", password: temporary_password }).toString(),
+    });
+    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    await call("/auth/local/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: theirs },
+      body: JSON.stringify({ current: temporary_password, next: "in-process-noaudit-pw" }),
+    });
+
+    // This route serves whole message bodies. It was behind a role check, so
+    // every admin-role session read every conversation on the mesh (§ 11.0).
+    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { cookie: theirs } });
+    expect(res.status).toBe(403);
+    expect((await res.json()).capability).toBe("audit.read.content");
+  });
+
+  test("records the read before it serves a byte", async () => {
+    await replay("/api/v1/admin/chat-audits/stream", {});
+    const events = await asAdmin("/api/v1/audit/events?limit=50", "GET");
+    const rows = (await events.json()).events as Array<{ event_type: string; target?: string }>;
+    // Holding `audit.read.content` is defensible; holding it without the
+    // record is not. The route had neither.
+    expect({ recorded: rows.some(e => JSON.stringify(e).includes("chat-audits:stream")) })
+      .toEqual({ recorded: true });
+  });
+
+  test("says hello as an event stream", async () => {
+    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { cookie } });
+    const type = res.headers.get("content-type") ?? "";
+    await res.body?.cancel();
+    expect(type).toContain("text/event-stream");
+  });
+
+  test("replays what the client missed, oldest first", async () => {
+    const frames = await replay(`/api/v1/admin/chat-audits/stream?from_agent=${A}`, { "last-event-id": ANCHOR });
+    const messages = frames.filter(f => f.includes("event: message")).map(dataOf);
+    // Newest-first would put a conversation on the screen backwards, and the
+    // rows are all there either way — the order is the whole of what is wrong.
+    expect(messages.map((m: { id: string }) => m.id))
+      .toEqual(["in-process-audit-first", "in-process-audit-second"]);
+  });
+
+  test("does not replay the message the client already has", async () => {
+    const frames = await replay(`/api/v1/admin/chat-audits/stream?from_agent=${A}`, { "last-event-id": ANCHOR });
+    const ids = frames.filter(f => f.includes("event: message")).map(f => dataOf(f).id);
+    // `Last-Event-ID` names the last frame that arrived. Replaying it draws
+    // the same message twice on every reconnect.
+    expect({ anchorReplayed: ids.includes(ANCHOR) }).toEqual({ anchorReplayed: false });
+  });
+
+  test("labels a replayed frame as recovered, so the console can tell it from live", async () => {
+    const frames = await replay(`/api/v1/admin/chat-audits/stream?from_agent=${A}`, { "last-event-id": ANCHOR });
+    const messages = frames.filter(f => f.includes("event: message")).map(dataOf);
+    expect(messages.every((m: { recovered?: boolean }) => m.recovered === true)).toBe(true);
+  });
+
+  test("gives each replayed frame its own id, so a second blip resumes from the right place", async () => {
+    const frames = await replay(`/api/v1/admin/chat-audits/stream?from_agent=${A}`, { "last-event-id": ANCHOR });
+    const messageFrames = frames.filter(f => f.includes("event: message"));
+    // Without `id:` the browser keeps sending the *old* Last-Event-ID after a
+    // second disconnection, and replays the same window for ever.
+    expect(messageFrames.every(f => f.startsWith("id: "))).toBe(true);
+  });
+
+  test("summarises a gap too large to send rather than flooding the client", async () => {
+    const frames = await replay("/api/v1/admin/chat-audits/stream", { "last-event-id": ANCHOR });
+    const summary = frames.find(f => f.includes("event: gap-too-large"));
+    expect({ summarised: summary !== undefined, floodedWith: frames.filter(f => f.includes("event: message")).length })
+      .toEqual({ summarised: true, floodedWith: 0 });
+    expect(dataOf(summary!).truncated).toBe(true);
+  });
+
+  test("filters the replay the same way it filters the live stream", async () => {
+    // Unfiltered the same anchor is a flood; filtered it is two messages. If
+    // the filter is dropped from the replay only, a console watching one
+    // conversation is handed every conversation on the mesh — with content.
+    const filtered = await replay(`/api/v1/admin/chat-audits/stream?from_agent=${A}`, { "last-event-id": ANCHOR });
+    expect({
+      messages: filtered.filter(f => f.includes("event: message")).length,
+      flood: filtered.some(f => f.includes("gap-too-large")),
+    }).toEqual({ messages: 2, flood: false });
+  });
+
+  test("replays nothing for a Last-Event-ID the hub no longer holds", async () => {
+    const frames = await replay("/api/v1/admin/chat-audits/stream", { "last-event-id": "in-process-audit-no-such-id" });
+    // An unknown anchor is not "the beginning of time". Treating it as one
+    // sends the whole table to a client whose only mistake was reconnecting
+    // after a retention sweep.
+    expect(frames.filter(f => f.includes("event: message") || f.includes("gap-too-large")).length).toBe(0);
+  });
+});

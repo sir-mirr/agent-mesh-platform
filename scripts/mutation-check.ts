@@ -211,6 +211,96 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "audit-stream-capability-bypassed",
+    defect:
+      "The audit stream stopped refusing an operator without audit.read.content, and every admin-role session read every conversation on the mesh (\u00a7 11.0).",
+    file: "packages/http/src/main.ts",
+    from: "  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_CONTENT)\n  if (typeof actor !== 'string') return actor\n  const refused = logContentRead(c, actor, true, 'chat-audits:stream', c.req.query())",
+    to: "  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_CONTENT)\n  const refused = logContentRead(c, actor as string, true, 'chat-audits:stream', c.req.query())",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["does not hold audit.read.content"],
+  },
+  {
+    id: "audit-stream-read-unrecorded",
+    defect:
+      "A content read went unrecorded. Holding audit.read.content is defensible; holding it without the record is not (\u00a7 8.9.5).",
+    file: "packages/http/src/main.ts",
+    from: "  const refused = logContentRead(c, actor, true, 'chat-audits:stream', c.req.query())",
+    to: "  const refused = logContentRead(c, actor, false, 'chat-audits:stream', c.req.query())",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["records the read before it serves a byte"],
+  },
+  {
+    id: "audit-replay-newest-first",
+    defect:
+      "A reconnecting console was handed its missed conversation backwards.",
+    file: "packages/http/src/main.ts",
+    from: "ORDER BY ts ASC, id ASC LIMIT 100",
+    to: "ORDER BY ts DESC, id DESC LIMIT 100",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["oldest first"],
+  },
+  {
+    id: "audit-replay-includes-anchor",
+    defect:
+      "The message named by Last-Event-ID was replayed, so every reconnect drew the last message a second time.",
+    file: "packages/http/src/main.ts",
+    from: "            const where: string[] = ['(ts > ? OR (ts = ? AND id > ?))']",
+    to: "            const where: string[] = ['(ts >= ? OR (ts = ? AND id > ?))']",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["does not replay the message the client already has"],
+  },
+  {
+    id: "audit-replay-unlabelled",
+    defect:
+      "Replayed frames stopped saying they were recovered, so a console could not tell history from live.",
+    file: "packages/http/src/main.ts",
+    from: "JSON.stringify(Object.assign({}, m, { recovered: true }))",
+    to: "JSON.stringify(m)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["labels a replayed frame as recovered"],
+  },
+  {
+    id: "audit-replay-no-frame-id",
+    defect:
+      "Replayed frames carried no id, so after a second disconnection the browser resent the old Last-Event-ID and replayed the same window for ever.",
+    file: "packages/http/src/main.ts",
+    from: "`id: ${sseSafeId(m.id)}\\nevent: message\\n",
+    to: "`event: message\\n",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["gives each replayed frame its own id"],
+  },
+  {
+    id: "audit-replay-floods",
+    defect:
+      "A gap too large to send stopped being summarised, and a client reconnecting after an outage was handed the flood instead.",
+    file: "packages/http/src/main.ts",
+    from: "            if (gapCount > 100) {",
+    to: "            if (gapCount > 100000) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["summarises a gap too large"],
+  },
+  {
+    id: "audit-replay-ignores-filter",
+    defect:
+      "The replay dropped the filter the live stream applies, so a console watching one conversation was handed every conversation on the mesh \u2014 with content.",
+    file: "packages/http/src/main.ts",
+    from: "            if (fromAgent) { where.push('from_agent = ?'); params.push(fromAgent) }",
+    to: "            if (false) { where.push('from_agent = ?'); params.push(fromAgent) }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["filters the replay the same way"],
+  },
+  {
+    id: "audit-replay-unknown-anchor-is-epoch",
+    defect:
+      "An unknown Last-Event-ID was treated as the beginning of time, so a client reconnecting after a retention sweep was sent the whole table.",
+    file: "packages/http/src/main.ts",
+    from: "          const anchor = db.query('SELECT ts FROM messages WHERE id = ?').get(lastEventId) as { ts: string } | undefined",
+    to: "          const anchor = (db.query('SELECT ts FROM messages WHERE id = ?').get(lastEventId) ?? { ts: '1970-01-01 00:00:00' }) as { ts: string } | undefined",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["replays nothing for a Last-Event-ID the hub no longer holds"],
+  },
+  {
     id: "keystream-not-a-stream",
     defect:
       "The key-proposal stream was served as text, so no browser would treat it as SSE and the operator bell went silent.",
