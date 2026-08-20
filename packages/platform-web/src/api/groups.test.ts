@@ -1,0 +1,218 @@
+/**
+ * Groups, and the egress policy that has three states while the grid has two.
+ *
+ * `egress_allowed: null` is this layer's only record that the route did not
+ * answer with egress at all — a different fact from a group that may reach
+ * nothing. The distinction dies one caller later (`TenantEgressAclPage`
+ * collapses both with `|| false`, and `AclMatrix` pins that it cannot carry a
+ * third state), so if it is not held here it is held nowhere, and an unread
+ * policy is drawn as a complete, confident refusal.
+ *
+ * `member_count` is the same shape of question: `null` is "the row carried no
+ * member list", `0` is "it carried an empty one". `TopologyPage` already had a
+ * `|| 1` that turned a known zero into a one.
+ *
+ * The write side is pinned against the route rather than against the type:
+ * `POST /api/v1/admin/groups` accepts `group_id` and `description` and refuses
+ * a body carrying anything else with a `400` — this repository's own fixture
+ * sent `members` and `name` for four months and read the answer as success.
+ */
+import { describe, it, expect, mock, afterEach } from "bun:test";
+import { fetchGroups, createGroupApi, addEgressRuleApi, deleteEgressRuleApi } from "./groups.ts";
+import { ApiError, failureKind } from "./client.ts";
+
+const realFetch = globalThis.fetch;
+/** bun:test has no global stubber, so the original goes back by hand — a
+ *  forgotten restore would poison every file that runs after this one. */
+const stub = (fn: unknown) => { globalThis.fetch = fn as typeof globalThis.fetch; };
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+const spyOn = (body: unknown, status = 200) => {
+  const spy = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => json(body, status));
+  stub(spy);
+  return spy;
+};
+
+afterEach(() => { globalThis.fetch = realFetch; });
+
+describe("fetchGroups", () => {
+  it("maps a row of the route's own shape into the console's names", async () => {
+    // The whole row, so a field quietly added or renamed here fails rather than
+    // arriving on a screen nobody re-reads. `name` is `group_id`: the store's
+    // `Group` has tenant/group_id/description/created_at/created_by and no
+    // display name at all, so the id is the name on this platform.
+    spyOn({
+      ok: true,
+      groups: [{ group_id: "ops", description: "on call", created_at: "2026-08-20T12:00:00Z", members: ["a-1", "a-2"] }],
+      egress: [],
+    });
+    expect((await fetchGroups())[0]).toEqual({
+      id: "ops",
+      name: "ops",
+      description: "on call",
+      member_count: 2,
+      members: ["a-1", "a-2"],
+      egress_allowed: [],
+      created_at: "2026-08-20T12:00:00Z",
+    });
+  });
+
+  it("keeps a policy nobody read apart from one that allows nothing", async () => {
+    // No `egress` key: the route answered about groups and said nothing about
+    // who may reach whom. `[]` here would be this layer asserting a total
+    // denial the server never stated.
+    spyOn({ ok: true, groups: [{ group_id: "ops" }] });
+    expect((await fetchGroups())[0]!.egress_allowed).toBe(null);
+
+    // `egress: []` is the server stating it: the rules were read and there are
+    // none. Absent and empty must not arrive as the same value.
+    spyOn({ ok: true, groups: [{ group_id: "ops" }], egress: [] });
+    expect((await fetchGroups())[0]!.egress_allowed).toEqual([]);
+  });
+
+  it("reads a rule in one direction only", async () => {
+    // SPEC section 12: `A -> B` does not imply `B -> A`. Agents allowed to
+    // report into an aggregator are not agents it may command, and a filter
+    // reading `to_group` instead of `from_group` would hand out the reverse
+    // grant while every screen kept drawing the same number of allowed cells.
+    spyOn({
+      ok: true,
+      groups: [{ group_id: "ops" }, { group_id: "billing" }],
+      egress: [{ from_group: "ops", to_group: "billing" }],
+    });
+    const rows = await fetchGroups();
+    expect(rows[0]!.egress_allowed).toEqual(["billing"]);
+    expect(rows[1]!.egress_allowed).toEqual([]);
+  });
+
+  it("does not seed the diagonal", async () => {
+    // `maySend` has no self-exception — same-group sends need a rule too, and
+    // only `default` starts with one. A group inventing its own id here would
+    // draw every fresh group as able to talk to itself, which is the one thing
+    // the operator created it to decide.
+    spyOn({ ok: true, groups: [{ group_id: "ops" }], egress: [] });
+    expect((await fetchGroups())[0]!.egress_allowed).toEqual([]);
+  });
+
+  it("counts the members it was told about and says nothing when it was not told", async () => {
+    spyOn({ ok: true, groups: [{ group_id: "empty", members: [] }, { group_id: "silent" }] });
+    const [empty, silent] = await fetchGroups();
+    // A group that genuinely holds nobody. `TopologyPage` had a `|| 1` here
+    // that turned this known zero into one agent that does not exist.
+    expect(empty!.member_count).toBe(0);
+    // A row carrying no member list at all. `0` would be a count nobody made.
+    expect(silent!.member_count).toBe(null);
+    expect(silent!.members).toEqual([]);
+  });
+
+  it("leaves an absent description and an absent creation time absent", async () => {
+    // `""` would render as a description that says nothing, and a date column
+    // is compared by eye — a fabricated value there is worse than a blank.
+    spyOn({ ok: true, groups: [{ group_id: "ops" }] });
+    const [row] = await fetchGroups();
+    expect(row!.description).toBe(null);
+    expect(row!.created_at).toBe(null);
+  });
+
+  it("prefers the route's own group_id over any other id on the row", async () => {
+    spyOn({ ok: true, groups: [{ group_id: "grp-a", id: "something-else" }], egress: [] });
+    expect((await fetchGroups())[0]!.id).toBe("grp-a");
+    // `id` alone is still read, because the egress filter matches on whatever
+    // this resolves to and a row keyed under the wrong name silently shows an
+    // empty policy.
+    spyOn({ ok: true, groups: [{ id: "grp-b" }], egress: [{ from_group: "grp-b", to_group: "grp-c" }] });
+    expect((await fetchGroups())[0]!.egress_allowed).toEqual(["grp-c"]);
+  });
+
+  it("takes a bare array, and reads no policy out of one", async () => {
+    // An older shape of the response. It carries no `egress`, so every group in
+    // it is "policy not read" rather than "reaches nothing".
+    spyOn([{ group_id: "ops" }]);
+    const rows = await fetchGroups();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.egress_allowed).toBe(null);
+  });
+
+  it("hands a refusal on rather than drawing a mesh with no groups", async () => {
+    // `403` is the server answering. An empty list here would tell the operator
+    // the tenant has no groups, which is a claim about the mesh rather than
+    // about their session.
+    spyOn({ error: "not allowed", capability: "group.manage" }, 403);
+    const err = await fetchGroups().then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(failureKind(err)).toBe("refused");
+    expect((err as ApiError).capability).toBe("group.manage");
+  });
+});
+
+describe("createGroupApi", () => {
+  it("sends group_id and nothing the route would refuse", async () => {
+    // The route rejects any field outside { group_id, description } with a
+    // `400` — `name` and `members` included. An extra key here does not get
+    // dropped, it fails the whole creation.
+    const spy = spyOn({ ok: true, group_id: "ops", created: true }, 201);
+    await createGroupApi("ops");
+    const init = spy.mock.calls[0]![1]!;
+    expect(init.method).toBe("POST");
+    expect(String(spy.mock.calls[0]![0])).toContain("/api/v1/admin/groups");
+    // An omitted description is left out, not sent as null: the route stores
+    // `null` for a non-string anyway, and a key that carries nothing invites
+    // the next field to be added the same way.
+    expect(JSON.parse(String(init.body))).toEqual({ group_id: "ops" });
+  });
+
+  it("passes a description when the operator wrote one", async () => {
+    const spy = spyOn({ ok: true, group_id: "ops", created: true }, 201);
+    await createGroupApi("ops", "on call rotation");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)))
+      .toEqual({ group_id: "ops", description: "on call rotation" });
+  });
+
+  it("carries `created` back, because 200 and 201 are different answers", async () => {
+    // The route answers `200` with `created: false` when the group was already
+    // there. A screen that reads only `ok` reports a creation that did not
+    // happen.
+    spyOn({ ok: true, group_id: "ops", created: false });
+    expect((await createGroupApi("ops")).created).toBe(false);
+  });
+});
+
+describe("addEgressRuleApi", () => {
+  it("puts the source in the path and the target in the body", async () => {
+    // The direction lives in two different places, and swapping them grants the
+    // opposite rule while the request still succeeds — nothing on the screen
+    // would say the arrow points the other way.
+    const spy = spyOn({ ok: true, from_group: "ops", to_group: "billing" }, 201);
+    await addEgressRuleApi("ops", "billing");
+    expect(String(spy.mock.calls[0]![0])).toContain("/api/v1/admin/groups/ops/egress");
+    expect(spy.mock.calls[0]![1]!.method).toBe("POST");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body))).toEqual({ to_group: "billing" });
+  });
+
+  it("escapes the group id into the path", async () => {
+    // An unescaped `/` would address a different route entirely, and the answer
+    // to that route can still be a 2xx.
+    const spy = spyOn({ ok: true }, 201);
+    await addEgressRuleApi("lane/a b", "billing");
+    expect(String(spy.mock.calls[0]![0])).toContain("/groups/lane%2Fa%20b/egress");
+  });
+});
+
+describe("deleteEgressRuleApi", () => {
+  it("names both groups in the path and sends no body", async () => {
+    const spy = spyOn({ ok: true, action: "deleted" });
+    await deleteEgressRuleApi("ops", "billing");
+    const init = spy.mock.calls[0]![1]!;
+    expect(init.method).toBe("DELETE");
+    expect(String(spy.mock.calls[0]![0])).toContain("/groups/ops/egress/billing");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("escapes both segments", async () => {
+    const spy = spyOn({ ok: true, action: "not-found" });
+    await deleteEgressRuleApi("lane/a", "lane/b");
+    expect(String(spy.mock.calls[0]![0])).toContain("/groups/lane%2Fa/egress/lane%2Fb");
+  });
+});

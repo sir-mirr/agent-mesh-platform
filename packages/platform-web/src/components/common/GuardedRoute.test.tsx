@@ -37,17 +37,18 @@ const rbac: { held: Set<string> } = { held: new Set() };
 // runs, the restore keeps it honest afterwards.
 const realAuth = await import("@/contexts/AuthContext.tsx");
 const realRbac = await import("@/contexts/RbacContext.tsx");
-const realI18n = await import("@/contexts/I18nContext.tsx");
 
 mock.module("@/contexts/AuthContext.tsx", () => ({ ...realAuth, useAuth: () => auth.value }));
 mock.module("@/contexts/RbacContext.tsx", () => ({
   ...realRbac,
   useRbac: () => ({ hasCapability: (c: string) => rbac.held.has(c) }),
 }));
-mock.module("@/contexts/I18nContext.tsx", () => ({
-  ...realI18n,
-  useI18n: () => ({ t: (k: string, fallback?: string) => fallback ?? k }),
-}));
+// **I18nContext is deliberately not mocked.** Its real `useI18n` already
+// answers outside a provider, so the shim bought nothing — and it cost: a
+// module mocked at a file's top level is in place before *every other file's*
+// top-level `await import`, so the dictionary's own test and DataTable's took
+// this shim instead of the module. The later `afterAll` restore cannot help
+// them; they are already holding the object they were handed.
 // Mocked rather than routed: the assertion is *where it sends you*, and a real
 // router answers that by rendering whatever is mounted at the destination.
 mock.module("react-router-dom", () => ({
@@ -66,7 +67,6 @@ afterEach(cleanup);
 afterAll(() => {
   mock.module("@/contexts/AuthContext.tsx", () => realAuth);
   mock.module("@/contexts/RbacContext.tsx", () => realRbac);
-  mock.module("@/contexts/I18nContext.tsx", () => realI18n);
 });
 
 const show = (props: Record<string, unknown> = {}) =>
