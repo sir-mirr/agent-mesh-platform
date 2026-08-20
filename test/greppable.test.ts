@@ -392,10 +392,37 @@ describe("checks that were taken out and said so", () => {
       // comment on the restored ingest guard, which explains the very defect this
       // check exists for. `agent-mesh-local-pm` measured that: one character's
       // difference and the explanation trips its own net. A marker left behind by a
-      // tool opens the comment; prose does not.
-      /^\s*(?:\/\/|\*)\s*mutation:/i,
+      // tool opens the comment; prose does not. `/*` and `/**` open one too —
+      // `agent-mesh-local-pm` measured that the first narrowing missed both.
+      /^\s*(?:\/\/|\/\*+|\*)\s*mutation:/i,
       /(auth|token|signature) check (is )?(gone|deleted|removed)/i,
     ];
+
+    // **What the vocabulary must and must not match, kept beside it.**
+    //
+    // A pattern narrowed to stop biting prose can narrow past the thing it is
+    // for, and nothing about the tree says so: every line here is green when
+    // the marker matches nothing at all. The first narrowing missed `/*` and
+    // `/**`, which `agent-mesh-local-pm` found by asking these nine directly
+    // rather than by reading the regex.
+    const VOCABULARY_CASES: Array<[string, boolean]> = [
+      ["// mutation: token check disabled", true],
+      [" * mutation: token check disabled", true],
+      ["/* mutation: token check disabled", true],
+      ["/** mutation: token check disabled", true],
+      ["// guard deleted: any caller, with any token or none, is accepted", true],
+      // Prose. This file's rule is that a comment may name a mistake, because
+      // that is how the reason survives — and the second of these is the
+      // comment on the restored ingest guard, one character from tripping it.
+      ["// done rather than why - a mutation that reached main and stayed", false],
+      ["// A mutation: the kind that reaches main", false],
+      ["  mutation: (config) => void,", false],
+      ["const m = /mutation:/.test(s)", false],
+    ];
+    for (const [line, shouldMatch] of VOCABULARY_CASES) {
+      expect({ line, matched: MARKERS.some((re) => re.test(line)) })
+        .toEqual({ line, matched: shouldMatch });
+    }
 
     const files = (await trackedFiles()).filter((f) =>
       /^packages\/[^/]+\/src\/.*\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f));
