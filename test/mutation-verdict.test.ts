@@ -39,6 +39,44 @@ const EXPECT = ["a socket that dropped the frame"];
  * `SC-` id made `-t "SC-WRITE-07"` run two tests, and the guard that was
  * supposed to stop it compared titles instead of ids.
  */
+/**
+ * **Every entry still points at exactly one place.**
+ *
+ * An entry whose `from` is no longer in its file checks nothing, and one that
+ * matches twice is worse: `String.replace` takes the first, so the mutation
+ * lands somewhere the entry did not name and the verdict is about a line
+ * nobody chose. The tool says so when somebody runs that entry — and a full
+ * pass is one suite per entry, hours, so nobody does.
+ *
+ * It drifted under a morning of edits: fourteen of two hundred and thirty-one
+ * had stopped pointing at anything, twelve of them because moving strings into
+ * the dictionary and refactoring the bell took the lines they were anchored on.
+ * Running entries by filter, which is the only affordable way, never touches
+ * the rest.
+ *
+ * So the check belongs where every edit passes: here, in a second, off the
+ * manifest the tool already owns rather than a parser of its syntax.
+ */
+describe("the manifest's anchors", () => {
+  test("every entry names exactly one place", async () => {
+    const proc = Bun.spawn(["bun", "scripts/mutation-check.ts", "--anchors"], {
+      cwd: new URL("..", import.meta.url).pathname,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const out = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
+    const code = await proc.exited;
+    // The tool prints `N/M anchors …`. A run that printed nothing decided
+    // nothing — the failure this file exists to name, one level up.
+    const counted = out.match(/(\d+)\/(\d+) anchors point at exactly one place/);
+    expect(
+      { printed: counted !== null, everyOne: counted ? counted[1] === counted[2] : false },
+      `--anchors did not report, or some entry no longer names one place:\n${out}`,
+    ).toEqual({ printed: true, everyOne: true });
+    expect(code, "--anchors exited non-zero").toBe(0);
+  }, 60_000);
+});
+
 describe("the manifest's own names", () => {
   test("no id answers to two entries", async () => {
     const source = await Bun.file(new URL("../scripts/mutation-check.ts", import.meta.url)).text();
