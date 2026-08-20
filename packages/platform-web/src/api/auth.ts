@@ -20,6 +20,14 @@ export interface AuthMeResponse {
    * screen's decision the server's answer.
    */
   must_change_password?: boolean;
+  /**
+   * Which tenant the account belongs to, or `null` when it belongs to none.
+   *
+   * The route carries this; this interface did not, so a screen reading it was
+   * reading a field TypeScript said was absent. Declared rather than cast at
+   * the call site, which is where the six hand-typed capability names came from.
+   */
+  tenant?: string | null;
   github_id: number;
   github_login: string;
   role: string;

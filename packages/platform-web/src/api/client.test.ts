@@ -9,13 +9,17 @@
  * executed inside a Playwright page, where no coverage instrument could see
  * them and no assertion named them directly.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, mock, afterEach } from "bun:test";
 import { ApiError, apiClient, failureKind, refusedCapability, refusedText } from "./client.ts";
 
 const answer = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-afterEach(() => { vi.unstubAllGlobals(); });
+const realFetch = globalThis.fetch;
+/** No `vi.stubGlobal` here: bun:test has no global stubber, so the original is
+ *  put back by hand and a forgotten restore would poison every later file. */
+const stub = (fn: unknown) => { globalThis.fetch = fn as typeof globalThis.fetch; };
+afterEach(() => { globalThis.fetch = realFetch; });
 
 describe("ApiError", () => {
   it("separates a refusal from never having been answered", () => {
@@ -57,7 +61,7 @@ describe("refusedText", () => {
 
 describe("apiClient", () => {
   it("reads a refusal's fields rather than its sentence", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () =>
+    stub(mock(async () =>
       answer(403, { error: "not allowed", capability: "mailbox.read.depth" })));
     const err = await apiClient("/api/v1/whatever").then(() => null, (e) => e as ApiError);
     expect(err).toBeInstanceOf(ApiError);
@@ -67,7 +71,7 @@ describe("apiClient", () => {
   });
 
   it("reports no answer as status null, which is not zero and not a refusal", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+    stub(mock(async () => { throw new TypeError("Failed to fetch"); }));
     const err = await apiClient("/api/v1/whatever").then(() => null, (e) => e as ApiError);
     expect(err!.status).toBe(null);
     expect(err!.refused).toBe(false);
@@ -75,7 +79,7 @@ describe("apiClient", () => {
   });
 
   it("falls back to the status line when the body is not JSON", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () =>
+    stub(mock(async () =>
       new Response("<html>gateway</html>", { status: 502, statusText: "Bad Gateway" })));
     const err = await apiClient("/api/v1/whatever").then(() => null, (e) => e as ApiError);
     expect(err!.status).toBe(502);
@@ -83,9 +87,9 @@ describe("apiClient", () => {
   });
 
   it("sends the cookie, asks for JSON, and types a string body", async () => {
-    const spy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    const spy = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       answer(200, { ok: true }));
-    vi.stubGlobal("fetch", spy);
+    stub(spy);
     await apiClient("/api/v1/thing", { method: "POST", body: JSON.stringify({ a: 1 }) });
     const init = spy.mock.calls[0]![1]!;
     expect(init.credentials).toBe("include");
@@ -95,9 +99,9 @@ describe("apiClient", () => {
   });
 
   it("leaves an absolute URL alone and prefixes a relative one", async () => {
-    const spy = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    const spy = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       answer(200, { ok: true }));
-    vi.stubGlobal("fetch", spy);
+    stub(spy);
     await apiClient("https://elsewhere.example/api/v1/thing");
     expect(spy.mock.calls[0]![0]).toBe("https://elsewhere.example/api/v1/thing");
     await apiClient("/api/v1/thing");

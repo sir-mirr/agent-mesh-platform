@@ -1,4 +1,4 @@
-import { apiClient } from "./client.ts";
+import { apiClient, failureKind, refusedCapability } from "./client.ts";
 
 /**
  * **What `/api/v1/admin/ai-usage` actually answers.**
@@ -82,11 +82,17 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const results = await Promise.all(
     PANELS.map((p) =>
       apiClient<any>(p.path).catch((err: unknown) => {
-        // The message `apiClient` throws carries the server's `error` field,
-        // and § 11.3's refusal says `capability`. Anything else is the backend
-        // being unreachable, which the empty state already communicates.
-        if (p.capability && /forbidden|capability|permission/i.test(String(err))) {
-          refused.push({ panel: p.panel, capability: p.capability });
+        // **Read the status, not the sentence.** This matched
+        // `/forbidden|capability|permission/i` against the error message, which
+        // is the thing `ApiError` exists to stop: § 11.3's refusal carries
+        // `capability` as a field, and the sibling comment in `client.ts` says
+        // so. Matching prose got it wrong in both directions — a `500` whose
+        // body happened to say "forbidden" was drawn as a capability the
+        // operator lacks, and a `403` phrased any other way ("not allowed",
+        // "insufficient scope") was drawn as the backend being down. Every
+        // other reader on this console already uses `failureKind`.
+        if (failureKind(err) === "refused") {
+          refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });
         }
         return null;
       }),
