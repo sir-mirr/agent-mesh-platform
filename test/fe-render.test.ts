@@ -1020,18 +1020,27 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   it("[SC-CAP-10] names the refusal on /platform instead of reporting a communication error", async () => {
     const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
     const { page, context } = await createViewerAuthedPage(viewerCookie, "/platform");
-    let refusedBy = "";
+    const refusedBy = new Set<string>();
     let sawRefusal = false;
     try {
       // What the server actually answered, so the assertion below is about a
       // disagreement between the screen and the mesh rather than about a status
       // this scenario made up.
+      //
+      // **The bell is on this page and it is refused too.** It is a different
+      // component with its own sentence, and this scenario is about the page's
+      // own data — the first version kept the last 403 it saw, which in a full
+      // run was the bell's `key.approve`, and the scenario failed for a
+      // capability this banner is not about. Alone it passed, because the
+      // bell's request happened to land first. Excluded by route, and the
+      // exclusion is here rather than implied.
+      const BELL = /\/admin\/keys\/(pending|stream)/;
       page.on("response", async (res) => {
-        if (!/\/api\//.test(res.url()) || res.status() !== 403) return;
+        if (!/\/api\//.test(res.url()) || res.status() !== 403 || BELL.test(res.url())) return;
         sawRefusal = true;
         try {
           const body = (await res.json()) as { capability?: string };
-          if (body?.capability) refusedBy = body.capability;
+          if (body?.capability) refusedBy.add(body.capability);
         } catch {
           /* a 403 without a readable body is still a refusal */
         }
@@ -1040,9 +1049,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await settled(page);
       const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
 
+      // Every one of them, not one of them: a banner that names the first and
+      // drops the rest leaves a panel blank with no reason given.
+      const unnamed = [...refusedBy].filter((cap) => !text.includes(cap));
       const viewer = {
         serverRefused: sawRefusal,
-        namesCapability: refusedBy.length > 0 && text.includes(refusedBy),
+        namesCapability: refusedBy.size > 0 && unnamed.length === 0,
         blamesTheNetwork: /통신 오류|communication error|no answer/.test(text),
       };
 
