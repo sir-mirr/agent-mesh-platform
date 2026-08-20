@@ -2841,6 +2841,16 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/mailbox/src/receive.test.ts",
     expect: ["reports each settled message once, on acknowledgement rather than hand-out"],
   },
+  {
+    id: "pairing-code-withholds-the-window-it-granted",
+    defect:
+      "The pairing-code route validated `ttl_seconds` and did not send it back. `PairingCodeResponse` declares the field as required and `RegisterAgentPage` reads `res.ttl_seconds || selectedTtl`, so the countdown on screen came from the *requested* value on every call — the fallback was the only path and the type was describing a field that never arrived. The two agree today because the route refuses a window outside its range rather than clamping one into it, which is why this was invisible.",
+    file: "packages/http/src/main.ts",
+    from: "expires_at: code.expires_at, ttl_seconds: ttl }, 201)",
+    to: "expires_at: code.expires_at }, 201)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a pairing code is minted for a name the mesh will accept"],
+  },
 ];
 
 /**

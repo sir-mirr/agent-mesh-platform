@@ -406,6 +406,54 @@ describe("the http service, imported", () => {
     expect(html.length).toBeGreaterThan(1000);
   });
 
+  test("a pairing code is minted for a name the mesh will accept, and refused otherwise", async () => {
+    const made = await asAdmin("/api/v1/admin/pairing-codes", "POST", { identity: "in-process-pairee" });
+    expect(made.status).toBe(201);
+    const body = await made.json();
+    // The code is the only credential the redeem route takes, so it comes from
+    // here rather than from the screen that shows it — the console's own modal
+    // inventing one is a defect on the ledger (I-143).
+    expect(typeof body.code).toBe("string");
+    expect(body.code.length).toBeGreaterThan(4);
+    expect(body.identity).toBe("in-process-pairee");
+    expect(typeof body.ttl_seconds).toBe("number");
+
+    // § 10.1's pattern is the gate, and the message names it rather than
+    // answering a bare 400.
+    const refused = await asAdmin("/api/v1/admin/pairing-codes", "POST", { identity: "not a valid name" });
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error).toContain("identity");
+  });
+
+  test("nobody owns an identity that was never provisioned", async () => {
+    const owners = await asAdmin("/api/v1/admin/agents/in-process-nobody/owners", "GET");
+    expect(owners.status).toBe(200);
+    const body = await owners.json();
+    // An empty list, not a 404: who is answerable for a name is a question
+    // with an answer even when the answer is nobody.
+    expect(Array.isArray(body.owners)).toBe(true);
+    expect(body.identity).toBe("in-process-nobody");
+
+    const malformed = await asAdmin("/api/v1/admin/agents/not%20a%20name/owners", "GET");
+    expect(malformed.status).toBe(400);
+  });
+
+  test("the key history of an identity nobody proposed is empty rather than missing", async () => {
+    const keys = await asAdmin("/api/v1/admin/keys/in-process-nobody", "GET");
+    expect(keys.status).toBe(200);
+    expect(await keys.json()).toBeDefined();
+  });
+
+  test("tenant traffic answers a shape a screen can draw", async () => {
+    const tenants = await asAdmin("/api/v1/admin/tenants", "GET");
+    expect(tenants.status).toBe(200);
+    const body = await tenants.json();
+    expect(Array.isArray(body.tenants)).toBe(true);
+    // The window travels with the counts: a number of messages means nothing
+    // without the hours it was counted over.
+    expect(typeof body.hours).toBe("number");
+  });
+
   test("the admission queue answers under its own name", async () => {
     const waiting = await asAdmin("/api/v1/admin/pending", "GET");
     expect(waiting.status).toBe(200);

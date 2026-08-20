@@ -1888,7 +1888,16 @@ app.post('/api/v1/admin/pairing-codes', async (c) => {
   // The code itself is returned once and never read back — every later route
   // answers about it without repeating it, so a screen that loses it has to
   // issue another rather than recover this one.
-  return c.json({ ok: true, code: code.code, identity, expires_at: code.expires_at }, 201)
+  // `ttl_seconds` travels with the code because the console already reads it:
+  // `PairingCodeResponse` declares it, and `RegisterAgentPage` does
+  // `res.ttl_seconds || selectedTtl`, which fell through to the *requested*
+  // value on every call because the field was never sent. The two agree today
+  // — the route refuses a window outside 1..max rather than clamping one into
+  // range — so this changes no number on the screen. What it changes is where
+  // the number comes from: the granted window is the server's fact, and a
+  // client deriving one from `expires_at` would be doing it against a clock the
+  // server does not share.
+  return c.json({ ok: true, code: code.code, identity, expires_at: code.expires_at, ttl_seconds: ttl }, 201)
 })
 
 /**
