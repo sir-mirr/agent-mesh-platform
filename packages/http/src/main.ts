@@ -1837,8 +1837,8 @@ app.get('/api/v1/admin/keys/pending', async (c) => {
     return c.json(r.body, 200)
   }
   const mine = new Set(ownership.ownedBy(db, actor))
-  const body = r.body as { ok: boolean; pending?: Array<{ identity: string }> }
-  return c.json({ ...body, pending: (body.pending ?? []).filter((k) => mine.has(k.identity)) }, 200)
+  const body = r.body as { ok: boolean; keys?: Array<{ identity: string }> }
+  return c.json({ ...body, keys: (body.keys ?? []).filter((k) => mine.has(k.identity)) }, 200)
 })
 
 /**

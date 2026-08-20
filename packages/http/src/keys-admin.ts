@@ -58,14 +58,29 @@ export interface KeyDecisionResult {
   body: Record<string, unknown>
 }
 
-/** Everything awaiting a decision, oldest first. */
+/**
+ * Everything awaiting a decision, oldest first.
+ *
+ * **`keys`, not `pending`.** Two decision queues answer on this server — key
+ * proposals here, people awaiting admission on `/api/v1/admin/pending` — and
+ * both used to answer `{ pending: [...] }`. A caller asking "is anything
+ * waiting" could reach for either, receive an honest empty array, and be
+ * reading the answer to the other question. `agent-mesh-local-pm` found the
+ * pair by counting routes that share a last segment.
+ *
+ * Moved in three steps rather than one, because the route is here and its
+ * consumer is the front end: they taught the bell to read `keys` first while
+ * nothing sent it, this is the move, and they drop the old branch after. The
+ * middle step is the only one that can break anything, and it cannot break the
+ * bell because the first step already landed.
+ */
 export function listPending(): KeyDecisionResult {
   const rows = keys.listPendingKeys(agentsDb())
   return {
     status: 200,
     body: {
       ok: true,
-      pending: rows.map((k) => ({
+      keys: rows.map((k) => ({
         fingerprint: k.fingerprint,
         identity: k.identity,
         public_key: k.public_key,

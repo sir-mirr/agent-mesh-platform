@@ -256,7 +256,7 @@ describe("approval is gated, and the hub cannot do it", () => {
     expect(res.status).toBe(200);
     // § 10.2: the surface must display the fingerprint being approved, or the
     // comparison the operator is meant to perform is impossible.
-    for (const p of body.pending) {
+    for (const p of body.keys) {
       expect(p.fingerprint).toMatch(/^sha256:/);
       expect(p.identity).toBeTruthy();
     }
@@ -910,7 +910,7 @@ describe("ownership scopes what an operator sees", () => {
     const body = await (await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, {
       headers: { cookie: adminCookie },
     })).json();
-    expect(body.pending.map((k: any) => k.identity)).toContain("own-visible");
+    expect(body.keys.map((k: any) => k.identity)).toContain("own-visible");
   });
 
   test("a scoped operator sees only what they own — and reaching the route at all is the point", async () => {
@@ -934,7 +934,7 @@ describe("ownership scopes what an operator sees", () => {
     // Not 403. Gating this at tenant scope would refuse every operator who
     // holds only their own agents, which is the failure this route is about.
     expect(res.status).toBe(200);
-    const identities = (await res.json()).pending.map((k: any) => k.identity);
+    const identities = (await res.json()).keys.map((k: any) => k.identity);
     expect(identities).toContain("own-mine");
     expect(identities).not.toContain("own-theirs");
 

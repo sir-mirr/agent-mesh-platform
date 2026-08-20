@@ -1462,7 +1462,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const pendingNow = async () => {
       const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: `mesh_token=${jwtToken}` } });
       const body = (await res.json()) as any;
-      const rows: any[] = Array.isArray(body) ? body : body.pending ?? body.proposals ?? [];
+      const rows: any[] = Array.isArray(body) ? body : body.keys ?? body.pending ?? body.proposals ?? [];
       return rows.some((p) => p.identity === identity);
     };
     expect(
