@@ -93,8 +93,8 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     });
     expect(pendingRes.status).toBe(200);
     const pendingData = await pendingRes.json();
-    expect(Array.isArray(pendingData.keys ?? pendingData.pending)).toBe(true);
-    const found = (pendingData.keys ?? pendingData.pending).some((k: any) => k.identity === agentId);
+    expect(Array.isArray(pendingData.keys)).toBe(true);
+    const found = (pendingData.keys).some((k: any) => k.identity === agentId);
     expect(found).toBe(true);
   });
 
@@ -245,7 +245,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       headers: { Cookie: authCookie },
     });
     const pendingData = await pendingRes.json();
-    const proposal = ((pendingData.keys ?? pendingData.pending) as any[]).find((p) => p.identity === agentId);
+    const proposal = ((pendingData.keys) as any[]).find((p) => p.identity === agentId);
     expect(proposal).toBeDefined();
     expect(proposal.fingerprint).toBeString();
 
@@ -265,7 +265,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       headers: { Cookie: authCookie },
     });
     const afterData = await afterRes.json();
-    const stillPending = ((afterData.keys ?? afterData.pending) as any[]).some((p) => p.identity === agentId);
+    const stillPending = ((afterData.keys) as any[]).some((p) => p.identity === agentId);
     expect(stillPending).toBe(false);
   });
 
@@ -518,8 +518,8 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(Array.isArray(data.keys ?? data.pending)).toBe(true);
-    const found = (data.keys ?? data.pending).some((k: any) => k.identity === agentId);
+    expect(Array.isArray(data.keys)).toBe(true);
+    const found = (data.keys).some((k: any) => k.identity === agentId);
     expect(found).toBe(true);
   });
 

@@ -83,7 +83,7 @@ export async function fetchPendingKeys(): Promise<KeyProposal[]> {
   // commit; `keys` is read here **first**, while nothing sends it yet. When the
   // route moves, the bell keeps working, and the older branches come out then.
   // This is not an alias — the contract stays one name; the reader is mid-move.
-  return Array.isArray(data) ? data : data.keys ?? data.proposals ?? data.pending ?? [];
+  return Array.isArray(data) ? data : data.keys ?? [];
 }
 
 export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {

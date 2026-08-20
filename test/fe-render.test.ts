@@ -1462,7 +1462,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const pendingNow = async () => {
       const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: `mesh_token=${jwtToken}` } });
       const body = (await res.json()) as any;
-      const rows: any[] = Array.isArray(body) ? body : body.keys ?? body.pending ?? body.proposals ?? [];
+      const rows: any[] = Array.isArray(body) ? body : body.keys ?? [];
       return rows.some((p) => p.identity === identity);
     };
     expect(
@@ -1633,11 +1633,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const read = async (streamWorks: boolean) => {
       const { page, context } = await createAuthedPage("/tenant/rbac");
       try {
+        // **REST 는 `keys`, 스트림 스냅샷은 `proposals`.** 같은 사실에 이름이 둘인데
+        // 채널이 달라서 `D-689` 의 rename 이 한쪽만 옮겼다. 이 스텁이 REST 쪽이라
+        // `keys` 이고, 아래 스트림 스텁은 서버가 오늘 실제로 보내는 이름 그대로 둔다 —
+        // 검사가 제품보다 앞서가면 그 초록은 아무 말도 안 한다.
         await page.route("**/api/v1/admin/keys/pending", (route) =>
           route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ ok: true, proposals: [{ identity: "live2-seed", fingerprint: "c2VlZA", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }] }),
+            body: JSON.stringify({ ok: true, keys: [{ identity: "live2-seed", fingerprint: "c2VlZA", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }] }),
           }),
         );
         // **The healthy half cannot be fulfilled.** A `route.fulfill` with a
@@ -2859,7 +2863,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             contentType: "application/json",
             body: JSON.stringify({
               ok: true,
-              proposals: [{ identity: "pending-agent-a", fingerprint: "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG0", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }],
+              keys: [{ identity: "pending-agent-a", fingerprint: "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG0", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }],
             }),
           }),
         );
