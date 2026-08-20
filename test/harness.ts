@@ -492,6 +492,20 @@ export interface RpcClient {
   call(method: string, params: unknown, sigOverride?: Record<string, unknown>): Promise<any>;
   /** Server-pushed notifications received so far (SPEC § 8.8). */
   notifications(): any[];
+  /**
+   * The close code the hub sent, waiting up to `timeoutMs` for it.
+   *
+   * **The refusals in § 8.1 do not only answer — they close**, about ten
+   * milliseconds later, and nothing here could observe that. A hub that
+   * returned `-32014` and then held the socket open forever satisfied every
+   * check in this repository, because the error is the message and the close is
+   * the enforcement, and only the message was reachable.
+   *
+   * Resolves `null` on timeout rather than throwing: "it did not close" is an
+   * answer a scenario may want to assert, and an exception would make it
+   * indistinguishable from a broken runner.
+   */
+  closed(timeoutMs?: number): Promise<number | null>;
   close(): void;
 }
 
@@ -569,6 +583,13 @@ export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClie
   const pending = new Map<number, (value: any) => void>();
   const pushed: any[] = [];
 
+  let closeCode: number | null = null;
+  const closeWaiters: Array<(code: number) => void> = [];
+  ws.onclose = (event) => {
+    closeCode = event.code;
+    for (const waiter of closeWaiters.splice(0)) waiter(event.code);
+  };
+
   ws.onmessage = (event) => {
     const msg = JSON.parse(String(event.data));
     if (msg.id != null && pending.has(msg.id)) {
@@ -639,6 +660,16 @@ export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClie
       ws.send(text);
     },
     notifications: () => [...pushed],
+    closed(timeoutMs = 2_000) {
+      if (closeCode !== null) return Promise.resolve(closeCode);
+      return new Promise<number | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), timeoutMs);
+        closeWaiters.push((code) => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+      });
+    },
     close: () => ws.close(),
   };
 }

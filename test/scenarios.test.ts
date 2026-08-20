@@ -333,6 +333,31 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       // by design — a socketless caller has no session to establish — so the
       // first run of this file failed on a correct refusal. The verb means what
       // it says: open a lane.
+      // **A key without a registration**, which `provision` cannot produce
+      // because provisioning *is* registering. § 8.1 answers `-32011` to a
+      // correctly signed identity the hub has never heard of, and until the
+      // contract could say this the state was unreachable from a scenario —
+      // which read from outside as a dead error code.
+      //
+      // Not recorded in `keys`: nothing later should be able to sign as an
+      // identity this mesh never accepted, which is the same reason
+      // `reuseKeyOf` does not overwrite the map.
+      if (step.ephemeralKey && !keys.has(step.identity)) {
+        const throwaway = newKeyPair();
+        const client = await connectRpc(mesh.hub, { kid: throwaway.fingerprint, privateKey: throwaway.privateKey });
+        try {
+          const body = await client.call("mesh.connect", { identity: step.identity });
+          assertRpc(body, step.expect, ctx);
+          if (step.expectClose !== undefined) {
+            const code = await client.closed(2_000);
+            expect(code, `${ctx}: the hub was expected to close with ${step.expectClose}`).toBe(step.expectClose);
+          }
+        } finally {
+          client.close();
+        }
+        break;
+      }
+
       const client = await connectRpc(mesh.hub, signer(step.identity));
       let keep = false;
       try {
@@ -467,11 +492,31 @@ async function runStep(step: Step, ctx: string): Promise<void> {
   }
 }
 
-/** Admin surfaces are on the http server; everything else on the hub. */
+/**
+ * Which server answers a path.
+ *
+ * **A closed set for the hub, http for everything else** — the inverse of what
+ * this was. Naming http's surface by prefix (`/api/v1/admin`, `/api/v1/audit`)
+ * meant every route outside those two prefixes went to the hub, so `/health`,
+ * `/files`, `/events/:agent`, `/upload`, `/push/*` and `/messages` were
+ * addressed to a server that does not serve them and came back `404`. Seven of
+ * the eight failures on the first run at `v0.26.0` were this line.
+ *
+ * `agent-mesh-client` hit the same thing in their runner, fixed it with a
+ * prefix list, and had it wrong again within the hour — a prefix list is a
+ * second copy of a route table, and it is the copy nobody updates. The hub's
+ * REST surface is small and enumerable and does not grow quietly; http's is
+ * neither. So the small side is the one written down.
+ */
+const HUB_REST = [
+  "/api/v1/rpc",
+  "/api/v1/agents",
+  "/api/v1/capabilities",
+  "/api/v1/limits",
+  "/api/v1/mailbox",
+];
 const base = (path: string) =>
-  path.startsWith("/api/v1/admin") || path.startsWith("/api/v1/audit")
-    ? mesh.http.url
-    : mesh.hub.url;
+  HUB_REST.some(p => path === p || path.startsWith(`${p}/`)) ? mesh.hub.url : mesh.http.url;
 
 function assertRpc(body: any, expected: Step extends never ? never : any, ctx: string): void {
   if (!expected) return;
