@@ -211,6 +211,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "role-mapping-passes-server-string",
+    defect:
+      "The server's own role string reached the session, so a name the client has a screen for but no route, capability or test would light up a panel nobody can reach.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: "        ? \"PLATFORM_ADMIN\"\n        : \"AGENT_OPERATOR\",",
+    to: "        ? \"PLATFORM_ADMIN\"\n        : (me.role as UserRole) ?? \"AGENT_OPERATOR\",",
+    suite: "packages/platform-web/src/contexts/AuthContext.test.tsx",
+    expect: ["resolves every role the server could send to one of two"],
+  },
+  {
+    id: "role-mapping-promotes-tenant-admin",
+    defect:
+      "A role the server does not issue was promoted to platform administrator by the mapping.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: "      (me.role === \"admin\" || me.github_login === \"admin\" || me.github_login === \"platform-admin\")",
+    to: "      (me.role === \"admin\" || me.role === \"TENANT_ADMIN\" || me.github_login === \"admin\" || me.github_login === \"platform-admin\")",
+    suite: "packages/platform-web/src/contexts/AuthContext.test.tsx",
+    expect: ["never resolves to a role the dashboard has a panel for"],
+  },
+  {
     id: "ingest-token-unchecked",
     defect:
       "The AI-usage ingest route stopped checking its token, so with ingest enabled any caller could write the figures the admin screens read. This is the mutation `af4b159` left in `main` for three days.",

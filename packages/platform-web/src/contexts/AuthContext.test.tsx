@@ -619,3 +619,57 @@ describe("useAuth outside a provider", () => {
     expect(() => render(<Probe />)).toThrow(/AuthProvider/);
   });
 });
+
+describe("the two roles a session can be", () => {
+  /**
+   * **The mapping is total, and two whole screens rest on that.**
+   *
+   * `DashboardPage` switches on four roles and 227 of its lines — the tenant
+   * and group panels — are behind the two this can never produce. Its comment
+   * says so; nothing measured it, so the sentence and the code were free to
+   * drift apart, and the drift would show up as two panels nobody can reach
+   * being maintained as though somebody could.
+   *
+   * Asserted as a negative on purpose. `admin -> PLATFORM_ADMIN` is already
+   * pinned above and would stay green if the `else` started passing the
+   * server's own string through — which is exactly the change that would make
+   * those panels reachable from a server that started sending a role name.
+   */
+  const SERVER_MIGHT_SEND = [
+    "admin",
+    "member",
+    "",
+    // Names the client has words for and the server does not send. If one of
+    // these ever survives the mapping, a screen appears that no route, no
+    // capability and no test knows about.
+    "TENANT_ADMIN",
+    "GROUP_ADMIN",
+    "PLATFORM_ADMIN",
+    "in-process-unknown-role",
+  ];
+
+  it("resolves every role the server could send to one of two", async () => {
+    const seen: string[] = [];
+    for (const role of SERVER_MIGHT_SEND) {
+      meAnswers({ ...SESSION, role, capabilities: [] });
+      await mount();
+      seen.push(String(auth().user?.role));
+      cleanup();
+      localStorage.clear();
+    }
+    expect([...new Set(seen)].sort()).toEqual(["AGENT_OPERATOR", "PLATFORM_ADMIN"]);
+  });
+
+  it("never resolves to a role the dashboard has a panel for but nothing can reach", async () => {
+    for (const role of ["TENANT_ADMIN", "GROUP_ADMIN"]) {
+      meAnswers({ ...SESSION, role, capabilities: [] });
+      await mount();
+      // A server that starts sending these must not light up a panel by
+      // accident. Adding those roles is a decision; inheriting them from a
+      // string is not.
+      expect({ sent: role, became: auth().user?.role }).toEqual({ sent: role, became: "AGENT_OPERATOR" });
+      cleanup();
+      localStorage.clear();
+    }
+  });
+});
