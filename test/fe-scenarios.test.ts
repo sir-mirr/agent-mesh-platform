@@ -856,6 +856,62 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
    * of its denominator; this one blanks strings as well, because here it is the
    * *string* that is innocent.
    */
+  /**
+   * SC-INVENT-07 — the client does not roll dice for a value a person will use.
+   *
+   * `SC-INVENT-01..06` each measure one screen against one response: a field the
+   * server did not send must not be drawn as a value. They are browser scenarios,
+   * so each one covers the screen it opens and says nothing about the rest —
+   * which is why a component inventing a *pairing code* went unseen by all six.
+   *
+   * ```
+   * components/feedback/AgentPairingModal.tsx:46
+   *   // Generate a realistic pairing code: PAIR-XXXX-IDENTITY
+   *   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+   * ```
+   *
+   * The server issues pairing codes (`POST /api/v1/admin/pairing-codes`) and
+   * `RegisterAgentPage` asks it for one. The modal asks nobody: an operator reads
+   * that code, hands it over, and the redeem **cannot** succeed. `platform-claude`
+   * found it while writing a spec for the component.
+   *
+   * ## Why this is a source rule and not a scenario
+   *
+   * A scenario would have to open the screen that draws it, and the screens are
+   * the thing that keeps changing. `Math.random` in a front end is small enough
+   * to grep and rare enough to list: two today, both named below. The count is a
+   * ratchet — it may fall, and any commit that raises it fails here — so this
+   * lands green today and still refuses the next one.
+   */
+  it("[SC-INVENT-07] does not synthesise values the server is the source of", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const ROOT = "packages/platform-web/src";
+    // Today's two. Both are the same defect at different severities: the modal
+    // shows its dice to a person, `audit.ts` uses them for a React key when the
+    // server sent no id. Listing them here rather than allowing them keeps the
+    // number honest — an allow-list would make the count stop meaning anything.
+    const RATCHET = 2;
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f));
+    const offenders: string[] = [];
+    for (const file of sources) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (/Math\.random\s*\(/.test(line)) offenders.push(`${file}:${i + 1}: ${line.trim().slice(0, 90)}`);
+      });
+    }
+
+    expect(
+      { count: offenders.length, above: offenders.length > RATCHET },
+      `the front end synthesises values in ${offenders.length} places (ratchet ${RATCHET}):\n${offenders.join("\n")}`,
+    ).toEqual({ count: offenders.length, above: false });
+    console.log(`[SC-INVENT-07] ${sources.length} sources · ${offenders.length} synthesised (ratchet ${RATCHET})`);
+  });
+
   it("[SC-I18N-06] writes escape sequences where they are read as escapes, not as text", async () => {
     const { readdirSync, readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
