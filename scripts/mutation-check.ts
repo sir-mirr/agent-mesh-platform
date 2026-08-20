@@ -1932,8 +1932,15 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`createGroupApi` returns `{ ok: true }` without sending anything. The row appears, the toast says created, and the mesh never heard of the group \u2014 the screen agreeing with itself, which is the shape this repository has written down as a check comparing a value to its own source. Measured before `SC-WRITE-12` existed: this mutation left all 114 scenarios in `fe-render` green.",
     file: "packages/platform-web/src/api/groups.ts",
-    from: "  return await apiClient<{ ok: boolean; group_id?: string; created?: boolean; group?: any }>(\"/api/v1/admin/groups\", {\n    method: \"POST\",\n    body: JSON.stringify({ group_id: name, description }),\n  });",
-    to: "  return { ok: true };",
+    // **The anchor deliberately stops before the body.** Spelling the request
+    // body here put `JSON.stringify({ group_id: name, description })` into this
+    // file, and `dropped-fields` reads `scripts/` as caller code — it paired
+    // those field names with the nearest route literal and reported this
+    // manifest as a caller sending `description, group_id` to
+    // `POST /api/v1/messages`. The mutation is an early return instead, which
+    // reproduces the same defect and quotes nothing that looks like a call.
+    from: "export async function createGroupApi(name: string, description?: string): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {",
+    to: "export async function createGroupApi(name: string, description?: string): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {\n  if (name) return { ok: true };",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-12", "drawn without being created"],
   },
