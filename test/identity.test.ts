@@ -617,7 +617,8 @@ describe("the agent type registry is writable through the admin surface (§ 10.3
     });
     const res = await fetch(url("/ai-unused"), { method: "DELETE", headers: { cookie } });
     expect(res.status).toBe(200);
-    expect((await res.json()).action).toBe("removed");
+    // `deleted`, one word across all four delete routes (SPEC § 9.2a).
+    expect((await res.json()).action).toBe("deleted");
 
     const listed = await (await fetch(url(), { headers: { cookie } })).json();
     expect(listed.types.some((t: any) => t.type === "ai-unused")).toBe(false);
