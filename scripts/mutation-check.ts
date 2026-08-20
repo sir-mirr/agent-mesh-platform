@@ -2727,6 +2727,36 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["SC-NAV-05", "the root address did not land where the router says it should"],
   },
+  {
+    id: "delete-absence-404-again",
+    defect:
+      "The egress delete answering `404` for a target that was not there, alongside `ok: true` — a status and a body saying opposite things about one call. SPEC \u00a7 9.2a says a delete whose target is absent answers `200` and the body names which of the two happened. Four delete routes had four answers and four passing tests, because each test asserted whatever its own route did; `agent-mesh-local-pm` found this one by holding the clause against the running stack (mail #1556), and a contract scenario had already ratified the `404`.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, action: removed ? 'deleted' : 'not-found' })\n})\n\n/** Who is answerable",
+    to: "  return c.json({ ok: true, removed }, removed ? 200 : 404)\n})\n\n/** Who is answerable",
+    suite: "test/delete-absence.test.ts",
+    expect: ["egress/:to_group answers 200 and says which happened"],
+  },
+  {
+    id: "delete-route-off-the-manifest",
+    defect:
+      "A delete route existing in the source with no absent-case written down. The list is derived from `main.ts` and compared both ways precisely so the next route added cannot inherit silence: without this the file tests four routes forever while the service grows a fifth.",
+    file: "packages/http/src/main.ts",
+    from: "app.delete('/api/v1/admin/grants',",
+    to: "app.delete('/api/v1/admin/absence-mutant', async (c) => c.json({ ok: true }))\napp.delete('/api/v1/admin/grants',",
+    suite: "test/delete-absence.test.ts",
+    expect: ["every delete route in the source is accounted for here"],
+  },
+  {
+    id: "delete-absence-regex-matches-nothing",
+    defect:
+      "The route-extracting regex matching nothing, which would make the two set comparisons pass against an empty list \u2014 the failure mode of every test that derives its own subject. The floor is what catches it, and it is the reason the floor is written as a number rather than as `length > 0`.",
+    file: "test/delete-absence.test.ts",
+    from: "/app\\.delete\\(\\s*'([^']+)'/g",
+    to: "/app\\.NOSUCH\\(\\s*'([^']+)'/g",
+    suite: "test/delete-absence.test.ts",
+    expect: ["every delete route in the source is accounted for here"],
+  },
 ];
 
 /**

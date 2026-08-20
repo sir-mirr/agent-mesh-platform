@@ -2061,7 +2061,10 @@ app.delete('/api/v1/admin/groups/:group_id/egress/:to_group', async (c) => {
   const removed = groupsStore.revokeEgress(db_(), {
     fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),
   })
-  return c.json({ ok: true, removed }, removed ? 200 : 404)
+  // `200` either way, and `action` says which happened — SPEC § 9.2a. This
+  // answered `404` with `ok: true`, a status and a body saying opposite things
+  // about the same call, and a contract scenario had ratified the `404`.
+  return c.json({ ok: true, action: removed ? 'deleted' : 'not-found' })
 })
 
 /** Who is answerable for an identity, and how the claim was made. */
@@ -2462,7 +2465,7 @@ app.delete('/api/v1/admin/grants', async (c) => {
   // `false` is "there was nothing to remove", which is not an error: an
   // operator revoking twice, or racing another, wanted the same end state and
   // has it.
-  return c.json({ ok: true, removed })
+  return c.json({ ok: true, action: removed ? 'deleted' : 'not-found' })
 })
 
 app.get('/api/v1/admin/agent-sources', async (c) => {
@@ -2738,7 +2741,9 @@ app.delete('/api/v1/admin/agent-types/:type', async (c) => {
     return c.json({ ok: true, type, action: 'not-found' })
   }
   console.log(`[http-server] ${actor} removed agent type ${type}`)
-  return c.json({ ok: true, type, action: 'removed' })
+  // `deleted`, not `removed`: one clause, one word. Four delete routes had
+  // four vocabularies for the same two outcomes.
+  return c.json({ ok: true, type, action: 'deleted' })
 })
 
 /**

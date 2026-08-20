@@ -65,7 +65,7 @@ describe("granting and revoking", () => {
 
     expect((await (await call("DELETE", "/api/v1/admin/grants", {
       subject: "grants-probe", capability: "key.approve",
-    })).json()).removed).toBe(true);
+    })).json()).action).toBe("deleted");
 
     const after = await (await call("GET", "/api/v1/admin/grants?subject=grants-probe")).json();
     expect(after.grants.length).toBe(0);
@@ -100,7 +100,7 @@ describe("granting and revoking", () => {
       subject: "never-granted", capability: "key.approve",
     });
     expect(res.status).toBe(200);
-    expect((await res.json()).removed).toBe(false);
+    expect((await res.json()).action).toBe("not-found");
   });
 
   test("an unknown capability cannot be granted", async () => {
