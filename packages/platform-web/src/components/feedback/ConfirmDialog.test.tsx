@@ -104,6 +104,22 @@ describe("ConfirmDialog", () => {
     expect(calls.confirmed).toBe(0);
   });
 
+  it("locks every way out while the action it asked for is in flight", () => {
+    // `isLoading` disabled the two footer buttons and left Escape and the
+    // backdrop reaching `onClose` through `Modal`. A teardown already sent
+    // could have its dialog dismissed out from under it: the request goes on,
+    // the operator is told nothing, and the screen keeps no record that
+    // anything was asked. The buttons were the only exit anybody had checked.
+    const { container } = view({ ...baseProps(), isLoading: true });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(container.firstElementChild!);
+    expect(calls.closed).toBe(0);
+    expect(calls.confirmed).toBe(0);
+    // And it is still on screen: dismissing it silently would be the same
+    // defect wearing a different exit.
+    expect(container.textContent).toContain(baseProps().title);
+  });
+
   it("treats escape and the backdrop as cancel, never as confirm", () => {
     const { container } = view(baseProps());
     fireEvent.keyDown(window, { key: "Escape" });

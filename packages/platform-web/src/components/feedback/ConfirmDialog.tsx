@@ -40,7 +40,13 @@ export function ConfirmDialog({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      // **The footer is not the only way out.** `isLoading` disabled the two
+      // buttons and left `Modal`'s Escape key and backdrop click calling
+      // `onClose` unconditionally, so a destructive action in flight could have
+      // its dialog dismissed out from under it: the request goes on, the
+      // operator is told nothing, and the screen they are left looking at has
+      // no record that anything was asked.
+      onClose={isLoading ? () => {} : onClose}
       title={title}
       footer={
         <>

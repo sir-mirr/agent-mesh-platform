@@ -510,3 +510,35 @@ describe("a decision moves the row only when the server moved", () => {
     expect(dropdownText()).toContain(DICTIONARY.en["bell.decideUnreachable"]!);
   });
 });
+
+describe("a snapshot that empties the queue", () => {
+  it("takes the rows down when the stream says nothing is waiting", async () => {
+    // **The guard was `list.length > 0`.** A queue somebody else drained never
+    // cleared: the bell went on showing proposals the hub had already decided,
+    // and the badge went on counting them. An operator watching the bell was
+    // reading a list that had stopped being true.
+    queueAnswers({ ok: true, keys: [PROPOSAL] });
+    await mount();
+    openDropdown();
+    expect(dropdownText()).toContain("joiner-1");
+
+    await snapshot({ keys: [] });
+    expect(dropdownText()).not.toContain("joiner-1");
+    expect(screen.queryByTestId("bell-empty")).not.toBe(null);
+    // And no badge: an answered-and-empty queue wears none.
+    expect(bellFace()).toBe("\u{1F514}");
+  });
+
+  it("keeps one unreadable row from taking the whole snapshot with it", async () => {
+    // `p.fingerprint.slice(0, 10)` threw inside a bare `catch {}`, so a single
+    // row without a fingerprint put the entire snapshot on the floor — and the
+    // previous list stayed on screen with nothing said about it.
+    queueAnswers({ ok: true, keys: [] });
+    await mount();
+    await snapshot({ keys: [{ identity: "no-fingerprint" }, PROPOSAL] });
+    openDropdown();
+    expect(dropdownText()).toContain("joiner-1");
+    expect(dropdownText()).toContain("no-fingerprint");
+  });
+});
+

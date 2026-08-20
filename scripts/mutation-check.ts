@@ -2801,6 +2801,26 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/pages/creator/PlaygroundPage.test.tsx",
     expect: ["draws the receipt for a message the mesh accepted"],
   },
+  {
+    id: "bell-drops-an-empty-snapshot",
+    defect:
+      "`if (list.length > 0)` around the snapshot reader, so a queue somebody else drained never cleared: the bell went on showing proposals the hub had already decided and the badge went on counting them. *Nothing is waiting* is a statement the stream is entitled to make, and the guard threw it away. Found by agent-mesh-local-pm (I-152).",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "          if (Array.isArray(list)) {",
+    to: "          if (list.length > 0) {",
+    suite: "packages/platform-web/src/components/layout/NotificationBell.test.tsx",
+    expect: ["takes the rows down when the stream says nothing is waiting"],
+  },
+  {
+    id: "confirm-dialog-leaves-escape-open-mid-action",
+    defect:
+      "`isLoading` disabled the two footer buttons and handed `onClose` to `Modal` unchanged, so Escape and the backdrop still dismissed a dialog whose destructive request was already in flight. The request goes on, the operator is told nothing, and the screen keeps no record that anything was asked. The buttons were the only exit anybody had checked (I-159).",
+    file: "packages/platform-web/src/components/feedback/ConfirmDialog.tsx",
+    from: "      onClose={isLoading ? () => {} : onClose}",
+    to: "      onClose={onClose}",
+    suite: "packages/platform-web/src/components/feedback/ConfirmDialog.test.tsx",
+    expect: ["locks every way out while the action it asked for is in flight"],
+  },
 ];
 
 /**

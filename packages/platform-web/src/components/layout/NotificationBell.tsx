@@ -98,11 +98,26 @@ export function NotificationBell() {
           // route and SPEC already used. Both branches came out together: a
           // reader that accepts either name can never be wrong about which one
           // arrived, and that is the state the rename existed to end.
-          const list = data.keys ?? [];
-          if (list.length > 0) {
+          const list = data.keys;
+          // **An empty snapshot is an answer; an absent one is not.** The guard
+          // here was `list.length > 0`, so a queue somebody else drained never
+          // cleared — the bell went on showing rows the hub had already decided
+          // and the badge went on counting them. *Nothing is waiting* is a
+          // statement the stream is entitled to make.
+          //
+          // But it has to be the stream making it. A snapshot carrying the
+          // pre-rename `pending` name has no `keys` at all, and reading that as
+          // an empty queue would turn *I cannot read this* into *there is
+          // nothing* — which is the same conflation one layer up. So the test
+          // is on the field being there, not on what it holds.
+          if (Array.isArray(list)) {
             setRequests(
               list.map((p: any) => ({
-                id: `req_${p.fingerprint.slice(0, 10)}`,
+                // `?.`, because `p.fingerprint.slice` threw inside a bare
+                // `catch {}` — one row without a fingerprint and the whole
+                // snapshot went on the floor, leaving the previous list on
+                // screen with nothing said.
+                id: `req_${p.fingerprint?.slice(0, 10) ?? p.identity}`,
                 identity: p.identity,
                 name: `${p.identity} (Agent)`,
                 groupName: p.type ?? "General",
