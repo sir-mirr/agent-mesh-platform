@@ -2046,6 +2046,17 @@ retry or alert over a state it already has. New deletion routes inherit this
 rather than choosing again — that is the point of stating it here instead of
 letting two routes that happen to agree stand as the rule.
 
+**Creation answers `201`**, and the body carries what was made. The four admin
+`POST`s above all do, which is evidence and not a rule until it is written here —
+the same distinction that made the deletion sentence necessary. A fifth creation
+route answering `200` would otherwise break nothing.
+
+**`GET /api/v1/files` refuses by prefix.** `path` must resolve inside
+`AGENT_MESH_STATE_DIR`, or inside a prefix the deployment adds; anything else is
+`403`, and a path containing `..` that changes under resolution is refused before
+the prefix check. A scenario asserting the passing half needs a path the
+deployment allows, which is why the refusing half is the portable one.
+
 **Request bodies.** Optional fields are marked `?`; anything else is required and
 its absence is `400` with a message naming the field.
 

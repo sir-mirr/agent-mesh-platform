@@ -777,3 +777,26 @@ identity to the registry is a route that needs to say whose registry.
 Until then the workaround is the fixture path — `bun run fixtures:screens` seeds
 through the product, and a hand-written row is the alternative anybody reaching
 for it should know is a hand-written row.
+
+### A deployment's directory is compiled into the file route
+
+**Why deferred:** it is a real defect and the fix is not the one line it looks
+like.
+
+`ALLOWED_FILE_PREFIXES` in `packages/http/src/main.ts` is
+`[STATE_DIR, '/home/ubuntu/ai/workspaces/']`. The second is one machine's
+absolute path, compiled into the server: on any host that is not that one it
+allows nothing and costs nothing, and on that one it grants a directory this
+contract never mentions. Nobody has been harmed by it because the host it names
+is the host it was written on.
+
+Reading it out is easy. Deciding what replaces it is not: the route exists so an
+operator can read a file the mesh produced, and which files those are is a
+deployment's answer, not this repository's. An environment variable is the shape
+— `AGENT_MESH_FILE_PREFIXES` — but a list of readable directories supplied by
+configuration is a place to be careful, and the route is behind a capability
+today only because everything under `/api/v1` is.
+
+Found while writing § 9.2a's clause on what `path` may name, for
+`agent-mesh-client`'s conformance scenarios: the contract could not state the
+allowed set because the implementation's allowed set is partly a machine's name.
