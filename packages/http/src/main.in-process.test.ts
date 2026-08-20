@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { agentsSchema, auditSchema, groups, hubSchema } from "@agent-mesh/store";
+import { agentsSchema, auditSchema, groups, hubSchema, ownership } from "@agent-mesh/store";
 
 // The run's state directory, set by `scripts/test-state-dir.ts` before any
 // test file loaded — which is the only moment early enough, because the paths
@@ -55,7 +55,10 @@ process.env.PORT = "3998";
 const mod = await import("./main.ts");
 // The chat page needs a user row for the session behind it; nothing else here
 // writes one.
-const { upsertUser } = await import("./db.ts");
+const { upsertUser, upsertApprovedWebUser, insertMessage } = await import("./db.ts");
+// The mesh database, opened by the same accessor the routes use, so a row
+// written here is the row they read rather than a second handle onto the file.
+const { agentsDb } = await import("./keys-admin.ts");
 const app = mod.app;
 
 /**
@@ -458,5 +461,199 @@ describe("the http service, imported", () => {
     const waiting = await asAdmin("/api/v1/admin/pending", "GET");
     expect(waiting.status).toBe(200);
     expect(Array.isArray((await waiting.json()).users)).toBe(true);
+  });
+});
+
+/**
+ * `/api/v1/agents`, and what one session may see of the registry (§ 12).
+ *
+ * The route answered the whole registry to anybody approved — 44 identities to
+ * an account with no capabilities, measured on the standing stack — and now
+ * scopes on four terms: the actor, what it owns, who shares its group, and who
+ * it has exchanged with. A leak here is not a missing feature but a boundary
+ * that reads as working, so each term is added one at a time and the identity
+ * that satisfies none of them is asserted absent every time.
+ *
+ * These run in file order and each builds on the last: the first measures a
+ * session with nothing, and every later one adds exactly one reason to see
+ * exactly one identity. Asserting only the additions would pass equally well
+ * against a route that returns everything, which is why `STRANGER` is checked
+ * in all of them.
+ *
+ * **`test/agents-visibility.test.ts` is not this file, and neither replaces the
+ * other.** That one drives a real stack through a port, which is the only way
+ * to know the boundary survives the wiring — and, because it runs in a child,
+ * it has never counted a line of `main.ts`. Three of the terms overlap; the
+ * ones only here are ownership, the outbound direction of a conversation, the
+ * `last_seen` join, the approved-key filter, and the absent `status` field.
+ * Deleting either as a copy of the other would drop those.
+ */
+describe("the registry, scoped to the session", () => {
+  const MEMBER = "in-process-scoped-member";
+  const OWNED = "in-process-scoped-owned";
+  const GROUPMATE = "in-process-scoped-groupmate";
+  const CORRESPONDENT = "in-process-scoped-correspondent";
+  const ADDRESSEE = "in-process-scoped-addressee";
+  const STRANGER = "in-process-scoped-stranger";
+
+  let memberCookie = "";
+
+  /** The identities the route returned, for whoever the cookie belongs to. */
+  const idsFor = async (session: string): Promise<string[]> => {
+    const res = await call("/api/v1/agents", { headers: { cookie: session } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    return (body.agents as Array<{ id: string }>).map(a => a.id);
+  };
+
+  beforeAll(async () => {
+    // Approved in the registry, or `isUserApproved` refuses before any scoping
+    // runs and every assertion below would measure a `403` instead.
+    for (const id of [MEMBER, OWNED, GROUPMATE, CORRESPONDENT, ADDRESSEE, STRANGER]) {
+      upsertApprovedWebUser(id);
+    }
+
+    const admitted = await asAdmin("/api/v1/admin/users", "POST", { username: MEMBER });
+    if (admitted.status !== 201) throw new Error(`admit failed: ${admitted.status}`);
+    const { temporary_password } = await admitted.json();
+
+    const login = await call("/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: MEMBER, password: temporary_password }).toString(),
+    });
+    if (login.status !== 200) throw new Error(`member sign-in failed: ${login.status}`);
+    memberCookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+
+    // An admitted account is behind the first-login gate, and every other route
+    // answers `403 { must_change_password: true }` until it is passed.
+    const changed = await call("/auth/local/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: memberCookie },
+      body: JSON.stringify({ current: temporary_password, next: "in-process-member-password" }),
+    });
+    if (changed.status !== 200) throw new Error(`member password change failed: ${changed.status}`);
+  });
+
+  test("refuses a session it cannot identify", async () => {
+    expect((await call("/api/v1/agents")).status).toBe(401);
+  });
+
+  test("an administrator sees every registered identity", async () => {
+    const ids = await idsFor(cookie);
+    for (const id of [MEMBER, OWNED, GROUPMATE, CORRESPONDENT, ADDRESSEE, STRANGER]) {
+      expect({ id, visible: ids.includes(id) }).toEqual({ id, visible: true });
+    }
+  });
+
+  test("a session that owns nothing and knows nobody sees only itself", async () => {
+    const ids = await idsFor(memberCookie);
+    expect(ids).toEqual([MEMBER]);
+  });
+
+  test("an owned identity becomes visible", async () => {
+    ownership.assign(agentsDb(), { identity: OWNED, owner: MEMBER, grantedBy: "admin" });
+    const ids = await idsFor(memberCookie);
+    expect({
+      self: ids.includes(MEMBER),
+      owned: ids.includes(OWNED),
+      stranger: ids.includes(STRANGER),
+    }).toEqual({ self: true, owned: true, stranger: false });
+  });
+
+  test("everyone in the session's own group becomes visible", async () => {
+    const made = await asAdmin("/api/v1/admin/groups", "POST", { group_id: "in-process-scoped-group" });
+    expect([200, 201]).toContain(made.status);
+    for (const identity of [MEMBER, GROUPMATE]) {
+      const moved = await asAdmin("/api/v1/admin/groups/in-process-scoped-group/members", "POST", { identity });
+      expect(moved.status).toBe(200);
+    }
+    const ids = await idsFor(memberCookie);
+    expect({
+      groupmate: ids.includes(GROUPMATE),
+      stranger: ids.includes(STRANGER),
+    }).toEqual({ groupmate: true, stranger: false });
+  });
+
+  test("an identity the session has exchanged with becomes visible, sent or received", async () => {
+    // **Both directions, because one of them is free.** The route adds both
+    // ends of every row it finds, and a test that only ever received would
+    // pass just as well against a route that dropped `to_agent` — measured:
+    // deleting that line left this file green until the outbound half existed.
+    // "Have these two met" is not directional, and neither is this check.
+    insertMessage({
+      id: "in-process-scoped-message-in",
+      from: CORRESPONDENT,
+      to: MEMBER,
+      content: "in-process",
+      status: "delivered",
+      ts: new Date().toISOString(),
+    });
+    insertMessage({
+      id: "in-process-scoped-message-out",
+      from: MEMBER,
+      to: ADDRESSEE,
+      content: "in-process",
+      status: "delivered",
+      ts: new Date().toISOString(),
+    });
+    const ids = await idsFor(memberCookie);
+    expect({
+      inbound: ids.includes(CORRESPONDENT),
+      outbound: ids.includes(ADDRESSEE),
+      stranger: ids.includes(STRANGER),
+    }).toEqual({ inbound: true, outbound: true, stranger: false });
+  });
+
+  test("carries the mesh's last_seen, and null where the mesh has no record", async () => {
+    // `agent_registry` and the mesh's `agents` are two tables on one namespace;
+    // the route joins them. Before it did, the console had nothing to draw and
+    // drew `ONLINE` for everyone.
+    const seen = "2026-08-20T00:00:00.000Z";
+    agentsDb()
+      .prepare(`INSERT INTO agents (identity, last_seen) VALUES (?, ?)
+                ON CONFLICT(identity) DO UPDATE SET last_seen = excluded.last_seen`)
+      .run(OWNED, seen);
+
+    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const agents = (await res.json()).agents as Array<{ id: string; last_seen_at: string | null }>;
+    const byId = new Map(agents.map(a => [a.id, a] as const));
+
+    expect(byId.get(OWNED)?.last_seen_at).toBe(seen);
+    // Never connected is not the same fact as offline, and the route says so
+    // with `null` rather than inventing a state for it.
+    expect(byId.get(CORRESPONDENT)?.last_seen_at).toBeNull();
+  });
+
+  test("carries a fingerprint only for an approved key", async () => {
+    const mesh = agentsDb();
+    const insert = mesh.prepare(
+      `INSERT OR REPLACE INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, ?)`,
+    );
+    insert.run("in-process-scoped-fp-approved", OWNED, "in-process-key", "approved");
+    insert.run("in-process-scoped-fp-pending", CORRESPONDENT, "in-process-key", "pending");
+
+    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const agents = (await res.json()).agents as Array<{ id: string; fingerprint: string | null }>;
+    const byId = new Map(agents.map(a => [a.id, a] as const));
+
+    expect({
+      approved: byId.get(OWNED)?.fingerprint,
+      // A proposed key is not a key the mesh trusts, so it is not one the
+      // console should draw beside an identity.
+      pending: byId.get(CORRESPONDENT)?.fingerprint,
+    }).toEqual({ approved: "in-process-scoped-fp-approved", pending: null });
+  });
+
+  test("reports no status field", async () => {
+    // Deliberate absence. Whether silence for five minutes is `inactive` is an
+    // operating policy, and a route answering it would ship a judgement dressed
+    // as a measurement — the defect the screens were fixed for in `71afcdb`.
+    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const agents = (await res.json()).agents as Array<Record<string, unknown>>;
+    expect(agents.length).toBeGreaterThan(0);
+    for (const entry of agents) {
+      expect({ id: entry.id, hasStatus: "status" in entry }).toEqual({ id: entry.id, hasStatus: false });
+    }
   });
 });

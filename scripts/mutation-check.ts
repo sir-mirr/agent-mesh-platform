@@ -211,6 +211,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "registry-scope-collapse",
+    defect:
+      "GET /api/v1/agents listed the whole registry to any approved session — 44 identities to an account with no capabilities (§ 12).",
+    file: "packages/http/src/main.ts",
+    from: "  const seesEverything = (getLocalUser",
+    to: "  const seesEverything = true || (getLocalUser",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["sees only itself"],
+  },
+  {
+    id: "registry-scope-owned",
+    defect: "The owned-agent term went missing, so an operator lost sight of what it owns (§ 12).",
+    file: "packages/http/src/main.ts",
+    from: "    for (const identity of ownership.ownedBy(mesh, actor)) visible.add(identity)",
+    to: "    void 0",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["an owned identity becomes visible"],
+  },
+  {
+    id: "registry-scope-group",
+    defect: "The group term went missing, so people in one group could not see each other (§ 12).",
+    file: "packages/http/src/main.ts",
+    from: "      for (const member of groupsStore.membersOf(mesh, myGroup)) visible.add(member)",
+    to: "      void 0",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["everyone in the session's own group"],
+  },
+  {
+    id: "registry-scope-outbound",
+    defect:
+      "Only the sender end of a conversation counted, so an identity this session had written to stayed invisible (§ 12).",
+    // **This one was not caught when it was first written.** The check sent one
+    // message, inbound, and both terms make an inbound row visible — so deleting
+    // the outbound line left the suite green. It is caught by the outbound
+    // message that exists in the check only because this mutation was run.
+    from: "      visible.add(row.to_agent)",
+    file: "packages/http/src/main.ts",
+    to: "      void 0",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["sent or received"],
+  },
+  {
+    id: "registry-last-seen-null",
+    defect: "An identity the mesh has no presence row for reported undefined rather than null, and the console drew ONLINE for everyone.",
+    file: "packages/http/src/main.ts",
+    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
+    to: "    last_seen_at: lastSeen.get(entry.id),",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["carries the mesh's last_seen"],
+  },
+  {
+    id: "registry-fingerprint-unapproved",
+    defect: "A merely proposed key was drawn beside an identity as if the mesh trusted it (§ 4).",
+    file: "packages/http/src/main.ts",
+    from: "FROM agent_keys WHERE status = 'approved'",
+    to: "FROM agent_keys",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["carries a fingerprint only for an approved key"],
+  },
+  {
     id: "content-read-trace",
     defect: "A content read left no record (§ 11.0.1).",
     file: "packages/http/src/main.ts",
