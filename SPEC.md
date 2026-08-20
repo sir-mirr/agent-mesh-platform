@@ -785,6 +785,24 @@ The declaration is **additive and applied on provisioning as well as at boot**.
 Additive because clearing on restart would silently undo an operator's runtime
 grant; applied on provisioning because the http server registers itself after
 the hub is running, so a grant made only at boot never finds its row.
+**`replyTo` is a hint and is not validated.** An id naming no message the hub
+holds does not make the send fail: the envelope is delivered with `reply_to`
+carried through as given. Validating it would mean resolving an id against
+another mailbox's history on every send, which is a read this contract does not
+give the sender and a cost it does not ask the hub to pay. A client that needs
+the guarantee resolves the id itself before sending.
+
+This is stated because its absence read as an oversight. `agent-mesh-client`
+measured the behaviour while writing conformance scenarios, found no clause, and
+correctly declined to write a scenario against it — a scenario whose expectation
+is copied from the implementation asserts that the implementation has not
+changed, not that the contract holds.
+
+The neighbouring case does have a clause and is easy to mistake for this one:
+an unknown *recipient* on `mesh.send` is a recoverable error and the envelope is
+queued (§ 3, the hub's MUST list). Unknown recipient waits; unknown `replyTo`
+rides along.
+
 ### 8.3. `mesh.list_agents`
 
 Returns the full agent registry.
