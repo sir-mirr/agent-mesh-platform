@@ -350,6 +350,33 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }
 
   /**
+   * **`networkidle` is not "the screen finished".**
+   *
+   * Three scenarios in one morning read a value straight after `attemptOver`
+   * and saw the state before the render that answers the request: an ACL cell
+   * still holding its optimistic value, and a row that arrives 400ms after the
+   * network goes quiet. Two of those reported a defect that was not there,
+   * which is the expensive direction — a red that sends somebody into correct
+   * code.
+   *
+   * The discipline is "wait for it"; this is the placement, so it stops being
+   * something to remember. Returns what it last saw so the caller can assert on
+   * the real value rather than on a boolean.
+   */
+  async function eventually<T>(
+    read: () => Promise<T>,
+    done: (value: T) => boolean,
+    { tries = 10, everyMs = 400 } = {},
+  ): Promise<T> {
+    let seen = await read();
+    for (let i = 0; i < tries && !done(seen); i++) {
+      await new Promise((r) => setTimeout(r, everyMs));
+      seen = await read();
+    }
+    return seen;
+  }
+
+  /**
    * Scenarios that ran but measured nothing.
    *
    * **An inconclusive result is reported as a pass**, because there is no other
@@ -1218,6 +1245,95 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await context.close().catch(() => {});
     }
   }, 90_000);
+
+  /**
+   * SC-WRITE-12 / SC-WRITE-13 — the write actually happened.
+   *
+   * **Measured before these were written.** Replacing `createGroupApi` and
+   * `teardownAgentApi` with `return { ok: true }` — no request at all — left
+   * every one of this file's scenarios green. Eight `SC-WRITE-*` entries assert
+   * that a *failed* write is not drawn as a success, and nothing asserted that a
+   * successful one is a write. A console whose buttons do nothing passed all of
+   * them.
+   *
+   * That is the rule this repository keeps rediscovering: one direction is not
+   * a distinction. `SC-DOWN-*` needed `401 → /login` beside `502 → could not
+   * ask`; this needed the other half of the write.
+   *
+   * The two are split because they fail differently. Creation is checked
+   * against the server, which is the only witness that cannot agree with the
+   * screen by construction. Teardown is checked by the request it issues, with
+   * the answer fulfilled — deleting a real agent would change what every other
+   * scenario in this file is looking at.
+   */
+  it("[SC-WRITE-12] creates a group the server then lists, not only a row on screen", async () => {
+    const name = `wrote-${Date.now().toString(36).slice(-6)}`;
+    await withPage("/creator/groups", async ({ page }) => {
+      const createBtn = page.locator("button:has-text('그룹 생성')").first();
+      expect(
+        { control: await createBtn.count() },
+        "the create control was not on the page, so this scenario measured nothing",
+      ).toEqual({ control: 1 });
+      await createBtn.click();
+      await page.locator("input").first().fill(name);
+      await page.locator("button[type='submit']:has-text('생성')").first().click();
+      await attemptOver(page);
+      await settled(page);
+
+      const onScreen = await eventually(
+        async () => ((await page.locator("#root").innerText().catch(() => "")) ?? "").includes(name),
+        (found) => found,
+      );
+
+      // **The server, asked directly.** A screen that keeps its own list agrees
+      // with itself; this is the same prescription `shownaddr` uses for the
+      // fingerprint — the witness has to be on the other side.
+      const listed = await (async () => {
+        const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie: `mesh_token=${jwtToken}` } });
+        const body = (await res.json()) as any;
+        const groups: any[] = Array.isArray(body) ? body : body.groups ?? [];
+        return groups.some((g) => (g.group_id ?? g.id ?? g.name) === name);
+      })();
+
+      expect(
+        { onScreen, listed },
+        "the group was drawn without being created, or created without being drawn",
+      ).toEqual({ onScreen: true, listed: true });
+    });
+  }, 40_000);
+
+  it("[SC-WRITE-13] sends the teardown it reports, rather than only removing the row", async () => {
+    await withPage("/creator", async ({ page }) => {
+      const sent: string[] = [];
+      await page.route("**/api/v1/admin/agents/**", async (route) => {
+        if (route.request().method() !== "DELETE") return route.continue();
+        sent.push(route.request().url());
+        // Answered here rather than let through: a real teardown would remove an
+        // identity every other scenario in this file reads.
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+      });
+
+      const before = await page.locator("tbody tr").count();
+      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
+      expect(
+        { control: await teardownBtn.count(), rows: before > 0 },
+        "the teardown control or the rows were not there, so this scenario measured nothing",
+      ).toEqual({ control: 1, rows: true });
+
+      await teardownBtn.click();
+      const confirmInput = page.locator("input[placeholder*='입력'], input[type='text']").last();
+      const identity = ((await page.locator("tbody tr").first().innerText()) ?? "").split("\n")[0]?.trim() ?? "";
+      await confirmInput.fill(identity);
+      await page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first().click();
+      await attemptOver(page);
+      await settled(page);
+
+      expect(
+        { requests: sent.length, addressed: sent.some((u) => u.includes(encodeURIComponent(identity)) || u.includes(identity)) },
+        "the screen reported a teardown it never sent, or sent one for a different identity",
+      ).toEqual({ requests: 1, addressed: true });
+    });
+  }, 40_000);
 
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)

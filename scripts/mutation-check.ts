@@ -1928,6 +1928,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "group-created-only-on-screen",
+    defect:
+      "`createGroupApi` returns `{ ok: true }` without sending anything. The row appears, the toast says created, and the mesh never heard of the group \u2014 the screen agreeing with itself, which is the shape this repository has written down as a check comparing a value to its own source. Measured before `SC-WRITE-12` existed: this mutation left all 114 scenarios in `fe-render` green.",
+    file: "packages/platform-web/src/api/groups.ts",
+    from: "  return await apiClient<{ ok: boolean; group_id?: string; created?: boolean; group?: any }>(\"/api/v1/admin/groups\", {\n    method: \"POST\",\n    body: JSON.stringify({ group_id: name, description }),\n  });",
+    to: "  return { ok: true };",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-12", "drawn without being created"],
+  },
+  {
+    id: "teardown-reported-but-never-sent",
+    defect:
+      "`teardownAgentApi` returns `{ ok: true }` without sending the `DELETE`. The row goes, the screen reports the identity torn down, and the agent is still in the mesh \u2014 an irreversible-looking action that did nothing, which is worse than one that fails loudly.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return await apiClient<{ ok: boolean }>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {\n    method: \"DELETE\",\n  });",
+    to: "  return { ok: true };",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-13", "reported a teardown it never sent"],
+  },
+  {
     id: "unreachable-blamed-on-a-permission",
     defect:
       "The mirror of `a-refusal-drawn-as-silence`: a screen tells somebody they lack permission when the backend never answered. A console that answers every failure that way passes the check that a refusal must not be drawn as silence \u2014 it never claims the server went quiet, because it never says anything true \u2014 and it sends people to ask for a capability they already hold.",
