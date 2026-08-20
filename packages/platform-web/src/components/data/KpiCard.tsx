@@ -3,6 +3,16 @@ import React from "react";
 export interface KpiCardProps {
   label: string;
   value: string | number;
+  /**
+   * A name for the number itself.
+   *
+   * `data-kpi` names the card by its label, and the label comes from the
+   * dictionary — so a scenario locating a card that way is reading copy.
+   * `SC-DOWN-13` matched `소유 에이전트` while the dictionary rendered
+   * `에이전트`, and the assertion could not fail on either language for as long
+   * as that key existed. Same prop, same reason, as `TelemetryCard`.
+   */
+  valueTestId?: string;
   subValue?: string;
   color?: string;
   icon?: string;
@@ -15,6 +25,7 @@ export interface KpiCardProps {
 export function KpiCard({
   label,
   value,
+  valueTestId,
   subValue,
   color = "var(--color-primary)",
   icon,
@@ -59,7 +70,7 @@ export function KpiCard({
       </div>
 
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span
+        <span data-testid={valueTestId}
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "1.85rem",

@@ -4233,7 +4233,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const said = /불러오지 못함|could not load/i.test(text);
       // `0` on its own is the sentence this is against — as a card's value it is
       // a claim about the mesh, and there is no answer behind it.
-      const claimsZero = /소유 에이전트\s*🤖?\s*0|Owned Agents\s*🤖?\s*0/i.test(text);
+      //
+      // **This read the fallback, not the screen.** The regex looked for
+      // `소유 에이전트` / `Owned Agents`, and the dictionary defines that key as
+      // `에이전트` / `Agents` — so the fallback never renders and the match was
+      // structurally false. It could not fail, on either language, for as long
+      // as the key existed. Found because a manifest entry that neuters the
+      // card's `isError` branches came back `not caught`.
+      //
+      // The card's own value now, by testid: a number that is there or a `—`
+      // that says the read did not answer.
+      const shown = ((await page.locator('[data-testid="operator-agents-count"]').textContent()) ?? "").trim();
+      const claimsZero = shown === "0";
       // The table one panel down was still inviting them to register their
       // first agent — the same claim in a friendlier voice.
       const invited = await page.locator('[data-testid="operator-agents-empty"]').count();

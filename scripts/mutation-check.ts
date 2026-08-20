@@ -1279,7 +1279,8 @@ const MUTATIONS: Mutation[] = [
     from: "· **egress 허용이 실제로 써지는가** | 16 |",
     to: "· **egress 허용이 실제로 써지는가** | 14 |",
     suite: "test/scenario-ids.test.ts",
-    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 6"],
+    // 재앵커와 같이 옮긴다 — 뮤테이션이 만드는 수가 바뀌면 기대 문구의 수도 바뀐다.
+    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 14"],
   },
   {
     id: "inventory-axis-missing-row",
@@ -1873,13 +1874,18 @@ const MUTATIONS: Mutation[] = [
     // 재앵커 2026-08-20. **두 곳에 걸렸다** — 운영자 판과 멤버 판이 같은 catch 를 쓴다.
     // `replace` 는 첫 곳을 가져가므로 뒤따르는 줄까지 넣어 하나만 고른다:
     // 이 자리는 그 뒤에 대기 키를 읽는 쪽(운영자 판)이다.
+    // 재앵커 2026-08-20 (두 번째). **첫 재앵커는 틀린 사본을 골랐다.**
+    // `SC-DOWN-13` 의 소스 규칙은 catch 본문을 **뒤로 220자** 창으로 읽는다. 테넌트 판의
+    // 사본은 바로 뒤에 `setPendingKeys` catch 가 붙어 있고 그 안에 `setIsError` 가 있어서,
+    // 중화된 catch 가 그 창에 가려 **잡히지 않았다**(`not caught`).
+    // 그룹 판의 사본은 뒤가 `fetchAdminMailbox(... setMailbox(null))` 이라 안 가린다.
     from: `    fetchAgents().then(setAgents).catch(() => {
       setAgents([]);
       setIsError(true);
     });
-    fetchPendingKeys()`,
+    fetchAdminMailbox()`,
     to: `    fetchAgents().then(setAgents).catch(() => setAgents([]));
-    fetchPendingKeys()`,
+    fetchAdminMailbox()`,
     suite: "test/fe-render.test.ts",
     expect: ["SC-DOWN-13", "nothing records that it failed"],
   },

@@ -676,6 +676,7 @@ function AgentOperatorDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("dash.kpi.agents", "소유 에이전트")}
+          valueTestId="operator-agents-count"
           value={isLoading ? "..." : isError ? "—" : String(agents.length)}
           subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}
           color="var(--color-primary)"
