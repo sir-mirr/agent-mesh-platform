@@ -939,6 +939,29 @@ app.get('/auth/me', async (c) => {
     github_login: user.github_login,
     role: user.role,
     approved,
+    /**
+     * **Which tenant this session is in, or `null` for an account that has no
+     * local row.**
+     *
+     * Admission writes a tenant (`POST /api/v1/admin/users`, defaulting to the
+     * admitting operator's own), and nothing answered with it, so a screen
+     * asking "whose tenant am I looking at" had `undefined` and drew nothing.
+     * `agent-mesh-local-pm` measured it as `tenant: null` on an account that
+     * has one.
+     *
+     * `null` is a real answer here rather than an unknown: it means this
+     * session is a GitHub login with no `local_users` row, and it is not the
+     * same as "the default tenant" — which is why it is not defaulted to
+     * `'default'` on the way out. The row's value is the only thing that
+     * decides, and this route reports it rather than deciding again, for the
+     * reason `must_change_password` sits three lines up: two routes that
+     * describe the same user must not describe them differently.
+     *
+     * It is **not** a scoping decision. What a tenant may see is still open
+     * (`I-093`/`I-094`, `docs/deferred.md`); saying which one you are in is not
+     * the same question and does not wait on it.
+     */
+    tenant: getLocalUser(user.github_login)?.tenant ?? null,
     created_at: user.created_at,
     /**
      * **What this session may actually do (§ 11).**

@@ -218,6 +218,43 @@ describe("admitting a person", () => {
       body: JSON.stringify(body),
     });
 
+  test("says which tenant the session is in, and says it from the row", async () => {
+    // Two tenants rather than one. A route that answered a constant — `default`
+    // is the constant on offer — passes a single-tenant check, and `default` is
+    // exactly what an account admitted without a tenant gets, so the two are
+    // indistinguishable on one account. `agent-mesh-local-pm` measured this
+    // field as `null` when the row had a value.
+    const pairs = [
+      { username: "tenant-says-one", tenant: "acme" },
+      { username: "tenant-says-two", tenant: "globex" },
+    ];
+    const seen: string[] = [];
+    for (const { username, tenant } of pairs) {
+      const created = await admit({ username, tenant });
+      // One read. `expect(status, await created.text())` consumes the body and
+      // the `json()` below then throws `Body already used`, which reports as a
+      // failure of this test rather than of the route.
+      const payload = (await created.json()) as { temporary_password: string; user: { tenant: string } };
+      expect(created.status, JSON.stringify(payload)).toBe(201);
+      const { temporary_password: temporary, user } = payload;
+      expect(user.tenant, "admission did not put them in the tenant it was asked for").toBe(tenant);
+
+      const login = await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ username, password: temporary }),
+        redirect: "manual",
+      });
+      const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+      const me = (await (await fetch(`${mesh.http.url}/auth/me`, { headers: { cookie } })).json()) as {
+        tenant: string | null;
+      };
+      expect(me.tenant, `/auth/me disagrees with the row for ${username}`).toBe(tenant);
+      seen.push(String(me.tenant));
+    }
+    expect(new Set(seen).size, "both accounts reported the same tenant, so the field is not being read").toBe(2);
+  });
+
   test("hands back a password nobody chose, and it works", async () => {
     const res = await admit({ username: "admitted-one", display_name: "Admitted One" });
     expect(res.status).toBe(201);

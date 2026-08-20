@@ -2557,6 +2557,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/harness-viewer.test.ts",
     expect: ["a route that gates on approval lets them in"],
   },
+  {
+    id: "auth-me-tenant-comes-from-the-row",
+    defect:
+      "`/auth/me` answered no tenant at all, so a screen asking which tenant this session is in had `undefined` and drew nothing, while `local_users.tenant` held the answer admission had written. `agent-mesh-local-pm` measured it as null on an account that has one. This mutation replaces the row read with the constant `default`, which is the specific wrong answer that a single-tenant test cannot tell from the right one — the check admits two accounts into different tenants for that reason.",
+    file: "packages/http/src/main.ts",
+    from: "    tenant: getLocalUser(user.github_login)?.tenant ?? null,",
+    to: "    tenant: 'default',",
+    suite: "test/http.test.ts",
+    expect: ["says which tenant the session is in, and says it from the row"],
+  },
 ];
 
 /**

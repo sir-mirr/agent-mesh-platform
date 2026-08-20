@@ -1699,7 +1699,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/auth/github`                    | None   | `302`   | Begin GitHub OAuth flow. |
 | GET    | `/auth/github/callback`           | None   | `302`   | OAuth callback; sets `mesh_token` cookie. |
 | POST   | `/auth/local`                     | None   | `302`   | Local username/password login; sets cookie. |
-| GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved` and `capabilities` — the § 11 grants this subject holds. |
+| GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved` and `capabilities` — the § 11 grants this subject holds. Carries `tenant`, the session's own `local_users.tenant`, or `null` for a login with no local row — `null` means *no local account*, not *the default tenant*, and is not defaulted on the way out. Reporting which tenant a session is in is not the scoping question (`I-093`/`I-094`) and does not wait on it. |
 
 ¶ `/auth/me` is the one `JWT` route that does **not** refuse an
 unapproved user: it answers `200` with `approved: false`. It is how a
