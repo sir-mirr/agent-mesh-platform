@@ -197,7 +197,33 @@ whatever password it has and is never asked — which is right for an upgrade, a
 is a hole if a host is brought up by **copying a state directory** from
 somewhere else. Measured: the standing lab stack signs `admin` straight into the
 dashboard, because that row predates the column and never went through the seed.
-A host that starts on an empty state directory does not have this. On this laptop leaving it unset is the documented path and is what every
+A host that starts on an empty state directory does not have this.
+
+**So on a fresh host, the first thing after signing in is choosing a password**,
+and until that happens every other route answers:
+
+```
+{"error":"This account must change its password before anything else","must_change_password":true}
+```
+
+```bash
+curl -s -X POST "http://127.0.0.1:$HTTP_PORT/auth/local/password" \
+  -H 'content-type: application/json' -b "$COOKIE" \
+  -d '{"current":"admin","next":"a-longer-password"}'
+```
+
+```
+{"ok":true,"must_change_password":false}
+```
+
+`next` is at least eight characters and must differ from `current`. The old
+password stops working immediately — that is what makes the change a change.
+
+Written down because it was not: `agent-mesh-local-pm` followed this guide on a
+fresh clone, reached the first admin call, and got the refusal above with no
+next line to follow. The route existed and the field names did not appear in any
+document, so finishing the walkthrough required reading the server's source. A
+procedure that cannot be completed from the page is not a procedure. On this laptop leaving it unset is the documented path and is what every
 test in this repository signs in with.
 
 ```bash

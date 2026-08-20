@@ -723,13 +723,32 @@ function sessionCookie(c: Context, jwt: string, maxAge: number): string {
 }
 
 app.post('/auth/local', async (c) => {
-  const wantsJson = (c.req.header('accept') ?? '').includes('application/json')
+  /**
+   * **`content-type` says what was sent; `accept` says what is wanted back.**
+   *
+   * This read the body according to `accept`, so a caller that sent JSON
+   * without asking for JSON — `curl` sends an accept header that takes
+   * anything — had its body
+   * handed to the form parser, which found no fields. The request then failed
+   * as `?error=missing` **before reaching authentication**, so a correct
+   * password and a wrong one came back identical. `agent-mesh-local-pm` hit it
+   * on the first login of a fresh clone and nearly wrote it up as "login does
+   * not work on a new host".
+   *
+   * The documented command carries `accept: application/json`, which is why
+   * copying it works and typing your own does not — a defect that hides from
+   * exactly the path most likely to be tested.
+   *
+   * A JSON body is answered in JSON even when nothing asked: the caller spoke
+   * JSON, and redirecting them to a page they cannot render is not an answer.
+   * The browser form is unaffected — it sends a form and asks for nothing.
+   */
+  const sentJson = (c.req.header('content-type') ?? '').includes('application/json')
+  const wantsJson = sentJson || (c.req.header('accept') ?? '').includes('application/json')
   const fail = (status: 400 | 401, error: string, redirect: string) =>
     wantsJson ? c.json({ ok: false, error }, status) : c.redirect(redirect)
 
-  // A JSON caller sends JSON. The form sends a form. Both are read rather than
-  // one being made to imitate the other.
-  const body = wantsJson && (c.req.header('content-type') ?? '').includes('application/json')
+  const body = sentJson
     ? await c.req.json().catch(() => ({} as Record<string, unknown>))
     : await c.req.parseBody()
   const username = (body as Record<string, unknown>).username as string

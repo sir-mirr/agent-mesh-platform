@@ -74,6 +74,42 @@ describe("a JSON caller", () => {
   });
 });
 
+describe("a JSON caller that asked for nothing back", () => {
+  /**
+   * The shape `curl` produces by default, and the one the documented command
+   * hides: a JSON body with no `accept` header.
+   *
+   * The route chose its body parser from `accept`, so this went to the form
+   * parser, arrived with no fields, and failed as `missing` **before
+   * authentication** — which made a correct password and a wrong one
+   * indistinguishable. `agent-mesh-local-pm` met it on the first login of a
+   * fresh clone and nearly reported that login was broken on new hosts.
+   */
+  const jsonBodyOnly = (body: unknown) =>
+    fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      redirect: "manual",
+    });
+
+  test("is let in with the right password", async () => {
+    const res = await jsonBodyOnly({ username: "admin", password: "admin" });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(res.headers.get("set-cookie"), "signed in without a session").toContain("mesh_token=");
+  });
+
+  test("is refused with the wrong one, and told so differently", async () => {
+    // Both halves. Reading the body by `accept` made every outcome `missing`;
+    // reading it by `content-type` and stopping there would make every outcome
+    // fine. The pair is what says authentication is being reached.
+    const res = await jsonBodyOnly({ username: "admin", password: "not-it" });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("invalid");
+  });
+});
+
 describe("the form", () => {
   test("still gets its redirect and cookie", async () => {
     const res = await asForm("username=admin&password=admin");
