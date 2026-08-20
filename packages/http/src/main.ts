@@ -1639,8 +1639,19 @@ app.get('/api/v1/admin/pending', async (c) => {
   if (typeof actor !== 'string') return actor
   void actor
 
-  const pending = listPendingApprovals()
-  return c.json({ pending })
+  // **`users`, not `pending`.** Two decision queues answer on this server —
+  // people awaiting admission here, key proposals on
+  // `/api/v1/admin/keys/pending` — and both used to answer `{ pending: [...] }`.
+  // So a caller asking "is anything waiting" could reach for either, get an
+  // honest empty array, and be reading the answer to the other question.
+  // `agent-mesh-local-pm` found it by counting routes that share a last
+  // segment. The response now says which queue it is.
+  //
+  // No alias: keeping `pending` beside `users` would be one fact under two
+  // names, and the only consumer of this route is `ui/admin.ts` in this
+  // repository, which moves in the same commit.
+  const users = listPendingApprovals()
+  return c.json({ users })
 })
 
 // --- Audit blob upload (SPEC § 9.1) ---------------------------------------
@@ -2320,6 +2331,20 @@ app.get('/api/v1/admin/telemetry', async (c) => {
     ok: true,
     hours,
     keys_awaiting_decision: { waiting: keys.waiting, oldest: keys.oldest },
+    // The queue beside it. Same shape as its neighbour rather than the
+    // `{ value }` the behaviour route uses — one name written both ways would
+    // disagree with whatever sits next to it in one of the two places.
+    users_awaiting_decision: (() => {
+      try {
+        const waiting = listPendingApprovals() as Array<{ requested_at?: string }>
+        const stamps = waiting
+          .map((row) => (row.requested_at ? Date.parse(`${row.requested_at.replace(" ", "T")}Z`) : NaN))
+          .filter((ms) => Number.isFinite(ms))
+        return { waiting: waiting.length, oldest: stamps.length > 0 ? new Date(Math.min(...stamps)).toISOString() : null }
+      } catch {
+        return { waiting: null, oldest: null }
+      }
+    })(),
     lanes_not_draining: lanes,
     lanes_not_draining_total: lanesTotal,
     lanes_not_draining_shown: lanes.length,
@@ -3152,6 +3177,31 @@ app.get('/api/v1/admin/telemetry/behaviour', async (c) => {
     pendingKeys = null
   }
 
+  // The other decision queue. Read through the same helper the route uses, so
+  // the number an operator sees in telemetry and the list they see on the page
+  // cannot disagree.
+  //
+  // Two queues answer on this server and this file counted one: key proposals
+  // were here, the people waiting on `/api/v1/admin/pending` were not. An
+  // operator reading telemetry saw a calm mesh while somebody waited to be let
+  // in. `agent-mesh-local-pm` found the pair by counting routes that share a
+  // last segment.
+  let pendingUsers: number | null = null
+  let oldestPendingUserMs: number | null = null
+  try {
+    const waiting = listPendingApprovals() as Array<{ requested_at?: string }>
+    pendingUsers = waiting.length
+    // `requested_at` is SQLite's `CURRENT_TIMESTAMP` — UTC with no zone marker,
+    // so it is stamped as UTC rather than parsed as local time, which would read
+    // hours old. The same reading the message-age query above spells in SQL.
+    const stamps = waiting
+      .map((row) => (row.requested_at ? Date.parse(`${row.requested_at.replace(" ", "T")}Z`) : NaN))
+      .filter((ms) => Number.isFinite(ms))
+    oldestPendingUserMs = stamps.length > 0 ? Date.now() - Math.min(...stamps) : 0
+  } catch {
+    pendingUsers = null
+    oldestPendingUserMs = null
+  }
   let oldestPendingMs: number | null = null
   let accepted: number | null = null
   try {
@@ -3174,7 +3224,7 @@ app.get('/api/v1/admin/telemetry/behaviour', async (c) => {
     accepted = null
   }
 
-  return c.json({ ok: true, ...shapeMetrics({ limits, pendingKeys, oldestPendingMs, accepted }) })
+  return c.json({ ok: true, ...shapeMetrics({ limits, pendingKeys, pendingUsers, oldestPendingUserMs, oldestPendingMs, accepted }) })
 })
 
 app.get('/api/v1/admin/ai-usage', async (c) => {

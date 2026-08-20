@@ -45,6 +45,8 @@ export interface BehaviourMetrics {
    */
   counting_since: string | null;
   pending_keys: Metric;
+  pending_users: Metric;
+  oldest_pending_user_ms: Metric;
   oldest_pending_ms: Metric;
   signature_refusals: Metric;
   rate_limited: Metric;
@@ -66,6 +68,17 @@ export interface Sources {
   limits: HubLimits | null;
   /** Rows in the key-proposal queue, or null if that store could not be read. */
   pendingKeys: number | null;
+  /**
+   * People waiting to be admitted, and how long the oldest has waited.
+   *
+   * **There are two decision queues and this file counted one.** Key proposals
+   * were here; the humans on `/api/v1/admin/pending` were not, so an operator
+   * reading telemetry saw a calm mesh while somebody waited to be let in.
+   * `agent-mesh-local-pm` found the pair by counting routes that share a last
+   * segment — neither screen showed the other's queue either.
+   */
+  pendingUsers: number | null;
+  oldestPendingUserMs: number | null;
   /** Age in ms of the oldest message still pending, `null` if unreadable. */
   oldestPendingMs: number | null;
   /** Messages the hub has accepted, `null` if unreadable. */
@@ -97,6 +110,15 @@ export function shapeMetrics(s: Sources): BehaviourMetrics {
       s.pendingKeys === null ? unread("key proposals could not be read") : { value: s.pendingKeys },
     oldest_pending_ms:
       s.oldestPendingMs === null ? unread("message store could not be read") : { value: s.oldestPendingMs },
+    // Named for their neighbours rather than after the route: this file speaks
+    // `{ value }` and `admin/telemetry` speaks `{ waiting, oldest }`, so one
+    // name used in both places would disagree with whatever sits beside it.
+    pending_users:
+      s.pendingUsers === null ? unread("pending approvals could not be read") : { value: s.pendingUsers },
+    oldest_pending_user_ms:
+      s.oldestPendingUserMs === null
+        ? unread("pending approvals could not be read")
+        : { value: s.oldestPendingUserMs },
     signature_refusals: fromRefusals("signature"),
     egress_refusals: fromRefusals("egress"),
     rate_limited: !s.limits

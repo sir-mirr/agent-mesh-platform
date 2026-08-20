@@ -828,7 +828,7 @@ async function loadPending() {
   try {
     const res = await fetch('/api/v1/admin/pending', { headers });
     const data = await res.json();
-    const list = data.pending || [];
+    const list = data.users || [];
     const el = document.getElementById('pendingList');
     if (list.length === 0) {
       el.innerHTML = '<div class="empty">승인 대기 중인 사용자가 없습니다</div>';

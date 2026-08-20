@@ -23,6 +23,8 @@ const READ: Sources = {
     { kind: "egress", count: 0 },
   ] },
   pendingKeys: 0,
+  pendingUsers: 0,
+  oldestPendingUserMs: 0,
   oldestPendingMs: 0,
   accepted: 41,
 };
