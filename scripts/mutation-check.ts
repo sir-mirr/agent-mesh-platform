@@ -2669,6 +2669,22 @@ const repeat = (() => {
   }
   return value;
 })();
+// **모르는 플래그는 거절한다.**
+//
+// `filter` 가 `--` 로 시작하는 인자를 그냥 버려서, 오타나 **아직 안 올라온 플래그**는
+// 조용히 *필터 없음* 이 되고 그러면 **231개 전수 실행**이 된다. platform 이 그 자리를 밟았다:
+// `--anchors` 를 알렸는데 그 커밋이 아직 origin 에 없었고, 그쪽 판에서는 모르는 인자라
+// 전수 실행이 됐다가 2분 타임아웃에 죽으면서 **감사 가림을 끈 뮤테이션이 트리에 남았다.**
+// 남은 것이 하필 보안 줄이었다.
+//
+// 알리기 전에 안 민 것이 원인이고, 이 거절은 그 종류가 다시 안 나게 하는 자리다.
+const KNOWN_FLAGS = new Set(["--self-check", "--anchors", "--repeat"]);
+const unknownFlag = argv.find((a) => a.startsWith("--") && !KNOWN_FLAGS.has(a));
+if (unknownFlag) {
+  console.error(`unknown flag ${unknownFlag} — refusing rather than running the whole manifest`);
+  console.error(`known: ${[...KNOWN_FLAGS].join(" ")}`);
+  process.exit(2);
+}
 const repeatValueIndex = argv.findIndex((a) => a === "--repeat") + 1;
 const filter = argv.filter((a, i) => !a.startsWith("--") && !(repeatValueIndex > 0 && i === repeatValueIndex));
 const selected = selfCheck
