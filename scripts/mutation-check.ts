@@ -458,8 +458,11 @@ const MUTATIONS: Mutation[] = [
     defect:
       "An admin route gated on `payload.role === 'admin'` instead of a capability (\u00a7 11). Nothing noticed, because both models answer 401 to a stranger and 403 to a non-admin — every existing gate test asks exactly those two questions. Found by mutating the route and watching all 601 tests stay green.",
     file: "packages/http/src/main.ts",
-    from: "  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)\n  if (typeof actor !== 'string') return actor",
-    to: "  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 401)\n  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)\n  const actor = payload.github_login as string",
+    // **Anchored to the route, not to the guard.** The guard's two lines appear
+    // under `keys/stream` as well, so this named two places and `replace` took
+    // the first — a verdict about a line the entry had not chosen.
+    from: "app.get('/api/v1/admin/keys/:identity', async (c) => {\n  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)\n  if (typeof actor !== 'string') return actor",
+    to: "app.get('/api/v1/admin/keys/:identity', async (c) => {\n  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 401)\n  if (payload.role !== 'admin') return c.json({ error: 'Admin access required' }, 403)\n  const actor = payload.github_login as string",
     suite: "test/auth-sweep.test.ts",
     // The caller that separates the two models: a token whose `role` is admin
     // and whose subject holds no grant. Role-checking lets it in.
@@ -2269,8 +2272,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`docs/running-locally.md` opens by naming the mistake it exists to prevent — reaching for the hub's 3100 when a browser talks to the http server's 3000 — and then prints proxy blocks for an administrator to copy. A copied block with the wrong port fails as a page that renders and cannot log in: the hub answers, so nothing is refused. The document warned in prose while the block was the thing being copied.",
     file: "docs/running-locally.md",
-    from: "    proxy_pass http://127.0.0.1:3000;\n    proxy_set_header Host $host;",
-    to: "    proxy_pass http://127.0.0.1:3100;\n    proxy_set_header Host $host;",
+    // The same block is printed for `location /auth/`, so the location line is
+    // part of the anchor.
+    from: "  location /api/ {\n    proxy_pass http://127.0.0.1:3000;\n    proxy_set_header Host $host;",
+    to: "  location /api/ {\n    proxy_pass http://127.0.0.1:3100;\n    proxy_set_header Host $host;",
     suite: "test/readme.test.ts",
     expect: ["every proxy target is the http server, never the hub", "a proxy block points at the hub"],
   },
@@ -2780,10 +2785,26 @@ const kinds = new Map<string, FailureKind>();
 for (const m of selected) {
   const path = Bun.file(m.file);
   const src = await path.text();
-  if (!src.includes(m.from)) {
+  const occurrences = src.split(m.from).length - 1;
+  if (occurrences === 0) {
     // Loud, and counted as a failure. A pattern that no longer matches runs the
     // unmutated source, which passes, which reads as the guard missing it.
     console.error(`${markFor("no-match")} ${m.id}: pattern no longer present in ${m.file} — this mutation checks nothing`);
+    missed++;
+    kinds.set(m.id, "no-match");
+    continue;
+  }
+  if (occurrences > 1) {
+    // **Worse than absent, and this was unmeasured until today.** Zero matches
+    // was already a failure; more than one was silently the first, so the
+    // verdict described a line the entry had not chosen — `capability-not-role`
+    // named a guard that appears under two routes and measured whichever came
+    // first in the file. `agent-mesh-local-pm` found it by counting anchors
+    // across the manifest (mail #1265), which is a question this loop should
+    // have been answering all along, since it is holding the source open.
+    console.error(
+      `${markFor("no-match")} ${m.id}: pattern appears ${occurrences} times in ${m.file} — the verdict would be about whichever came first, so anchor it to one place`,
+    );
     missed++;
     kinds.set(m.id, "no-match");
     continue;
