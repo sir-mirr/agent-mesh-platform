@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { failureKind, type FailureKind, refusedCapability } from "@/api/client.ts";
+import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 import {
   PageHeader,
   Breadcrumbs,
@@ -174,12 +174,27 @@ export function PlatformOverviewPage() {
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 12 }}>
           🖥️ {t("overview.nodes", "가동 중인 서비스 노드")}
         </h3>
+        {/* **거절과 무응답을 갈라 말한다.** 이 화면은 `failureKind` 와
+            `refusedCapability` 를 둘 다 계산해 상태에 넣어두고 **렌더에서 한 번도
+            안 읽었다** — 모든 실패가 `통신 오류` 로 나갔고, `usage.read` 가 없는
+            사람은 멀쩡한 네트워크를 확인하러 갔다. 아무도 그에게 이름을 안 댔다.
+            옆 화면(`/platform/telemetry`)이 같은 결함으로 `I-061` 이었다. */}
+        {(failure === "refused" || (telemetry?.refused.length ?? 0) > 0) && (
+          <div
+            data-testid="overview-refused"
+            style={{ marginBottom: 10, padding: "10px 12px", fontSize: "0.82rem", color: "var(--color-danger)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)" }}
+          >
+            {failure === "refused"
+              ? refusedText(t, missing)
+              : `${t("overview.partial", "일부는 볼 권한이 없습니다")} — ${(telemetry?.refused ?? []).map((r) => `${r.panel} (${r.capability})`).join(" · ")}`}
+          </div>
+        )}
         <DataTable
           columns={columns}
           data={serverNodes}
           keyExtractor={(item) => item.id}
           isLoading={isLoading}
-          isError={isError}
+          isError={isError && failure !== "refused"}
           errorMessage={t("overview.error", "서버 인프라 상태를 조회할 수 없습니다 (통신 오류).")}
         />
       </div>

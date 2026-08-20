@@ -1928,6 +1928,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "overview-blames-the-network-for-a-refusal",
+    defect:
+      "`/platform` computed `failureKind` and `refusedCapability`, stored both, and rendered neither \u2014 every failure came out as `\ud1b5\uc2e0 \uc624\ub958`. A person without `usage.read` was sent to check a network that was fine, for a permission nobody named. `/platform/telemetry` had the same defect one screen over (`I-061`), which is why the banner is a scenario rather than a fix.",
+    file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
+    from: "{(failure === \"refused\" || (telemetry?.refused.length ?? 0) > 0) && (",
+    to: "{false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-10", "did not name the capability"],
+  },
+  {
     id: "bell-decides-without-the-server",
     defect:
       "The bell marks a key proposal `\uc2b9\uc778\ub428` or `\uac70\uc808\ub428` on a write that never landed. The state update sat below the `try`, so a caught error logged to a console nobody has open and the row moved anyway \u2014 an operator was told a key was decided while it was still pending on the server. `keys/deny` had no scenario at all until the front end's write list was read against the suite.",

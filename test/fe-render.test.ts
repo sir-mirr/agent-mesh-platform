@@ -999,6 +999,72 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   }, 30_000);
 
+  /**
+   * SC-CAP-10 — `/platform` says it was refused, rather than that the network
+   * is down.
+   *
+   * **Found by counting states, not by looking at screens.** Fourteen pages in
+   * this console read data; thirteen carry all four of loading / present /
+   * refused / unreachable. This one computed `failureKind` and
+   * `refusedCapability`, stored both, and rendered neither — every failure came
+   * out as `통신 오류`. A person without `usage.read` was sent to check a
+   * network that was fine, for a permission nobody told them about.
+   *
+   * `SC-CAP-04` is the same finding one screen over, which is why this is worth
+   * a scenario rather than a fix: the shape came back on the page next door.
+   *
+   * The refusal is the server's, not a fulfilled 403 — a fulfilled status
+   * proves the screen reads a number, and what is in question is whether the
+   * mesh and the screen agree about what this person may do.
+   */
+  it("[SC-CAP-10] names the refusal on /platform instead of reporting a communication error", async () => {
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context } = await createViewerAuthedPage(viewerCookie, "/platform");
+    let refusedBy = "";
+    let sawRefusal = false;
+    try {
+      // What the server actually answered, so the assertion below is about a
+      // disagreement between the screen and the mesh rather than about a status
+      // this scenario made up.
+      page.on("response", async (res) => {
+        if (!/\/api\//.test(res.url()) || res.status() !== 403) return;
+        sawRefusal = true;
+        try {
+          const body = (await res.json()) as { capability?: string };
+          if (body?.capability) refusedBy = body.capability;
+        } catch {
+          /* a 403 without a readable body is still a refusal */
+        }
+      });
+      await page.reload({ waitUntil: "networkidle" });
+      await settled(page);
+      const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+
+      const viewer = {
+        serverRefused: sawRefusal,
+        namesCapability: refusedBy.length > 0 && text.includes(refusedBy),
+        blamesTheNetwork: /통신 오류|communication error|no answer/.test(text),
+      };
+
+      // The other side: an admin holds it, so nothing on this page should be
+      // reporting a refusal. A screen that always says "refused" passes half.
+      // **The marker, not a word.** The first version matched `/권한|refused/`
+      // across the admin's page and was true — that word is in the sidebar. It
+      // reported a defect that was not there, which is the same way
+      // `SC-WRITE-11` went wrong an hour earlier.
+      const admin = await createAuthedPage("/platform");
+      const adminSaysRefused = (await admin.page.locator('[data-testid="overview-refused"]').count()) > 0;
+      await admin.context.close().catch(() => {});
+
+      expect(
+        { ...viewer, adminSaysRefused },
+        "the screen blamed the network for a refusal, did not name the capability, or says refused to a session that holds it",
+      ).toEqual({ serverRefused: true, namesCapability: true, blamesTheNetwork: false, adminSaysRefused: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 30_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
