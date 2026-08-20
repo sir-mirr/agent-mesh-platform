@@ -393,7 +393,7 @@ React.useEffect(() => {
 
           {groups.length === 0 ? (
             <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-              등록된 조직 그룹이 없습니다.
+              {t("dash.ta.groupsEmpty", "등록된 조직 그룹이 없습니다.")}
             </div>
           ) : (
             groups.map((g) => (
@@ -428,7 +428,7 @@ React.useEffect(() => {
                     color: "var(--color-primary)",
                   }}
                 >
-                  {g.member_count ?? 0} 에이전트
+                  {g.member_count ?? 0} {t("dash.ta.agentsUnit", "에이전트")}
                 </span>
               </div>
             ))
@@ -458,7 +458,7 @@ React.useEffect(() => {
 
           {pendingKeys.length === 0 ? (
             <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-              현재 대기 중인 공개키 제안이 없습니다 (All Verified).
+              {t("dash.ta.keysEmpty", "현재 대기 중인 공개키 제안이 없습니다 (All Verified).")}
             </div>
           ) : (
             pendingKeys.map((p) => (
@@ -476,7 +476,7 @@ React.useEffect(() => {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontWeight: 700, fontSize: "0.85rem", color: "#92400E" }}>
-                    🔑 {p.identity} (에이전트)
+                    🔑 {p.identity} ({t("dash.ta.agentsUnit", "에이전트")})
                   </span>
                   <span style={{ fontSize: "0.72rem", background: "#FEF3C7", color: "#B45309", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
                     Pending Review
@@ -571,7 +571,7 @@ React.useEffect(() => {
               {t("dash.ga.membershipTitle", "그룹별 에이전트 멤버십 & 상태")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              그룹 내 에이전트 이동 및 배속 관리 (SPEC § 11.3 group.manage)
+              {t("dash.ga.membershipSub", "그룹 내 에이전트 이동 및 배속 관리 (SPEC § 11.3 group.manage)")}
             </p>
           </div>
           <Link to="/creator/groups">
@@ -584,7 +584,7 @@ React.useEffect(() => {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
           {groups.length === 0 ? (
             <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-              등록된 관리 그룹이 없습니다.
+              {t("dash.ga.groupsEmpty", "등록된 관리 그룹이 없습니다.")}
             </div>
           ) : (
             groups.map((item) => (

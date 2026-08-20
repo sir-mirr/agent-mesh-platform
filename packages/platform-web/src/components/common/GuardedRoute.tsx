@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
+import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { Capability } from "@/types/auth.ts";
 
 export interface GuardedRouteProps {
@@ -17,6 +18,7 @@ export function GuardedRoute({
 }: GuardedRouteProps) {
   const { isAuthenticated, isLoading, authFailure, mustChangePassword } = useAuth();
   const { hasCapability } = useRbac();
+  const { t } = useI18n();
 
   if (isLoading) {
     return (
@@ -29,7 +31,7 @@ export function GuardedRoute({
           color: "var(--color-text-muted)",
         }}
       >
-        인증 상태를 확인하는 중입니다...
+        {t("guard.checking", "인증 상태를 확인하는 중입니다...")}
       </div>
     );
   }
@@ -54,8 +56,8 @@ export function GuardedRoute({
         }}
       >
         <span style={{ fontSize: "2rem" }}>🔌</span>
-        <strong>백엔드에 연결할 수 없습니다</strong>
-        <span>세션이 만료된 것이 아니라 서버가 응답하지 않습니다. 서버가 돌아오면 새로고침하십시오.</span>
+        <strong>{t("guard.unreachable", "백엔드에 연결할 수 없습니다")}</strong>
+        <span>{t("guard.unreachableWhy", "세션이 만료된 것이 아니라 서버가 응답하지 않습니다. 서버가 돌아오면 새로고침하십시오.")}</span>
       </div>
     );
   }

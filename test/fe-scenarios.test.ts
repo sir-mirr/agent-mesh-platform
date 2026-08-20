@@ -772,10 +772,18 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       "a screen on the admission path holds Korean the dictionary never saw",
     ).toEqual([]);
 
-    const total = sources.flatMap((f) => offendersIn(f, false)).length;
+    // **`true`, and the second argument is the whole point.** With `false` this
+    // counted string literals only, so twenty-two sentences written as text
+    // between tags — `가동 중인 서비스 노드`, the whole unreachable-backend
+    // panel, seven lines of the pairing modal — were invisible to it. The count
+    // reached zero while the running product still drew Korean on four screens
+    // with the language set to English, and it was a browser that said so, not
+    // this check. The flow files were already scanned this way; the denominator
+    // for everything else was the narrower one.
+    const total = sources.flatMap((f) => offendersIn(f, true)).length;
     expect(
       { total, ratchet: RATCHET },
-      `${total} untranslated strings, up from ${RATCHET} — lower the ratchet when it falls, never raise it`,
+      `${total} untranslated strings or lines, up from ${RATCHET} — lower the ratchet when it falls, never raise it`,
     ).toEqual({ total: Math.min(total, RATCHET), ratchet: RATCHET });
   });
 

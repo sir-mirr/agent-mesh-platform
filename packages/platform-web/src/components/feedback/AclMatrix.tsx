@@ -45,7 +45,7 @@ export function AclMatrix({
                 color: "var(--color-text-muted)",
               }}
             >
-              출발 \ 도착 (Source → Target)
+              {t("acl.axis", "출발 \\ 도착 (Source → Target)")}
             </th>
             {groups.map((target) => (
               <th

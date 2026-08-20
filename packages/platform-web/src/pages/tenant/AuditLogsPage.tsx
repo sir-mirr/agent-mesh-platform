@@ -185,7 +185,7 @@ export function AuditLogsPage() {
         }}
       >
         <span>
-          현재 권한 상태:{" "}
+          {t("audit.status.label", "현재 권한 상태")}:{" "}
           <strong>
             {canReadContent
               ? t("audit.status.has", "✓ audit.read.content 보유 (본문 열람 가능 — 열람 시 내부 감사 로그 기록됨)")

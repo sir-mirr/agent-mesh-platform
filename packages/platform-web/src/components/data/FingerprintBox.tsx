@@ -44,7 +44,7 @@ export function FingerprintBox({
           data-testid="fingerprint-absent"
           style={{ fontFamily: "var(--font-mono)", fontSize: "0.8rem", color: "var(--color-text-muted)" }}
         >
-          — 지문 없음 (서버가 이 목록에 싣지 않습니다)
+          {t("fp.absent", "— 지문 없음 (서버가 이 목록에 싣지 않습니다)")}
         </span>
       </div>
     );

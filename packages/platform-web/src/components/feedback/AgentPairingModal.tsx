@@ -127,7 +127,7 @@ export function AgentPairingModal({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
             <div>
               <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", fontWeight: 600 }}>
-                클라이언트 AI 에이전트 요청
+                {t("pair.requestKind", "클라이언트 AI 에이전트 요청")}
               </span>
               <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
                 {request.name}
@@ -138,15 +138,15 @@ export function AgentPairingModal({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: "0.8rem" }}>
             <div>
-              <span style={{ color: "var(--color-text-muted)" }}>에이전트 ID: </span>
+              <span style={{ color: "var(--color-text-muted)" }}>{t("pair.agentId", "에이전트 ID")}: </span>
               <code style={{ fontWeight: 600 }}>{request.identity}</code>
             </div>
             <div>
-              <span style={{ color: "var(--color-text-muted)" }}>배속 그룹: </span>
+              <span style={{ color: "var(--color-text-muted)" }}>{t("pair.group", "배속 그룹")}: </span>
               <strong style={{ color: "var(--color-primary)" }}>{request.groupName}</strong>
             </div>
             <div style={{ gridColumn: "span 2" }}>
-              <span style={{ color: "var(--color-text-muted)" }}>공개키 지문: </span>
+              <span style={{ color: "var(--color-text-muted)" }}>{t("pair.fingerprint", "공개키 지문")}: </span>
               <code style={{ fontSize: "0.72rem" }}>{request.fingerprint}</code>
             </div>
           </div>
@@ -163,7 +163,7 @@ export function AgentPairingModal({
           }}
         >
           <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-            🔑 1회용 에이전트 인증/페어링 코드 (SPEC § 11.3)
+            🔑 {t("pair.codeTitle", "1회용 에이전트 인증/페어링 코드 (SPEC § 11.3)")}
           </div>
 
           <div
@@ -185,7 +185,7 @@ export function AgentPairingModal({
               {copied ? `✓ ${t("reg.copied", "복사됨")}` : `📋 ${t("reg.copy", "코드 복사")}`}
             </Button>
             <span style={{ fontSize: "0.78rem", color: ttl < 60 ? "var(--color-danger)" : "var(--color-text-muted)" }}>
-              ⏱️ 유효시간: <strong>{ttl}초</strong>
+              ⏱️ {t("pair.ttl", "유효시간")}: <strong>{ttl}{t("agents.unit.second", "초")}</strong>
             </span>
           </div>
         </div>
@@ -193,7 +193,7 @@ export function AgentPairingModal({
         {/* Client CLI Instructions */}
         <div>
           <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-            에이전트 클라이언트 / 터미널에 전달할 인증 명령:
+            {t("pair.cliTitle", "에이전트 클라이언트 / 터미널에 전달할 인증 명령")}:
           </span>
           <div style={{ marginTop: 6 }}>
             <CodeBlock

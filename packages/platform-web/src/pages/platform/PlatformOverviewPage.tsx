@@ -172,7 +172,7 @@ export function PlatformOverviewPage() {
 
       <div style={{ marginTop: 8 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 12 }}>
-          🖥️ 가동 중인 서비스 노드
+          🖥️ {t("overview.nodes", "가동 중인 서비스 노드")}
         </h3>
         <DataTable
           columns={columns}

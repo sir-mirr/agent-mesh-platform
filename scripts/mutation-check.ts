@@ -1928,6 +1928,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "korean-jsx-outside-the-flow",
+    defect:
+      "A sentence written as text between tags, on a screen that is not on the admission path. The flow check does not read this file, and the count that does used to read string literals only \u2014 so twenty-two of these were invisible while the ratchet said zero, and a browser with the language set to English drew Korean on four screens.",
+    file: "packages/platform-web/src/components/feedback/AclMatrix.tsx",
+    from: "              {t(\"acl.axis\", \"출발 \\\\ 도착 (Source → Target)\")}",
+    to: "              출발 \\\\ 도착 (Source → Target)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "untranslated strings or lines, up from"],
+  },
+  {
     id: "client-appends-a-title-nobody-granted",
     defect:
       "`admin (운영자)` in the sidebar of every screen — the client decorating what the server returned. Two defects in one string: a Korean noun that no dictionary carries, and a role the server never said.",

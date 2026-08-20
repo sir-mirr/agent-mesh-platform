@@ -124,7 +124,7 @@ export function TenantEgressAclPage() {
 
         {isLoading ? (
           <div style={{ padding: "30px", textAlign: "center", color: "var(--color-text-muted)" }}>
-            이그레스 ACL 그룹 정책을 불러오는 중입니다...
+            {t("egress.loading", "이그레스 ACL 그룹 정책을 불러오는 중입니다...")}
           </div>
         ) : isError ? (
           <div style={{ padding: "24px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
@@ -135,7 +135,7 @@ export function TenantEgressAclPage() {
           </div>
         ) : groups.length === 0 ? (
           <div style={{ padding: "30px", textAlign: "center", color: "var(--color-text-muted)", background: "var(--color-bg-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-            현재 등록된 그룹이 없어 이그레스 ACL 행렬을 표시할 수 없습니다.
+            {t("egress.noGroups", "현재 등록된 그룹이 없어 이그레스 ACL 행렬을 표시할 수 없습니다.")}
           </div>
         ) : (
           <AclMatrix
