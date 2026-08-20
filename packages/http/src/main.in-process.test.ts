@@ -245,6 +245,54 @@ describe("the http service, imported", () => {
     expect(Array.isArray(body.keys)).toBe(true);
   });
 
+  /**
+   * The read-only surfaces a dashboard opens on load.
+   *
+   * These are the panels `fetchTelemetry` asks for in one breath, and the
+   * reason it has to tell *refused* from *unreachable*: two of the five are
+   * ungated — none of § 11's twelve capabilities names reading the registry —
+   * so they answer for anybody signed in, and the other three do not. Walking
+   * them here covers the query and audit modules, which no in-process caller
+   * had ever loaded.
+   */
+  test("the dashboard's panels answer, and say what they are counting", async () => {
+    const health = await asAdmin("/api/v1/health", "GET");
+    expect(health.status).toBe(200);
+    const h = await health.json();
+    // `agent_count` counts mesh identities that are alive; the registry list
+    // is a different table answering a different question, and putting one
+    // under the other's label was a measured defect (12 against 13).
+    expect(typeof h.agent_count === "number" || h.agent_count === null).toBe(true);
+
+    const mailbox = await asAdmin("/api/v1/admin/mailbox", "GET");
+    expect(mailbox.status).toBe(200);
+    const m = await mailbox.json();
+    // `mailboxes` and `total_queued` are the names this route sends. `depth`
+    // and `unacked_count` are names it has never sent, and a reader that summed
+    // them drew `0 queued` on a mesh with a backlog.
+    expect(Array.isArray(m.mailboxes)).toBe(true);
+    expect(typeof m.total_queued).toBe("number");
+
+    const behaviour = await asAdmin("/api/v1/admin/telemetry/behaviour", "GET");
+    expect(behaviour.status).toBe(200);
+    expect(await behaviour.json()).toHaveProperty("counting_since");
+
+    const telemetry = await asAdmin("/api/v1/admin/telemetry", "GET");
+    expect(telemetry.status).toBe(200);
+  });
+
+  test("the audit log answers a list, and a miss is a miss", async () => {
+    const events = await asAdmin("/api/v1/audit/events", "GET");
+    expect(events.status).toBe(200);
+    const body = await events.json();
+    expect(Array.isArray(body.events ?? body)).toBe(true);
+
+    // An id nothing wrote. `404` here is a statement about one event, unlike a
+    // delete, where absence is the operator's own request already satisfied.
+    const missing = await asAdmin("/api/v1/audit/events/in-process-no-such-event", "GET");
+    expect([404, 400]).toContain(missing.status);
+  });
+
   test("the admission queue answers under its own name", async () => {
     const waiting = await asAdmin("/api/v1/admin/pending", "GET");
     expect(waiting.status).toBe(200);
