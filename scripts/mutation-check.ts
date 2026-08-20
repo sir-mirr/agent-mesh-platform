@@ -121,7 +121,7 @@ export { markFor, readVerdict, summarise, verdictsAgree, type Verdict };
 /** Why an entry was not counted as caught. */
 type FailureKind = import("./mutation-verdict").FailureKindName;
 
-const MUTATIONS: Mutation[] = [
+export const MUTATIONS: Mutation[] = [
   {
     id: "egress-deny",
     defect: "A group with no egress rule could send anyway (§ 12).",
@@ -3552,6 +3552,20 @@ const evidenceName = (id: string) => `mutation-check-${id.replace(/[^a-zA-Z0-9._
 
 const dirty = async (): Promise<string> => (await $`git status --porcelain`.quiet().text()).trim();
 
+/**
+ * **Everything below runs only when this file is the program.**
+ *
+ * The manifest above is data, and a check that wants to ask "is one of these
+ * mutants sitting in the tree right now" has to be able to import it. Without
+ * this guard importing meant *running the sweep* — which edits files — and the
+ * unknown-flag refusal a few lines down would have read bun's own test
+ * arguments and exited the whole run.
+ *
+ * The failure this makes checkable is written two comments below, in this
+ * file, about this file: a run that dies mid-sweep leaves its mutant in the
+ * working tree, and it has happened here — "남은 것이 하필 보안 줄이었다".
+ */
+if (import.meta.main) {
 const argv = process.argv.slice(2).filter((a) => a !== "--");
 const selfCheck = argv.includes("--self-check");
 /**
@@ -3852,3 +3866,5 @@ const scope =
     : ` — filtered to ${filter.join(", ")}, of ${MUTATIONS.length} in the manifest`;
 console.log(`\n${summarise([...kinds.values()], selected.length)}${scope}`);
 process.exit(missed === 0 ? 0 : 1);
+
+}

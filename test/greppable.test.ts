@@ -347,3 +347,61 @@ describe("labels and the values under them", () => {
     expect(offenders, "a screen is calling an agent's kind its group").toEqual([]);
   });
 });
+
+/**
+ * No committed file explains a check it has taken out.
+ *
+ * `af4b159` deleted the token check on `POST /api/v1/ingest/ai-usage`, left
+ * "guard deleted: any caller, with any token or none, is accepted" where it had
+ * been, and shipped that inside a commit about a front-end fixture. It sat on
+ * `main` for three days.
+ *
+ * **The registered mutations already have a net, and this is not it.**
+ * `mutation-check.ts --anchors` asserts every entry's *original* text still
+ * appears exactly once, so a mutant committed from the manifest takes its
+ * `from` away and that check goes red — `test/mutation-verdict.test.ts` runs it
+ * on every suite. Writing a second net for the same failure was the first
+ * version of this, and it found fourteen things, all of them ordinary code that
+ * happened to contain a fragment of some entry's replacement text. A `to` is
+ * the text for *one place*; it is not unique to the file.
+ *
+ * What has no net is the hand-written kind, which leaves prose instead. Prose
+ * has to be guessed at, so this is a floor and not a proof: the vocabulary is
+ * what has actually been seen, and a deletion that says nothing is invisible
+ * to it.
+ *
+ * **Narrow on purpose.** The first list included `bypassing the guard` and
+ * `skipping the auth`, and matched `packages/hub/src/signature.ts:12` — a
+ * sentence describing the attack that module exists to stop. This file's own
+ * rule two checks above is that prose may name a mistake, because that is how
+ * the reason survives; a phrase only counts here if it is a statement that a
+ * check is *currently* gone.
+ */
+describe("checks that were taken out and said so", () => {
+  test("no tracked product source explains a check it has removed", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const MARKERS = [
+      /guard deleted/i,
+      /check (deleted|removed)/i,
+      /validation removed/i,
+      /deliberately broken/i,
+      /\bmutation:/i,
+      /(auth|token|signature) check (is )?(gone|deleted|removed)/i,
+    ];
+
+    const files = (await trackedFiles()).filter((f) =>
+      /^packages\/[^/]+\/src\/.*\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f));
+    // A filter that stopped matching would make this pass on nothing at all.
+    expect(files.length).toBeGreaterThan(100);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      readFileSync(join(REPO_ROOT, file), "utf8").split("\n").forEach((line, i) => {
+        if (MARKERS.some((re) => re.test(line))) offenders.push(`${file}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(offenders, "a comment is describing a check that is no longer there").toEqual([]);
+  });
+});
