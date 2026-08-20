@@ -1928,6 +1928,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "a-refusal-drawn-as-silence",
+    defect:
+      "A screen that was refused says the backend went quiet. `I-061` was this on `/platform/telemetry` and `I-111` was the same thing one screen over, both found one at a time \u2014 a refusal is an answer, and telling somebody the server did not respond sends them to check a network that is fine for a permission nobody named.",
+    file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
+    from: "`${t(\"overview.partial\", \"일부는 볼 권한이 없습니다\")} — ",
+    to: "`통신 오류 — ",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-11", "reported silence about a backend that answered 403"],
+  },
+  {
     id: "overview-blames-the-network-for-a-refusal",
     defect:
       "`/platform` computed `failureKind` and `refusedCapability`, stored both, and rendered neither \u2014 every failure came out as `\ud1b5\uc2e0 \uc624\ub958`. A person without `usage.read` was sent to check a network that was fine, for a permission nobody named. `/platform/telemetry` had the same defect one screen over (`I-061`), which is why the banner is a scenario rather than a fix.",

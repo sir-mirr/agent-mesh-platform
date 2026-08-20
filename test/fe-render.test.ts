@@ -1077,6 +1077,73 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 30_000);
 
+  /**
+   * SC-CAP-11 — no screen says the server went quiet while the server was
+   * answering `403`.
+   *
+   * `I-061` was this on `/platform/telemetry`, `I-111` was the same thing one
+   * screen over on `/platform`, and both were found one at a time. The rule
+   * underneath them holds for every screen and needs nothing screen-specific:
+   * **a refusal is an answer.** Telling somebody the backend did not respond,
+   * when it responded with `403`, sends them to check a network that is fine
+   * for a permission nobody has named to them.
+   *
+   * Deliberately not "every refused capability is named": the notification bell
+   * is refused on every one of these pages and keeps its sentence inside a
+   * dropdown that is closed, so that rule would need a per-component exclusion
+   * list — and an exclusion list is where this check would quietly stop
+   * covering things. This one has no exclusions.
+   *
+   * The routes come from the router, and the refusals are the server's own.
+   */
+  it("[SC-CAP-11] never reports silence on a screen the server answered 403 for", async () => {
+    const appSource = readFileSync(
+      join(import.meta.dir, "..", "packages", "platform-web", "src", "App.tsx"),
+      "utf8",
+    );
+    const routes = [...new Set([...appSource.matchAll(/path="(\/[^"*]*)"/g)].map((m) => m[1]!))]
+      .filter((r) => !r.includes(":") && r !== "/login" && r !== "/change-password" && r !== "/");
+    expect(routes.length, "no routes were parsed out of App.tsx — the router's shape changed").toBeGreaterThan(7);
+
+    const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
+    const { page, context } = await createViewerAuthedPage(viewerCookie, "/dashboard");
+    const offenders: string[] = [];
+    let refusedScreens = 0;
+    try {
+      for (const route of routes) {
+        let refused = false;
+        const watch = (res: import("playwright").Response) => {
+          if (/\/api\//.test(res.url()) && res.status() === 403) refused = true;
+        };
+        page.on("response", watch);
+        await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" }).catch(() => {});
+        await settled(page);
+        page.off("response", watch);
+        if (!refused) continue;
+        refusedScreens++;
+        const text = ((await page.locator("#root").innerText().catch(() => "")) ?? "").replace(/\s+/g, " ");
+        // The sentences this console uses for "no answer". A refusal must not
+        // produce any of them.
+        const silence = text.match(/서버가 답하지[^.]*|물어보지 못했습니다|통신 오류|연결 실패|did not answer|Could not ask[^.]*|no answer/);
+        if (silence) offenders.push(`${route}: ${silence[0].slice(0, 48)}`);
+      }
+
+      // **A run where nothing was refused proves nothing.** This is the shape
+      // that turns a scenario into a green line with no check behind it: the
+      // viewer's grants change, every screen answers, and the loop above never
+      // reaches its assertion.
+      expect(
+        { screensRefused: refusedScreens > 2 },
+        `only ${refusedScreens} screens were refused, so this scenario did not exercise the rule it exists for`,
+      ).toEqual({ screensRefused: true });
+
+      console.log(`[SC-CAP-11] ${routes.length} routes · ${refusedScreens} refused`);
+      expect(offenders, "a screen reported silence about a backend that answered 403").toEqual([]);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 90_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
