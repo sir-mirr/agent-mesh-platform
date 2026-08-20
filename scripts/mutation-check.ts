@@ -211,6 +211,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "guard-paints-before-the-answer",
+    defect:
+      "The guard stopped waiting for /auth/me, so a role remembered in localStorage won the first paint and drew a dashboard the server had not agreed to.",
+    file: "packages/platform-web/src/components/common/GuardedRoute.tsx",
+    from: "  if (isLoading) {",
+    to: "  if (false) {",
+    suite: "packages/platform-web/src/App.test.tsx",
+    expect: ["draws nothing but the check itself"],
+  },
+  {
     id: "role-mapping-passes-server-string",
     defect:
       "The server's own role string reached the session, so a name the client has a screen for but no route, capability or test would light up a panel nobody can reach.",

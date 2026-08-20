@@ -118,3 +118,62 @@ describe("the two lists of paths", () => {
     expect({ dead }).toEqual({ dead: [] });
   });
 });
+
+describe("what a remembered session may paint before the server answers", () => {
+  /**
+   * **Two things close the tenant and group dashboards, and only one was
+   * measured.**
+   *
+   * `sessionFrom` resolves every `/auth/me` answer to `PLATFORM_ADMIN` or
+   * `AGENT_OPERATOR`, which is pinned in `AuthContext.test.tsx`. But
+   * `AuthProvider`'s initial state does not go through it: it reads
+   * `localStorage` and keeps whatever `role` is there. `agent-mesh-local-pm`
+   * found that window, and it is real in the component — rendering
+   * `DashboardPage` on its own with a stored `TENANT_ADMIN` does draw the
+   * tenant panel, which is how `DashboardPage.test.tsx` mounts the group one.
+   *
+   * It is closed in the *app* by the guard's loading branch: until `/auth/me`
+   * answers, nothing below it renders at all. Remove that branch and the
+   * stored role wins the first paint — `sessionFrom` unchanged, window open,
+   * and nothing anywhere looking at it.
+   *
+   * I had this the wrong way round twice: first that the panels were
+   * unreachable for one reason, then — after measuring `DashboardPage` alone
+   * and speaking about the app — that they were reachable. Measuring the
+   * component and reporting on the product is the same mistake in both
+   * directions, so this check runs the whole `App`.
+   */
+  const rememberRole = (role: string) => {
+    localStorage.setItem("agent_mesh_user", JSON.stringify({
+      id: "in-process-remembered", name: "in-process", role,
+      capabilities: [], tenantId: "tenant_default", authProvider: "local",
+    }));
+  };
+
+  it("draws nothing but the check itself while the answer is still out", async () => {
+    // The request never settles: the window this is about is exactly the time
+    // before it does.
+    globalThis.fetch = (async () => new Promise<Response>(() => {})) as unknown as typeof globalThis.fetch;
+    rememberRole("TENANT_ADMIN");
+    goTo("/dashboard");
+    await act(async () => { render(<App />); await Promise.resolve(); });
+
+    const drawn = document.body.textContent ?? "";
+    expect({
+      tenantPanel: drawn.includes("TENANT SUITE"),
+      groupPanel: drawn.includes("STUDIO SUITE · GROUP MANAGER"),
+      operatorPanel: drawn.includes("STUDIO SUITE · OPERATOR"),
+      platformPanel: drawn.includes("PLATFORM SUITE"),
+    }).toEqual({ tenantPanel: false, groupPanel: false, operatorPanel: false, platformPanel: false });
+  });
+
+  it("keeps a remembered role from deciding what the session is", async () => {
+    // Once the answer arrives the stored value stops mattering: this is the
+    // other half, and without it the check above passes against an app that
+    // never draws anything at all.
+    rememberRole("TENANT_ADMIN");
+    goTo("/dashboard");
+    expect(await land("/dashboard")).toBe("/login");
+    expect(document.body.textContent ?? "").not.toContain("TENANT SUITE");
+  });
+});
