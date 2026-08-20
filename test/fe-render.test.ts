@@ -1144,6 +1144,81 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 90_000);
 
+  /**
+   * SC-CAP-12 — the mirror of `SC-CAP-11`: no screen blames a permission for a
+   * backend that never answered.
+   *
+   * `SC-CAP-11` says a refusal must not be drawn as silence. This is the other
+   * direction, and a console that answered *every* failure with "you do not
+   * have permission" would pass that one — it never says the server went quiet,
+   * because it never says anything true. Sending somebody to ask for a
+   * capability they already hold is the same wasted errand as sending them to
+   * check a healthy network, pointed the other way.
+   *
+   * The sentence comes from the dictionary, not from this file: `refusedText`
+   * builds every refusal on the console out of `common.refusedRead`, so what is
+   * asserted is the product's own wording rather than a phrase a test author
+   * chose and would have to remember to update.
+   *
+   * `**\/api\/v1\/**` only, which is the failure the development server can
+   * make: `/auth/me` keeps answering, so the session survives and the screens
+   * render. A deployment fails differently and `SC-DOWN-09/10/11` carry that.
+   */
+  it("[SC-CAP-12] never blames a permission for a backend that did not answer", async () => {
+    const appSource = readFileSync(
+      join(import.meta.dir, "..", "packages", "platform-web", "src", "App.tsx"),
+      "utf8",
+    );
+    const routes = [...new Set([...appSource.matchAll(/path="(\/[^"*]*)"/g)].map((m) => m[1]!))]
+      .filter((r) => !r.includes(":") && r !== "/login" && r !== "/change-password" && r !== "/");
+    expect(routes.length, "no routes were parsed out of App.tsx — the router's shape changed").toBeGreaterThan(7);
+
+    // The console's own refusal sentence, read out of the dictionary it is
+    // built from. Both languages, because the context here chooses one.
+    const dict = readFileSync(
+      join(import.meta.dir, "..", "packages", "platform-web", "src", "contexts", "I18nContext.tsx"),
+      "utf8",
+    );
+    const refusalSentences = [...dict.matchAll(/"common\.refusedRead":\s*"([^"]+)"/g)].map((m) => m[1]!);
+    expect(
+      { found: refusalSentences.length },
+      "the refusal sentence is not in the dictionary under the key this check reads, so it would assert nothing",
+    ).toEqual({ found: 2 });
+
+    const { page, context } = await createAuthedPage("/dashboard");
+    const offenders: string[] = [];
+    let blocked = 0;
+    try {
+      await page.route("**/api/v1/**", (route) => route.abort());
+      for (const route of routes) {
+        let aborted = false;
+        const watch = (req: import("playwright").Request) => {
+          if (/\/api\/v1\//.test(req.url())) aborted = true;
+        };
+        page.on("requestfailed", watch);
+        await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" }).catch(() => {});
+        await settled(page);
+        page.off("requestfailed", watch);
+        if (!aborted) continue;
+        blocked++;
+        const text = ((await page.locator("#root").innerText().catch(() => "")) ?? "").replace(/\s+/g, " ");
+        const said = refusalSentences.find((sentence) => text.includes(sentence));
+        if (said) offenders.push(`${route}: ${said.slice(0, 44)}`);
+      }
+
+      // Nothing blocked means nothing was asked of the screens, and every
+      // assertion above would be vacuous.
+      expect(
+        { screensBlocked: blocked > 2 },
+        `only ${blocked} screens issued a call that was blocked, so this scenario did not exercise the rule it exists for`,
+      ).toEqual({ screensBlocked: true });
+
+      expect(offenders, "a screen blamed a permission for a backend that never answered").toEqual([]);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 90_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
