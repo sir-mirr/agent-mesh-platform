@@ -22,6 +22,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { agentsSchema, auditSchema, groups, hubSchema, ownership } from "@agent-mesh/store";
+import { createHash, generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
+import { formatRestAuthorization, keyFingerprint, restSignaturePreimage, SIGNATURE_FRESHNESS_WINDOW_SECONDS }
+  from "@agent-mesh/contracts";
 
 // The run's state directory, set by `scripts/test-state-dir.ts` before any
 // test file loaded — which is the only moment early enough, because the paths
@@ -55,7 +58,7 @@ process.env.PORT = "3998";
 const mod = await import("./main.ts");
 // The chat page needs a user row for the session behind it; nothing else here
 // writes one.
-const { upsertUser, upsertApprovedWebUser, insertMessage } = await import("./db.ts");
+const { upsertUser, upsertApprovedWebUser, insertMessage, getDb } = await import("./db.ts");
 // The mesh database, opened by the same accessor the routes use, so a row
 // written here is the row they read rather than a second handle onto the file.
 const { agentsDb } = await import("./keys-admin.ts");
@@ -825,5 +828,180 @@ describe("a send with nothing behind it, and the edges of sign-in", () => {
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect({ names: setCookie.includes("mesh_token="), expires: setCookie.includes("Max-Age=0") })
       .toEqual({ names: true, expires: true });
+  });
+});
+
+/**
+ * Who may fetch an attachment (§ 15.3, § 9.2.1).
+ *
+ * The route was open, on the reasoning that a content-addressed id is
+ * unguessable and therefore a capability. That holds until the id appears in a
+ * log line, an audit event or a forwarded `download_url` — a capability that
+ * travels inside the thing it protects cannot be withdrawn — so it now takes
+ * either a session or a signature.
+ *
+ * **A refusal and a miss are the same answer here**, both `404`, deliberately:
+ * telling the two apart would turn the route into a probe for which digests
+ * the mesh holds. That shapes every check below. The gate's own outcomes are
+ * visible — `401` is "you are nobody", `403` is "you are somebody unapproved"
+ * — so an identified caller reaching `404` is itself the evidence the
+ * credential was accepted.
+ *
+ * `mayDownload` reads `hub.db`, which is not the database the `insertMessage`
+ * imported at the top of this file writes to. The row below goes in by hand,
+ * to the file the route actually reads.
+ */
+describe("who may fetch an attachment", () => {
+  const SIGNER = "in-process-signer";
+  const PEER = "in-process-attachment-peer";
+  // The route rejects anything that is not 64 hex characters before it looks
+  // at a credential, so an id has to be a real digest or every check below
+  // measures a `400` and nothing else. It measured exactly that first.
+  const ATTACHMENT = createHash("sha256").update("in-process-attachment").digest("hex");
+
+  let publicKey = "";
+  let privateKey: import("node:crypto").KeyObject;
+  let fingerprint = "";
+
+  /** An `Authorization` value over this exact path, as § 9.2.1 spells it. */
+  const signed = (path: string, opts: { iat?: number; kid?: string; body?: Uint8Array } = {}) => {
+    const nonce = randomUUID();
+    const iat = opts.iat ?? Math.floor(Date.now() / 1000);
+    const kid = opts.kid ?? fingerprint;
+    const preimage = opts.body ?? restSignaturePreimage({
+      method: "GET",
+      path,
+      kid,
+      nonce,
+      iat,
+      // A GET has no body, and § 9.2.1 spells that as the empty string rather
+      // than the digest of nothing.
+      bodySha256: "",
+    });
+    const signature = Buffer.from(edSign(null, Buffer.from(preimage), privateKey)).toString("base64url");
+    return formatRestAuthorization({ kid, nonce, iat, signature });
+  };
+
+  beforeAll(() => {
+    const pair = generateKeyPairSync("ed25519");
+    privateKey = pair.privateKey;
+    const der = pair.publicKey.export({ format: "der", type: "spki" }) as Buffer;
+    publicKey = Buffer.from(der.subarray(der.length - 32)).toString("base64url");
+    fingerprint = keyFingerprint(publicKey);
+
+    agentsDb()
+      .prepare(`INSERT OR REPLACE INTO agent_keys (fingerprint, identity, public_key, status)
+                VALUES (?, ?, ?, 'approved')`)
+      .run(fingerprint, SIGNER, publicKey);
+
+    const hub = new Database(join(STATE, "hub.db"), { readwrite: true });
+    hub.prepare(`INSERT OR REPLACE INTO messages (id, from_agent, to_agent, content)
+                 VALUES (?, ?, ?, ?)`)
+      .run("in-process-attachment-message", SIGNER, PEER, `{"attachments":["${ATTACHMENT}"]}`);
+    hub.close();
+  });
+
+  test("a credential that is not a signature is refused, not crashed on", async () => {
+    // `parseRestAuthorization` returns null for anything that is not the
+    // scheme, and the guard for that null is the only thing between here and
+    // reading `.iat` off it.
+    const res = await call(`/api/v1/attachments/${ATTACHMENT}`, {
+      headers: { authorization: "Bearer not-a-signature" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("an approved key's signature is a credential this route accepts", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    const res = await call(path, { headers: { authorization: signed(path) } });
+    // Not 401: the caller was identified. That is what this check is about —
+    // whether the bytes come back is `mayDownload`'s question and the file
+    // system's, both asked after this gate.
+    expect({ refused: res.status === 401 }).toEqual({ refused: false });
+  });
+
+  test("a forged signature buys nothing, even from a party to the message", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    // Same identity, same fresh timestamp, same everything the header says —
+    // only the signature bytes are another key's. Being party to the message
+    // is not the credential; holding the key is.
+    const other = generateKeyPairSync("ed25519");
+    const nonce = randomUUID();
+    const iat = Math.floor(Date.now() / 1000);
+    const preimage = restSignaturePreimage({ method: "GET", path, kid: fingerprint, nonce, iat, bodySha256: "" });
+    const signature = Buffer.from(edSign(null, Buffer.from(preimage), other.privateKey)).toString("base64url");
+    const res = await call(path, {
+      headers: { authorization: formatRestAuthorization({ kid: fingerprint, nonce, iat, signature }) },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("the signed path includes the query string", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    // Signed without the query, sent with it. If the server rebuilds its
+    // preimage from the path alone the two agree and this passes — which is
+    // the defect: everything after `?` would then be unsigned and free to
+    // rewrite in flight.
+    const res = await call(`${path}?disposition=attachment`, {
+      headers: { authorization: signed(path) },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("a captured Authorization header stops working", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    const stale = Math.floor(Date.now() / 1000) - (SIGNATURE_FRESHNESS_WINDOW_SECONDS + 60);
+    const res = await call(path, { headers: { authorization: signed(path, { iat: stale }) } });
+    // There is no nonce window in this process — § 8.1's lives in the hub —
+    // so the freshness bound is the whole of what limits a replay. Without it
+    // a header lifted from a log works for ever.
+    expect(res.status).toBe(401);
+  });
+
+  test("a header dated into the future stops working too", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    const ahead = Math.floor(Date.now() / 1000) + (SIGNATURE_FRESHNESS_WINDOW_SECONDS + 60);
+    // The bound is on distance, not on direction. A one-sided check lets a
+    // caller mint a credential that becomes valid later and stays valid for
+    // the window on either side of it.
+    const res = await call(path, { headers: { authorization: signed(path, { iat: ahead }) } });
+    expect(res.status).toBe(401);
+  });
+
+  test("a fingerprint no approved key names is refused", async () => {
+    const path = `/api/v1/attachments/${ATTACHMENT}`;
+    const res = await call(path, { headers: { authorization: signed(path, { kid: "sha256:in-process-nobody" }) } });
+    expect(res.status).toBe(401);
+  });
+
+  test("an authenticated session that was never approved is told to wait, not to sign in again", async () => {
+    // They proved who they are; what they lack is permission. Answering `401`
+    // sends them back to a sign-in that will work and change nothing.
+    //
+    // **The unapproved state is written here rather than driven, and that is
+    // the honest note.** Admitting a local account *is* approving it — the
+    // registry row goes in beside the `local_users` row deliberately, because
+    // an account outside the registry is outside the server's `proxy_for` and
+    // has every message it sends refused in silence. So this state belongs to
+    // a GitHub login that authenticated and was never let in, and the only
+    // issuer of such a session is the OAuth callback, which needs a live
+    // consent screen. Removing the registry row reproduces what
+    // `isUserApproved` sees; nothing else here does.
+    const admitted = await asAdmin("/api/v1/admin/users", "POST", { username: "in-process-unapproved" });
+    const { temporary_password } = await admitted.json();
+    const login = await call("/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: "in-process-unapproved", password: temporary_password }).toString(),
+    });
+    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    await call("/auth/local/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: theirs },
+      body: JSON.stringify({ current: temporary_password, next: "in-process-unapproved-pw" }),
+    });
+    getDb().prepare("DELETE FROM agent_registry WHERE id = ?").run("in-process-unapproved");
+    const res = await call(`/api/v1/attachments/${ATTACHMENT}`, { headers: { cookie: theirs } });
+    expect(res.status).toBe(403);
   });
 });

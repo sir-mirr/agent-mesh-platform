@@ -211,6 +211,86 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "attachment-signature-ignored",
+    defect:
+      "A valid signature over an approved key was refused, so a signing caller could never fetch an attachment at all (§ 9.2.1).",
+    file: "packages/http/src/main.ts",
+    from: "  return outcome.ok ? { identity } : { refusal: 401 }",
+    to: "  return { refusal: 401 }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["an approved key's signature is a credential"],
+  },
+  {
+    id: "attachment-signature-unchecked",
+    defect:
+      "The signature was never checked, so anyone who knew a fingerprint could fetch any attachment its owner was party to (§ 9.2.1).",
+    file: "packages/http/src/main.ts",
+    from: "  return outcome.ok ? { identity } : { refusal: 401 }",
+    to: "  return { identity }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a forged signature buys nothing"],
+  },
+  {
+    id: "attachment-preimage-drops-query",
+    defect:
+      "The query string fell out of the signed preimage, leaving everything after `?` free to rewrite in flight.",
+    file: "packages/http/src/main.ts",
+    from: "      path: url.pathname + url.search,",
+    to: "      path: url.pathname,",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["the signed path includes the query string"],
+  },
+  {
+    id: "attachment-freshness-one-sided",
+    defect:
+      "The freshness bound stopped being a distance, so a header dated into the future was accepted.",
+    file: "packages/http/src/main.ts",
+    from: "  if (Math.abs(Math.floor(Date.now() / 1000) - auth.iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "  if (Math.floor(Date.now() / 1000) - auth.iat > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["dated into the future"],
+  },
+  {
+    id: "attachment-freshness-absent",
+    defect:
+      "The freshness bound went away, and with no nonce window in this process an Authorization header lifted from a log worked for ever.",
+    file: "packages/http/src/main.ts",
+    from: "  if (Math.abs(Math.floor(Date.now() / 1000) - auth.iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a captured Authorization header stops working"],
+  },
+  {
+    id: "attachment-unparsed-credential",
+    defect:
+      "A credential that is not a signature reached `auth.iat` and threw, answering 500 where the contract says 401.",
+    file: "packages/http/src/main.ts",
+    from: "  const auth = parseRestAuthorization(header)\n  if (!auth) return { refusal: 401 }\n",
+    to: "  const auth = parseRestAuthorization(header)!\n",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["not a signature is refused, not crashed on"],
+  },
+  {
+    id: "attachment-unapproved-gets-401",
+    defect:
+      "An authenticated but unapproved person was told to sign in again — sent to fix the thing that was already working.",
+    file: "packages/http/src/main.ts",
+    from: "      : { refusal: 403 }",
+    to: "      : { refusal: 401 }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["never approved is told to wait"],
+  },
+  {
+    id: "attachment-unknown-fingerprint",
+    defect:
+      "A fingerprint no approved key names resolved to an identity anyway.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!identity) return { refusal: 401 }",
+    to: "  if (!identity) return { identity: 'in-process-signer' }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a fingerprint no approved key names"],
+  },
+  {
     id: "hubless-send-answer",
     defect:
       "A message the hub refused was answered `pending`, so the thread drew it as still on its way (§ 5).",
