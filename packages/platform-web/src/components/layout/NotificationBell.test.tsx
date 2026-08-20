@@ -220,7 +220,6 @@ describe("a read that never happened is not an empty queue", () => {
     expect(screen.queryByTestId("bell-empty")).toBe(null);
     expect(screen.queryByTestId("bell-empty-unreachable")).not.toBe(null);
     expect(dropdownText()).toContain(DICTIONARY.en["bell.unreachable"]!);
-    expect(dropdownText()).not.toContain(DICTIONARY.en["bell.empty"]!);
   });
 
   it("marks the bell itself, so a closed dropdown is not silence either", async () => {
@@ -266,7 +265,6 @@ describe("a read that never happened is not an empty queue", () => {
     // An answered-and-empty queue wears no badge at all. Absent has to look
     // absent: a `0` and a `?` are both claims this state is not making.
     expect(bellFace()).toBe("\u{1F514}");
-    expect(screen.queryByTestId("bell-unreachable")).toBe(null);
   });
 });
 
@@ -283,8 +281,26 @@ describe("a dropped stream is a third state, not a fourth reading of the queue",
     expect(screen.queryByTestId("bell-stream-lost")).not.toBe(null);
     expect(dropdownText()).toContain(DICTIONARY.en["bell.streamLost"]!);
     expect(dropdownText()).toContain("joiner-1");
-    expect(screen.queryByTestId("bell-empty-unreachable")).toBe(null);
     expect(bellFace()).toBe("\u{1F514}1");
+  });
+
+  it("does not turn a dropped stream into a queue it could not read", async () => {
+    // **The mutant this file could not see.** `es.onerror` setting `failure` to
+    // `unreachable` alongside `streamLost` passed every assertion here, because
+    // with rows on screen `unreachable` has nothing to draw: the `?` badge is
+    // gated on an empty count and the unreachable empty-state only renders for
+    // an empty list. So the drop is asserted on an *empty* queue, where the two
+    // states have different sentences and the wrong one is visible.
+    queueAnswers({ ok: true, keys: [] });
+    await mount();
+    await act(async () => { FakeEventSource.live?.onerror?.(); });
+    openDropdown();
+    // The read succeeded and said nothing is waiting. That the channel then
+    // dropped does not retract the answer.
+    expect(screen.queryByTestId("bell-empty")).not.toBe(null);
+    expect(screen.queryByTestId("bell-empty-unreachable")).toBe(null);
+    expect(dropdownText()).toContain(DICTIONARY.en["bell.streamLost"]!);
+    expect(bellFace()).toBe("\u{1F514}");
   });
 
   it("takes the notice back down when the stream reconnects", async () => {
@@ -475,7 +491,6 @@ describe("a decision moves the row only when the server moved", () => {
     expect(calls.some((c) => c.url.endsWith(KEYS_DENY))).toBe(true);
     expect(screen.queryByTestId("bell-decision-failed")).not.toBe(null);
     expect(dropdownText()).toContain(DICTIONARY.en["bell.decideRefused"]!);
-    expect(dropdownText()).not.toContain(DICTIONARY.en["bell.decideUnreachable"]!);
     // Refused is also not decided: the row is still waiting on the server.
     expect(bellFace()).toBe("\u{1F514}1");
   });

@@ -2757,6 +2757,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/delete-absence.test.ts",
     expect: ["every delete route in the source is accounted for here"],
   },
+  {
+    id: "bell-stream-drop-read-as-unreachable",
+    defect:
+      "A dropped SSE stream reported as *could not ask*. `EventSource` reconnects on its own, so an error means the rows on screen are the last thing received — a claim about the channel — while `unreachable` is a claim that the queue was never read. This mutant passed every assertion in the bell's own spec, because with rows present `unreachable` has nothing to draw: the `?` badge is gated on an empty count and the unreachable empty-state renders only for an empty list. The state was invisible, so the test asserts it on an empty queue, where the two sentences differ.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "      es.onerror = () => setStreamLost(true);",
+    to: "      es.onerror = () => { setStreamLost(true); setFailure(\"unreachable\"); };",
+    suite: "packages/platform-web/src/components/layout/NotificationBell.test.tsx",
+    expect: ["does not turn a dropped stream into a queue it could not read"],
+  },
 ];
 
 /**
