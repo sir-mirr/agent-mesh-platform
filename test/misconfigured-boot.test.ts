@@ -24,7 +24,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PORT_TAKEN, freePort, openTestDb, startMesh, type Mesh } from "./harness";
+import { bootRetryable, freePort, openTestDb, startMesh, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const UNITS = join(REPO_ROOT, "ops", "systemd");
@@ -71,7 +71,12 @@ async function spawnHttp(
     proc.kill();
     await proc.exited;
     last = { proc, url, up, said };
-    if (!PORT_TAKEN.test(said)) return last;
+    // Silence gets another port; a refusal is the answer. See `bootRetryable`
+    // — the narrow version retried only on a port message, so a boot that was
+    // merely too slow to answer failed once and loudly for a reason that was
+    // the machine's.
+    if (!bootRetryable(said)) return last;
+    console.error(`[misconfigured-boot] boot ${attempt}/3 said nothing; taking another port`);
   }
   return last;
 }

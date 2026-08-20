@@ -211,6 +211,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "boot-retry-swallows-refusal",
+    defect:
+      "Every failed boot became retryable, so the two misconfigured-boot checks would pass against a server that had stopped refusing to start.",
+    file: "test/harness.ts",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    to: "  return true;",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["a service that refused is the answer"],
+  },
+  {
+    id: "boot-retry-never-fires",
+    defect:
+      "The retry stopped firing at all, and a lost port race \u2014 the thing freePort's bind-then-release window makes routine \u2014 failed the run instead of taking another port.",
+    file: "test/harness.ts",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    to: "  return false;",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["a boot that named a port is retried"],
+  },
+  {
+    id: "boot-retry-drops-port-clause",
+    defect:
+      "The port-race clause went away, so the original failure this guard was written for stopped being retried.",
+    file: "test/harness.ts",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    to: "  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["a boot that named a port is retried"],
+  },
+  {
+    id: "boot-retry-counts-harness-speech",
+    defect:
+      "The harness's own timeout sentence counted as the child having spoken, so every slow boot looked like a refusal and was never retried \u2014 the exact failure this widening was for.",
+    file: "test/harness.ts",
+    from: "  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    to: "  return said.trim() === \"\";",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["does not count as the child speaking"],
+  },
+  {
+    id: "boot-retry-strips-child-output",
+    defect:
+      "Stripping the harness's sentence swallowed the child's output underneath it, so a real refusal read as silence and was retried.",
+    file: "test/harness.ts",
+    from: "const NEVER_HEALTHY = /service at \\S+ never became healthy:[^\\n]*/g;",
+    to: "const NEVER_HEALTHY = /service at \\S+ never became healthy:[\\s\\S]*/g;",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["still a refusal"],
+  },
+  {
     id: "sw-source-syntax-error",
     defect:
       "The service worker source stopped parsing, so no browser would register it and the app quietly stopped being installable \u2014 nothing on the server notices, because it is a string.",

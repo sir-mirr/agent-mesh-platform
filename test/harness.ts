@@ -368,6 +368,39 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
  */
 export const PORT_TAKEN = /EADDRINUSE|Failed to start server|address (already )?in use/i;
 
+/**
+ * The harness's own wrapper around a boot that never answered.
+ *
+ * Stripped before asking whether the *child* said anything, because this
+ * sentence is the harness's opinion and not the service's.
+ */
+const NEVER_HEALTHY = /service at \S+ never became healthy:[^\n]*/g;
+
+/**
+ * Is a failed boot worth another port, or is it the answer?
+ *
+ * **A guard only makes a denominator out of what it recognises.** This retried
+ * on `PORT_TAKEN` alone, so the only boot failure it could ever see was one
+ * that named a port — and `freePort` is bind-then-release, which means the
+ * race it exists for is won by whoever binds first and lost by whoever is
+ * *slow*. A machine deep in swap boots `bun` past the ten-second health wait
+ * and prints nothing about ports at all, so the retry never ran and the run
+ * failed once, loudly, for a reason that had nothing to do with the code.
+ * `agent-mesh-local-pm` measured the shape of it: a 10 870 ms failure against
+ * a 200 x 50 ms wait, with no port message anywhere in the output.
+ *
+ * **Silence is the signal, not slowness.** A service that refuses says why —
+ * that is exactly what `misconfigured-boot.test.ts` asserts of two of them —
+ * so a child that exits having said nothing never reached the point of having
+ * an opinion. Retrying a refusal would turn those two checks green against a
+ * server that had stopped refusing; retrying silence cannot, because silence
+ * is not something any of them assert.
+ */
+export function bootRetryable(said: string): boolean {
+  if (PORT_TAKEN.test(said)) return true;
+  return said.replace(NEVER_HEALTHY, "").trim() === "";
+}
+
 export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
   let last: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -376,8 +409,12 @@ export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
     } catch (err) {
       last = err;
       const said = err instanceof Error ? err.message : String(err);
-      if (!PORT_TAKEN.test(said)) throw err;
-      console.error(`[harness] lost the port race (attempt ${attempt}/3); taking another port`);
+      if (!bootRetryable(said)) throw err;
+      // Printed rather than swallowed: the next person to meet this window
+      // should not have to reconstruct what the boot said from its timing.
+      console.error(
+        `[harness] boot did not answer (attempt ${attempt}/3); taking another port. said: ${JSON.stringify(said.slice(0, 400))}`,
+      );
     }
   }
   throw last;
