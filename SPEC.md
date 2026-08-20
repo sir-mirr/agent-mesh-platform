@@ -2023,6 +2023,75 @@ standing in for arrived in a build that process may not be. This route
 is served by that same process, which is the property that makes it
 answerable.
 
+### 9.2a. Request bodies, and what a deletion of nothing answers
+
+Written because their absence was doing the work of a clause. `agent-mesh-client`
+declined to write conformance scenarios for these routes rather than read the
+field names out of this implementation — correctly: a scenario whose expectation
+is copied from the code asserts that the code has not changed, not that the
+contract holds. Two of their scenarios were pinning behaviour no clause required,
+which `agent-mesh-local-pm` named as the difference between *the source of a
+reason* and *the rule* (mail #1316).
+
+**Deleting something absent is not an error.** A `DELETE` whose target does not
+exist answers `200`, and the body says which of the two happened:
+
+```
+{ ok: true, action: "deleted"   }   it was there
+{ ok: true, action: "not-found" }   it was not
+```
+
+The operator asked for it to be gone and it is gone; a `404` would make a caller
+retry or alert over a state it already has. New deletion routes inherit this
+rather than choosing again — that is the point of stating it here instead of
+letting two routes that happen to agree stand as the rule.
+
+**Request bodies.** Optional fields are marked `?`; anything else is required and
+its absence is `400` with a message naming the field.
+
+| Route | Body |
+|-------|------|
+| `POST /api/v1/admin/grants` | `{ subject, capability, scope }` |
+| `POST /api/v1/admin/users` | `{ username, display_name?, role?, tenant? }` |
+| `POST /api/v1/admin/agent-types` | `{ type, description, requires_key }` |
+| `POST /api/v1/admin/pairing-codes` | `{ identity, ttl_seconds? }` |
+| `POST /api/v1/admin/keys/{approve,deny,revoke}` | `{ fingerprint, reason? }` |
+| `GET /api/v1/files` | `?path=` — required, `400` without it |
+
+**The key decisions are addressed by fingerprint, never by identity**, and that is
+worth stating rather than leaving in the shape of the field. An operator approves
+*a key*, not a name: an identity may have proposed more than one, and approving
+by name would approve whichever the server picked. `reason` is required by § 10.2
+for a revoke and optional for the other two.
+
+### 9.2b. Telling *no key yet* from *key withdrawn*
+
+`KEY_NOT_APPROVED` (`-32014`) MUST carry `key_status` in its error data:
+
+```
+"missing"   no approved key exists for that identity — none proposed, or one
+            proposed and not yet decided
+"revoked"   there was one and it was withdrawn
+```
+
+A client branches on this: the first is its own to fix by proposing a key, the
+second is an operator decision it can only wait on. Without the field it can only
+retry blindly, which is what `agent-mesh-client` reported while writing
+conformance scenarios.
+
+**Both states deliberately share one code, and the reason is written here so the
+next reader does not split them in the name of consistency.** A caller holding no
+key gets `-32014` for every identity it names, whether that identity is
+registered or not; separate codes would let an unauthenticated caller enumerate
+which identities exist. The distinction a legitimate client needs is in the data,
+where it costs nothing; the distinction an attacker would use is in the code,
+where it costs the registry's privacy. `-32011 IDENTITY_NOT_REGISTERED` is
+declared and, in this dispatch order, unreachable over the wire for the same
+reason: signature verification runs before the handler and requires an approved
+key for the name being claimed, so an unregistered name is refused on the key
+first. The guard behind it stays as defence in depth, and if that order ever
+changes it is the code that answers.
+
 ### 9.3. Identity teardown
 
 Teardown is the destructive counterpart of `POST /api/v1/agents`, so
