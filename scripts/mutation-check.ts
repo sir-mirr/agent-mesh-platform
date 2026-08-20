@@ -2146,8 +2146,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`admin (운영자)` in the sidebar of every screen — the client decorating what the server returned. Two defects in one string: a Korean noun that no dictionary carries, and a role the server never said.",
     file: "packages/platform-web/src/contexts/AuthContext.tsx",
-    from: "              name: me.github_login,",
-    to: "              name: `${me.github_login} (운영자)`,",
+    from: "    name: me.github_login,",
+    to: "    name: `${me.github_login} (운영자)`,",
     suite: "test/fe-scenarios.test.ts",
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
