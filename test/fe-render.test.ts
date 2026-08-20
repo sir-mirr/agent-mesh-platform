@@ -2979,10 +2979,29 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             }),
           }),
         );
-        // The bell reads two sources and a scenario that blocks one measures the
-        // other — `SC-DOWN-12` is the entry for that.
+        // **Both sources carry the same proposal, because in the product they
+        // are two reads of one table.** This stubbed the stream with an empty
+        // snapshot while the REST route answered with a proposal — a
+        // disagreement the mesh cannot produce — and it went unnoticed only
+        // because the bell used to discard an empty snapshot outright. Once it
+        // stopped doing that (`I-152`, a queue drained elsewhere never cleared),
+        // whichever source answered last decided whether the row was on screen,
+        // and this scenario's own precondition assertion caught it: `{ row: 0,
+        // button: 0 }` where it wanted one of each. It was green here and red
+        // for `agent-mesh-local-pm` on the same commit, which is what a race
+        // looks like from two machines.
+        //
+        // The scenario is about a deny that never reached the server. Which of
+        // the two sources drew the row was never the subject.
         await page.route("**/api/v1/admin/keys/stream", (route) =>
-          route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: snapshot\ndata: {"keys":[]}\n\n' }),
+          route.fulfill({
+            status: 200,
+            contentType: "text/event-stream",
+            body:
+              'event: snapshot\ndata: {"keys":[{"identity":"pending-agent-a",' +
+              '"fingerprint":"Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG0",' +
+              '"type":"ai-claude","proposed_at":"2026-08-20T00:00:00.000Z"}]}\n\n',
+          }),
         );
         await page.route("**/api/v1/admin/keys/deny", (route) =>
           denyAnswers
