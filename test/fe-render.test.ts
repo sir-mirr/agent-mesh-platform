@@ -1501,6 +1501,68 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 40_000);
 
+  /**
+   * SC-WRITE-16 — allowing an egress rule reaches the server.
+   *
+   * The last of the three `WRITE_PROBE` named. `SC-WRITE-11` covers the cell's
+   * behaviour when the write fails and when it is answered, but it answers both
+   * directions from the intercept, so no rule was ever actually written — and
+   * the fixture's single group makes its one cell start `ALLOW`, so the click
+   * it does exercise is the `DELETE`.
+   *
+   * A group is created here to get a cell that starts `DENY`, which is the only
+   * way to press the allowing half. § 12: a group with no egress rule sends
+   * nowhere, so this is the control that decides whether a group's agents can
+   * reach anything at all — and a screen that ticks it without writing leaves
+   * an operator believing a lane is open that is closed.
+   */
+  it("[SC-WRITE-16] writes the egress rule it ticks, not only the cell", async () => {
+    const admin = { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" };
+    const group = `egress-${Date.now().toString(36).slice(-6)}`;
+    const made = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ group_id: group, description: "SC-WRITE-16" }),
+    });
+    expect(
+      { created: made.ok },
+      "the group this scenario needs was not created, so nothing below was exercised",
+    ).toEqual({ created: true });
+
+    const serverAllows = async () => {
+      const res = await fetch(`${mesh.http.url}/api/v1/admin/groups`, { headers: { cookie: `mesh_token=${jwtToken}` } });
+      const body = (await res.json()) as any;
+      const rules: any[] = Array.isArray(body.egress) ? body.egress : [];
+      // `from_group` / `to_group` — the names the route actually sends, read off
+      // the response rather than guessed. The first version looked for
+      // `source_group` and reported a rule that had been written as missing.
+      return rules.some((r) => r.from_group === group && r.to_group === "default");
+    };
+    expect(
+      { alreadyOpen: await serverAllows() },
+      "the lane this scenario opens was open before it started, so pressing the cell would prove nothing",
+    ).toEqual({ alreadyOpen: false });
+
+    await withPage("/tenant/egress-acl", async ({ page }) => {
+      const cell = page.locator(`[data-testid="acl-${group}-default"]`);
+      const drawn = await eventually(async () => await cell.count(), (n) => n > 0);
+      const state = drawn > 0 ? await cell.getAttribute("data-allowed") : null;
+      expect(
+        { cell: drawn, starts: state },
+        "the new group's cell was not drawn, or it did not start closed — either way the allowing half was not pressed",
+      ).toEqual({ cell: 1, starts: "no" });
+
+      await cell.locator("button").first().click();
+      await attemptOver(page);
+
+      const wrote = await eventually(serverAllows, (yes) => yes);
+      expect(
+        { wrote },
+        "the cell was ticked without the rule being written",
+      ).toEqual({ wrote: true });
+    });
+  }, 40_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {

@@ -1938,6 +1938,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-14", "capability cell was not drawn"],
   },
   {
+    id: "egress-allowed-only-on-screen",
+    defect:
+      "`addEgressRuleApi` returns `{ ok: true }` without sending. The cell reads `ALLOW` and \u00a7 12 says a group with no egress rule sends nowhere, so an operator is looking at an open lane that is closed and the group's agents reach nothing. `SC-WRITE-11` cannot see it: it answers both directions from the intercept, so no rule is ever written, and the fixture's single group makes its one cell start `ALLOW` \u2014 the click it exercises is the delete.",
+    file: "packages/platform-web/src/api/groups.ts",
+    from: "export async function addEgressRuleApi(groupId: string, toGroupId: string): Promise<{ ok: boolean }> {\n  return await apiClient<{ ok: boolean }>(",
+    to: "export async function addEgressRuleApi(groupId: string, toGroupId: string): Promise<{ ok: boolean }> {\n  if (groupId) return { ok: true };\n  return await apiClient<{ ok: boolean }>(",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-16", "ticked without the rule being written"],
+  },
+  {
     id: "approval-reported-but-never-sent",
     defect:
       "`approveKeyProposal` returns `{ ok: true }` without sending. The bell marks the proposal approved and the identity is still waiting on the server \u2014 § 10.2 approval is the one act that admits an identity to the mesh, so the console reports an agent is in while it cannot connect. `SC-WRITE-10` cannot see this: it plants its proposal with `route.fulfill`, and a fingerprint the server never had cannot be approved either way.",
