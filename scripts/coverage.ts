@@ -62,6 +62,16 @@ function report(label: string, files: FileCoverage[]): void {
 
 const dir = mkdtempSync(join(tmpdir(), "agent-mesh-coverage-"));
 const targets = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+/**
+ * `--by-file` prints the per-file table, worst first by *uncovered lines*.
+ *
+ * The totals say how far there is to go and nothing about where to stand. A
+ * percentage sorts small files to the top — a 12-line module at 0% looks worse
+ * than a 900-line one at 60% and is worth a fiftieth as much — so the order
+ * here is the count of lines nobody has run, which is the same thing as the
+ * work each file is worth.
+ */
+const byFile = process.argv.includes("--by-file");
 const run = spawnSync(
   "bun",
   ["test", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${dir}`,
@@ -80,6 +90,22 @@ const counted = all.filter((f) => !EXCLUDED.some((re) => re.test(f.path)));
 console.log("");
 report("everything measured", all);
 report("reported", counted);
+if (byFile) {
+  console.log("\nby file, worst first by lines nobody ran:\n");
+  const rows = [...all].sort((a, b) => (b.lines - b.hit) - (a.lines - a.hit));
+  for (const f of rows) {
+    const missed = f.lines - f.hit;
+    if (missed === 0) continue;
+    const mark = EXCLUDED.some((re) => re.test(f.path)) ? " (excluded)" : "";
+    console.log(
+      `  ${String(missed).padStart(5)} uncovered  ${pct(f.hit, f.lines).toFixed(2).padStart(6)}%  ` +
+      `${f.path}${mark}`,
+    );
+  }
+  const covered = rows.filter((f) => f.lines - f.hit === 0).length;
+  console.log(`\n  ${covered} file(s) fully covered, not listed`);
+}
+
 if (excluded.length > 0) {
   console.log(`\nexcluded by decision (${excluded.length} files, ${excluded.reduce((n, f) => n + f.lines, 0)} lines):`);
   for (const f of excluded.sort((a, b) => b.lines - a.lines)) {
