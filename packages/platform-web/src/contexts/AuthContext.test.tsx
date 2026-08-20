@@ -14,8 +14,34 @@
  * be signed out; it cannot be told which kind of not-signed-in it is looking
  * at, because that is decided by which exception `fetch` raised. So the four
  * shapes `/auth/me` can fail in are supplied here by hand.
+ *
+ * ## What a test here has to start from
+ *
+ * Most of what this provider does on a failure is *clear* something, and a
+ * cleared field reads the same as one that was never set. A test that mounts
+ * into an empty `localStorage` and then asserts "no user, no role, no flag" is
+ * asserting the `useState` defaults: `setUser(null)`, `setAuthFailure(null)`
+ * and `setMustChangePassword(null)` can each be deleted from the branch they
+ * live in and the file stays green. Six assertions here were exactly that, and
+ * a mutation run found them by deleting the lines they named.
+ *
+ * So every clearing branch below is entered from a state that contradicts it —
+ * a remembered session in storage, a live session from a successful mount, a
+ * flag the server already answered `true` or `false` for. The setup is the
+ * test; without it the assertion is a screenshot of the defaults.
+ *
+ * ## No copies of the same read
+ *
+ * A `Probe` used to render `authFailure`, `mustChangePassword` and `user.name`
+ * into three `data-testid` list items, and eight assertions read them back.
+ * They discriminated nothing: `latest.value` is assigned during the same render
+ * that produces those nodes, so both sides are one field of one object, and no
+ * change to the provider can fail the DOM read without failing the object read
+ * first. They are gone. The probe still renders — mounting a real React tree is
+ * what makes `useEffect` and the state updates run at all — it just does not
+ * pretend that reading its own output twice is two checks.
  */
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // Registered once for the process and never unregistered: bun runs every test
@@ -26,15 +52,21 @@ if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register
 // `await import`, not a statement: a static import is hoisted above the
 // registration above and would load React's DOM entry into a process with no
 // document.
-const { render, screen, cleanup, act } = await import("@testing-library/react");
+const { render, cleanup, act } = await import("@testing-library/react");
 const { AuthProvider, useAuth } = await import("./AuthContext.tsx");
-const { ALL_CAPABILITIES } = await import("@/types/auth.ts");
+const { ALL_CAPABILITIES, CAPABILITY } = await import("@/types/auth.ts");
 const { ApiError } = await import("@/api/client.ts");
 
 const STORAGE_KEY = "agent_mesh_user";
 const ME = "/auth/me";
 const LOCAL = "/auth/local";
 const LOGOUT = "/auth/logout";
+
+// Taken from the contract rather than typed as strings: a capability name this
+// mesh does not define is a failure in a fixture for the same reason it is one
+// in a screen — it makes the test agree with a server that does not exist.
+const META = CAPABILITY.AUDIT_READ_METADATA;
+const DEPTH = CAPABILITY.MAILBOX_READ_DEPTH;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -60,7 +92,11 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => { cleanup(); globalThis.fetch = realFetch; });
+// happy-dom's `localStorage` belongs to the process, not to this file, so what
+// is written here has to be taken back out of it — after each test for the
+// file's own neighbours, and once at the end for every other file in the run.
+afterEach(() => { cleanup(); localStorage.clear(); globalThis.fetch = realFetch; });
+afterAll(() => { localStorage.clear(); globalThis.fetch = realFetch; });
 
 /** What `/auth/me` answers for a signed-in member on this source. */
 const SESSION = {
@@ -69,9 +105,12 @@ const SESSION = {
   role: "member",
   approved: true,
   tenant: "tenant_default",
-  capabilities: ["audit.read.metadata"],
+  capabilities: [META],
   created_at: "2026-01-01T00:00:00Z",
 };
+
+/** What `POST /auth/local` answers: `{ok, user}` and no flag of any kind. */
+const loginAnswer = (user: Record<string, unknown>) => json(200, { ok: true, user });
 
 /** `/auth/me` answers `body`; anything else answers `{ok:true}`. */
 const meAnswers = (body: unknown, status = 200) => {
@@ -91,27 +130,23 @@ const meStillOut = () => {
   reply = (url) => (url.endsWith(ME) ? new Promise<Response>(() => {}) : json(200, { ok: true }));
 };
 
+/** The last visit's session, as the browser kept it. */
+const remember = (user: unknown) => { localStorage.setItem(STORAGE_KEY, JSON.stringify(user)); };
+
+/** What is in storage now, or `null` — the write side of the same key. */
+const rememberedNow = (): { name?: string; role?: string; capabilities?: unknown } | null =>
+  JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+
 type Auth = ReturnType<typeof useAuth>;
 const latest: { value: Auth | null } = { value: null };
 /** The context as the last render handed it to a child. */
 const auth = (): Auth => latest.value!;
 
 function Probe() {
-  const value = useAuth();
-  latest.value = value;
-  // Rendered as well as captured, so the assertions are about what a child is
-  // given rather than only about an object. `null` gets a word of its own in
-  // both fields because the whole subject of this file is that it is neither
-  // `false` nor `"unauthenticated"`.
-  return (
-    <ul>
-      <li data-testid="failure">{value.authFailure ?? "no-failure"}</li>
-      <li data-testid="must">
-        {value.mustChangePassword === null ? "not-asked" : String(value.mustChangePassword)}
-      </li>
-      <li data-testid="name">{value.user?.name ?? "no-user"}</li>
-    </ul>
-  );
+  latest.value = useAuth();
+  // Rendered, because the effects and state updates under test only run inside
+  // a mounted tree — but nothing is read back out of the DOM. See the header.
+  return <div data-testid="probe" />;
 }
 
 const settle = async () => {
@@ -134,7 +169,6 @@ describe("why there is no user", () => {
     // The mount read is finished either way; a screen left on "checking" would
     // never draw the login form at all.
     expect(auth().isLoading).toBe(false);
-    expect(screen.getByTestId("failure").textContent).toBe("unauthenticated");
   });
 
   it("does not call a broken proxy a signed-out session", async () => {
@@ -145,7 +179,6 @@ describe("why there is no user", () => {
     meAnswers({ error: "Bad Gateway" }, 502);
     await mount();
     expect(auth().authFailure).toBe("unreachable");
-    expect(auth().authFailure).not.toBe("unauthenticated");
   });
 
   it("does not call a gateway timeout one either", async () => {
@@ -171,12 +204,21 @@ describe("why there is no user", () => {
     expect(auth().authFailure).toBe("unauthenticated");
   });
 
-  it("treats a 200 that names nobody as signed out, not as a backend that is down", async () => {
+  it("drops the remembered session when a 200 names nobody, and says the server refused", async () => {
+    // Entered from a remembered session on purpose. With storage empty the user
+    // is already `null` when this branch runs, so the `setUser(null)` in it can
+    // be deleted and nothing here notices — and the deletion is a browser that
+    // keeps showing the last visit's console after the cookie expired, which is
+    // exactly the shape below: storage still has a user, `/auth/me` answers 200
+    // and names nobody.
+    remember({ id: "usr_operator-1", name: "operator-1", role: "AGENT_OPERATOR", capabilities: [META], tenantId: "tenant_default", authProvider: "local" });
+    meAnswers({ ok: true });
+    await mount();
+    expect(auth().user).toBe(null);
+    expect(auth().isAuthenticated).toBe(false);
     // `github_login` is what makes an answer a session. The route replied, so
     // "cannot reach the backend" would send an operator to check a healthy
     // network for a session that has simply expired.
-    meAnswers({ ok: true });
-    await mount();
     expect(auth().authFailure).toBe("unauthenticated");
   });
 
@@ -185,7 +227,6 @@ describe("why there is no user", () => {
     await mount();
     expect(auth().authFailure).toBe(null);
     expect(auth().isAuthenticated).toBe(true);
-    expect(screen.getByTestId("failure").textContent).toBe("no-failure");
   });
 
   it("says it is still checking rather than answering before the route did", () => {
@@ -204,7 +245,7 @@ describe("why there is no user", () => {
     await mount();
     expect(auth().authFailure).toBe("unauthenticated");
     reply = (url) => (url.endsWith(LOCAL)
-      ? json(200, { ok: true, user: { github_id: 7, github_login: "operator-1", role: "member", capabilities: [] } })
+      ? loginAnswer({ github_id: 7, github_login: "operator-1", role: "member", capabilities: [] })
       : json(200, SESSION));
     await act(async () => { await auth().loginWithLocal("operator-1", "pw"); });
     // Nothing on the login path resets the stored reason; the provider withholds
@@ -223,15 +264,12 @@ describe("whether the account may do anything yet", () => {
     // server answers 403 to every route but three, so a guessed `false` is a
     // dashboard where every panel is a refusal and nothing says why.
     expect(auth().mustChangePassword).toBe(null);
-    expect(auth().mustChangePassword).not.toBe(false);
-    expect(screen.getByTestId("must").textContent).toBe("not-asked");
   });
 
   it("is true when the server said the account is locked to the password change", async () => {
     meAnswers({ ...SESSION, must_change_password: true });
     await mount();
     expect(auth().mustChangePassword).toBe(true);
-    expect(screen.getByTestId("must").textContent).toBe("true");
   });
 
   it("is false when the server answered and did not say it", async () => {
@@ -240,17 +278,25 @@ describe("whether the account may do anything yet", () => {
     // Answered-and-not-locked is a third state from never-asked, and it is the
     // only one of the two that may open the rest of the console.
     expect(auth().mustChangePassword).toBe(false);
-    expect(screen.getByTestId("must").textContent).toBe("false");
   });
 
   it("learns the lock cleared from the server rather than assuming it did", async () => {
     meAnswers({ ...SESSION, must_change_password: true });
     await mount();
     expect(auth().mustChangePassword).toBe(true);
+
+    // The refresh that must NOT clear it. The password screen calls
+    // `refreshSession` after what it believes was a successful change; if the
+    // server still says the account is locked — the change was rejected, or it
+    // landed on a different account — then the answer is still `true`. Without
+    // this step the only refresh asserted is one the server answers `false` to,
+    // and "read it out of the body" and "set it to false afterwards" are the
+    // same observation.
+    await act(async () => { await auth().refreshSession(); });
+    expect(auth().mustChangePassword).toBe(true);
+
     meAnswers({ ...SESSION, must_change_password: false });
     await act(async () => { await auth().refreshSession(); });
-    // The password screen calls this after a successful change. Clearing the
-    // flag locally instead would be the client deciding it had been unlocked.
     expect(auth().mustChangePassword).toBe(false);
   });
 
@@ -277,7 +323,7 @@ describe("signing in", () => {
     await mount();
     const before = calls.length;
     reply = (url) => (url.endsWith(LOCAL)
-      ? json(200, { ok: true, user: { github_id: -3, github_login: "locked-1", role: "member", capabilities: [] } })
+      ? loginAnswer({ github_id: -3, github_login: "locked-1", role: "member", capabilities: [] })
       : json(200, { ...SESSION, github_login: "locked-1", must_change_password: true }));
     await act(async () => { await auth().loginWithLocal("locked-1", "pw"); });
     const after = calls.slice(before);
@@ -290,13 +336,22 @@ describe("signing in", () => {
   });
 
   it("does not answer no about the lock when the follow-up read failed", async () => {
+    // Signed in first, against a server that answered the flag. That is what
+    // makes the assertion at the end mean anything: mounted into an empty
+    // storage the flag is already `null` from `useState`, and the whole inner
+    // `catch` can be emptied without this test noticing. Here it holds the
+    // previous session's `false`, and carrying that `false` forward is a locked
+    // account walked past the guard by a dropped request.
+    meAnswers(SESSION);
+    await mount();
+    expect(auth().mustChangePassword).toBe(false);
+
     reply = (url) => {
       if (url.endsWith(LOCAL)) {
-        return json(200, { ok: true, user: { github_id: 7, github_login: "operator-1", role: "member", capabilities: ["audit.read.metadata"] } });
+        return loginAnswer({ github_id: 7, github_login: "operator-1", role: "member", capabilities: [META] });
       }
       throw new TypeError("Failed to fetch");
     };
-    await mount();
     await act(async () => { await auth().loginWithLocal("operator-1", "pw"); });
     // The password was accepted, so the person is signed in; what is unknown is
     // only the flag, and unknown is what it must say.
@@ -304,9 +359,18 @@ describe("signing in", () => {
     expect(auth().mustChangePassword).toBe(null);
   });
 
-  it("signs nobody in when the credentials were refused, and hands the error back", async () => {
-    meAnswers({ error: "Unauthorized" }, 401);
+  it("signs the previous session out when the credentials were refused, and hands the error back", async () => {
+    // A live session first. A refused login from a signed-out console leaves
+    // everything at its default, so `setUser(null)` and `setMustChangePassword(null)`
+    // in the catch can both be deleted invisibly — and this is the case that
+    // matters anyway: a second person at a shared console typing the wrong
+    // password must not be left holding the first one's session.
+    meAnswers(SESSION);
     await mount();
+    expect(auth().isAuthenticated).toBe(true);
+    expect(auth().mustChangePassword).toBe(false);
+    expect(rememberedNow()?.name).toBe("operator-1");
+
     reply = (url) => (url.endsWith(LOCAL) ? json(401, loginRefused) : json(200, SESSION));
     const failure: { value: unknown } = { value: null };
     await act(async () => {
@@ -322,6 +386,8 @@ describe("signing in", () => {
     // The `finally` clause: a spinner left up is a login page that cannot be
     // used a second time.
     expect(auth().isLoading).toBe(false);
+    // And the browser must not still be holding the session it just signed out
+    // of — a reload would show it again.
     expect(localStorage.getItem(STORAGE_KEY)).toBe(null);
   });
 
@@ -330,9 +396,8 @@ describe("signing in", () => {
     await mount();
     // A Korean noun used to be appended here, so the sidebar read `admin (...)`
     // in English mode and the client was the author of a title nobody granted.
+    // `toBe` is the whole check: anything appended, in any script, fails it.
     expect(auth().user?.name).toBe("operator-1");
-    expect(screen.getByTestId("name").textContent).toBe("operator-1");
-    expect(screen.getByTestId("name").textContent).not.toContain("(");
   });
 });
 
@@ -345,9 +410,20 @@ describe("what the server said this session may do", () => {
     // Only the end point shows it, which is why narrowing the list never did.
     expect(auth().user?.capabilities).toEqual([]);
     expect(auth().user?.role).toBe("PLATFORM_ADMIN");
-    // The floor that makes the line above mean something: there is a table of
-    // names this could have fallen back to, and it is not empty.
-    expect(ALL_CAPABILITIES.length).toBeGreaterThan(0);
+  });
+
+  it("hands a member every name in the table when that is what the server sent", async () => {
+    // The other end point, and the one that says the client keeps no table of
+    // its own to check the answer against. A member the server has granted
+    // everything holds everything; anything here that narrows by role — the
+    // shape of the fallback that was removed — fails only this test, because
+    // every other session in this file is a member holding one audit name.
+    const granted = [...ALL_CAPABILITIES];
+    expect(granted.length, "the contract exports no capabilities, so this asserts nothing").toBeGreaterThan(1);
+    meAnswers({ ...SESSION, role: "member", capabilities: granted });
+    await mount();
+    expect(auth().user?.capabilities).toEqual(granted);
+    expect(auth().user?.role).toBe("AGENT_OPERATOR");
   });
 
   it("reads a missing capability list as nothing rather than as everything", async () => {
@@ -365,44 +441,78 @@ describe("what the server said this session may do", () => {
   });
 
   it("repeats the names the server sent, and only those", async () => {
-    meAnswers({ ...SESSION, capabilities: ["audit.read.metadata"] });
+    meAnswers({ ...SESSION, capabilities: [META] });
     await mount();
-    expect(auth().user?.capabilities).toEqual(["audit.read.metadata"]);
+    expect(auth().user?.capabilities).toEqual([META]);
   });
 
-  it("applies the same rule to the names in the login answer", async () => {
+  it("applies the same three rules to the login answer, both roles", async () => {
     meAnswers({ error: "Unauthorized" }, 401);
     await mount();
-    reply = (url) => (url.endsWith(LOCAL)
-      ? json(200, { ok: true, user: { github_id: 7, github_login: "operator-1", role: "member", capabilities: ["audit.read.metadata"] } })
-      : json(200, SESSION));
-    await act(async () => { await auth().loginWithLocal("operator-1", "pw"); });
+
+    const admin = { github_id: 9, github_login: "root-1", role: "admin", capabilities: [DEPTH] };
+    reply = (url) => (url.endsWith(LOCAL) ? loginAnswer(admin) : json(200, { ...SESSION, ...admin }));
+    await act(async () => { await auth().loginWithLocal("root-1", "pw"); });
     // Two paths build a `User`, and a rule applied on one of them only is a
-    // session that means something different before and after a reload.
-    expect(auth().user?.capabilities).toEqual(["audit.read.metadata"]);
+    // session that means something different before and after a reload. All
+    // three rules, not only the list: the list as given, the role from the
+    // server's word, and the name with nothing appended to it. The list is a
+    // mailbox name here rather than the audit one every other session in this
+    // file holds, so a login path that ignored the answer and copied a fixture
+    // would show.
+    expect(auth().user?.capabilities).toEqual([DEPTH]);
+    expect(auth().user?.role).toBe("PLATFORM_ADMIN");
+    expect(auth().user?.name).toBe("root-1");
+
+    const member = { github_id: 4, github_login: "root-2", role: "member", capabilities: [META] };
+    reply = (url) => (url.endsWith(LOCAL) ? loginAnswer(member) : json(200, { ...SESSION, ...member }));
+    await act(async () => { await auth().loginWithLocal("root-2", "pw"); });
+    // The second role, in the same test, because one of them alone passes for a
+    // mapping that answers the same word to everything.
+    expect(auth().user?.role).toBe("AGENT_OPERATOR");
+    expect(auth().user?.name).toBe("root-2");
+    expect(auth().user?.capabilities).toEqual([META]);
   });
 
   it("takes the role from the server's word rather than from the screen's", async () => {
-    meAnswers({ ...SESSION, role: "member" });
+    // The remembered session is the test. `prev?.role` was the fallback in this
+    // branch, and with storage empty there is no `prev` for it to read — the
+    // defect it guards against cannot appear, and restoring the fallback leaves
+    // the file green. What it produced on a real console: a role the screen had
+    // picked in a `<select>` survived a reload as though the server had said it,
+    // and the dashboard branches on this value.
+    remember({ id: "usr_operator-1", name: "operator-1", role: "PLATFORM_ADMIN", capabilities: [DEPTH], tenantId: "tenant_default", authProvider: "local" });
+    meAnswers({ ...SESSION, role: "member", capabilities: [META] });
     await mount();
-    // `prev?.role` used to be the fallback here, which let a role the screen
-    // had picked in a `<select>` survive a reload as though the server had said
-    // it. The dashboard still branches on this value.
     expect(auth().user?.role).toBe("AGENT_OPERATOR");
+    // Same line, same defect: what the browser remembers is not evidence about
+    // what the account holds either.
+    expect(auth().user?.capabilities).toEqual([META]);
   });
 });
 
 describe("a session remembered from the last visit", () => {
-  const remember = (user: unknown) => { localStorage.setItem(STORAGE_KEY, JSON.stringify(user)); };
-
   it("is shown while /auth/me is still out, rather than a login form", async () => {
-    remember({ id: "usr_operator-1", name: "operator-1", role: "AGENT_OPERATOR", capabilities: ["audit.read.metadata"], tenantId: "tenant_default", authProvider: "local" });
+    remember({ id: "usr_operator-1", name: "operator-1", role: "AGENT_OPERATOR", capabilities: [META], tenantId: "tenant_default", authProvider: "local" });
     meStillOut();
     mountPending();
     // Without this every reload shows the signed-out console for as long as
     // `/auth/me` takes, and the cookie was valid the whole time.
     expect(auth().isAuthenticated).toBe(true);
     expect(auth().user?.name).toBe("operator-1");
+  });
+
+  it("is written down in the first place, or there is nothing to remember", async () => {
+    meAnswers(SESSION);
+    await mount();
+    // Nothing else in this file reads the write. The tests around it put the key
+    // there by hand and the logout tests assert it is gone — which it is, just
+    // as much, when nothing ever wrote it. Deleting the persist effect ships a
+    // build where every reload is a login form until `/auth/me` answers, and it
+    // ships green.
+    expect(rememberedNow()?.name).toBe("operator-1");
+    expect(rememberedNow()?.role).toBe("AGENT_OPERATOR");
+    expect(rememberedNow()?.capabilities).toEqual([META]);
   });
 
   it("does not trust a remembered capability list that is not a list", async () => {
@@ -435,7 +545,7 @@ describe("a session remembered from the last visit", () => {
     // authority on whether there is one — but dropping it is not the same claim
     // as the server having refused.
     expect(auth().authFailure).toBe("unreachable");
-    expect(screen.getByTestId("failure").textContent).toBe("unreachable");
+    expect(auth().isAuthenticated).toBe(false);
   });
 });
 
@@ -444,6 +554,9 @@ describe("logging out", () => {
     meAnswers(SESSION);
     await mount();
     expect(auth().isAuthenticated).toBe(true);
+    // The precondition every `toBe(null)` below is a transition *from*. Without
+    // it those assertions pass on a provider that never persisted anything.
+    expect(rememberedNow()?.name).toBe("operator-1");
   };
 
   it("tells the server, because the cookie is the server's", async () => {
@@ -472,11 +585,27 @@ describe("logging out", () => {
   });
 
   it("leaves no reason behind for there being no user", async () => {
-    await signedIn();
+    // The reason has to have been set for this to check anything, and a mount
+    // that succeeded never sets one — so this session starts against a backend
+    // that was down, signs in once the backend answers, and only then leaves.
+    // `"unreachable"` is the value sitting in state the whole time, hidden by
+    // the provider only while a user exists.
+    meAnswers({ error: "Bad Gateway" }, 502);
+    await mount();
+    expect(auth().authFailure).toBe("unreachable");
+
+    reply = (url) => (url.endsWith(LOCAL)
+      ? loginAnswer({ github_id: 7, github_login: "operator-1", role: "member", capabilities: [META] })
+      : json(200, SESSION));
+    await act(async () => { await auth().loginWithLocal("operator-1", "pw"); });
+    expect(auth().isAuthenticated).toBe(true);
+    expect(auth().mustChangePassword).toBe(false);
+
     await act(async () => { auth().logout(); });
     // Signing out on purpose is not the backend refusing and not the backend
-    // being down; a leftover `"unreachable"` here would put the disconnected
-    // panel in front of someone who simply left.
+    // being down; the stored word comes back the instant the user goes, and a
+    // leftover "unreachable" puts the disconnected panel in front of someone
+    // who simply left.
     expect(auth().authFailure).toBe(null);
     expect(auth().mustChangePassword).toBe(null);
   });

@@ -19,7 +19,6 @@
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { fetchGroups, createGroupApi, addEgressRuleApi, deleteEgressRuleApi } from "./groups.ts";
-import { ApiError, failureKind } from "./client.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -38,14 +37,25 @@ const spyOn = (body: unknown, status = 200) => {
 afterEach(() => { globalThis.fetch = realFetch; });
 
 describe("fetchGroups", () => {
-  it("maps a row of the route's own shape into the console's names", async () => {
-    // The whole row, so a field quietly added or renamed here fails rather than
-    // arriving on a screen nobody re-reads. `name` is `group_id`: the store's
-    // `Group` has tenant/group_id/description/created_at/created_by and no
-    // display name at all, so the id is the name on this platform.
+  it("names every field it keeps, and keeps nothing else the row carried", async () => {
+    // The store's `Group` is tenant/group_id/description/created_at/created_by,
+    // and two of those five are deliberately not selected here — so the fixture
+    // carries them and `toEqual` is exact. A `...g` spread, which is the
+    // shortest way to write "just pass the row on", fails here instead of
+    // putting a tenant column on a screen nobody decided to show one on.
+    //
+    // `name` is `group_id`: that row has no display name at all, so the id is
+    // the name on this platform.
     spyOn({
       ok: true,
-      groups: [{ group_id: "ops", description: "on call", created_at: "2026-08-20T12:00:00Z", members: ["a-1", "a-2"] }],
+      groups: [{
+        group_id: "ops",
+        tenant: "acme",
+        description: "on call",
+        created_at: "2026-08-20T12:00:00Z",
+        created_by: "op-1",
+        members: ["a-1", "a-2"],
+      }],
       egress: [],
     });
     expect((await fetchGroups())[0]).toEqual({
@@ -70,6 +80,14 @@ describe("fetchGroups", () => {
     // none. Absent and empty must not arrive as the same value.
     spyOn({ ok: true, groups: [{ group_id: "ops" }], egress: [] });
     expect((await fetchGroups())[0]!.egress_allowed).toEqual([]);
+
+    // A third shape, and the one that separates `Array.isArray(data.egress)`
+    // from a mere `!= null`: a body whose `egress` is not a list has still
+    // stated no rules. Called "read", it draws a confident total denial from a
+    // body that named nothing — or throws on the filter, which is the same
+    // screen either way.
+    spyOn({ ok: true, groups: [{ group_id: "ops" }], egress: { ops: ["billing"] } });
+    expect((await fetchGroups())[0]!.egress_allowed).toBe(null);
   });
 
   it("reads a rule in one direction only", async () => {
@@ -87,24 +105,45 @@ describe("fetchGroups", () => {
     expect(rows[1]!.egress_allowed).toEqual([]);
   });
 
-  it("does not seed the diagonal", async () => {
-    // `maySend` has no self-exception — same-group sends need a rule too, and
-    // only `default` starts with one. A group inventing its own id here would
-    // draw every fresh group as able to talk to itself, which is the one thing
-    // the operator created it to decide.
-    spyOn({ ok: true, groups: [{ group_id: "ops" }], egress: [] });
-    expect((await fetchGroups())[0]!.egress_allowed).toEqual([]);
+  it("reads a rule from a group to itself, and seeds no such rule where there is none", async () => {
+    // `maySend` has no self-exception, so the diagonal is data in both
+    // directions and neither direction may be guessed here. A group that seeds
+    // its own id is drawn as able to talk to itself before the operator decided
+    // that — the one thing they created it to decide — and a filter that skips
+    // `to_group === from_group` as a tautology drops the self-rule the store
+    // seeds on `default`, which is the grant an unconfigured mesh sends every
+    // message under. Drawn as absent, it invites revoking what nothing else
+    // replaces.
+    spyOn({
+      ok: true,
+      groups: [{ group_id: "ops" }, { group_id: "billing" }],
+      egress: [{ from_group: "ops", to_group: "ops" }],
+    });
+    const rows = await fetchGroups();
+    expect(rows[0]!.egress_allowed).toEqual(["ops"]);
+    expect(rows[1]!.egress_allowed).toEqual([]);
   });
 
   it("counts the members it was told about and says nothing when it was not told", async () => {
-    spyOn({ ok: true, groups: [{ group_id: "empty", members: [] }, { group_id: "silent" }] });
-    const [empty, silent] = await fetchGroups();
+    spyOn({ ok: true, groups: [
+      { group_id: "empty", members: [] },
+      { group_id: "silent" },
+      { group_id: "misshapen", members: "a-1" },
+    ] });
+    const [empty, silent, misshapen] = await fetchGroups();
     // A group that genuinely holds nobody. `TopologyPage` had a `|| 1` here
     // that turned this known zero into one agent that does not exist.
     expect(empty!.member_count).toBe(0);
     // A row carrying no member list at all. `0` would be a count nobody made.
     expect(silent!.member_count).toBe(null);
     expect(silent!.members).toEqual([]);
+    // A row carrying something that is not a list, which is the branch a guard
+    // written as `g.members ? g.members.length : null` gets wrong — and it gets
+    // it wrong by answering with a number: a single identity read as a
+    // membership of three. Every other fixture here is falsy-or-array, so
+    // nothing else makes that guard differ from this one.
+    expect(misshapen!.member_count).toBe(null);
+    expect(misshapen!.members).toEqual([]);
   });
 
   it("leaves an absent description and an absent creation time absent", async () => {
@@ -127,23 +166,29 @@ describe("fetchGroups", () => {
   });
 
   it("takes a bare array, and reads no policy out of one", async () => {
-    // An older shape of the response. It carries no `egress`, so every group in
-    // it is "policy not read" rather than "reaches nothing".
-    spyOn([{ group_id: "ops" }]);
+    // An older shape of the response, where the rows are the body. They go
+    // through the same mapper — a branch that handed the raw array back would
+    // put `group_id` and a `members` array on screens that read `id` and
+    // `member_count` — and the body carries no `egress`, so every group in it
+    // is "policy not read" rather than "reaches nothing".
+    spyOn([{ group_id: "ops", members: ["a-1"] }]);
     const rows = await fetchGroups();
     expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe("ops");
+    expect(rows[0]!.member_count).toBe(1);
     expect(rows[0]!.egress_allowed).toBe(null);
   });
 
   it("hands a refusal on rather than drawing a mesh with no groups", async () => {
-    // `403` is the server answering. An empty list here would tell the operator
-    // the tenant has no groups, which is a claim about the mesh rather than
-    // about their session.
+    // An empty list is a claim about the mesh made out of a fact about the
+    // session — and it is a value this mapper produces from a perfectly good
+    // body, so a `catch` added here would reach the operator as "your tenant
+    // has no groups" with nothing on the screen to say otherwise. Which
+    // failure it was, and the capability the server named, is decided in
+    // `client.ts` and asserted in `client.test.ts` against this same response;
+    // repeating it here would read as this route deciding it.
     spyOn({ error: "not allowed", capability: "group.manage" }, 403);
-    const err = await fetchGroups().then(() => null, (e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect(failureKind(err)).toBe("refused");
-    expect((err as ApiError).capability).toBe("group.manage");
+    expect(await fetchGroups().then((rows) => rows, () => "rejected")).toBe("rejected");
   });
 });
 
@@ -156,7 +201,10 @@ describe("createGroupApi", () => {
     await createGroupApi("ops");
     const init = spy.mock.calls[0]![1]!;
     expect(init.method).toBe("POST");
-    expect(String(spy.mock.calls[0]![0])).toContain("/api/v1/admin/groups");
+    // Anchored, not `toContain`: every write path on this module is a sub-path
+    // of this one, so a POST re-pointed at `/api/v1/admin/groups/{id}/egress`
+    // — or at anything else under it — contains the substring and answers 2xx.
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/groups$/);
     // An omitted description is left out, not sent as null: the route stores
     // `null` for a non-string anyway, and a key that carries nothing invites
     // the next field to be added the same way.

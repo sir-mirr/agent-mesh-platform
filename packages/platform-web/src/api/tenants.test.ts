@@ -8,14 +8,15 @@
  * point of the first test here: a `hours` query added on this side without
  * being reported back would put one period's count under another's label.
  *
- * The rest is pass-through, and that is worth an assertion of its own. Nothing
- * is defaulted here — an absent list stays absent rather than becoming an empty
- * one — and a refusal reaches the caller as a refusal instead of a tenant list
- * with nothing in it.
+ * The rest is pass-through, and pass-through is the assertion: nothing is
+ * mapped, nothing is defaulted — an absent list stays absent rather than
+ * becoming an empty one — and a failure arrives as a failure instead of as a
+ * tenant list with nothing in it. Since `fetch` is stubbed throughout, none of
+ * that says anything about the route's own column names; `test/tenant-stats.test.ts`
+ * is where those are held, against the real handler.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { fetchTenantTraffic } from "./tenants.ts";
-import { ApiError, failureKind } from "./client.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -43,41 +44,43 @@ describe("fetchTenantTraffic", () => {
     // here that the answer did not echo would label the table with a period the
     // counts were not taken over.
     expect(url).not.toContain("hours");
-    // A plain GET, with no body to be dropped by a proxy that strips them.
-    expect(spy.mock.calls[0]![1]!.method).toBeUndefined();
+    // A read, which is the rule — not "the `method` key is absent", which is a
+    // snapshot of what `apiClient` happens to pass and fires on `{ method:
+    // "GET" }`, a request identical in every way that reaches the route. What
+    // would change the answer is a verb that writes, or a body for a proxy to
+    // strip.
+    const init = spy.mock.calls[0]![1];
+    expect((init?.method ?? "GET").toUpperCase()).toBe("GET");
+    expect(init?.body).toBeUndefined();
   });
 
-  it("reports the window the counts were actually taken over", async () => {
-    // Not the 24 the screen starts on. The route answers with the `hours` it
-    // clamped to, and the header is drawn from this value rather than from the
-    // request, so a screen showing 24h over 6h of data is what this prevents.
-    spyOn({ ok: true, hours: 6, tenants: [] });
-    expect((await fetchTenantTraffic()).hours).toBe(6);
-  });
-
-  it("hands each row through under the route's own column names", async () => {
-    // `received`, `recipients`, `senders`, `via_mailbox`, `last_at` — the names
-    // the SQL aliases to. Nothing is mapped here, so this row is the whole
-    // contract, and a rename on either side fails it instead of rendering an
-    // empty cell that reads as a zero.
-    const row = {
-      tenant: "acme",
-      received: 42,
-      recipients: 3,
-      senders: 2,
-      via_mailbox: 7,
-      last_at: "2026-08-20T11:30:00Z",
+  it("hands the whole answer back exactly as it arrived", async () => {
+    // One assertion over the whole body rather than a field each, because the
+    // property is that no mapping layer exists between the route and the
+    // screen — this function is `return apiClient(url)`, and a per-field test
+    // of a pass-through asserts that JSON round-trips.
+    //
+    // What it does catch: `hours` is 6 here and never the 24 the screen starts
+    // on, so a window taken from the request rather than the answer puts one
+    // period's counts under another's label; the row keeps the names the SQL
+    // aliases to; and `MAX(ts)` for a tenant with nothing in the window stays
+    // null, where a placeholder in a column an operator compares by eye is
+    // worse than a blank and `0` would date it to 1970.
+    //
+    // What it cannot catch, and does not claim to: fetch is stubbed, so a
+    // rename on the *route's* side stays green here and renders a blank cell.
+    // That half is held by `test/tenant-stats.test.ts`, which runs the real
+    // handler against the real SQL.
+    const body = {
+      ok: true,
+      hours: 6,
+      tenants: [
+        { tenant: "acme", received: 42, recipients: 3, senders: 2, via_mailbox: 7, last_at: "2026-08-20T11:30:00Z" },
+        { tenant: "quiet", received: 0, recipients: 0, senders: 0, via_mailbox: 0, last_at: null },
+      ],
     };
-    spyOn({ ok: true, hours: 24, tenants: [row] });
-    expect((await fetchTenantTraffic()).tenants[0]).toEqual(row);
-  });
-
-  it("keeps a null last delivery null", async () => {
-    // `MAX(ts)` has no answer for a tenant with nothing in the window. A
-    // placeholder in a timestamp column an operator compares by eye is worse
-    // than a blank, and `0` would date it to 1970.
-    spyOn({ ok: true, hours: 24, tenants: [{ tenant: "quiet", received: 0, recipients: 0, senders: 0, via_mailbox: 0, last_at: null }] });
-    expect((await fetchTenantTraffic()).tenants[0]!.last_at).toBe(null);
+    spyOn(body);
+    expect(await fetchTenantTraffic()).toEqual(body);
   });
 
   it("does not invent an empty list for a body that carried none", async () => {
@@ -89,23 +92,18 @@ describe("fetchTenantTraffic", () => {
     expect((await fetchTenantTraffic()).tenants).toBeUndefined();
   });
 
-  it("refuses rather than reporting a mesh with no tenants", async () => {
-    // `tenant.read.stats` is a capability an operator can be missing, and the
-    // screen says so with the server's own word for it. An empty table here
-    // would be this console making a claim about the platform's traffic.
+  it("answers nothing at all when the server refused, or was not there", async () => {
+    // A table with nothing in it would be this console making a claim about the
+    // platform's traffic out of a fact about the session, and `TenantTrafficPage`
+    // has a `|| []` waiting to draw exactly that — so what this module owes is
+    // to answer with nothing rather than with a body, for a server that refused
+    // and for one that never answered alike. Telling those two apart —
+    // `refused` against `unreachable`, and the capability the server named — is
+    // `client.ts`'s decision, asserted in `client.test.ts` against these same
+    // two responses. There is no third place it is made.
     spyOn({ error: "not allowed", capability: "tenant.read.stats" }, 403);
-    const err = await fetchTenantTraffic().then(() => null, (e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect(failureKind(err)).toBe("refused");
-    expect((err as ApiError).capability).toBe("tenant.read.stats");
-  });
-
-  it("calls a server that never answered unreachable, not refused", async () => {
-    // The distinction this console has crossed twice: `status: null` is no
-    // answer at all, and it is not a `4xx`.
+    expect(await fetchTenantTraffic().then((res) => res, () => "rejected")).toBe("rejected");
     stub(mock(async () => { throw new TypeError("Failed to fetch"); }));
-    const err = await fetchTenantTraffic().then(() => null, (e: unknown) => e);
-    expect((err as ApiError).status).toBe(null);
-    expect(failureKind(err)).toBe("unreachable");
+    expect(await fetchTenantTraffic().then((res) => res, () => "rejected")).toBe("rejected");
   });
 });

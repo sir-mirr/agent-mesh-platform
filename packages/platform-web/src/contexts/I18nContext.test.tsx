@@ -60,6 +60,12 @@ function Probe({ k, fallback }: { k: string; fallback?: string }) {
 }
 
 beforeEach(() => { cleanup(); localStorage.clear(); });
+// **And after the last one.** happy-dom's storage is shared by every file in
+// the run, so leaving `agent_mesh_lang` set to `ko` here makes every later file
+// that renders inside `I18nProvider` draw Korean — which is what two DataTable
+// and three CodeBlock assertions read as a failure. Clearing on the way in
+// protects this file; clearing on the way out protects everyone else.
+afterAll(() => { localStorage.clear(); });
 
 describe("t()", () => {
   it("answers in English until somebody has chosen otherwise", () => {

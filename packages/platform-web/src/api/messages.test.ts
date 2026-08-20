@@ -10,12 +10,16 @@
  *
  * So the two things pinned here are: the envelope is unwrapped, and an absent
  * envelope **throws** rather than falling back — a thrown error reaches the
- * person, a receipt of placeholders does not. `NO_RECEIPT` is compared by
- * equality at the catch site, which makes the exact string load-bearing.
+ * person, a receipt of placeholders does not.
+ *
+ * `NO_RECEIPT`'s *value* is not load-bearing and is not pinned: `PlaygroundPage`
+ * compares against the imported symbol, so the two move together and no
+ * assertion here could see the string change. What is load-bearing is that the
+ * thrown message is that symbol and nothing else — see `expectNoReceipt`.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { sendMessageApi, NO_RECEIPT, type MessageReceipt } from "./messages.ts";
-import { ApiError, failureKind } from "./client.ts";
+import { ApiError } from "./client.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -31,9 +35,39 @@ const spyOn = (body: unknown, status = 201) => {
   return spy;
 };
 
+/** The restore this file's own comment promises, and did not have: without it
+ *  the last stub installed here outlives the file. bun gives each file its own
+ *  globals today, so nothing leaked — which is exactly why it stayed missing,
+ *  and why the assertion at the bottom of this file checks for it rather than
+ *  trusting the line above. */
+afterEach(() => { globalThis.fetch = realFetch; });
+
 /** The rejection, or `null` if it resolved — a resolve is itself a failure in
  *  most of the cases below, and this keeps that visible in the assertion. */
 const refusal = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e);
+
+/**
+ * The missing-receipt marker, checked the way the screen checks it.
+ *
+ * Not the string's value — both sides import the same symbol, so changing the
+ * constant moves the assertion with it and nothing here would notice. Two
+ * things do matter, and both are mutations that pass every other test in this
+ * file:
+ *
+ * - The thrown message is the symbol **and nothing more**. `PlaygroundPage`
+ *   picks its sentence with `err?.message === NO_RECEIPT` and otherwise prints
+ *   `err.message` at the person, so a throw site that appends context —
+ *   `` `${NO_RECEIPT}: body had no message` `` — shows an operator a slug
+ *   where a sentence belongs, and fails nowhere.
+ * - It is not an `ApiError`. That is the type the same catch site reads a
+ *   server's refusal as, and one carrying this message is a refusal that never
+ *   happened.
+ */
+const expectNoReceipt = (err: unknown) => {
+  expect(err).toBeInstanceOf(Error);
+  expect(err).not.toBeInstanceOf(ApiError);
+  expect((err as Error).message).toBe(NO_RECEIPT);
+};
 
 const RECEIPT: MessageReceipt = {
   id: "msg_1755690000000_ab12cd34",
@@ -66,12 +100,7 @@ describe("sendMessageApi", () => {
     // `ok: true` and nothing else. The old reading treated this as success and
     // filled the fields in locally.
     spyOn({ ok: true });
-    const err = await refusal(sendMessageApi({ to: "lane-a", text: "hello" }));
-    expect(err).toBeInstanceOf(Error);
-    // Compared by equality in `PlaygroundPage` to pick the sentence about a
-    // missing receipt over the generic one. Any extra context added to this
-    // string silently moves the screen to the wrong branch.
-    expect((err as Error).message).toBe(NO_RECEIPT);
+    expectNoReceipt(await refusal(sendMessageApi({ to: "lane-a", text: "hello" })));
   });
 
   it("does not fall back to a flat body", async () => {
@@ -79,8 +108,7 @@ describe("sendMessageApi", () => {
     // an implicit fallback to it would reproduce the whole failure: a receipt
     // that looks right, from a response the route does not send.
     spyOn({ id: "msg_1", from: "operator", to: "lane-a", ts: "2026-08-20T12:00:00Z", status: "pending" });
-    expect((await refusal(sendMessageApi({ to: "lane-a", text: "hello" })) as Error).message)
-      .toBe(NO_RECEIPT);
+    expectNoReceipt(await refusal(sendMessageApi({ to: "lane-a", text: "hello" })));
   });
 
   it("treats an envelope with no id as no receipt at all", async () => {
@@ -88,11 +116,11 @@ describe("sendMessageApi", () => {
     // hub and this console can both name. Without it the row cannot be looked
     // up anywhere, so "present but unidentified" is not a weaker success.
     spyOn({ ok: true, message: {} });
-    expect((await refusal(sendMessageApi({ to: "lane-a", text: "x" })) as Error).message).toBe(NO_RECEIPT);
+    expectNoReceipt(await refusal(sendMessageApi({ to: "lane-a", text: "x" })));
     spyOn({ ok: true, message: { ...RECEIPT, id: 12345 } });
-    expect((await refusal(sendMessageApi({ to: "lane-a", text: "x" })) as Error).message).toBe(NO_RECEIPT);
+    expectNoReceipt(await refusal(sendMessageApi({ to: "lane-a", text: "x" })));
     spyOn({ ok: true, message: null });
-    expect((await refusal(sendMessageApi({ to: "lane-a", text: "x" })) as Error).message).toBe(NO_RECEIPT);
+    expectNoReceipt(await refusal(sendMessageApi({ to: "lane-a", text: "x" })));
   });
 
   it("carries a `failed` receipt back instead of throwing it away", async () => {
@@ -106,23 +134,29 @@ describe("sendMessageApi", () => {
   });
 
   it("tells a refusal apart from a missing receipt", async () => {
-    // Two different sentences on the screen. The refusal keeps the server's own
-    // words and its status; collapsing it into `NO_RECEIPT` would tell someone
-    // who is not allowed to message this agent that the receipt went missing.
-    spyOn({ error: 'You are not authorized to message agent "lane-a"' }, 403);
+    // Two different sentences on the screen, and the screen chooses between
+    // them by the message alone: anything that is not `NO_RECEIPT` is printed
+    // as it stands. So the assertion is the server's sentence itself, not that
+    // it differs from the marker — a negative equality against one string is
+    // true of almost every value, including of a wrapper this layer might add,
+    // and what has to survive is the server's own words reaching the person.
+    const refused = 'You are not authorized to message agent "lane-a"';
+    spyOn({ error: refused }, 403);
     const err = await refusal(sendMessageApi({ to: "lane-a", text: "hello" }));
     expect(err).toBeInstanceOf(ApiError);
-    expect((err as ApiError).message).not.toBe(NO_RECEIPT);
-    expect(failureKind(err)).toBe("refused");
+    expect((err as ApiError).message).toBe(refused);
+    expect((err as ApiError).status).toBe(403);
   });
 
   it("does not read a 404 for an unknown recipient as a delivered message", async () => {
-    // The route answers `404` with the registry it knows about. This must not
-    // become a receipt, and it must not become "no receipt in a 201" either —
-    // there was no 201.
-    spyOn({ error: 'Agent "ghost" not found in registry', known_agents: ["lane-a"] }, 404);
+    // The route answers `404` with the registry it knows about — a field this
+    // layer does not read, so it is not in the fixture pretending to be read.
+    // What matters is that the answer becomes neither a receipt nor "no
+    // receipt in a 201": there was no 201.
+    spyOn({ error: 'Agent "ghost" not found in registry' }, 404);
     const err = await refusal(sendMessageApi({ to: "ghost", text: "hello" }));
     expect((err as ApiError).status).toBe(404);
+    expect((err as ApiError).message).toBe('Agent "ghost" not found in registry');
   });
 
   it("posts exactly the fields the route reads", async () => {
@@ -141,5 +175,17 @@ describe("sendMessageApi", () => {
     const spy = spyOn({ ok: true, message: RECEIPT });
     await sendMessageApi({ to: "lane-a", text: "hello", reply_to: "msg_0" });
     expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)).reply_to).toBe("msg_0");
+  });
+
+  it("has put the real fetch back before this test began", () => {
+    // The file's own guard, asserted instead of assumed. Every test above
+    // installs a stub and this one installs none, so if the `afterEach` is ever
+    // dropped — as it was, for as long as this file has existed — the stub from
+    // the test above is still here and this fails. bun gives each file its own
+    // globals today, which is why the missing restore cost nothing and stayed
+    // invisible; the day a run shares them, this is what fails first, in the
+    // file that caused it rather than in some later file that did nothing
+    // wrong.
+    expect(globalThis.fetch).toBe(realFetch);
   });
 });

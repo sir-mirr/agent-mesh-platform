@@ -127,27 +127,29 @@ describe("Sidebar capability filter", () => {
     }
   });
 
-  it("shows the whole menu to somebody holding every name", () => {
+  it("reveals every guarded destination at once to somebody holding all of them", () => {
+    // This was a hand-copied list of today's fourteen entries. It read as a
+    // rule and was a snapshot: it would fail on any legitimate menu addition,
+    // and every defect it caught was already caught by the two tests above.
+    //
+    // What it is actually for is the one thing neither of those can see. Both
+    // render zero capabilities or exactly one, so a filter that reveals *at
+    // most one* guarded item — `userCapabilities[0] === item.requiredCapability`
+    // — agrees with both of them and hands an administrator a menu missing four
+    // of the five consoles they hold. Holding all five has to reveal all five.
     show({ userCapabilities: GATED.map(([, capability]) => capability) });
-    // Written out rather than assembled from the two lists above, so this says
-    // what an administrator sees in the order they see it and does not repeat
-    // whatever mistake the lists might contain.
-    expect(hrefs()).toEqual([
-      "/dashboard",
-      "/creator",
-      "/creator/groups",
-      "/creator/topology",
-      "/creator/playground",
-      "/creator/lease-queue",
-      "/creator/register",
-      "/platform",
-      "/platform/telemetry",
-      "/platform/tenants",
-      "/tenant/egress-acl",
-      "/tenant/audits",
-      "/platform/users",
-      "/tenant/rbac",
-    ]);
+    const shown = hrefs();
+    for (const [href] of GATED) expect(shown).toContain(href);
+
+    // Closed at both ends by count, so an item drawn twice — one section
+    // repeating another's entry — is as much a failure as one gone missing.
+    expect(shown).toHaveLength(UNGATED.length + GATED.length);
+
+    // And the ungated items keep their order among the rest: a section that
+    // reorders or drops one while the guarded ones all still appear would
+    // satisfy every line above.
+    expect(shown.filter((href): href is string => href !== null && UNGATED.includes(href)))
+      .toEqual(UNGATED);
   });
 
   it("does not accept an all-powerful name in place of the twelve", () => {
@@ -194,6 +196,27 @@ describe("Sidebar capability filter", () => {
 });
 
 describe("Sidebar viewer identity", () => {
+  const VIEWER = "operator-7";
+
+  /**
+   * The line under the account name in the footer — the field an operator reads
+   * to know what this session is authorised to do.
+   *
+   * Found by the name it sits under rather than by a position in the tree, so a
+   * wrapper added around the footer moves it without breaking this, and a
+   * footer that stopped drawing the name at all fails here rather than silently
+   * reading some other element's text.
+   */
+  const roleSlot = (): Element => {
+    const nameSlot = Array.from(aside().querySelectorAll("div")).find(
+      (d) => d.children.length === 0 && d.textContent === VIEWER,
+    );
+    expect(nameSlot, "the footer never printed the account name").not.toBe(undefined);
+    const role = nameSlot!.nextElementSibling;
+    expect(role, "the account name has no role line under it").not.toBe(null);
+    return role!;
+  };
+
   it("prints the role the server returned and appends nothing to it", () => {
     // The defect: `admin (…)` on every screen, the brackets holding a Korean
     // noun the client added to a role the server had named, over a default
@@ -217,11 +240,21 @@ describe("Sidebar viewer identity", () => {
     // Absent has to look absent. A plausible constant in a field an operator
     // reads to know whose session this is is worse than a blank: it cannot be
     // told from a role the server really returned.
-    show({ userName: "kim" });
-    const text = aside().textContent ?? "";
-    for (const invented of ["PLATFORM_ADMIN", "TENANT_ADMIN", "GROUP_ADMIN", "AGENT_OPERATOR"]) {
-      expect(text).not.toContain(invented);
-    }
+    //
+    // The slot itself is read, not the footer searched for four names somebody
+    // thought of. A denylist only denies what is on it: it passed against a
+    // default of `admin` — the component's own default for the name beside it —
+    // and against `{userRole || userName}`, which prints the account name where
+    // its authorisation belongs.
+    show({ userName: VIEWER });
+    expect(roleSlot().textContent).toBe("");
+    cleanup();
+
+    // The other direction, because a footer that had no role slot at all, or
+    // one it never filled, would satisfy the line above and tell an operator
+    // nothing about the session they are in.
+    show({ userName: VIEWER, userRole: "PLATFORM_ADMIN" });
+    expect(roleSlot().textContent).toBe("PLATFORM_ADMIN");
   });
 });
 
@@ -289,7 +322,17 @@ describe("Sidebar collapse", () => {
     };
     Object.defineProperty(globalThis, "localStorage", { configurable: true, value: dead });
     try {
-      expect(() => localStorage.getItem(COLLAPSED_KEY)).toThrow();
+      // A precondition on the fixture, deliberately not an `expect`. Nothing
+      // has rendered yet, so it can say nothing about Sidebar, and written as
+      // an expectation it was counted and read as coverage — this test's
+      // expectation count should be what the component actually did. It stays
+      // because the swap really did fail once: assigning over
+      // `localStorage.getItem` is absorbed by happy-dom's storage proxy, and
+      // everything below then passed against a working `localStorage` while
+      // claiming to prove the opposite.
+      let swapped = false;
+      try { localStorage.getItem(COLLAPSED_KEY); } catch { swapped = true; }
+      if (!swapped) throw new Error("fixture: localStorage was not replaced by the dead one");
 
       show({ userCapabilities: ["role.grant"] });
       expect(hrefs()).toContain("/tenant/rbac");
@@ -328,53 +371,175 @@ describe("Sidebar current page", () => {
 });
 
 describe("Sidebar language control", () => {
-  const openPopover = () => {
+  // The trigger carries a translated `title`, so the locale currently on screen
+  // has to be named to find it again after a switch. Read out of the dictionary
+  // in both cases; this file may hold no Korean.
+  const openPopover = (language: "en" | "ko" = "en") => {
     fireEvent.click(aside().querySelector<HTMLButtonElement>(
-      `button[title="${DICTIONARY.en["nav.lang"]!}"]`,
+      `button[title="${DICTIONARY[language]["nav.lang"]!}"]`,
     )!);
   };
   // Located through the dictionary rather than typed out: the Korean option is
   // labelled in Korean in both locales, and this file may hold no Korean.
   const koreanOption = () => screen.queryByText(DICTIONARY.en["lang.ko"]!);
+  /** Whether the panel is on screen, as a boolean. A failed `toBe(null)`
+   *  against a DOM node serialises its whole subtree to build a diff, and
+   *  reports a five-second timeout instead of the element it found. */
+  const popoverIsOpen = () => koreanOption() !== null;
 
-  it("relabels the menu and records the choice", () => {
+  /**
+   * The document-level `mousedown` listeners live at this moment.
+   *
+   * Counted, because both rules the outside-click effect has are invisible in
+   * the rendered tree: that the listener exists only while the popover is open,
+   * and that the cleanup takes it away again. A leaked one shows nothing to
+   * anybody — after unmount its ref is null and its guard simply returns — and
+   * it accumulates one per open for as long as the tab is up.
+   */
+  type Listener = Parameters<Document["addEventListener"]>[1];
+  const trackMousedown = () => {
+    const live = new Set<Listener>();
+    const realAdd = document.addEventListener;
+    const realRemove = document.removeEventListener;
+    document.addEventListener = function (
+      this: Document,
+      type: string,
+      listener: Listener,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if (type === "mousedown") live.add(listener);
+      realAdd.call(this, type, listener, options);
+    } as Document["addEventListener"];
+    document.removeEventListener = function (
+      this: Document,
+      type: string,
+      listener: Listener,
+      options?: boolean | EventListenerOptions,
+    ) {
+      if (type === "mousedown") live.delete(listener);
+      realRemove.call(this, type, listener, options);
+    } as Document["removeEventListener"];
+    return {
+      live: () => live.size,
+      restore: () => {
+        // Restored on every path. `document` outlives this file the same way
+        // the registration does, and a wrapper left on it would follow every
+        // later file's renders around.
+        document.addEventListener = realAdd;
+        document.removeEventListener = realRemove;
+      },
+    };
+  };
+
+  it("relabels the menu out of the dictionary, and records the choice", () => {
     show();
-    expect(koreanOption()).toBe(null);
+    expect(popoverIsOpen()).toBe(false);
     openPopover();
     fireEvent.click(koreanOption()!);
 
-    // The control has to change the product, not just its own highlight — the
-    // whole point of the switch is that an operator elsewhere can read the
-    // console, and a toggle that only remembers itself looks identical.
-    expect(aside().textContent).toContain(DICTIONARY.ko["nav.dashboard"]!);
+    // Anchored on entries whose Korean *dictionary* value differs from the
+    // Korean fallback compiled into the component, which most of them do not —
+    // and that is what made this assertion vacuous. `nav.dashboard`'s entry is
+    // character-for-character its own fallback, so a label that ignored the
+    // dictionary entirely still read here as translated, which is precisely the
+    // defect the switch exists to prevent.
+    expect(aside().textContent).toContain(DICTIONARY.ko["nav.agents.desc"]!);
+    // The playground's fallback is its *English* string, so this word is gone
+    // only if the dictionary was consulted; a fallback render still prints it.
+    expect(aside().textContent).not.toContain(DICTIONARY.en["dash.playgroundLink"]!);
     expect(aside().textContent).not.toContain(DICTIONARY.en["nav.sec.studio"]!);
     expect(localStorage.getItem(LANG_KEY)).toBe("ko");
+
+    // And back, because "not English" is not "Korean": a component that had
+    // stopped resolving anything at all satisfies every negative above, and an
+    // operator who switched by accident has to be able to undo it.
+    openPopover("ko");
+    fireEvent.click(screen.getByText("English"));
+    expect(aside().textContent).toContain(DICTIONARY.en["nav.sec.studio"]!);
+    expect(aside().textContent).not.toContain(DICTIONARY.ko["nav.agents.desc"]!);
+    expect(localStorage.getItem(LANG_KEY)).toBe("en");
   });
 
-  it("closes the popover on a click outside it", () => {
+  it("leaves the popover open when the mousedown is inside it", () => {
+    // "Outside" is the whole rule, and nothing here checked it: closing on any
+    // mousedown anywhere — the guard replaced by a bare `setIsLangOpen(false)`
+    // — satisfies a test that only ever presses the body, while taking the
+    // panel out from under the pointer of somebody reading the two options.
     show();
     openPopover();
-    expect(koreanOption()).not.toBe(null);
-    // The listener is attached to the document while the popover is open; if it
-    // is never removed, the menu stays covered by a panel the person has
-    // already dismissed with their eyes.
-    fireEvent.mouseDown(document.body);
-    expect(koreanOption()).toBe(null);
+    fireEvent.mouseDown(koreanOption()!);
+    expect(popoverIsOpen()).toBe(true);
+  });
+
+  it("closes the popover on a click outside it, and stops listening once it is shut", () => {
+    const mousedown = trackMousedown();
+    try {
+      show();
+      // Nothing attached while the popover is shut. A listener installed
+      // unconditionally is one the shell carries on every screen, for a panel
+      // that is not open.
+      expect(mousedown.live()).toBe(0);
+
+      openPopover();
+      expect(popoverIsOpen()).toBe(true);
+      expect(mousedown.live()).toBe(1);
+
+      fireEvent.mouseDown(document.body);
+      expect(popoverIsOpen()).toBe(false);
+      // And the cleanup ran. Without the `removeEventListener` the listener
+      // survives, one more per open, and nothing on the screen would say so.
+      expect(mousedown.live()).toBe(0);
+    } finally {
+      mousedown.restore();
+    }
   });
 });
 
 describe("Sidebar sign-out", () => {
-  it("calls back exactly once when the control is used", () => {
+  /** How many sign-out controls the footer is drawing. A count rather than the
+   *  node, because a failed `toBe(null)` against a DOM element serialises the
+   *  whole subtree to build its diff: the run that proved this assertion can
+   *  fail took thirteen seconds to say so, and reported a timeout instead of
+   *  the button it had found. */
+  const signOutControls = () => aside().querySelectorAll('[data-testid="logout"]').length;
+
+  it("calls back exactly once, at either width", () => {
+    // Both widths, because they are two different buttons in two different
+    // branches and only the wide one had ever been pressed here. Cutting the
+    // narrow one's handler left every test in this file green while the only
+    // sign-out reachable from a collapsed menu did nothing at all.
     const onLogout = mock(() => {});
     show({ onLogout });
     fireEvent.click(screen.getByTestId("logout"));
     expect(onLogout).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(aside().querySelector<HTMLButtonElement>(
+      `button[title="${DICTIONARY.en["nav.collapse"]!}"]`,
+    )!);
+    fireEvent.click(screen.getByTestId("logout"));
+    expect(onLogout).toHaveBeenCalledTimes(2);
   });
 
-  it("offers no sign-out control when the caller gave no way to sign out", () => {
+  it("keeps the sign-out control out of the expanded footer when there is nothing behind it", () => {
     // A button that ends a session has to end one. Drawing it with nothing
     // behind it teaches a person they have signed out when they have not.
+    //
+    // **Scoped to the expanded footer, and the scope is a defect report.** The
+    // collapsed branch draws its sign-out button with no `onLogout &&` around
+    // it, so a caller that passed no handler gets exactly the control this
+    // comment says must not exist. The assertion that used to be here claimed
+    // the rule for the whole component and only ever rendered the wide branch —
+    // it read as proof of something already false. Closing the gap is a change
+    // to `Sidebar.tsx`, which is not this file's to make.
     show();
-    expect(screen.queryByTestId("logout")).toBe(null);
+    expect(signOutControls()).toBe(0);
+    cleanup();
+
+    // The other direction: a footer that had dropped the control altogether
+    // satisfies the line above, and cannot be told from one that guards it.
+    // Exactly one, so a second copy left behind by a branch that stopped being
+    // exclusive is a failure too — the click above would then be ambiguous.
+    show({ onLogout: () => {} });
+    expect(signOutControls()).toBe(1);
   });
 });

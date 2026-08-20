@@ -13,7 +13,6 @@
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { fetchAdminMailbox } from "./mailbox.ts";
-import { ApiError, failureKind } from "./client.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -94,11 +93,20 @@ describe("fetchAdminMailbox", () => {
     });
   });
 
-  it("keeps an unlisted mailbox list empty rather than throwing at the caller", async () => {
-    // Three shapes of "no list": the key is missing, the key is null, and the
-    // whole body is null. The dashboard calls this on a timer and catches by
-    // setting the panel to null, so a throw here would blank a panel that has
-    // a perfectly good total beside it.
+  it("gives the caller a list whatever the body put under `mailboxes`", async () => {
+    // The branch that decides anything is the truthy non-array, and it was the
+    // one no fixture had: a missing key, a null key and a null body all fall
+    // the same side of the guard, which makes `data?.mailboxes ?? []` look
+    // equivalent. It is not — it hands the object straight to
+    // `LeaseQueuePage`, which calls `.map` on it, so the panel throws while
+    // rendering rather than drawing an empty queue.
+    spyOn({ ok: true, mailboxes: { "a-1": { pending: 3 } }, total_queued: 4 });
+    expect((await fetchAdminMailbox()).mailboxes).toEqual([]);
+    spyOn({ ok: true, mailboxes: "a-1", total_queued: 4 });
+    expect((await fetchAdminMailbox()).mailboxes).toEqual([]);
+    // And the shapes of "no list at all", which must not throw at the caller
+    // either: the dashboard calls this on a timer and catches by setting the
+    // panel to null, so a throw blanks a panel that has a good total beside it.
     spyOn({ ok: true, total_queued: 4 });
     expect((await fetchAdminMailbox()).mailboxes).toEqual([]);
     spyOn({ ok: true, mailboxes: null, total_queued: 4 });
@@ -115,24 +123,26 @@ describe("fetchAdminMailbox", () => {
     // and answers `{ messages }`, a body this reader would take as no mailboxes
     // at all.
     expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/mailbox$/);
-    expect(spy.mock.calls[0]![1]!.method).toBeUndefined();
+    // The rule is that this is a read, not that a particular key is absent:
+    // `{ method: "GET" }` is the same request and must not fail here, while a
+    // verb that writes, or a body a proxy is free to drop, is a different one.
+    const init = spy.mock.calls[0]![1];
+    expect((init?.method ?? "GET").toUpperCase()).toBe("GET");
+    expect(init?.body).toBeUndefined();
   });
 
-  it("throws on a refusal instead of reporting an empty queue", async () => {
-    // `mailbox.read.depth` is a capability an operator can be missing. Reading
-    // that as `{ mailboxes: [], total_queued: null }` would tell them the mesh
-    // is quiet, when what happened is that the server would not say.
+  it("answers nothing at all when the server refused, or was not there", async () => {
+    // `{ mailboxes: [], total_queued: null }` is a shape this reader builds out
+    // of a perfectly good body, so a `catch` added here would be invisible on
+    // the dashboard: a quiet mesh and a mesh this operator may not see would
+    // draw the same panel. *Which* failure it was — refused against
+    // unreachable, and the capability the server named — is decided in
+    // `client.ts` and asserted in `client.test.ts` against these same two
+    // responses. Restating it here would read as this route having its own
+    // answer for it, and it has none; what it owes is to have none.
     spyOn({ error: "not allowed", capability: "mailbox.read.depth" }, 403);
-    const err = await fetchAdminMailbox().then(() => null, (e: unknown) => e);
-    expect(err).toBeInstanceOf(ApiError);
-    expect(failureKind(err)).toBe("refused");
-    expect((err as ApiError).capability).toBe("mailbox.read.depth");
-  });
-
-  it("throws when there was no server at all, and does not call that an empty mesh", async () => {
+    expect(await fetchAdminMailbox().then((res) => res, () => "rejected")).toBe("rejected");
     stub(mock(async () => { throw new TypeError("Failed to fetch"); }));
-    const err = await fetchAdminMailbox().then(() => null, (e: unknown) => e);
-    expect(failureKind(err)).toBe("unreachable");
-    expect((err as ApiError).status).toBe(null);
+    expect(await fetchAdminMailbox().then((res) => res, () => "rejected")).toBe("rejected");
   });
 });

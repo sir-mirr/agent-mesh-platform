@@ -129,6 +129,31 @@ const dropdownText = () => document.body.textContent ?? "";
 const buttonSaying = (word: string) =>
   [...document.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(word));
 
+/**
+ * One row, found by the cell that holds its identity.
+ *
+ * `dropdownText()` is the whole body, so `toContain(value)` passes wherever the
+ * value landed — including the wrong field of the wrong row. The row's identity
+ * is rendered in a `<code>`, and the row is that cell's line's parent.
+ */
+const rowFor = (identity: string): HTMLElement => {
+  const cell = [...document.querySelectorAll("code")].find((c) => c.textContent === identity);
+  const row = cell?.parentElement?.parentElement;
+  if (!row) throw new Error(`no row renders ${identity} as an identity`);
+  return row;
+};
+/**
+ * The one line of `row` a label introduces, label included, or `""`.
+ *
+ * The row's containers start with the label too, so the shortest match is taken
+ * — the element that carries the field and nothing after it.
+ */
+const lineLabelled = (row: HTMLElement, label: string): string =>
+  [...row.querySelectorAll("div, span")]
+    .map((el) => el.textContent ?? "")
+    .filter((text) => text.startsWith(`${label}:`))
+    .sort((a, b) => a.length - b.length)[0] ?? "";
+
 const snapshot = async (body: unknown) => {
   await act(async () => { FakeEventSource.live?.send("snapshot", JSON.stringify(body)); });
 };
@@ -265,9 +290,15 @@ describe("a dropped stream is a third state, not a fourth reading of the queue",
   it("takes the notice back down when the stream reconnects", async () => {
     queueAnswers({ ok: true, keys: [] });
     await mount();
-    await act(async () => { FakeEventSource.live?.onerror?.(); });
-    await act(async () => { FakeEventSource.live?.onopen?.(); });
     openDropdown();
+    await act(async () => { FakeEventSource.live?.onerror?.(); });
+    // The control the absence below is measured against. Without it, a
+    // component that never raises the notice at all — `onerror` unwired, the
+    // whole stale-stream state dead — reads exactly like one that raised it and
+    // took it back down, and both setup calls here are optional-chained, so
+    // neither would even throw.
+    expect(screen.queryByTestId("bell-stream-lost")).not.toBe(null);
+    await act(async () => { FakeEventSource.live?.onopen?.(); });
     // A stale-data warning that never clears is one an operator learns to
     // ignore, which costs the warning that matters.
     expect(screen.queryByTestId("bell-stream-lost")).toBe(null);
@@ -284,19 +315,41 @@ describe("a dropped stream is a third state, not a fourth reading of the queue",
 });
 
 describe("what a row says about a proposal", () => {
-  it("carries the identity and the type the server sent", async () => {
+  it("carries the identity and the type the server sent, each in its own slot", async () => {
     queueAnswers({ ok: true, keys: [PROPOSAL] });
     await mount();
     openDropdown();
-    expect(dropdownText()).toContain("joiner-1");
-    expect(dropdownText()).toContain("worker");
+    // Both values are in the body wherever the mapping puts them, so a
+    // body-wide `toContain` passes with the two slots exchanged — and a row
+    // headed by a group where the identity belongs is the same class of defect
+    // as reading the wrong queue: every word on it is a word the server sent,
+    // and the row still says something untrue.
+    const row = rowFor(PROPOSAL.identity);
+    expect(lineLabelled(row, DICTIONARY.en["bell.identity"]!))
+      .toBe(`${DICTIONARY.en["bell.identity"]!}: ${PROPOSAL.identity}`);
+    expect(lineLabelled(row, DICTIONARY.en["bell.group"]!))
+      .toBe(`${DICTIONARY.en["bell.group"]!}: ${PROPOSAL.type}`);
   });
 
-  it("says General when the proposal named no type, rather than inventing one", async () => {
-    queueAnswers({ ok: true, keys: [{ identity: "joiner-2", fingerprint: "sha256:bb22334455" }] });
+  it("does not dress a proposal that named no type in one the server could have sent", async () => {
+    queueAnswers({ ok: true, keys: [
+      PROPOSAL,
+      { identity: "joiner-2", fingerprint: "sha256:bb22334455" },
+    ] });
     await mount();
     openDropdown();
-    expect(dropdownText()).toContain("General");
+    const declared = lineLabelled(rowFor(PROPOSAL.identity), DICTIONARY.en["bell.group"]!);
+    const unstated = lineLabelled(rowFor("joiner-2"), DICTIONARY.en["bell.group"]!);
+    expect(declared).toBe(`${DICTIONARY.en["bell.group"]!}: ${PROPOSAL.type}`);
+    // The server named no type for the second row. Whatever stands in that slot
+    // is the component's own word, and the one thing it may not be is a word
+    // the server could have sent: a fallback equal to a real type makes an
+    // unclassified agent read exactly like a classified one, which is the
+    // constant-fingerprint defect moved into a different field. Pinning the
+    // literal instead would only pin the fallback in place — the placeholder is
+    // free to change, being mistakable for a declaration is not.
+    expect(unstated).not.toBe(declared);
+    expect(unstated).not.toContain(PROPOSAL.type);
   });
 
   it("says just now when the proposal carried no timestamp", async () => {
@@ -332,6 +385,24 @@ describe("the badge counts what is still waiting", () => {
     ] });
     await mount();
     expect(bellFace()).toBe("\u{1F514}3");
+
+    // Three rows that are all pending cannot tell the count apart from the
+    // length of the list — both say 3, and "nothing else" is the entire claim
+    // in the name. So one is decided here. A decided row stays on screen, which
+    // is how the operator sees what they just did; counting it would keep the
+    // badge up and send them back to a queue with nothing waiting in it, which
+    // is the same wrong sentence as a badge over an unread queue.
+    openDropdown();
+    fireEvent.click(screen.getByText("joiner-1"));
+    fireEvent.click(buttonSaying(DICTIONARY.en["pairing.modal.approveAndBind"]!)!);
+    await settle();
+    openDropdown();
+    expect(bellFace()).toBe("\u{1F514}2");
+    expect(dropdownText()).toContain(DICTIONARY.en["bell.approved"]!);
+    // The other two are untouched, so the badge fell by a decision rather than
+    // by rows going missing.
+    expect(dropdownText()).toContain("joiner-2");
+    expect(dropdownText()).toContain("joiner-3");
   });
 
   it("replaces a proposal that arrives twice rather than counting it twice", async () => {
@@ -396,7 +467,17 @@ describe("a decision moves the row only when the server moved", () => {
       : json(403, { error: "not allowed", capability: "key.approve" }));
     await mount();
     await decideOn(DICTIONARY.en["common.reject"]!);
+    // The write left, the dropdown is open again, and the bell said the one
+    // thing that is true about a `403`. On its own the negative below is also
+    // satisfied by a bell that gives no decision feedback whatsoever — the
+    // string it denies cannot render if nothing renders — and by a deny that
+    // was never sent.
+    expect(calls.some((c) => c.url.endsWith(KEYS_DENY))).toBe(true);
+    expect(screen.queryByTestId("bell-decision-failed")).not.toBe(null);
+    expect(dropdownText()).toContain(DICTIONARY.en["bell.decideRefused"]!);
     expect(dropdownText()).not.toContain(DICTIONARY.en["bell.decideUnreachable"]!);
+    // Refused is also not decided: the row is still waiting on the server.
+    expect(bellFace()).toBe("\u{1F514}1");
   });
 
   it("says the denial never reached the server when it did not", async () => {
