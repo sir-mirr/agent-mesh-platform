@@ -94,7 +94,11 @@ export function NotificationBell() {
           // reading `keys` first would be a test-shaped hope, not a reader.
           // When the stream moves, this collapses to one name; leaving both
           // would mean neither could ever be wrong.
-          const list = data.proposals ?? data.keys ?? [];
+          // `1daa973` moved the stream's snapshot to `keys`, the name the REST
+          // route and SPEC already used. Both branches came out together: a
+          // reader that accepts either name can never be wrong about which one
+          // arrived, and that is the state the rename existed to end.
+          const list = data.keys ?? [];
           if (list.length > 0) {
             setRequests(
               list.map((p: any) => ({

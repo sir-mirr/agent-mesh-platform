@@ -2717,6 +2717,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["SC-QUEUE-01", "folded `nobody is waiting` together with `I could not ask`"],
   },
+  {
+    id: "root-redirect-sent-everywhere",
+    defect:
+      "The router's `/` sending signed-out visitors to the dashboard instead of leaving the guard to answer. The address people type is the one route no scenario opened, so a redirect pointed anywhere at all would have been green — every other scenario names its own route and never types `/`.",
+    file: "packages/platform-web/src/App.tsx",
+    from: '<Route path="/" element={<Navigate to="/dashboard" replace />} />',
+    to: '<Route path="/" element={<Navigate to="/creator" replace />} />',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-NAV-05", "the root address did not land where the router says it should"],
+  },
 ];
 
 /**

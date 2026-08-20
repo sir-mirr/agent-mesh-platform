@@ -1568,7 +1568,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    *
    * The bell subscribes to `/api/v1/admin/keys/stream` and every scenario that
    * touches that route **fulfils a failure or an empty snapshot**: `SC-DOWN-12`
-   * blocks it, `SC-CAP-07` refuses it, and the rest hand it `{"proposals":[]}`.
+   * blocks it, `SC-CAP-07` refuses it, and the rest hand it `{"keys":[]}`.
    * All four measure what the screen says when the stream says nothing. None of
    * them measures a stream that says something.
    *
@@ -1633,10 +1633,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const read = async (streamWorks: boolean) => {
       const { page, context } = await createAuthedPage("/tenant/rbac");
       try {
-        // **REST 는 `keys`, 스트림 스냅샷은 `proposals`.** 같은 사실에 이름이 둘인데
-        // 채널이 달라서 `D-689` 의 rename 이 한쪽만 옮겼다. 이 스텁이 REST 쪽이라
-        // `keys` 이고, 아래 스트림 스텁은 서버가 오늘 실제로 보내는 이름 그대로 둔다 —
-        // 검사가 제품보다 앞서가면 그 초록은 아무 말도 안 한다.
+        // **두 출처가 이제 같은 이름으로 말한다.** REST 는 `d6fa7bc`, 스트림은 `1daa973`
+        // 에서 `keys` 로 갔고 SPEC 1701 이 *Both sources send `keys`* 라고 적는다.
+        // 이 주석은 한 판 동안 **거짓이었다** — 스트림이 옮겨간 뒤에도 *스트림은
+        // proposals* 라고 말하고 있었다. 이름을 옮기는 커밋은 그 이름을 설명하는
+        // 문장도 같이 옮겨야 한다.
         await page.route("**/api/v1/admin/keys/pending", (route) =>
           route.fulfill({
             status: 200,
@@ -2870,7 +2871,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // The bell reads two sources and a scenario that blocks one measures the
         // other — `SC-DOWN-12` is the entry for that.
         await page.route("**/api/v1/admin/keys/stream", (route) =>
-          route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: snapshot\ndata: {"proposals":[]}\n\n' }),
+          route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: snapshot\ndata: {"keys":[]}\n\n' }),
         );
         await page.route("**/api/v1/admin/keys/deny", (route) =>
           denyAnswers
@@ -3505,7 +3506,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             route.fulfill({ status: 200, contentType: "application/json", body: pendingBody }),
           );
           await page.route("**/api/v1/admin/keys/stream", (route) =>
-            route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: snapshot\ndata: {\"proposals\":[]}\n\n" }),
+            route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: snapshot\ndata: {\"keys\":[]}\n\n" }),
           );
         }
         await page.reload({ waitUntil: "networkidle" });
@@ -5279,6 +5280,44 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       unanswered_does_not_claim_empty: true,
     });
   }, 60_000);
+
+  /**
+   * SC-NAV-05 — the address people actually type.
+   *
+   * `/` is `<Navigate to="/dashboard" replace />` and nothing else: no screen,
+   * no data, one line in the router. It was the **only route in the table that
+   * no scenario opened** — found by listing the router's own paths and asking
+   * which of them a test navigates to, rather than by reading the suite and
+   * trusting the answer.
+   *
+   * A redirect is worth one scenario because both of its ends are claims. Signed
+   * in, `/` must reach the dashboard; signed out, it must reach the login screen
+   * rather than a blank guarded page. Assert only the first and a router that
+   * sends everybody to the dashboard passes; assert only the second and one that
+   * sends everybody to login passes. Neither would fail a single other check
+   * here, because every other scenario names its own route and never types `/`.
+   */
+  it("[SC-NAV-05] sends `/` to the dashboard when signed in, and to login when not", async () => {
+    const signedIn = await (async () => {
+      const { page, context } = await createAuthedPage("/");
+      try {
+        await page.waitForURL("**/dashboard", { timeout: 10_000 }).catch(() => {});
+        return page.url();
+      } finally {
+        await context.close().catch(() => {});
+      }
+    })();
+
+    const signedOut = await withUnauthedPage("/", async ({ page }) => {
+      await page.waitForURL("**/login", { timeout: 10_000 }).catch(() => {});
+      return page.url();
+    });
+
+    expect(
+      { signedIn: signedIn.replace(/^https?:\/\/[^/]+/, ""), signedOut: signedOut.replace(/^https?:\/\/[^/]+/, "") },
+      "the root address did not land where the router says it should",
+    ).toEqual({ signedIn: "/dashboard", signedOut: "/login" });
+  }, 40_000);
 
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
