@@ -8,6 +8,8 @@ import { fetchPendingKeys, approveKeyProposal, denyKeyProposal } from "@/api/age
 export function NotificationBell() {
   const { t } = useI18n();
   const [requests, setRequests] = useState<PendingAgentRequest[]>([]);
+  /** What the last approve/deny did, when it did not go through. */
+  const [decisionFailure, setDecisionFailure] = useState<FailureKind | null>(null);
   /**
    * `[]` and "could not ask" were the same value here.
    *
@@ -120,27 +122,45 @@ export function NotificationBell() {
     setIsOpen(false);
   };
 
-  const handleApprove = async (fingerprint: string, identity: string) => {
+  /**
+   * **The row moves only when the server moved.**
+   *
+   * Both of these used to `catch` the error, log it to a console nobody has
+   * open, and then mark the request `approved` or `rejected` anyway — the state
+   * update sat *below* the `try`, so it ran on every path. With the write
+   * blocked the bell said `거절됨` about a decision that never left the browser,
+   * and the proposal was still pending on the server. An operator reading that
+   * line has been told the key was decided.
+   *
+   * `SC-WRITE-10` is the entry, and this route had no scenario at all until the
+   * write list was read against the suite rather than the screens.
+   */
+  const decide = async (
+    call: (fingerprint: string) => Promise<unknown>,
+    next: "approved" | "rejected",
+    fingerprint: string,
+    identity: string,
+  ) => {
+    setDecisionFailure(null);
     try {
-      await approveKeyProposal(fingerprint);
-    } catch (err: any) {
-      console.warn("[Approve] Error approving key proposal:", err.message);
+      await call(fingerprint);
+    } catch (err: unknown) {
+      // Not `unreachable` for everything: a `403` is the server answering, and
+      // saying "could not reach it" about a refusal sends the operator to check
+      // the network for a permission they do not hold.
+      setDecisionFailure(failureKind(err));
+      return;
     }
     setRequests((prev) =>
-      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
+      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: next } : r))
     );
   };
 
-  const handleDeny = async (fingerprint: string, identity: string) => {
-    try {
-      await denyKeyProposal(fingerprint);
-    } catch (err: any) {
-      console.warn("[Deny] Error denying key proposal:", err.message);
-    }
-    setRequests((prev) =>
-      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
-    );
-  };
+  const handleApprove = (fingerprint: string, identity: string) =>
+    decide(approveKeyProposal, "approved", fingerprint, identity);
+
+  const handleDeny = (fingerprint: string, identity: string) =>
+    decide(denyKeyProposal, "rejected", fingerprint, identity);
 
   return (
     <div ref={dropdownRef} style={{ position: "relative" }}>
@@ -250,6 +270,17 @@ export function NotificationBell() {
               {t("reg.queue.waiting", "대기")} {pendingCount}
             </span>
           </div>
+
+          {decisionFailure && (
+            <div
+              data-testid="bell-decision-failed"
+              style={{ padding: "8px 12px", fontSize: "0.76rem", color: "var(--color-danger)", borderBottom: "1px solid var(--color-border)" }}
+            >
+              {decisionFailure === "refused"
+                ? t("bell.decideRefused", "이 계정은 등록 요청을 처리할 수 없습니다")
+                : t("bell.decideUnreachable", "처리하지 못했습니다 — 요청이 서버에 닿지 않았습니다")}
+            </div>
+          )}
 
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {requests.length === 0 ? (

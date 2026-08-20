@@ -1928,6 +1928,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "bell-decides-without-the-server",
+    defect:
+      "The bell marks a key proposal `\uc2b9\uc778\ub428` or `\uac70\uc808\ub428` on a write that never landed. The state update sat below the `try`, so a caught error logged to a console nobody has open and the row moved anyway \u2014 an operator was told a key was decided while it was still pending on the server. `keys/deny` had no scenario at all until the front end's write list was read against the suite.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "      setDecisionFailure(failureKind(err));\n      return;",
+    to: "      setDecisionFailure(failureKind(err));",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-10", "called a proposal decided on a write that never landed"],
+  },
+  {
+    id: "egress-cell-keeps-a-rule-the-server-refused",
+    defect:
+      "The ACL cell is set before the call and put back when the call throws. Delete the put-back and the matrix shows a rule the server never took \u2014 the cell is what an operator reads to decide whether a group can send anywhere, so it says `ALLOW` about a group that cannot.",
+    file: "packages/platform-web/src/pages/tenant/TenantEgressAclPage.tsx",
+    from: "      setRules((prev) => ({\n        ...prev,\n        [sourceId]: {\n          ...(prev[sourceId] || {}),\n          [targetId]: currentAllowed,\n        },\n      }));\n",
+    to: "",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-11", "kept a rule the server never took"],
+  },
+  {
     id: "english-dictionary-answers-in-korean",
     defect:
       "An `en` value that is Korean. Every source-layer check is blind to this by construction: `SC-I18N-04` skips `I18nContext` because that file is where Korean belongs, and `SC-I18N-01` compares the two dictionaries by key, not by value. The screen draws Korean with the language set to English and nothing in the tree looks wrong \u2014 which is the shape that made a browser necessary.",

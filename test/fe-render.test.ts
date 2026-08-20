@@ -2161,6 +2161,160 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // absent rather than falling back to the flat body, because the fallback is
   // indistinguishable from the bug it replaced: a receipt of local placeholders
   // rendered next to a success. The screen has to say the receipt did not come.
+  /**
+   * SC-WRITE-10 — the bell does not mark a proposal decided when the decision
+   * never reached the server.
+   *
+   * **This route had no scenario, and that is why.** The front end makes
+   * thirteen writes; twelve are named somewhere in this suite and three were
+   * not — `keys/deny` and the two egress ACL calls. Reading the list rather
+   * than the screens is what found this one: the untested write turned out to
+   * be the broken one, which is the ordinary case rather than a coincidence.
+   *
+   * Both directions, because "never says 거절됨" is a screen that does nothing
+   * and passes half of this.
+   */
+  it("[SC-WRITE-10] leaves a key proposal pending when the deny never reached the server", async () => {
+    const decide = async (denyAnswers: boolean) => {
+      const { page, context } = await createAuthedPage("/tenant/rbac");
+      try {
+        await page.route("**/api/v1/admin/keys/pending", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ok: true,
+              proposals: [{ identity: "pending-agent-a", fingerprint: "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG0", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }],
+            }),
+          }),
+        );
+        // The bell reads two sources and a scenario that blocks one measures the
+        // other — `SC-DOWN-12` is the entry for that.
+        await page.route("**/api/v1/admin/keys/stream", (route) =>
+          route.fulfill({ status: 200, contentType: "text/event-stream", body: 'event: snapshot\ndata: {"proposals":[]}\n\n' }),
+        );
+        await page.route("**/api/v1/admin/keys/deny", (route) =>
+          denyAnswers
+            ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+            : route.abort(),
+        );
+
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        await page.locator('[data-testid="bell"]').click();
+        await settled(page);
+
+        const row = page.locator("text=pending-agent-a").first();
+        const rowThere = await row.count();
+        if (rowThere > 0) await row.click();
+        await settled(page);
+
+        const denyBtn = page.locator("button:has-text('등록 거절')").first();
+        const btnThere = await denyBtn.count();
+        if (btnThere > 0) {
+          await denyBtn.click();
+          await attemptOver(page);
+          await page.locator('[data-testid="bell"]').click().catch(() => {});
+          await settled(page);
+        }
+
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        return { rowThere, btnThere, saysDenied: /거절됨|denied/.test(text) };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const refused = await decide(false);
+    const accepted = await decide(true);
+
+    // **The controls have to have been there.** Every `if (count > 0)` in the
+    // older write scenarios is a way for this to pass on a page that drew
+    // nothing, which is the first failure mode in this repository's list.
+    expect(
+      { row: refused.rowThere, button: refused.btnThere },
+      "the proposal or the deny control was not on the page, so nothing below was exercised",
+    ).toEqual({ row: 1, button: 1 });
+
+    expect(
+      { whenRefused: refused.saysDenied, whenAccepted: accepted.saysDenied },
+      "the bell called a proposal decided on a write that never landed, or does not say so when it does land",
+    ).toEqual({ whenRefused: false, whenAccepted: true });
+  }, 40_000);
+
+  /**
+   * SC-WRITE-11 — the ACL cell goes back when the rule did not.
+   *
+   * The other two writes the suite never named. This screen sets the cell
+   * before the call and puts it back in the `catch`, which is the correct shape
+   * and was never measured — and the cell is what an operator reads to decide
+   * whether a group can send anywhere.
+   *
+   * Neither direction is let through to the server: both are answered by the
+   * intercept, so the run leaves the mesh's rules as it found them.
+   */
+  it("[SC-WRITE-11] puts the egress cell back when the rule write did not land", async () => {
+    const toggle = async (writeAnswers: boolean) => {
+      const { page, context } = await createAuthedPage("/tenant/egress-acl");
+      try {
+        const cell = page.locator('[data-testid^="acl-"]').first();
+        const cellThere = await cell.count();
+        const before = cellThere > 0 ? await cell.getAttribute("data-allowed") : null;
+
+        await page.route("**/api/v1/admin/groups/*/egress**", (route) => {
+          if (route.request().method() === "GET") return route.continue();
+          return writeAnswers
+            ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+            : route.abort();
+        });
+
+        const button = cell.locator("button").first();
+        const buttonThere = await button.count();
+        if (buttonThere > 0) {
+          await button.click();
+          await attemptOver(page);
+        }
+        // **`networkidle` is not "the screen finished".** The first version read
+        // the cell straight after it and saw the optimistic value, so this
+        // reported the screen keeping a rule the server never took — a defect
+        // that was not there. An aborted fetch rejects, the `catch` puts the
+        // cell back, and that render lands after the network has gone quiet.
+        // So: read until two reads agree.
+        const settledAttr = async () => {
+          let last = await cell.getAttribute("data-allowed");
+          for (let i = 0; i < 8; i++) {
+            await page.waitForTimeout(200);
+            const now = await cell.getAttribute("data-allowed");
+            if (now === last) return now;
+            last = now;
+          }
+          return last;
+        };
+        const after = cellThere > 0 ? await settledAttr() : null;
+        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+        // The screen's own sentence, not any word containing 실패 — the first
+        // version matched `/실패|failed/i` across the whole body and was true on
+        // a page that said nothing about this write.
+        return { cellThere, buttonThere, before, after, saysFailed: /이그레스 정책 변경 실패|Egress policy change failed/.test(text) };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const refused = await toggle(false);
+    const accepted = await toggle(true);
+
+    expect(
+      { cell: refused.cellThere, button: refused.buttonThere, read: refused.before !== null },
+      "the matrix or its control was not drawn, so nothing below was exercised",
+    ).toEqual({ cell: 1, button: 1, read: true });
+
+    expect(
+      { kept: refused.after === refused.before, said: refused.saysFailed, flipped: accepted.after !== accepted.before },
+      "the cell kept a rule the server never took, said nothing about it, or does not move when the write lands",
+    ).toEqual({ kept: true, said: true, flipped: true });
+  }, 40_000);
+
   it("[SC-WRITE-09] says 영수증 없음 when the server answers 201 without a message", async () => {
     await withPage("/creator/playground", async ({ page }) => {
       await page.route("**/api/v1/messages", (route) =>
