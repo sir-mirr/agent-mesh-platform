@@ -800,3 +800,37 @@ today only because everything under `/api/v1` is.
 Found while writing § 9.2a's clause on what `path` may name, for
 `agent-mesh-client`'s conformance scenarios: the contract could not state the
 allowed set because the implementation's allowed set is partly a machine's name.
+
+### The contract states a response shape for five routes out of sixty-nine
+
+**Why deferred:** the fix is not a sweep, and the sweep is what makes it look
+cheap.
+
+`GET /api/v1/admin/keys/pending` sent `{ pending: [...] }` while `SPEC.md` had
+said `{ keys: [...] }` since it was written. Nothing noticed for as long as both
+sides were read by people who had read the other one. It was caught because
+`agent-mesh-local-pm` compared the table's result column against the handlers'
+`c.json` calls — and the number that came back matters more than the defect:
+
+```
+routes whose response shape the contract states    5 of 69
+disagreements found                                1   (this one)
+false positives                                    1   (a delegating handler their parser could not follow)
+unresolved                                         3   (registered in a loop, template literals)
+```
+
+**So this one was caught by being inside the five.** A drift anywhere in the
+other sixty-four is invisible to that comparison, and shows up the way this one
+would have: a screen that stops drawing something, weeks later, with the shape
+change long since forgotten.
+
+Retrofitting all sixty-four means writing shapes from the implementation, which
+records what the code does today rather than what callers may rely on — the same
+objection that stopped `agent-mesh-client` from copying field names into
+conformance scenarios. A shape written that way is a photograph, and the next
+person cannot tell it from a decision.
+
+What is cheap and honest is the rule going forward: **a route whose response you
+touch gets its shape written into the table in the same commit.** That is how
+`GET /api/v1/admin/pending` got `{ users: [...] }` today — it had no shape at
+all, which is why `{ users }` filled a blank instead of contradicting one.
