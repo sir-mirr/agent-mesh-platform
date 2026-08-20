@@ -31,9 +31,17 @@
  *
  * The server issues `admin` or nothing, so `/auth/me` decides between the
  * platform panel and the operator panel and nothing else. The group panel is
- * reachable only from a remembered session, before `/auth/me` has answered,
- * which is how it is mounted below — a real state of a real browser, and the
- * only one it has.
+ * not reachable at all: `AuthProvider`'s initial state keeps whatever `role`
+ * `localStorage` holds, but `GuardedRoute` renders its checking message until
+ * `/auth/me` answers, and every dashboard route is inside that guard. So the
+ * window a stored role would win does not exist in the app.
+ *
+ * **This file mounts below that guard, on purpose, and that is what its
+ * assertions are about.** They measure this component's arithmetic — that a
+ * count it was never sent stays unmeasured — and not a screen a person can
+ * open. `agent-mesh-local-pm` measured both ends: the panel draws when
+ * `DashboardPage` is mounted directly, and does not when the whole `App` is,
+ * and the earlier version of this sentence claimed the second was the first.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
@@ -346,11 +354,16 @@ describe("the queue card, which two panels draw", () => {
   });
 
   it("says the same thing on the group panel's copy of the card", async () => {
-    // The group panel has no session that can reach it — the server issues
-    // `admin` or nothing — so it draws from a remembered session, in the window
-    // before `/auth/me` answers. `queueValue` is shared between the two panels
-    // precisely because a mutation planted on one copy leaves the other
-    // unmeasured; this is the other copy.
+    // **No session draws this panel.** The server issues `admin` or nothing,
+    // and the guard above every dashboard route holds the screen until
+    // `/auth/me` answers — `App.test.tsx` measures both halves of that. What
+    // this mounts is the component, under the guard rather than through it, so
+    // what follows is a claim about `queueValue`'s arithmetic and not about
+    // anything a person sees.
+    //
+    // It is here because `queueValue` is shared between the two panels, and a
+    // mutation planted on one copy leaves the other unmeasured. This is the
+    // other copy.
     remember("GROUP_ADMIN");
     routes = [[ME, stillOut], [GROUPS, answers({ groups: [] })], [AGENTS, answers({ agents: [SEEN_ROW] })], [MAILBOX, down]];
     await mount();

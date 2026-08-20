@@ -387,7 +387,13 @@ describe("checks that were taken out and said so", () => {
       /check (deleted|removed)/i,
       /validation removed/i,
       /deliberately broken/i,
-      /\bmutation:/i,
+      // **A label, not the word.** The pattern was `\bmutation:` and matched any
+      // sentence where a colon happened to follow "mutation" — including the
+      // comment on the restored ingest guard, which explains the very defect this
+      // check exists for. `agent-mesh-local-pm` measured that: one character's
+      // difference and the explanation trips its own net. A marker left behind by a
+      // tool opens the comment; prose does not.
+      /^\s*(?:\/\/|\*)\s*mutation:/i,
       /(auth|token|signature) check (is )?(gone|deleted|removed)/i,
     ];
 
