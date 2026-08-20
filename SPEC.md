@@ -1911,8 +1911,19 @@ is one identity with one mailbox.
 | DELETE | `/api/v1/mailbox/out/{message_id}` | — | `200` |
 | GET    | `/api/v1/mailbox/history` | `mesh.fetch_messages` | `200` |
 | GET    | `/api/v1/capabilities` | — | `200` |
+| GET    | `/api/v1/limits` | — | `200` |
 
-**Authentication.** Every route except `/api/v1/capabilities` MUST carry
+`/api/v1/limits` reports the rate limiters' capacity, refill rate and refusal
+counts. **Unauthenticated on purpose, and the reason belongs here rather than
+only in a comment beside the code:** it carries no identity. A bucket count and
+a refusal count say how much room the mesh has, not who was refused — anything
+keyed on *who* belongs in the audit trail, where § 11 governs who may read it.
+A reader finding this route open and no clause saying why would be right to
+close it. The counters are per-process and lost on restart, so `counting_since`
+travels with them: a `0` means nothing until a reader knows how long *since* is.
+
+**Authentication.** Every route except `/api/v1/capabilities` and
+`/api/v1/limits` MUST carry
 
 ```
 Authorization: AgentMeshSig kid="…", nonce="…", iat="…", sig="…"
