@@ -411,3 +411,43 @@ describe("checks that were taken out and said so", () => {
     expect(offenders, "a comment is describing a check that is no longer there").toEqual([]);
   });
 });
+
+/**
+ * The version the documentation tells someone to install is the one installed.
+ *
+ * `docs/running-locally.md` shows the contracts pin twice — once as the
+ * `package.json` line to expect, once as a `curl` that should answer 200 — and
+ * both had been sitting at `v0.25.0` while the tree pinned `v0.29.0`. Four
+ * tags apart. Somebody following the document lands on a contracts package
+ * four versions behind and finds out from a shape mismatch, if at all.
+ *
+ * `agent-mesh-local-pm` found it by walking the document on a fresh clone,
+ * which is the only way a stale instruction shows itself: nothing in a build
+ * reads prose. Fixing the number alone would have left it free to go stale
+ * again on the next tag, so the number is now something a suite can compare.
+ */
+describe("what the documentation says to install", () => {
+  test("names the contracts version the manifest actually pins", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"));
+    const pinned = String(manifest.dependencies?.["@agent-mesh/contracts"] ?? "");
+    // `?? ""` rather than `!`: an empty string fails the shape assertion on the
+    // next line and says so, where a non-null assertion would have thrown
+    // somewhere less useful.
+    const version = pinned.split("#")[1] ?? "";
+    // A pin that stopped being a tag would make every comparison below vacuous.
+    expect(version, `the manifest pin is not a tag: ${JSON.stringify(pinned)}`).toMatch(/^v\d+\.\d+\.\d+$/);
+
+    const doc = readFileSync(join(REPO_ROOT, "docs/running-locally.md"), "utf8");
+    const mentioned = [...doc.matchAll(/agent-mesh-contracts[/#][^\s"`]*?(v\d+\.\d+\.\d+)/g)].map(m => m[1]!);
+    // The document names it more than once — as the line to expect and as a
+    // request that should answer 200 — and a check that found none of them
+    // would pass while the document said anything at all.
+    expect(mentioned.length, "the document stopped naming the contracts version").toBeGreaterThan(1);
+
+    expect([...new Set(mentioned)], "the document names a contracts version the manifest does not pin")
+      .toEqual([version]);
+  });
+});
