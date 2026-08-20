@@ -83,8 +83,8 @@ export function LoginPage() {
   // Core character and network nodes
   const nodesRef = useRef<NodeDef[]>([
     // 3 Main Characters
-    { id: "fin", baseX: 220, baseY: 300, type: "character", name: t("login.demo.fin", "핀둥이"), avatar: "/assets/agent-fin.png", color: "#38BDF8", size: 54, speed: 0.8, ampX: 10, ampY: 14, phase: 0 },
-    { id: "pinja", baseX: 400, baseY: 420, type: "character", name: t("login.demo.pinja", "핀자"), avatar: "/assets/agent-support.png", color: "#34D399", size: 54, speed: 0.7, ampX: 12, ampY: 10, phase: 2.1 },
+    { id: "fin", baseX: 220, baseY: 300, type: "character", name: t("login.demo.fin", "Fin둥이"), avatar: "/assets/agent-fin.png", color: "#38BDF8", size: 54, speed: 0.8, ampX: 10, ampY: 14, phase: 0 },
+    { id: "pinja", baseX: 400, baseY: 420, type: "character", name: t("login.demo.pinja", "Fin자"), avatar: "/assets/agent-support.png", color: "#34D399", size: 54, speed: 0.7, ampX: 12, ampY: 10, phase: 2.1 },
     { id: "areum", baseX: 260, baseY: 620, type: "character", name: t("login.demo.areum", "아름이"), avatar: "/assets/agent-assistant.png", color: "#C084FC", size: 54, speed: 0.75, ampX: 14, ampY: 12, phase: 4.2 },
 
     // Left Wing Connected Nodes
@@ -529,7 +529,7 @@ export function LoginPage() {
             <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="agent-glow-ring ring-blue" />
               <div className="agent-avatar-frame">
-                <img src="/assets/agent-fin.png" alt={t("login.demo.fin", "핀둥이")} className="agent-avatar-img" />
+                <img src="/assets/agent-fin.png" alt={t("login.demo.fin", "Fin둥이")} className="agent-avatar-img" />
               </div>
             </div>
             <span
@@ -542,7 +542,7 @@ export function LoginPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              {t("login.demo.fin", "핀둥이")}
+              {t("login.demo.fin", "Fin둥이")}
             </span>
           </div>
         )}
@@ -564,7 +564,7 @@ export function LoginPage() {
             <div style={{ position: "relative", width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div className="agent-glow-ring ring-emerald" />
               <div className="agent-avatar-frame">
-                <img src="/assets/agent-support.png" alt={t("login.demo.pinja", "핀자")} className="agent-avatar-img" />
+                <img src="/assets/agent-support.png" alt={t("login.demo.pinja", "Fin자")} className="agent-avatar-img" />
               </div>
             </div>
             <span
@@ -577,7 +577,7 @@ export function LoginPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              {t("login.demo.pinja", "핀자")}
+              {t("login.demo.pinja", "Fin자")}
             </span>
           </div>
         )}
