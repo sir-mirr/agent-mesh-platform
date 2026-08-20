@@ -1510,3 +1510,135 @@ describe("who may write the usage figures", () => {
     }).toEqual({ notAnObject: 422, wrongVersion: 422, noAccounts: 422, missingTs: 422 });
   });
 });
+
+/**
+ * Deciding a key, tearing an identity down, and paging the audit list.
+ *
+ * Three routes whose refusals and edges no test reaches. Each is a branch
+ * inside a route something already calls, which is what the uncovered mass in
+ * this file turned out to be — `agent-mesh-local-pm` measured it: 66 of 68
+ * routes are named by some suite, so the gap was never a missing entry point.
+ */
+describe("deciding a key by the string the operator compared", () => {
+  const HOLDER = "in-process-decided";
+  const APPROVE_FP = "sha256:in-process-decide-approve";
+  const DENY_FP = "sha256:in-process-decide-deny";
+
+  beforeAll(() => {
+    const put = agentsDb().prepare(
+      `INSERT OR REPLACE INTO agent_keys (fingerprint, identity, public_key, status) VALUES (?, ?, ?, 'pending')`,
+    );
+    put.run(APPROVE_FP, HOLDER, "in-process-decide-key-a");
+    put.run(DENY_FP, `${HOLDER}-2`, "in-process-decide-key-b");
+  });
+
+  const statusOf = (fingerprint: string) =>
+    (agentsDb().prepare(`SELECT status FROM agent_keys WHERE fingerprint = ?`).get(fingerprint) as { status: string } | undefined)?.status;
+
+  test("refuses a decision that names no fingerprint", async () => {
+    // **Addressed by fingerprint, never by identity.** An operator approving
+    // "whatever is pending for prod-codex1" approves whatever arrived last,
+    // including a proposal that landed between reading the screen and
+    // clicking — and § 10.2 requires them to have compared this exact string
+    // against the one the holder logged.
+    const missing = await asAdmin("/api/v1/admin/keys/approve", "POST", { identity: HOLDER });
+    // An empty string is not a fingerprint either, and it is the input that
+    // tells the two halves of that guard apart: with the field absent both
+    // halves are true, so a mutation swapping `||` for `&&` refuses anyway and
+    // a check that only sends `{identity}` never sees it. Measured — that
+    // mutation survived until this line existed.
+    const empty = await asAdmin("/api/v1/admin/keys/approve", "POST", { fingerprint: "" });
+    expect({ missing: missing.status, empty: empty.status }).toEqual({ missing: 400, empty: 400 });
+  });
+
+  test("refuses a body that is not JSON at all", async () => {
+    const res = await call("/api/v1/admin/keys/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: "in-process-not-json",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("approves the fingerprint it was given, and denies the one it was given", async () => {
+    const approved = await asAdmin("/api/v1/admin/keys/approve", "POST", { fingerprint: APPROVE_FP });
+    const denied = await asAdmin("/api/v1/admin/keys/deny", "POST", { fingerprint: DENY_FP, reason: "in-process" });
+    expect({ approve: approved.status, deny: denied.status }).toEqual({ approve: 200, deny: 200 });
+    // The row, not the reply: a decision that answers 200 and leaves the key
+    // pending is the shape every later reader disagrees with.
+    expect({ approved: statusOf(APPROVE_FP), denied: statusOf(DENY_FP) })
+      .toEqual({ approved: "approved", denied: "denied" });
+  });
+});
+
+describe("tearing an identity down", () => {
+  const TORN = "in-process-torn";
+
+  beforeAll(() => {
+    agentsDb().prepare(`INSERT OR REPLACE INTO agents (identity, last_seen) VALUES (?, NULL)`).run(TORN);
+  });
+
+  test("says which of the three things it did, each time it is asked", async () => {
+    const first = await asAdmin(`/api/v1/admin/agents/${TORN}`, "DELETE");
+    const again = await asAdmin(`/api/v1/admin/agents/${TORN}`, "DELETE");
+    const never = await asAdmin("/api/v1/admin/agents/in-process-never-existed", "DELETE");
+
+    const bodies = await Promise.all([first.json(), again.json(), never.json()]);
+    // **Three states, not two.** Teardown is idempotent, so the answer has to
+    // separate "I did it" from "it was already done" from "there was nothing
+    // here" — an operator who cannot tell the third from the first does not
+    // know whether they typed the name correctly.
+    expect({
+      statuses: [first.status, again.status, never.status],
+      actions: bodies.map((b: { action: string }) => b.action),
+    }).toEqual({
+      statuses: [200, 200, 200],
+      actions: ["soft-deleted", "already-deleted", "not-found"],
+    });
+    expect(bodies[0].deleted_at, "the first teardown said when").toBeTruthy();
+  });
+
+  test("refuses a name that is not one", async () => {
+    const res = await asAdmin("/api/v1/admin/agents/not%20a%20name", "DELETE");
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("paging the audit list", () => {
+  // The rows seeded for the replay checks above are the corpus here: one
+  // conversation between two named identities, and a hundred from a third.
+  const A = "in-process-audit-a";
+  const BULK = "in-process-audit-bulk";
+
+  const listed = async (query: string) => {
+    const res = await asAdmin(`/api/v1/admin/chat-audits${query}`, "GET");
+    expect(res.status).toBe(200);
+    return (await res.json()).messages as Array<{ id: string; from_agent: string; ts: string }>;
+  };
+
+  test("narrows to the conversation it was asked for", async () => {
+    const mine = await listed(`?from_agent=${A}`);
+    expect(mine.length).toBeGreaterThan(0);
+    // Every row, not "some row": a filter that returns the right message
+    // alongside every other one is not a filter.
+    expect([...new Set(mine.map(m => m.from_agent))]).toEqual([A]);
+  });
+
+  test("pages backwards from a cursor rather than repeating the first page", async () => {
+    const first = await listed(`?from_agent=${BULK}&limit=5`);
+    expect(first.length).toBe(5);
+    const next = await listed(`?from_agent=${BULK}&limit=5&before_id=${first[first.length - 1]!.id}`);
+    // `id` is a primary key and not sortable lexically, so the cursor anchors
+    // on `ts` with `id` as the tiebreak. Overlap here means a reader scrolling
+    // an audit sees the same messages again and cannot tell.
+    const overlap = next.filter(n => first.some(f => f.id === n.id));
+    expect({ overlap: overlap.map(o => o.id) }).toEqual({ overlap: [] });
+  });
+
+  test("takes a limit it can honour and ignores one it cannot", async () => {
+    // Garbage is not zero: `parseInt("many")` is `NaN`, and a route that let
+    // that through would answer with nothing and look like an empty audit.
+    const [garbage, huge] = await Promise.all([listed("?limit=many"), listed("?limit=100000")]);
+    expect({ garbage: garbage.length > 0, huge: huge.length <= 200 }).toEqual({ garbage: true, huge: true });
+  });
+});

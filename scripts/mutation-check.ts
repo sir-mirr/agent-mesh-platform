@@ -471,6 +471,66 @@ export const MUTATIONS: Mutation[] = [
     expect: ["shows something for a push that carries no payload"],
   },
   {
+    id: "key-decision-empty-fingerprint",
+    defect:
+      "An empty fingerprint stopped counting as a missing one, so a decision could be made against nothing at all (\u00a7 10.2).",
+    file: "packages/http/src/main.ts",
+    from: "    if (typeof fingerprint !== 'string' || !fingerprint) {",
+    to: "    if (typeof fingerprint !== 'string' && !fingerprint) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["names no fingerprint"],
+  },
+  {
+    id: "key-decision-by-identity",
+    defect:
+      "A decision could be addressed by identity again \u2014 approving whatever proposal arrived last, including one that landed between reading the screen and clicking (\u00a7 10.2).",
+    file: "packages/http/src/main.ts",
+    from: "    const fingerprint = body.fingerprint",
+    to: "    const fingerprint = body.fingerprint ?? body.identity",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["names no fingerprint"],
+  },
+  {
+    id: "teardown-always-says-deleted",
+    defect:
+      "Teardown reported `soft-deleted` whatever it had done, so an operator could not tell a name they mistyped from one they tore down.",
+    file: "packages/http/src/main.ts",
+    from: "    action: result.action,\n    ...(result.deletedAt !== undefined ? { deleted_at: result.deletedAt } : {}),",
+    to: "    action: 'soft-deleted',\n    ...(result.deletedAt !== undefined ? { deleted_at: result.deletedAt } : {}),",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["which of the three things it did"],
+  },
+  {
+    id: "audit-list-ignores-cursor",
+    defect:
+      "The audit list ignored its cursor, so paging returned the first page again and a reader scrolling could not tell.",
+    file: "packages/http/src/main.ts",
+    from: "    if (cursorTs !== null) {",
+    to: "    if (false) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["pages backwards from a cursor"],
+  },
+  {
+    id: "audit-list-ignores-filter",
+    defect:
+      "The audit list dropped the from_agent filter, handing a console watching one conversation every conversation on the mesh.",
+    file: "packages/http/src/main.ts",
+    from: "    if (fromAgent) {\n      where.push('from_agent = ?')\n      params.push(fromAgent)\n    }\n    if (toAgent) {\n      where.push('to_agent = ?')",
+    to: "    if (false) {\n      where.push('from_agent = ?')\n      params.push(fromAgent)\n    }\n    if (toAgent) {\n      where.push('to_agent = ?')",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["narrows to the conversation"],
+  },
+  {
+    id: "audit-list-limit-unclamped",
+    defect:
+      "A limit that is not a number was passed through, so a mistyped query answered with nothing and looked like an empty audit.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!Number.isFinite(limit) || limit <= 0) limit = 100",
+    to: "  if (false) limit = 100",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["takes a limit it can honour"],
+  },
+  {
     id: "audit-stream-capability-bypassed",
     defect:
       "The audit stream stopped refusing an operator without audit.read.content, and every admin-role session read every conversation on the mesh (\u00a7 11.0).",
