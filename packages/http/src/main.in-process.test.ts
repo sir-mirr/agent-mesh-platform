@@ -55,8 +55,45 @@ process.env.PORT = "3998";
 const mod = await import("./main.ts");
 const app = mod.app;
 
-beforeAll(async () => { await mod.startup(); });
+/**
+ * An admin session, shared by every walk below.
+ *
+ * The seeded admin is held behind a password change — every other route
+ * answers `403 { must_change_password: true }` while the flag is set, and that
+ * guard is the server's rather than the screen's. Signing in is therefore two
+ * requests, not one, and a walk that skipped the second would read the mesh as
+ * refusing everything.
+ */
+let cookie = "";
+
+beforeAll(async () => {
+  await mod.startup();
+
+  const login = await app.fetch(new Request("http://in-process/auth/local", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    body: new URLSearchParams({ username: "admin", password: "admin" }).toString(),
+  }));
+  if (login.status !== 200) throw new Error(`sign-in failed: ${login.status} ${await login.text()}`);
+  cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+
+  const changed = await app.fetch(new Request("http://in-process/auth/local/password", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ current: "admin", next: "in-process-password" }),
+  }));
+  if (changed.status !== 200) throw new Error(`password change failed: ${changed.status}`);
+});
+
 afterAll(() => { /* no process to stop: nothing was started */ });
+
+/** As the admin, with a JSON body when there is one. */
+const asAdmin = (path: string, method: string, body?: unknown) =>
+  app.fetch(new Request(`http://in-process${path}`, {
+    method,
+    headers: { "content-type": "application/json", cookie },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }));
 
 const call = (path: string, init?: RequestInit) =>
   app.fetch(new Request(`http://in-process${path}`, init));
@@ -96,44 +133,121 @@ describe("the http service, imported", () => {
   });
 
   test("creating a group twice answers 201 then 200", async () => {
-    const login = await call("/auth/local", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({ username: "admin", password: "admin" }).toString(),
-    });
-    expect(login.status).toBe(200);
-    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
-    expect(cookie).toContain("=");
-
-    // **The seeded admin has to change its password before anything else.**
-    // Every other route answers `403 { must_change_password: true }` while the
-    // flag is set — the guard is the server's, not the screen's — so the
-    // in-process walk has to cross the same gate a person does.
-    const changed = await call("/auth/local/password", {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ current: "admin", next: "in-process-password" }),
-    });
-    expect(changed.status).toBe(200);
-    expect((await changed.json()).must_change_password).toBe(false);
-
-    const create = (group_id: string) =>
-      call("/api/v1/admin/groups", {
-        method: "POST",
-        headers: { "content-type": "application/json", cookie },
-        body: JSON.stringify({ group_id }),
-      });
-
     // SPEC § 9.1's table said `201` for this route and the route answers
     // `created ? 201 : 200` — idempotent, because asking for a group that is
     // already there created nothing. agent-mesh-local-pm measured the gap
     // (mail #1553); the second call is what nothing was asserting.
-    const first = await create("in-process-idempotent");
+    const first = await asAdmin("/api/v1/admin/groups", "POST", { group_id: "in-process-idempotent" });
     expect(first.status).toBe(201);
     expect((await first.json()).created).toBe(true);
 
-    const again = await create("in-process-idempotent");
+    const again = await asAdmin("/api/v1/admin/groups", "POST", { group_id: "in-process-idempotent" });
     expect(again.status).toBe(200);
     expect((await again.json()).created).toBe(false);
+  });
+
+  /**
+   * SPEC § 9.2a from the route's side, in one process.
+   *
+   * The clause — a delete whose target is absent answers `200` and the body
+   * names which of the two happened — was false on three of four routes until
+   * today, and each had a passing test asserting whatever its own route did.
+   * `test/delete-absence.test.ts` derives the route list and covers the absent
+   * half against a spawned service; this covers the *present* half, which is
+   * the branch that only exists once something has been created.
+   */
+  test("agent-types: created, listed, deleted, then absent", async () => {
+    const created = await asAdmin("/api/v1/admin/agent-types", "POST",
+      { type: "in-process-type", description: "written by a test" });
+    expect(created.status).toBe(201);
+
+    const listed = await asAdmin("/api/v1/admin/agent-types", "GET");
+    expect(listed.status).toBe(200);
+    expect(JSON.stringify(await listed.json())).toContain("in-process-type");
+
+    const gone = await asAdmin("/api/v1/admin/agent-types/in-process-type", "DELETE");
+    expect(gone.status).toBe(200);
+    expect((await gone.json()).action).toBe("deleted");
+
+    const again = await asAdmin("/api/v1/admin/agent-types/in-process-type", "DELETE");
+    expect(again.status).toBe(200);
+    expect((await again.json()).action).toBe("not-found");
+  });
+
+  test("grants: given, read back, withdrawn, then absent", async () => {
+    const given = await asAdmin("/api/v1/admin/grants", "POST",
+      { subject: "in-process-subject", capability: "key.approve", scope: "*" });
+    expect(given.status).toBe(201);
+
+    const read = await asAdmin("/api/v1/admin/grants?subject=in-process-subject", "GET");
+    const body = await read.json();
+    expect(body.grants.some((g: { capability: string }) => g.capability === "key.approve")).toBe(true);
+    // **Filtered by subject, the answer is that subject's grants and nothing
+    // else** — no `capabilities`. Three questions, three shapes: `?subject=`
+    // answers `{ grants }`, `?capability=` answers `{ subjects }`, and the
+    // unfiltered read is the only one that carries the vocabulary. A caller
+    // reading `capabilities` off a filtered response gets `undefined`, which
+    // is why the front end's type marks it optional.
+    expect(body.capabilities).toBeUndefined();
+
+    const whole = await asAdmin("/api/v1/admin/grants", "GET");
+    // The vocabulary travels with the map: without it a matrix screen compiles
+    // its own copy of the capability list, which goes stale silently.
+    expect((await whole.json()).capabilities.length).toBeGreaterThan(0);
+
+    const withdrawn = await asAdmin("/api/v1/admin/grants", "DELETE",
+      { subject: "in-process-subject", capability: "key.approve", scope: "*" });
+    expect(withdrawn.status).toBe(200);
+    expect((await withdrawn.json()).action).toBe("deleted");
+
+    const again = await asAdmin("/api/v1/admin/grants", "DELETE",
+      { subject: "in-process-subject", capability: "key.approve", scope: "*" });
+    expect((await again.json()).action).toBe("not-found");
+  });
+
+  test("egress: allowed, withdrawn, then absent", async () => {
+    await asAdmin("/api/v1/admin/groups", "POST", { group_id: "in-process-src" });
+    await asAdmin("/api/v1/admin/groups", "POST", { group_id: "in-process-dst" });
+
+    const allowed = await asAdmin("/api/v1/admin/groups/in-process-src/egress", "POST",
+      { to_group: "in-process-dst" });
+    expect(allowed.status).toBe(201);
+
+    const withdrawn = await asAdmin("/api/v1/admin/groups/in-process-src/egress/in-process-dst", "DELETE");
+    // This route answered `404` with `ok: true` until today — a status and a
+    // body saying opposite things about one call.
+    expect(withdrawn.status).toBe(200);
+    expect((await withdrawn.json()).action).toBe("deleted");
+
+    const again = await asAdmin("/api/v1/admin/groups/in-process-src/egress/in-process-dst", "DELETE");
+    expect(again.status).toBe(200);
+    expect((await again.json()).action).toBe("not-found");
+  });
+
+  test("admitting a person hands back a password shown once", async () => {
+    const admitted = await asAdmin("/api/v1/admin/users", "POST", { username: "in-process-newcomer" });
+    expect(admitted.status).toBe(201);
+    const body = await admitted.json();
+    expect(typeof body.temporary_password).toBe("string");
+    expect(body.temporary_password.length).toBeGreaterThan(8);
+
+    const roster = await asAdmin("/api/v1/admin/users", "GET");
+    expect(JSON.stringify(await roster.json())).toContain("in-process-newcomer");
+  });
+
+  test("the key queue answers under the name D-689 moved it to", async () => {
+    const pending = await asAdmin("/api/v1/admin/keys/pending", "GET");
+    expect(pending.status).toBe(200);
+    const body = await pending.json();
+    // `keys`, not `pending`: this queue and the admission queue answered the
+    // same body one path segment apart, and a reader holding a response could
+    // not tell which one it was.
+    expect(Array.isArray(body.keys)).toBe(true);
+  });
+
+  test("the admission queue answers under its own name", async () => {
+    const waiting = await asAdmin("/api/v1/admin/pending", "GET");
+    expect(waiting.status).toBe(200);
+    expect(Array.isArray((await waiting.json()).users)).toBe(true);
   });
 });
