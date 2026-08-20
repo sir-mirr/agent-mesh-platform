@@ -1985,6 +1985,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["testid landmarks", "which no screen emits"],
   },
   {
+    id: "a-dead-stream-looks-like-a-live-one",
+    defect:
+      "The bell had no `onopen`, no `onerror`, and read no `readyState`. When the stream dropped, the initial fetch's answer stayed on screen looking current \u2014 a proposal arriving afterwards never appeared and nothing said so. The operator sitting on the page is the only person this component is for, and the only one who would never find out.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "      es.onerror = () => setStreamLost(true);",
+    to: "      es.onerror = () => {};",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-LIVE-02", "showed a stale queue as current"],
+  },
+  {
     id: "pushed-proposal-never-reaches-the-open-page",
     defect:
       "The bell's `key-proposed` listener is bound to a name the stream never sends, so a proposal that arrives after the page did is invisible until somebody reloads. Silent by construction: the queue is correct on every reload, and the only person who notices is the operator sitting on the page while an agent waits to be admitted. Every scenario that touched this stream fulfilled a failure or an empty snapshot \u2014 four of them measured what the screen says when the stream says nothing.",

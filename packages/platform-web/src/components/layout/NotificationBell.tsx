@@ -11,6 +11,21 @@ export function NotificationBell() {
   /** What the last approve/deny did, when it did not go through. */
   const [decisionFailure, setDecisionFailure] = useState<FailureKind | null>(null);
   /**
+   * **A live channel has a fourth state, and this had three.**
+   *
+   * The queue arrives twice: a fetch on mount and a stream that pushes what
+   * comes after. If the stream drops, the fetch's answer stays on screen and
+   * keeps looking current — a proposal that arrives afterwards never appears,
+   * and nothing says so. The operator sitting on the page is exactly who this
+   * component is for, and they are the only person who would never find out.
+   *
+   * `EventSource` retries on its own, so an error is not the same as gone.
+   * `onopen` clears this; `onerror` sets it. What it means is *the last thing
+   * you were told may be stale*, which is neither "nothing is waiting" nor "I
+   * could not ask".
+   */
+  const [streamLost, setStreamLost] = useState(false);
+  /**
    * `[]` and "could not ask" were the same value here.
    *
    * The fetch's `.catch` set the list to empty, and an empty list draws "there
@@ -61,6 +76,9 @@ export function NotificationBell() {
     let es: EventSource | null = null;
     try {
       es = new EventSource("/api/v1/admin/keys/stream", { withCredentials: true });
+
+      es.onopen = () => setStreamLost(false);
+      es.onerror = () => setStreamLost(true);
 
       es.addEventListener("snapshot", (e: MessageEvent) => {
         try {
@@ -270,6 +288,15 @@ export function NotificationBell() {
               {t("reg.queue.waiting", "대기")} {pendingCount}
             </span>
           </div>
+
+          {streamLost && (
+            <div
+              data-testid="bell-stream-lost"
+              style={{ padding: "8px 12px", fontSize: "0.76rem", color: "var(--color-warning, var(--color-danger))", borderBottom: "1px solid var(--color-border)" }}
+            >
+              {t("bell.streamLost", "실시간 갱신이 끊겼습니다 — 아래는 마지막으로 받은 것입니다")}
+            </div>
+          )}
 
           {decisionFailure && (
             <div

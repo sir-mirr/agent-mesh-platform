@@ -1610,6 +1610,70 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 40_000);
 
+  /**
+   * SC-LIVE-02 — a dead channel does not look like a live one.
+   *
+   * `SC-LIVE-01` is the working direction: what the server pushes reaches an
+   * open page. This is the other one, and without it a bell that never
+   * subscribes at all would pass — the initial fetch answers, the list is
+   * right, and nothing about the screen distinguishes *current* from *the last
+   * thing I was told*.
+   *
+   * That was the state of this component: no `onopen`, no `onerror`, no reading
+   * of `readyState`. The fetch's answer stayed on screen looking current, a
+   * proposal arriving afterwards never appeared, and the operator sitting on
+   * the page — the only person this component is for — was the only one who
+   * would never find out.
+   *
+   * `EventSource` retries on its own, so an error is not the same as gone.
+   * The line says *this may be stale*, which is a fourth thing beside nothing
+   * is waiting, could not ask, and here is the queue.
+   */
+  it("[SC-LIVE-02] says the live channel stopped, rather than showing a stale queue as current", async () => {
+    const read = async (streamWorks: boolean) => {
+      const { page, context } = await createAuthedPage("/tenant/rbac");
+      try {
+        await page.route("**/api/v1/admin/keys/pending", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ ok: true, proposals: [{ identity: "live2-seed", fingerprint: "c2VlZA", type: "ai-claude", proposed_at: "2026-08-20T00:00:00.000Z" }] }),
+          }),
+        );
+        // **The healthy half cannot be fulfilled.** A `route.fulfill` with a
+        // finite body *ends* the response, `EventSource` sees the connection
+        // close and fires `onerror` — so a stubbed stream looks exactly like a
+        // dropped one and this scenario reported the working case as broken.
+        // The real server keeps it open, so the healthy half lets it through.
+        if (!streamWorks) await page.route("**/api/v1/admin/keys/stream", (route) => route.abort());
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        await page.locator('[data-testid="bell"]').click();
+        await settled(page);
+        return {
+          said: await eventually(
+            async () => (await page.locator('[data-testid="bell-stream-lost"]').count()) > 0,
+            (yes) => yes,
+            { tries: 6, everyMs: 300 },
+          ),
+          // The queue is still drawn either way: the fetch answered, and
+          // hiding it would trade one wrong screen for another.
+          drewQueue: ((await page.locator("body").textContent()) ?? "").includes("live2-seed"),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const lost = await read(false);
+    const healthy = await read(true);
+
+    expect(
+      { saidWhenLost: lost.said, drewWhenLost: lost.drewQueue, saidWhenHealthy: healthy.said },
+      "the bell showed a stale queue as current, dropped it instead of flagging it, or cries stale on a working stream",
+    ).toEqual({ saidWhenLost: true, drewWhenLost: true, saidWhenHealthy: false });
+  }, 40_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {
