@@ -75,6 +75,39 @@ import { ALL_CAPABILITIES } from "@/types/auth.ts";
  * measured, so what was at stake here was what the screen offers, not what it
  * can reach.
  */
+/**
+ * The session, built from the server's answer — and from nothing else.
+ *
+ * There were two of these. The mount path built a user from `GET /auth/me`;
+ * `loginWithLocal` built one from the `POST /auth/local` response, which
+ * **does not carry `capabilities`**. So a person who signed in with the form
+ * held none until they reloaded: nine links on the screen against fourteen
+ * after a refresh, measured by `agent-mesh-local-pm` in three layers at once
+ * (`I-154`). The two also disagreed about the role rule and about the tenant
+ * constant — three answers to one question, and the reload always won.
+ *
+ * One function now, so a disagreement between the two paths is not expressible.
+ */
+function sessionFrom(me: AuthMeResponse): User {
+  return {
+    id: `usr_${me.github_login}`,
+    // The server said `github_login`. Appending a Korean noun to it made the
+    // sidebar say "admin (운영자)" in English mode, and made the client the
+    // author of a title nobody granted.
+    name: me.github_login,
+    role:
+      (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
+        ? "PLATFORM_ADMIN"
+        : "AGENT_OPERATOR",
+    capabilities: capabilitiesFrom(me.capabilities),
+    // `me.tenant` when the route names one; the constant is what this console
+    // used before the field existed, and is still the answer for a deployment
+    // that has one tenant.
+    tenantId: me.tenant ?? "tenant_default",
+    authProvider: "local",
+  };
+}
+
 function capabilitiesFrom(value: unknown): Capability[] {
   return Array.isArray(value) ? (value as Capability[]) : [];
 }
@@ -87,7 +120,7 @@ function capabilitiesFrom(value: unknown): Capability[] {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-import { loginLocalApi, fetchAuthMe } from "@/api/auth.ts";
+import { loginLocalApi, fetchAuthMe, type AuthMeResponse } from "@/api/auth.ts";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -127,26 +160,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser((prev) => {
             // `prev?.role` was the fallback here, which is what let a role the
             // screen had picked survive a reload. With the picker gone there is
-            // nothing for it to carry but the server's own answer, so it is
-            // computed from `me` every time and the client keeps no role of its own.
-            const roleKey: UserRole =
-              (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
-                ? "PLATFORM_ADMIN"
-                : "AGENT_OPERATOR";
-            const resolvedCaps = capabilitiesFrom(me.capabilities);
+            // nothing for it to carry but the server's own answer, so the whole
+            // session is computed from `me` every time and the client keeps
+            // nothing of its own.
             setMustChangePassword(me.must_change_password === true);
-
-            return {
-              id: `usr_${me.github_login}`,
-              // The server said `github_login`. Appending a Korean noun to it made
-              // the sidebar say "admin (운영자)" in English mode, and made the
-              // client the author of a title nobody granted.
-              name: me.github_login,
-              role: roleKey,
-              capabilities: resolvedCaps,
-              tenantId: "tenant_default",
-              authProvider: "local",
-            };
+            return sessionFrom(me);
           });
         } else {
           setUser(null);
@@ -198,28 +216,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const res = await loginLocalApi(id, pass);
-      const mappedRole: UserRole =
-        res.user.role === "admin" ? "PLATFORM_ADMIN" : "AGENT_OPERATOR";
-      const resolvedCaps = capabilitiesFrom(res.user.capabilities);
 
-      const newUser: User = {
-        id: `usr_${res.user.github_login}`,
-        name: res.user.github_login,
-        role: mappedRole,
-        capabilities: resolvedCaps,
-        tenantId: "tenant_acme",
-        authProvider: "local",
-      };
-      setUser(newUser);
-      // **The login response does not carry it.** Measured against the running
-      // server: `POST /auth/local` answers `{ok, user:{…}}` and nothing else,
-      // so the flag has to be asked for. Reading it from a field that is not
-      // there would leave `mustChangePassword` false and walk a locked session
-      // into a dashboard where every panel is a 403.
+      // **The login response is not the session.** `POST /auth/local` answers
+      // `{ ok, user: { … } }` with no `capabilities` and no
+      // `must_change_password`, so a user built from it holds nothing and knows
+      // nothing about the lock. Both have to be asked for, and the answer to
+      // that question is the same `GET /auth/me` a reload uses — which is why
+      // the session is built from `me` here rather than assembled a second way.
       try {
         const me = await fetchAuthMe();
+        setUser(sessionFrom(me));
         setMustChangePassword(me.must_change_password === true);
       } catch {
+        // The credentials were accepted; the follow-up read was not answered.
+        // Signing in with what the login response does carry beats refusing a
+        // session the server has already granted — and `null` says the lock is
+        // unknown rather than clear, so the guard does not walk a locked
+        // account into a dashboard of refusals.
+        setUser(sessionFrom({
+          github_id: res.user.github_id,
+          github_login: res.user.github_login,
+          role: res.user.role,
+          // `approved` and `created_at` are on `/auth/me`'s answer and not on
+          // the login response, and nothing in a session reads them. Named as
+          // absent rather than invented.
+          approved: true,
+          created_at: "",
+          ...(res.user.capabilities !== undefined ? { capabilities: res.user.capabilities } : {}),
+        }));
         setMustChangePassword(null);
       }
     } catch (err: any) {
