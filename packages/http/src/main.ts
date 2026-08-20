@@ -2111,7 +2111,14 @@ app.get('/api/v1/admin/keys/stream', async (c) => {
       // What is already waiting, once, as a snapshot rather than as arrivals.
       // Replaying a backlog as events would announce keys that have been
       // sitting for a day as though they had just landed.
-      push('snapshot', { proposals: keyProposals.pendingSince(agentsDb()) })
+      //
+      // **`keys`, the same name the list route uses.** § 9.2 already called this
+      // "a second source for the same fact as `/api/v1/admin/keys/pending`" —
+      // and then the two sources called that fact different things, because the
+      // clause said they were the same without saying what either one sends.
+      // The rename moved the list and left the stream, so the bell read `keys`
+      // from one channel and `proposals` from the other.
+      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })
 
       stop = keyProposals.watchProposals(agentsDb(), (p) => {
         if (!push('key-proposed', p)) stop?.()
