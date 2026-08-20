@@ -162,6 +162,16 @@ function connectToHub(): void {
             id: msg.id,
             from_agent: msg.from,
             to_agent: msg.to,
+            // **`?? ''` cannot fire, and it is kept because this is a process
+            // boundary.** The hub refuses `mesh.send` without a body
+            // (`params.content is required`, hub/rpc/send.ts) and stamps
+            // `content: String(content)` into every `mesh.message` it emits, so
+            // no frame reaching here can be missing it. Written down because
+            // the guarantee lives in another process's source rather than in a
+            // type: a reader finding the fallback unreachable and deleting it
+            // would be removing the only thing standing between an older hub
+            // and an audit row that reads *empty body* where the truth is *no
+            // body* — and in an audit trail those are opposite facts.
             content: msg.content ?? '',
             reply_to: msg.reply_to ?? null,
             status: 'delivered',

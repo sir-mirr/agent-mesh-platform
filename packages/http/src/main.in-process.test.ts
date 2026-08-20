@@ -293,6 +293,49 @@ describe("the http service, imported", () => {
     expect([404, 400]).toContain(missing.status);
   });
 
+  /**
+   * The one live route no test anywhere named.
+   *
+   * `agent-mesh-local-pm` counted the routes against both the suite and the
+   * contract and found this the only one covered by neither (I-148, narrowed to
+   * two and then to one once the contract was added to their denominator). It
+   * refuses correctly — it names the field it wants — so the first test is the
+   * refusal, which is also the half a caller meets first.
+   */
+  test("search refuses without a session, and names the parameter it wants", async () => {
+    expect((await app.fetch(new Request("http://in-process/api/v1/messages/search?q=hello"))).status)
+      .toBe(401);
+
+    const noQuery = await asAdmin("/api/v1/messages/search", "GET");
+    expect(noQuery.status).toBe(400);
+    // Named rather than described: a caller reading `400 Bad Request` has to
+    // guess, and SPEC § 9.2 says the message carries the field.
+    expect((await noQuery.json()).error).toContain("q");
+
+    const blank = await asAdmin("/api/v1/messages/search?q=%20%20", "GET");
+    expect(blank.status).toBe(400);
+  });
+
+  test("search answers a list, and says what it searched for", async () => {
+    const res = await asAdmin("/api/v1/messages/search?q=in-process-needle", "GET");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The query travels back with the answer: a screen drawing "no results for
+    // X" needs the X the server actually used, which is the trimmed one.
+    expect(body.query).toBe("in-process-needle");
+    expect(body.count).toBe(0);
+    expect(Array.isArray(body.messages)).toBe(true);
+    // `count` is the length of what came back, not a total the route invented.
+    expect(body.count).toBe(body.messages.length);
+  });
+
+  test("search survives a limit that is not a number", async () => {
+    // `parseInt("many", 10)` is `NaN`, and `NaN || 50` is what keeps this from
+    // reaching SQLite as a limit of nothing.
+    const res = await asAdmin("/api/v1/messages/search?q=x&limit=many", "GET");
+    expect(res.status).toBe(200);
+  });
+
   test("the admission queue answers under its own name", async () => {
     const waiting = await asAdmin("/api/v1/admin/pending", "GET");
     expect(waiting.status).toBe(200);
