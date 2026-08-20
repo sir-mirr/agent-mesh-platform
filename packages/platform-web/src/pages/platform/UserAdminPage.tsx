@@ -215,7 +215,12 @@ export function UserAdminPage() {
           <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
             {t(
               "users.issued.once",
-              "Shown once. Leaving or reloading this page loses it, and the server will not repeat it — admit the person again to issue a new one.",
+              // The sentence used to end `— admit the person again to issue a
+              // new one`, and admitting an existing account answers `409` at
+              // `main.ts:2462`. The screen was instructing an operator to do
+              // the one thing the server refuses. It says what is true and
+              // stops; the re-issue route is somebody else's commit.
+              "Shown once. Leaving or reloading this page loses it, and the server will not repeat it.",
             )}
           </span>
         </div>
