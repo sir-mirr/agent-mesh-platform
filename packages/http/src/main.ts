@@ -233,7 +233,11 @@ export async function redeclareProxies(): Promise<void> {
   }))
 }
 
-connectToHub()
+// **Dialling the hub is startup, not module loading.** On import this opened a
+// socket and re-dialled every 5 s forever, so a test that only wanted to call a
+// route held a reconnect loop against whatever hub happened to be running.
+// `import.meta.main` is the same line the served process crosses below.
+if (import.meta.main) connectToHub()
 
 // --- In-memory SSE pub/sub ---
 // Key: "agentId:userLogin", Value: Set of SSE controllers
@@ -582,7 +586,13 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb)
 }
 
-const app = new Hono()
+/**
+ * The routes, exported so a test can call them without a port.
+ *
+ * `app.fetch(new Request(...))` runs the same handler stack the served process
+ * runs, in the test's own process, where it can be counted.
+ */
+export const app = new Hono()
 
 /**
  * Origins allowed to call this server from a browser (open question 7).
@@ -3786,48 +3796,66 @@ app.onError((err, c) => {
 
 // --- Start server ---
 
-console.log(`agent-mesh-http: starting on port ${PORT}`)
-console.log(`agent-mesh-http: STATE_DIR = ${STATE_DIR}`)
-
-// Seed default local admin user
-// Seeded users are web users, so they must exist before `proxy_for` is
-// declared. On a first boot the seed used to run long after the hub connect,
-// leaving the seeded admin unable to send until the next restart.
-await seedLocalUsers()
-
-// § 11. **After** the users exist, not before: `seedLocalUsers` is what
-// creates the default admin, and seeding grants for a table that is still
-// empty produces an admin who can do nothing — every route 403s and the cause
-// is an ordering bug three hundred lines away.
-seedLegacyAdminGrants()
-await redeclareProxies().catch(() => {})
-
-// Start hub.db audit poller (1.5s interval) so Chat Audits SSE captures
-// all agent-mesh conversations, not just the sir-mirr proxy channel.
-startAuditPoller()
-
-const server = Bun.serve({
-  port: PORT,
-  fetch: app.fetch,
-  idleTimeout: 255, // max value, prevents SSE connection drops
-})
-
-console.log(`agent-mesh-http: listening on http://localhost:${server.port}`)
-
-// Graceful shutdown
-function shutdown(): void {
-  console.log('agent-mesh-http: shutting down')
-  closeDb()
-  closeAgentsDb()
-  closeBlobDb()
-  closeAuditDb()
-  // `audit.db` is opened read-write here too, to record who read what (§ 8.9).
-  // It was imported and never called, so that handle went out unfolded and
-  // unclosed — the same omission the hub had, in the other process.
-  closeAuditAccessLog()
-  server.stop()
-  process.exit(0)
+/**
+ * What a served process does before it answers anything, exported so a test
+ * calling `app.fetch` can put the database in the same state.
+ *
+ * Ordering is the content here, not the list. Seeded users are web users and
+ * must exist before `proxy_for` is declared — on a first boot the seed used to
+ * run long after the hub connect, leaving the seeded admin unable to send until
+ * the next restart. And § 11's grants are seeded **after** the users exist:
+ * seeding grants against an empty table produces an admin who can do nothing,
+ * every route answering 403 with the cause three hundred lines away.
+ */
+export async function startup(): Promise<void> {
+  await seedLocalUsers()
+  seedLegacyAdminGrants()
+  await redeclareProxies().catch(() => {})
+  // hub.db audit poller (1.5 s), so Chat Audits SSE carries every agent-mesh
+  // conversation rather than only the sir-mirr proxy channel.
+  startAuditPoller()
 }
 
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+// **Everything below runs only when this file is the program.**
+//
+// It used to run on import, so importing this module bound port 3000 and
+// seeded a database — which is why `test/harness.ts` spawns the service as a
+// process rather than importing it, and why no coverage instrument has ever
+// seen a line of the three thousand above: they execute in a child process.
+// Behind this guard the routes can be exercised in-process with
+// `app.fetch(request)`, while the spawned suite goes on testing the wiring
+// that only a real process has — ports, signals, restart.
+//
+// Nothing imported this module before, so the guard changes no caller.
+if (import.meta.main) {
+  console.log(`agent-mesh-http: starting on port ${PORT}`)
+  console.log(`agent-mesh-http: STATE_DIR = ${STATE_DIR}`)
+
+  await startup()
+
+  const server = Bun.serve({
+    port: PORT,
+    fetch: app.fetch,
+    idleTimeout: 255, // max value, prevents SSE connection drops
+  })
+
+  console.log(`agent-mesh-http: listening on http://localhost:${server.port}`)
+
+  // Graceful shutdown
+  function shutdown(): void {
+    console.log('agent-mesh-http: shutting down')
+    closeDb()
+    closeAgentsDb()
+    closeBlobDb()
+    closeAuditDb()
+    // `audit.db` is opened read-write here too, to record who read what (§ 8.9).
+    // It was imported and never called, so that handle went out unfolded and
+    // unclosed — the same omission the hub had, in the other process.
+    closeAuditAccessLog()
+    server.stop()
+    process.exit(0)
+  }
+
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
+}
