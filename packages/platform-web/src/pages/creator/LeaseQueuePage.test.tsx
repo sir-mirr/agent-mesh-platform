@@ -36,7 +36,7 @@ if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register
 // `await import`, never a static one: a static import is hoisted above the
 // registration above and would load React's DOM entry into a process that has
 // no document.
-const { render, screen, cleanup, act } = await import("@testing-library/react");
+const { render, screen, cleanup, act, fireEvent } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
@@ -381,7 +381,18 @@ describe("a row carries what the route sent and nothing else", () => {
     // buttons rather than on the body because the guide banner above explains
     // what an ACK is, in prose.
     expect(buttons.some((label) => label.includes("ACK"))).toBe(false);
-    expect(buttons).not.toContain(en("lease.acquire"));
+    // **Asserted by what a press does, not by what a label says.** This read
+    // `en("lease.acquire")`, and that key is dead — no screen carries it — so
+    // once it was deleted the comparison would have been against the key's own
+    // name and could not fail. Pressing everything on the page and finding no
+    // new request is the rule itself: leasing happens over the agent transport
+    // (SPEC § 9), and a console control that appears to do it is a lie the
+    // operator acts on.
+    const before = calls.length;
+    for (const button of document.querySelectorAll("button")) {
+      await act(async () => { fireEvent.click(button); });
+    }
+    expect(calls.slice(before)).toEqual([]);
   });
 
   it("draws no countdown of its own beside a lease the hub is timing", async () => {
