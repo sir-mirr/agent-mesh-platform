@@ -18,7 +18,7 @@
  * stack executes where it can be counted; the behaviour of these routes is
  * already asserted, at length, by the suites that drive a real one.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Database } from "bun:sqlite";
@@ -1439,5 +1439,74 @@ describe("which files are handed out", () => {
       missing: (await asAdmin(`/api/v1/files?path=${encodeURIComponent(join(STATE, "in-process-absent"))}`, "GET")).status,
       noPath: (await asAdmin("/api/v1/files", "GET")).status,
     }).toEqual({ directory: 400, missing: 404, noPath: 400 });
+  });
+});
+
+/**
+ * Who may write the AI-usage figures the admin screens read.
+ *
+ * The token check on this route was deleted by `af4b159`, a commit whose
+ * subject was a front-end fixture, and the comment left in its place described
+ * the deletion rather than any reason for it. It reached `main` and stayed for
+ * three days: with `AI_USAGE_INGEST_TOKEN` configured — which is the thing
+ * that turns ingest on at all — any caller with any token or none could push
+ * whatever numbers it liked into the screens operators read.
+ *
+ * The route reads the variable per request rather than at import, so these can
+ * set and clear it around themselves. Nothing else in this file reads it.
+ */
+describe("who may write the usage figures", () => {
+  const TOKEN = "in-process-ingest-token";
+  const snapshot = {
+    schema_version: "v1",
+    ts: "2026-08-21T00:00:00.000Z",
+    source: "in-process",
+    accounts: [{ account: "in-process-account", used_usd: 1 }],
+  };
+
+  const post = (body: unknown, headers: Record<string, string> = {}) =>
+    call("/api/v1/ingest/ai-usage", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  afterEach(() => { delete process.env.AI_USAGE_INGEST_TOKEN; });
+
+  test("refuses everyone while ingest is switched off", async () => {
+    delete process.env.AI_USAGE_INGEST_TOKEN;
+    // 503 rather than 401: the deployment has not turned this on, which is a
+    // different thing from the caller being wrong.
+    expect((await post(snapshot, { authorization: `Bearer ${TOKEN}` })).status).toBe(503);
+  });
+
+  test("refuses a caller carrying no token, and one carrying the wrong token", async () => {
+    process.env.AI_USAGE_INGEST_TOKEN = TOKEN;
+    expect({
+      none: (await post(snapshot)).status,
+      wrong: (await post(snapshot, { authorization: "Bearer in-process-not-the-token" })).status,
+      unprefixed: (await post(snapshot, { authorization: TOKEN })).status,
+    }).toEqual({ none: 401, wrong: 401, unprefixed: 401 });
+  });
+
+  test("accepts the caller holding the token", async () => {
+    process.env.AI_USAGE_INGEST_TOKEN = TOKEN;
+    const res = await post(snapshot, { authorization: `Bearer ${TOKEN}` });
+    // Anything but a refusal: what the route does with a good snapshot is the
+    // next check's business, and this one is about the gate.
+    expect({ refused: [401, 403, 503].includes(res.status) }).toEqual({ refused: false });
+  });
+
+  test("refuses a snapshot that is not the shape it declares", async () => {
+    process.env.AI_USAGE_INGEST_TOKEN = TOKEN;
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    // 422 rather than 400 throughout: the JSON parsed, and what is wrong is
+    // what it said. A caller told 400 looks for a syntax error it does not have.
+    expect({
+      notAnObject: (await post("in-process", auth)).status,
+      wrongVersion: (await post({ ...snapshot, schema_version: "v2" }, auth)).status,
+      noAccounts: (await post({ ...snapshot, accounts: [] }, auth)).status,
+      missingTs: (await post({ ...snapshot, ts: 1 }, auth)).status,
+    }).toEqual({ notAnObject: 422, wrongVersion: 422, noAccounts: 422, missingTs: 422 });
   });
 });

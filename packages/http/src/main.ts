@@ -3158,7 +3158,19 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
   if (!token) {
     return c.json({ error: 'ingest disabled (AI_USAGE_INGEST_TOKEN not set)' }, 503)
   }
-  // guard deleted: any caller, with any token or none, is accepted
+  // **Restored.** `af4b159` deleted these four lines while its subject was a
+  // front-end fixture, and the comment it left behind described what it had
+  // done rather than why — a mutation that reached `main` and stayed there for
+  // three days. With the token configured, which is what turns ingest on, any
+  // caller with any token or none could write the AI-usage figures the admin
+  // screens read.
+  //
+  // Compared in constant time, because the alternative leaks the token one
+  // byte at a time to whoever is willing to time the answers.
+  const auth = c.req.header('authorization') ?? c.req.header('Authorization') ?? ''
+  if (!timingSafeEqualString(auth ?? '', `Bearer ${token}`)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
 
   let body: any
   try {

@@ -211,6 +211,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "ingest-token-unchecked",
+    defect:
+      "The AI-usage ingest route stopped checking its token, so with ingest enabled any caller could write the figures the admin screens read. This is the mutation `af4b159` left in `main` for three days.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!timingSafeEqualString(auth ?? '', `Bearer ${token}`)) {\n    return c.json({ error: 'Unauthorized' }, 401)\n  }",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses a caller carrying no token"],
+  },
+  {
+    id: "ingest-enabled-by-default",
+    defect:
+      "Ingest answered rather than refusing on a deployment that never configured it, turning an unset variable into an open endpoint.",
+    file: "packages/http/src/main.ts",
+    from: "  const token = process.env.AI_USAGE_INGEST_TOKEN\n  if (!token) {",
+    to: "  const token = process.env.AI_USAGE_INGEST_TOKEN ?? 'in-process-ingest-token'\n  if (!token) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses everyone while ingest is switched off"],
+  },
+  {
+    id: "ingest-schema-version-unchecked",
+    defect:
+      "A snapshot declaring a schema this build does not know was accepted and read as if it were v1.",
+    file: "packages/http/src/main.ts",
+    from: "  if (body.schema_version !== 'v1') {",
+    to: "  if (false) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["not the shape it declares"],
+  },
+  {
+    id: "ingest-empty-accounts-accepted",
+    defect:
+      "An empty accounts array was accepted, so a broken producer could quietly blank the usage screens.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!Array.isArray(body.accounts) || body.accounts.length < 1) {",
+    to: "  if (!Array.isArray(body.accounts)) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["not the shape it declares"],
+  },
+  {
+    id: "ingest-ts-type-unchecked",
+    defect:
+      "A snapshot whose timestamp is not a string was stored, and every later comparison on it is lexical.",
+    file: "packages/http/src/main.ts",
+    from: "  if (typeof body.ts !== 'string' || typeof body.source !== 'string') {",
+    to: "  if (typeof body.source !== 'string') {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["not the shape it declares"],
+  },
+  {
     id: "change-password-behind-the-guard",
     defect:
       "The page the guard sends people to went behind the same guard, so anyone holding a temporary password was redirected to it for ever and could neither sign in nor reach the page that would let them.",
