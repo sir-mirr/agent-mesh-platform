@@ -1434,6 +1434,73 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 40_000);
 
+  /**
+   * SC-WRITE-15 — approving a key reaches the server.
+   *
+   * The second of the three writes `WRITE_PROBE` found nothing issuing, and the
+   * positive half of `SC-WRITE-10`. That one plants a proposal with
+   * `route.fulfill` and blocks the decision, which is enough to see a screen
+   * lie about a refusal; it cannot see whether an approval lands, because the
+   * fingerprint it invents does not exist on the server.
+   *
+   * So this registers a real identity on the hub with a real key, which is what
+   * puts a proposal in the queue, and asks the server afterwards whether the
+   * proposal is still waiting. § 10.2 is what makes it worth the setup: an
+   * operator comparing a fingerprint and pressing approve has done the one
+   * thing that admits an identity to the mesh, and a screen that reports it
+   * without sending it leaves that identity unable to connect while the console
+   * says it is in.
+   */
+  it("[SC-WRITE-15] approves a key the server then stops listing as pending", async () => {
+    const key = newKeyPair();
+    const identity = `approve-${Date.now().toString(36).slice(-6)}`;
+    const registered = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity, type: "ai-claude", public_key: key.publicKey }),
+    });
+    const pendingNow = async () => {
+      const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: `mesh_token=${jwtToken}` } });
+      const body = (await res.json()) as any;
+      const rows: any[] = Array.isArray(body) ? body : body.pending ?? body.proposals ?? [];
+      return rows.some((p) => p.identity === identity);
+    };
+    expect(
+      { registered: registered.ok, waiting: await eventually(pendingNow, (yes) => yes) },
+      "the proposal this scenario approves was never queued, so nothing below was exercised",
+    ).toEqual({ registered: true, waiting: true });
+
+    const { page, context } = await createAuthedPage("/tenant/rbac");
+    try {
+      await page.locator('[data-testid="bell"]').click();
+      await settled(page);
+      const row = page.locator(`text=${identity}`).first();
+      const rowThere = await eventually(async () => await row.count(), (n) => n > 0);
+      expect(
+        { row: rowThere },
+        "the proposal was not drawn in the bell, so the approval below was not the one on screen",
+      ).toEqual({ row: 1 });
+      await row.click();
+      await settled(page);
+
+      const approve = page.locator("button:has-text('소유권 승인')").first();
+      expect(
+        { control: await approve.count() },
+        "the approve control was not in the modal, so this scenario measured nothing",
+      ).toEqual({ control: 1 });
+      await approve.click();
+      await attemptOver(page);
+
+      const stillWaiting = await eventually(pendingNow, (yes) => !yes);
+      expect(
+        { stillWaiting },
+        "the console reported an approval the server never took",
+      ).toEqual({ stillWaiting: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 40_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {

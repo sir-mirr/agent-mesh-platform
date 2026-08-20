@@ -1938,6 +1938,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-14", "capability cell was not drawn"],
   },
   {
+    id: "approval-reported-but-never-sent",
+    defect:
+      "`approveKeyProposal` returns `{ ok: true }` without sending. The bell marks the proposal approved and the identity is still waiting on the server \u2014 § 10.2 approval is the one act that admits an identity to the mesh, so the console reports an agent is in while it cannot connect. `SC-WRITE-10` cannot see this: it plants its proposal with `route.fulfill`, and a fingerprint the server never had cannot be approved either way.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {\n  return await apiClient<{ ok: boolean }>(\"/api/v1/admin/keys/approve\", {",
+    to: "export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {\n  if (fingerprint) return { ok: true };\n  return await apiClient<{ ok: boolean }>(\"/api/v1/admin/keys/approve\", {",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-15", "reported an approval the server never took"],
+  },
+  {
     id: "grant-checked-but-never-sent",
     defect:
       "`addGrantApi` returns `{ ok: true }` without sending. The cell checks, the toast says granted, and nobody holds the capability. A revoke that silently fails leaves access somebody should not have and the next reload says so; a grant that silently fails leaves an operator believing they gave access that nobody has.",
