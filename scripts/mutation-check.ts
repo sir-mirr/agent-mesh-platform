@@ -62,9 +62,22 @@ interface Mutation {
    * entered so the sweep does not have to be trusted twice. See the header.
    */
   swept?: true;
+  /**
+   * **Set when the code this planted into is gone.**
+   *
+   * An entry whose `from` no longer exists checks nothing, and deleting it
+   * leaves the next person reading the manifest as though nobody had thought of
+   * the case — so they write it again. Retiring keeps the reasoning where
+   * somebody looking for that defect will find it, and says which check covers
+   * the shape now.
+   *
+   * A retired entry carries no `from`/`to`: there is nowhere to put them, and a
+   * placeholder anchor is the quiet failure this field exists to avoid.
+   */
+  retired?: string;
   file: string;
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
   /** Test file to run. */
   suite: string;
   /**
@@ -1262,8 +1275,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "§ 0 of the FE coverage inventory stated per-family totals as literals — a second declaration of what the test files register — and two of them had gone quietly wrong: `SC-DOWN-*` said 8 with nine registered, `SC-WRITE-*` said 6 with eight. The inventory is the denominator for goal ②, so an undercount reads as work not yet done and gets written twice.",
     file: "packages/platform-web/COVERAGE_INVENTORY.md",
-    from: "| `SC-WRITE-*` | 실패한 쓰기를 성공으로 그리지 않는가 | 8 |",
-    to: "| `SC-WRITE-*` | 실패한 쓰기를 성공으로 그리지 않는가 | 6 |",
+    // 재앵커 2026-08-20: 그 행이 자라서 옛 문자열이 사라졌다. 세는 수만 어긋나게 한다.
+    from: "· **egress 허용이 실제로 써지는가** | 16 |",
+    to: "· **egress 허용이 실제로 써지는가** | 14 |",
     suite: "test/scenario-ids.test.ts",
     expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 6"],
   },
@@ -1332,8 +1346,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`scenario-ids.test.ts` said in prose that the case which must not happen is two different scenarios wearing one id, and then compared full titles \u2014 which two different scenarios never share. So the rule most likely to be believed was the one nothing checked, and the defect it names went in green: `SC-WRITE-07` was minted a second time for the playground receipt while it already named an RBAC grant abort. It was found by `-t SC-WRITE-07` running two tests.",
     file: "test/fe-render.test.ts",
-    from: "it(\"[SC-WRITE-09] says 영수증 미발급",
-    to: "it(\"[SC-WRITE-07] says 영수증 미발급",
+    // 재앵커 2026-08-20: 그 시나리오 제목이 `영수증 없음` 으로 바뀌었다.
+    from: "it(\"[SC-WRITE-09] says 영수증 없음",
+    to: "it(\"[SC-WRITE-07] says 영수증 없음",
     suite: "test/scenario-ids.test.ts",
     expect: ["one id on two `it(` lines is two scenarios that cannot disagree", "SC-WRITE-07 at fe-render.test.ts"],
   },
@@ -1360,7 +1375,8 @@ const MUTATIONS: Mutation[] = [
     // `not caught` while the operator's card kept the fix. The two panels share
     // one helper now, so one mutation reaches both and neither can regress in
     // silence.
-    from: 'return total != null ? String(total) : "— 미측정";',
+    // 재앵커 2026-08-20: 그 문자열이 사전을 거치게 됐다.
+    from: 'return total != null ? String(total) : t("common.unmeasured", "— 미측정");',
     to: "return String(total ?? 0);",
     suite: "test/fe-render.test.ts",
     expect: ["SC-INVENT-04", "a refused route was drawn as an empty queue"],
@@ -1520,7 +1536,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The weaker version of the same thing: with the prefill gone, the username field's placeholder still read `admin`, so the screen went on printing the account name to anyone who loaded it.",
     file: "packages/platform-web/src/pages/LoginPage.tsx",
-    from: '              placeholder="아이디"',
+    // 재앵커 2026-08-20: placeholder 가 사전을 거치게 됐다.
+    from: '              placeholder={t("login.idPlaceholder", "username")}',
     to: '              placeholder="admin"',
     suite: "test/fe-render.test.ts",
     expect: ["SC-AUTH-06", "the login screen still lets a person pick or be handed what they are"],
@@ -1620,7 +1637,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The cards say `—` and the table below them says \"no agents are registered to you yet — register one\". The friendlier voice makes the same claim, and a person acts on the table rather than on the dash.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: '              data-testid={isError ? "operator-agents-unreachable" : "operator-agents-empty"}',
+    // 재앵커 2026-08-20: 로딩 상태가 그 삼항 앞에 붙었다.
+    from: '              data-testid={isLoading ? "operator-agents-loading" : isError ? "operator-agents-unreachable" : "operator-agents-empty"}',
     to: '              data-testid="operator-agents-empty"',
     suite: "test/fe-render.test.ts",
     expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
@@ -1752,8 +1770,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "One message for both: the server answered `403` and the screen said it did not answer. A person then waits for a backend that is up, instead of asking for the capability they are missing.",
     file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    // 재앵커 2026-08-20: 거절 문구가 `refusedText` 로 모였다 — 심는 결함은 같다.
     from: `            failure === "refused"
-              ? t("reg.queue.refused", "이 계정은 등록 요청 큐를 볼 권한이 없습니다 (key.approve).")
+              ? refusedText(t, missing)
               : t("reg.queue.error", "대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패).")`,
     to: '            t("reg.queue.error", "대기 중인 등록 요청 큐를 불러올 수 없습니다 (서버 연결 실패).")',
     suite: "test/fe-render.test.ts",
@@ -1837,8 +1856,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The panel an ordinary account lands on, telling them they own nothing when the read was refused. The platform admin's panel has said `—` for months; this one drew `0`, and every existing SC-DOWN scenario measures the admin's.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: `          value={isError ? "—" : String(agents.length)}
-          subValue={isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}`,
+    // 재앵커 2026-08-20: 로딩 상태가 두 삼항 앞에 붙었다. 심는 결함은 같다.
+    from: `          value={isLoading ? "..." : isError ? "\u2014" : String(agents.length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}`,
     to: `          value={String(agents.length)}
           subValue={t("dash.kpi.agentsSub", "개 등록됨")}`,
     suite: "test/fe-render.test.ts",
@@ -1849,11 +1869,17 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The shape itself, on any screen: `.catch(() => setX([]))`. It is one line, it reads as defensive, and it converts *the server did not answer* into *there is nothing* — the source rule exists because three panels carried it and only one was ever measured.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: `      .catch(() => {
-        setAgents([]);
-        setIsError(true);
-      });`,
-    to: "      .catch(() => setAgents([]));",
+    // 재앵커 2026-08-20: 그 catch 가 `fetchAgents().then(setAgents)` 뒤로 붙었다.
+    // 재앵커 2026-08-20. **두 곳에 걸렸다** — 운영자 판과 멤버 판이 같은 catch 를 쓴다.
+    // `replace` 는 첫 곳을 가져가므로 뒤따르는 줄까지 넣어 하나만 고른다:
+    // 이 자리는 그 뒤에 대기 키를 읽는 쪽(운영자 판)이다.
+    from: `    fetchAgents().then(setAgents).catch(() => {
+      setAgents([]);
+      setIsError(true);
+    });
+    fetchPendingKeys()`,
+    to: `    fetchAgents().then(setAgents).catch(() => setAgents([]));
+    fetchPendingKeys()`,
     suite: "test/fe-render.test.ts",
     expect: ["SC-DOWN-13", "nothing records that it failed"],
   },
@@ -1872,9 +1898,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`.catch(() => setRequests([]))` — an empty list draws \"no requests are waiting\", which is a sentence about the server's answer written when there was no answer. An operator sees a quiet bell while agents wait to be admitted, and nothing else on any screen mentions it.",
     file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
-    from: `      .catch(() => {
+    // 재앵커 2026-08-20: `unreachable` 상태가 `failure` 로 바뀌었다 — 심는 결함은 같다.
+    from: `      .catch((e: unknown) => {
         setRequests([]);
-        setUnreachable(true);
+        setFailure(failureKind(e));
       });`,
     to: "      .catch(() => setRequests([]));",
     suite: "test/fe-render.test.ts",
@@ -1885,8 +1912,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other direction, which the same check has to hold: a bell stuck on \"could not ask\" tells an operator nothing and looks exactly like caution. One assertion catching only the first direction would pass on it.",
     file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
-    from: "  const [unreachable, setUnreachable] = useState(false);",
-    to: "  const [unreachable, setUnreachable] = useState(true);",
+    // 재앵커 2026-08-20: 상태였던 것이 파생값이 됐다. 늘 참으로 만들면 같은 결함이다.
+    from: "  const unreachable = failure !== null;",
+    to: "  const unreachable = true;",
     suite: "test/fe-render.test.ts",
     expect: ["SC-DOWN-12", "reports every answer as unanswered"],
   },
@@ -2384,8 +2412,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Three screens printed an agent's `type` — the kind of agent — under a heading reading 소속, its membership, one of them with `|| \"General\"` invented for anything the server had not typed. The half-fix was worse than the defect: the agent list and the playground's sender were corrected and its recipient was not, leaving one screen calling the same field two names, which a reader takes as two facts. Found by agent-mesh-local-pm reading the diff rather than the issue.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: "                    종류: <strong>{agt.type ?? \"—\"}</strong> · 상태:{\" \"}",
-    to: "                    소속: <strong>{agt.type ?? \"—\"}</strong> · 상태:{\" \"}",
+    // 재앵커 2026-08-20: 두 라벨이 사전을 거치게 됐다. 심는 결함은 같다 —
+    // *종류* 자리에 *소속* 이라고 써서 그 필드가 아닌 것을 말하게 한다.
+    from: '                    {t("dash.op.kind", "종류")}: <strong>{agt.type ?? "\u2014"}</strong> · {t("dash.op.state", "상태")}:{" "}',
+    to: '                    {t("dash.op.kind", "소속")}: <strong>{agt.type ?? "\u2014"}</strong> · {t("dash.op.state", "상태")}:{" "}',
     suite: "test/greppable.test.ts",
     expect: ["no screen calls an agent's type its membership", "a screen is calling an agent's kind its group"],
   },
@@ -2514,13 +2544,22 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "absent-status-reads-healthy",
+    // **은퇴 2026-08-20 — 이 결함은 갈 자리가 없어졌다.**
+    //
+    // `status` 를 `"active"` 로 접던 줄이 `api/agents.ts` 에서 통째로 사라졌다.
+    // SPEC § 9.1 이 그 라우트에 그런 필드가 없다고 정했고, 화면은 이제 `last_seen_at` 을
+    // 읽어 *얼마나 전* 을 말한다 — 없는 필드를 읽던 비교 셋이 죽은 코드였다는 것이
+    // 그 커밋의 내용이다.
+    //
+    // 지우지 않고 근거를 남긴다: 그냥 지우면 다음 사람이 *아무도 생각 안 했구나* 로 읽고
+    // 도로 넣는다. 이 엔트리가 막던 것은 **없는 상태를 건강함으로 그리는 것**이고,
+    // 그 자리는 지금 `SC-INVENT-*` 가 *서버가 안 보낸 필드를 값으로 그리지 않는가* 로 덮는다.
+    retired: "the field this planted into no longer exists; SPEC § 9.1 removed it and SC-INVENT-* covers the shape",
     defect:
-      "`a.status === \"inactive\" ? … : a.status === \"pending\" ? … : \"active\"` — and `GET /api/v1/agents` sends no status, so `undefined` fell to the last branch and every agent rendered ONLINE. The largest form of the shape this suite has spent the week removing: elsewhere an unknown was drawn as `0` or *none*, which a reader can at least doubt; here an unknown is drawn as *healthy*, on the screen whose job is to show which agents are not. Measured on the standing mesh drawing `admin` — a web user, not a connected agent — as ONLINE.",
+      "`status` folded to `\"active\"` when the route sent none, so a screen drew every identity healthy from a field nobody answered with.",
     file: "packages/platform-web/src/api/agents.ts",
-    from: 'a.status === "active" ? "active" : null,',
-    to: '"active",',
     suite: "test/fe-render.test.ts",
-    expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
+    expect: ["SC-INVENT-01", "retired"],
   },
   {
     id: "prose-scope-walks-the-tree",
@@ -2741,6 +2780,13 @@ if (selected.length === 0) {
 if (argv.includes("--anchors")) {
   const problems: string[] = [];
   for (const m of selected) {
+    if (m.retired) continue;
+    // `undefined` 로 본다 — **`to: ""` 는 삭제 뮤테이션**이고 정상이다.
+    // 첫 판이 falsy 로 봐서 멀쩡한 엔트리 셋을 *from/to 없음* 으로 냈다.
+    if (m.from === undefined || m.to === undefined) {
+      problems.push(`${m.id}: no from/to and not marked retired — it would run as a no-op`);
+      continue;
+    }
     let text: string;
     try {
       text = await Bun.file(m.file).text();
@@ -2748,7 +2794,7 @@ if (argv.includes("--anchors")) {
       problems.push(`${m.id}: ${m.file} could not be read`);
       continue;
     }
-    const hits = text.split(m.from).length - 1;
+    const hits = text.split(m.from!).length - 1;
     if (hits === 0) problems.push(`${m.id}: its \`from\` is not in ${m.file} — this entry checks nothing`);
     else if (hits > 1) problems.push(`${m.id}: its \`from\` appears ${hits} times in ${m.file} — replace takes the first`);
   }
@@ -2783,6 +2829,15 @@ let missed = 0;
 /** Why each failure happened — the self-check needs the reason, not just the count. */
 const kinds = new Map<string, FailureKind>();
 for (const m of selected) {
+  // 은퇴한 엔트리는 심을 자리가 없다 — 근거만 남아 있다.
+  if (m.retired) {
+    console.log(`· ${m.id}: retired — ${m.retired}`);
+    continue;
+  }
+  if (m.from === undefined || m.to === undefined) {
+    console.error(`${markFor("inconclusive")} ${m.id}: no from/to and not retired`);
+    process.exit(2);
+  }
   const path = Bun.file(m.file);
   const src = await path.text();
   const occurrences = src.split(m.from).length - 1;
@@ -2810,7 +2865,7 @@ for (const m of selected) {
     continue;
   }
 
-  await Bun.write(m.file, src.replace(m.from, m.to));
+  await Bun.write(m.file, src.replace(m.from!, m.to!));
   // Repeated with the mutation left in place. The suite is the expensive part,
   // and re-applying the edit between attempts would put the edit inside what is
   // being measured.
