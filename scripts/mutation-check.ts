@@ -211,6 +211,55 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "hubless-send-answer",
+    defect:
+      "A message the hub refused was answered `pending`, so the thread drew it as still on its way (§ 5).",
+    // Already killed by `test/message-status.test.ts` against a real hub, in
+    // both directions. This anchor exists because that file runs in a child
+    // and this one runs where an instrument can see it — not because it is a
+    // second chance at the same defect.
+    file: "packages/http/src/main.ts",
+    from: "    msg.status = 'failed'",
+    to: "    msg.status = 'pending'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["failed in the answer and in the row"],
+  },
+  {
+    id: "hubless-send-row",
+    defect:
+      "The refusal was corrected in the reply only; the stored row kept `pending`, so history, conversation and search all reported a message that never left the machine as waiting.",
+    file: "packages/http/src/main.ts",
+    from: "if (!updateMessageStatus(msg.id, 'failed'))",
+    to: "if (!updateMessageStatus(msg.id, 'pending'))",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["failed in the answer and in the row"],
+  },
+  {
+    id: "oauth-callback-no-code",
+    defect:
+      "A callback arriving without a code answered 200, so cancelling GitHub's consent screen looked like a successful sign-in.",
+    // **The guard itself is deliberately not the anchor.** Every mutation that
+    // lets an absent or empty code through reaches `exchangeCodeForToken`,
+    // which is a bare `fetch` to github.com — an anchor that runs on every
+    // sweep must not depend on the network, so the status is mutated instead
+    // and the guard stays.
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: 'Missing \"code\" query parameter' }, 400)",
+    to: "    return c.json({ error: 'Missing \"code\" query parameter' }, 200)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refused before anything is exchanged"],
+  },
+  {
+    id: "logout-keeps-cookie",
+    defect:
+      "Signing out stopped expiring the session cookie, so the next request from that browser was still signed in.",
+    file: "packages/http/src/main.ts",
+    from: "'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0)",
+    to: "'content-type': 'application/json'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["clears the browser's copy of the session"],
+  },
+  {
     id: "sw-content-type",
     defect: "The service worker was served as text, so no browser would register it and the app never installed.",
     file: "packages/http/src/main.ts",

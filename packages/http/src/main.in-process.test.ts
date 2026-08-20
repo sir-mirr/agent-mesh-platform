@@ -745,3 +745,85 @@ describe("what a browser installs", () => {
     expect("publicKey" in body).toBe(true);
   });
 });
+
+/**
+ * A send with no hub behind it, and the two edges of the GitHub sign-in.
+ *
+ * **The first of these catches nothing new, and that is the honest statement
+ * of what it is for.** `test/message-status.test.ts` already asserts both
+ * facts below against a *real* hub, in both directions and through three
+ * readers, and every mutation these two assertions kill is killed there
+ * first. What that file cannot do is let an instrument see the lines: it
+ * drives a spawned service, so `main.ts` executes in a child and counts as
+ * nothing. That is this file's whole purpose, and this is that purpose rather
+ * than a new catch.
+ *
+ * **So nobody may thin `test/message-status.test.ts` on the strength of this.**
+ * With no hub in this process the guard in `sendViaHub` returns at its first
+ * line every time, which means the hub-*up* direction is unreachable here and
+ * `if (!hubMessageId)` → `if (true)` — one edit, every message in the product
+ * reading as failed — stays green through everything below. Only the real-hub
+ * file kills that.
+ *
+ * The two sign-in checks are the opposite case: `GET /auth/github/callback`
+ * has no server-side test anywhere, and its first four lines are the only part
+ * of it reachable without either `mock.module` or a live consent screen.
+ */
+describe("a send with nothing behind it, and the edges of sign-in", () => {
+  const HUBLESS = "in-process-hubless";
+
+  test("a message the hub never took is failed in the answer and in the row", async () => {
+    upsertApprovedWebUser(HUBLESS);
+
+    // Both halves in one test on purpose: the second reads an id the first
+    // produced, and split across two tests a name filter on either one breaks
+    // the other with an error about nothing.
+    const sent = await asAdmin("/api/v1/messages", "POST", {
+      to: HUBLESS,
+      // Deliberately free of the substrings other tests in this file search
+      // for — `agent_registry` and `messages` are shared by the whole run.
+      text: "in-process-with-no-hub",
+    });
+    expect(sent.status).toBe(201);
+    const { message } = await sent.json();
+    expect(message.status).toBe("failed");
+
+    // **The row, not the reply.** The correction used to be applied to the
+    // object the response is built from and to nothing else, so the caller was
+    // told the truth once and every later read — history, conversation, search
+    // — served the `pending` the insert left behind.
+    const history = await asAdmin(`/api/v1/messages/${HUBLESS}`, "GET");
+    expect(history.status).toBe(200);
+    const rows = (await history.json()).messages as Array<{ id: string; status: string }>;
+    const stored = rows.find(r => r.id === message.id);
+    expect({ found: stored !== undefined, status: stored?.status }).toEqual({ found: true, status: "failed" });
+  });
+
+  test("a callback with no code is refused before anything is exchanged", async () => {
+    // Cancelling GitHub's consent screen returns here with `?error=...` and no
+    // code, and so does anyone who simply opens the URL. Reaching the token
+    // exchange with `undefined` spends a network call to be told the same
+    // thing, and answers whatever GitHub says instead of what happened.
+    const res = await call("/auth/github/callback");
+    expect(res.status).toBe(400);
+  });
+
+  test("an empty code is treated as missing rather than exchanged", async () => {
+    // `?code=` with nothing after it — a proxy that strips the value, a
+    // truncated URL — is not a code, and `if (!code)` is what makes the empty
+    // string join `undefined` rather than travel to GitHub.
+    const res = await call("/auth/github/callback?code=");
+    expect(res.status).toBe(400);
+  });
+
+  test("signing out clears the browser's copy of the session", async () => {
+    const res = await call("/auth/logout", { method: "POST", headers: { cookie } });
+    expect(res.status).toBe(200);
+    // The front end clearing its own state is not signing out: the cookie is
+    // what the next request carries. Expiring it is the server's half, and on
+    // a shared machine it is the half that matters.
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect({ names: setCookie.includes("mesh_token="), expires: setCookie.includes("Max-Age=0") })
+      .toEqual({ names: true, expires: true });
+  });
+});
