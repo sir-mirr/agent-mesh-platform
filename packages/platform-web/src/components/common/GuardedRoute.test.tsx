@@ -4,125 +4,152 @@
  * `authFailure: "unreachable"` is not being signed out. A `502` from the proxy
  * in front of `/auth/me` used to land in the same branch as a `401` and send
  * operators to a login form that could not log them in, because the same proxy
- * was in front of `/auth/local`. The branch exists; until this file the only
- * thing exercising it was a browser, and only for the states a browser could be
- * driven into.
+ * was in front of `/auth/local`.
  *
- * **Two things are ordered here rather than declared.** `GlobalRegistrator`
- * has to install `document` before `@testing-library/react` is loaded, and
- * `mock.module` is not hoisted the way vitest's `vi.mock` is — so the module
- * under test is imported after its dependencies have been replaced, not before.
- * Both are why the imports below are `await import` instead of statements.
+ * **Nothing here is mocked, and that is the point of the rewrite.** The first
+ * version replaced `useAuth`, `useRbac` and `react-router-dom` with shims. Each
+ * `mock.module` is installed on the *process* at file top level — which bun
+ * runs before any test in the whole suite — so those three shims reached every
+ * other file: `ChangePasswordPage` lost `refreshSession`, and every page that
+ * routes lost its router. 435 failures, none of which appeared when a file ran
+ * alone, and all of which this file caused.
+ *
+ * So the state comes from where the app gets it: a stubbed `/auth/me`, the real
+ * `AuthProvider`, the real `RbacProvider` (which reads the user's capabilities),
+ * and a real `MemoryRouter` whose destinations are marked. That also makes the
+ * assertions stronger — the chain from *what the server answered* to *where the
+ * person lands* is the thing being claimed, and now it is the thing being run.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from "bun:test";
+import { describe, it, expect, afterEach, mock } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // **Registered once for the process, and never unregistered.** Bun executes
 // every matching file's top level before it runs any test, so two files each
 // calling `register()` swap the document out from under one another, and the
-// first `afterAll` to fire takes it away from the file still using it — seven
-// failures that appeared only when the two ran together, and none when either
-// ran alone.
+// first `afterAll` to fire takes it away from the file still using it.
 if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
 
-const auth: { value: Record<string, unknown> } = { value: {} };
-const rbac: { held: Set<string> } = { held: new Set() };
-
-// **`mock.module` is global to the process and does not end with this file.**
-// A replacement that exported only `useI18n` left the *dictionary's own* test,
-// which runs later, importing a module with no `DICTIONARY` in it — seven
-// failures that appeared only when the two files ran together. So each mock
-// spreads the real module and overrides one export, and each is put back at the
-// end. Neither half alone is enough: the spread keeps the file honest while it
-// runs, the restore keeps it honest afterwards.
-const realAuth = await import("@/contexts/AuthContext.tsx");
-const realRbac = await import("@/contexts/RbacContext.tsx");
-
-mock.module("@/contexts/AuthContext.tsx", () => ({ ...realAuth, useAuth: () => auth.value }));
-mock.module("@/contexts/RbacContext.tsx", () => ({
-  ...realRbac,
-  useRbac: () => ({ hasCapability: (c: string) => rbac.held.has(c) }),
-}));
-// **I18nContext is deliberately not mocked.** Its real `useI18n` already
-// answers outside a provider, so the shim bought nothing — and it cost: a
-// module mocked at a file's top level is in place before *every other file's*
-// top-level `await import`, so the dictionary's own test and DataTable's took
-// this shim instead of the module. The later `afterAll` restore cannot help
-// them; they are already holding the object they were handed.
-// Mocked rather than routed: the assertion is *where it sends you*, and a real
-// router answers that by rendering whatever is mounted at the destination.
-mock.module("react-router-dom", () => ({
-  Navigate: ({ to }: { to: string }) => <div data-testid="sent-to">{to}</div>,
-}));
-
-const { render, screen, cleanup } = await import("@testing-library/react");
+const { render, screen, cleanup, act } = await import("@testing-library/react");
+const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
+const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { GuardedRoute } = await import("./GuardedRoute.tsx");
 
-const signedIn = {
-  isAuthenticated: true, isLoading: false, authFailure: null, mustChangePassword: false,
-};
+const realFetch = globalThis.fetch;
+const stub = (fn: unknown) => { globalThis.fetch = fn as typeof globalThis.fetch; };
 
-beforeEach(() => { auth.value = { ...signedIn }; rbac.held = new Set(); });
-afterEach(cleanup);
-afterAll(() => {
-  mock.module("@/contexts/AuthContext.tsx", () => realAuth);
-  mock.module("@/contexts/RbacContext.tsx", () => realRbac);
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  cleanup();
+  // `AuthProvider` seeds itself from here, so a session left behind would sign
+  // the next test in — in this file and in every file after it.
+  localStorage.clear();
 });
 
-const show = (props: Record<string, unknown> = {}) =>
-  render(<GuardedRoute {...props}><div data-testid="content">the page</div></GuardedRoute>);
+/** What `/auth/me` answers, which is the only thing the session is built from. */
+type Session =
+  | { kind: "session"; body: Record<string, unknown> }
+  | { kind: "refused" }
+  | { kind: "unreachable" };
 
-const sentTo = () => screen.queryByTestId("sent-to")?.textContent ?? null;
+function answering(session: Session) {
+  stub(mock(async () => {
+    if (session.kind === "unreachable") throw new TypeError("Failed to fetch");
+    if (session.kind === "refused") {
+      return new Response(JSON.stringify({ error: "not signed in" }),
+        { status: 401, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify(session.body),
+      { status: 200, headers: { "content-type": "application/json" } });
+  }));
+}
+
+const DESTINATIONS = ["/login", "/change-password", "/dashboard", "/creator"];
+
+async function show(session: Session, props: Record<string, unknown> = {}) {
+  answering(session);
+  await act(async () => {
+    render(
+      <MemoryRouter initialEntries={["/guarded"]}>
+        <AuthProvider>
+          <RbacProvider>
+            <Routes>
+              <Route
+                path="/guarded"
+                element={
+                  <GuardedRoute {...props}>
+                    <div data-testid="content">the page</div>
+                  </GuardedRoute>
+                }
+              />
+              {DESTINATIONS.map((to) => (
+                <Route key={to} path={to} element={<div data-testid={`at:${to}`} />} />
+              ))}
+            </Routes>
+          </RbacProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+  });
+}
+
+/** Where the person ended up, read off the router rather than off a shim. */
+const landedOn = () =>
+  DESTINATIONS.find((to) => screen.queryByTestId(`at:${to}`) !== null) ?? null;
+
+const signedIn = (extra: Record<string, unknown> = {}): Session => ({
+  kind: "session",
+  body: { ok: true, github_id: 1, github_login: "operator", role: "member",
+          approved: true, created_at: "", must_change_password: false, ...extra },
+});
 
 describe("GuardedRoute", () => {
-  it("shows the page to a signed-in person with nothing required", () => {
-    show();
+  it("shows the page to a signed-in person with nothing required", async () => {
+    await show(signedIn());
     expect(screen.queryByTestId("content")).not.toBe(null);
-    expect(sentTo()).toBe(null);
+    expect(landedOn()).toBe(null);
   });
 
-  it("says it is still checking rather than deciding early", () => {
-    auth.value = { ...signedIn, isAuthenticated: false, isLoading: true };
-    show();
-    expect(sentTo()).toBe(null);
+  it("sends an unauthenticated person to the login form", async () => {
+    await show({ kind: "refused" });
+    expect(landedOn()).toBe("/login");
     expect(screen.queryByTestId("content")).toBe(null);
   });
 
-  it("does not call an unreachable backend a signed-out session", () => {
-    auth.value = { ...signedIn, isAuthenticated: false, authFailure: "unreachable" };
-    show();
+  it("does not call an unreachable backend a signed-out session", async () => {
+    await show({ kind: "unreachable" });
     // The defect this branch exists for: not /login, and not the page either.
-    expect(sentTo()).toBe(null);
+    // A login form is useless when the same proxy is in front of /auth/local.
+    expect(landedOn()).toBe(null);
     expect(screen.queryByTestId("auth-unreachable")).not.toBe(null);
+    expect(screen.queryByTestId("content")).toBe(null);
   });
 
-  it("sends an unauthenticated person to the login form", () => {
-    auth.value = { ...signedIn, isAuthenticated: false, authFailure: "unauthenticated" };
-    show();
-    expect(sentTo()).toBe("/login");
+  it("sends a locked session to the password change before anything else", async () => {
+    await show(signedIn({ must_change_password: true, capabilities: ["agent.provision"] }),
+               { requiredCapability: "agent.provision" });
+    // Ahead of the capability check, which this session passes: the server is
+    // already answering 403 to every other route while the flag is set.
+    expect(landedOn()).toBe("/change-password");
   });
 
-  it("sends a locked session to the password change before anything else", () => {
-    auth.value = { ...signedIn, mustChangePassword: true };
-    rbac.held = new Set(["agent.provision"]);
-    show({ requiredCapability: "agent.provision" });
-    expect(sentTo()).toBe("/change-password");
-  });
-
-  it("sends a person without the capability to the fallback, not to login", () => {
-    show({ requiredCapability: "key.approve" });
+  it("sends a person without the capability to the fallback, not to login", async () => {
+    await show(signedIn({ capabilities: [] }), { requiredCapability: "key.approve" });
     // Signed in and refused is a different answer from not signed in.
-    expect(sentTo()).toBe("/dashboard");
+    expect(landedOn()).toBe("/dashboard");
   });
 
-  it("honours a redirectTo that is not the dashboard", () => {
-    show({ requiredCapability: "key.approve", redirectTo: "/creator" });
-    expect(sentTo()).toBe("/creator");
+  it("honours a redirectTo that is not the dashboard", async () => {
+    await show(signedIn({ capabilities: [] }),
+               { requiredCapability: "key.approve", redirectTo: "/creator" });
+    expect(landedOn()).toBe("/creator");
   });
 
-  it("shows the page once the capability is held", () => {
-    rbac.held = new Set(["key.approve"]);
-    show({ requiredCapability: "key.approve" });
+  it("shows the page once the server says the capability is held", async () => {
+    await show(signedIn({ capabilities: ["key.approve"] }), { requiredCapability: "key.approve" });
+    // The whole chain: the answer carried the name, RbacProvider read it off
+    // the session, and the guard let the page through.
     expect(screen.queryByTestId("content")).not.toBe(null);
+    expect(landedOn()).toBe(null);
   });
 });

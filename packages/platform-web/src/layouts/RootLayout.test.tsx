@@ -16,7 +16,7 @@
  * `RbacProvider` is the real one, so the chain from the server's array to the
  * rendered menu is the chain being checked.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 // Registered once for the process and never unregistered: bun runs every test
@@ -24,53 +24,102 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // away from a file that is still using it.
 if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
 
-const auth: { value: Record<string, unknown> } = { value: {} };
-
-// Spread and restored, because `mock.module` is global to the process: a
-// replacement exporting only `useAuth` would leave whichever file runs next
-// importing an `AuthContext` with no `AuthProvider` in it.
-const realAuth = await import("@/contexts/AuthContext.tsx");
-mock.module("@/contexts/AuthContext.tsx", () => ({ ...realAuth, useAuth: () => auth.value }));
-
-const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
+const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { I18nProvider } = await import("@/contexts/I18nContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { RootLayout } = await import("./RootLayout.tsx");
 
-let loggedOut = 0;
+const realFetch = globalThis.fetch;
 
-/** The session the shell is handed. `null` is a person the shell has no user for. */
-const signedInAs = (user: unknown) => {
-  auth.value = { user, logout: () => { loggedOut += 1; } };
+/** Every request the shell makes, and the one it makes when signing out. */
+let signOutPosts = 0;
+let session: Record<string, unknown> | null = null;
+
+function serve() {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("/auth/logout")) {
+      signOutPosts += 1;
+      return new Response(JSON.stringify({ ok: true }),
+        { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("/auth/me")) {
+      if (session === null) {
+        return new Response(JSON.stringify({ error: "not signed in" }),
+          { status: 401, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify(session),
+        { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ ok: true }),
+      { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+}
+
+/**
+ * The session the shell is handed, described the way the server describes it.
+ *
+ * **`useAuth` is not replaced here.** `mock.module` is installed on the process
+ * at file top level — before bun runs a single test anywhere — so a shim in this
+ * file reached every other file that reads a session, and signing out through a
+ * counter proved nothing about the sign-out the product performs. The real
+ * provider is mounted over a stubbed `/auth/me`, and the sign-out is measured by
+ * the `POST /auth/logout` it puts on the wire: clearing local state alone once
+ * sent the browser to `/login` still signed in.
+ */
+const signedInAs = (user: { name?: string; role?: string; capabilities?: unknown } | null) => {
+  session = user === null ? null : {
+    ok: true, github_id: 1, github_login: user.name ?? "sohee",
+    role: user.role === "PLATFORM_ADMIN" ? "admin" : "member",
+    approved: true, created_at: "", must_change_password: false,
+    capabilities: user.capabilities ?? [],
+  };
 };
 
 beforeEach(() => {
-  loggedOut = 0;
+  signOutPosts = 0;
   signedInAs({ name: "sohee", role: "AGENT_OPERATOR", capabilities: [] });
+  serve();
 });
-afterEach(cleanup);
-afterAll(() => {
-  mock.module("@/contexts/AuthContext.tsx", () => realAuth);
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  cleanup();
+  localStorage.clear();
 });
 
 // A real router, so `/login` below is somewhere the shell can actually arrive
 // rather than a name a stub echoed back.
-const shell = (): HTMLElement =>
-  render(
-    <I18nProvider>
-      <RbacProvider>
-        <MemoryRouter initialEntries={["/dashboard"]}>
-          <Routes>
-            <Route element={<RootLayout />}>
-              <Route path="/dashboard" element={<div data-testid="page">the dashboard</div>} />
-            </Route>
-            <Route path="/login" element={<div data-testid="login">the login form</div>} />
-          </Routes>
-        </MemoryRouter>
-      </RbacProvider>
-    </I18nProvider>,
-  ).container;
+/**
+ * The shell, mounted over the real providers.
+ *
+ * `async` because the session is now fetched rather than handed over: the mount
+ * asks `/auth/me`, and a synchronous render would read the shell before the
+ * answer arrived — five tests failed on a blank sidebar before this was wrapped.
+ */
+const shell = async (): Promise<HTMLElement> => {
+  let container!: HTMLElement;
+  await act(async () => {
+    container = render(
+      <AuthProvider>
+      <I18nProvider>
+        <RbacProvider>
+          <MemoryRouter initialEntries={["/dashboard"]}>
+            <Routes>
+              <Route element={<RootLayout />}>
+                <Route path="/dashboard" element={<div data-testid="page">the dashboard</div>} />
+              </Route>
+              <Route path="/login" element={<div data-testid="login">the login form</div>} />
+            </Routes>
+          </MemoryRouter>
+        </RbacProvider>
+      </I18nProvider>
+      </AuthProvider>,
+    ).container;
+  });
+  return container;
+};
 
 /** Every destination the shell is currently offering. */
 const offered = (c: HTMLElement): (string | null)[] =>
@@ -90,8 +139,8 @@ const GATED = [
 ];
 
 describe("RootLayout", () => {
-  it("draws the routed page inside its own main region", () => {
-    const c = shell();
+  it("draws the routed page inside its own main region", async () => {
+    const c = await shell();
     // The outlet is the entire reason this is a shell and not a frame. A layout
     // that renders its chrome and drops the outlet looks completely healthy and
     // leaves every route blank, which is the failure that is hard to see.
@@ -99,9 +148,9 @@ describe("RootLayout", () => {
     expect(c.querySelector("aside")).not.toBe(null);
   });
 
-  it("offers a platform administrator holding no capability nothing that needs one", () => {
+  it("offers a platform administrator holding no capability nothing that needs one", async () => {
     signedInAs({ name: "admin", role: "PLATFORM_ADMIN", capabilities: [] });
-    const c = shell();
+    const c = await shell();
     const links = offered(c);
     // The open pages are still there: the menu is not empty, it is exactly as
     // wide as the pages that ask for nothing. `/platform` is deliberately among
@@ -116,45 +165,45 @@ describe("RootLayout", () => {
     expect(whoAmI(c)).toContain("PLATFORM_ADMIN");
   });
 
-  it("opens exactly the destination a granted name gates, and no neighbour", () => {
+  it("opens exactly the destination a granted name gates, and no neighbour", async () => {
     // The other end of the same question, on the junior role: one capability
     // from the server, one door. The pair matters because the fallback this
     // console removed inverted at zero — a senior title with an empty list
     // opened everything, a granted name opened four screens fewer.
     signedInAs({ name: "sohee", role: "AGENT_OPERATOR", capabilities: ["tenant.read.stats"] });
-    const links = offered(shell());
+    const links = offered(await shell());
     expect(links).toContain("/platform/tenants");
     for (const href of GATED.filter((h) => h !== "/platform/tenants")) {
       expect(links).not.toContain(href);
     }
   });
 
-  it("ends the session and leaves the shell when signing out", () => {
-    const c = shell();
+  it("ends the session and leaves the shell when signing out", async () => {
+    const c = await shell();
     fireEvent.click(screen.getByTestId("logout"));
     // Both halves, because each has shipped alone. Navigating without ending
     // the session left `mesh_token` alive behind a login form that let the
     // person straight back in; ending it without navigating leaves an operator
     // reading a shell belonging to a session that no longer exists.
-    expect(loggedOut).toBe(1);
+    expect(signOutPosts).toBe(1);
     expect(screen.queryByTestId("login")).not.toBe(null);
     expect(screen.queryByTestId("page")).toBe(null);
     expect(c.querySelector("aside")).toBe(null);
   });
 
-  it("leaves the name blank for a session it has no user for", () => {
+  it("leaves the name blank for a session it has no user for", async () => {
     // `Sidebar` defaults `userName` to the literal `admin`, and this is the one
     // place that default could ever be reached. The shell passes an empty
     // string instead, so nobody reads a stranger's name back as their own: a
     // placeholder in the field an operator checks to see who they are signed in
     // as is worse than a blank, which at least looks like the absence it is.
     signedInAs(null);
-    expect(whoAmI(shell())).not.toContain("admin");
+    expect(whoAmI(await shell())).not.toContain("admin");
     cleanup();
     signedInAs({ name: "admin", role: "PLATFORM_ADMIN", capabilities: [] });
     // Positive control: `admin` is a name the shell will print when the session
     // actually carries it, so the assertion above is about the blank and not
     // about the string being unprintable.
-    expect(whoAmI(shell())).toContain("admin");
+    expect(whoAmI(await shell())).toContain("admin");
   });
 });
