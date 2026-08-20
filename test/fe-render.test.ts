@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Database } from "bun:sqlite";
 
 import { openTestDb } from "./harness";
@@ -379,8 +381,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     );
   });
 
-  async function createAuthedPage(route: string) {
-    const context = await newContext();
+  async function createAuthedPage(route: string, lang: "ko" | "en" | null = "ko") {
+    const context = await newContext(lang);
     await context.addCookies([
       {
         name: "mesh_token",
@@ -4148,6 +4150,147 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ).toEqual({ said: true, drewZero: false });
     });
   }, 30_000);
+
+  /**
+   * SC-I18N-05 — the screens say nothing in Korean of their own with the
+   * language set to English.
+   *
+   * **The source check was green while the product was not.** `SC-I18N-04`
+   * counts Korean in the front end's own files, and it read `0` on a morning
+   * when a browser opened four screens in English and found Korean on all of
+   * them. Three separate narrowings did it — a JSX scan that ran on four files,
+   * a count that read string literals only, and a comment stripper that a `/*`
+   * inside `"/api/v1/*"` turned off for a hundred lines. Each one made the
+   * denominator smaller, and a denominator that shrinks goes quiet, not red.
+   *
+   * So this one does not read the source at all. It opens the pages.
+   *
+   * **Korean on the screen is not the same fact as Korean in the copy.**
+   * `/tenant/audits` draws message bodies the mesh carried, and those were
+   * written in Korean by the people who sent them. Judging by shape would
+   * report that screen as untranslated forever, which is the reading a person
+   * takes from "6.8% Korean". So it judges by origin: every response that drew
+   * the page is kept, and a Korean run that appears in one of them is data.
+   * What is left is what this front end wrote.
+   */
+  it("[SC-I18N-05] draws no Korean of its own with the language set to English", async () => {
+    // **The routes come from the router.** A hand-typed list is a denominator
+    // somebody has to remember to grow, and this suite has been bitten by four
+    // of those.
+    const appSource = readFileSync(
+      join(import.meta.dir, "..", "packages", "platform-web", "src", "App.tsx"),
+      "utf8",
+    );
+    const routes = [...new Set([...appSource.matchAll(/path="(\/[^"*]*)"/g)].map((m) => m[1]!))]
+      .filter((r) => !r.includes(":") && r !== "/login" && r !== "/change-password" && r !== "/");
+    expect(routes.length, "no routes were parsed out of App.tsx — the router's shape changed").toBeGreaterThan(7);
+
+    const { page, context } = await createAuthedPage("/dashboard", "en");
+    const offenders: string[] = [];
+    let drew = 0;
+    let dataSeen = 0;
+    let lastPayload = "";
+    try {
+      for (const route of routes) {
+        let payload = "";
+        const collect = async (res: import("playwright").Response) => {
+          if (!/\/api\/|\/auth\//.test(res.url())) return;
+          try {
+            payload += await res.text();
+          } catch {
+            /* a body that cannot be read is not evidence either way */
+          }
+        };
+        page.on("response", collect);
+        await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" }).catch(() => {});
+        await settled(page);
+        page.off("response", collect);
+        lastPayload = payload;
+
+        const text = (await page.locator("#root").innerText().catch(() => "")) ?? "";
+        if (text.length > 200) drew++;
+        // Runs of two, because one syllable can land inside a payload by luck.
+        for (const chunk of new Set(text.match(/[가-힣]{2,}/g) ?? [])) {
+          if (payload.includes(chunk)) dataSeen++;
+          else offenders.push(`${route}: ${chunk}`);
+        }
+      }
+
+      // **The classifier has to be shown working, in both directions.** If the
+      // responses were never read, `payload` is empty and everything reads as
+      // copy — loud, and someone would notice. The quiet failure is the other
+      // one: a `payload` that swallows everything makes this scenario green
+      // about a fully Korean console. So: a word that no response contains must
+      // come out as copy, and a word that a response does contain must not.
+      const planted = "심은문구없는말";
+      await page.evaluate((word) => {
+        const d = document.createElement("div");
+        d.textContent = word;
+        document.querySelector("#root")?.appendChild(d);
+      }, planted);
+      const after = (await page.locator("#root").innerText().catch(() => "")) ?? "";
+      // The same two lines the loop runs, on a word chosen so the answer is
+      // known: it is on the screen and it is in no response.
+      const afterChunks = new Set(after.match(/[가-힣]{2,}/g) ?? []);
+      const plantedReadsAsCopy = afterChunks.has(planted) && !lastPayload.includes(planted);
+      expect(
+        { plantedIsCopy: plantedReadsAsCopy, drewSomething: drew > 0 },
+        "the classifier calls a word copy only when a response does not carry it — this run could not show that",
+      ).toEqual({ plantedIsCopy: true, drewSomething: true });
+
+      // **The other half of the classifier, on a real response.** The rule above
+      // has two answers and this fixture only ever produced one of them: it
+      // seeds no Korean, so `dataSeen` was `0` and every run demonstrated
+      // *not in the payload → copy* and nothing else. A rule whose `data`
+      // branch is never taken would still pass — and the way it fails is the
+      // quiet one, a `payload` that swallows everything and reports a fully
+      // Korean console as green.
+      //
+      // So a Korean word is put into an actual response, on its way to the
+      // screen that draws it, and it must come out as data.
+      const DATA_WORD = "서버가준값";
+      // The row's name comes from `identity || id || name`, so whichever of the
+      // three this build's route sends is the one to mark. `patched` is how the
+      // assertion below can tell "the screen did not draw it" from "the
+      // response never carried it", which are different failures.
+      let patched = false;
+      await page.route("**/api/v1/agents*", async (route) => {
+        const res = await route.fetch();
+        const original = await res.text();
+        const body = original.replace(/"(identity|id|name)":\s*"([^"]*)"/, `"$1": "$2${DATA_WORD}"`);
+        patched = body !== original;
+        await route.fulfill({ response: res, body });
+      });
+      let echoed = "";
+      const echo = async (res: import("playwright").Response) => {
+        if (!/\/api\//.test(res.url())) return;
+        try {
+          echoed += await res.text();
+        } catch {
+          /* unreadable body */
+        }
+      };
+      page.on("response", echo);
+      await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" }).catch(() => {});
+      await settled(page);
+      page.off("response", echo);
+      const creatorText = (await page.locator("#root").innerText().catch(() => "")) ?? "";
+      expect(
+        { patched, onScreen: creatorText.includes(DATA_WORD), inPayload: echoed.includes(DATA_WORD) },
+        "the data half of the rule was not exercised — the response was not marked, did not carry the mark, or the screen did not draw it",
+      ).toEqual({ patched: true, onScreen: true, inPayload: true });
+      const creatorOffenders = [...new Set(creatorText.match(/[가-힣]{2,}/g) ?? [])].filter((c) => !echoed.includes(c));
+      expect(creatorOffenders, "a Korean run the server itself sent was counted as this front end's copy").toEqual([]);
+
+      expect(offenders, "the console drew Korean it wrote itself, with the language set to English").toEqual([]);
+    } finally {
+      await context.close().catch(() => {});
+    }
+    // Reported, not asserted: a run where the mesh happens to carry no Korean
+    // is a legitimate zero, and asserting on it would make this scenario depend
+    // on what the fixture seeded.
+    console.log(`[SC-I18N-05] ${routes.length} routes · ${drew} drew · ${dataSeen} Korean runs came from the server`);
+  }, 90_000);
 
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {

@@ -1928,6 +1928,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "english-dictionary-answers-in-korean",
+    defect:
+      "An `en` value that is Korean. Every source-layer check is blind to this by construction: `SC-I18N-04` skips `I18nContext` because that file is where Korean belongs, and `SC-I18N-01` compares the two dictionaries by key, not by value. The screen draws Korean with the language set to English and nothing in the tree looks wrong \u2014 which is the shape that made a browser necessary.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: "    \"overview.nodes\": \"Service nodes\",",
+    to: "    \"overview.nodes\": \"가동 중인 서비스 노드\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-I18N-05", "drew Korean it wrote itself"],
+  },
+  {
     id: "korean-hidden-behind-a-glob",
     defect:
       "Korean text between tags in `PlatformOverviewPage`, below `endpoint: \"/api/v1/*\"`. That string opened a block comment for the regex this check used to strip comments with, and the next `*/` was 113 lines later \u2014 so a hundred lines of that file, this one among them, were not in the denominator. The count read zero while a browser with the language set to English drew `개` on `/platform`.",
