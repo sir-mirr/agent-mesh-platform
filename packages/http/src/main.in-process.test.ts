@@ -657,3 +657,91 @@ describe("the registry, scoped to the session", () => {
     }
   });
 });
+
+/**
+ * What a browser is handed when it installs the app.
+ *
+ * These five routes are 100 uncovered lines and no test anywhere touches them,
+ * which is what a service worker looks like right up until an install breaks:
+ * nothing throws, the console draws, and the failure is that a phone keeps
+ * serving a build from last week.
+ *
+ * Each check below is a cross-check rather than a shape assertion — the
+ * manifest against the files it names, the worker's cache version against the
+ * version the server reports — because "the route returned 200" is exactly the
+ * assertion that stays green through every defect in this list.
+ */
+describe("what a browser installs", () => {
+  test("serves the service worker as JavaScript, and unnamed as anything else", async () => {
+    const res = await call("/sw.js");
+    expect(res.status).toBe(200);
+    // A service worker delivered with any other type is refused at
+    // registration — the browser will not run a worker it was handed as text.
+    // Nothing on the server notices; the app simply never installs.
+    expect(res.headers.get("content-type") ?? "").toContain("application/javascript");
+  });
+
+  test("tells the browser not to cache the service worker", async () => {
+    const res = await call("/sw.js");
+    // The worker is the thing that invalidates everything else, so a cached
+    // one cannot be replaced by shipping a new build: the copy that would
+    // fetch the new copy is itself the stale one.
+    expect(res.headers.get("cache-control") ?? "").toContain("no-cache");
+  });
+
+  test("names its cache after the version the server reports", async () => {
+    const [health, sw] = await Promise.all([call("/api/v1/health"), call("/sw.js")]);
+    const version = (await health.json()).version as string;
+    const body = await sw.text();
+
+    // `activate` deletes every cache whose name is not the current one, so the
+    // name is the whole invalidation mechanism. Pinned to a literal — or
+    // pinned to a *different* constant than the one the server answers with —
+    // it never changes, the delete never fires, and the install that was
+    // supposed to bring a new build serves the old one from cache.
+    expect({ version, named: body.includes(`const CACHE_VERSION = '${version}';`) })
+      .toEqual({ version, named: true });
+  });
+
+  test("names icons in the manifest that the server actually serves", async () => {
+    const manifest = await (await call("/manifest.json")).json();
+    const icons = manifest.icons as Array<{ src: string; sizes: string; type: string }>;
+    expect(icons.length).toBeGreaterThan(0);
+
+    // A manifest is a list of promises about other URLs, and nothing checks
+    // them: an icon that 404s makes the install fail with no error anywhere
+    // the server can see. Asking for each one is the only way to know.
+    for (const icon of icons) {
+      const res = await call(icon.src);
+      expect({
+        src: icon.src,
+        status: res.status,
+        type: res.headers.get("content-type"),
+      }).toEqual({ src: icon.src, status: 200, type: icon.type });
+    }
+  });
+
+  test("draws each icon at the size its name claims", async () => {
+    // Two routes built from one template differing only in an argument is
+    // where a copy-paste survives review: both answer 200, both are valid SVG,
+    // and the large icon is a small one scaled up on every device that asks
+    // for it.
+    const at = async (path: string) => (await call(path)).text();
+    const [small, large] = await Promise.all([at("/icon-192.svg"), at("/icon-512.svg")]);
+    expect({
+      small: small.includes('width="192"'),
+      large: large.includes('width="512"'),
+      distinct: small !== large,
+    }).toEqual({ small: true, large: true, distinct: true });
+  });
+
+  test("answers null for an unconfigured push key rather than leaving the field out", async () => {
+    const res = await call("/api/v1/push/vapid-key");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // `undefined` disappears from a JSON body, and a client reading a missing
+    // key cannot tell "this deployment has no push configured" from "the
+    // server did not answer that". Null says which.
+    expect("publicKey" in body).toBe(true);
+  });
+});

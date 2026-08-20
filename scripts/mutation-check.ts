@@ -211,6 +211,63 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "sw-content-type",
+    defect: "The service worker was served as text, so no browser would register it and the app never installed.",
+    file: "packages/http/src/main.ts",
+    from: "'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache'",
+    to: "'Content-Type': 'text/plain', 'Cache-Control': 'no-cache'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["serves the service worker as JavaScript"],
+  },
+  {
+    id: "sw-cacheable",
+    defect:
+      "The service worker itself became cacheable, so the copy that would fetch a new build was the stale one.",
+    file: "packages/http/src/main.ts",
+    from: "'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache'",
+    to: "'Content-Type': 'application/javascript'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["not to cache the service worker"],
+  },
+  {
+    id: "sw-cache-version-pinned",
+    defect:
+      "The cache name stopped following the build, so `activate` never deleted the old cache and a new build served the old one.",
+    file: "packages/http/src/main.ts",
+    from: "const CACHE_VERSION = '${BUILD_VERSION}';",
+    to: "const CACHE_VERSION = 'v1';",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["names its cache after the version"],
+  },
+  {
+    id: "manifest-icon-missing",
+    defect: "The manifest named an icon the server does not serve, and the install failed with nothing logged.",
+    file: "packages/http/src/main.ts",
+    from: "{ src: '/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }",
+    to: "{ src: '/icon-256.svg', sizes: '256x256', type: 'image/svg+xml' }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["names icons in the manifest that the server actually serves"],
+  },
+  {
+    id: "icon-size-copy-paste",
+    defect: "The large icon was the small one, scaled up on every device that asked for it.",
+    file: "packages/http/src/main.ts",
+    from: "return c.body(meshIconSvg(512))",
+    to: "return c.body(meshIconSvg(192))",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["draws each icon at the size its name claims"],
+  },
+  {
+    id: "vapid-key-absent-not-null",
+    defect:
+      "An unconfigured push key vanished from the body, so a client could not tell 'push is not set up here' from 'the server did not answer that'.",
+    file: "packages/http/src/main.ts",
+    from: "publicKey: VAPID_PUBLIC_KEY || null",
+    to: "publicKey: VAPID_PUBLIC_KEY || undefined",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["answers null for an unconfigured push key"],
+  },
+  {
     id: "registry-scope-collapse",
     defect:
       "GET /api/v1/agents listed the whole registry to any approved session — 44 identities to an account with no capabilities (§ 12).",
