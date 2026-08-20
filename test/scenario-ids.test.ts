@@ -388,6 +388,77 @@ describe("the list of files this suite reads", () => {
  * about a sentence that *should* be absent, and its absence from the source is
  * the fix working.
  */
+/**
+ * **A `data-testid` a scenario waits for and the product does not emit.**
+ *
+ * `copy landmarks` does this for sentences. Nothing did it for testids, and the
+ * failure is the expensive one: a renamed hook is a thirty-second timeout, and
+ * the timeout closes the browser, so every scenario after it fails with
+ * `Target page … closed`. One rename reads as ninety broken tests. That is the
+ * third reason a mutation comes back `not caught` — something else died first
+ * and ended the run — and it cost most of an hour this morning.
+ *
+ * The denominator is **every** testid the two scenario files name, not the ones
+ * used in a shape this file recognises. A first version counted only
+ * `locator(...).click()` and friends written as one expression, which is eleven
+ * of sixty-eight — the rest are `const cell = page.locator(...)` on one line and
+ * `await cell.click()` on another. Eleven of sixty-eight is a check that has
+ * gone quiet.
+ *
+ * Some testids are named *because they must not exist* — `SC-AUTH-06` passes
+ * when the role picker is gone. Those carry `absent-by-design` on the line, so
+ * the exemption sits next to the assertion that needs it rather than in a list
+ * somewhere else that nobody updates.
+ */
+describe("testid landmarks", () => {
+  it("waits only for hooks the product still emits", () => {
+    const WEB = join(import.meta.dir, "..", "packages", "platform-web", "src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const source = walk(WEB)
+      .filter((f) => /\.tsx?$/.test(f))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+
+    const emitted = new Set<string>();
+    const prefixes: string[] = [];
+    for (const m of source.matchAll(/data-testid=\{?["'`]([^"'`]*)["'`]/g)) {
+      const value = m[1]!;
+      if (value.includes("${")) prefixes.push(value.split("${")[0]!);
+      else emitted.add(value);
+    }
+    // `valueTestId` hands the attribute down through a prop; the first version
+    // of this reported `lease-available` missing because it only read the
+    // attribute where it is finally written.
+    for (const m of source.matchAll(/valueTestId=\{?["'`]([^"'`]*)["'`]/g)) emitted.add(m[1]!);
+    for (const m of source.matchAll(/data-testid=\{([^}]*)\}/g))
+      for (const q of m[1]!.matchAll(/["'`]([^"'`]+)["'`]/g)) emitted.add(q[1]!);
+
+    expect(emitted.size, "no testids were read out of the product — the attribute's shape changed").toBeGreaterThan(20);
+
+    const orphans: string[] = [];
+    let named = 0;
+    for (const file of FILES) {
+      readFileSync(join(import.meta.dir, file), "utf8")
+        .split("\n")
+        .forEach((line, i) => {
+          for (const m of line.matchAll(/data-testid=['"]([^'"\]$]+)['"]/g)) {
+            const id = m[1]!;
+            named++;
+            if (emitted.has(id)) return;
+            if (prefixes.some((head) => head.length > 3 && id.startsWith(head))) return;
+            if (line.includes("absent-by-design")) return;
+            orphans.push(`${file}:${i + 1} waits for [data-testid="${id}"], which no screen emits`);
+          }
+        });
+    }
+    expect(named, "no testids were found in the scenarios — the pattern stopped matching").toBeGreaterThan(30);
+    expect(orphans).toEqual([]);
+  });
+});
+
 describe("copy landmarks", () => {
   it("waits only for sentences the product still says", () => {
     const FILES = ["fe-render.test.ts", "fe-scenarios.test.ts"];

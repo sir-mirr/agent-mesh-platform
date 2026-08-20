@@ -2997,7 +2997,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           // every control of that kind. The language combo is a different job
           // and would have failed a check whose message says the screen still
           // lets a person pick what they are.
-          picker: (await page.locator("select[name*='role' i], [data-testid='role-picker']").count()) > 0
+          picker: (await page.locator("select[name*='role' i], [data-testid='role-picker']").count()) > 0  // absent-by-design: SC-AUTH-06 은 이 선택기가 **없어야** 통과한다
             || /시뮬레이션 역할|RBAC Role/.test(body),
           label: /시뮬레이션 역할|RBAC Role/.test(body),
           claim: /플랫폼 관리자 \(Platform Admin/.test(body),

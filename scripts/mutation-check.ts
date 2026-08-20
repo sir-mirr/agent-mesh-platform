@@ -1938,6 +1938,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-14", "capability cell was not drawn"],
   },
   {
+    id: "a-testid-the-scenarios-wait-for-is-renamed",
+    defect:
+      "A hook renamed in the product while the scenarios still wait for the old name. The cost is not one red test: the wait is thirty seconds, the timeout closes the browser, and every scenario after it fails with `Target page \u2026 closed` \u2014 one rename reads as ninety broken tests, and the real cause is above the noise. `copy landmarks` names a moved sentence in a second; nothing named a moved testid.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "        data-testid=\"bell\"",
+    to: "        data-testid=\"bell-renamed\"",
+    suite: "test/scenario-ids.test.ts",
+    expect: ["testid landmarks", "which no screen emits"],
+  },
+  {
     id: "pushed-proposal-never-reaches-the-open-page",
     defect:
       "The bell's `key-proposed` listener is bound to a name the stream never sends, so a proposal that arrives after the page did is invisible until somebody reloads. Silent by construction: the queue is correct on every reload, and the only person who notices is the operator sitting on the page while an agent waits to be admitted. Every scenario that touched this stream fulfilled a failure or an empty snapshot \u2014 four of them measured what the screen says when the stream says nothing.",
