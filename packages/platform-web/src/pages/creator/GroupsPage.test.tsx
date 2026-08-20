@@ -579,3 +579,45 @@ describe("assigning an agent to a group", () => {
     expect(toast()).not.toContain(ASSIGNED);
   });
 });
+
+describe("a field the route did not send", () => {
+  const ABSENT = DICTIONARY.en["common.unknownValue"]!;
+
+  it("draws no creation time rather than a plausible one", async () => {
+    // **This filled it with `2026-08-17 12:00:00`.** A fixed timestamp, and a
+    // convincing one: a name can be doubted on sight and a date cannot, so an
+    // operator reading this column had no way to tell a group the mesh dated
+    // from one it did not. `api/groups.ts` keeps `created_at` as `null`; the
+    // screen said otherwise in one line.
+    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops" }] });
+    await mount();
+    const row = [...tableEl().querySelectorAll("tbody tr")]
+      .find((tr) => (tr.textContent ?? "").includes("ops"));
+    expect(row).toBeDefined();
+    expect(row!.textContent).toContain(ABSENT);
+    expect(row!.textContent).not.toContain("2026");
+  });
+
+  it("draws no member count rather than nought", async () => {
+    // `member_count: null` means the route did not report one. Nought is a
+    // measurement, and this column made it out of an absence.
+    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: null }] });
+    await mount();
+    const row = [...tableEl().querySelectorAll("tbody tr")]
+      .find((tr) => (tr.textContent ?? "").includes("ops"));
+    expect(row!.textContent).toContain(ABSENT);
+  });
+
+  it("still draws a real zero as a zero", async () => {
+    // The other direction, and the reason the fix is `??` rather than `||`: a
+    // group that really holds nobody answered `member_count: 0` and fell
+    // through to the next fallback anyway, so *unknown* and *nobody* left this
+    // mapping by the same road.
+    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: 0, members: [] }] });
+    await mount();
+    const row = [...tableEl().querySelectorAll("tbody tr")]
+      .find((tr) => (tr.textContent ?? "").includes("ops"));
+    expect(row!.textContent).toContain("0");
+  });
+});
+

@@ -2767,6 +2767,26 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/components/layout/NotificationBell.test.tsx",
     expect: ["does not turn a dropped stream into a queue it could not read"],
   },
+  {
+    id: "groups-page-invents-a-creation-time",
+    defect:
+      "A group the route sent no `created_at` for drawn with a fixed timestamp, `2026-08-17 12:00:00`. `api/groups.ts` keeps that field `null` on purpose — its own comment says drawing a group as reaching nothing is a claim — and this line made the same kind of claim about time. A plausible date is worse than a plausible name: an operator can doubt `admin` on sight and cannot doubt a timestamp. Found by agent-mesh-local-pm sweeping for a preserved unknown with a collapsed one beside it (I-161).",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : null,",
+    to: "          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : \"2026-08-17 12:00:00\",",
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["draws no creation time rather than a plausible one"],
+  },
+  {
+    id: "groups-page-loses-a-real-zero",
+    defect:
+      "`member_count || g.members?.length || 0` sends a group that really holds nobody down the same road as one the route said nothing about: `0` is falsy, so the real measurement falls through to the fallback. `??` keeps them apart, and `null` then draws as absent rather than as nought.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "          memberCount: g.member_count ?? g.members?.length ?? null,",
+    to: "          memberCount: g.member_count || g.members?.length || 0,",
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["draws no member count rather than nought"],
+  },
 ];
 
 /**

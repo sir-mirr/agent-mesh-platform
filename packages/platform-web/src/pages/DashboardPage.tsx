@@ -288,8 +288,14 @@ function PlatformAdminDashboard() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "flex", gap: 12 }}>
-                  <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count ?? g.members?.length ?? 0}</strong></span>
-                  <span>{t("dash.pa.egressLabel", "Egress 허용")}: <strong>{g.egress_allowed?.length ?? 0}</strong></span>
+                  {/* **The api layer refused these claims; this line was making
+                      them anyway.** `api/groups.ts` keeps `member_count` and
+                      `egress_allowed` as `null` when the route did not report
+                      them, with a comment saying that drawing a group as
+                      "allowed to reach nothing" is a claim. `?? 0` here made
+                      exactly that claim, one line apart, for both fields. */}
+                  <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count ?? g.members?.length ?? t("common.unknownValue", "—")}</strong></span>
+                  <span>{t("dash.pa.egressLabel", "Egress 허용")}: <strong>{g.egress_allowed?.length ?? t("common.unknownValue", "—")}</strong></span>
                 </div>
               </div>
             ))}
@@ -428,7 +434,8 @@ React.useEffect(() => {
                     color: "var(--color-primary)",
                   }}
                 >
-                  {g.member_count ?? 0} {t("dash.ta.agentsUnit", "에이전트")}
+                  {/* The same claim as the panel above, on the tenant card. */}
+                  {g.member_count ?? t("common.unknownValue", "—")} {t("dash.ta.agentsUnit", "에이전트")}
                 </span>
               </div>
             ))

@@ -16,9 +16,11 @@ interface AgentGroup {
   id: string;
   name: string;
   description: string;
-  memberCount: number;
+  /** `null` when the route did not report one, which is not the same as none. */
+  memberCount: number | null;
   members: string[]; // agent IDs
-  createdAt: string;
+  /** `null` when the route did not send one. */
+  createdAt: string | null;
 }
 
 import { fetchGroups, createGroupApi, type GroupItem } from "@/api/groups.ts";
@@ -54,9 +56,16 @@ export function GroupsPage() {
           id: g.id,
           name: g.name,
           description: g.description ?? "",
-          memberCount: g.member_count || g.members?.length || 0,
+          // **`??`, not `||`.** A group with a real zero answered `member_count: 0`
+          // and fell through to the next fallback anyway, so *unknown* and
+          // *nobody* took the same road out of here.
+          memberCount: g.member_count ?? g.members?.length ?? null,
           members: g.members || [],
-          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : "2026-08-17 12:00:00",
+          // **A date nobody sent is not a date.** This filled it with a fixed
+          // timestamp, and a plausible one: a name can be doubted on sight and
+          // `2026-08-17 12:00:00` cannot. `api/groups.ts` keeps `created_at`
+          // as `null` on purpose; the screen said otherwise in one line.
+          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : null,
         }))
       );
     } catch (err: unknown) {
@@ -158,7 +167,7 @@ export function GroupsPage() {
             fontSize: "0.78rem",
           }}
         >
-          {item.memberCount}
+          {item.memberCount ?? t("common.unknownValue", "—")}
         </span>
       ),
     },
@@ -195,7 +204,7 @@ export function GroupsPage() {
       header: t("groups.col.created", "생성 일시"),
       render: (item: AgentGroup) => (
         <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-          {item.createdAt}
+          {item.createdAt ?? t("common.unknownValue", "—")}
         </span>
       ),
     },
