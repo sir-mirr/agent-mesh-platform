@@ -2587,6 +2587,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/http.test.ts",
     expect: ["says which tenant the session is in, and says it from the row"],
   },
+  {
+    id: "agent-listing-scopes-at-all",
+    defect:
+      "`GET /api/v1/agents` listed the whole registry to anyone approved — `agent-mesh-local-pm` measured an account with no capabilities seeing the same 44 identities as the administrator. This mutation removes the filter, which is the state the route shipped in.",
+    file: "packages/http/src/main.ts",
+    from: "    .filter(entry => seesEverything || visible.has(entry.id))",
+    to: "    .filter(() => true)",
+    suite: "test/agents-visibility.test.ts",
+    expect: ["a stranger is absent and a correspondent is present"],
+  },
+  {
+    id: "agent-listing-does-not-scope-everything-away",
+    defect:
+      "The other direction, and the one a one-sided check misses: a route that returns an empty list to every member also hides strangers. `agent-mesh-local-pm`'s first falsification was one-sided — cut the connection, the row disappears — which an empty-list implementation satisfies and which a history-based one can never satisfy. This mutation scopes members down to nothing.",
+    file: "packages/http/src/main.ts",
+    from: "    .filter(entry => seesEverything || visible.has(entry.id))",
+    to: "    .filter(entry => seesEverything && visible.has(entry.id))",
+    suite: "test/agents-visibility.test.ts",
+    expect: ["a stranger is absent and a correspondent is present", "a group puts its members in each other's list"],
+  },
 ];
 
 /**

@@ -1109,7 +1109,86 @@ app.get('/api/v1/agents', async (c) => {
     ).map(row => [row.identity, row.fingerprint] as const),
   )
 
-  const agents = listRegistryAgents().map(entry => ({
+  /**
+   * **What this session may see (§ 12).**
+   *
+   * The route listed the whole registry to anyone approved, so an account with
+   * no capabilities saw all 44 identities — measured by `agent-mesh-local-pm`
+   * on the standing stack, admin and member alike. The boundary the owner chose
+   * is not the tenant: it is what you own, who you share a group with, and who
+   * your agents have actually talked to.
+   *
+   * **"Connected with" is history, not a live socket.** Reading it as session
+   * state would make the list empty while an agent sleeps and drop yesterday's
+   * correspondents — access flickering with a socket. `messages` is the record
+   * of who has ever exchanged with whom, and that is what is joined here.
+   *
+   * The group term is **the group the person is in**, not the groups their
+   * agents are in: the owned-agent term below already reaches those, and of the
+   * two readings this is the narrower. Widening later is a line; narrowing
+   * arrives after an incident.
+   *
+   * Tenant is deliberately not part of these queries. An account with no
+   * `local_users` row has `tenant: null` (see `/auth/me`), and scoping on it
+   * would quietly return nothing for exactly those sessions — a denominator
+   * shrinking without saying so. Ownership and membership are already per
+   * identity.
+   */
+  const actor = payload.github_login
+
+  /**
+   * **Temporary, and this comment is the record of it.**
+   *
+   * § 11 decides on capabilities rather than on `role`, and the vocabulary of
+   * twelve has no name for *sees the whole registry*. Adding one is a
+   * `agent-mesh-contracts` tag, which moves three repositories, so it is the
+   * owner's call and not this route's. Until that name exists an administrator
+   * would be scoped like anybody else and the console would lose the view it
+   * exists for, so `role` stands in.
+   *
+   * It lives here rather than in `docs/deferred.md` because the next person to
+   * read this line is the person who can replace it, and they will be reading
+   * this file.
+   */
+  const seesEverything = payload.role === 'admin'
+
+  const visible = new Set<string>()
+  if (!seesEverything) {
+    visible.add(actor)
+
+    // `ownership.ownedBy` and `groups.groupOf`/`membersOf` rather than SQL of
+    // this route's own. The first draft wrote both queries by hand, which is a
+    // second copy of what those tables mean — and the tenant default lives in
+    // the store, so a hand-written `WHERE` is also where a tenant argument goes
+    // missing.
+    for (const identity of ownership.ownedBy(mesh, actor)) visible.add(identity)
+
+    // The group this person is in, and everyone else in it. `(tenant, identity)`
+    // is the primary key, so a person is in at most one.
+    const myGroup = groupsStore.groupOf(mesh, actor)
+    if (myGroup) {
+      for (const member of groupsStore.membersOf(mesh, myGroup)) visible.add(member)
+    }
+
+    // Everyone this person's identities have exchanged a message with, in
+    // either direction. Both ends are added because a conversation is not
+    // directional for the purpose of "have these two met".
+    const mine = [...visible]
+    const marks = mine.map(() => '?').join(', ')
+    const talked = getDb()
+      .prepare(
+        `SELECT from_agent, to_agent FROM messages WHERE from_agent IN (${marks}) OR to_agent IN (${marks})`,
+      )
+      .all(...mine, ...mine) as Array<{ from_agent: string; to_agent: string }>
+    for (const row of talked) {
+      visible.add(row.from_agent)
+      visible.add(row.to_agent)
+    }
+  }
+
+  const agents = listRegistryAgents()
+    .filter(entry => seesEverything || visible.has(entry.id))
+    .map(entry => ({
     id: entry.id,
     name: entry.name,
     description: entry.description,
