@@ -342,7 +342,13 @@ async function runStep(step: Step, ctx: string): Promise<void> {
       // Not recorded in `keys`: nothing later should be able to sign as an
       // identity this mesh never accepted, which is the same reason
       // `reuseKeyOf` does not overwrite the map.
-      if (step.ephemeralKey && !keys.has(step.identity)) {
+      // Either the scenario asked for a throwaway, or it never made a key for
+      // this identity — `E2E-NOKEY-001` provisions with `key: false` precisely
+      // to reach the refusal that answers on the key rather than on the name.
+      // Both need a signature the hub will reject, and the runner throwing
+      // "provision it with key: true first" turns the hub's answer into this
+      // file's opinion.
+      if (step.ephemeralKey || !keys.has(step.identity)) {
         const throwaway = newKeyPair();
         const client = await connectRpc(mesh.hub, { kid: throwaway.fingerprint, privateKey: throwaway.privateKey });
         try {
