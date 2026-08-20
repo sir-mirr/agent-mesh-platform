@@ -1928,6 +1928,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "rbac-rows-only-for-people-who-already-have-grants",
+    defect:
+      "The RBAC table built its rows out of the grants themselves, so somebody admitted five minutes ago \u2014 no capabilities, which is how everyone starts \u2014 had no row, and there was no way to give them their first one. The account list was already being fetched for the role column and thrown away for this purpose. The screen that hands out access could not reach anyone who had none.",
+    file: "packages/platform-web/src/pages/tenant/RbacManagementPage.tsx",
+    from: "      if (roles) {",
+    to: "      if (false) {",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-14", "capability cell was not drawn"],
+  },
+  {
+    id: "grant-checked-but-never-sent",
+    defect:
+      "`addGrantApi` returns `{ ok: true }` without sending. The cell checks, the toast says granted, and nobody holds the capability. A revoke that silently fails leaves access somebody should not have and the next reload says so; a grant that silently fails leaves an operator believing they gave access that nobody has.",
+    file: "packages/platform-web/src/api/grants.ts",
+    from: "export async function addGrantApi(subject: string, capability: string, scope: string = \"*\"): Promise<{ ok: boolean }> {",
+    to: "export async function addGrantApi(subject: string, capability: string, scope: string = \"*\"): Promise<{ ok: boolean }> {\n  if (subject) return { ok: true };",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-14", "checked on screen without being granted"],
+  },
+  {
     id: "group-created-only-on-screen",
     defect:
       "`createGroupApi` returns `{ ok: true }` without sending anything. The row appears, the toast says created, and the mesh never heard of the group \u2014 the screen agreeing with itself, which is the shape this repository has written down as a check comparing a value to its own source. Measured before `SC-WRITE-12` existed: this mutation left all 114 scenarios in `fe-render` green.",

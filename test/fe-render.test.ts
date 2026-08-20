@@ -392,6 +392,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * machine cannot reproduce the condition, and turning a property of the
    * machine into a red is the thing this suite spent the night removing.
    */
+  /** Filled only under `WRITE_PROBE=1`; see `newContext`. */
+  const writesSeen = new Set<string>();
+
   const inconclusive: string[] = [];
 
   function cannotMeasure(scenario: string, why: string): void {
@@ -400,6 +403,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }
 
   afterAll(() => {
+    if (process.env.WRITE_PROBE) {
+      console.warn(
+        `\n─── writes this run issued (${writesSeen.size}) ───\n` +
+          [...writesSeen].sort().map((line) => `  ${line}`).join("\n") +
+          `\n─── a write the front end can make and this list does not name is exercised by nothing ───\n`,
+      );
+    }
     if (inconclusive.length === 0) return;
     console.warn(
       `\n─── ${inconclusive.length} scenario(s) ran without measuring anything ───\n` +
@@ -519,6 +529,27 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    */
   async function newContext(lang: "ko" | "en" | null = "ko") {
     const ctx = await browser.newContext();
+    // **What writes this suite actually issues, when asked.**
+    //
+    // Off unless `WRITE_PROBE=1`, because a banner printed every run is a
+    // banner people learn to scroll past. The question it answers came up
+    // measuring `SC-WRITE-12`: eight `SC-WRITE-*` scenarios assert that a
+    // *failed* write is not called a success, and the way to find which writes
+    // nothing exercises at all is to count the ones that leave the browser.
+    //
+    // Counting rather than breaking: neutering the writes to find out killed
+    // the run — one scenario timed out first and took the browser with it, so
+    // every verdict after it was about the browser, not the writes.
+    if (process.env.WRITE_PROBE) {
+      ctx.on("request", (r) => {
+        // **Raw pathname.** The first version folded the last segment when it
+        // looked like an identifier, and `/groups` is seven lowercase letters —
+        // so `POST /api/v1/admin/groups` printed as `POST /api/v1/admin/{}` and
+        // the list said nothing. A few extra lines for real ids is the cheaper
+        // error.
+        if (r.method() !== "GET") writesSeen.add(`${r.method()} ${new URL(r.url()).pathname}`);
+      });
+    }
     if (lang) {
       await ctx.addInitScript((chosen) => {
         try {
@@ -1332,6 +1363,74 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         { requests: sent.length, addressed: sent.some((u) => u.includes(encodeURIComponent(identity)) || u.includes(identity)) },
         "the screen reported a teardown it never sent, or sent one for a different identity",
       ).toEqual({ requests: 1, addressed: true });
+    });
+  }, 40_000);
+
+  /**
+   * SC-WRITE-14 — granting a capability reaches the server.
+   *
+   * **Found by counting, not by reading.** `WRITE_PROBE=1` lists the writes a
+   * run issues; the front end can make thirteen and this suite issued ten of
+   * them. The three it never made were `keys/approve`, `grants` POST and
+   * `egress` POST — every one the *allowing* direction, with its removing
+   * counterpart covered. The suite tested taking access away and never tested
+   * giving it.
+   *
+   * That asymmetry matters most here. A revoke that silently fails leaves
+   * somebody with access they should not have and the screen says so next
+   * reload; a grant that silently fails leaves an operator believing they have
+   * given access that nobody has, and the screen agrees with them until
+   * somebody is locked out of work.
+   *
+   * The subject is admitted for this scenario so the grant lands on an account
+   * no other scenario reads.
+   */
+  it("[SC-WRITE-14] grants a capability the server then holds, not only a checked cell", async () => {
+    const admin = { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" };
+    const who = `grant-${Date.now().toString(36).slice(-6)}`;
+    const admitted = await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ username: who }),
+    });
+    expect(
+      { created: admitted.ok },
+      "the subject for this scenario could not be created, so nothing below was exercised",
+    ).toEqual({ created: true });
+
+    const CAP = "audit.read.metadata";
+    await withPage("/tenant/rbac", async ({ page }) => {
+      const cell = page.locator(`[data-testid="rbac-cap-${who}-${CAP}"]`);
+      const control = await eventually(async () => await cell.count(), (n) => n > 0);
+      expect(
+        { control },
+        "the subject's row or its capability cell was not drawn, so this scenario measured nothing",
+      ).toEqual({ control: 1 });
+
+      await cell.click();
+      await attemptOver(page);
+
+      // **The server, asked directly.** A screen that reloads its own list from
+      // the same place it wrote to would agree with itself either way; this is
+      // the witness on the other side.
+      const held = await eventually(
+        async () => {
+          const res = await fetch(`${mesh.http.url}/api/v1/admin/grants`, { headers: { cookie: `mesh_token=${jwtToken}` } });
+          const body = (await res.json()) as any;
+          const rows: any[] = Array.isArray(body) ? body : body.grants ?? [];
+          return rows.some((g) => (g.subject ?? g.username) === who && g.capability === CAP);
+        },
+        (found) => found,
+      );
+      const onScreen = await eventually(
+        async () => ((await page.locator("#root").innerText().catch(() => "")) ?? "").includes(who),
+        (found) => found,
+      );
+
+      expect(
+        { held, onScreen },
+        "the capability was checked on screen without being granted, or granted without being drawn",
+      ).toEqual({ held: true, onScreen: true });
     });
   }, 40_000);
 

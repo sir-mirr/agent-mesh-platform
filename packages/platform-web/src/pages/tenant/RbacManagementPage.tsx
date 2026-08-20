@@ -63,6 +63,23 @@ export function RbacManagementPage() {
         subjectMap.set(g.subject, list);
       });
 
+      // **A person with no grants is exactly who this screen is for.**
+      //
+      // The rows used to come only from the grants themselves, so somebody
+      // admitted five minutes ago — no capabilities, which is how everyone
+      // starts — had no row, and there was no way to give them their first one.
+      // The account list was already being fetched for the role column and
+      // thrown away for this purpose.
+      //
+      // Only when that list was readable. If it was refused or unreachable,
+      // the rows stay as they were rather than this screen deciding the mesh
+      // has no members — the role column already says it could not ask.
+      if (roles) {
+        for (const username of Object.keys(roles)) {
+          if (!subjectMap.has(username)) subjectMap.set(username, []);
+        }
+      }
+
       const orgMembers: OrgMember[] = Array.from(subjectMap.entries()).map(([subj, assignedCaps]) => ({
         id: subj,
         name: subj,
