@@ -73,7 +73,17 @@ export async function fetchAgents(): Promise<RegistryAgent[]> {
 
 export async function fetchPendingKeys(): Promise<KeyProposal[]> {
   const data = await apiClient<any>("/api/v1/admin/keys/pending");
-  return Array.isArray(data) ? data : data.proposals ?? data.pending ?? [];
+  // **Two decision queues answer with the same key.** `GET admin/pending` (people
+  // waiting to be admitted) and this one both reply `{ pending: [...] }`, one path
+  // segment apart, so a reader holding a response cannot tell which queue it is —
+  // and the guessable one answers `[]`. `D-689` splits them: this route becomes
+  // `{ keys }` and the other `{ users }`.
+  //
+  // The route and this reader are in different hands, so they cannot land in one
+  // commit; `keys` is read here **first**, while nothing sends it yet. When the
+  // route moves, the bell keeps working, and the older branches come out then.
+  // This is not an alias — the contract stays one name; the reader is mid-move.
+  return Array.isArray(data) ? data : data.keys ?? data.proposals ?? data.pending ?? [];
 }
 
 export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {
