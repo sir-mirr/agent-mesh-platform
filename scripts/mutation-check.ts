@@ -1928,6 +1928,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
+    id: "korean-hidden-behind-a-glob",
+    defect:
+      "Korean text between tags in `PlatformOverviewPage`, below `endpoint: \"/api/v1/*\"`. That string opened a block comment for the regex this check used to strip comments with, and the next `*/` was 113 lines later \u2014 so a hundred lines of that file, this one among them, were not in the denominator. The count read zero while a browser with the language set to English drew `개` on `/platform`.",
+    file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
+    from: "          {item.activeSockets}",
+    to: "          {item.activeSockets}개",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-04", "untranslated strings or lines, up from"],
+  },
+  {
     id: "korean-jsx-outside-the-flow",
     defect:
       "A sentence written as text between tags, on a screen that is not on the admission path. The flow check does not read this file, and the count that does used to read string literals only \u2014 so twenty-two of these were invisible while the ratchet said zero, and a browser with the language set to English drew Korean on four screens.",

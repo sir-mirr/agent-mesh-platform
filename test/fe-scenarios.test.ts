@@ -696,6 +696,60 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     // The fallback argument of `t("key", "…")` is where Korean belongs.
     const AS_FALLBACK = /t\(\s*"[^"]+"\s*,\s*$/;
 
+    // Comments are prose about the code, and this check twice read its own
+    // explanation of a defect as the defect. Blanked rather than deleted: the
+    // line numbers reported below are how somebody finds the string, and `D-34`
+    // is the entry for a report whose lines had shifted out from under it.
+    //
+    // **A regex cannot do this, and the regex that used to was silent about it.**
+    // `endpoint: "/api/v1/*"` on line 58 of `PlatformOverviewPage` opened a
+    // block comment for `/\/\*[\s\S]*?\*\//`, and the next `*/` was 113 lines
+    // later — the whole middle of that file left this check's denominator,
+    // `{item.activeSockets}개` with it. The count said zero and the running
+    // console drew `개` in English mode. A scanner that knows a string from a
+    // comment is the smallest thing that cannot make that mistake.
+    const stripComments = (src: string): string => {
+      let out = "";
+      let i = 0;
+      while (i < src.length) {
+        const two = src.slice(i, i + 2);
+        if (two === "//") {
+          while (i < src.length && src[i] !== "\n") { out += " "; i++; }
+          continue;
+        }
+        if (two === "/*") {
+          while (i < src.length && src.slice(i, i + 2) !== "*/") { out += src[i] === "\n" ? "\n" : " "; i++; }
+          out += "  ";
+          i += 2;
+          continue;
+        }
+        const c = src[i]!;
+        if (c === '"' || c === "'" || c === "`") {
+          out += c;
+          i++;
+          while (i < src.length) {
+            if (src[i] === "\\") { out += src.slice(i, i + 2); i += 2; continue; }
+            out += src[i];
+            const done = src[i] === c;
+            i++;
+            if (done) break;
+          }
+          continue;
+        }
+        out += c;
+        i++;
+      }
+      return out;
+    };
+
+    // **The guard's own guard.** Both directions, because a stripper that
+    // returns its input unchanged also passes the first half.
+    const SAMPLE = 'const a = { endpoint: "/api/v1/*" };\n<div>가나다</div>\n/* 주석 */\n// 주석\n';
+    expect(
+      { code: /가나다/.test(stripComments(SAMPLE)), comments: /주석/.test(stripComments(SAMPLE)) },
+      "the comment stripper swallowed code after a string holding `/*`, or left comments standing",
+    ).toEqual({ code: true, comments: false });
+
     const walk = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
@@ -704,14 +758,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
 
     const offendersIn = (file: string, withJsx: boolean): string[] => {
       const raw = readFileSync(file, "utf8");
-      // Comments are prose about the code, and this check twice read its own
-      // explanation of a defect as the defect. `//` is only a comment when it
-      // is not the `//` of a URL.
-      // Blanked rather than deleted: the line numbers below are how somebody
-      // finds the string, and `D-34` is the entry for a report whose lines had
-      // shifted out from under it.
-      const blank = (m: string) => m.replace(/[^\n]/g, " ");
-      const text = raw.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])(\/\/[^\n]*)/g, (_a, p1, c) => p1 + blank(c));
+      const text = stripComments(raw);
       const found: string[] = [];
       for (const m of text.matchAll(LITERAL)) {
         // A template's `${…}` holds expressions, and `t("key", "한글")` inside

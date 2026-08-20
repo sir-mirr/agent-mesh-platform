@@ -107,7 +107,7 @@ export function PlatformOverviewPage() {
       header: t("server.col.sockets", "온라인 소켓"),
       render: (item: typeof serverNodes[0]) => (
         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-          {item.activeSockets}개
+          {item.activeSockets}
         </span>
       ),
     },
