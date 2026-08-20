@@ -61,5 +61,9 @@ export interface PendingAdmission {
 
 export async function fetchPendingAdmissions(): Promise<PendingAdmission[]> {
   const data = await apiClient<any>("/api/v1/admin/pending");
-  return Array.isArray(data) ? data : data.users ?? data.pending ?? [];
+  // The route moved to `{ users }` in `6b2b304`, so the older branch is gone:
+  // leaving it would be the alias `D-689` refused to add, arriving by the back
+  // door — a reader could not tell which name the server actually sends.
+  // `agents.ts` still carries its chain, because `keys/pending` has not moved.
+  return Array.isArray(data) ? data : data.users ?? [];
 }
