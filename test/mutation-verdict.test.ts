@@ -26,6 +26,32 @@ import { markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutat
 
 const EXPECT = ["a socket that dropped the frame"];
 
+/**
+ * **Two entries answered to one name and the run said `2/2 caught`.**
+ *
+ * `bun scripts/mutation-check.ts <id>` filters by id, and a name typed twice
+ * makes that filter select two mutations — the summary counts them both and
+ * reads as a clean result for the entry somebody meant to run. Caught only
+ * because the count was two and the work was one; a duplicate on a bigger
+ * filter would not show at all.
+ *
+ * The same shape is already written down one level up: two scenarios sharing an
+ * `SC-` id made `-t "SC-WRITE-07"` run two tests, and the guard that was
+ * supposed to stop it compared titles instead of ids.
+ */
+describe("the manifest's own names", () => {
+  test("no id answers to two entries", async () => {
+    const source = await Bun.file(new URL("../scripts/mutation-check.ts", import.meta.url)).text();
+    const ids = [...source.matchAll(/^\s{4}id: "([^"]+)",$/gm)].map((m) => m[1]!);
+    // A read that found nothing would make the comparison below vacuously true,
+    // which is the failure this file exists to name.
+    expect(ids.length, "no manifest ids were parsed — the entry shape changed").toBeGreaterThan(100);
+    const seen = new Set<string>();
+    const twice = ids.filter((id) => (seen.has(id) ? true : (seen.add(id), false)));
+    expect(twice, "an id is used by more than one manifest entry, so filtering by it runs both").toEqual([]);
+  });
+});
+
 describe("reading a run", () => {
   test("a guard that objected is caught", () => {
     const output = "(fail) a socket that dropped the frame\n\n 12 pass\n 1 fail\n";

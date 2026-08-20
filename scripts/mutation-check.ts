@@ -1928,7 +1928,7 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
   {
-    id: "silence-drawn-as-a-refusal",
+    id: "unreachable-blamed-on-a-permission",
     defect:
       "The mirror of `a-refusal-drawn-as-silence`: a screen tells somebody they lack permission when the backend never answered. A console that answers every failure that way passes the check that a refusal must not be drawn as silence \u2014 it never claims the server went quiet, because it never says anything true \u2014 and it sends people to ask for a capability they already hold.",
     file: "packages/platform-web/src/pages/platform/TenantTrafficPage.tsx",
