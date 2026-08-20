@@ -4057,16 +4057,50 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
     const cookie = await signIn(`${me}-chosen`);
 
+    // **The premise flipped, and this scenario said so.** It used to assert the
+    // registry came back unscoped, with a comment saying that a failure here
+    // means the server has started scoping. It has: `c23a56e` scopes the
+    // listing to self, group and correspondents, which is `D-681 ①`.
+    //
+    // The wording half survives that unchanged, and is the reason this scenario
+    // still exists: **scoped is not owned**. A person sees the agents of people
+    // they share a group with and of anyone they have exchanged messages with —
+    // none of those are theirs, so a heading that says *my* or *owned* is as
+    // wrong as it was against the whole registry.
+    //
+    // So the premise is built rather than assumed: one account this viewer has
+    // written to, which must appear, and one it has never touched, which must
+    // not. That is both directions of the scoping rule at the same time — a
+    // list that showed nobody would pass "no stranger" on its own.
+    const spoke = `cap6spoke-${Date.now().toString(36).slice(-5)}`;
+    const stranger = `cap6alone-${Date.now().toString(36).slice(-5)}`;
+    for (const who of [spoke, stranger]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+        method: "POST",
+        headers: { cookie: `mesh_token=${jwtToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ username: who, role: "member" }),
+      });
+    }
+    const sent = await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ to: spoke, text: `cap6 ${me}` }),
+    });
+
     const rows = (await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } })).json()) as any;
     const list: any[] = Array.isArray(rows) ? rows : rows.agents ?? [];
+    const names = list.map((a) => String(a.identity ?? a.id ?? ""));
     const others = list.filter((a) => String(a.identity ?? a.id ?? "") !== me);
 
-    // If this ever fails, the server has started scoping and the wording below
-    // may honestly say "yours" again.
     expect(
-      { returned: list.length > 0, notMine: others.length > 0 },
-      "the registry came back scoped or empty — this scenario's premise no longer holds",
-    ).toEqual({ returned: true, notMine: true });
+      {
+        wrote: sent.ok,
+        correspondent: names.includes(spoke),
+        stranger: names.includes(stranger),
+        notMine: others.length > 0,
+      },
+      "the correspondence this scenario needs was not made, the scoping dropped somebody it should show, or it showed somebody it should not",
+    ).toEqual({ wrote: true, correspondent: true, stranger: false, notMine: true });
 
     const { page, context } = await createViewerAuthedPage(cookie, "/creator");
     try {
