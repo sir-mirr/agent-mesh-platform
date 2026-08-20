@@ -1563,6 +1563,53 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 40_000);
 
+  /**
+   * SC-LIVE-01 — what the server pushes reaches the screen.
+   *
+   * The bell subscribes to `/api/v1/admin/keys/stream` and every scenario that
+   * touches that route **fulfils a failure or an empty snapshot**: `SC-DOWN-12`
+   * blocks it, `SC-CAP-07` refuses it, and the rest hand it `{"proposals":[]}`.
+   * All four measure what the screen says when the stream says nothing. None of
+   * them measures a stream that says something.
+   *
+   * Same asymmetry as the writes: the failing direction covered, the working
+   * one assumed. A dead listener is silent by construction — the queue is
+   * correct on every reload, so the only person who notices is the operator
+   * sitting on the page while an agent waits.
+   *
+   * No reload here, deliberately. The initial fetch already answers, so a
+   * scenario that navigates would pass with the listener deleted.
+   */
+  it("[SC-LIVE-01] shows a proposal that arrived after the page did, without a reload", async () => {
+    const { page, context } = await createAuthedPage("/tenant/rbac");
+    try {
+      await page.locator('[data-testid="bell"]').click();
+      await settled(page);
+
+      const key = newKeyPair();
+      const identity = `live-${Date.now().toString(36).slice(-6)}`;
+      const url = page.url();
+      const registered = await fetch(`${mesh.hub.url}/api/v1/agents`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identity, type: "ai-claude", public_key: key.publicKey }),
+      });
+
+      const arrived = await eventually(
+        async () => ((await page.locator("body").textContent().catch(() => "")) ?? "").includes(identity),
+        (yes) => yes,
+        { tries: 15, everyMs: 400 },
+      );
+
+      expect(
+        { registered: registered.ok, arrived, navigated: page.url() !== url },
+        "the proposal was queued but never reached the open page, or the page moved and the initial fetch answered instead of the stream",
+      ).toEqual({ registered: true, arrived: true, navigated: false });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 40_000);
+
   // SC-ADDR-02: the agent list does not claim a fingerprint it was not given
   // (I-062)
   it("[SC-ADDR-02] shows no fingerprint on /creator, rather than a constant that says verified", async () => {

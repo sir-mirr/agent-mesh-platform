@@ -1938,6 +1938,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-14", "capability cell was not drawn"],
   },
   {
+    id: "pushed-proposal-never-reaches-the-open-page",
+    defect:
+      "The bell's `key-proposed` listener is bound to a name the stream never sends, so a proposal that arrives after the page did is invisible until somebody reloads. Silent by construction: the queue is correct on every reload, and the only person who notices is the operator sitting on the page while an agent waits to be admitted. Every scenario that touched this stream fulfilled a failure or an empty snapshot \u2014 four of them measured what the screen says when the stream says nothing.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: "      es.addEventListener(\"key-proposed\", (e: MessageEvent) => {",
+    to: "      es.addEventListener(\"key-proposed-disabled\", (e: MessageEvent) => {",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-LIVE-01", "never reached the open page"],
+  },
+  {
     id: "egress-allowed-only-on-screen",
     defect:
       "`addEgressRuleApi` returns `{ ok: true }` without sending. The cell reads `ALLOW` and \u00a7 12 says a group with no egress rule sends nowhere, so an operator is looking at an open lane that is closed and the group's agents reach nothing. `SC-WRITE-11` cannot see it: it answers both directions from the intercept, so no rule is ever written, and the fixture's single group makes its one cell start `ALLOW` \u2014 the click it exercises is the delete.",
