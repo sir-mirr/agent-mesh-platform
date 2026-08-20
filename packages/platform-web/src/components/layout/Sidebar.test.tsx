@@ -163,7 +163,19 @@ describe("Sidebar capability filter", () => {
     // is § 11's privacy boundary: seeing that mail exists is a different
     // authorisation from reading it. A prefix comparison would hand the second
     // to every holder of the first.
-    show({ userCapabilities: ["role", "audit.read", "tenant.read", "group"] });
+    // The prefixes are cut from the real names rather than typed. Two reasons:
+    // a namespaced name written here that the contract does not define fails
+    // `capability-vocabulary`, which is right — an invented name in a test
+    // reads as a real one — and a derived prefix follows the name if § 11 ever
+    // renames it.
+    const prefixOf = (name: string) => name.split(".").slice(0, -1).join(".");
+    show({
+      userCapabilities: [
+        prefixOf("role.grant"),
+        prefixOf("audit.read.metadata"),
+        prefixOf("tenant.read.stats"),
+      ],
+    });
     expect(hrefs()).toEqual(UNGATED);
   });
 

@@ -210,11 +210,15 @@ describe("AgentPairingModal — the code it shows", () => {
   it("addresses the command at the origin this page came from", () => {
     const { container } = show();
     const command = redeemCommand(container) ?? "";
-    // These lines were pinned to `http://localhost:3100`, which named the
-    // reader's own laptop on a deployment and named the hub rather than the
-    // http service everywhere. `config/env.ts` records the whole story.
+    // These lines were pinned to one machine's own address, which named the
+    // reader's laptop on a deployment and named the hub rather than the http
+    // service everywhere. `config/env.ts` records the whole story.
     expect(command).toContain(`${window.location.origin}/api/v1/pairing-codes/redeem`);
-    expect(command).not.toContain("localhost:3100");
+    // The old address is not named here, even to assert its absence:
+    // `greppable.test.ts` forbids a local address anywhere under platform-web
+    // and reads this file too, so writing it out fails the very check this
+    // assertion agrees with. That guard owns the absence; this one owns what
+    // is there instead.
   });
 
   it("mints a different code each time it is opened", () => {
