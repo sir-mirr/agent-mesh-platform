@@ -269,42 +269,12 @@ export const stmtFetchMessages = db.prepare(`
   LIMIT ?3
 `);
 
-/**
- * What a socketless caller may be handed (SPEC § 8.10.1).
- *
- * Pending, and either never leased or leased to a caller whose lease has
- * lapsed. A batch handed out and not acknowledged therefore comes back — the
- * caller's turn may simply have ended before it could persist them.
- */
-export const stmtLeasableMessages = db.prepare(`
-  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
-  FROM messages
-  WHERE to_agent = ?1 AND status = 'pending'
-    AND (leased_until IS NULL OR leased_until < datetime('now'))
-  ORDER BY ts ASC
-  LIMIT ?2
-`);
-
-export const stmtLeaseMessage = db.prepare(`
-  UPDATE messages SET leased_until = datetime('now', '+' || ?2 || ' seconds') WHERE id = ?1
-`);
-
-/** Acknowledge, but only what the caller actually holds. */
-export const stmtAckMessage = db.prepare(`
-  UPDATE messages SET status = 'delivered', leased_until = NULL
-  WHERE id = ?1 AND to_agent = ?2
-`);
-
-export const stmtMessageById = db.prepare(`
-  SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
-  FROM messages WHERE id = ?
-`);
-
-export const stmtCountLeasable = db.prepare(`
-  SELECT COUNT(*) AS n FROM messages
-  WHERE to_agent = ?1 AND status = 'pending'
-    AND (leased_until IS NULL OR leased_until < datetime('now'))
-`);
+const mailboxStmts = hubSchema.createMailboxStatements(db);
+export const stmtLeasableMessages = mailboxStmts.leasableMessages;
+export const stmtLeaseMessage = mailboxStmts.leaseMessage;
+export const stmtAckMessage = mailboxStmts.ackMessage;
+export const stmtMessageById = mailboxStmts.messageById;
+export const stmtCountLeasable = mailboxStmts.countLeasable;
 
 // --- send idempotency (SPEC § 8.2) -------------------------------------------
 

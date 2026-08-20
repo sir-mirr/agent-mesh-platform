@@ -160,3 +160,82 @@ export interface MessageRow {
   /** Set while a socketless caller holds this message unacknowledged. */
   leased_until: string | null;
 }
+
+/**
+ * The five statements `@agent-mesh/mailbox`'s `receive()` needs, prepared
+ * against a given handle.
+ *
+ * **`create`, because two of the five write.** `naming.test.ts` reads the SQL
+ * inside a function body and asks that the name admit a write is involved —
+ * deliberately looking inside template literals, since that is where writes
+ * live. It flagged the first name here, `mailboxStatements`, and the rule's own
+ * note says to rename rather than to widen its verb list or add an exemption:
+ * an exemption needs a sentence and a widened list silently accepts every
+ * future name that starts the same way.
+ *
+ * **A factory rather than five module-scope constants, because `receive()` is
+ * the only part of store-and-forward that takes its database as an argument** —
+ * and it could not be exercised without one, since these were bound to this
+ * module's handle and that handle is opened at import against whatever state
+ * directory happened to be set. Copying the SQL into a test would be a second
+ * declaration of the queue's semantics: the lease window, what counts as
+ * leasable, and *only what the caller holds* would then live in two places and
+ * drift apart quietly.
+ *
+ * **It lives here rather than in the hub** because this file owns the table it
+ * reads (§ 3.1), and because a test of `receive()` importing it from the hub
+ * would be the mailbox learning the hub exists — the one thing that module is
+ * built not to do. The hub applies it to its own handle and keeps the
+ * module-scope constants it had.
+ */
+export function createMailboxStatements(handle: Database) {
+  return {
+    /**
+     * What a socketless caller may be handed (SPEC § 8.10.1).
+     *
+     * Pending, and either never leased or leased to a caller whose lease has
+     * lapsed. A batch handed out and not acknowledged therefore comes back —
+     * the caller's turn may simply have ended before it could persist them.
+     */
+    leasableMessages: handle.prepare(`
+      SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
+      FROM messages
+      WHERE to_agent = ?1 AND status = 'pending'
+        AND (leased_until IS NULL OR leased_until < datetime('now'))
+      ORDER BY ts ASC
+      LIMIT ?2
+    `),
+    leaseMessage: handle.prepare(`
+      UPDATE messages SET leased_until = datetime('now', '+' || ?2 || ' seconds') WHERE id = ?1
+    `),
+    /**
+     * Acknowledge, but only what the caller actually holds **and has not
+     * already settled**.
+     *
+     * `AND status = 'pending'` is load-bearing. `receive()` reports a settled
+     * message through `onSettled` when `changes > 0`, and SQLite counts a row
+     * it rewrote with identical values as changed — so a second acknowledgement
+     * of the same id fired the hook again and put a second `delivered` event
+     * behind one message. That is the exact outcome § 8.9.4 forbids and the
+     * one `receive()`'s own comment says the hook is placed here to avoid.
+     *
+     * The retry it happens on is not an edge: this file's next paragraph says a
+     * caller retrying an ambiguous receive re-sends the same acknowledgements,
+     * and the ids it does not hold are ignored rather than refused precisely so
+     * that retry is safe.
+     */
+    ackMessage: handle.prepare(`
+      UPDATE messages SET status = 'delivered', leased_until = NULL
+      WHERE id = ?1 AND to_agent = ?2 AND status = 'pending'
+    `),
+    messageById: handle.prepare(`
+      SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
+      FROM messages WHERE id = ?
+    `),
+    countLeasable: handle.prepare(`
+      SELECT COUNT(*) AS n FROM messages
+      WHERE to_agent = ?1 AND status = 'pending'
+        AND (leased_until IS NULL OR leased_until < datetime('now'))
+    `),
+  };
+}

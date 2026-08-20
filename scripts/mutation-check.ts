@@ -2831,6 +2831,16 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/components/data/FingerprintBox.test.tsx",
     expect: ["says the copy failed rather than saying nothing"],
   },
+  {
+    id: "second-ack-records-a-second-delivery",
+    defect:
+      "The acknowledgement matched on `id AND to_agent` alone, and SQLite counts a row it rewrote with identical values as changed — so `receive()` saw `changes > 0` on a repeated acknowledgement and fired `onSettled` again, putting a second `delivered` event behind one message. That is what § 8.9.4 forbids and what `receive()`'s own comment says the hook is placed on acknowledgement to avoid. The retry it happens on is the documented one: a caller retrying an ambiguous receive re-sends the same ids, which is why ids it does not hold are ignored rather than refused.",
+    file: "packages/store/src/schema/hub.ts",
+    from: "      WHERE id = ?1 AND to_agent = ?2 AND status = 'pending'",
+    to: "      WHERE id = ?1 AND to_agent = ?2",
+    suite: "packages/mailbox/src/receive.test.ts",
+    expect: ["reports each settled message once, on acknowledgement rather than hand-out"],
+  },
 ];
 
 /**
