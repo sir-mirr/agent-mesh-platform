@@ -2821,6 +2821,16 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/components/feedback/ConfirmDialog.test.tsx",
     expect: ["locks every way out while the action it asked for is in flight"],
   },
+  {
+    id: "fingerprint-copy-fails-in-silence",
+    defect:
+      "A refused clipboard — no permission, an insecure origin — caught and dropped under a comment reading `// Fallback`, with no fallback. The button went on saying `Copy`, so a person who pressed it and moved on pasted whatever was there before. It never claimed success, so this is silence rather than a lie; the fingerprint is the one value on that card somebody carries elsewhere to compare, and silence about it is its own kind of wrong. One of six swallowing catches agent-mesh-local-pm swept out (I-165).",
+    file: "packages/platform-web/src/components/data/FingerprintBox.tsx",
+    from: "      setCopied(false);\n      setFailed(true);",
+    to: "      // swallowed",
+    suite: "packages/platform-web/src/components/data/FingerprintBox.test.tsx",
+    expect: ["says the copy failed rather than saying nothing"],
+  },
 ];
 
 /**

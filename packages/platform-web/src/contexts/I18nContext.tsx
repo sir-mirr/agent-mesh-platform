@@ -10,6 +10,7 @@ interface I18nContextType {
 
 export const DICTIONARY: Record<Language, Record<string, string>> = {
   ko: {
+    "fp.copyFailed": "복사 실패 — 직접 선택해서 복사하십시오",
     "common.unknownValue": "—",
     "dash.tenants.errorLoad": "조직 정보 불러오지 못함",
     "topology.loading": "토폴로지 데이터를 불러오는 중입니다...",
@@ -541,6 +542,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "traffic.col.routes": "24h 메시지 라우팅 건수",
   },
   en: {
+    "fp.copyFailed": "Copy failed — select it and copy by hand",
     "common.unknownValue": "—",
     "dash.tenants.errorLoad": "Could not load tenants",
     "topology.loading": "Loading topology…",

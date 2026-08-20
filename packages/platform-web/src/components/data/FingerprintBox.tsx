@@ -31,6 +31,7 @@ export function FingerprintBox({
 }: FingerprintBoxProps) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   if (fingerprint === null || fingerprint === "") {
     return (
@@ -57,10 +58,19 @@ export function FingerprintBox({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(fullText);
+      setFailed(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
+      // **The catch said `// Fallback` and there was no fallback.** A refused
+      // clipboard — no permission, an insecure origin — left the button
+      // saying `Copy` and nothing else, so a person who pressed it and moved
+      // on pasted whatever was there before. It never claimed success, which
+      // is why this is silence rather than a lie; the fingerprint is the one
+      // value on this card somebody carries somewhere else to compare, and
+      // silence about it is its own kind of wrong.
+      setCopied(false);
+      setFailed(true);
     }
   };
 
@@ -124,7 +134,11 @@ export function FingerprintBox({
               whiteSpace: "nowrap",
             }}
           >
-            {copied ? `✓ ${t("reg.copied", "복사됨")}` : t("fp.copy", "복사")}
+            {copied
+              ? `✓ ${t("reg.copied", "복사됨")}`
+              : failed
+                ? t("fp.copyFailed", "복사 실패 — 직접 선택해서 복사하십시오")
+                : t("fp.copy", "복사")}
           </button>
         )}
       </div>

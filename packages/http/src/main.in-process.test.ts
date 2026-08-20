@@ -53,6 +53,9 @@ process.env.JWT_SECRET = "in-process-test-secret";
 process.env.PORT = "3998";
 
 const mod = await import("./main.ts");
+// The chat page needs a user row for the session behind it; nothing else here
+// writes one.
+const { upsertUser } = await import("./db.ts");
 const app = mod.app;
 
 /**
@@ -334,6 +337,73 @@ describe("the http service, imported", () => {
     // reaching SQLite as a limit of nothing.
     const res = await asAdmin("/api/v1/messages/search?q=x&limit=many", "GET");
     expect(res.status).toBe(200);
+  });
+
+  /**
+   * The three server-rendered pages, which nothing has ever opened.
+   *
+   * `packages/http/src/ui/` is out of the coverage denominator by the owner's
+   * decision, and `agent-mesh-local-pm` pointed out what that leaves behind:
+   * excluded from a number is not the same as looked at by nobody. Those files
+   * are 1,864 lines, `/admin` is the only screen that draws the human admission
+   * queue, and the only test touching them was one that fetches a route rather
+   * than opens a page.
+   *
+   * This is the cheapest thing that is not nothing: ask each route, in this
+   * process, and assert what it answers — including the redirect an
+   * unauthenticated visitor gets, which is the half a stranger meets.
+   */
+  test("the landing page renders, with and without an error to report", async () => {
+    const plain = await app.fetch(new Request("http://in-process/"));
+    expect(plain.status).toBe(200);
+    expect((plain.headers.get("content-type") ?? "")).toContain("text/html");
+    const html = await plain.text();
+    expect(html).toContain("<html");
+
+    // The query parameter is how a failed sign-in comes back to this page.
+    const withError = await app.fetch(new Request("http://in-process/?error=denied"));
+    expect(withError.status).toBe(200);
+    expect((await withError.text()).length).toBeGreaterThan(0);
+  });
+
+  test("the chat and admin pages send a stranger back to the landing page", async () => {
+    for (const path of ["/chat", "/chat/some-agent", "/admin"]) {
+      const res = await app.fetch(new Request(`http://in-process${path}`), );
+      // A redirect, not a 401: these are pages rather than routes, and a person
+      // who is not signed in is sent somewhere they can sign in.
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe("/");
+    }
+  });
+
+  test("the chat page opens once the session has a user row behind it", async () => {
+    // `/chat` reads `getUser(payload.github_id)` and sends anybody without a
+    // row back to the landing page. A local sign-in has a github id in its
+    // token and no row, which is why every earlier attempt at this page was a
+    // redirect — and why `ui/chat.ts`, the largest of the four, had never been
+    // rendered by anything.
+    const me = await (await asAdmin("/auth/me", "GET")).json();
+    expect(typeof me.github_id).toBe("number");
+    upsertUser(me.github_id, me.github_login);
+
+    const res = await asAdmin("/chat", "GET");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("<html");
+    // Either page is `ui/chat.ts` — the approved one or the one that says the
+    // account is still waiting. Which of the two depends on the seeded admin's
+    // approval, and this file is not the place that decides it.
+    expect(html.length).toBeGreaterThan(500);
+  });
+
+  test("the admin page opens for an administrator", async () => {
+    const res = await asAdmin("/admin", "GET");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("<html");
+    // The one screen that draws the human admission queue — the reason this
+    // page is worth opening at all rather than counting.
+    expect(html.length).toBeGreaterThan(1000);
   });
 
   test("the admission queue answers under its own name", async () => {

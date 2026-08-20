@@ -13,7 +13,8 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
 
-const { render, cleanup } = await import("@testing-library/react");
+const { render, cleanup, fireEvent, act } = await import("@testing-library/react");
+const { DICTIONARY, I18nProvider } = await import("@/contexts/I18nContext.tsx");
 const { FingerprintBox } = await import("./FingerprintBox.tsx");
 
 afterEach(cleanup);
@@ -42,3 +43,46 @@ describe("FingerprintBox", () => {
     expect(without).toContain("sha256:abc");
   });
 });
+
+describe("copying it", () => {
+  const clipboard = navigator.clipboard;
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { value: clipboard, configurable: true });
+  });
+
+  const withClipboard = (writeText: () => Promise<void>) => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  };
+
+  it("says the copy failed rather than saying nothing", async () => {
+    // The catch was labelled `// Fallback` and had no fallback in it. A refused
+    // clipboard — no permission, an insecure origin — left the button reading
+    // `Copy`, so a person who pressed it and moved on pasted whatever was there
+    // before. The fingerprint is the one value on this card somebody carries
+    // somewhere else to compare against.
+    withClipboard(() => Promise.reject(new Error("denied")));
+    // Inside the provider, which defaults to English: the real `useI18n`
+    // answers outside one with the Korean fallback compiled into the
+    // component, and comparing that against `DICTIONARY.en` compares two
+    // different languages.
+    const { container } = render(
+      <I18nProvider><FingerprintBox fingerprint="sha256:abc123" /></I18nProvider>,
+    );
+    const button = container.querySelector("button")!;
+    await act(async () => { fireEvent.click(button); });
+    expect(container.textContent).toContain(DICTIONARY.en["fp.copyFailed"]!);
+    // And it does not claim success in the same breath.
+    expect(container.textContent).not.toContain(DICTIONARY.en["reg.copied"]!);
+  });
+
+  it("says it copied when the clipboard took it", async () => {
+    withClipboard(() => Promise.resolve());
+    const { container } = render(
+      <I18nProvider><FingerprintBox fingerprint="sha256:abc123" /></I18nProvider>,
+    );
+    await act(async () => { fireEvent.click(container.querySelector("button")!); });
+    expect(container.textContent).toContain(DICTIONARY.en["reg.copied"]!);
+    expect(container.textContent).not.toContain(DICTIONARY.en["fp.copyFailed"]!);
+  });
+});
+
