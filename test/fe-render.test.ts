@@ -2246,6 +2246,62 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * this code already fetches both make these two numbers meet; naming either
    * one here would tie the test to a repair that has not been chosen yet.
    */
+  /**
+   * A message the mesh accepted must leave a receipt on the screen, whatever
+   * the body was.
+   *
+   * `sendMessageApi({ to, text })` sends free text — nothing requires the body
+   * to be JSON, and the field is a textarea a person types into. The receipt
+   * panel then renders `JSON.parse(payloadText || "{}")` **during render**, so
+   * a body the server accepted but `JSON.parse` rejects throws out of the
+   * render and takes the panel with it. The send succeeded; the screen is what
+   * failed.
+   *
+   * The assertion is on what the screen owes after a successful write, not on
+   * where the parse lives. Moving the parse to the submit handler, wrapping it,
+   * or putting the dispatched body on the receipt all satisfy it.
+   */
+  it("[SC-WRITE-17] draws the receipt for a message the mesh accepted, whatever the body was", async () => {
+    await withPage("/creator/playground", async ({ page }) => {
+      const box = page.locator("textarea").first();
+      if ((await box.count()) === 0) {
+        cannotMeasure("SC-WRITE-17", "no payload field on /creator/playground");
+        return;
+      }
+      // **A blank page after the click means nothing unless it was not blank
+      // before.** A crash and a screen that never rendered leave the same
+      // body length, and reading only the second one calls both the same thing.
+      const before = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ").length;
+      if (before <= 200) {
+        cannotMeasure("SC-WRITE-17", `the playground drew ${before} characters before the send, so there is no working screen to break`);
+        return;
+      }
+      // Not JSON. The field accepts it and so does the route.
+      await box.fill("hello");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForTimeout(1500);
+
+      const body = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
+      const errored = /실패|failed|error/i.test(body) && !/보낸 본문|Dispatched/i.test(body);
+      if (errored) {
+        // The mesh refused it. That is a different scenario and this one has
+        // nothing to say about it.
+        cannotMeasure("SC-WRITE-17", "the mesh did not accept the message, so there is no accepted write to check");
+        return;
+      }
+
+      // A receipt panel, and a page still standing. `chars` is the other half:
+      // a fix that renders an empty panel would satisfy the first alone.
+      expect(
+        {
+          drewReceipt: (await page.locator("code, pre").count()) > 0,
+          pageAlive: body.length > 200,
+        },
+        `the mesh accepted the message and the screen drew no receipt (${before} characters before the send, ${body.length} after)`,
+      ).toEqual({ drewReceipt: true, pageAlive: true });
+    });
+  }, 30000);
+
   it("[SC-AUTH-08] leaves the same session whether you type the password or arrive with a cookie", async () => {
     await withUnauthedPage("/login", async ({ page }) => {
       await page.locator("input[type='text'], input[name='username']").first().fill("admin");
