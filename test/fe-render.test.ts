@@ -5166,6 +5166,50 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     console.log(`[SC-I18N-05] ${routes.length} routes · ${drew} drew · ${dataSeen} Korean runs came from the server`);
   }, 90_000);
 
+  /**
+   * SC-I18N-07 — the language menu, opened.
+   *
+   * `SC-I18N-06` reads the source and would have caught the defect that prompted
+   * this. This one opens the menu, because the source check answers *is it
+   * written correctly* and a person asked *what is on my screen*. The two can
+   * disagree — the built bundle, a different code path, a value composed at
+   * runtime — and when they do, the screen is the one that shipped.
+   *
+   * **Nothing in this suite had ever opened this menu.** Four screens' worth of
+   * i18n checks, a dictionary comparison, a source sweep, and the control that
+   * switches the language was drawn by no test at all. That is the whole reason
+   * `✓` sat there in plain sight: the place nobody measures is the place
+   * that breaks.
+   *
+   * Asserted in both directions. *No escape sequence on screen* alone passes on
+   * a menu that draws nothing, so the mark itself is required to be there.
+   */
+  it("[SC-I18N-07] draws the selected language's mark, and no escape sequence, in the language menu", async () => {
+    await withUnauthedPage("/login", async ({ page }) => {
+      const trigger = page.getByTestId("lang-trigger");
+      await trigger.waitFor({ state: "visible", timeout: 10_000 });
+      await trigger.click();
+
+      const menu = page.getByTestId("lang-menu");
+      await menu.waitFor({ state: "visible", timeout: 5_000 });
+      const text = (await menu.textContent()) ?? "";
+
+      // `✓` written into JSX text renders as the six characters `\`,`u`,`2`,
+      // `7`,`1`,`3`. Any escape shape, not just this one, because the next one
+      // will be a different code point.
+      const escapeOnScreen = text.match(/\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})/);
+
+      expect(
+        {
+          escape: escapeOnScreen?.[0] ?? null,
+          bothLanguagesOffered: text.includes("English") && text.includes("한국어"),
+          markDrawn: text.includes("✓"),
+        },
+        "the language menu drew an escape sequence, or stopped drawing the mark that says which language is selected",
+      ).toEqual({ escape: null, bothLanguagesOffered: true, markDrawn: true });
+    });
+  }, 30_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

@@ -2667,6 +2667,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/agents-visibility.test.ts",
     expect: ["a stranger is absent and a correspondent is present", "a group puts its members in each other's list"],
   },
+  {
+    id: "escape-written-as-jsx-text-on-screen",
+    defect:
+      "The same defect, judged by opening the menu rather than by reading the source. Both entries are kept because they answer different questions: the source check says it is written correctly, the browser says what is drawn. Nothing in this suite had ever opened this control \u2014 which is why the defect was visible to a person and to no check.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: ">{\"\\u2713\"}</span>}",
+    to: ">\\u2713</span>}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-I18N-07", "the language menu drew an escape sequence"],
+  },
+  {
+    id: "escape-written-as-jsx-text",
+    defect:
+      "The check mark beside the selected language, written between tags instead of inside a string. TypeScript compiles it, every i18n check stays green, and the menu draws six characters. It shipped that way and a person reading the screen found it \u2014 the file's own idiom is escapes two lines above, which is what makes the one that lost its quotes read as correct.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: ">{\"\\u2713\"}</span>}",
+    to: ">\\u2713</span>}",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-06", "an escape sequence sits where JSX reads text"],
+  },
 ];
 
 /**
@@ -2795,6 +2815,16 @@ if (selected.length === 0) {
 // did not name and the verdict is about a line nobody chose.
 if (argv.includes("--anchors")) {
   const problems: string[] = [];
+  // **`SELF_CHECK` is not this check's denominator**, so a real mutation parked
+  // there is anchored by nothing and raises no count: `234/234` stayed `234/234`
+  // while two live entries sat outside it. That is how a guard goes quiet rather
+  // than loud. A self-check entry declares the failure it expects — by
+  // definition — so one without `expectFailure` is an entry in the wrong array.
+  for (const m of SELF_CHECK) {
+    if (!m.expectFailure) {
+      problems.push(`${m.id}: sits in SELF_CHECK without an \`expectFailure\` — it belongs in MUTATIONS, where anchors are checked`);
+    }
+  }
   for (const m of selected) {
     if (m.retired) continue;
     // `undefined` 로 본다 — **`to: ""` 는 삭제 뮤테이션**이고 정상이다.

@@ -481,7 +481,7 @@ export function LoginPage() {
                   <span style={{ fontSize: "1.05rem", lineHeight: 1 }}>{lang === "en" ? "\u{1F1FA}\u{1F1F8}" : "\u{1F1F0}\u{1F1F7}"}</span>
                   <span>{lang === "en" ? "English" : "\ud55c\uad6d\uc5b4"}</span>
                 </span>
-                {language === lang && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>\u2713</span>}
+                {language === lang && <span style={{ fontSize: "0.8rem", fontWeight: 800 }}>{"\u2713"}</span>}
               </button>
             ))}
           </div>

@@ -834,6 +834,109 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     ).toEqual({ total: Math.min(total, RATCHET), ratchet: RATCHET });
   });
 
+  /**
+   * SC-I18N-06 — an escape sequence written where JSX expects text.
+   *
+   * `\u2713` inside a string literal is a check mark; the same eight characters
+   * between two JSX tags are eight characters. TypeScript compiles both, the
+   * dictionary checks have nothing to say about either, and the screen draws
+   * `\u2713` next to the selected language. It shipped that way, and the person
+   * who found it was looking at the product — not at any check here.
+   *
+   * The neighbouring lines of that same file get it right (`{lang === "en" ?
+   * "\u{1F1FA}\u{1F1F8}" : …}`), which is why it reads as correct: the file's own
+   * idiom is escapes, and one of them lost its quotes.
+   *
+   * ## Why this cannot be a regex over the file
+   *
+   * The two cases are the same eight characters. Only the surrounding context —
+   * inside a string, inside a comment, or neither — separates a check mark from
+   * a defect, so the scan has to know where strings and comments end. `SC-I18N-04`
+   * learned this when `"/api/v1/*"` opened a block comment and took 113 lines out
+   * of its denominator; this one blanks strings as well, because here it is the
+   * *string* that is innocent.
+   */
+  it("[SC-I18N-06] writes escape sequences where they are read as escapes, not as text", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const ROOT = "packages/platform-web/src";
+
+    // Blanks comments **and** string bodies. What survives is code and JSX text,
+    // and an escape sequence is a syntax error in code — so anything left is text.
+    const blankStringsAndComments = (src: string): string => {
+      let out = "";
+      let i = 0;
+      while (i < src.length) {
+        const two = src.slice(i, i + 2);
+        if (two === "//") {
+          while (i < src.length && src[i] !== "\n") { out += " "; i++; }
+          continue;
+        }
+        if (two === "/*") {
+          while (i < src.length && src.slice(i, i + 2) !== "*/") { out += src[i] === "\n" ? "\n" : " "; i++; }
+          out += "  ";
+          i += 2;
+          continue;
+        }
+        const c = src[i]!;
+        if (c === '"' || c === "'" || c === "`") {
+          out += " ";
+          i++;
+          while (i < src.length) {
+            if (src[i] === "\\") { out += "  "; i += 2; continue; }
+            const done = src[i] === c;
+            out += src[i] === "\n" ? "\n" : " ";
+            i++;
+            if (done) break;
+          }
+          continue;
+        }
+        out += c;
+        i++;
+      }
+      return out;
+    };
+
+    // **The guard's own guard, both directions.** A blanker that returns its
+    // input passes the second half; one that blanks everything passes the first.
+    const SAMPLE = 'const a = "\\u2713";\nconst b = <span>\\u2713</span>;\n// \\u2713\n/* \\u2713 */\nconst d = <b>kept</b>;\n';
+    const blanked = SAMPLE.split("\n").map((l) => blankStringsAndComments(l));
+    expect(
+      {
+        insideStringGone: !/\\u2713/.test(blanked[0]!),
+        jsxTextKept: /\\u2713/.test(blanked[1]!),
+        lineCommentGone: !/\\u2713/.test(blanked[2]!),
+        blockCommentGone: !/\\u2713/.test(blanked[3]!),
+        codeSurvives: /kept/.test(blanked[4]!),
+      },
+      "the blanker cannot tell an escape in a string from one in JSX text",
+    ).toEqual({
+      insideStringGone: true,
+      jsxTextKept: true,
+      lineCommentGone: true,
+      blockCommentGone: true,
+      codeSurvives: true,
+    });
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    const ESCAPE = /\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2})/;
+    const offenders: string[] = [];
+    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f));
+    for (const file of sources) {
+      const blankedSrc = blankStringsAndComments(readFileSync(file, "utf8"));
+      blankedSrc.split("\n").forEach((line, i) => {
+        const hit = line.match(ESCAPE);
+        if (hit) offenders.push(`${file}:${i + 1}: ${hit[0]} is text here, not an escape`);
+      });
+    }
+    expect(offenders, "an escape sequence sits where JSX reads text").toEqual([]);
+    console.log(`[SC-I18N-06] ${sources.length} sources scanned`);
+  });
+
+
   it("[SC-USER-B1] hands over a temporary password once, and never again", async () => {
     const admin = await adminCookie();
     const created = await admit(admin, "b1-alice", { display_name: "Alice" });
