@@ -2682,6 +2682,40 @@ if (selected.length === 0) {
   process.exit(2);
 }
 
+// **`--anchors`: does every entry still point at something?**
+//
+// An entry whose `from` no longer appears is a check that has quietly stopped
+// existing. The tool already says so — but only for the entry somebody ran, and
+// a full pass is one suite per entry, which is hours. This reads the manifest
+// against the tree and answers in a second.
+//
+// It lives here rather than in a script beside it because the manifest is the
+// data: agent-mesh-local-pm wrote an outside scanner first and it misread the
+// entries whose `from` spans lines, reporting live anchors as dead. A parser of
+// somebody else's syntax is a second thing to be wrong about.
+//
+// Two failures, not one. An anchor matching **twice** is worse than none:
+// `String.replace` takes the first, so the mutation lands somewhere the entry
+// did not name and the verdict is about a line nobody chose.
+if (argv.includes("--anchors")) {
+  const problems: string[] = [];
+  for (const m of selected) {
+    let text: string;
+    try {
+      text = await Bun.file(m.file).text();
+    } catch {
+      problems.push(`${m.id}: ${m.file} could not be read`);
+      continue;
+    }
+    const hits = text.split(m.from).length - 1;
+    if (hits === 0) problems.push(`${m.id}: its \`from\` is not in ${m.file} — this entry checks nothing`);
+    else if (hits > 1) problems.push(`${m.id}: its \`from\` appears ${hits} times in ${m.file} — replace takes the first`);
+  }
+  console.log(`${selected.length - problems.length}/${selected.length} anchors point at exactly one place`);
+  for (const p of problems) console.error(`✗ ${p}`);
+  process.exit(problems.length ? 1 : 0);
+}
+
 // A run inside another mutation measures a baseline somebody else moved, and
 // `git checkout --` then restores to *their* mutation rather than to the
 // original. A marker rather than a process-name check: it holds however the
