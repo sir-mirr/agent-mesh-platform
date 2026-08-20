@@ -38,3 +38,28 @@ export async function admitLocalUserApi(username: string, displayName?: string):
     body: JSON.stringify({ username, display_name: displayName || undefined }),
   });
 }
+
+/**
+ * People who asked to be let in and have not been decided on.
+ *
+ * This is a **different queue** from the key requests the bell draws. Both
+ * routes answered `{ pending: [...] }` one path segment apart, and until this
+ * function existed nothing in this front end asked for this one at all — an
+ * operator standing on these screens could not see that anybody was waiting.
+ * The server-rendered `/admin` page was the only surface that did.
+ *
+ * `D-689` moves this route to `{ users }`; `users` is read first, ahead of the
+ * name in use today, so the rename lands without a window where this draws
+ * nothing. The older branch comes out once the route has moved.
+ */
+export interface PendingAdmission {
+  github_login: string;
+  github_id?: number;
+  requested_at?: string;
+  status?: string;
+}
+
+export async function fetchPendingAdmissions(): Promise<PendingAdmission[]> {
+  const data = await apiClient<any>("/api/v1/admin/pending");
+  return Array.isArray(data) ? data : data.users ?? data.pending ?? [];
+}

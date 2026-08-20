@@ -2707,6 +2707,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/http.test.ts",
     expect: ["can be given a new temporary password, which puts them back at the gate"],
   },
+  {
+    id: "unread-queue-drawn-as-empty",
+    defect:
+      "The admission queue's failure branch keeping `[]` instead of `null`. Every failure — a refused capability, a proxy answering 502, a backend that is gone — then draws *Nobody is waiting*, which is a claim the screen is in no position to make. This is the shape the four states exist for, and the reason this queue was worth drawing at all: nothing in this front end asked for it, and silence read exactly like an empty queue.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: "      setQueue(null);",
+    to: "      setQueue([]);",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-QUEUE-01", "folded `nobody is waiting` together with `I could not ask`"],
+  },
 ];
 
 /**

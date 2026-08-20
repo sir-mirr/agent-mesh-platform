@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchLocalUsers, admitLocalUserApi, type LocalUser } from "@/api/users.ts";
+import { fetchLocalUsers, admitLocalUserApi, fetchPendingAdmissions, type LocalUser, type PendingAdmission } from "@/api/users.ts";
 import { ApiError, failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 
 /**
@@ -30,6 +30,17 @@ export function UserAdminPage() {
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  /**
+   * The other decision queue. Four states, not two: a list, an empty list, a
+   * refusal, and a read that did not happen. `[]` and *could not ask* are the
+   * pair this screen must never fold together — the empty one is a claim that
+   * nobody is waiting, and this front end asked for this queue nowhere at all
+   * until now, which is the same claim made silently.
+   */
+  const [queue, setQueue] = useState<PendingAdmission[] | null>(null);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueFailure, setQueueFailure] = useState<FailureKind | null>(null);
+  const [queueMissing, setQueueMissing] = useState<string | null>(null);
 
   const load = async () => {
     setIsLoading(true);
@@ -48,8 +59,25 @@ export function UserAdminPage() {
     }
   };
 
+  const loadQueue = async () => {
+    setQueueLoading(true);
+    try {
+      setQueue(await fetchPendingAdmissions());
+      setQueueFailure(null);
+      setQueueMissing(null);
+    } catch (err: unknown) {
+      // Not `[]`. A queue that could not be read is not a queue with nobody in it.
+      setQueue(null);
+      setQueueFailure(failureKind(err));
+      setQueueMissing(refusedCapability(err));
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
   useEffect(() => {
     void load();
+    void loadQueue();
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -225,6 +253,52 @@ export function UserAdminPage() {
           </span>
         </div>
       )}
+
+      <section
+        data-testid="admission-queue"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: 16,
+          border: "1px solid var(--color-border)",
+          borderRadius: 8,
+        }}
+      >
+        <strong>{t("users.queue.title", "People who asked to be let in")}</strong>
+        <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+          {t("users.queue.hint", "A different queue from the key requests. The bell does not show anyone here.")}
+        </span>
+
+        {queueLoading ? (
+          <span data-testid="admission-queue-loading">{t("users.queue.loading", "Reading the queue…")}</span>
+        ) : queueFailure === "refused" ? (
+          <span data-testid="admission-queue-refused">{refusedText(t, queueMissing)}</span>
+        ) : queue === null ? (
+          <span data-testid="admission-queue-unreachable">
+            {t("users.queue.unreachable", "The queue could not be read — which is not the same as empty.")}
+          </span>
+        ) : queue.length === 0 ? (
+          <span data-testid="admission-queue-empty">{t("users.queue.empty", "Nobody is waiting.")}</span>
+        ) : (
+          <ul data-testid="admission-queue-list" style={{ margin: 0, paddingLeft: 18 }}>
+            {queue.map((p) => (
+              <li key={p.github_login} data-testid={`admission-row-${p.github_login}`}>
+                {p.github_login}
+                {p.requested_at ? <span style={{ color: "var(--color-text-muted)" }}> · {p.requested_at}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Read-only here on purpose: this commit closes the blindness, not the
+            acting. The routes that decide (`admin/approve`, `admin/deny`) are
+            already driven by the server-rendered admin page, and putting a
+            second actor on them is its own change. */}
+        <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+          {t("users.queue.decide", "Decisions are made on the server-rendered admin page.")}
+        </span>
+      </section>
 
       <DataTable
         columns={columns}

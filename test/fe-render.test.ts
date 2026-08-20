@@ -5210,6 +5210,72 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30_000);
 
+  /**
+   * SC-QUEUE-01 — the other decision queue, and the difference between empty
+   * and unread.
+   *
+   * There are two queues. `GET /api/v1/admin/keys/pending` holds key requests
+   * and the bell draws it. `GET /api/v1/admin/pending` holds people waiting to
+   * be admitted, and **until the commit this scenario arrives with, nothing in
+   * this front end asked for it** — an operator on these screens could not see
+   * that anybody was waiting, and nothing said so. The server-rendered `/admin`
+   * page was the only surface that had it.
+   *
+   * Both halves, because one of them alone passes on the wrong screen:
+   *
+   *   the route answers `[]`   the screen must say **nobody is waiting**
+   *   the route cannot answer  the screen must say **it could not be read**
+   *
+   * Assert only the first and a screen that folds every failure into "empty"
+   * passes. Assert only the second and a screen that never manages to read
+   * anything passes. The pair is the check; either one alone is a decoration.
+   */
+  it("[SC-QUEUE-01] tells an empty admission queue apart from one it could not read", async () => {
+    const read = async (routeAnswers: boolean) => {
+      const { page, context } = await createAuthedPage("/platform/users");
+      try {
+        if (!routeAnswers) {
+          // A deployment's backend dies behind a live proxy: the request is
+          // answered, and what comes back is not the queue.
+          await page.route("**/api/v1/admin/pending", (route) =>
+            route.fulfill({ status: 502, contentType: "text/html", body: "<html>bad gateway</html>" }),
+          );
+        }
+        await page.reload({ waitUntil: "networkidle" });
+        await settled(page);
+        const section = page.getByTestId("admission-queue");
+        await section.waitFor({ state: "visible", timeout: 10_000 });
+        const present = async (id: string) => (await page.getByTestId(id).count()) > 0;
+        return {
+          empty: await present("admission-queue-empty"),
+          unreachable: await present("admission-queue-unreachable"),
+          refused: await present("admission-queue-refused"),
+          list: await present("admission-queue-list"),
+        };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const answered = await read(true);
+    const notAnswered = await read(false);
+
+    expect(
+      {
+        answered_says_empty: answered.empty,
+        answered_does_not_claim_unreadable: !answered.unreachable,
+        unanswered_says_unreadable: notAnswered.unreachable,
+        unanswered_does_not_claim_empty: !notAnswered.empty,
+      },
+      "the admission queue folded `nobody is waiting` together with `I could not ask`",
+    ).toEqual({
+      answered_says_empty: true,
+      answered_does_not_claim_unreadable: true,
+      unanswered_says_unreadable: true,
+      unanswered_does_not_claim_empty: true,
+    });
+  }, 60_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();
