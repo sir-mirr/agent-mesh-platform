@@ -655,15 +655,61 @@ export function mustChangePassword(username: string): boolean {
  * screen and cannot do anything else first — the same gate the seeded admin
  * passes through, not a second path beside it.
  */
+/**
+ * A password nobody chose, handed over once.
+ *
+ * 24 bytes of randomness, base64url. Long enough that guessing it is not the
+ * way in, short enough to read out loud once.
+ *
+ * Shared by admission and reissue so the two cannot drift into handing out
+ * different strengths of secret for the same purpose.
+ */
+function newTemporaryPassword(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('base64url')
+}
+
+/**
+ * Give an existing account a new temporary password and put it back behind the
+ * first-login gate.
+ *
+ * **The gap this fills:** admission is the only thing that ever issued a
+ * password, and it refuses a name that already exists with `409`. So an account
+ * whose holder forgot their password had no route at all — measured as
+ * `재발급 409` while walking an account through its whole first day.
+ *
+ * `must_change_password` goes back to 1, which is the point: an operator who
+ * reads a password out loud must not be handing over a permanent one. The
+ * value is returned once and never readable again, exactly as at admission.
+ *
+ * Named `issue` rather than `reissue` because `naming.test.ts` reads the first
+ * word to decide whether a function admits to writing, and its comment says not
+ * to widen that list — a verb added there silently accepts every future name
+ * beginning the same way. The guard caught this function within minutes of it
+ * existing, which is the argument for keeping the list narrow.
+ *
+ * Returns `null` when there is no such account. That is a different absence
+ * from admission's `409` — one refuses to overwrite somebody, the other has
+ * nobody to act on — and the routes answer differently for that reason.
+ */
+export async function issueTemporaryPassword(username: string): Promise<string | null> {
+  const db = getDb()
+  const existing = db.prepare('SELECT username FROM local_users WHERE username = ?').get(username)
+  if (!existing) return null
+
+  const temporaryPassword = newTemporaryPassword()
+  const hash = await Bun.password.hash(temporaryPassword, { algorithm: 'bcrypt' })
+  db.prepare('UPDATE local_users SET password_hash = ?, must_change_password = 1 WHERE username = ?')
+    .run(hash, username)
+  return temporaryPassword
+}
+
 export async function admitLocalUser(input: {
   username: string
   displayName?: string
   tenant?: string
   role?: string
 }): Promise<{ user: DbLocalUser; temporaryPassword: string }> {
-  // 24 bytes of randomness, base64url. Long enough that guessing it is not the
-  // way in, short enough to read out loud once.
-  const temporaryPassword = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString('base64url')
+  const temporaryPassword = newTemporaryPassword()
   const hash = await Bun.password.hash(temporaryPassword, { algorithm: 'bcrypt' })
 
   const db = getDb()

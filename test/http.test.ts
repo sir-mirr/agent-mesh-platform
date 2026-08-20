@@ -211,6 +211,17 @@ describe("a session that must change its password", () => {
 });
 
 describe("admitting a person", () => {
+  /** The cookie a sign-in produced, or "" when it was refused. */
+  const signInAs = async (username: string, password: string): Promise<string> => {
+    const res = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      redirect: "manual",
+    });
+    return (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  };
+
   const admit = (body: unknown, cookie = adminCookie) =>
     fetch(`${mesh.http.url}/api/v1/admin/users`, {
       method: "POST",
@@ -311,6 +322,56 @@ describe("admitting a person", () => {
 
     const res = await get("/api/v1/agents", cookie);
     expect(res.status, `still refused after the change: ${await res.text()}`).toBe(200);
+  });
+
+  test("can be given a new temporary password, which puts them back at the gate", async () => {
+    // The gap admission left: it is the only thing that ever issued a password
+    // and it answers 409 to a name that exists, so an account whose holder
+    // forgot theirs had no route. Measured as `재발급 409` by
+    // `agent-mesh-local-pm` walking an account through its first day.
+    const created = await admit({ username: "forgot-it" });
+    const first = (await created.json()) as { temporary_password: string };
+    expect(created.status, JSON.stringify(first)).toBe(201);
+
+    // Leave the gate the ordinary way, so the reissue has something to undo.
+    const firstCookie = await signInAs("forgot-it", first.temporary_password);
+    await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: firstCookie },
+      body: JSON.stringify({ current: first.temporary_password, next: "chosen-by-them" }),
+    });
+    expect(await signInAs("forgot-it", "chosen-by-them"), "the chosen password does not work").toStartWith("mesh_token=");
+
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/users/forgot-it/password`, {
+      method: "POST",
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    const reissued = (await res.json()) as { temporary_password: string; must_change_password: boolean };
+    expect(reissued.temporary_password, "no password was handed back").toBeTypeOf("string");
+    expect(reissued.temporary_password).not.toBe(first.temporary_password);
+    expect(reissued.must_change_password, "the reissue left them able to keep the operator's password").toBe(true);
+
+    // Three things, and the middle one is the reason the other two are not
+    // enough on their own: a route that changed nothing would leave the chosen
+    // password working, and one that only cleared the password would leave
+    // nobody able to sign in at all.
+    expect(await signInAs("forgot-it", "chosen-by-them"), "the old password still works after a reissue").toBe("");
+    const back = await signInAs("forgot-it", reissued.temporary_password);
+    expect(back, "the reissued password does not sign in").toStartWith("mesh_token=");
+    expect((await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie: back } })).json() as any).error,
+      "the reissue did not put them back behind the gate").toContain("must change its password");
+  });
+
+  test("answers 404 for a name with no local account, not 409", async () => {
+    // Admission refuses because somebody is already there; this refuses because
+    // nobody is. Answering both the same way sends an operator looking for the
+    // wrong thing.
+    const res = await fetch(`${mesh.http.url}/api/v1/admin/users/nobody-by-that-name/password`, {
+      method: "POST",
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status).toBe(404);
   });
 
   test("refuses a name that is already taken, rather than replacing them", async () => {

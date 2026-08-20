@@ -2687,6 +2687,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["SC-I18N-06", "an escape sequence sits where JSX reads text"],
   },
+  {
+    id: "reissue-actually-replaces-the-password",
+    defect:
+      "Admission is the only thing that ever issued a password and it answers 409 to a name that exists, so an account whose holder forgot theirs had no route — `agent-mesh-local-pm` measured the reissue as 409 while walking an account through its first day. This mutation returns a fresh string and writes nothing, which is the shape a reissue fails in: the operator reads out a password that was never stored and the old one still works.",
+    file: "packages/http/src/db.ts",
+    from: "  db.prepare('UPDATE local_users SET password_hash = ?, must_change_password = 1 WHERE username = ?')",
+    to: "  db.prepare('SELECT ? AS ignored WHERE ? IS NOT NULL')",
+    suite: "test/http.test.ts",
+    expect: ["can be given a new temporary password, which puts them back at the gate"],
+  },
+  {
+    id: "reissue-puts-them-back-behind-the-gate",
+    defect:
+      "The other half: a reissue that leaves `must_change_password` at 0 hands the holder a password an operator has read out loud and lets them keep it. Everything else about the route still looks right — the old password stops working, the new one signs in — so only an assertion about the gate catches it.",
+    file: "packages/http/src/db.ts",
+    from: "must_change_password = 1 WHERE username = ?",
+    to: "must_change_password = 0 WHERE username = ?",
+    suite: "test/http.test.ts",
+    expect: ["can be given a new temporary password, which puts them back at the gate"],
+  },
 ];
 
 /**

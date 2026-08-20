@@ -61,7 +61,7 @@ import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { readPushFailure } from './push'
-import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -2621,6 +2621,36 @@ app.post('/api/v1/admin/users', async (c) => {
     },
     201,
   )
+})
+
+/**
+ * Hand an existing account a new temporary password.
+ *
+ * **Admission was the only thing that ever issued one**, and it answers `409`
+ * to a name that already exists — so an account whose holder forgot their
+ * password had no route at all. `agent-mesh-local-pm` found it by walking a new
+ * account through its whole first day and measuring the reissue as `409`.
+ *
+ * `404` rather than `409` when the name is unknown: admission refuses because
+ * somebody is already there, this refuses because nobody is. Two different
+ * absences, and answering them the same way would tell an operator to look for
+ * the wrong thing.
+ *
+ * The account goes back behind the first-login gate. An operator reading a
+ * password out loud is handing over a way in for one login, not a password.
+ */
+app.post('/api/v1/admin/users/:username/password', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+
+  const username = c.req.param('username')
+  const temporary = await issueTemporaryPassword(username)
+  if (temporary === null) {
+    return c.json({ ok: false, error: `no local account named '${username}'` }, 404)
+  }
+
+  console.log(`[http-server] ${actor} reissued a temporary password for ${username}`)
+  return c.json({ ok: true, username, temporary_password: temporary, must_change_password: true }, 200)
 })
 
 /** Who has a local account. Never any password material — see the route above. */
