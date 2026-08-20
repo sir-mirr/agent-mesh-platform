@@ -8,6 +8,14 @@ the peek route was cut before it was written, and the operator half moved to
 `agent-mesh-http`. The second is what resolved the `GET`/`POST` argument, so
 the reasoning is worth keeping even though the route table now lives in SPEC.
 
+**A third thing changed and is not recorded below: the name.** The routes
+shipped as `/api/v1/admin/mailbox` and `/api/v1/admin/mailbox/{identity}`;
+`inbox` below is what was proposed, and calling it returns `404`. The route
+names in this file are left as written — a proposal is the record of what was
+proposed — but nothing else should quote them. `agent-mesh-local-pm` found five
+documents doing exactly that, ten references between them, all now corrected
+against SPEC § 9.1's table.
+
 ## The problem
 
 An agent that cannot hold a socket already reaches the mesh: `POST /api/v1/rpc`

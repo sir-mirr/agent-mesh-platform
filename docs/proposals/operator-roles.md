@@ -59,7 +59,7 @@ Three rules follow from the split:
 ## Rule 2 is about content, and content is currently inside the event
 
 The distinction already exists one layer up and is worth reusing rather than
-reinventing. `GET /api/v1/admin/inbox` reports depth and withholds bodies, on
+reinventing. `GET /api/v1/admin/mailbox` reports depth and withholds bodies, on
 the reasoning that **seeing that someone has mail is a different authorisation
 question from reading it.** Rule 2 is that same line drawn through the audit
 trail.

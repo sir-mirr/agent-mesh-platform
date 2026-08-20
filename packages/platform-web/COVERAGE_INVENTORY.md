@@ -95,7 +95,7 @@
 - **화면 ID**: `SCR-02`
 - **라우트**: `/dashboard`
 - **권한 요건**: 역할별 4개 뷰 자동 분기 (Platform Admin / Tenant Admin / Group Admin / Operator)
-- **데이터 소스**: `/api/v1/admin/ai-usage`, `/api/v1/agents`, `/api/v1/admin/mailbox`, `/api/v1/groups`
+- **데이터 소스**: `/api/v1/admin/ai-usage`, `/api/v1/agents`, `/api/v1/admin/mailbox`, `/api/v1/admin/groups`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -123,7 +123,7 @@
 - **화면 ID**: `SCR-04`
 - **라우트**: `/creator/groups`
 - **권한 요건**: `group.manage`
-- **데이터 소스**: `GET /api/v1/groups`, `POST /api/v1/groups`, `PUT /api/v1/groups/:id/members`
+- **데이터 소스**: `GET /api/v1/admin/groups`, `POST /api/v1/admin/groups`, `PUT /api/v1/admin/groups/{group_id}/members`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -138,7 +138,7 @@
 - **화면 ID**: `SCR-05`
 - **라우트**: `/creator/topology`
 - **권한 요건**: Operator 이상
-- **데이터 소스**: `GET /api/v1/groups`, `GET /api/v1/agents`
+- **데이터 소스**: `GET /api/v1/admin/groups`, `GET /api/v1/agents`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -236,7 +236,7 @@
 - **화면 ID**: `SCR-11`
 - **라우트**: `/platform/tenants`
 - **권한 요건**: Platform Admin
-- **데이터 소스**: `GET /api/v1/groups` (신규 T-142 확장 연동)
+- **데이터 소스**: `GET /api/v1/admin/groups` (신규 T-142 확장 연동)
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -248,7 +248,7 @@
 - **화면 ID**: `SCR-12`
 - **라우트**: `/tenant/egress-acl`
 - **권한 요건**: `group.manage` — 라우트 가드가 요구하는 것입니다. (`policy.send_restrict` 는 계약에 없는 이름이었습니다.)
-- **데이터 소스**: `GET /api/v1/groups`, `PUT /api/v1/groups/:id/egress`
+- **데이터 소스**: `GET /api/v1/admin/groups`, `PUT /api/v1/admin/groups/{group_id}/egress`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|
@@ -262,7 +262,7 @@
 - **화면 ID**: `SCR-13`
 - **라우트**: `/tenant/audits`
 - **권한 요건**: `audit.read.metadata` (메타데이터), `audit.read.content` (본문 열람)
-- **데이터 소스**: `GET /api/v1/admin/audit-events`
+- **데이터 소스**: `GET /api/v1/audit/events`
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|

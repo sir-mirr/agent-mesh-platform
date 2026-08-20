@@ -201,21 +201,21 @@ Signing with the wrong preimage fails as a bad signature, which reads like a
 key problem and is not.
 
 ```
-POST   /api/v1/inbox                take delivery, settle the previous batch
-POST   /api/v1/outbox               send
-GET    /api/v1/outbox               what is still recallable
-DELETE /api/v1/outbox/{id}          withdraw one
-GET    /api/v1/inbox/history?peer=  conversation
+POST   /api/v1/mailbox/in                take delivery, settle the previous batch
+POST   /api/v1/mailbox/out               send
+GET    /api/v1/mailbox/out               what is still recallable
+DELETE /api/v1/mailbox/out/{message_id}          withdraw one
+GET    /api/v1/mailbox/history?peer=  conversation
 GET    /api/v1/capabilities         unsigned
 ```
 
 Three things bite in scenarios:
 
 **The preimage covers the query string.** A signature built over
-`/api/v1/inbox/history` will not verify a request to
-`/api/v1/inbox/history?peer=b`.
+`/api/v1/mailbox/history` will not verify a request to
+`/api/v1/mailbox/history?peer=b`.
 
-**`POST /api/v1/inbox` is not idempotent.** It leases. A scenario that retries
+**`POST /api/v1/mailbox/in` is not idempotent.** It leases. A scenario that retries
 it after a timeout gets an empty second batch, not the same one — the first
 call's messages are held until acknowledged or the lease lapses.
 

@@ -25,8 +25,8 @@ graph TD
         R_Approve["POST /api/v1/admin/keys/approve"]
         R_Deny["POST /api/v1/admin/keys/deny"]
         R_Revoke["POST /api/v1/admin/keys/revoke"]
-        R_InboxAdmin["GET /api/v1/admin/inbox"]
-        R_InboxAgent["GET /api/v1/admin/inbox/:identity"]
+        R_InboxAdmin["GET /api/v1/admin/mailbox"]
+        R_InboxAgent["GET /api/v1/admin/mailbox/:identity"]
         R_Teardown["DELETE /api/v1/admin/agents/:identity"]
         R_Audit["GET /api/v1/audit/events"]
         R_Msg["POST /api/v1/messages"]
@@ -49,7 +49,7 @@ graph TD
 | 기능 ID | 기능명 | 운영자가 **봐야 하는 것 (SEE)** | 운영자가 **해야 하는 것 (DO)** | 실측 엔드포인트 & 페이로드 |
 | :--- | :--- | :--- | :--- | :--- |
 | **F-ADM-01** | **암호학적 키 승인 및 거버넌스** | • 전체 에이전트의 승인 대기(`pending`) 키 목록<br>• **50자리 SHA-256 지문 전체** (`sha256:...`, 50자)<br>• 키 제안 시각(`proposed_at`), 공개키(`public_key`)<br>• 거부/취소 사유 및 `compromise` 위험 상태 배지 | • 50자리 지문 원클릭 복사<br>• 지문 기준 원자적 승인<br>• 사유 명시 거부/취소 (프리셋 선택 + 자유 텍스트 직접 입력) | `GET /api/v1/admin/keys/pending`<br>`POST /api/v1/admin/keys/approve` `{ fingerprint }`<br>`POST /api/v1/admin/keys/deny` `{ fingerprint, reason? }`<br>`POST /api/v1/admin/keys/revoke` `{ fingerprint, reason }` |
-| **F-ADM-02** | **인박스 적체 및 임대 감시** | • 에이전트별 인박스 메트릭<br>• **`Total Depth (pending)` vs `Leased (leased)` vs `Available (pending - leased)`**<br>• `capabilities`의 `receive_lease_seconds` 기반 임대 시효 만료 안내<br>• 개별 메시지 메타데이터 (`id`, `from`, `ts`, `size`, `leased`) | • `readonly` 인박스 메트릭 조회 (임대 미발생 보증)<br>• **접근 분리 원칙**: 큐 조회 시 메시지 본문 미노출 확인 | `GET /api/v1/admin/inbox`<br>`GET /api/v1/admin/inbox/:identity`<br>`GET /api/v1/capabilities` |
+| **F-ADM-02** | **인박스 적체 및 임대 감시** | • 에이전트별 인박스 메트릭<br>• **`Total Depth (pending)` vs `Leased (leased)` vs `Available (pending - leased)`**<br>• `capabilities`의 `receive_lease_seconds` 기반 임대 시효 만료 안내<br>• 개별 메시지 메타데이터 (`id`, `from`, `ts`, `size`, `leased`) | • `readonly` 인박스 메트릭 조회 (임대 미발생 보증)<br>• **접근 분리 원칙**: 큐 조회 시 메시지 본문 미노출 확인 | `GET /api/v1/admin/mailbox`<br>`GET /api/v1/admin/mailbox/:identity`<br>`GET /api/v1/capabilities` |
 | **F-ADM-03** | **실시간 불변 감사 포렌식** | • 실시간 감사 이벤트 스트림 (`GET /api/v1/audit/events`)<br>• 발신 주체 분리 표기 (**`from: alice_dev`, `sent_by: http-server` vs 에이전트 Ed25519 서명**)<br>• 메시지 시퀀스 ID, 타임스탬프, 첨부 블롭 해시 | • 송수신 에이전트별 / 시간대별 필터링<br>• 커서 기반 페이지네이션 (`next_cursor`) 및 블롭 해시 대조 | `GET /api/v1/audit/events?limit=50&cursor=...` |
 | **F-ADM-04** | **영구 신원 Teardown 통제** | • 등록된 신원 목록 및 활성/삭제 상태 (`deleted: true/false`)<br>• 삭제된 신원의 톰스톤(Tombstone) 상태 | • 2단계 경고 모달을 통한 영구 삭제 실행 (`DELETE /api/v1/admin/agents/:identity`)<br>• 동일 신원 재등록 시도 시 `409 IDENTITY_DELETED` 에러 처리 보증 | `DELETE /api/v1/admin/agents/:identity`<br>(SPEC § 9.3 관리자 세션 필수) |
 | **F-ADM-05** | **허브 메타데이터 & 헬스체크** | • `capabilities` 메타데이터 (`surface.version: 3`)<br>• WebSocket 온라인 에이전트 수 (`online_agents`)<br>• 지원 스펙 버전 (`agent_mesh_spec: "0.2"`) | • 허브 무서명 헬스체크 및 실시간 온라인 상태 모니터링 | `GET /api/v1/capabilities`<br>`GET /health` |
@@ -62,7 +62,7 @@ graph TD
 | :--- | :--- | :--- | :--- | :--- |
 | **F-OPR-01** | **에이전트 신원 등록 및 키 제안/로테이션** | • 내가 소유한 등록 에이전트 목록<br>• 등록된 공개키 50자리 지문 및 승인/대기/취소 상태<br>• **3대 409 충돌 에러 안내 메시지** (`IDENTITY_EXISTS`, `IDENTITY_DELETED`, `KEY_HELD_BY_ANOTHER_IDENTITY`) | • 외부 에이전트 신원 신규 등록 및 최초 공개키 제안<br>• `POST /api/v1/agents` 후 반드시 `GET /api/v1/agents/{id}/keys`로 실제 소유 키 검증<br>• 타 신원 키 충돌 시 안내 렌더링 | `POST /api/v1/agents`<br>`{ identity, type, public_key }`<br>`GET /api/v1/agents/:identity/keys` |
 | **F-OPR-02** | **콘솔 메시지 테스트 (Playground)** | • 메시지 수신 가능한 활성/승인 에이전트 디렉토리<br>• 페이로드 편집기 (JSON/Text) 및 블롭 첨부 UI<br>• **즉각 배달 영수증** (`Delivered to WebSocket` / `Queued in Inbox #seq`) | • 콘솔 운영자 신원(`alice_dev`, via `http-server` 프록시)으로 테스트 메시지 전송<br>• 전송 레이턴시 및 배달 영수증 확인 | `POST /api/v1/messages`<br>`{ to, body }` (JWT 인증) |
-| **F-OPR-03** | **에이전트 인박스 메타데이터 감시** | • 내 에이전트의 인박스 적체 메타데이터 (`Total Depth`, `Leased`, `Available`)<br>• 메시지 발신자(`from`), 수신 시각(`ts`), 페이로드 크기(`size`) | • `readonly` 인박스 상태 모니터링 (실제 메시지 수신/임대는 실제 에이전트 프로세스가 수행) | `GET /api/v1/admin/inbox/:identity` |
+| **F-OPR-03** | **에이전트 인박스 메타데이터 감시** | • 내 에이전트의 인박스 적체 메타데이터 (`Total Depth`, `Leased`, `Available`)<br>• 메시지 발신자(`from`), 수신 시각(`ts`), 페이로드 크기(`size`) | • `readonly` 인박스 상태 모니터링 (실제 메시지 수신/임대는 실제 에이전트 프로세스가 수행) | `GET /api/v1/admin/mailbox/:identity` |
 | **F-OPR-04** | **원형 오비탈 토폴로지 & 선택적 통신 채널 제어 (ACL)** | • **원형 오비탈 클러스터** (`Core Platform`, `Research Swarm`, `Delivery Mesh`)<br>• **노드와 엣지(Edge)로 명시된 실제 상호 통신 연결선** (소통 허용 vs 제한된 노드)<br>• **그룹 간 게이트웨이 브릿지 노드 (🌐) 및 고속 라우팅 브릿지**<br>• 소통 허용 피어 목록 및 라우팅 상태 | • 원형 클러스터별 필터링<br>• 노드 클릭 시 통신 허용 엣지 및 연결 피어 하이라이트<br>• **[⚙ 통신 채널 권한 설정 (ACL)]**: 특정 에이전트 간 엣지 동적 활성화/제한<br>• **[💬 메시지 테스트] 원클릭 전송 연동** | `GET /api/v1/agents`<br>`GET /api/v1/capabilities`<br>`GET /health` |
 
 ---
@@ -149,7 +149,7 @@ sequenceDiagram
     participant DB as Message Store (hub.db, Readonly)
 
     Admin->>UI: [Inbox Backlog] 탭 선택
-    UI->>HTTP: GET /api/v1/admin/inbox (Readonly, with mesh_token)
+    UI->>HTTP: GET /api/v1/admin/mailbox (Readonly, with mesh_token)
     HTTP->>DB: SELECT inboxes (pending, leased, oldest) WHERE leased_until >= datetime('now')
     DB-->>HTTP: { ok: true, inboxes: [{ identity: "demo-receiver", pending: 5, leased: 0, oldest: "..." }] }
     HTTP-->>UI: 200 OK

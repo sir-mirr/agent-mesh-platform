@@ -1930,7 +1930,7 @@ The identity is the signature's. No route takes it as a parameter: a
 separately-claimed identity is a second assertion able to disagree with
 the first (§ 8.10).
 
-**`POST /api/v1/inbox` is a POST because it acts.** It leases a batch,
+**`POST /api/v1/mailbox/in` is a POST because it acts.** It leases a batch,
 settles the previous one and writes an audit event. A `GET` would invite
 every layer that treats `GET` as safe to retry it and silently consume a
 lease.
@@ -1959,11 +1959,11 @@ Acknowledgement is the wrong line: a leased message was returned in a
 response, so the recipient holds it whether or not it survived to say
 so.
 
-`GET /api/v1/outbox` returns exactly the recallable set, so a client
+`GET /api/v1/mailbox/out` returns exactly the recallable set, so a client
 never interprets `leased_until` and the hub never exposes it.
 
 **The listing is a hint; the DELETE is the judgement.** A recipient may
-call `POST /api/v1/inbox` between the two, so the recall MUST re-decide
+call `POST /api/v1/mailbox/in` between the two, so the recall MUST re-decide
 in one statement rather than trust the listing — `changes` is the
 answer. A recall that lost the race is `409` with
 `code: "ALREADY_DELIVERED"`.
@@ -2735,7 +2735,7 @@ site and to a fifth by being wrong at one of them.
 **The last three carry the privacy boundary.** A platform operator holds
 `audit.read.metadata` and not `audit.read.content` — who sent to whom, when,
 how much and what failed is how a mesh is operated; the bodies are not. It is
-the same line `GET /api/v1/admin/inbox` already draws by reporting depth and
+the same line `GET /api/v1/admin/mailbox` already draws by reporting depth and
 withholding content: *seeing that someone has mail is a different
 authorisation question from reading it.*
 

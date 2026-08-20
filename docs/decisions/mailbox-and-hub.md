@@ -1,7 +1,7 @@
 # The mailbox and the mesh hub are separate — settled design
 
 Status: **decided and implemented**, except where noted below. Supersedes the arrangement in which
-`/api/v1/inbox` and `/api/v1/outbox` were hub routes backed by hub internals.
+`/api/v1/mailbox/in` and `/api/v1/mailbox/out` were hub routes backed by hub internals.
 
 ---
 
@@ -58,11 +58,11 @@ one thing, and the routes said `inbox` where the SPEC said mailbox.
 
 | was | is |
 |---|---|
-| `POST /api/v1/inbox` | `POST /api/v1/mailbox/in` |
-| `GET /api/v1/inbox/history` | `GET /api/v1/mailbox/history` |
-| `POST /api/v1/outbox` | `POST /api/v1/mailbox/out` |
-| `GET /api/v1/outbox` | `GET /api/v1/mailbox/out` |
-| `DELETE /api/v1/outbox/{id}` | `DELETE /api/v1/mailbox/out/{id}` |
+| `POST /api/v1/mailbox/in` | `POST /api/v1/mailbox/in` |
+| `GET /api/v1/mailbox/history` | `GET /api/v1/mailbox/history` |
+| `POST /api/v1/mailbox/out` | `POST /api/v1/mailbox/out` |
+| `GET /api/v1/mailbox/out` | `GET /api/v1/mailbox/out` |
+| `DELETE /api/v1/mailbox/out/{message_id}` | `DELETE /api/v1/mailbox/out/{id}` |
 
 `in` is what has arrived for the caller; `out` is what the caller has sent and
 may still recall. The direction is the caller's, consistently, which is the part

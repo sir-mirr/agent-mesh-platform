@@ -86,9 +86,9 @@
 ### 3.4. 인박스 큐 모니터링 (Inbox Backlog Monitor - SPEC § 9.2.1)
 
 * **REQ-INB-01 (신원별 인박스 적체 현황)**:
-  * `GET /api/v1/admin/inbox`를 호출하여 메시지가 적체된 신원 목록 및 큐 깊이(Queue Depth) 현황판 제공.
+  * `GET /api/v1/admin/mailbox`를 호출하여 메시지가 적체된 신원 목록 및 큐 깊이(Queue Depth) 현황판 제공.
 * **REQ-INB-02 (큐 내용 및 임대 상태 구분 - Critical)**:
-  * `GET /api/v1/admin/inbox/{identity}`를 통해 특정 신원의 큐에 쌓인 메시지 ID, 발신자, 타임스탬프, 크기, 현재 리스(`leased`) 여부 표시.
+  * `GET /api/v1/admin/mailbox/{identity}`를 통해 특정 신원의 큐에 쌓인 메시지 ID, 발신자, 타임스탬프, 크기, 현재 리스(`leased`) 여부 표시.
   * **Leased 상태 시각화**: "전체 적체 N건"과 "소비자가 처리 중인 Leased M건"을 명확히 분리 표시하여, 수신 프로세스 다운 등으로 인한 임대 고착 상태를 운영자가 즉각 식별할 수 있도록 함.
   * **본문 비공개 원칙 준수**: 인박스 조회 API는 보안 및 권한 분리 원칙에 따라 메시지 본문(Body)을 반환하지 않으며, 본문 조회가 필요한 경우 감사 로그(`chat-audits`)로 유도.
 
@@ -154,8 +154,8 @@
 | **타입 레지스트리** | `/api/v1/admin/agent-types` | GET/POST | Admin JWT | 에이전트 타입 목록 및 등록 |
 | | `/api/v1/admin/agent-types/:type` | DELETE | Admin JWT | 에이전트 타입 삭제 |
 | **신원 Teardown** | `/api/v1/admin/agents/:identity` | DELETE | Admin JWT | 신원 영구 소프트 삭제 |
-| **인박스 큐** | `/api/v1/admin/inbox` | GET | Admin JWT | 신원별 인박스 큐 깊이 |
-| | `/api/v1/admin/inbox/:identity` | GET | Admin JWT | 신원별 큐 상세 및 임대 상태 |
+| **인박스 큐** | `/api/v1/admin/mailbox` | GET | Admin JWT | 신원별 인박스 큐 깊이 |
+| | `/api/v1/admin/mailbox/:identity` | GET | Admin JWT | 신원별 큐 상세 및 임대 상태 |
 | **감사 로그** | `/api/v1/admin/chat-audits` | GET | Admin JWT | 커서 페이징 감사 로그 |
 | | `/api/v1/admin/chat-audits/stream` | GET (SSE) | Admin JWT | 실시간 감사 로그 스트림 |
 | | `/api/v1/admin/chat-audits/agents` | GET | Admin JWT | 감사 로그 참여 에이전트 목록 |

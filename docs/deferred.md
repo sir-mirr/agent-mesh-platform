@@ -372,7 +372,7 @@ The original entry follows, because it is why the shape is what it is.
 admin actor and then discard it. Nothing records that someone read the trail,
 or what they read.
 
-This matters because it is load-bearing elsewhere. `GET /api/v1/admin/inbox`
+This matters because it is load-bearing elsewhere. `GET /api/v1/admin/mailbox`
 withholds message bodies on the reasoning that an operator who needs content
 should go to the audit trail, *where the access is itself recorded* — that is
 written into the route's own docstring, and it is not true. The weaker
