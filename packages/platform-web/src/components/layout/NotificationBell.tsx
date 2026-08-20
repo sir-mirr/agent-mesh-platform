@@ -83,7 +83,18 @@ export function NotificationBell() {
       es.addEventListener("snapshot", (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          const list = data.proposals || [];
+          // **The same fact under two names, on two channels.** The list on load
+          // comes from `GET /api/v1/admin/keys/pending`, which SPEC has always
+          // called `keys`; the stream's snapshot pushes the same rows as
+          // `proposals`. SPEC § (1701) says the stream is "a second source for
+          // the same fact" and then does not say what it sends, which is how the
+          // two names drifted without anything failing.
+          //
+          // `proposals` first because that is what the server sends today —
+          // reading `keys` first would be a test-shaped hope, not a reader.
+          // When the stream moves, this collapses to one name; leaving both
+          // would mean neither could ever be wrong.
+          const list = data.proposals ?? data.keys ?? [];
           if (list.length > 0) {
             setRequests(
               list.map((p: any) => ({
