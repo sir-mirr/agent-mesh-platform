@@ -5319,6 +5319,77 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ).toEqual({ signedIn: "/dashboard", signedOut: "/login" });
   }, 40_000);
 
+  /**
+   * SC-SRV-01 — the two screens the server draws itself.
+   *
+   * `GET /admin` and `GET /chat` are served by `agent-mesh-http` as whole HTML
+   * documents (`packages/http/src/ui/*`), not by the React app. Nothing in this
+   * suite opened either one, and nothing in the React app links to them: an
+   * operator reaches them by typing the address. So when the scenario inventory
+   * took the router's own path list as its denominator, these two were not in
+   * it — the denominator was one app's routes, and these belong to the server.
+   *
+   * They are not dead. Measured on the standing stack the night this was
+   * written: `/admin` answers 200 with 65,680 bytes, `/chat` 38,926, both
+   * redirect an unauthenticated caller, and `ui/admin.ts` was edited that same
+   * evening — by the commit that moved `admin/pending` to `{ users }`, which is
+   * to say by a change this console asked for.
+   *
+   * `D-694` removes `ui/*` from the coverage denominator. That is a decision
+   * about a percentage, and this scenario is what keeps it from also being a
+   * decision about whether anybody looks: removing a thing from a measurement
+   * and removing it from view are different, and only the first was asked for.
+   *
+   * Both directions, because one alone passes on the wrong server: signed in the
+   * page must be the page (its own title, not the login form), signed out it
+   * must not be reachable at all.
+   */
+  it("[SC-SRV-01] serves its own admin and chat pages, and refuses them signed out", async () => {
+    const read = async (path: string) => {
+      const authed = await createViewerAuthedPage(`mesh_token=${jwtToken}`, "/");
+      try {
+        const res = await authed.page.goto(`${mesh.http.url}${path}`, { waitUntil: "domcontentloaded" });
+        const title = await authed.page.title();
+        const body = (await authed.page.locator("body").textContent()) ?? "";
+        return { status: res?.status() ?? 0, title, bytes: body.length };
+      } finally {
+        await authed.context.close().catch(() => {});
+      }
+    };
+    const anonymous = async (path: string) => {
+      const context = await newContext();
+      try {
+        const page = await context.newPage();
+        await page.goto(`${mesh.http.url}${path}`, { waitUntil: "domcontentloaded" }).catch(() => {});
+        // A redirect to the login form, or a refusal — either is "not the page".
+        return { url: page.url(), title: await page.title() };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    const admin = await read("/admin");
+    const chat = await read("/chat");
+    const adminOut = await anonymous("/admin");
+
+    expect(
+      {
+        adminIsAdmin: /admin/i.test(admin.title),
+        adminDrew: admin.bytes > 200,
+        chatIsChat: /chat/i.test(chat.title),
+        chatDrew: chat.bytes > 200,
+        signedOutIsNotAdmin: !/admin/i.test(adminOut.title) || adminOut.url.includes("/login"),
+      },
+      `the server's own pages: admin=${JSON.stringify(admin)} chat=${JSON.stringify(chat)} anon=${JSON.stringify(adminOut)}`,
+    ).toEqual({
+      adminIsAdmin: true,
+      adminDrew: true,
+      chatIsChat: true,
+      chatDrew: true,
+      signedOutIsNotAdmin: true,
+    });
+  }, 40_000);
+
   // SC-HARNESS-01: Harness reliability check
   it("[SC-HARNESS-01] verifies platform mesh readiness and test harness health", async () => {
     expect(mesh).toBeDefined();

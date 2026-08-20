@@ -410,6 +410,76 @@ describe("the list of files this suite reads", () => {
  * the exemption sits next to the assertion that needs it rather than in a list
  * somewhere else that nobody updates.
  */
+describe("every screen a person can open", () => {
+  /**
+   * The denominator is **both** things that answer a browser, not one router.
+   *
+   * The scenario inventory was built from `App.tsx`'s path list, and for months
+   * that was called "the screens". It is one app's routes. `agent-mesh-http`
+   * serves whole HTML documents of its own — `/admin`, `/chat`,
+   * `/chat/:agentId` — and nothing in the React app links to them, so an
+   * inventory drawn from the router could not see them and nobody noticed the
+   * absence. Three screens out of twenty-one had no scenario, and all three were
+   * the three that came from the other source.
+   *
+   * The lesson is not "add those three". It is that a denominator taken from one
+   * producer measures that producer. So this test builds the list from both and
+   * fails when a screen exists that no scenario opens — the shape of the miss,
+   * rather than the instances of it.
+   */
+  it("has a scenario that opens it", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const read = (p: string) => readFileSync(p, "utf8");
+
+    // Server-drawn: a GET whose handler answers HTML.
+    const main = read("packages/http/src/main.ts");
+    const server: string[] = [];
+    for (const m of main.matchAll(/app\.get\(\s*'([^']+)'/g)) {
+      const body = main.slice(m.index! + m[0].length, m.index! + m[0].length + 1500);
+      if (/c\.html\(|text\/html/.test(body)) server.push(m[1]!);
+    }
+    // App-drawn: the router's own list.
+    const app = read("packages/platform-web/src/App.tsx");
+    const react = [...new Set([...app.matchAll(/path="([^"]+)"/g)].map((m) => m[1]!))].filter((p) => p !== "*");
+
+    expect({ serverFound: server.length > 0, reactFound: react.length > 5 }, "one of the two producers stopped being readable — the denominator is the point").toEqual({
+      serverFound: true,
+      reactFound: true,
+    });
+
+    const tests = FILES.map((f) => read(join("test", f))).join("\n");
+    // **A path handed to a helper is still a path opened.** The first version of
+    // this only read literals sitting inside `goto(...)`, and missed `SC-SRV-01`
+    // — which calls `page.goto(\`${mesh.http.url}${path}\`)` with the literal a
+    // few lines up. Narrow extraction reported two covered screens as bare, which
+    // is the same failure this test exists to catch, one level up.
+    //
+    // So: a path literal counts when a navigation call appears near it. Near, not
+    // anywhere — a path named only in prose is not a scenario opening it.
+    const NAV = /(?:goto|withPage|createAuthedPage|withUnauthedPage|withViewerPage)\s*\(/g;
+    const navAt = [...tests.matchAll(NAV)].map((m) => m.index ?? 0);
+    const opened = new Set<string>();
+    for (const m of tests.matchAll(/["'`](\/[A-Za-z0-9_:/-]*)["'`]/g)) {
+      const at = m.index ?? 0;
+      if (!navAt.some((n) => Math.abs(n - at) < 400)) continue;
+      const raw = (m[1] ?? "").split("?")[0] ?? "";
+      opened.add(raw.replace(/\/$/, "") || "/");
+    }
+
+    const unopened = [...server.map((p) => ["server", p] as const), ...react.map((p) => ["react", p] as const)]
+      .filter(([, p]) => !opened.has(p.replace(/\/$/, "") || "/"))
+      .map(([kind, p]) => `${kind} ${p}`);
+
+    expect(unopened, `screens exist that no scenario opens (${server.length} server + ${react.length} app)`).toEqual([
+      // `/chat/:agentId` is one page with a path parameter; `SC-SRV-01` opens
+      // `/chat`, which is the same module. Listed rather than pattern-matched so
+      // the exception is one line somebody can delete when it is covered.
+      "server /chat/:agentId",
+    ]);
+  });
+});
+
 describe("testid landmarks", () => {
   it("waits only for hooks the product still emits", () => {
     const WEB = join(import.meta.dir, "..", "packages", "platform-web", "src");
