@@ -2388,7 +2388,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`/platform/telemetry` rendered the same page whether its panels were refused or the mesh was idle. Two of its four endpoints are ungated — none of § 11's twelve capabilities names reading the registry — so they always answer, the `all four failed` throw was unreachable for a refusal, and the cells simply read `—`. agent-mesh-local-pm measured 999 bytes before the refusal and 999 after: the screen made no statement about the backend at all.",
     file: "packages/platform-web/src/api/telemetry.ts",
-    from: "          refused.push({ panel: p.panel, capability: p.capability });",
+    from: "          refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });",
     to: "          void p;",
     suite: "test/fe-render.test.ts",
     expect: ["names the refused panels on /platform/telemetry instead of rendering blanks"],

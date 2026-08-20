@@ -1,7 +1,13 @@
 /**
  * The routes, called in this process instead of through a port.
  *
- * Every other file in `test/` spawns the http service, which is the right way
+ * **This file lives beside the service rather than in `test/`.** It imports the
+ * entrypoint, and a project that imports a file outside its own directory has
+ * to contain that file — listing `main.ts` in `test/tsconfig.json` pulled in
+ * everything it imports, then everything *those* import, one `TS6307` at a
+ * time. Here the project already holds them.
+ *
+ * Every file in `test/` spawns the http service, which is the right way
  * to test wiring — ports, signals, a restart — and the reason no coverage
  * instrument has ever seen a line of `main.ts`: it runs in a child. The service
  * used to bind a port and dial the hub on *import*, so importing was not an
@@ -13,13 +19,14 @@
  * already asserted, at length, by the suites that drive a real one.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
 import { agentsSchema, auditSchema, hubSchema } from "@agent-mesh/store";
 
-const STATE = mkdtempSync(join(tmpdir(), "http-in-process-"));
+// The run's state directory, set by `scripts/test-state-dir.ts` before any
+// test file loaded — which is the only moment early enough, because the paths
+// these databases live at were computed when their modules were imported.
+const STATE = process.env.AGENT_MESH_STATE_DIR!;
 
 // These databases belong to other processes — the hub's, the audit log's — and
 // http opens them expecting them to exist. Nothing is spawned here, so the
@@ -37,12 +44,11 @@ for (const [file, migrate] of [
   db.close();
 }
 
-process.env.AGENT_MESH_STATE_DIR = STATE;
 process.env.JWT_SECRET = "in-process-test-secret";
 // A port nothing binds: `Bun.serve` is behind the guard, and this proves it.
 process.env.PORT = "3998";
 
-const mod = await import("../packages/http/src/main.ts");
+const mod = await import("./main.ts");
 const app = mod.app;
 
 beforeAll(async () => { await mod.startup(); });
