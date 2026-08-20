@@ -1305,3 +1305,69 @@ describe("what a reconnecting audit stream replays", () => {
     expect(frames.filter(f => f.includes("event: message") || f.includes("gap-too-large")).length).toBe(0);
   });
 });
+
+/**
+ * The service worker's own source, which nothing on this server ever runs.
+ *
+ * `/sw.js` is a hundred lines of JavaScript held in a template literal. No
+ * compiler sees it — it is a string to TypeScript — and no test has ever
+ * parsed it, so a stray bracket in it ships green: the route answers 200, the
+ * bytes arrive, and the browser refuses to register a worker that will not
+ * parse. Every screen keeps working; the app simply stops being installable,
+ * and nothing anywhere says so.
+ *
+ * The other three are cross-checks between what that source asks the browser
+ * for and what this server actually answers. A worker that navigates to a
+ * route nobody serves is a notification that opens a 404.
+ */
+describe("the service worker's own source", () => {
+  const source = async () => (await call("/sw.js")).text();
+
+  test("parses as JavaScript", async () => {
+    const sw = await source();
+    // `new Function` compiles without running: `self`, `caches` and `clients`
+    // do not exist here and are never touched. A SyntaxError is the whole
+    // failure this catches, and it is the one nothing else can see.
+    expect(() => new Function(sw)).not.toThrow();
+  });
+
+  test("navigates to a route this server answers", async () => {
+    const sw = await source();
+    const target = sw.match(/const url = agent \? '([^']+)'/)?.[1];
+    expect(target).toBe("/chat/");
+    // Tapping a notification is the one path into the app that nobody clicks
+    // during development, so a rename that misses this line is found by users.
+    //
+    // The agent has to be one the registry holds: `/chat/:agentId` answers 404
+    // for a name it does not know, which is the same answer a route that does
+    // not exist gives — and this check is about the route existing.
+    upsertApprovedWebUser("in-process-sw-target");
+    const res = await call(`${target}in-process-sw-target`, { headers: { cookie } });
+    expect({ opens: res.status }).toEqual({ opens: 200 });
+  });
+
+  test("asks for an icon this server serves", async () => {
+    const sw = await source();
+    const icons = [...sw.matchAll(/(?:icon|badge): '([^']+)'/g)].map(m => m[1]!);
+    expect(icons.length).toBeGreaterThan(0);
+    for (const icon of new Set(icons)) {
+      expect({ icon, status: (await call(icon)).status }).toEqual({ icon, status: 200 });
+    }
+  });
+
+  test("keeps two agents' notifications apart", async () => {
+    const sw = await source();
+    // One `tag` for every message collapses the whole mesh into a single
+    // notification that keeps being replaced — the second agent to write to
+    // you silently overwrites the first.
+    expect(sw).toContain("tag: 'mesh-' + (data.data?.agent || 'default')");
+  });
+
+  test("shows something for a push that carries no payload", async () => {
+    const sw = await source();
+    // A push with no body is a real delivery — the browser may drop the
+    // payload — and reading `.json()` off nothing throws inside the event
+    // handler, which shows the user nothing at all.
+    expect(sw).toContain("e.data ? e.data.json() :");
+  });
+});

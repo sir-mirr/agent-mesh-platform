@@ -211,6 +211,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "sw-source-syntax-error",
+    defect:
+      "The service worker source stopped parsing, so no browser would register it and the app quietly stopped being installable \u2014 nothing on the server notices, because it is a string.",
+    file: "packages/http/src/main.ts",
+    from: "  e.waitUntil(\n    self.registration.showNotification(data.title, {",
+    to: "  e.waitUntil((\n    self.registration.showNotification(data.title, {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["parses as JavaScript"],
+  },
+  {
+    id: "sw-notification-opens-404",
+    defect:
+      "Tapping a notification navigated to a route this server does not answer.",
+    file: "packages/http/src/main.ts",
+    from: "  const url = agent ? '/chat/' + encodeURIComponent(agent) : '/chat';",
+    to: "  const url = agent ? '/chats/' + encodeURIComponent(agent) : '/chats';",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["navigates to a route this server answers"],
+  },
+  {
+    id: "sw-notification-icon-404",
+    defect:
+      "The notification asked for an icon file this server does not serve.",
+    file: "packages/http/src/main.ts",
+    from: "      icon: '/icon-192.svg',",
+    to: "      icon: '/icon-192.png',",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["asks for an icon this server serves"],
+  },
+  {
+    id: "sw-notification-tag-collapses",
+    defect:
+      "Every message shared one notification tag, so the second agent to write to you silently replaced the first.",
+    file: "packages/http/src/main.ts",
+    from: "      tag: 'mesh-' + (data.data?.agent || 'default'),",
+    to: "      tag: 'mesh-default',",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["keeps two agents' notifications apart"],
+  },
+  {
+    id: "sw-empty-push-throws",
+    defect:
+      "A push whose payload the browser dropped threw inside the handler, so the user was shown nothing at all.",
+    file: "packages/http/src/main.ts",
+    from: "  const data = e.data ? e.data.json() : { title: 'Agent Mesh', body: 'New message' };",
+    to: "  const data = e.data.json();",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["shows something for a push that carries no payload"],
+  },
+  {
     id: "audit-stream-capability-bypassed",
     defect:
       "The audit stream stopped refusing an operator without audit.read.content, and every admin-role session read every conversation on the mesh (\u00a7 11.0).",
