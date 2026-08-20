@@ -1687,7 +1687,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/admin/agents/owned`      | JWT\*  | `200`   | What the **caller** owns (§ 11.3). A tenant-wide grant does not widen it — "everything here" is not an answer to "what is mine". |
 | POST   | `/api/v1/admin/agents/{identity}/can-proxy` | JWT\* | `200` | Grant or withdraw `can_proxy` (§ 8.2). Not settable on the unauthenticated provisioning route — a grant the checked party writes is not a check. |
 | GET    | `/api/v1/admin/groups`            | JWT\*  | `200`   | Groups, their members and every egress rule (§ 12). |
-| POST   | `/api/v1/admin/groups`            | JWT\*  | `201`   | Create one. It can send nowhere until a rule says so (§ 12). |
+| POST   | `/api/v1/admin/groups`            | JWT\*  | `201`\|`200` | Create one. It can send nowhere until a rule says so (§ 12). `200` when the group was already there: the route is idempotent, and nothing was created. |
 | POST   | `/api/v1/admin/groups/{group_id}/members` | JWT\* | `200` | Move an identity in. Membership is singular (§ 12). |
 | POST   | `/api/v1/admin/groups/{group_id}/egress` | JWT\* | `201` | Allow `{group_id} -> to_group`. Directional (§ 12). |
 | DELETE | `/api/v1/admin/groups/{group_id}/egress/{to_group}` | JWT\* | `200` | Withdraw that one direction (§ 12). |

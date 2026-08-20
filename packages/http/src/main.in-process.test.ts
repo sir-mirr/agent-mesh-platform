@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { agentsSchema, auditSchema, hubSchema } from "@agent-mesh/store";
+import { agentsSchema, auditSchema, groups, hubSchema } from "@agent-mesh/store";
 
 // The run's state directory, set by `scripts/test-state-dir.ts` before any
 // test file loaded — which is the only moment early enough, because the paths
@@ -33,6 +33,10 @@ const STATE = process.env.AGENT_MESH_STATE_DIR!;
 // schemas go in directly, using the same `migrate` their owners run at boot.
 for (const [file, migrate] of [
   ["agents.db", agentsSchema.migrate],
+  // `groups.migrate` is separate from the agents schema and lives in the same
+  // file as the store that reads it, so a caller that only ran `agentsSchema`
+  // gets `no such table: agent_groups` at the first write rather than at open.
+  ["agents.db", groups.migrate],
   // `hub.db` too: `startup` starts the audit poller, which opens it, and with
   // it absent the poller logged a stack trace on every run and carried on. A
   // swallowed open is exactly the kind of thing this file makes visible.
@@ -89,5 +93,47 @@ describe("the http service, imported", () => {
 
   test("says not-found for a route that does not exist", async () => {
     expect((await call("/api/v1/no-such-route")).status).toBe(404);
+  });
+
+  test("creating a group twice answers 201 then 200", async () => {
+    const login = await call("/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: "admin", password: "admin" }).toString(),
+    });
+    expect(login.status).toBe(200);
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    expect(cookie).toContain("=");
+
+    // **The seeded admin has to change its password before anything else.**
+    // Every other route answers `403 { must_change_password: true }` while the
+    // flag is set — the guard is the server's, not the screen's — so the
+    // in-process walk has to cross the same gate a person does.
+    const changed = await call("/auth/local/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ current: "admin", next: "in-process-password" }),
+    });
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).must_change_password).toBe(false);
+
+    const create = (group_id: string) =>
+      call("/api/v1/admin/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ group_id }),
+      });
+
+    // SPEC § 9.1's table said `201` for this route and the route answers
+    // `created ? 201 : 200` — idempotent, because asking for a group that is
+    // already there created nothing. agent-mesh-local-pm measured the gap
+    // (mail #1553); the second call is what nothing was asserting.
+    const first = await create("in-process-idempotent");
+    expect(first.status).toBe(201);
+    expect((await first.json()).created).toBe(true);
+
+    const again = await create("in-process-idempotent");
+    expect(again.status).toBe(200);
+    expect((await again.json()).created).toBe(false);
   });
 });
