@@ -612,3 +612,34 @@ describe("the words on the screen are the dictionary's", () => {
     expect(hasHangul(document.body.textContent ?? "")).toBe(false);
   });
 });
+
+describe("a body that is not JSON", () => {
+  it("draws the receipt for a message the mesh accepted", async () => {
+    // **The panel parsed the textarea during render.** `sendMessageApi` sends
+    // `text`, so the field is free text and nothing requires JSON — the default
+    // is a JSON preset, which is the only reason the happy path never showed
+    // it. Type a word, send it successfully, and `JSON.parse` threw while React
+    // was drawing the receipt for a message the mesh had already taken.
+    await mount();
+    fireEvent.change(payloadField(), { target: { value: "hello" } });
+    await send();
+    expect(drawsNoReceipt()).toBe(false);
+    expect(document.body.textContent).toContain("hello");
+  });
+
+  it("shows what was sent, not what is in the box now", async () => {
+    // The panel is labelled *dispatched*, and it read the textarea's current
+    // value: editing the box after a send rewrote the record of the send while
+    // the receipt above it did not move.
+    await mount();
+    fireEvent.change(payloadField(), { target: { value: '{"a":1}' } });
+    await send();
+    fireEvent.change(payloadField(), { target: { value: '{"b":2}' } });
+    // Compared in the pretty-printed form the viewer produces, because the
+    // textarea's own compact value is on the page too — asserting the bare
+    // name matched the box and said nothing about the panel.
+    expect(document.body.textContent).toContain('"a": 1');
+    expect(document.body.textContent).not.toContain('"b": 2');
+  });
+});
+

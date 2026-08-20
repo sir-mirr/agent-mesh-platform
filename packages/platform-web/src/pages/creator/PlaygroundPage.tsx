@@ -43,6 +43,21 @@ const PAYLOAD_PRESETS = [
   },
 ];
 
+/**
+ * The body as something a viewer can draw: parsed when it is JSON, and the text
+ * itself when it is not.
+ *
+ * A body that is not JSON is not an error here — the route takes `text`.
+ */
+function asBody(sent: string): unknown {
+  if (sent.trim() === "") return {};
+  try {
+    return JSON.parse(sent);
+  } catch {
+    return sent;
+  }
+}
+
 export function PlaygroundPage() {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -54,6 +69,8 @@ export function PlaygroundPage() {
   const [failure, setFailure] = useState<FailureKind | null>(null);
   /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
   const [missing, setMissing] = useState<string | null>(null);
+  /** What was on the wire, kept apart from what is in the box now. */
+  const [dispatched, setDispatched] = useState<string>("");
   const [isSending, setIsSending] = useState(false);
 
   // Load real agents from backend
@@ -150,7 +167,9 @@ export function PlaygroundPage() {
       // the person saw every single time: their own inputs, the browser's
       // clock, and the literal `영수증 미발급` where the server's id belongs.
       // The receipt agreed with itself and said nothing about the send.
-      setReceipt(await sendMessageApi({ to: recipient, text: payloadText }));
+      const sent = payloadText;
+      setReceipt(await sendMessageApi({ to: recipient, text: sent }));
+      setDispatched(sent);
     } catch (err: any) {
       setReceipt(null);
       setSendError(
@@ -350,7 +369,16 @@ export function PlaygroundPage() {
                 timestamp={receipt.ts}
                 status={receipt.status}
               />
-              <JsonViewer data={JSON.parse(payloadText || "{}")} title={t("play.dispatched", "보낸 본문")} />
+              {/* **Parsed here it threw during render.** `sendMessageApi` sends
+                  `text`, so the field is free text and nothing requires it to be
+                  JSON — the default happens to be a JSON preset, which is the
+                  only reason the happy path never showed it. Type `hello`, send
+                  it successfully, and `JSON.parse("hello")` threw while React
+                  was drawing the receipt for a message the mesh had accepted.
+                  And `payloadText` is the textarea *now*, not what was sent:
+                  editing the box after a send changed the panel labelled
+                  "what was dispatched" under a receipt that had not moved. */}
+              <JsonViewer data={asBody(dispatched)} title={t("play.dispatched", "보낸 본문")} />
             </>
           ) : sendError ? (
             <div

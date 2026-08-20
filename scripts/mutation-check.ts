@@ -1275,12 +1275,16 @@ const MUTATIONS: Mutation[] = [
     defect:
       "§ 0 of the FE coverage inventory stated per-family totals as literals — a second declaration of what the test files register — and two of them had gone quietly wrong: `SC-DOWN-*` said 8 with nine registered, `SC-WRITE-*` said 6 with eight. The inventory is the denominator for goal ②, so an undercount reads as work not yet done and gets written twice.",
     file: "packages/platform-web/COVERAGE_INVENTORY.md",
-    // 재앵커 2026-08-20: 그 행이 자라서 옛 문자열이 사라졌다. 세는 수만 어긋나게 한다.
-    from: "· **egress 허용이 실제로 써지는가** | 16 |",
-    to: "· **egress 허용이 실제로 써지는가** | 14 |",
+    // **Re-anchored twice now, and the reason is the same both times:** this row
+    // grows whenever a scenario is added to the family, so an anchor written
+    // against its tail goes stale the moment the axis it counts does any work.
+    // The count is what the entry is about, so only the count is changed.
+    from: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 17 |",
+    to: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 15 |",
     suite: "test/scenario-ids.test.ts",
-    // 재앵커와 같이 옮긴다 — 뮤테이션이 만드는 수가 바뀌면 기대 문구의 수도 바뀐다.
-    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 14"],
+    // Moved with the anchor: the number the mutant produces is the number the
+    // expected message quotes.
+    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 15"],
   },
   {
     id: "inventory-axis-missing-row",
@@ -2786,6 +2790,16 @@ const MUTATIONS: Mutation[] = [
     to: "          memberCount: g.member_count || g.members?.length || 0,",
     suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
     expect: ["draws no member count rather than nought"],
+  },
+  {
+    id: "playground-parses-free-text-while-rendering",
+    defect:
+      "`JSON.parse(payloadText)` in the receipt panel's JSX. `sendMessageApi` sends `text`, so the field is free text and nothing requires JSON — the default happens to be a JSON preset, which is the only reason the happy path never showed it. Type a word, send it successfully, and the parse threw while React was drawing the receipt for a message the mesh had already accepted. It also read the textarea's *current* value, so editing the box after a send rewrote the panel labelled `what was dispatched` under a receipt that had not moved. agent-mesh-local-pm found it in the unverified list and pushed SC-WRITE-17 red to hold the place (I-156).",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "              <JsonViewer data={asBody(dispatched)} title={t(\"play.dispatched\", \"보낸 본문\")} />",
+    to: "              <JsonViewer data={JSON.parse(payloadText || \"{}\")} title={t(\"play.dispatched\", \"보낸 본문\")} />",
+    suite: "packages/platform-web/src/pages/creator/PlaygroundPage.test.tsx",
+    expect: ["draws the receipt for a message the mesh accepted"],
   },
 ];
 
