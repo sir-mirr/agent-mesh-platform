@@ -1569,7 +1569,16 @@ function isPathAllowed(filePath: string): boolean {
     return false
   }
 
-  return ALLOWED_FILE_PREFIXES.some(prefix => resolved.startsWith(prefix))
+  // **A prefix is not a directory until it ends at a separator.**
+  // `startsWith` alone made `<STATE_DIR>-backup/secret` a match for
+  // `<STATE_DIR>`, so any approved session could read a sibling directory —
+  // measured on this route, which answered `200` for exactly that path. The
+  // other entry in the list ends in `/` and was never affected; this one comes
+  // from `AGENT_MESH_STATE_DIR` and does not.
+  return ALLOWED_FILE_PREFIXES.some(prefix => {
+    const dir = prefix.endsWith('/') ? prefix : `${prefix}/`
+    return resolved === prefix || resolved.startsWith(dir)
+  })
 }
 
 function getMimeType(filePath: string): string {

@@ -20,6 +20,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { Database } from "bun:sqlite";
 import { agentsSchema, auditSchema, groups, hubSchema, ownership } from "@agent-mesh/store";
 import { createHash, generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
@@ -1369,5 +1370,74 @@ describe("the service worker's own source", () => {
     // payload — and reading `.json()` off nothing throws inside the event
     // handler, which shows the user nothing at all.
     expect(sw).toContain("e.data ? e.data.json() :");
+  });
+});
+
+/**
+ * Which files `/api/v1/files` will hand out.
+ *
+ * The route resolves the path *before* calling `isPathAllowed`, so the `..`
+ * branch inside that function cannot fire from here — by the time it is asked,
+ * `resolve()` has already collapsed every `..`. The whole defence is the
+ * prefix comparison, which makes what that comparison means the only thing
+ * worth checking.
+ */
+describe("which files are handed out", () => {
+  const readable = join(STATE, "in-process-readable.txt");
+  const sibling = `${STATE}-sibling`;
+
+  beforeAll(() => {
+    writeFileSync(readable, "in-process-file-body");
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(sibling, "secret.txt"), "in-process-outside-body");
+  });
+
+  test("serves a file inside the state directory", async () => {
+    const res = await asAdmin(`/api/v1/files?path=${encodeURIComponent(readable)}`, "GET");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("in-process-file-body");
+  });
+
+  test("refuses a path outside the allowed directories", async () => {
+    const res = await asAdmin("/api/v1/files?path=%2Fetc%2Fpasswd", "GET");
+    expect(res.status).toBe(403);
+  });
+
+  test("refuses a traversal that climbs out of an allowed directory", async () => {
+    // `resolve` collapses this to `/etc/passwd` before the prefix is compared,
+    // which is why the prefix — not the `..` branch — is what refuses it.
+    const climb = join(STATE, "..", "..", "..", "..", "etc", "passwd");
+    const res = await asAdmin(`/api/v1/files?path=${encodeURIComponent(climb)}`, "GET");
+    expect(res.status).toBe(403);
+  });
+
+  test("refuses a directory whose name merely starts with an allowed one", async () => {
+    // `startsWith` on a prefix with no trailing separator makes
+    // `<STATE_DIR>-sibling` a match for `<STATE_DIR>`. The neighbouring entry
+    // in the same list ends in `/`; this one comes from an environment
+    // variable and does not.
+    const res = await asAdmin(`/api/v1/files?path=${encodeURIComponent(join(sibling, "secret.txt"))}`, "GET");
+    expect(res.status).toBe(403);
+  });
+
+  test("names a served file's type from its extension, and falls back to bytes", async () => {
+    const html = join(STATE, "in-process-page.html");
+    writeFileSync(html, "<p>in-process</p>");
+    const unknown = join(STATE, "in-process-thing.wat");
+    writeFileSync(unknown, "in-process");
+    const typeOf = async (p: string) =>
+      (await asAdmin(`/api/v1/files?path=${encodeURIComponent(p)}`, "GET")).headers.get("content-type");
+    // An unknown extension must not become a guess: `application/octet-stream`
+    // is the answer that cannot be rendered.
+    expect({ html: await typeOf(html), unknown: await typeOf(unknown) })
+      .toEqual({ html: "text/html", unknown: "application/octet-stream" });
+  });
+
+  test("refuses a directory, and refuses one that is not there", async () => {
+    expect({
+      directory: (await asAdmin(`/api/v1/files?path=${encodeURIComponent(STATE)}`, "GET")).status,
+      missing: (await asAdmin(`/api/v1/files?path=${encodeURIComponent(join(STATE, "in-process-absent"))}`, "GET")).status,
+      noPath: (await asAdmin("/api/v1/files", "GET")).status,
+    }).toEqual({ directory: 400, missing: 404, noPath: 400 });
   });
 });

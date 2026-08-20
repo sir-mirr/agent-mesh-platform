@@ -211,6 +211,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
   {
+    id: "files-prefix-has-no-boundary",
+    defect:
+      "A path prefix with no separator boundary let any approved session read a sibling directory: `<STATE_DIR>-backup/secret` matched `<STATE_DIR>` and the route answered 200 with the bytes.",
+    file: "packages/http/src/main.ts",
+    from: "    const dir = prefix.endsWith('/') ? prefix : `${prefix}/`\n    return resolved === prefix || resolved.startsWith(dir)",
+    to: "    return resolved.startsWith(prefix)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["merely starts with an allowed one"],
+  },
+  {
+    id: "files-unknown-type-guessed",
+    defect:
+      "An unrecognised extension was served as something a browser renders instead of as bytes.",
+    file: "packages/http/src/main.ts",
+    from: "  return mimeMap[ext] ?? 'application/octet-stream'",
+    to: "  return mimeMap[ext] ?? 'text/html'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["falls back to bytes"],
+  },
+  {
+    id: "files-allowlist-not-enforced",
+    defect:
+      "A path outside the allowed directories was served rather than refused.",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: 'Access denied \u2014 file path not in allowed directories' }, 403)",
+    to: "    return c.json({ error: 'Access denied' }, 200)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses a path outside the allowed directories"],
+  },
+  {
+    id: "files-directory-served-as-file",
+    defect:
+      "A directory was read as a file rather than refused.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!stat.isFile()) {\n    return c.json({ error: 'Path is not a file' }, 400)\n  }\n  if (stat.size > MAX_FILE_SIZE) {",
+    to: "  if (false) {\n    return c.json({ error: 'Path is not a file' }, 400)\n  }\n  if (stat.size > MAX_FILE_SIZE) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses a directory"],
+  },
+  {
+    id: "files-missing-not-checked",
+    defect:
+      "A path that is not there was read anyway, so a missing file threw instead of answering 404.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!existsSync(resolved)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses a directory"],
+  },
+  {
     id: "boot-retry-swallows-refusal",
     defect:
       "Every failed boot became retryable, so the two misconfigured-boot checks would pass against a server that had stopped refusing to start.",
