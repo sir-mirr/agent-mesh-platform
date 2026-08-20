@@ -118,6 +118,14 @@ The mailbox is for things the other side cannot discover by reading the repos:
   from `ERROR_CLASS` and falls to whatever that caller passes as a fallback.
   `errorClassOf` now answers `permanent` for an unknown in-band code so that
   window is survivable, and surviving it is not the same as it being fine.
+
+  **The tag goes out after the implementation is on `origin/main`, not before.**
+  A tag describes a mesh; cutting it while the routes it describes are still in
+  a local tree describes one that does not exist yet. `client-claude` pinned
+  `v0.28.0` in that window and measured `123/124` against a route still
+  answering the old shape (mail #1587) — the contract was ahead of the mesh, and
+  the failing scenario was correct about a mesh nobody was running. Push, verify
+  the remote has it, then tag, then say so.
 - **A SPEC section landed, or its status changed.** `SPEC.md`'s table says what
   is built; a change there changes what the other side can rely on.
 - **A blocking question about the other side's half.** Anything that would

@@ -2047,6 +2047,34 @@ retry or alert over a state it already has. New deletion routes inherit this
 rather than choosing again — that is the point of stating it here instead of
 letting two routes that happen to agree stand as the rule.
 
+`action` is the field, on every deletion route, and the two words above are what
+a route with **two** outcomes says. **A route whose target has more states names
+them rather than folding them in.** `DELETE /api/v1/admin/agents/{identity}`
+has three:
+
+```
+{ ok: true, action: "soft-deleted",   deleted_at }   torn down by this call
+{ ok: true, action: "already-deleted", deleted_at }   it was already gone
+{ ok: true, action: "not-found"                  }   no such identity
+```
+
+`soft-deleted` rather than `deleted` because § 9.3 keeps the row: the name is
+never usable again, and the hub, the registry and the type registry all read
+that state by name. `already-deleted` rather than a second `deleted` because
+§ 9.3 is irreversible, so an operator repeating the call has to be able to tell
+"I have just torn this down" from "it was already gone". Both distinctions are
+facts the mesh holds; folding them into one word to make this sentence shorter
+would spend them.
+
+This clause was written before any of the four routes agreed with it. Measured
+against the running stack: `egress` answered `404` alongside `ok: true` — a
+status and a body disagreeing about one call — `grants` answered `removed`,
+`agent-types` answered `action: "removed"`, and only the absent-target half of
+teardown matched. All four had passing tests, each asserting whatever its own
+route did, and a conformance scenario had ratified the `404`. `test/delete-absence.test.ts`
+derives the route list from the source so the next deletion route fails until its
+absent case is written down. (`D-692`.)
+
 **Creation answers `201`**, and the body carries what was made. The four admin
 `POST`s above all do, which is evidence and not a rule until it is written here —
 the same distinction that made the deletion sentence necessary. A fifth creation
