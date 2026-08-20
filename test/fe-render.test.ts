@@ -2225,6 +2225,61 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }, 15000);
 
+  /**
+   * Signing in through the form must leave the same session as arriving with a
+   * cookie already set.
+   *
+   * Every other scenario here builds its session the second way — `newContext`
+   * plants `mesh_token` and the first `goto` runs the mount path, which reads
+   * `/auth/me`. A person does not have that cookie: they type into the form,
+   * and the app routes them to `/dashboard` on the client with no reload, so
+   * whatever the login response carried is what the session holds until they
+   * press F5.
+   *
+   * Measured before writing this: `POST /auth/local` answers `{github_id,
+   * github_login, role}` and no `capabilities`, while `/auth/me` — called on
+   * the very next line — answers twelve. The screen drew nine navigation links
+   * after the form and fourteen after a reload.
+   *
+   * **The assertion is on the difference, not on the cause.** A fix that adds
+   * the field to the login response and a fix that reads it off the `/auth/me`
+   * this code already fetches both make these two numbers meet; naming either
+   * one here would tie the test to a repair that has not been chosen yet.
+   */
+  it("[SC-AUTH-08] leaves the same session whether you type the password or arrive with a cookie", async () => {
+    await withUnauthedPage("/login", async ({ page }) => {
+      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='password']").first().fill("admin");
+      await page.locator("button[type='submit']").first().click();
+      await page.waitForURL((u) => !u.pathname.endsWith("/login"), { timeout: 8000 }).catch(() => {});
+      if (page.url().endsWith("/login")) {
+        // Landing is the precondition, not the result. A run that never left
+        // the form would otherwise compare two login pages and call them equal.
+        cannotMeasure("SC-AUTH-08", "the form never left /login, so there is no session to compare");
+        return;
+      }
+
+      // A first read here returns zero links on this machine — the page has not
+      // finished. Zero would have been reported as every link missing.
+      const read = async () => ({
+        links: await page.locator("nav a, aside a").count(),
+        chars: ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ").length,
+      });
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await page.waitForTimeout(1500);
+      const typed = await read();
+
+      await page.reload({ waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      const reloaded = await read();
+
+      expect(
+        { links: typed.links, drewSomething: typed.links > 0 },
+        `the form login and a reload disagree about the session: ${typed.links} links typed vs ${reloaded.links} reloaded`,
+      ).toEqual({ links: reloaded.links, drewSomething: true });
+    });
+  }, 30000);
+
   it("[SC-DOWN-11] still sends a refused session to /login, so the two are not one branch", async () => {
     const context = await newContext();
     try {
