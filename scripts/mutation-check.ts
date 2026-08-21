@@ -4271,6 +4271,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["marks a message the hub would not take as failed, in the row too"],
   },
+  {
+    id: "an-unapproved-session-may-register-for-delivery",
+    defect:
+      "`POST /api/v1/push/subscribe` stopped requiring approval and accepted any session. These were once the only `JWT` routes that stopped at `extractJwt`, which is how the gap got here the first time: somebody an operator has not granted access to registers a delivery endpoint against this deployment, and is then holding a subscription for a mesh they cannot read.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!isUserApproved(payload.github_login, payload.role)) {\n    return c.json({ error: 'Forbidden' }, 403)\n  }\n\n  let body: Record<string, unknown>\n  try {\n    body = await c.req.json()\n  } catch {\n    return c.json({ error: 'Invalid JSON body' }, 400)\n  }\n\n  const subscription = body.subscription",
+    to: "  if (false) {\n    return c.json({ error: 'Forbidden' }, 403)\n  }\n\n  let body: Record<string, unknown>\n  try {\n    body = await c.req.json()\n  } catch {\n    return c.json({ error: 'Invalid JSON body' }, 400)\n  }\n\n  const subscription = body.subscription",
+    suite: "packages/http/src/push-routes.test.ts",
+    expect: ["refuses a signed-in person the operator has not approved"],
+  },
+  {
+    id: "a-subscription-is-stored-without-the-keys-it-needs",
+    defect:
+      "The subscribe route stopped checking that a subscription carries both keys. A row missing either is one this service can never deliver to, and it goes into the table the sender iterates \u2014 so every message to that person walks a permanently failing endpoint, and the failure handler decides whether to keep or drop it on a reason that has nothing to do with the browser.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {",
+    to: "  if (!subscription?.endpoint) {",
+    suite: "packages/http/src/push-routes.test.ts",
+    expect: ["refuses a subscription missing the endpoint or either key"],
+  },
+  {
+    id: "an-unapproved-session-may-drop-a-delivery-endpoint",
+    defect:
+      "`POST /api/v1/push/unsubscribe` stopped requiring approval. The mirror of the subscribe gap, and the worse half while the removal is unscoped: an unapproved session could then remove any endpoint it can name.",
+    file: "packages/http/src/main.ts",
+    from: "  const endpoint = body.endpoint as string | undefined\n  if (!endpoint) {",
+    to: "  const endpoint = body.endpoint as string | undefined\n  if (false) {",
+    suite: "packages/http/src/push-routes.test.ts",
+    expect: ["refuses a body that is not JSON, and one with no endpoint"],
+  },
 ];
 
 /**
