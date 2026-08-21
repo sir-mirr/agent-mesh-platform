@@ -712,6 +712,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a key reused for a different message"],
   },
   {
+    id: "preview-lint-loses-its-extraction-floor",
+    defect:
+      "The preview linter stopped requiring a minimum number of extracted route references. An extractor that quietly stops finding routes also stops finding unauthorised ones, so the lint passes \u2014 the floor is the only thing that can tell a preview which shrank from a parser which broke. Sixty modular pages must yield at least sixty references.",
+    file: "scripts/lint-preview.ts",
+    from: "  if (totalRoutesFound < minFloor) {",
+    to: "  if (false) {",
+    suite: "test/preview-lint.test.ts",
+    expect: ["catches an extraction that has quietly stopped working"],
+  },
+  {
+    id: "preview-lint-falls-back-to-a-hand-written-capability-list",
+    defect:
+      "The capability count came from a list in this file again rather than from the contract. That is the defect this check exists to catch: the list said nine while the contract held twelve, and a linter reading its own copy agrees with itself for ever.",
+    file: "scripts/lint-preview.ts",
+    from: "    const contract = require('@agent-mesh/contracts');\n    CAPABILITIES = [...new Set(Object.values(contract.CAPABILITY as Record<string, string>))];",
+    to: "    CAPABILITIES = ['agent.provision', 'agent.teardown', 'key.approve', 'role.grant', 'audit.read.metadata', 'audit.read.content', 'mailbox.read.depth', 'group.manage', 'type.manage'];",
+    suite: "test/preview-lint.test.ts",
+    expect: ["counts capabilities from the contract rather than a list of its own"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",

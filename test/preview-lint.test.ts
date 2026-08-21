@@ -38,3 +38,58 @@ describe("the preview deliverable", () => {
     expect({ lint: runLint({ silent: true }).capabilityCount }).toEqual({ lint: contractCount });
   });
 });
+
+/**
+ * **The linter's own four checks, moved out from behind a flag.**
+ *
+ * They lived in `scripts/lint-preview.ts` under `--test`, and no
+ * `package.json` script and no CI job ever passed it — the only way they ran
+ * was somebody typing the path. That is the same shape this file's first two
+ * cases were written to end: a guard outside every denominator is
+ * indistinguishable from one that does not exist.
+ *
+ * Each mutates one of the linter's inputs and requires it to complain. A lint
+ * that reports zero errors on a broken input is the failure mode that matters,
+ * because zero errors is also what passing looks like.
+ */
+describe("the linter catches what it is for", () => {
+  test("catches a route the SPEC does not authorise", () => {
+    const r = runLint({
+      mockHtmlFiles: { "test.html": "<div>POST /api/v1/tenants/acme/quota</div>" },
+      minFloorOverride: 1,
+      silent: true,
+    });
+    expect({ invented: r.errors > 0 }).toEqual({ invented: true });
+  });
+
+  /**
+   * **The floor is the check nobody thinks to write.** An extraction that
+   * silently stops finding routes reports no unauthorised ones either, so it
+   * passes — sixty modular pages must yield at least sixty references, and
+   * seven is a parser that broke rather than a preview that shrank.
+   */
+  test("catches an extraction that has quietly stopped working", () => {
+    const r = runLint({
+      mockHtmlFiles: { "test.html": `<div>${Array(7).fill("/api/v1/inbox").join(" ")}</div>` },
+      minFloorOverride: 60,
+      silent: true,
+    });
+    expect({ degraded: r.errors > 0 }).toEqual({ degraded: true });
+  });
+
+  test("catches an RBAC page missing a capability the contract defines", () => {
+    const r = runLint({ mockRbac: "<div>key.approve only</div>", silent: true });
+    expect({ missingCapability: r.errors > 0 }).toEqual({ missingCapability: true });
+  });
+
+  /**
+   * The allowlist comes from SPEC's own section headers. A SPEC it cannot
+   * parse yields no allowed routes, and every route in the preview would then
+   * be unauthorised — so the linter must fail rather than report a preview
+   * that suddenly agrees with nothing.
+   */
+  test("catches a SPEC it cannot read the route tables out of", () => {
+    const r = runLint({ mockSpec: "# Invalid SPEC with no 9.1 section", silent: true });
+    expect({ corruptSpec: r.errors > 0 }).toEqual({ corruptSpec: true });
+  });
+});
