@@ -1,8 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    // `..` rather than `src`, for the reason every other package here uses it:
+    // this project now contains the logger's sources as well as its own, and
+    // `rootDir` decides which files a project is allowed to hold.
+    "rootDir": "..",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../log/src/**/*.ts"]
 }

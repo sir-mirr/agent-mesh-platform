@@ -198,7 +198,7 @@ export function createMailboxStatements(handle: Database) {
      * the caller's turn may simply have ended before it could persist them.
      */
     leasableMessages: handle.prepare(`
-      SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts
+      SELECT id, from_agent, to_agent, sent_by, content, reply_to, status, ts, leased_until
       FROM messages
       WHERE to_agent = ?1 AND status = 'pending'
         AND (leased_until IS NULL OR leased_until < datetime('now'))

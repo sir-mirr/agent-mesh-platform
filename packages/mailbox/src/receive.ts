@@ -19,6 +19,9 @@
  */
 
 import type { Database, Statement } from "bun:sqlite";
+import { createLogger } from "@agent-mesh/log";
+
+const log = createLogger("mailbox");
 
 /** A message as it goes back to the caller (§ 8.8.1). */
 export interface MailboxMessage {
@@ -94,6 +97,20 @@ export function receive(opts: ReceiveOptions): ReceiveResult {
     }
 
     page = stmt.leasableMessages.all(identity, limit) as any[];
+    // **A lease that lapsed is the only redelivery this service does.** The
+    // batch comes back because the caller's turn ended before it could persist
+    // what it was handed, which is the design -- and it is also what a caller
+    // stuck in a crash loop looks like from here. Indistinguishable in the
+    // rows, so it is counted where the two are still one event.
+    const relet = page.filter((m) => m.leased_until !== null && m.leased_until !== undefined);
+    if (relet.length > 0) {
+      log.warn(`handing back ${relet.length} message(s) whose lease lapsed`, "lease_expired", {
+        actor: identity,
+        count: relet.length,
+        outcome: "re_offered",
+        reason: "lease_lapsed",
+      });
+    }
     for (const m of page) stmt.leaseMessage.run(m.id, leaseSeconds);
     remaining = (stmt.countLeasable.get(identity) as { n: number }).n;
   });

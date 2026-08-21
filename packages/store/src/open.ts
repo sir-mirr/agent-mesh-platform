@@ -12,7 +12,12 @@
  */
 
 import { Database } from "bun:sqlite";
+import { statSync } from "node:fs";
 import { join } from "node:path";
+
+import { createLogger } from "@agent-mesh/log";
+
+const log = createLogger("store");
 
 export const DEFAULT_STATE_DIR = "/srv/agent-mesh-lab/state/shared";
 
@@ -72,6 +77,24 @@ export function openAt(path: string, opts: Omit<OpenOptions, "env"> = {}): Datab
     ...(opts.create ? { create: true } : {}),
   });
   if (!opts.readonly) {
+    // **Before the first statement runs**, because opening in WAL mode
+    // recovers the log and the evidence is gone by the time anybody could ask.
+    //
+    // A `-wal` with bytes in it at open means the process that wrote it left
+    // without folding it -- `checkpointForShutdown` is what folds it, and it is
+    // reached only on a clean path. Nothing is lost either way; SQLite replays
+    // it. What is worth knowing is that it happened, because the alternative
+    // reading of a quiet service is that every shutdown was clean, and the two
+    // look identical from outside (T-022 principle 3).
+    const carried = walBytes(path);
+    if (carried > 0) {
+      log.warn("recovering a write-ahead log the last process left behind", "wal_recovered", {
+        id: path,
+        wal_bytes: carried,
+        outcome: "recovered",
+        reason: "unfolded_log",
+      });
+    }
     db.exec("PRAGMA journal_mode = WAL;");
   }
   db.exec("PRAGMA busy_timeout = 5000;");
@@ -111,9 +134,34 @@ export function checkpointForShutdown(db: Database, timeoutMs = 250): void {
   try {
     db.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.trunc(timeoutMs))};`);
     db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-  } catch {
+  } catch (err) {
     // A handle already closed, or a log some other process is pinning harder
     // than the timeout allows. Neither is worth failing a shutdown over — the
     // next open recovers the log, which is what has been happening all along.
+    //
+    // Said, though. This is the one place that decides whether the *next* boot
+    // reports a recovery, so a shutdown that swallowed the reason left that
+    // warning with no cause anybody could find.
+    log.warn("could not fold a write-ahead log on the way out", "wal_checkpoint_failed", {
+      outcome: "left_unfolded",
+      reason: "checkpoint_refused",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * How much log is waiting to be replayed, or `0` when there is none to read.
+ *
+ * `:memory:` and a database being created have no `-wal` beside them, and a
+ * store somebody else is mid-write on may answer nothing useful -- none of
+ * which is a reason to fail an open.
+ */
+function walBytes(path: string): number {
+  if (path === ":memory:" || path === "") return 0;
+  try {
+    return statSync(`${path}-wal`).size;
+  } catch {
+    return 0;
   }
 }

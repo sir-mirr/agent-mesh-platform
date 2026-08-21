@@ -9,6 +9,8 @@
   },
   "include": [
     "**/*.ts",
-    "../packages/store/src/**/*.ts"
+    "../packages/store/src/**/*.ts",
+    // The store logs, so its logger is part of this project too.
+    "../packages/log/src/**/*.ts"
   ]
 }

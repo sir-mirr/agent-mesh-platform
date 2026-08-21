@@ -14,7 +14,7 @@
  *   `@agent-mesh/mailbox` are the two doors. A deep import reaches past
  *   whatever the barrel chose to export, so the package stops being able to
  *   move its own files.
- * - **Eight pairs, seven of them at run time.** The eighth is a test importing the
+ * - **Ten pairs, nine of them at run time.** The tenth is a test importing the
  *   schema its subject writes against, named below. A pair appearing here that
  *   is not in the table is a dependency somebody added without saying so.
  * - **One consumer from outside `packages/`.** `scripts/` and `test/` reach in
@@ -235,7 +235,7 @@ describe("the repository's import graph", () => {
    * writes to — the hub owns that DDL (SPEC § 3.1), so the test asserts
    * against the owner's definition rather than a second copy.
    */
-  test("has exactly these package pairs, seven of them at run time", () => {
+  test("has exactly these package pairs, nine of them at run time", () => {
     const runtime = [...new Set(cross.filter((e) => !e.test).map(pairKey))].sort();
     const testOnly = [...new Set(cross.filter((e) => e.test).map(pairKey))].sort()
       .filter((p) => !runtime.includes(p));
@@ -246,11 +246,13 @@ describe("the repository's import graph", () => {
       "hub -> log",
       "hub -> mailbox",
       "hub -> store",
+      "mailbox -> log",
       "self-reminder -> log",
       "self-reminder -> store",
+      "store -> log",
     ]);
     expect(testOnly).toEqual(["mailbox -> store"]);
-    expect(new Set([...runtime, ...testOnly]).size).toBe(8);
+    expect(new Set([...runtime, ...testOnly]).size).toBe(10);
   });
 
   test("names the one file the fifth pair rests on", () => {

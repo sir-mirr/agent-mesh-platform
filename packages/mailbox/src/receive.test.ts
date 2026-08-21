@@ -19,6 +19,7 @@
  */
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { captureConsole, eventCounts, resetCountsForTest } from "@agent-mesh/log";
 import { hubSchema } from "@agent-mesh/store";
 import { receive } from "./receive";
 
@@ -144,5 +145,106 @@ describe("settling the batch before it", () => {
     const taken = take("alice", { ackIds: ["m1"], limit: 1 });
     expect(statusOf("m1")).toBe("delivered");
     expect(taken.messages.map((m) => m.id)).toEqual(["m2"]);
+  });
+});
+
+/**
+ * A lease that lapsed is the only redelivery this service does (T-022).
+ *
+ * It is the design working: the caller's turn ended before it could persist
+ * what it was handed, so the batch comes back. It is also what a caller stuck
+ * in a crash loop looks like from here, and the rows cannot tell the two apart
+ * — the same message goes out again either way, and it did so silently.
+ */
+describe("a lease that lapsed", () => {
+  const lapsed = (id: string, to: string) => {
+    put(id, to);
+    db.prepare("UPDATE messages SET leased_until = datetime('now', '-1 seconds') WHERE id = ?").run(id);
+  };
+
+  beforeEach(() => resetCountsForTest());
+
+  test("is handed back with a line naming who and how many", () => {
+    lapsed("m1", "alice");
+    lapsed("m2", "alice");
+
+    const capture = captureConsole();
+    let taken;
+    try {
+      taken = take("alice");
+    } finally {
+      capture.restore();
+    }
+
+    expect(taken.messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+    const line = capture.lines.find((l) => l.includes('"event":"lease_expired"'));
+    expect(line, "a lapsed lease was re-offered without a word").toBeDefined();
+    expect(line).toContain('"component":"mailbox"');
+    expect(line).toContain('"level":"warn"');
+    expect(line).toContain('"actor":"alice"');
+    expect(line).toContain('"count":2');
+    expect(line).toContain('"reason":"lease_lapsed"');
+  });
+
+  test("is counted, so a queue that never re-offers is still an answer", () => {
+    lapsed("m1", "alice");
+    const capture = captureConsole();
+    try {
+      take("alice");
+    } finally {
+      capture.restore();
+    }
+
+    expect(eventCounts()).toEqual([
+      { component: "mailbox", event: "lease_expired", reason: "lease_lapsed", count: 1 },
+    ]);
+  });
+
+  test("a first delivery is not one, and says nothing", () => {
+    put("m1", "alice");
+    const capture = captureConsole();
+    try {
+      take("alice");
+    } finally {
+      capture.restore();
+    }
+
+    expect(capture.lines).toEqual([]);
+    expect(eventCounts()).toEqual([]);
+  });
+
+  test("a batch still under its lease is neither re-offered nor mentioned", () => {
+    put("m1", "alice");
+    take("alice");
+    resetCountsForTest();
+
+    const capture = captureConsole();
+    let second;
+    try {
+      second = take("alice");
+    } finally {
+      capture.restore();
+    }
+
+    expect(second.messages).toEqual([]);
+    expect(capture.lines).toEqual([]);
+    expect(eventCounts()).toEqual([]);
+  });
+
+  test("counts the re-offered ones only, in a batch that mixes both", () => {
+    lapsed("m1", "alice");
+    put("m2", "alice");
+
+    const capture = captureConsole();
+    try {
+      take("alice");
+    } finally {
+      capture.restore();
+    }
+
+    expect(eventCounts()).toEqual([
+      { component: "mailbox", event: "lease_expired", reason: "lease_lapsed", count: 1 },
+    ]);
+    expect(capture.lines.find((l) => l.includes('"event":"lease_expired"'))).toContain('"count":1');
   });
 });
