@@ -592,3 +592,261 @@ describe("the drawer's peer list is a list of peers", () => {
     expect(panelText()).toContain(`${say("topo.peers")} (${chips.length}):`);
   });
 });
+
+describe("the populated canvas controls", () => {
+  it("searches, zooms, pans, filters, and navigates the minimap without losing the selected node", async () => {
+    // Three members make a real ring: each peer is unique. A two-member ring
+    // walks A→B and B→A and would exercise React's duplicate-key warning rather
+    // than the controls this scenario is about.
+    serve({
+      [GROUPS]: () => json(200, { groups: [{
+        group_id: "grp_alpha",
+        name: "Alpha",
+        members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"],
+      }] }),
+      [AGENTS]: () => json(200, { agents: [
+        ...AGENT_ROWS,
+        { id: "svc-alpha-3", name: "Alpha Three", description: "Alpha Three", type: "runtime", last_seen_at: null },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+
+    const realRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const realCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    const frames: Array<{ id: number; callback: FrameRequestCallback }> = [];
+    const cancelled: number[] = [];
+    let nextFrameId = 1;
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      const id = nextFrameId++;
+      frames.push({ id, callback });
+      return id;
+    };
+    globalThis.cancelAnimationFrame = (id: number) => {
+      cancelled.push(id);
+      const index = frames.findIndex((frame) => frame.id === id);
+      if (index >= 0) frames.splice(index, 1);
+    };
+
+    const finishAnimations = async () => {
+      const pending = frames.splice(0);
+      await act(async () => {
+        for (const frame of pending) frame.callback(performance.now() + 1000);
+      });
+    };
+
+    try {
+      await mount();
+
+      const minimap = document.querySelector(".minimap-container") as HTMLElement | null;
+      const viewport = minimap?.parentElement as HTMLElement | null;
+      if (!minimap || !viewport) throw new Error("the topology canvas has no minimap navigation surface");
+
+      Object.defineProperty(viewport, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1200, bottom: 700, width: 1200, height: 700, toJSON: () => ({}) }),
+      });
+      Object.defineProperty(minimap, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ x: 20, y: 570, left: 20, top: 570, right: 220, bottom: 680, width: 200, height: 110, toJSON: () => ({}) }),
+      });
+      await act(async () => { window.dispatchEvent(new Event("resize")); });
+      const cameraTransform = (): string | undefined => [...document.querySelectorAll("g")]
+        .map((group) => group.getAttribute("transform") ?? "")
+        .find((transform) => transform.startsWith("translate("));
+      const expectValidCamera = (where: string) => {
+        const camera = cameraTransform();
+        if (!camera || camera.includes("NaN")) {
+          throw new Error(`the topology camera became invalid during ${where}: ${camera ?? "missing"}`);
+        }
+      };
+      expectValidCamera("mount");
+
+      let captured = 0;
+      let released = 0;
+      Object.defineProperty(viewport, "setPointerCapture", { configurable: true, value: () => { captured += 1; } });
+      Object.defineProperty(viewport, "hasPointerCapture", { configurable: true, value: () => true });
+      Object.defineProperty(viewport, "releasePointerCapture", { configurable: true, value: () => { released += 1; } });
+
+      const search = document.querySelector('input[type="text"]') as HTMLInputElement | null;
+      if (!search) throw new Error("the topology canvas has no agent search control");
+      fireEvent.change(search, { target: { value: "Alpha One" } });
+      fireEvent.keyDown(search, { key: "Enter" });
+      const partial = frames.shift();
+      if (!partial) throw new Error("the topology search did not start its camera move");
+      await act(async () => { partial.callback(performance.now() + 50); });
+      await finishAnimations();
+      expectValidCamera("search");
+
+      if (!panelText().includes("Alpha One")) {
+        throw new Error("the topology search did not open the selected node drawer");
+      }
+
+      // Open and close the suggestion box through both of its dismissal paths.
+      const resultsOpen = () => [...document.querySelectorAll("div")]
+        .some((item) => item.children.length === 0 && item.textContent?.startsWith(`${say("topo.results")} (`));
+      fireEvent.change(search, { target: { value: "Alpha" } });
+      expect(resultsOpen()).toBe(true);
+      fireEvent.keyDown(search, { key: "Escape" });
+      expect(resultsOpen()).toBe(false);
+      fireEvent.change(search, { target: { value: "Alpha" } });
+      fireEvent.mouseDown(document.body);
+      expect(resultsOpen()).toBe(false);
+
+      fireEvent.change(search, { target: { value: "Alpha Two" } });
+      const resultLabel = [...(search.parentElement?.querySelectorAll("span") ?? [])]
+        .find((item) => item.textContent === "Alpha Two");
+      const result = resultLabel?.parentElement?.parentElement as HTMLElement | null;
+      if (!result) throw new Error("the topology search did not list its matching node");
+      fireEvent.mouseEnter(result);
+      fireEvent.mouseLeave(result);
+      fireEvent.click(result);
+      await finishAnimations();
+      expect(panelText()).toContain("Alpha Two");
+
+      const peer = [...(panel()?.querySelectorAll("button") ?? [])]
+        .find((button) => (button.textContent ?? "").includes("svc-alpha-1"));
+      if (!peer) throw new Error("the selected topology node has no peer navigation control");
+      fireEvent.click(peer);
+      await finishAnimations();
+      expect(panelText()).toContain("Alpha One");
+
+      const closeDrawer = [...(panel()?.querySelectorAll("button") ?? [])]
+        .find((button) => button.textContent === "✕");
+      if (!closeDrawer) throw new Error("the selected topology node has no close control");
+      fireEvent.click(closeDrawer);
+      if (panel()) throw new Error("the topology drawer stayed open after its close control was used");
+
+      const alphaOneNode = screen.queryAllByTestId("topology-agent")
+        .find((node) => [...node.querySelectorAll("text")].some((label) => label.textContent === "Alpha One"));
+      if (!alphaOneNode) throw new Error("the topology canvas did not draw Alpha One");
+      fireEvent.click(alphaOneNode);
+      await finishAnimations();
+      expectValidCamera("node navigation");
+
+      const filter = document.querySelector("select") as HTMLSelectElement | null;
+      if (!filter) throw new Error("the topology canvas has no group filter");
+      fireEvent.change(filter, { target: { value: "grp_alpha" } });
+      expect(filter.value).toBe("grp_alpha");
+
+      const buttonWithTitle = (title: string): HTMLButtonElement => {
+        const button = [...document.querySelectorAll("button")].find((candidate) => candidate.title === title);
+        if (!button) throw new Error(`the topology canvas has no ${title} control`);
+        return button;
+      };
+
+      fireEvent.click(buttonWithTitle(say("topo.zoomIn")));
+      fireEvent.click(buttonWithTitle(say("topo.zoomOut")));
+      // Starting a second camera move cancels the first one rather than letting
+      // two animation writers race over the same transform.
+      await finishAnimations();
+      fireEvent.click(buttonWithTitle(say("topo.fit")));
+      await finishAnimations();
+      fireEvent.click(buttonWithTitle(say("topo.zoomIn")));
+      await finishAnimations();
+      if (!minimap.querySelector("div")) throw new Error("the minimap did not show its lens after zooming in");
+      expectValidCamera("camera buttons");
+
+      const wheelAtCanvasCenter = (deltaY: number) => {
+        // happy-dom's WheelEvent constructor does not retain clientY. Define
+        // the browser values explicitly or the product quite correctly turns
+        // `undefined - rect.top` into an invalid camera coordinate.
+        const event = new Event("wheel", { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          deltaY: { value: deltaY },
+          clientX: { value: 600 },
+          clientY: { value: 350 },
+        });
+        viewport.dispatchEvent(event);
+      };
+      await act(async () => {
+        wheelAtCanvasCenter(-1);
+        wheelAtCanvasCenter(1);
+      });
+      expectValidCamera("wheel zoom");
+
+      // Controls nested in the canvas are not drag handles for the canvas.
+      fireEvent.pointerDown(alphaOneNode, { pointerId: 4, clientX: 400, clientY: 300 });
+      fireEvent.pointerDown(filter, { pointerId: 5, clientX: 400, clientY: 300 });
+      fireEvent.pointerDown(minimap, { pointerId: 6, clientX: 100, clientY: 620 });
+      expect(captured).toBe(0);
+
+      fireEvent.pointerDown(viewport, { pointerId: 7, clientX: 400, clientY: 300 });
+      fireEvent.pointerMove(viewport, { pointerId: 7, clientX: 450, clientY: 340 });
+      fireEvent.pointerUp(viewport, { pointerId: 7, clientX: 450, clientY: 340 });
+      expect(captured).toBe(1);
+      expect(released).toBe(1);
+      expectValidCamera("pointer drag");
+
+      // The global safety net ends a drag even if the pointer leaves the view.
+      fireEvent.pointerDown(viewport, { pointerId: 8, clientX: 400, clientY: 300 });
+      await act(async () => { window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); });
+
+      fireEvent.mouseDown(minimap, { clientX: 100, clientY: 620 });
+      await act(async () => {
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 180, clientY: 650, bubbles: true }));
+        window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      });
+      await finishAnimations();
+      expectValidCamera("minimap navigation");
+
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      });
+      if (panel()) throw new Error("the topology drawer stayed open after Escape");
+      expect(cancelled.length).toBeGreaterThan(0);
+      expectValidCamera("Escape");
+    } finally {
+      cleanup();
+      globalThis.requestAnimationFrame = realRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = realCancelAnimationFrame;
+    }
+  });
+
+  it("lays out the product's large-cluster and inter-group branches", async () => {
+    const alpha = Array.from({ length: 7 }, (_, index) => ({
+      id: `alpha-${index + 1}`,
+      name: `Alpha ${index + 1}`,
+      description: `Alpha ${index + 1}`,
+      type: "runtime",
+      last_seen_at: index === 0 ? "2026-08-19T09:00:00Z" : null,
+    }));
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "grp_alpha", name: "Alpha", members: alpha.map((agent) => agent.id) },
+        { group_id: "grp_beta", name: "Beta", members: ["beta-1"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        ...alpha,
+        { id: "beta-1", name: "Beta 1", description: "Beta 1", type: "runtime", last_seen_at: null },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-cluster")).toBe(2);
+    expect(drawn("topology-gateway")).toBe(2);
+    expect(drawn("topology-agent")).toBe(8);
+    expect(clusterLabels()).toEqual(["Alpha (7)", "Beta (1)"]);
+
+    const filter = document.querySelector("select") as HTMLSelectElement | null;
+    if (!filter) throw new Error("the large topology has no group filter");
+    fireEvent.change(filter, { target: { value: "grp_alpha" } });
+    const beta = screen.queryAllByTestId("topology-agent")
+      .find((node) => [...node.querySelectorAll("text")].some((label) => label.textContent === "Beta 1"));
+    if (!beta) throw new Error("the large topology did not draw its second group");
+    expect(beta.style.opacity).toBe("0.2");
+  });
+
+  it("draws an answered registry under an explicit no-group placeholder", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: [] }),
+      [AGENTS]: () => json(200, { agents: [AGENT_ROWS[0]] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-cluster")).toBe(1);
+    expect(drawn("topology-agent")).toBe(1);
+    expect(clusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
+  });
+});

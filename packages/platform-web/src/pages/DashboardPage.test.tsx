@@ -66,6 +66,7 @@ const ME = "/auth/me";
 const AGENTS = "/api/v1/agents";
 const MAILBOX = "/api/v1/admin/mailbox";
 const GROUPS = "/api/v1/admin/groups";
+const KEYS_PENDING = "/api/v1/admin/keys/pending";
 const HEALTH = "/api/v1/health";
 const USAGE = "/api/v1/admin/ai-usage";
 const BEHAVIOUR = "/api/v1/admin/telemetry/behaviour";
@@ -371,6 +372,85 @@ describe("the queue card, which two panels draw", () => {
     expect(kpiValue(en("dash.ga.agents"))).toBe("1");
     expect(kpiValue(en("dash.ga.lease"))).not.toBe("0");
     expect(kpiValue(en("dash.ga.lease"))).toBe(en("common.unmeasured"));
+  });
+});
+
+describe("the two role panels that exist below today's browser gate", () => {
+  it("renders the tenant component's populated answer without inventing its egress total", async () => {
+    // `/auth/me` maps every non-admin account to AGENT_OPERATOR today, so this
+    // is deliberately a component-mount reach, not a browser-reach claim. The
+    // panel remains product code, though, and its arithmetic has to read the
+    // response it is given rather than deriving a different number.
+    remember("TENANT_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({
+        groups: [
+          { group_id: "grp_alpha", name: "Alpha", description: "Critical workers", members: [SEEN_ROW.id] },
+          { group_id: "grp_beta", name: "Beta", members: [] },
+        ],
+        egress: [
+          { from_group: "grp_alpha", to_group: "grp_beta" },
+          { from_group: "grp_alpha", to_group: "grp_archive" },
+        ],
+      })],
+      [AGENTS, answers({ agents: [SEEN_ROW, UNSEEN_ROW] })],
+      [KEYS_PENDING, answers({ keys: [{
+        identity: "agent-pending",
+        fingerprint: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      }] })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.ta.groups"))).toBe("2");
+    expect(kpiValue(en("dash.ta.agents"))).toBe("2");
+    if (kpiValue(en("dash.ta.egress")) !== "2") {
+      throw new Error("the tenant dashboard did not sum the egress rules the route returned");
+    }
+    expect(kpiValue(en("dash.ta.approval"))).toBe("1");
+    expect(bodyText()).toContain("Critical workers");
+    expect(bodyText()).toContain("agent-pending");
+    expect(bodyText()).toContain("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  });
+
+  it("renders the tenant component's answered-and-empty branches as empty", async () => {
+    remember("TENANT_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [], egress: [] })],
+      [AGENTS, answers({ agents: [] })],
+      [KEYS_PENDING, answers({ keys: [] })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.ta.groups"))).toBe("0");
+    expect(kpiValue(en("dash.ta.agents"))).toBe("0");
+    expect(bodyText()).toContain(en("dash.ta.groupsEmpty"));
+    expect(bodyText()).toContain(en("dash.ta.keysEmpty"));
+  });
+
+  it("renders the group component's groups, members, sightings, and measured queue", async () => {
+    // Same reach boundary as the tenant case above: this is below the browser
+    // guard, because no current server session can carry GROUP_ADMIN.
+    remember("GROUP_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{
+        group_id: "grp_alpha",
+        name: "Alpha",
+        members: [SEEN_ROW.id, UNSEEN_ROW.id],
+      }] })],
+      [AGENTS, answers({ agents: [SEEN_ROW, UNSEEN_ROW] })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 4 })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.ga.groups"))).toBe("1");
+    expect(kpiValue(en("dash.ga.agents"))).toBe("2");
+    expect(kpiValue(en("dash.ga.lease"))).toBe("4");
+    expect(kpiValue(en("dash.ga.health"))).toBe("50%");
+    expect(bodyText()).toContain(SEEN_ROW.id);
+    expect(bodyText()).toContain(UNSEEN_ROW.id);
   });
 });
 
