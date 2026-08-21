@@ -39,8 +39,14 @@ interface TopoNode {
   key: string | null;
   x: number;
   y: number;
+  /**
+   * D-745: the live `RegistryAgent` contract has no `avatarImg` field, and
+   * every `TopoNode` producer therefore supplies only this icon. The old image
+   * branches belonged to identity-specific demo data removed by the live-data
+   * transition. Reintroduce `avatarImg` rendering only with a real avatar
+   * contract, a producer, and coverage for the resulting nodes.
+   */
   icon: string;
-  avatarImg?: string | undefined;
   displayName: string;
   directPeers: string[];
 }
@@ -1173,11 +1179,7 @@ export function TopologyPage() {
                     onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#EFF6FF")}
                     onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
                   >
-                    {node.avatarImg ? (
-                      <img src={node.avatarImg} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
-                    ) : (
-                      <span style={{ fontSize: "1rem" }}>{node.icon}</span>
-                    )}
+                    <span style={{ fontSize: "1rem" }}>{node.icon}</span>
                     <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
                       <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-text-primary)", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
                         {node.displayName}
@@ -1363,56 +1365,24 @@ export function TopologyPage() {
                 >
                   <circle cx={node.x} cy={node.y} r={36} fill="transparent" />
 
-                  {/* Character Avatar Node (핀둥이, 핀자, 아름이) */}
-                  {node.avatarImg ? (
-                    <>
-                      <circle
-                        cx={node.x}
-                        cy={node.y}
-                        r={18}
-                        fill="#FFFFFF"
-                        stroke={isSelected ? "#0284C7" : isPeer ? "#059669" : "#334155"}
-                        strokeWidth={isSelected ? 4 : isPeer ? 3 : 2.2}
-                        filter="url(#nodeShadow)"
-                      />
-                      <defs>
-                        <clipPath id={`clip-${node.identity}`}>
-                          <circle cx={node.x} cy={node.y} r={15} />
-                        </clipPath>
-                      </defs>
-                      <image
-                        href={node.avatarImg}
-                        x={node.x - 15}
-                        y={node.y - 15}
-                        width={30}
-                        height={30}
-                        clipPath={`url(#clip-${node.identity})`}
-                        preserveAspectRatio="xMidYMid meet"
-                      />
-                    </>
-                  ) : (
-                    /* Standard Circle Node */
-                    <>
-                      <circle
-                        cx={node.x}
-                        cy={node.y}
-                        r={16}
-                        fill="#FFFFFF"
-                        stroke={isSelected ? "#0284C7" : isPeer ? "#059669" : "#334155"}
-                        strokeWidth={isSelected ? 4 : isPeer ? 3 : 2.4}
-                        filter="url(#nodeShadow)"
-                      />
-                      <text
-                        x={node.x}
-                        y={node.y + 4}
-                        fontSize={10}
-                        textAnchor="middle"
-                        fill="#0F172A"
-                      >
-                        {node.icon}
-                      </text>
-                    </>
-                  )}
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={16}
+                    fill="#FFFFFF"
+                    stroke={isSelected ? "#0284C7" : isPeer ? "#059669" : "#334155"}
+                    strokeWidth={isSelected ? 4 : isPeer ? 3 : 2.4}
+                    filter="url(#nodeShadow)"
+                  />
+                  <text
+                    x={node.x}
+                    y={node.y + 4}
+                    fontSize={10}
+                    textAnchor="middle"
+                    fill="#0F172A"
+                  >
+                    {node.icon}
+                  </text>
 
                   {/* Online / Leased Status Indicator Dot */}
                   <circle
@@ -1577,17 +1547,9 @@ export function TopologyPage() {
           >
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {selectedNode.avatarImg ? (
-                  <img
-                    src={selectedNode.avatarImg}
-                    alt={selectedNode.identity}
-                    style={{ width: 44, height: 44, borderRadius: "50%", background: "white", padding: 2, border: "2px solid #2563EB" }}
-                  />
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-bg-surface-sub)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}>
-                    {selectedNode.icon}
-                  </div>
-                )}
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-bg-surface-sub)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem" }}>
+                  {selectedNode.icon}
+                </div>
                 <div>
                   <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--color-text-primary)", letterSpacing: "-0.02em" }}>
                     {selectedNode.displayName}
