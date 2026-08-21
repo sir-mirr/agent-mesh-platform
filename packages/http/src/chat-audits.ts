@@ -39,7 +39,15 @@ export interface ChatAuditsResult {
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 200;
 
-/** An empty string is not a filter — `?to_agent=` asks for everything. */
+/**
+ * An empty string is not a filter — `?to_agent=` asks for everything.
+ *
+ * **The only place emptiness is decided.** The call sites test `!== null`
+ * rather than truthiness, so this predicate is the single guard: a second one
+ * downstream would be a second sufficient check, and a mutation of either
+ * would survive the other. Two guards for one rule are not twice as safe —
+ * they are one rule nobody can test.
+ */
 const filter = (v: string | undefined): string | null =>
   typeof v === "string" && v ? v : null;
 
@@ -85,15 +93,15 @@ export function listChatAudits(openHub: () => Database, q: ChatAuditQuery): Chat
       where.push("(ts < ? OR (ts = ? AND id < ?))");
       params.push(cursorTs, cursorTs, beforeId);
     }
-    if (fromAgent) {
+    if (fromAgent !== null) {
       where.push("from_agent = ?");
       params.push(fromAgent);
     }
-    if (toAgent) {
+    if (toAgent !== null) {
       where.push("to_agent = ?");
       params.push(toAgent);
     }
-    if (search) {
+    if (search !== null) {
       where.push("content LIKE ?");
       params.push("%" + search + "%");
     }

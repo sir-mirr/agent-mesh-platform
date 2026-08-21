@@ -656,7 +656,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The audit list dropped the from_agent filter, handing a console watching one conversation every conversation on the mesh.",
     file: "packages/http/src/chat-audits.ts",
-    from: '    if (fromAgent) {\n      where.push("from_agent = ?");\n      params.push(fromAgent);\n    }',
+    from: '    if (fromAgent !== null) {\n      where.push("from_agent = ?");\n      params.push(fromAgent);\n    }',
     to: '    if (false) {\n      where.push("from_agent = ?");\n      params.push(fromAgent);\n    }',
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["narrows to the conversation"],
