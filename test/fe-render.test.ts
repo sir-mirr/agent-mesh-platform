@@ -4666,7 +4666,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // `setFailure` 는 이 규칙이 쓰인 뒤에 생긴 이름이다 — 벨이 그것으로 실패를
         // 적기 시작하자 규칙이 벨을 *아무것도 안 적는다* 로 찍었다. **가드의 어휘가
         // 코드보다 늦으면, 옳게 고친 자리가 빨개진다.** 접두사로 둔다.
-        if (/setIsError|setUnreachable|setError|setFail/.test(body)) continue;
+        //
+        // **그리고 이름이 있다는 것으로는 부족하다.** 이 줄이 오래 `setIsError` 를
+        // 보기만 했고, 그래서 두 대시보드 패널이 실패를 아무도 읽지 않는 상태에
+        // 적어두고 화면에는 0 을 그리는 동안 이 검사는 초록이었다. `fe-codex` 가
+        // *그 상태가 읽히는가* 를 물어 그것을 드러냈다 — 기록은 읽는 쪽이 있을 때만
+        // 기록이다. 아래는 그 질문을 검사가 대신 한다.
+        const recorder = /set([A-Za-z]*(?:IsError|Unreachable|Error|Fail)[A-Za-z]*)\s*\(/.exec(body)
+          ?? /set([A-Z][A-Za-z]*)\s*\(\s*\{\s*kind:/.exec(body);
+        if (recorder) {
+          const state = recorder[1]![0]!.toLowerCase() + recorder[1]!.slice(1);
+          // 그 catch 를 감싼 컴포넌트만 본다. 한 파일에 같은 이름의 상태가 넷 있고
+          // 그중 둘만 읽는 경우가 실제로 있었으므로 파일 범위로는 안 갈린다.
+          const before = src.slice(0, m.index);
+          const startsBefore = [...before.matchAll(/^(?:export )?function \w+/gm)];
+          const from = startsBefore.length > 0 ? startsBefore[startsBefore.length - 1]!.index! : 0;
+          const nextStart = [...src.slice(m.index).matchAll(/^(?:export )?function \w+/gm)][0];
+          const to = nextStart ? m.index + nextStart.index! : src.length;
+          const component = src.slice(from, to);
+          const refs = [...component.matchAll(new RegExp(`\\b${state}\\b`, "g"))].length;
+          const declarations = [...component.matchAll(new RegExp(`const \\[\\s*${state}\\b`, "g"))].length;
+          // **setter 호출은 빼지 않는다.** `\bisError\b` 는 `setIsError` 안에서
+          // 애초에 안 걸리므로(경계도 대소문자도 다르다) 세지도 않은 것을 빼는
+          // 셈이 되고, 상태를 실제로 읽는 아홉 화면이 오탐으로 걸렸다.
+          // `fe-codex` 가 읽기 전용 재현으로 그 이중 차감을 짚었다.
+          if (refs - declarations > 0) continue;
+        }
         silent.push(`${file.slice(ROOT.length + 1)}:${src.slice(0, m.index).split("\n").length}`);
       }
     }

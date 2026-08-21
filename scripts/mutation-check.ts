@@ -2591,27 +2591,27 @@ export const MUTATIONS: Mutation[] = [
   },
   {
     id: "catch-empties-a-list-and-says-nothing",
+    // **Retired 2026-08-21, and the reason is that the shape is gone.**
+    //
+    // Re-anchored three times before this, each time because the catch it
+    // planted into moved. It has now stopped moving: `fe-t019` routed every
+    // list read on this page through one discriminated value, so there is no
+    // `.catch(() => setX([]))` left in `DashboardPage.tsx` to neuter.
+    //
+    // Kept rather than deleted, and the last chapter is worth the space. The
+    // static half of `SC-DOWN-13` accepted a catch that *mentioned*
+    // `setIsError`, never asking whether anything read what it set — so two
+    // panels recorded a failure into state nothing consumed, drew `0`, and this
+    // guard was green over them for as long as it existed. `fe-codex` asked the
+    // better question and the fig leaf came off. That rule now requires the
+    // state to be read, and it flags five sites in the tree as it stood before
+    // this merge and none after, which is the coverage this entry had claimed.
+    retired: "the shape is gone from this file (fe-t019 routed every list read through one value); SC-DOWN-13's static half now requires the recorded state to be read, which is strictly wider",
     defect:
       "The shape itself, on any screen: `.catch(() => setX([]))`. It is one line, it reads as defensive, and it converts *the server did not answer* into *there is nothing* — the source rule exists because three panels carried it and only one was ever measured.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    // 재앵커 2026-08-20: 그 catch 가 `fetchAgents().then(setAgents)` 뒤로 붙었다.
-    // 재앵커 2026-08-20. **두 곳에 걸렸다** — 운영자 판과 멤버 판이 같은 catch 를 쓴다.
-    // `replace` 는 첫 곳을 가져가므로 뒤따르는 줄까지 넣어 하나만 고른다:
-    // 이 자리는 그 뒤에 대기 키를 읽는 쪽(운영자 판)이다.
-    // 재앵커 2026-08-20 (두 번째). **첫 재앵커는 틀린 사본을 골랐다.**
-    // `SC-DOWN-13` 의 소스 규칙은 catch 본문을 **뒤로 220자** 창으로 읽는다. 테넌트 판의
-    // 사본은 바로 뒤에 `setPendingKeys` catch 가 붙어 있고 그 안에 `setIsError` 가 있어서,
-    // 중화된 catch 가 그 창에 가려 **잡히지 않았다**(`not caught`).
-    // 그룹 판의 사본은 뒤가 `fetchAdminMailbox(... setMailbox(null))` 이라 안 가린다.
-    from: `    fetchAgents().then(setAgents).catch(() => {
-      setAgents([]);
-      setIsError(true);
-    });
-    fetchAdminMailbox()`,
-    to: `    fetchAgents().then(setAgents).catch(() => setAgents([]));
-    fetchAdminMailbox()`,
     suite: "test/fe-render.test.ts",
-    expect: ["SC-DOWN-13", "nothing records that it failed"],
+    expect: ["SC-DOWN-13", "retired"]
   },
   {
     id: "bell-calls-a-refusal-an-unanswered-question",
@@ -4320,6 +4320,56 @@ export const MUTATIONS: Mutation[] = [
     to: "  if (false) {",
     suite: "packages/http/src/upload.test.ts",
     expect: ["a declared length over the ceiling plus its envelope slack"],
+  },
+  {
+    id: "a-group-read-that-could-not-answer-is-drawn-as-empty",
+    defect:
+      "The dashboard folded *still asking*, *refused* and *unreachable* into *empty* for its group reads. An operator reads an empty list as an answer, and three of the four states are not answers \u2014 the screen then says a tenant has no groups when nobody has been told anything.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "  const state = read.kind === \"ready\"\n    ? read.groups.length > 0 ? \"present\" : \"empty\"\n    : read.kind;",
+    to: "  const state = read.kind === \"ready\"\n    ? read.groups.length > 0 ? \"present\" : \"empty\"\n    : \"empty\";",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["keeps the tenant group read's pending, refused, and unreachable states out of empty"],
+  },
+  {
+    id: "a-refused-group-read-is-reported-as-unreachable",
+    defect:
+      "The group read stopped asking `failureKind` what kind of failure it was and called every one unreachable. The two send a person to different places \u2014 one is a permission somebody must grant, the other is a service that is down \u2014 and `api/client.ts` carries the split precisely so a screen does not have to guess.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "        setRead({ kind: failureKind(err), groups: [], missing: refusedCapability(err) });",
+    to: "        setRead({ kind: \"unreachable\", groups: [], missing: refusedCapability(err) });",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["keeps the tenant group read's pending, refused, and unreachable states out of empty"],
+  },
+  {
+    id: "a-list-read-that-could-not-answer-is-drawn-as-empty",
+    defect:
+      "The same fold one level up, in the helper the agents and pending-key reads share. Those three reads are why `SC-DOWN-13` exists: each drew `0` for a read that had failed, and the state recording the failure was never read by anything. One helper now decides for all of them, so folding it here is the whole defect in one line.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "function dashboardListState<T>(read: DashboardListRead<T>): DashboardListState {\n  return read.kind === \"ready\" ? read.items.length > 0 ? \"present\" : \"empty\" : read.kind;\n}",
+    to: "function dashboardListState<T>(read: DashboardListRead<T>): DashboardListState {\n  return read.kind === \"ready\" ? read.items.length > 0 ? \"present\" : \"empty\" : \"empty\";\n}",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["keeps the tenant agents read's pending, refused, and unreachable states out of empty"],
+  },
+  {
+    id: "a-refused-list-read-is-reported-as-unreachable",
+    defect:
+      "The agents and pending-key reads stopped distinguishing a refusal from no answer. The pending-key panel is where an operator admits an identity to the mesh, so being told the service is down when the truth is *you may not read this* sends them to check a network that is fine.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "        setRead({ kind: failureKind(err), items: [], missing: refusedCapability(err) });",
+    to: "        setRead({ kind: \"unreachable\", items: [], missing: refusedCapability(err) });",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["keeps the tenant pending-key read's pending, refused, and unreachable states out of empty"],
+  },
+  {
+    id: "a-sign-in-in-flight-looks-like-one-not-started",
+    defect:
+      "The login button stopped saying a credential was in flight. The only feedback was the result, so a person who saw nothing pressed again \u2014 which is the case the handler guard exists for, and the guard is invisible if nothing shows the pending state either.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "            {isSubmitting ? (\n              <span data-testid=\"login-pending\">{t(\"login.pending\", \"\ub85c\uadf8\uc778 \ud655\uc778 \uc911...\")}</span>\n            ) : (\n              t(\"login.submit\", \"Sign in\")\n            )}",
+    to: "            {t(\"login.submit\", \"Sign in\")}",
+    suite: "packages/platform-web/src/pages/LoginPage.test.tsx",
+    expect: ["shows an in-flight credential as pending in its own place"],
   },
 ];
 
