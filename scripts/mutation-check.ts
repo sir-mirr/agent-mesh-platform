@@ -4151,6 +4151,76 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["does not claim a person the operator has not approved"],
   },
+  {
+    id: "a-refused-approval-still-reads-as-approved",
+    defect:
+      "`approve` on a key proposal moved the row to `approved` and drew the success toast **before knowing the server had taken it** \u2014 the `return` after the failure toast is what stops it. Without that line a refused decision looks like a made one and the proposal leaves the queue, so the one screen that would have let anybody retry no longer shows it. SC-WRITE-10.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: '        testId: "registration-approve-failed",\n        message: `${t("reg.toast.approveFailed", "\uc5d0\uc774\uc804\ud2b8 \uc2b9\uc778 \uc2e4\ud328")}: ${identity} \u2014 ${err.message}`,\n      });\n      return;',
+    to: '        testId: "registration-approve-failed",\n        message: `${t("reg.toast.approveFailed", "\uc5d0\uc774\uc804\ud2b8 \uc2b9\uc778 \uc2e4\ud328")}: ${identity} \u2014 ${err.message}`,\n      });',
+    suite: "packages/platform-web/src/pages/creator/RegisterAgentPage.test.tsx",
+    expect: ["keeps a refused approval pending and names the failed write in its own place"],
+  },
+  {
+    id: "a-refused-denial-still-reads-as-denied",
+    defect:
+      "The same on the other decision: a refused `deny` marked the row `rejected` and drew the success toast. The two halves are written separately and fail separately, so one being guarded says nothing about the other. SC-WRITE-10.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: '        testId: "registration-deny-failed",\n        message: `${t("reg.toast.denyFailed", "\uc5d0\uc774\uc804\ud2b8 \ub4f1\ub85d \uac70\uc808 \uc2e4\ud328")}: ${identity} \u2014 ${err.message}`,\n      });\n      return;',
+    to: '        testId: "registration-deny-failed",\n        message: `${t("reg.toast.denyFailed", "\uc5d0\uc774\uc804\ud2b8 \ub4f1\ub85d \uac70\uc808 \uc2e4\ud328")}: ${identity} \u2014 ${err.message}`,\n      });',
+    suite: "packages/platform-web/src/pages/creator/RegisterAgentPage.test.tsx",
+    expect: ["keeps an unreachable denial pending and names the failed write in its own place"],
+  },
+  {
+    id: "a-decided-proposal-still-offers-its-hover",
+    defect:
+      "The notification bell offered its hover affordance on a proposal that is no longer actionable. An affordance is a promise: hovering a decided row lights up as though a decision were still available there, and the click that follows does nothing.",
+    file: "packages/platform-web/src/components/layout/NotificationBell.tsx",
+    from: '                  onMouseEnter={(e) => {\n                    if (req.status === "pending") {',
+    to: '                  onMouseEnter={(e) => {\n                    if (req.status === "approved") {',
+    suite: "packages/platform-web/src/components/layout/NotificationBell.test.tsx",
+    expect: ["hover affordance only on a proposal that is still actionable"],
+  },
+  {
+    id: "the-language-already-chosen-offers-to-be-chosen",
+    defect:
+      "The sidebar's language switch lit its hover on the option already selected rather than the other one. Backwards feedback on a two-item control: the row that does nothing looks live and the one that would change something looks inert.",
+    file: "packages/platform-web/src/components/layout/Sidebar.tsx",
+    from: '                if (language !== "ko") e.currentTarget.style.background = "var(--color-bg-surface-hover, #F8FAFC)";',
+    to: '                if (language === "ko") e.currentTarget.style.background = "var(--color-bg-surface-hover, #F8FAFC)";',
+    suite: "packages/platform-web/src/components/layout/Sidebar.test.tsx",
+    expect: ["hover feedback on whichever language is not selected"],
+  },
+  {
+    id: "an-unknown-teardown-action-is-not-refused",
+    defect:
+      "The console stopped naming an `action` outside the three the route may answer. The three are exhaustive today, so this is a boundary rather than a live defect \u2014 and it is the boundary that decides what happens when the contract grows: refusing loudly, or drawing whichever branch happens to be last.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "          throw new Error(`unknown teardown action: ${unknownAction}`);",
+    to: "          throw new Error(`teardown action: ${unknownAction}`);",
+    suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
+    expect: ["refuses an action outside the three teardown results"],
+  },
+  {
+    id: "a-denial-marks-the-proposal-approved",
+    defect:
+      "`deny` wrote `approved` into the row it decided. The server was told to deny and did; the screen then shows the opposite of what happened, on the one queue an operator uses to decide who may join the mesh.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: '      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))',
+    to: '      prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))',
+    suite: "packages/platform-web/src/pages/creator/RegisterAgentPage.test.tsx",
+    expect: ["marks only the proposal whose fingerprint the server accepted for denial"],
+  },
+  {
+    id: "the-minimap-letterbox-is-treated-as-world-space",
+    defect:
+      "The minimap's navigation maths used the box height for a world wider than the box, so the letterbox bars either side of the rendered map counted as places to navigate to. A click in the empty margin moves the camera somewhere the world does not extend. Anchored on the six-space block in `navigateFromMinimap`; the four-space one that draws the overlay is a different call site.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "      if (aspectWorld > aspectBox) {\n        renderW = MINIMAP_W;\n        renderH = MINIMAP_W / aspectWorld;",
+    to: "      if (aspectWorld > aspectBox) {\n        renderW = MINIMAP_W;\n        renderH = MINIMAP_H;",
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["does not treat a wide world's minimap letterbox as navigable world space"],
+  },
 ];
 
 /**
