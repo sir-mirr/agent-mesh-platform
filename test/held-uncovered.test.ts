@@ -70,10 +70,16 @@ describe("what the coverage number leaves out", () => {
    * would have read as a table that must not shrink, which is the opposite of
    * what this document is for: every row here is a line somebody could go and
    * cover, and the good ending for one is to leave.
+   *
+   * It moved twice more for the same reason, and the second time it was the
+   * *file* count that caught: retiring `provenance.ts` and the linter's
+   * capability refusal took the table from six files to four, and this was
+   * asserting more than four. A guard that fails because the thing it watches
+   * improved is a guard aimed at the wrong number.
    */
   test("the table is still a table", () => {
-    expect(ROWS.length).toBeGreaterThan(10);
-    expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(4);
+    expect(ROWS.length).toBeGreaterThan(8);
+    expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(2);
   });
 
   test("every row names a tracked file", () => {

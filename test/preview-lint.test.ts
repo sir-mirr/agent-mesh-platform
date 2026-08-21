@@ -1,8 +1,23 @@
 import { describe, expect, test } from "bun:test";
 
-import { captureConsole } from "@agent-mesh/log";
-
 import { runLint } from "../scripts/lint-preview";
+
+/**
+ * What a check printed, without importing one.
+ *
+ * `@agent-mesh/log` exports exactly this, and `test/` deliberately does not
+ * reach into the packages — it drives the services as processes, and
+ * `import-graph.test.ts` holds that to one consumer through one barrel. Five
+ * lines here is the cheaper side of that trade.
+ */
+function capture(): { lines: string[]; restore: () => void } {
+  const lines: string[] = [];
+  const real = { log: console.log, error: console.error };
+  const take = (...args: unknown[]) => { lines.push(args.join(" ")); };
+  console.log = take;
+  console.error = take;
+  return { lines, restore: () => { console.log = real.log; console.error = real.error; } };
+}
 
 /**
  * `preview/` is a named deliverable — `docs/deliverables.md` lists sixty screens
@@ -118,7 +133,7 @@ describe("the linter catches what it is for", () => {
  */
 describe("where the capability vocabulary comes from", () => {
   test("refuses to lint at all when the contract cannot be read", () => {
-    const { lines, restore } = captureConsole();
+    const { lines, restore } = capture();
     let r;
     try {
       r = runLint({
@@ -145,7 +160,7 @@ describe("where the capability vocabulary comes from", () => {
    * twelve.
    */
   test("an empty vocabulary is a failure, not a clean run", () => {
-    const { lines, restore } = captureConsole();
+    const { lines, restore } = capture();
     let r;
     try {
       r = runLint({ mockCapabilitySource: () => ({}), silent: true });
