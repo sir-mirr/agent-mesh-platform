@@ -6645,8 +6645,9 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A row that says where and not why survives every other check and tells the next reader nothing. The failure this table was written against is not an uncovered line — it is an unexplained one.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block.",
-    to: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | CLI.",
+    from:
+      "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |",
+    to: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | CLI. |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row says why, rather than only where"],
   },
