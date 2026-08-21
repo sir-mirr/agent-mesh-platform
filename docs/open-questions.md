@@ -132,6 +132,36 @@ Smaller items, same theme:
   ai-usage ingest, and the same shape in the lane components). Timing-safe
   comparison is cheap; the practical risk here is low.
 
+## 8. Where the http admin surface's refusal codes are named
+
+Four codes leave this repository in REST bodies and are named nowhere in
+`agent-mesh-contracts`:
+
+| code | route | since |
+|---|---|---|
+| `TYPE_EXISTS` | `POST /api/v1/admin/agent-types` | § 10.3 |
+| `TYPE_IN_USE` | `DELETE /api/v1/admin/agent-types/:type` | § 10.3 |
+| `AUDIT_AGENTS_UNAVAILABLE` | `GET /api/v1/admin/chat-audits/agents` | D-736 |
+| `AUDIT_READ_UNRECORDABLE` | any content read whose record failed | § 11.0.1 |
+
+They are not JSON-RPC `error.data.code`. Nothing on the mesh wire carries
+them, so a client pinning a contracts tag never sees one — but an operator
+console switches on them, and it is a different codebase from this one.
+`PROVISION_ERROR` (§ 10.1) is the same shape and already has its own constant
+in contracts, which is the precedent pointing at a third one.
+
+**How it stayed invisible is the more useful half.** `test/versioning.test.ts`
+has checked "every code the services emit has a name in contracts" for as long
+as the codes have existed, and it was green over all four: it grepped
+`code: "X"` and `main.ts` writes `code: 'X'`. The rule was right and the reader
+could only see half the file. It surfaced because a refactor moved two of them
+into a file that happens to use double quotes — luck, not process. The scan
+reads both quote styles now, and the four are carved out by name in
+`HTTP_ADMIN_ONLY` so a fifth cannot join them quietly.
+
+Deciding this means cutting an `agent-mesh-contracts` tag, which is not this
+repository's to do alone.
+
 ---
 
 ## Sequencing note

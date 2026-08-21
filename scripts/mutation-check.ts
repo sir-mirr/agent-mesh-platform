@@ -4871,6 +4871,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/audit-degraded.test.ts",
     expect: ["keeps the failure's own words out of the answer"],
   },
+  {
+    id: "a-code-nothing-names-reaches-a-caller",
+    defect:
+      "A service emitted a refusal code the contract does not name and nothing objected. That is how `-32000` reached a client which had to hard-code its own constant for it, and it is what `test/versioning.test.ts` exists to stop.\n\nRegistered because the checker itself was the thing that was wrong: it matched `code: \"X\"` only, and `main.ts` writes single quotes, so four real gaps sat behind a green check for as long as they existed. A checker seen only green is the same evidence as no checker.",
+    file: "packages/http/src/audit-agents.ts",
+    from: "        code: \"AUDIT_AGENTS_UNAVAILABLE\",",
+    to: "        code: \"AUDIT_NOBODY_NAMED_THIS\",",
+    suite: "test/versioning.test.ts",
+    expect: ["every data.code the services emit has a name in contracts"],
+  },
 ];
 
 /**

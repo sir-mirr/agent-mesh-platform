@@ -111,6 +111,61 @@ describe("§ 13 version declarations", () => {
   }, 20_000);
 });
 
+/**
+ * Every `code:` these two services put in a body, from source.
+ *
+ * **Both quote styles, and this is the whole point.** The scan matched only
+ * `code: "X"` for as long as it existed, and `main.ts` writes single quotes —
+ * so four codes were emitted by the http service and named nowhere, with the
+ * check green over all of them: `TYPE_EXISTS`, `TYPE_IN_USE`,
+ * `AUDIT_AGENTS_UNAVAILABLE`, `AUDIT_READ_UNRECORDABLE`. Nothing was wrong
+ * with the rule; the reader could not see half the file. It surfaced when a
+ * refactor moved two of them into a file that happens to use double quotes,
+ * which is luck rather than a process.
+ *
+ * **Test files are excluded.** A test that constructs an error carrying a
+ * `code` is describing a case, not emitting one — an `ENOENT` fixture is not
+ * this deployment's vocabulary.
+ *
+ * Read as text in a subprocess rather than imported, so a code emitted but
+ * never exported still counts. Importing would make the scan the smaller of
+ * two answers.
+ */
+function emittedCodes(): Set<string> {
+  const proc = Bun.spawnSync([
+    "grep", "-rhoE", "--include=*.ts", "--exclude=*.test.ts",
+    `code: ['"][A-Z_]+['"]`,
+    join(REPO_ROOT, "packages/hub/src"), join(REPO_ROOT, "packages/http/src"),
+  ]);
+  return new Set(
+    [...new TextDecoder().decode(proc.stdout).matchAll(/code: ['"]([A-Z_]+)['"]/g)].map((m) => m[1]!),
+  );
+}
+
+/**
+ * Codes this repository's **http admin surface** emits that the contract does
+ * not name, listed one by one rather than matched by a pattern.
+ *
+ * They are not JSON-RPC `error.data.code`: nothing on the mesh wire carries
+ * them, and a client pinning a contracts tag never sees one. They are REST
+ * refusals an operator console switches on — which is the same shape
+ * `PROVISION_ERROR` (§ 10.1) already has its own constant for, and the reason
+ * that carve-out exists.
+ *
+ * **This is a gap, not a decision.** Whether they belong in
+ * `agent-mesh-contracts` under a third constant is open — see
+ * `docs/open-questions.md` — and answering it means cutting a contracts tag,
+ * which is not this repository's to do alone. Written out by name so a fifth
+ * one cannot join them quietly: adding a code here is a line in a diff with
+ * this comment above it.
+ */
+const HTTP_ADMIN_ONLY = new Set([
+  "TYPE_EXISTS",                // POST /api/v1/admin/agent-types, § 10.3
+  "TYPE_IN_USE",                // DELETE the same, § 10.3
+  "AUDIT_AGENTS_UNAVAILABLE",   // GET /api/v1/admin/chat-audits/agents, D-736
+  "AUDIT_READ_UNRECORDABLE",    // any content read whose record failed, § 11.0.1
+]);
+
 describe("the error vocabulary is complete", () => {
   test("every data.code the services emit has a name in contracts", async () => {
     // The direction that goes wrong. A hub can start emitting a discriminator
@@ -119,13 +174,7 @@ describe("the error vocabulary is complete", () => {
     // handle it, and how `ERROR_CLASS` came to have no entry for that code.
     const { ERROR_DATA_CODE } = await import("@agent-mesh/contracts");
 
-    const emitted = new Set<string>();
-    for (const dir of ["packages/hub/src", "packages/http/src"]) {
-      const proc = Bun.spawnSync(["grep", "-rho", "--include=*.ts", 'code: "[A-Z_]*"', join(REPO_ROOT, dir)]);
-      for (const m of new TextDecoder().decode(proc.stdout).matchAll(/code: "([A-Z_]+)"/g)) {
-        emitted.add(m[1]!);
-      }
-    }
+    const emitted = emittedCodes();
     expect(emitted.size).toBeGreaterThan(5);
 
     // `PROVISION_ERROR` covers the REST provisioning surface (§ 10.1), which is
@@ -134,7 +183,10 @@ describe("the error vocabulary is complete", () => {
     const elsewhere = new Set(Object.values(PROVISION_ERROR as Record<string, string>));
 
     const unnamed = [...emitted].filter(
-      (code) => !Object.hasOwn(ERROR_DATA_CODE, code) && !elsewhere.has(code),
+      (code) =>
+        !Object.hasOwn(ERROR_DATA_CODE, code) &&
+        !elsewhere.has(code) &&
+        !HTTP_ADMIN_ONLY.has(code),
     );
     expect(unnamed).toEqual([]);
   });
@@ -144,13 +196,7 @@ describe("the error vocabulary is complete", () => {
     // sending it is a branch a client maintains forever for a case that cannot
     // happen.
     const { ERROR_DATA_CODE } = require("@agent-mesh/contracts");
-    const proc = Bun.spawnSync([
-      "grep", "-rho", "--include=*.ts", 'code: "[A-Z_]*"',
-      join(REPO_ROOT, "packages/hub/src"), join(REPO_ROOT, "packages/http/src"),
-    ]);
-    const emitted = new Set(
-      [...new TextDecoder().decode(proc.stdout).matchAll(/code: "([A-Z_]+)"/g)].map((m) => m[1]!),
-    );
+    const emitted = emittedCodes();
     const stale = Object.keys(ERROR_DATA_CODE).filter((code) => !emitted.has(code));
     expect(stale).toEqual([]);
   });
