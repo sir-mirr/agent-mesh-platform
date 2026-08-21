@@ -6880,6 +6880,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/logging-ops.test.ts",
     expect: ["the bound it quotes for a reason is the bound the logger applies"],
   },
+  {
+    id: "a-package-the-architecture-does-not-name",
+    defect:
+      "The architecture document's package tree went back to naming fewer packages than there are. It named four for as long as there were seven \u2014 `mailbox`, `platform-web` and `log` each arrived without it moving \u2014 and a document listing four packages reads exactly like a repository with four.",
+    file: "docs/architecture.md",
+    from: "\u251c\u2500\u2500 log/              one log line shape, and the counter that shadows it\n",
+    to: "",
+    suite: "test/import-graph.test.ts",
+    expect: ["the architecture document names every package there is"],
+  },
 ];
 
 /**

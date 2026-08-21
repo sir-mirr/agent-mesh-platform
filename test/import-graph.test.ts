@@ -305,6 +305,26 @@ describe("the repository's import graph", () => {
   });
 
   /**
+   * The architecture document names the packages, and it named four of them
+   * for as long as there were seven. `mailbox`, `platform-web` and `log` each
+   * arrived without the list moving — and a document naming four packages
+   * reads exactly like a repository with four, so nobody reading it had any
+   * way to notice.
+   *
+   * The list is read off the disk here already. Comparing it costs one
+   * assertion and turns a silent drift into a failing test in the commit that
+   * causes it.
+   */
+  test("the architecture document names every package there is", () => {
+    const doc = readFileSync(join(ROOT, "docs", "architecture.md"), "utf8");
+    const tree = /```\npackages\/\n([\s\S]*?)```/.exec(doc);
+    expect(tree, "the package tree in docs/architecture.md moved or was renamed").not.toBeNull();
+
+    const listed = [...tree![1]!.matchAll(/[├└]──\s+([a-z-]+)\//g)].map((m) => m[1]!).sort();
+    expect(listed).toEqual([...PACKAGES].sort());
+  });
+
+  /**
    * A relative path that climbs out of its own package is the other way to
    * make a cross-package edge, and it would not be caught by reading
    * specifiers alone — `../../store/src/index` names no package.

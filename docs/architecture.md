@@ -100,6 +100,13 @@ same process, same shutdown. The checkpoint removes the question. Its failure
 mode is that nothing happens — a log another process is pinning returns `busy`
 and is left for the next open to recover, which is what has always happened.
 
+**Both halves of that say so now** (T-022). A checkpoint that could not run
+writes `wal_checkpoint_failed`, and the next open of a store carrying a log
+writes `wal_recovered` with how much was waiting. Nothing is lost either way,
+which is why it went unsaid for so long — but a process killed mid-write and
+one shut down cleanly produced the same quiet boot, and *every shutdown was
+clean* is what a reader takes from silence.
+
 ### Why there is a `store` package
 
 http reads `hub.db` to serve the admin audit views. It used to do that with SQL
@@ -212,8 +219,11 @@ messages are written down. Duplicates are the cost, against a stable id.
 ```
 packages/
 ├── store/            schema, handles, and the rules both services apply
+├── log/              one log line shape, and the counter that shadows it
+├── mailbox/          store and forward, knowing nothing about the hub
 ├── hub/              the broker                    :3100
 ├── http/             the human surface             :3000
+├── platform-web/     the admin console             :3005
 └── self-reminder/    the scheduler
 ```
 
@@ -224,11 +234,23 @@ verifies request signatures while http verifies upload ones. Two
 implementations of one state machine are two sets of edge cases, and the edge
 cases are the whole of it.
 
-Four packages rather than one because they deploy as separate units and have
+Seven packages rather than one because they deploy as separate units and have
 genuinely different dependencies — http pulls `hono` and `web-push`,
-self-reminder pulls `cron-parser` and `ws`, the hub pulls nothing.
+self-reminder pulls `cron-parser` and `ws`, platform-web pulls React and Vite,
+and the hub, `store`, `mailbox` and `log` pull nothing.
 
-There is no `apps/` versus `libs/` split. Four packages do not need it.
+Three of them are libraries the services share rather than things that run, and
+each is here because two implementations of one thing are two sets of edge
+cases: `store` for the schemas, `mailbox` for store-and-forward, `log` for the
+line every service writes.
+
+There is no `apps/` versus `libs/` split. Seven packages do not need it.
+
+**This list was four for a while after it was seven.** `mailbox`,
+`platform-web` and `log` arrived without it moving, which is the kind of thing
+a reader has no way to notice — a document naming four packages reads exactly
+like a repository with four. `test/import-graph.test.ts` reads the directory
+and fails when a package is not named here.
 
 ### hub
 
@@ -301,6 +323,31 @@ Both are documented surfaces rather than conveniences. The harness is the
 platform's half of a contract with another repository (`docs/e2e-platform.md`).
 `mesh-mail.ts` is the client its own authors use — a transport nobody calls by
 hand is one whose ergonomics nobody has checked.
+
+### log
+
+One log line shape for every service, and the counter that shadows it.
+
+The three services had written three shapes — `[hub] <ISO> <sentence>`,
+`[self-reminder <ISO>] <event> {json}`, and fifty-six bare `console.*` calls in
+http with a bracketed subsystem each caller invented. An operator reading one
+incident across two of them had to know all three, and nothing
+machine-readable came out of any.
+
+A call writes a sentence for a person and fields for a program at once, and
+increments a counter keyed `(component, event, reason)` — one call, so a line
+cannot happen uncounted and a counter cannot describe an event nobody logged.
+That is what makes a quiet service readable: a counter at zero since boot says
+the path is alive and silent, where no counter says only that nobody looked.
+
+`docs/LOGGING-OPS.md` is how to read the result; `test/logging-ops.test.ts`
+holds that document to these sources.
+
+### platform-web
+
+The admin console: React and Vite, served on `:3005` in development and built
+into a bundle http serves in production. It talks to http over the same routes
+an operator's `curl` would.
 
 ### self-reminder
 
@@ -474,6 +521,7 @@ accident.
 | `docs/decisions/unknown-error-codes.md` | what a pinned side does with a code its tag cannot name |
 | `docs/decisions/checks-that-check-nothing.md` | why every checker here is mutation-tested before it is trusted |
 | `docs/decisions/mailbox-and-hub.md` | why the mailbox does not know the hub exists |
+| `docs/LOGGING-OPS.md` | the log line, the counters, and answering a complaint from them |
 | `docs/proposals/audit-ingestion-response.md` | the audit interface, as negotiated with the client team |
 | `docs/open-questions.md` | what is undecided, and what depends on it |
 | `ops/README.md` | deployment |
