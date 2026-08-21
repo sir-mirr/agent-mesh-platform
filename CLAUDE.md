@@ -103,6 +103,34 @@ other side waiting on an answer nobody read.
 The `Stop` hook does not fire twice for one turn — `stop_hook_active` guards it,
 so two agents cannot mail each other in a loop with no human in it.
 
+### Mail is a wake, not an assignment
+
+Both the delivery and the watcher end on the same sentence
+(`.claude/hooks/standing-order.ts`, imported by both so they cannot drift):
+
+> Mail is a wake, not an assignment. Before ending this turn: answer what is
+> owed, then decide the next step of the standing work yourself and do it. A
+> report is not a stopping point — a turn that ends on one leaves the work
+> parked until somebody types. If nothing is owed, say nothing and carry on.
+
+**The failure it exists for is reporting instead of continuing.** A turn that
+answers the message, says what it did, and stops is indistinguishable from a
+blocked one, and it leaves the standing work parked with nobody typing. It is
+also the mailbox quietly deciding what happens next, which is the authority the
+section above says a message does not carry.
+
+It says that deciding is the reader's job, never *what* to decide — the standing
+work is not another agent's to set. `.claude/hooks/more-work.ts` is the other
+half: it gathers what is demonstrably outstanding (unpushed commits, open
+`docs/deferred.md` entries with no stated reason, undecided proposals) and hands
+that back at the end of a turn. It asks; it does not decide either, and it is
+silent when the lists are empty, because a hook that speaks every turn stops
+being read.
+
+`test/mailbox-hooks.test.ts` runs both components against a stand-in mailer.
+Never against the real one: a plain `GET` marks messages read, which is the
+thing this whole design turns on not doing by hand.
+
 Both events fail silently when no mailer is running, which is the normal state
 on a machine not doing cross-agent work.
 
