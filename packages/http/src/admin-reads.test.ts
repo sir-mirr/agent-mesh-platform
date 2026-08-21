@@ -485,9 +485,18 @@ describe("when the hub will not say what it is limiting", () => {
    */
   test("says how many lanes it is showing, and how many there are", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    // Twelve stuck lanes, so the list is genuinely truncated: the cap is ten,
+    // and a total computed from the truncated list would equal it.
+    const insert = hub.prepare(
+      `INSERT INTO messages (id, from_agent, to_agent, content, status, ts)
+       VALUES (?, 'lane-sender', ?, 'waiting', 'pending', datetime('now'))`,
+    );
+    for (let i = 0; i < 12; i++) insert.run(uniq("stuck-m"), uniq("stuck-lane"));
+
     hubLimits(200);
     const body = await (await telemetry(op.cookie)).json();
-    expect(body.lanes_not_draining_shown).toBe(body.lanes_not_draining.length);
-    expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(body.lanes_not_draining_shown);
+    expect(body.lanes_not_draining.length).toBe(10);
+    expect(body.lanes_not_draining_shown).toBe(10);
+    expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(12);
   });
 });

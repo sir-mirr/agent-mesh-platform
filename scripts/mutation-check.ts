@@ -496,8 +496,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The lane list is capped at ten and the total beside it stopped being counted separately, so ten rows out of two hundred draws a screen saying the problem is small. This route shipped with the silent version for an hour, which is how the comment came to be written.",
     file: "packages/http/src/main.ts",
-    from: "    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending'`,",
-    to: "    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending' LIMIT 10`,",
+    from: "  const lanesTotal = (hub.prepare(\n    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending'`,\n  ).get() as { n: number }).n",
+    to: "  const lanesTotal = lanes.length",
     suite: "packages/http/src/admin-reads.test.ts",
     expect: ["says how many lanes it is showing, and how many there are"],
   },
