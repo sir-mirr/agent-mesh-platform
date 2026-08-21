@@ -13,11 +13,11 @@
  * not answer: *unknown* is a third thing, not a synonym for `socket`.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 
 process.env.JWT_SECRET ||= "admin-reads-probe";
 
 const { app } = await import("./main.ts");
+const { auditAgents } = await import("./audit-agents");
 const { upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 const { STORE_FILES, agentsSchema, grants, hubSchema, openAt, openStore, stateDir } = await import("@agent-mesh/store");
@@ -237,45 +237,35 @@ describe("who appears in the audit", () => {
   });
 
   /**
-   * **An empty list is an answer, and a broken query does not get to give one.**
+   * **The step down is undone.** This used to assert over `main.ts`'s source —
+   * that the route still contained `AUDIT_AGENTS_UNAVAILABLE` and no
+   * `agents: []` — because reaching the branch meant making the hub database
+   * unreadable, and the way that was first tried (renaming `hub.db` and
+   * leaving `hub.db-wal` beside it) took eight later tests down with a
+   * mismatched write-ahead log. The comment said plainly that it did not run
+   * the branch.
    *
-   * This route returned `{ agents: [] }` from its `catch`, so *the audit holds
-   * nobody* and *the query did not run* were one sentence to every caller —
-   * the shape `SC-DOWN-*` measures on the front end, on the wrong side of it.
-   * The first run of this file demonstrated it: the hub store did not exist in
-   * this process, the route logged `unable to open database file`, answered
-   * `200`, and the test above written as the happy path passed through the
-   * `catch` without noticing. It answers `503` with a code now (D-736).
+   * It runs now. `auditAgents` takes the handle as an argument, so a store that
+   * will not answer is a different argument rather than a broken file, and
+   * `audit-degraded.test.ts` drives both outcomes. The regex went with it: a
+   * source assertion that no longer measures anything the real test does not is
+   * a thing that breaks when somebody reformats a route.
    *
-   * **Asserted over the source rather than by breaking the store**, and that is
-   * a deliberate step down. Forcing the branch means making the hub database
-   * unreadable, and the way that was first written — renaming `hub.db` while
-   * leaving `hub.db-wal` beside it — left a mismatched write-ahead log that
-   * took eight later tests in the same process down with it. A probe that
-   * breaks its subject for everyone after it is worse than one that measures
-   * less: `receive.test.ts` and `delivery-landing.test.ts` in this repository
-   * are both scarred by the same lesson.
-   *
-   * So this checks the shape the route now has, which is enough to catch the
-   * registered mutation putting the empty list back. What it does not do is run
-   * the branch, and saying so is the honest half.
+   * What stays here is the wiring — that this route serves the delegate's
+   * answer rather than one of its own.
    */
-  /** The source no longer contains the sentence that made the two identical. */
-  test("and no longer answers an empty list from its catch", () => {
-    const source = readFileSync(new URL("./main.ts", import.meta.url).pathname, "utf8");
-    const route = /app\.get\('\/api\/v1\/admin\/chat-audits\/agents'[\s\S]*?\n\}\)/.exec(source);
-    expect(route, "the chat-audits agents route moved").not.toBeNull();
-    expect(route![0]).toContain("catch");
-    expect(route![0]).toContain("AUDIT_AGENTS_UNAVAILABLE");
-    expect(route![0]).toContain("503,");
+  test("serves what the reader answered, rather than an answer of its own", async () => {
+    const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    const from = uniq("speaker");
+    const to = uniq("listener");
+    hub.prepare(
+      `INSERT INTO messages (id, from_agent, to_agent, content, status, ts)
+       VALUES (?, ?, ?, 'x', 'delivered', datetime('now'))`,
+    ).run(uniq("msg"), from, to);
 
-    // **Prose may name the defect; that is how the reason survives.** The
-    // comment beside the fix quotes `{ agents: [] }` to say what it replaced,
-    // and the first version of this check matched it — the same carve-out
-    // `greppable.test.ts` makes, arrived at the same way.
-    const code = route![0].split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
-    expect(code).not.toMatch(/agents:\s*\[\]/);
-    expect(code).toContain("503,");
+    const res = await get("/api/v1/admin/chat-audits/agents", op.cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(auditAgents(() => hub).body);
   });
 });
 

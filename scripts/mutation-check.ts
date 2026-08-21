@@ -930,8 +930,8 @@ export const MUTATIONS: Mutation[] = [
     id: "content-read-trace",
     defect: "A content read left no record (§ 11.0.1).",
     file: "packages/http/src/main.ts",
-    from: "    recordContentRead({ actor, target, query })",
-    to: "    void 0",
+    from: "  const refusal = recordContentReadOrRefuse({ actor, target, query })",
+    to: "  const refusal = null",
     suite: "test/scenarios.test.ts",
     expect: ["E2E-AUDIT-001", "body.events.0.event_type"],
   },
@@ -4125,11 +4125,11 @@ export const MUTATIONS: Mutation[] = [
     id: "a-broken-audit-query-answers-an-empty-list",
     defect:
       "`chat-audits/agents` went back to answering `{ agents: [] }` when its query throws, so *the audit holds nobody* and *the query did not run* become one sentence to every caller. That is the shape `SC-DOWN-*` measures on the front end \u2014 a screen drawing zero for a backend that never answered \u2014 and it is invisible from inside: a test written as this route's happy path passed through the `catch` without noticing, which is how the defect was found (D-736).",
-    file: "packages/http/src/main.ts",
-    from: "        code: 'AUDIT_AGENTS_UNAVAILABLE',\n      },\n      503,",
-    to: "        code: 'AUDIT_AGENTS_UNAVAILABLE',\n        agents: [],\n      },\n      200,",
-    suite: "packages/http/src/admin-reads.test.ts",
-    expect: ["no longer answers an empty list from its catch"],
+    file: "packages/http/src/audit-agents.ts",
+    from: "    return {\n      status: 503,\n      body: {\n        ok: false,\n        error: \"the audit store did not answer, so who appears in it is unknown\",\n        code: \"AUDIT_AGENTS_UNAVAILABLE\",\n      },\n    };",
+    to: "    return { status: 200, body: { agents: [] } };",
+    suite: "packages/http/src/audit-degraded.test.ts",
+    expect: ["refuses rather than reporting an empty audit, when the store will not answer"],
   },
   {
     id: "the-proxy-claim-is-made-before-the-people-exist",
@@ -4780,6 +4780,96 @@ export const MUTATIONS: Mutation[] = [
     to: "  return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["refuses a caller without agent.provision, and an off-pattern name"],
+  },
+  {
+    id: "the-route-answers-past-the-reader-it-delegates-to",
+    defect:
+      "The agents route stopped serving what the reader answered and built its own empty list again, so the refusal `auditAgents` exists to produce could never reach a caller.",
+    file: "packages/http/src/main.ts",
+    from: "  const r = auditAgents(getHubDb)\n  return c.json(r.body, r.status)",
+    to: "  void auditAgents\n  return c.json({ agents: [] }, 200)",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["serves what the reader answered, rather than an answer of its own"],
+  },
+  {
+    id: "the-same-identity-is-offered-twice",
+    defect:
+      "`UNION` became `UNION ALL`, so an identity on both sides of a conversation appears twice in the operator's list \u2014 once for every message it sent and once for every one it received.",
+    file: "packages/http/src/audit-agents.ts",
+    from: "SELECT from_agent AS a FROM messages UNION SELECT to_agent AS a FROM messages",
+    to: "SELECT from_agent AS a FROM messages UNION ALL SELECT to_agent AS a FROM messages",
+    suite: "packages/http/src/audit-degraded.test.ts",
+    expect: ["names both ends of every message, once each"],
+  },
+  {
+    id: "the-agent-list-sorts-by-byte",
+    defect:
+      "The list lost `COLLATE NOCASE`, so it sorts by byte and every capitalised name comes before every lower-case one. An operator scanning a dropdown for `zeta` finds it above `alpha`.",
+    file: "packages/http/src/audit-agents.ts",
+    from: " ORDER BY a COLLATE NOCASE",
+    to: " ORDER BY a",
+    suite: "packages/http/src/audit-degraded.test.ts",
+    expect: ["sorts without regard to case"],
+  },
+  {
+    id: "an-env-file-overrides-the-unit-that-started-the-service",
+    defect:
+      "The env file stopped yielding to what the process already had, so a file on disk silently beats systemd's `EnvironmentFile`. The symptom is a service running with settings nobody can find by reading the unit.",
+    file: "packages/http/src/env-file.ts",
+    from: "      if (!env[key]) env[key] = value;",
+    to: "      env[key] = value;",
+    suite: "packages/http/src/env-file.test.ts",
+    expect: ["never replaces something the process was already given"],
+  },
+  {
+    id: "a-line-with-no-key-becomes-a-variable-with-no-name",
+    defect:
+      "`eq <= 0` became `eq < 0`, so a line beginning with `=` is read as a setting whose name is the empty string.",
+    file: "packages/http/src/env-file.ts",
+    from: "    if (eq <= 0) continue;",
+    to: "    if (eq < 0) continue;",
+    suite: "packages/http/src/env-file.test.ts",
+    expect: ["skips a line with no key and a line with no equals"],
+  },
+  {
+    id: "a-value-is-cut-at-every-equals",
+    defect:
+      "The value stopped being everything after the first `=`. A base64 key ending in `==` arrives truncated, and nothing reports a malformed secret \u2014 it simply does not work.",
+    file: "packages/http/src/env-file.ts",
+    from: "    pairs.push([trimmed.slice(0, eq), trimmed.slice(eq + 1)]);",
+    to: "    pairs.push([trimmed.slice(0, eq), trimmed.slice(eq + 1).split(\"=\")[0]!]);",
+    suite: "packages/http/src/env-file.test.ts",
+    expect: ["splits on the first equals and not the rest"],
+  },
+  {
+    id: "an-unreadable-env-file-takes-the-service-down",
+    defect:
+      "The loader stopped swallowing its own failure. It runs before anything else in the process, so a missing optional file now takes the service down with no route registered \u2014 the convenience became a requirement.",
+    file: "packages/http/src/env-file.ts",
+    from: "  } catch {\n    // Optional means optional.\n  }",
+    to: "  } catch (err) {\n    throw err\n  }",
+    suite: "packages/http/src/env-file.test.ts",
+    expect: ["says nothing when the file cannot be read"],
+  },
+  {
+    id: "an-unrecordable-read-is-let-through",
+    defect:
+      "The access log went back to failing open: a read whose record could not be written was served anyway. \u00a7 15.6 answers the analogous routing question the other way for a reason that does not transfer \u2014 a delivery failing open loses nothing that was going to be recorded, and an access log failing open loses the only record that the access happened.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "    record(r)\n    return null",
+    to: "    try { record(r) } catch {}\n    return null",
+    suite: "packages/http/src/audit-degraded.test.ts",
+    expect: ["refuses, and says so in a shape a caller can act on"],
+  },
+  {
+    id: "the-refusal-quotes-the-database-path-back",
+    defect:
+      "The refusal started carrying the failure's own words, so whoever is probing an audit surface is handed a description of the deployment's internals \u2014 file paths, driver codes \u2014 one refused request at a time.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "      error: 'content reads are recorded, and the record could not be written',",
+    to: "      error: `content reads are recorded, and the record could not be written (${message})`,",
+    suite: "packages/http/src/audit-degraded.test.ts",
+    expect: ["keeps the failure's own words out of the answer"],
   },
 ];
 

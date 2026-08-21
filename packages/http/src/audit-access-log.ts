@@ -95,3 +95,46 @@ export function recordContentRead(r: AccessRecord): void {
       createHash('sha256').update(payload, 'utf8').digest('hex'),
     )
 }
+
+/** What a caller is told when the read could not be recorded. */
+export interface UnrecordableRefusal {
+  ok: false
+  error: string
+  code: 'AUDIT_READ_UNRECORDABLE'
+}
+
+/**
+ * Record the read, or say why the read must not happen.
+ *
+ * Returns `null` to proceed and a refusal to send otherwise, so the failing
+ * side is a value rather than an exception the caller might forget to catch —
+ * which is the whole risk with fail-closed: the closed path is the one nobody
+ * exercises.
+ *
+ * **`record` is injected, with the real writer as its default.** Reaching the
+ * refusal otherwise means making the audit store unwritable, and a broken
+ * database in a shared test process is carried into whatever file runs next.
+ * `ownership.issueCode` takes its randomness the same way and for the same
+ * reason: the only caller who ever passes the argument is the one asking what
+ * happens in a case production must never be in.
+ *
+ * **503, not 500.** The request was valid and the deployment is degraded, so a
+ * caller that retries once the store recovers gets its answer.
+ */
+export function recordContentReadOrRefuse(
+  r: AccessRecord,
+  record: (r: AccessRecord) => void = recordContentRead,
+): UnrecordableRefusal | null {
+  try {
+    record(r)
+    return null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[http-server] refusing a content read: could not record it (${message})`)
+    return {
+      ok: false,
+      error: 'content reads are recorded, and the record could not be written',
+      code: 'AUDIT_READ_UNRECORDABLE',
+    }
+  }
+}

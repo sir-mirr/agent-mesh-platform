@@ -13,22 +13,11 @@
 // Optional env file loader. Shared lab services should use systemd EnvironmentFile
 // by default; local env file loading is opt-in only.
 import { readFileSync as readFs } from 'fs'
-try {
-  const envPath = process.env.AGENT_MESH_ENV_FILE ?? process.env.AGENT_MESH_HTTP_ENV_FILE
-  if (envPath) {
-    const envContent = readFs(envPath, 'utf8')
-    for (const line of envContent.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      const eqIdx = trimmed.indexOf('=')
-      if (eqIdx > 0) {
-        const key = trimmed.slice(0, eqIdx)
-        const val = trimmed.slice(eqIdx + 1)
-        if (!process.env[key]) process.env[key] = val
-      }
-    }
-  }
-} catch {}
+import { loadEnvFile } from './env-file'
+// Runs here rather than in `env-file.ts` itself: a module that reads the
+// filesystem on import cannot be imported by a test that wants to ask it a
+// question first.
+loadEnvFile(process.env, (path) => readFs(path, 'utf8'))
 
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -57,10 +46,11 @@ import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestB
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
-import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
+import { recordContentReadOrRefuse, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
+import { auditAgents } from './audit-agents'
 import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -1786,23 +1776,8 @@ function logContentRead(
   query: Record<string, unknown>,
 ): Response | null {
   if (!withContent) return null
-  try {
-    recordContentRead({ actor, target, query })
-    return null
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error(`[http-server] refusing a content read: could not record it (${message})`)
-    // 503, not 500: the request was valid and the deployment is degraded. A
-    // caller that retries after the store recovers gets its answer.
-    return c.json(
-      {
-        ok: false,
-        error: 'content reads are recorded, and the record could not be written',
-        code: 'AUDIT_READ_UNRECORDABLE',
-      },
-      503,
-    )
-  }
+  const refusal = recordContentReadOrRefuse({ actor, target, query })
+  return refusal ? c.json(refusal, 503) : null
 }
 
 // --- Key approval (SPEC § 10.2) -------------------------------------------
@@ -3182,35 +3157,8 @@ app.get('/api/v1/admin/chat-audits/agents', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)
   if (typeof actor !== 'string') return actor
   void actor
-  try {
-    const db = getHubDb()
-    const rows = db.query(
-      'SELECT DISTINCT a FROM (SELECT from_agent AS a FROM messages UNION SELECT to_agent AS a FROM messages) ORDER BY a COLLATE NOCASE'
-    ).all() as Array<{ a: string }>
-    return c.json({ agents: rows.map(r => r.a).filter(Boolean) })
-  } catch (e: any) {
-    const message = e?.message ?? String(e)
-    console.error('[chat-audits/agents] query failed:', message)
-    // **An empty list is an answer, and this is not one.**
-    //
-    // This returned `{ agents: [] }`, so *the audit holds nobody* and *the
-    // query did not run* were one sentence to every caller — the shape
-    // `SC-DOWN-*` exists to catch on the front end, on the wrong side of it.
-    // A test written as this route's happy path passed through this branch
-    // without noticing, which is how invisible it was.
-    //
-    // 503, not 500: the request was valid and the deployment is degraded, so a
-    // caller that retries once the store is back gets its answer. Same shape as
-    // `AUDIT_READ_UNRECORDABLE` above (D-736).
-    return c.json(
-      {
-        ok: false,
-        error: 'the audit store did not answer, so who appears in it is unknown',
-        code: 'AUDIT_AGENTS_UNAVAILABLE',
-      },
-      503,
-    )
-  }
+  const r = auditAgents(getHubDb)
+  return c.json(r.body, r.status)
 })
 
 // --- AI Usage (task #79) ---
