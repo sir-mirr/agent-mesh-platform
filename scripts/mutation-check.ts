@@ -432,6 +432,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["tell an account still waiting that it is waiting"],
   },
   {
+    id: "file-route-resolves-before-it-asks",
+    defect:
+      "The route handed the resolved path to the policy again. `resolve(resolve(p))` is `resolve(p)`, so the `..` rule can never fire at any input \u2014 a check that checks nothing, written down as a defence and inert. This is the wiring the split fixed; the mutation restores it.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!isPathAllowed(filePath, ALLOWED_FILE_PREFIXES)) {",
+    to: "  if (!isPathAllowed(resolved, ALLOWED_FILE_PREFIXES)) {",
+    suite: "packages/http/src/file-route.test.ts",
+    expect: ["refuses a path written with a traversal, even one that lands inside"],
+  },
+  {
+    id: "file-route-serves-a-file-past-its-limit",
+    defect:
+      "The size limit stopped refusing. The chat renders what this route returns, so an oversized file is either a page that will not load or \u2014 worse if the limit were made a truncation \u2014 a document that ends mid-sentence with nothing to say it was cut.",
+    file: "packages/http/src/main.ts",
+    from: "  if (stat.size > MAX_FILE_SIZE) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/file-route.test.ts",
+    expect: ["refuses a file past the limit, and says how big it is"],
+  },
+  {
+    id: "file-route-serves-a-directory",
+    defect:
+      "The `isFile` check went, so a directory is read as a file. `readFileSync` on a directory throws `EISDIR`, which lands on the global error handler as a `500` \u2014 an operator is told the server broke when the answer is that a directory is not a document.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!stat.isFile()) {\n    return c.json({ error: 'Path is not a file' }, 400)\n  }",
+    to: "",
+    suite: "packages/http/src/file-route.test.ts",
+    expect: ["refuses a directory, which exists and is not a file"],
+  },
+  {
     id: "sign-in-crashes-on-a-body-it-can-parse",
     defect:
       "`POST /auth/local` read its fields straight off whatever the body parsed to. `null` is valid JSON, so the one malformed body this route could parse became an unhandled `TypeError` and a `500`, while `\"a string\"`, `[]` and `123` all got the `400` they should. Four characters on an unauthenticated route, answered with the server's error handler.",
@@ -615,9 +645,9 @@ const MUTATIONS: Mutation[] = [
     id: "files-prefix-has-no-boundary",
     defect:
       "A path prefix with no separator boundary let any approved session read a sibling directory: `<STATE_DIR>-backup/secret` matched `<STATE_DIR>` and the route answered 200 with the bytes.",
-    file: "packages/http/src/main.ts",
-    from: "    const dir = prefix.endsWith('/') ? prefix : `${prefix}/`\n    return resolved === prefix || resolved.startsWith(dir)",
-    to: "    return resolved.startsWith(prefix)",
+    file: "packages/http/src/file-access.ts",
+    from: "    const dir = prefix.endsWith(\"/\") ? prefix : `${prefix}/`;\n    return resolved === prefix || resolved.startsWith(dir);",
+    to: "    return resolved.startsWith(prefix);",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["merely starts with an allowed one"],
   },

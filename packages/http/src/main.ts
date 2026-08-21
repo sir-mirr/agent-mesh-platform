@@ -48,6 +48,7 @@ import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentReadOrRefuse, closeAuditAccessLog } from './audit-access-log'
 import { markSendFailed } from './send-failure'
+import { isPathAllowed } from './file-access'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
@@ -1618,27 +1619,6 @@ const ALLOWED_FILE_PREFIXES = [
 ]
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
-function isPathAllowed(filePath: string): boolean {
-  // Resolve to absolute path and prevent traversal
-  const { resolve } = require('path') as typeof import('path')
-  const resolved = resolve(filePath)
-
-  // Block path traversal attempts
-  if (resolved !== filePath && filePath.includes('..')) {
-    return false
-  }
-
-  // **A prefix is not a directory until it ends at a separator.**
-  // `startsWith` alone made `<STATE_DIR>-backup/secret` a match for
-  // `<STATE_DIR>`, so any approved session could read a sibling directory —
-  // measured on this route, which answered `200` for exactly that path. The
-  // other entry in the list ends in `/` and was never affected; this one comes
-  // from `AGENT_MESH_STATE_DIR` and does not.
-  return ALLOWED_FILE_PREFIXES.some(prefix => {
-    const dir = prefix.endsWith('/') ? prefix : `${prefix}/`
-    return resolved === prefix || resolved.startsWith(dir)
-  })
-}
 
 function getMimeType(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
@@ -1681,11 +1661,13 @@ app.get('/api/v1/files', async (c) => {
     return c.json({ error: 'Missing "path" query parameter' }, 400)
   }
 
-  // Security: validate path
+  // Security: validate path. **The caller's spelling goes in**, not the
+  // resolved copy — passing the resolved one made the `..` rule unreachable,
+  // because `resolve(resolve(p)) === resolve(p)` for every input.
   const { resolve } = require('path') as typeof import('path')
   const resolved = resolve(filePath)
 
-  if (!isPathAllowed(resolved)) {
+  if (!isPathAllowed(filePath, ALLOWED_FILE_PREFIXES)) {
     return c.json({ error: 'Access denied — file path not in allowed directories' }, 403)
   }
 
