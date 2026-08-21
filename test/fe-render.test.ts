@@ -4646,6 +4646,188 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 40000);
 
   /**
+   * SC-DOWN-15 — the two dashboard panels below today's role gate.
+   *
+   * The server currently issues only platform-admin or operator sessions, and
+   * `AuthContext` deliberately maps every non-admin server role to operator.
+   * Pretending a live session can open the tenant or group dashboard would
+   * make this scenario a test of a contract that does not exist. Instead the
+   * browser mounts the real `DashboardPage` module immediately below that gate,
+   * with the remembered role the component consumes and `/auth/me` still in
+   * flight — the same reachable component boundary its unit suite documents.
+   *
+   * Each independent groups, agents, and pending-key read is then given all
+   * five visible readings: rows, an answered empty list, a read still in flight,
+   * a refusal, and no response. The last two are one broad “could not know”
+   * state, but they must use different words and test ids: one sends the
+   * operator to permissions, the other to connectivity.
+   */
+  it("[SC-DOWN-15] keeps tenant and group dashboard reads in their own states", async () => {
+    type Resource = "groups" | "agents" | "keys";
+    type Reading = "present" | "empty" | "loading" | "refused" | "unreachable";
+    type RolePanel = {
+      role: "TENANT_ADMIN" | "GROUP_ADMIN";
+      resource: Resource;
+      prefix: "tenant-groups" | "tenant-agents" | "tenant-pending-keys" | "group-groups" | "group-agents";
+      refusalCapability: string | null;
+    };
+    const panels: RolePanel[] = [
+      { role: "TENANT_ADMIN", resource: "groups", prefix: "tenant-groups", refusalCapability: "group.manage" },
+      { role: "TENANT_ADMIN", resource: "agents", prefix: "tenant-agents", refusalCapability: null },
+      { role: "TENANT_ADMIN", resource: "keys", prefix: "tenant-pending-keys", refusalCapability: "key.approve" },
+      { role: "GROUP_ADMIN", resource: "groups", prefix: "group-groups", refusalCapability: "group.manage" },
+      { role: "GROUP_ADMIN", resource: "agents", prefix: "group-agents", refusalCapability: null },
+    ];
+    const readings: Reading[] = ["present", "empty", "loading", "refused", "unreachable"];
+
+    const read = async (panel: RolePanel, reading: Reading) => {
+      const { role, resource, prefix } = panel;
+      const context = await newContext("en");
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (err) => errors.push(err.message));
+      try {
+        // No App is executed on this module response, so there is no second
+        // React root racing the component probe below.
+        await page.goto(`${viteBaseUrl}/node_modules/.vite/deps/react.js`, { waitUntil: "domcontentloaded" });
+        await page.route("**/auth/me", () => new Promise<void>(() => {}));
+        const emptyBody: Record<Resource, unknown> = {
+          groups: { groups: [], egress: [] },
+          agents: { agents: [] },
+          keys: { keys: [] },
+        };
+        const presentBody: Record<Resource, unknown> = {
+          groups: { groups: [{ group_id: "t019-group", name: "T-019 group", members: [], description: "state witness" }], egress: [] },
+          agents: { agents: [{ id: "t019-agent", name: "T-019 agent", channel: "web", type: "worker" }] },
+          keys: { keys: [{ identity: "t019-key", fingerprint: "sha256:t019" }] },
+        };
+        const answerRead = async (route: any, routed: Resource) => {
+          if (resource !== routed) {
+            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyBody[routed]) });
+          }
+          if (reading === "loading") return new Promise<void>(() => {});
+          if (reading === "unreachable") return route.abort("connectionrefused");
+          if (reading === "refused") {
+            const refused = panel.refusalCapability
+              ? { error: "not allowed", capability: panel.refusalCapability }
+              : { error: "not allowed" };
+            return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify(refused) });
+          }
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(reading === "present" ? presentBody[routed] : emptyBody[routed]),
+          });
+        };
+        await page.route("**/api/v1/agents", (route) => answerRead(route, "agents"));
+        await page.route("**/api/v1/admin/keys/pending", (route) => answerRead(route, "keys"));
+        await page.route("**/api/v1/admin/mailbox", (route) =>
+          route.fulfill({ status: 200, contentType: "application/json", body: '{"mailboxes":[],"total_queued":0}' }),
+        );
+        await page.route("**/api/v1/admin/groups", (route) => answerRead(route, "groups"));
+
+        await page.evaluate(async ({ chosenRole }) => {
+          localStorage.setItem("agent_mesh_user", JSON.stringify({
+            id: "t019-probe",
+            name: "T-019 probe",
+            role: chosenRole,
+            capabilities: [],
+            tenantId: "tenant_default",
+            authProvider: "local",
+          }));
+          document.body.innerHTML = '<div id="t019-root"></div>';
+          const load = (modulePath: string) => import(/* @vite-ignore */ modulePath) as Promise<any>;
+          // We entered through a compiled dependency rather than `index.html`,
+          // so install the React preamble that the HTML normally provides
+          // before importing any TSX module transformed by plugin-react.
+          const RefreshRuntime = (await load("/@react-refresh")).default;
+          RefreshRuntime.injectIntoGlobalHook(window);
+          (window as any).$RefreshReg$ = () => {};
+          (window as any).$RefreshSig$ = () => (type: unknown) => type;
+          (window as any).__vite_plugin_react_preamble_installed__ = true;
+          const dashboardSource = await (await fetch("/src/pages/DashboardPage.tsx")).text();
+          const dependencyUrl = (file: string) => {
+            const marker = `/node_modules/.vite/deps/${file}`;
+            const start = dashboardSource.indexOf(marker);
+            const end = dashboardSource.indexOf('"', start);
+            if (start < 0 || end < 0) throw new Error(`DashboardPage does not import ${file}`);
+            return dashboardSource.slice(start, end);
+          };
+          const [reactModule, domModule, routerModule, i18nModule, authModule, dashboardModule] = await Promise.all([
+            load(dependencyUrl("react.js")),
+            load("/node_modules/.vite/deps/react-dom_client.js"),
+            load(dependencyUrl("react-router-dom.js")),
+            load("/src/contexts/I18nContext.tsx"),
+            load("/src/contexts/AuthContext.tsx"),
+            load("/src/pages/DashboardPage.tsx"),
+          ]);
+          const React = reactModule.default;
+          const createRoot = domModule.createRoot ?? domModule.default?.createRoot;
+          const h = React.createElement;
+          createRoot(document.getElementById("t019-root")!).render(
+            h(routerModule.MemoryRouter, { initialEntries: ["/dashboard"] },
+              h(i18nModule.I18nProvider, null,
+                h(authModule.AuthProvider, null, h(dashboardModule.DashboardPage)))),
+          );
+        }, { chosenRole: role });
+
+        await page.waitForFunction(
+          ({ expected }) => document.querySelector(`[data-testid="${expected}"]`) !== null,
+          { expected: `${prefix}-${reading}` },
+          { timeout: 5000 },
+        ).catch(() => {});
+        const visible = Object.fromEntries(await Promise.all(readings.map(async (state) => [
+          state,
+          await page.locator(`[data-testid="${prefix}-${state}"]`).count(),
+        ])));
+        const text = await page.evaluate(
+          ({ testId, copyBesideValue }) => {
+            const state = document.querySelector(`[data-testid="${testId}"]`);
+            const copy = copyBesideValue ? state?.parentElement?.children[1] : state;
+            return copy?.textContent?.trim() ?? "";
+          },
+          { testId: `${prefix}-${reading}`, copyBesideValue: resource === "agents" },
+        );
+        const countTestId = resource === "agents" ? `${prefix}-${reading}` : `${prefix}-count`;
+        const count = await page.evaluate(
+          ({ testId }) => document.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? "",
+          { testId: countTestId },
+        );
+        const body = (await page.locator("body").innerText()).slice(0, 600);
+        return { visible, text, count, errors, body };
+      } finally {
+        await context.close().catch(() => {});
+      }
+    };
+
+    for (const panel of panels) {
+      for (const reading of readings) {
+        const result = await read(panel, reading);
+        const expectedVisible = Object.fromEntries(readings.map((state) => [state, state === reading ? 1 : 0]));
+        expect(
+          { visible: result.visible, errors: result.errors },
+          `${panel.prefix} folded ${reading} into another state; body: ${result.body}`,
+        ).toEqual({ visible: expectedVisible, errors: [] });
+
+        if (reading === "loading") expect(result.text).toBe("Loading…");
+        if (reading === "refused") {
+          const named = panel.refusalCapability ? ` (${panel.refusalCapability})` : "";
+          expect(result.text).toBe(`This account may not read this screen${named}.`);
+          expect(result.text).not.toContain("Could not load");
+        }
+        if (reading === "unreachable") {
+          expect(result.text).toBe(panel.resource === "groups"
+            ? "Could not read the groups (the server did not answer)."
+            : "Could not load");
+          expect(result.text).not.toContain("may not read");
+        }
+        if (reading === "empty") expect(result.count).toBe("0");
+        else expect(result.count, `${panel.prefix} claimed zero while ${reading}`).not.toBe("0");
+      }
+    }
+  }, 45000);
+
+  /**
    * SC-AUTH-07 — signing out ends the session in the browser.
    *
    * Measured on the running product before this existed: clicking Logout put
