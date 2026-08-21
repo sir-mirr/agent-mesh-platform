@@ -35,7 +35,14 @@ import { deriveBlobKey } from "@agent-mesh/contracts";
 import { auditDb } from "../db";
 import { wsIdentities } from "../presence";
 import { UPLOAD_DIR, blobPath } from "../blobs";
-import { AUDIT_MISSING_BLOBS, handleAuditAppend, handlePrepareBlobs } from "./audit";
+import {
+  AUDIT_MISSING_BLOBS,
+  handleAuditAppend,
+  handlePrepareBlobs,
+  recordDelivered,
+  recordIdentityEvent,
+  recordRecalled,
+} from "./audit";
 
 let n = 0;
 const uniq = (p: string) => `aap-${p}-${++n}-${process.pid}`;
@@ -287,5 +294,118 @@ describe("asking where to upload", () => {
     expect(only.status).toBe("missing");
     expect(only.blob_key).toBe(deriveBlobKey(sha256, "report.pdf"));
     expect(only.blob_key.endsWith(".pdf")).toBe(true);
+  });
+});
+
+/**
+ * The hub's own records: what it writes about messages and identities without
+ * anybody calling a method.
+ *
+ * These are the events § 8.9.4 and § 8.9.5 require the hub to produce itself —
+ * a delivery it observed, a recall a sender asked for, a type change a route
+ * made. Each is an exported function over the same store, so none of them
+ * needs the process either.
+ *
+ * **None of them throws.** § 15.6: provisioning and delivery do not fail
+ * because the audit store is unwritable. That makes the recorded row the only
+ * evidence any of them ran, which is why each case reads one back.
+ */
+describe("what the hub records for itself", () => {
+  const eventsFor = (correlationId: string) =>
+    auditDb
+      .prepare(
+        `SELECT event_type, identity, payload, attestation
+           FROM audit_events WHERE correlation_id = ? ORDER BY stored_at, event_id`,
+      )
+      .all(correlationId) as Array<Record<string, any>>;
+
+  /**
+   * **The sender's signature is kept verbatim**, because a recall is something
+   * they asked for — unlike a delivery, which is the hub's own later
+   * observation and carries no attestation.
+   */
+  test("keeps the sender's own signature on a recall, and none on a delivery", () => {
+    const messageId = uniq("msg");
+    const sig = { alg: "ed25519", value: "recall-signature" };
+    recordRecalled({ id: messageId, from_agent: "a", to_agent: "b", sent_by: "a" }, sig);
+    recordDelivered({
+      id: messageId, from_agent: "a", to_agent: "b", sent_by: "a",
+      content: "the body", reply_to: null,
+    });
+
+    const rows = eventsFor(messageId);
+    const recalled = rows.find((r) => r.event_type === "mesh.message.recalled")!;
+    const delivered = rows.find((r) => r.event_type === "mesh.message.delivered")!;
+
+    expect(JSON.parse(recalled.attestation)).toMatchObject({ covers: "mesh.send.params", sig });
+    expect(delivered.attestation).toBeNull();
+  });
+
+  /**
+   * The body is not repeated on a recall: `sent` already carries it, retention
+   * is indefinite (§ 15.6), and the pair reads as one story — sent, then
+   * withdrawn before anyone saw it.
+   */
+  test("does not repeat the body it already recorded", () => {
+    const messageId = uniq("msg");
+    recordRecalled({ id: messageId, from_agent: "a", to_agent: "b", sent_by: null }, null);
+    const [row] = eventsFor(messageId);
+    const payload = JSON.parse(row!.payload);
+    expect(payload.message.content).toBe("");
+    // `sent_by` falls back to the sender when the row does not name a proxy.
+    expect(payload.message.sent_by).toBe("a");
+  });
+
+  /**
+   * § 8.9.5. An identity changing type has no message to hang off, so it is
+   * correlated on the identity and carries who caused it — `null` when the
+   * route genuinely cannot say, rather than a guess.
+   */
+  test("records an identity change against the identity, with its actor", () => {
+    const identity = uniq("agent");
+    recordIdentityEvent("mesh.identity.type_changed", {
+      identity,
+      change: { from: "ai-claude", to: "human" },
+      actor: "operator-1",
+    });
+
+    const [row] = eventsFor(identity);
+    expect(row!.event_type).toBe("mesh.identity.type_changed");
+    expect(row!.identity).toBe(identity);
+    const payload = JSON.parse(row!.payload);
+    expect(payload).toMatchObject({
+      identity, actor: "operator-1", change: { from: "ai-claude", to: "human" },
+    });
+  });
+
+  test("records one whose cause is unknown, rather than inventing an actor", () => {
+    const identity = uniq("agent");
+    recordIdentityEvent("mesh.identity.type_changed", {
+      identity, change: { from: "human", to: "ai-claude" }, actor: null,
+    });
+    expect(JSON.parse(eventsFor(identity)[0]!.payload).actor).toBeNull();
+  });
+
+  /**
+   * **Time-ordered ids.** § 8.9.3 requires them because the query API pages by
+   * `(stored_at, event_id)` and `stored_at` is millisecond precision — several
+   * events land on one value under any load, and a random id breaks the tie
+   * randomly, which lets a row inserted later sort before the cursor and be
+   * skipped. The hub is a producer as much as any client.
+   */
+  test("gives its own events ids that sort the way they happened", () => {
+    const identity = uniq("agent");
+    for (let i = 0; i < 5; i++) {
+      recordIdentityEvent("mesh.identity.type_changed", {
+        identity, change: { step: i }, actor: null,
+      });
+    }
+    const ids = (auditDb
+      .prepare(`SELECT event_id FROM audit_events WHERE correlation_id = ? ORDER BY rowid`)
+      .all(identity) as Array<{ event_id: string }>).map((r) => r.event_id);
+
+    expect(ids).toHaveLength(5);
+    expect(ids.every((id) => id.startsWith("evt_"))).toBe(true);
+    expect([...ids].sort()).toEqual(ids);
   });
 });

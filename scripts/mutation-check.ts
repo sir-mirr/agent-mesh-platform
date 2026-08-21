@@ -622,6 +622,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["reports one of the wrong length as missing, and grants an upload"],
   },
   {
+    id: "recall-loses-the-senders-signature",
+    defect:
+      "The recall event stopped carrying the sender's `AgentMeshSig`. A recall is a thing the sender asked for, and the `messages` row is gone by then \u2014 this event is the only place the withdrawal exists, so an unattested one is a withdrawal nobody can prove was requested. That is the standalone mailer's defect one level down: the sender able to shape the record.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "  recordMeshEvent(\"mesh.message.recalled\", {\n    messageId: row.id,\n    from: row.from_agent,\n    to: row.to_agent,\n    sentBy: row.sent_by ?? row.from_agent,\n    content: \"\",\n    replyTo: null,\n    senderSig,",
+    to: "  recordMeshEvent(\"mesh.message.recalled\", {\n    messageId: row.id,\n    from: row.from_agent,\n    to: row.to_agent,\n    sentBy: row.sent_by ?? row.from_agent,\n    content: \"\",\n    replyTo: null,\n    senderSig: null,",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["keeps the sender's own signature on a recall, and none on a delivery"],
+  },
+  {
+    id: "delivery-attests-the-hubs-own-observation",
+    defect:
+      "A delivery event gained an attestation. It is the hub's own later observation, not something the sender asked for \u2014 attaching a signature-shaped field to it says a party vouched for a fact they were never asked about, and an audit that cannot tell the two apart is one whose attestations mean nothing.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    senderSig: null,\n    senderParams: \"{}\",\n  });\n}",
+    to: "    senderSig: { alg: \"hub\", value: \"observed\" },\n    senderParams: \"{}\",\n  });\n}",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["keeps the sender's own signature on a recall, and none on a delivery"],
+  },
+  {
+    id: "identity-event-invents-an-actor",
+    defect:
+      "An identity change whose cause the route could not name was recorded as caused by the hub. `null` is the honest answer and a legible one: an operator reading the trail can tell *nobody knows who did this* from *the hub did this*, and filling it in removes the difference for ever \u2014 § 8.9.5 events are retained indefinitely.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    actor: fields.actor,\n    change: fields.change,",
+    to: "    actor: fields.actor ?? \"hub\",\n    change: fields.change,",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["records one whose cause is unknown, rather than inventing an actor"],
+  },
+  {
+    id: "hub-events-get-ids-that-do-not-sort",
+    defect:
+      "The hub's own events took random ids. \u00a7 8.9.3 requires time-ordered ones because the query API pages by `(stored_at, event_id)` and `stored_at` is millisecond precision \u2014 several events land on one value under any load, and a random id breaks the tie randomly, which lets a row inserted later sort before the cursor and never be read. The hub is a producer as much as any client, and this is the requirement it was placing on others.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    // API pages by `(stored_at, event_id)` and millisecond `stored_at` ties.\n    event_id: `evt_${Bun.randomUUIDv7()}`,",
+    to: "    // API pages by `(stored_at, event_id)` and millisecond `stored_at` ties.\n    event_id: `evt_${crypto.randomUUID()}`,",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["gives its own events ids that sort the way they happened"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
