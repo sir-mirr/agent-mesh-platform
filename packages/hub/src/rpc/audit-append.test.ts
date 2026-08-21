@@ -72,7 +72,7 @@ const event = (over: Record<string, unknown> = {}): Record<string, any> => ({
 const storedRow = (eventId: string) =>
   auditDb
     .prepare(
-      `SELECT event_id, event_type, identity, payload_digest, producer_id, correlation_id
+      `SELECT event_id, event_type, identity, payload_digest, producer_id, correlation_id, stored_at
          FROM audit_events WHERE event_id = ?`,
     )
     .get(eventId) as Record<string, unknown> | undefined;
@@ -101,18 +101,36 @@ describe("appending an event", () => {
       ok: true, committed: true, duplicate: false, event_id: e.event_id,
       identity, attachments_verified: 0,
     });
-    // `stored_at` is read back from the row, so its presence is the commit.
-    expect(answered.result!.stored_at).toBeTruthy();
-
     const row = storedRow(e.event_id)!;
+    // **The `stored_at` it answers with is the row's.** Read back after the
+    // transaction rather than stamped beside it: a client told its outbox
+    // entry is safe drops it, so an ACK that predates the commit is how an
+    // event is lost with both sides believing it was stored.
+    expect(answered.result!.stored_at).toBe(row.stored_at);
     expect(row).toMatchObject({
       event_id: e.event_id,
       event_type: "app.thing.happened",
       producer_id: "probe-producer",
       correlation_id: e.correlation_id,
     });
-    // The identity is the connection's, never a field the caller sent.
+  });
+
+  /**
+   * **The `who` is the hub's own knowledge.** § 8.9.3's record is only worth
+   * reading if the identity comes from the connection; an event that states
+   * who it is about is an event anyone can write about anyone.
+   */
+  test("records the connection's identity, not one the payload claims", () => {
+    const { ws, identity } = connected();
+    const e = event({ identity: "somebody-else", producer_id: "somebody-else" });
+    append(ws, e);
+
+    const row = storedRow(e.event_id)!;
     expect(row.identity).toBe(identity);
+    // `producer_id` is the client's to state — it says which of its own
+    // processes emitted the event — so it is kept as sent, and it is not the
+    // field anything authorises against.
+    expect(row.producer_id).toBe("somebody-else");
   });
 
   /** The digest is over the bytes received, not over a re-serialisation. */

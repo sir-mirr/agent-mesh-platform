@@ -599,7 +599,7 @@ const MUTATIONS: Mutation[] = [
     from: "        params.producer_id ?? null,\n        identity,\n        \"adapter\",",
     to: "        params.producer_id ?? null,\n        (params.identity as string) ?? identity,\n        \"adapter\",",
     suite: "packages/hub/src/rpc/audit-append.test.ts",
-    expect: ["commits it, and answers only afterwards"],
+    expect: ["records the connection's identity, not one the payload claims"],
   },
   {
     id: "audit-append-accepts-a-truncated-blob",
