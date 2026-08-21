@@ -502,6 +502,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["says how many lanes it is showing, and how many there are"],
   },
   {
+    id: "key-stream-replays-the-backlog-as-arrivals",
+    defect:
+      "The proposal watcher stopped seeding itself from what is already pending, so opening a dashboard announces every key that has been waiting \u2014 a day-old backlog arriving as though it had just landed. The snapshot frame exists to carry that list once; announcing it twice, as news, is how an operator learns to close the notification.",
+    file: "packages/http/src/key-proposals.ts",
+    from: "  const reported = new Set<string>(pendingSince(db).map((p) => p.fingerprint))",
+    to: "  const reported = new Set<string>()",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["says what is already waiting, then what arrives"],
+  },
+  {
+    id: "a-cookie-that-does-not-verify-is-taken-as-a-session",
+    defect:
+      "The cookie path's `catch` returned the unverified payload instead of `null`, so a token nobody signed is a session. The header path has its own copy of the same three lines, which is why this is worth a mutation rather than a reading: one of the two can stop without the other.",
+    file: "packages/http/src/main.ts",
+    from: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return null\n    }\n  }",
+    to: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return { github_id: 0, github_login: 'unverified', role: 'member' } as any\n    }\n  }",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["refuses a cookie that does not verify"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",

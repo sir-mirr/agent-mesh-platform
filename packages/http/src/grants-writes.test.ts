@@ -271,3 +271,76 @@ describe("the pending-key queue", () => {
     expect(all.map((k) => k.identity)).toContain(theirs);
   });
 });
+
+/**
+ * **Whoever is told about a decision is whoever can make it.**
+ *
+ * `GET /api/v1/admin/keys/stream` pushes a proposal to an operator with a
+ * dashboard open, rather than waiting for them to poll a screen they may not
+ * have opened. Two frames arrive before anything happens — `connected`, then a
+ * `snapshot` of what is already waiting — and a proposal made afterwards
+ * arrives as `key-proposed`. The split matters: replaying the backlog as
+ * arrivals would announce a day-old key as though it had just landed.
+ */
+describe("the pending-key stream", () => {
+  /** Frames, one at a time, holding the pending read across calls. */
+  function subscribe(cookie: string) {
+    const res = app.fetch(new Request("http://gw-probe/api/v1/admin/keys/stream", {
+      headers: { cookie },
+    }));
+    let reader: ReadableStreamDefaultReader<Uint8Array>;
+    let pending: ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> | null = null;
+    const decoder = new TextDecoder();
+    return {
+      async ready() { reader = (await res).body!.getReader(); return this; },
+      async next(ms = 2000): Promise<string | null> {
+        if (!pending) pending = reader.read();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const out = await Promise.race([
+          pending,
+          new Promise<null>((r) => { timer = setTimeout(() => r(null), ms); }),
+        ]);
+        clearTimeout(timer);
+        if (!out) return null;
+        pending = null;
+        return out.value ? decoder.decode(out.value) : null;
+      },
+      async close() { await reader.cancel(); },
+    };
+  }
+
+  test("refuses an operator who cannot decide", async () => {
+    const nobody = await operator();
+    expect((await get("/api/v1/admin/keys/stream", "")).status).toBe(401);
+    expect((await get("/api/v1/admin/keys/stream", nobody.cookie)).status).toBe(403);
+  });
+
+  test("says what is already waiting, then what arrives", async () => {
+    const op = await operator([CAPABILITY.KEY_APPROVE, SCOPE_TENANT]);
+    const waiting = uniq("already");
+    keys.proposeKey(db, waiting, publicKey(), "grants-writes-test");
+
+    const s = await subscribe(op.cookie).ready();
+    expect(await s.next()).toContain("event: connected");
+
+    const snapshot = (await s.next())!;
+    expect(snapshot).toContain("event: snapshot");
+    expect(JSON.parse(snapshot.split("data: ")[1]!).keys.map((k: { identity: string }) => k.identity))
+      .toContain(waiting);
+
+    // Proposed after the stream opened: an arrival, not part of the backlog.
+    const arriving = uniq("arriving");
+    keys.proposeKey(db, arriving, publicKey(), "grants-writes-test");
+
+    const frame = (await s.next())!;
+    expect(frame).toContain("event: key-proposed");
+    const proposed = JSON.parse(frame.split("data: ")[1]!);
+    expect(proposed.identity).toBe(arriving);
+    expect(proposed.fingerprint).toBeTruthy();
+    // § 10.2: the decision is a comparison against what the agent's operator
+    // reports out of band, so the key itself is not shipped to the screen.
+    expect(proposed).not.toHaveProperty("public_key");
+
+    await s.close();
+  });
+});

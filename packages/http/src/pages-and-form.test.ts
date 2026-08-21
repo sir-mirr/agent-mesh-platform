@@ -187,6 +187,27 @@ describe("asking who you are", () => {
     expect((await res.json()).error).toBe("Unauthorized");
   });
 
+  /**
+   * **A cookie that will not verify is not a session.** The header path and
+   * the cookie path each parse a token and each swallow the failure; a
+   * `catch` that returned the payload rather than `null` would accept a
+   * signature nobody made.
+   */
+  test("refuses a cookie that does not verify", async () => {
+    for (const value of ["not-a-jwt", "a.b.c", ""]) {
+      const res = await page("/auth/me", `mesh_token=${value}`);
+      expect(`${value || "<empty>"} -> ${res.status}`).toBe(`${value || "<empty>"} -> 401`);
+    }
+  });
+
+  /** The same for the header the API clients use. */
+  test("refuses a bearer token that does not verify", async () => {
+    const res = await app.fetch(new Request("http://pg-probe/auth/me", {
+      headers: { authorization: "Bearer a.b.c" },
+    }));
+    expect(res.status).toBe(401);
+  });
+
   test("answers 404 for a signed session whose user is gone", async () => {
     const jwt = await signJwt({ github_id: 987_654_322, github_login: uniq("ghost"), role: "member" });
     const res = await page("/auth/me", `mesh_token=${jwt}`);
