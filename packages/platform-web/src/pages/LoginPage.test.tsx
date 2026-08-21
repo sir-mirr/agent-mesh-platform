@@ -387,6 +387,79 @@ describe("a credential the server accepted", () => {
   });
 });
 
+describe("the ambient network behind the form", () => {
+  it("runs the product-defined canvas frame and cancels it when the page leaves", async () => {
+    routes = [[ME, NO_SESSION]];
+
+    const canvasPrototype = HTMLCanvasElement.prototype;
+    const getContextDescriptor = Object.getOwnPropertyDescriptor(canvasPrototype, "getContext");
+    const realRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const realCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    const frames: FrameRequestCallback[] = [];
+    const cancelled: number[] = [];
+    const draws = { clear: 0, line: 0, arc: 0, fill: 0, stroke: 0 };
+
+    const context = {
+      clearRect: () => { draws.clear += 1; },
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => { draws.line += 1; },
+      closePath: () => {},
+      fill: () => { draws.fill += 1; },
+      save: () => {},
+      setLineDash: () => {},
+      stroke: () => { draws.stroke += 1; },
+      restore: () => {},
+      arc: () => { draws.arc += 1; },
+      fillStyle: "",
+      strokeStyle: "",
+      globalAlpha: 1,
+      lineWidth: 1,
+      lineDashOffset: 0,
+      shadowColor: "",
+      shadowBlur: 0,
+    } as unknown as CanvasRenderingContext2D;
+
+    Object.defineProperty(canvasPrototype, "getContext", {
+      configurable: true,
+      value: () => context,
+    });
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    globalThis.cancelAnimationFrame = (id: number) => { cancelled.push(id); };
+
+    try {
+      await mount();
+      const first = frames.shift();
+      if (!first) throw new Error("the login ambient canvas did not schedule its first frame");
+      await act(async () => { first(performance.now() + 16); });
+
+      // The second frame takes the already-sized-canvas branch. Together the
+      // two frames exercise the moving nodes, both edge styles, packets, and
+      // the connected and isolated dot styles declared by the product data.
+      const second = frames.shift();
+      if (!second) throw new Error("the login ambient canvas did not continue its animation");
+      await act(async () => { second(performance.now() + 32); });
+
+      if (draws.clear < 2 || draws.line === 0 || draws.arc === 0 || draws.fill === 0 || draws.stroke === 0) {
+        throw new Error("the login ambient canvas did not draw its product-defined network");
+      }
+
+      cleanup();
+      expect(cancelled.length).toBeGreaterThan(0);
+    } finally {
+      cleanup();
+      if (getContextDescriptor) {
+        Object.defineProperty(canvasPrototype, "getContext", getContextDescriptor);
+      }
+      globalThis.requestAnimationFrame = realRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = realCancelAnimationFrame;
+    }
+  });
+});
+
 describe("the switcher, which is the only control here that is not the form", () => {
   it("comes up in English and redraws the page in the language chosen", async () => {
     routes = [[ME, NO_SESSION]];
