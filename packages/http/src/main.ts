@@ -162,9 +162,16 @@ export function connectToHub(): void {
       }
     }
     hubWs.onmessage = (e) => {
+      // Named outside the `try` so the `catch` can say *which* frame, not only
+      // that one failed. A log line an operator cannot tie to a message is a
+      // log line that only says the count went up.
+      let frameId: unknown
+      let frameFrom: unknown
       try {
         const raw = typeof e.data === 'string' ? e.data : String(e.data)
         const data = JSON.parse(raw)
+        frameId = data?.params?.id
+        frameFrom = data?.params?.from
         if (data.method === 'mesh.message' && data.params) {
           const msg = data.params
           // 1. Write to SQLite
@@ -204,7 +211,26 @@ export function connectToHub(): void {
           // Notify sender's SSE that message was delivered (show typing indicator)
           pushToSSE(d.to, d.from, 'delivered', { id: d.id, to: d.to, ts: d.ts })
         }
-      } catch {}
+      } catch (err) {
+        // **A frame this service cannot handle used to vanish here** (D-737).
+        //
+        // `insertMessage` throws on a `mesh.message` carrying no `content` —
+        // what an older hub sends — and this swallowed it: no row, no SSE push,
+        // no audit event, no line anywhere. The hub had recorded a delivery and
+        // this side had nothing, and nobody was told. Measured, not imagined:
+        // it is what `hub-link.test.ts` found when the socket handler was first
+        // driven.
+        //
+        // Logging is not the repair — the frame is still dropped — it is the
+        // difference between a mesh that loses a message and a mesh that loses
+        // one silently. What to do with the frame itself is a separate
+        // question about this service's contract with the hub.
+        const reason = err instanceof Error ? err.message : String(err)
+        console.error(
+          `[http-server] dropped a hub frame: id=${String(frameId ?? 'unknown')} ` +
+          `from=${String(frameFrom ?? 'unknown')} reason=${reason}`,
+        )
+      }
     }
     hubWs.onclose = () => {
       hubConnected = false

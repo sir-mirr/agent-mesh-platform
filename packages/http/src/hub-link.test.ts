@@ -233,35 +233,53 @@ describe("what it does with a frame the hub pushes", () => {
   });
 
   /**
-   * **A frame this service cannot store is dropped, and nothing says so.**
+   * **A frame the store will not take is drawn, audited, and not kept.**
    *
-   * Measured, not reasoned. A `mesh.message` with no `content` — what an older
-   * hub would send — reaches `insertMessage`, which throws on the missing
-   * column, and the handler's `catch {}` swallows it. No row, no SSE push, no
-   * audit event, no log line. The hub has recorded a delivery and this side has
-   * nothing at all.
+   * Measured three times, and the first two readings were wrong — which is why
+   * this comment is longer than the test.
    *
-   * That also makes the `?? ''` three lines below unreachable. Its comment says
-   * it is kept as the only thing between an older hub and an audit row reading
-   * *empty body* where the truth is *no body* — but a frame that would exercise
-   * it dies before it gets there, so the audit row it protects is never written
-   * either way. The reasoning is sound and the ordering defeats it.
+   * A `mesh.message` with no `content` is what an older hub sends. It reaches
+   * `insertMessage`, whose statement is `INSERT OR IGNORE`, so the `NOT NULL`
+   * on `content` is not an error here: **the row is silently not written.**
+   * Nothing throws, so the handler runs to the end — the message is pushed to
+   * the operator's screen, broadcast to the audit stream, and a push
+   * notification is sent. Everything downstream believes it happened.
    *
-   * Pinned as it behaves rather than as it ought to. Raised with
-   * `agent-mesh-local-pm`: what to do about a swallowed frame is a decision
-   * about this service's contract with the hub, not a test's to make.
+   * The consequence is narrower and worse than *the frame vanishes*: it is on
+   * screen, it is in the audit trail, and it is absent from this service's own
+   * history. A reload loses it, and the audit says it was delivered.
+   *
+   * The `?? ''` beside the audit broadcast therefore **does** fire, and its
+   * comment is right about why it is there. An earlier version of this test
+   * asserted the opposite on the strength of a probe that showed no row and no
+   * throw — two facts consistent with both readings, and I picked one.
+   *
+   * Pinned as measured. What to do about a write that is ignored rather than
+   * refused is with `agent-mesh-local-pm`.
    */
-  test("drops a frame it cannot store, silently", async () => {
+  test("draws and audits a frame the store silently refuses to keep", async () => {
     hubAccepts();
     const ws = standInSocket();
     live = ws;
     connectToHub();
     await ws.open();
 
-    const frame = message();
-    delete (frame.params as Record<string, unknown>).content;
-    expect(() => ws.message(frame)).not.toThrow();
-    expect(stored(frame.params.id as string)).toBeNull();
+    const said: string[] = [];
+    const realLog = console.log;
+    console.log = (...args: unknown[]) => { said.push(args.join(" ")); };
+    try {
+      const frame = message();
+      delete (frame.params as Record<string, unknown>).content;
+      expect(() => ws.message(frame)).not.toThrow();
+
+      // Not kept.
+      expect(stored(frame.params.id as string)).toBeNull();
+      // And yet handled to the end: this line is the last statement of the
+      // `mesh.message` branch, after the SSE push and the audit broadcast.
+      expect(said.some((l) => l.includes("hub→sse") && l.includes(String(frame.params.from)))).toBe(true);
+    } finally {
+      console.log = realLog;
+    }
   });
 
   test("survives a frame that is not JSON, and one that is not a method it knows", async () => {
