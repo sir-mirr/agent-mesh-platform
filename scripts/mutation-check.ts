@@ -6910,6 +6910,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/versioning.test.ts",
     expect: ["the paragraph's count is the table's count"],
   },
+  {
+    id: "a-heading-written-twice",
+    defect:
+      "Two identical headings in one section, which is how a section gets added to the wrong copy: the next person appends under the first, and their paragraph is invisible to anyone who scrolled to where the list actually is. `docs/proposals/README.md` carried `### Still undecided` twice, one line apart.",
+    file: "docs/proposals/README.md",
+    from: "### Still undecided\n\n- **Whether `ASN` replaces `prefix`**",
+    to: "### Still undecided\n\n### Still undecided\n\n- **Whether `ASN` replaces `prefix`**",
+    suite: "test/readme.test.ts",
+    expect: ["every heading in docs/ and the root documents is unique within its file"],
+  },
+  {
+    id: "the-proposals-index-contradicts-itself",
+    defect:
+      "The introduction went back to saying the set is unimplemented while the *Built* section thirty lines down lists where each part of it landed. A reader who stops at the first paragraph \u2014 which is the one they reach first \u2014 gets the opposite of the answer.",
+    file: "docs/proposals/README.md",
+    from: "arrived. **Every decision they settled is built**",
+    to: "arrived. **Nothing in them is implemented.** They are settled contracts",
+    suite: "test/readme.test.ts",
+    expect: ["the introduction does not say the opposite of it"],
+  },
 ];
 
 /**

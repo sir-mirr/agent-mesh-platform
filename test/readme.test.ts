@@ -195,6 +195,95 @@ describe("README errors section", () => {
   });
 });
 
+/**
+ * A heading written twice **in the same section** is a section somebody added
+ * to the wrong copy.
+ *
+ * `docs/proposals/README.md` carried `### Still undecided` twice, one line
+ * apart, with the content under the second. Harmless to read and not harmless
+ * to edit: the next person appends under the first heading, and their
+ * paragraph is then invisible to anyone who scrolled past to where the list
+ * actually is.
+ *
+ * The comparison is on the **path** — parent headings included — because a
+ * repeat under two different parents is ordinary structure. Two numbered
+ * proposals each ending in `### Recommendation` is a document doing its job,
+ * and a check that called that a defect would be one nobody could leave on.
+ */
+describe("no document says the same heading twice in one section", () => {
+  function markdown(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : markdown(full);
+      return entry.name.endsWith(".md") ? [full] : [];
+    });
+  }
+
+  test("every heading in docs/ and the root documents is unique within its file", () => {
+    const files = [
+      ...markdown(join(REPO_ROOT, "docs")),
+      join(REPO_ROOT, "README.md"),
+      join(REPO_ROOT, "SPEC.md"),
+    ];
+    expect(files.length, "no documents found — the walk broke").toBeGreaterThan(10);
+
+    const repeated: string[] = [];
+    for (const file of files) {
+      const seen = new Map<string, number>();
+      // The path to the heading: every open ancestor, then itself. `## A` then
+      // `### B` is `A > B`, and the same `### B` under `## C` is `C > B`.
+      const ancestors: string[] = [];
+      for (const [, hashes, heading] of readFileSync(file, "utf8").matchAll(/^(#{2,6})\s+(.+?)\s*$/gm)) {
+        const depth = hashes!.length - 2;
+        ancestors.length = Math.min(ancestors.length, depth);
+        ancestors[depth] = heading!.trim();
+        const path = ancestors.slice(0, depth + 1).join(" > ");
+        seen.set(path, (seen.get(path) ?? 0) + 1);
+      }
+      for (const [path, times] of seen) {
+        // `### Original entry` in `open-questions.md` is deliberate: each closed
+        // item keeps the entry as it was written underneath the ruling, and the
+        // repetition is what makes them recognisable as the same thing.
+        if (path.endsWith("Original entry")) continue;
+        if (times > 1) repeated.push(`${file.slice(REPO_ROOT.length)} :: ${path} (${times}x)`);
+      }
+    }
+    expect(repeated, "a heading appears more than once in one section").toEqual([]);
+  });
+});
+
+/**
+ * The proposals index said two opposite things about the same four documents.
+ *
+ * Line 12: "**Nothing in them is implemented.**" Line 57, under *Built*:
+ * "Every settled decision in the set is implemented and on `main`." Both were
+ * written truthfully, months apart, and a reader who stopped at the first had
+ * the opposite of the answer — which is the whole cost, because the first is
+ * the one a reader reaches first.
+ *
+ * The two are in one document, so they can be compared without knowing
+ * anything about the code.
+ */
+describe("the proposals index does not contradict its own Built section", () => {
+  const INDEX = readFileSync(join(REPO_ROOT, "docs", "proposals", "README.md"), "utf8");
+
+  test("it has a Built section with entries in it", () => {
+    const built = /^### Built$([\s\S]*?)^### /m.exec(INDEX);
+    expect(built, "the Built section moved or was renamed").not.toBeNull();
+    const rows = built![1]!.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("|---"));
+    expect(rows.length, "the Built section lists nothing, so there is nothing to contradict")
+      .toBeGreaterThan(3);
+  });
+
+  test("the introduction does not say the opposite of it", () => {
+    const intro = INDEX.slice(0, INDEX.indexOf("| # | Document |"));
+    // Not a spell-check of one sentence: any claim that the set is unbuilt,
+    // sitting above a table of where each part of it landed, is the defect.
+    expect(intro).not.toMatch(/nothing in them is implemented/i);
+    expect(intro).not.toMatch(/none of (?:them|it) (?:is|are) (?:implemented|built)/i);
+  });
+});
+
 describe("SPEC self-consistency", () => {
   const SPEC = readFileSync(join(REPO_ROOT, "SPEC.md"), "utf8");
 

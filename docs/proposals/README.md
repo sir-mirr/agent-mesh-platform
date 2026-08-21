@@ -9,8 +9,11 @@ and this file survives only for the reasoning.
 ## The 0.3 requirement set — first draft
 
 Four documents, one requirement each, written in the order the requirements
-arrived. **Nothing in them is implemented.** They interact, so the reading order
-matters more than usual: each one changes the shape of the ones after it.
+arrived. **Every decision they settled is built** — the *Built* table below says
+where each one landed in SPEC. What they deliberately did not settle is under
+*Still undecided*. They interact, so the reading order matters more than usual:
+each one changes the shape of the ones after it.
+
 
 | # | Document | Requirement | Settled |
 |---|---|---|---|
@@ -56,6 +59,12 @@ blocking three items and is now built (SPEC § 8.9.5).
 
 Every settled decision in the set is implemented and on `main`.
 
+The paragraph at the top of this file said "Nothing in them is implemented" for
+as long as this section has existed. Both sentences were written truthfully,
+months apart, and a reader who stopped at the first had the opposite of the
+answer — which is the whole cost, because the first is the one they reach
+first. `test/readme.test.ts` compares the two now.
+
 | | Section | |
 |---|---|---|
 | Observed source, recorded per request | § 8.11 | `GET /api/v1/admin/agent-sources` |
@@ -65,8 +74,6 @@ Every settled decision in the set is implemented and on `main`.
 | Content reads recorded, failing closed | § 11.0.1 | `mesh.identity.audit_read` |
 | Ownership, pairing codes, scoped queues and teardown | § 11.3 | |
 | Groups, deny by default | § 12 | `-32018`, seeded `default` self-rule |
-
-### Still undecided
 
 ### Still undecided
 
