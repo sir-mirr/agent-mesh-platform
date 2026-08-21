@@ -77,8 +77,13 @@ export function openAt(path: string, opts: Omit<OpenOptions, "env"> = {}): Datab
     ...(opts.create ? { create: true } : {}),
   });
   if (!opts.readonly) {
-    // **Before the first statement runs**, because opening in WAL mode
-    // recovers the log and the evidence is gone by the time anybody could ask.
+    // Before the first statement runs. Not because the open would erase the
+    // answer -- it would not, and a mutation that moved this line below the
+    // `PRAGMA` survived every check here, which is how that was found out:
+    // opening a WAL database replays the log, it does not fold it, and the
+    // `-wal` sits there until something checkpoints. The order is defensive
+    // rather than load-bearing, and saying otherwise put a reason in the file
+    // that nothing could hold to.
     //
     // A `-wal` with bytes in it at open means the process that wrote it left
     // without folding it -- `checkpointForShutdown` is what folds it, and it is

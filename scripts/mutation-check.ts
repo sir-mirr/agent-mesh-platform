@@ -6781,16 +6781,6 @@ const MUTATIONS: Mutation[] = [
     expect: ["says so, with how much is waiting"],
   },
   {
-    id: "the-log-is-measured-after-it-is-recovered",
-    defect:
-      "The measurement moved below `PRAGMA journal_mode = WAL`, which recovers the log \u2014 so it reads zero every time and the warning never fires. The evidence is gone by the moment anybody could ask for it, which is why this is taken first.",
-    file: "packages/store/src/open.ts",
-    from: "    const carried = walBytes(path);\n    if (carried > 0) {",
-    to: "    db.exec(\"PRAGMA journal_mode = WAL;\");\n    const carried = walBytes(path);\n    if (carried > 0) {",
-    suite: "packages/store/src/wal-recovery.test.ts",
-    expect: ["says so, with how much is waiting"],
-  },
-  {
     id: "a-lapsed-lease-is-handed-back-in-silence",
     defect:
       "The mailbox's only redelivery stopped being reported. A caller whose turn ended before it could persist a batch and a caller stuck in a crash loop are the same rows, and without the line they are also the same log.",
