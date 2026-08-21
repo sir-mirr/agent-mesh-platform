@@ -6728,6 +6728,88 @@ const MUTATIONS: Mutation[] = [
     suite: "test/import-graph.test.ts",
     expect: ["one consumer outside the packages, and it uses the front door"],
   },
+
+  // ── T-022: the log line is the artifact, so it is pinned like one ────────
+  {
+    id: "a-level-the-caller-supplied-wins",
+    defect:
+      "The four canonical fields went back to being spread over by `fields`. A caller with its own `level` then set the JSON's level while the method still chose the stream, so one line said `info` in the head and `error` in the tail \u2014 and a filter and a reader disagreed about the same event.",
+    file: "packages/log/src/index.ts",
+    from: "    const payload: LoggedEvent = { ts: now(), level, component, event, ...rest };",
+    to: "    const payload: LoggedEvent = { ts: now(), level, component, event, ...fields };",
+    suite: "packages/log/src/index.test.ts",
+    expect: ["a caller-supplied level field cannot override the method"],
+  },
+  {
+    id: "warn-goes-where-nobody-looks",
+    defect:
+      "Every level went to stdout. `journalctl -p err` then answers nothing, and *is anything wrong* stops being a question one stream can answer \u2014 which is the only reason the split costs an ordering guarantee between the two.",
+    file: "packages/log/src/index.ts",
+    from: "    if (level === \"info\") sink.out(line);\n    else sink.err(line);",
+    to: "    sink.out(line);",
+    suite: "packages/log/src/index.test.ts",
+    expect: ["error and warn go to stderr, info to stdout"],
+  },
+  {
+    id: "a-reason-from-a-request-keys-the-counter",
+    defect:
+      "The bound on `reason` stopped applying, so a string assembled from a request or lifted from a database error became a counter key. The map then grows at a rate the caller chooses \u2014 a memory leak whose size is decided by traffic, in the one structure that exists to be read while everything else is failing.",
+    file: "packages/log/src/index.ts",
+    from: "        : typeof stated === \"string\" && BOUNDED_REASON.test(stated)",
+    to: "        : typeof stated === \"string\"",
+    suite: "packages/log/src/index.test.ts",
+    expect: ["many distinct unbounded reasons make one key"],
+  },
+  {
+    id: "counters-arrive-without-their-clock",
+    defect:
+      "The snapshot at boot went away, so the first one an operator sees is fifteen minutes in and every counter on it is already non-zero. The zero beside `COUNTING_SINCE` is what makes a later zero readable as *this ran and found nothing* rather than *this started a minute ago*.",
+    file: "packages/log/src/index.ts",
+    from: "  emit();\n  const timer = setTimer(emit, intervalMs);",
+    to: "  const timer = setTimer(emit, intervalMs);",
+    suite: "packages/log/src/index.test.ts",
+    expect: ["stamps the zero at boot next to the time counting began"],
+  },
+  {
+    id: "a-recovered-log-goes-unmentioned",
+    defect:
+      "Opening a store that carries an unfolded write-ahead log stopped saying so. A service killed mid-write and one shut down cleanly then produce the same quiet boot, and *every shutdown was clean* is what a reader takes from silence.",
+    file: "packages/store/src/open.ts",
+    from: "    const carried = walBytes(path);",
+    to: "    const carried = 0;",
+    suite: "packages/store/src/wal-recovery.test.ts",
+    expect: ["says so, with how much is waiting"],
+  },
+  {
+    id: "the-log-is-measured-after-it-is-recovered",
+    defect:
+      "The measurement moved below `PRAGMA journal_mode = WAL`, which recovers the log \u2014 so it reads zero every time and the warning never fires. The evidence is gone by the moment anybody could ask for it, which is why this is taken first.",
+    file: "packages/store/src/open.ts",
+    from: "    const carried = walBytes(path);\n    if (carried > 0) {",
+    to: "    db.exec(\"PRAGMA journal_mode = WAL;\");\n    const carried = walBytes(path);\n    if (carried > 0) {",
+    suite: "packages/store/src/wal-recovery.test.ts",
+    expect: ["says so, with how much is waiting"],
+  },
+  {
+    id: "a-lapsed-lease-is-handed-back-in-silence",
+    defect:
+      "The mailbox's only redelivery stopped being reported. A caller whose turn ended before it could persist a batch and a caller stuck in a crash loop are the same rows, and without the line they are also the same log.",
+    file: "packages/mailbox/src/receive.ts",
+    from: "    if (relet.length > 0) {",
+    to: "    if (false) {",
+    suite: "packages/mailbox/src/receive.test.ts",
+    expect: ["is handed back with a line naming who and how many"],
+  },
+  {
+    id: "a-first-delivery-counts-as-a-redelivery",
+    defect:
+      "The filter on `leased_until` went away, so every message in a batch was counted as a second offer. A queue doing exactly what it should then reports a redelivery per message \u2014 and the counter that exists to find a crash loop is the one thing that would say there is one.",
+    file: "packages/mailbox/src/receive.ts",
+    from: "    const relet = page.filter((m) => m.leased_until !== null && m.leased_until !== undefined);",
+    to: "    const relet = page;",
+    suite: "packages/mailbox/src/receive.test.ts",
+    expect: ["counts the re-offered ones only, in a batch that mixes both"],
+  },
 ];
 
 /**
