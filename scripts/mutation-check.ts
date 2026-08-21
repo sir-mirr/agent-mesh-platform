@@ -422,6 +422,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["tell an account still waiting that it is waiting"],
   },
   {
+    id: "chat-list-page-opens-for-an-account-still-waiting",
+    defect:
+      "The same check, one route over. `/chat` has its own copy of the admission gate \u2014 the two pages were written separately and each decides again \u2014 so a fix to one is not a fix to the other, and a test that only visits `/chat/:agentId` measures half of it.",
+    file: "packages/http/src/main.ts",
+    from: "  const approved = isUserApproved(user.github_login, user.role)\n  if (!approved) {\n    return c.html(renderPendingApprovalPage(user))\n  }\n\n  return c.html(renderChatPage(user))",
+    to: "  const approved = true\n  if (!approved) {\n    return c.html(renderPendingApprovalPage(user))\n  }\n\n  return c.html(renderChatPage(user))",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["tell an account still waiting that it is waiting"],
+  },
+  {
     id: "sign-in-form-says-which-half-was-wrong",
     defect:
       "The form's failed sign-in stopped using one redirect for both causes, so `?error=` distinguishes an unknown username from a wrong password. That turns the landing page into an account enumerator: a caller learns which names exist without ever holding a credential.",

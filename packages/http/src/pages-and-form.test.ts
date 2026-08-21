@@ -62,9 +62,19 @@ const form = (fields: Record<string, string>) =>
     redirect: "manual",
   }));
 
+/**
+ * **The row's role decides, not the token's.** These pages read the user out of
+ * the database and ask `isUserApproved(login, row.role)`, and `upsertUser`
+ * makes the very first user in an empty table an admin — who is approved by
+ * definition. Run alone, this file created that first user, and an
+ * "unapproved" account was served the chat page for a reason that had nothing
+ * to do with the branch under test. The role is stated here so the test means
+ * the same thing whatever ran before it.
+ */
 async function signedIn(approved: boolean) {
   const login = uniq("person");
   const user = upsertUser(1_040_000 + n, login);
+  getDb().prepare("UPDATE users SET role = 'member' WHERE github_id = ?").run(user.github_id);
   createPendingApproval(login, user.github_id);
   if (approved) expect(approveUser(login)).toBe(true);
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
@@ -101,14 +111,26 @@ describe("the chat pages", () => {
     }
   });
 
-  /** Waiting on an admin is not the same as being turned away: it has its own page. */
+  /**
+   * Waiting on an admin is not the same as being turned away: it has its own
+   * page.
+   *
+   * **Asserted on the title, not on the login.** Both pages render the
+   * person's name, so a chat page served to an unapproved account contains
+   * everything a first draft of this test looked for — the registered mutation
+   * that drops the approval check passed it. The two pages differ by which one
+   * they are.
+   */
   test("tell an account still waiting that it is waiting", async () => {
     const who = await signedIn(false);
     const agent = registerAgent(uniq("agent"));
     for (const path of ["/chat", `/chat/${agent}`]) {
       const res = await page(path, who.cookie);
       expect(res.status).toBe(200);
-      expect(await res.text()).toContain(who.login);
+      const html = await res.text();
+      expect(`${path}: ${html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "no title"}`)
+        .toBe(`${path}: Agent Mesh - Pending Approval`);
+      expect(html).toContain(who.login);
     }
   });
 
