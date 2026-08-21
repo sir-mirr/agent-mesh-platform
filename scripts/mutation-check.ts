@@ -4021,6 +4021,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/attachments.test.ts",
     expect: ["a signed-in person the operator has not approved yet"],
   },
+  {
+    id: "the-tenant-dashboard-invents-its-egress-total",
+    defect:
+      "The dashboard stopped summing the egress rules the route returned and drew a total of its own. A number on a dashboard is read as measured; one the screen computed from nothing reads identically to one the mesh reported, and an operator sizing a tenant's exposure by it is sizing it by a constant.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "  const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);",
+    to: "  const totalEgressRules = groups.reduce((acc, g) => acc + 0, 0);",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["without inventing its egress total"],
+  },
+  {
+    id: "the-login-canvas-never-starts",
+    defect:
+      "The login page's canvas effect inverted its own guard and returned when the context *was* available, so the first frame is never scheduled. Nothing throws and nothing logs — the page renders with a dead background, which is the class of defect only a test that watches for the first frame can see.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "    if (!ctx) return;",
+    to: "    if (ctx) return;",
+    suite: "packages/platform-web/src/pages/LoginPage.test.tsx",
+    expect: ["product-defined canvas frame"],
+  },
+  {
+    id: "topology-search-answers-the-wrong-key",
+    defect:
+      "The topology search moved its camera on `Escape` instead of `Enter`. Both keys reach the handler with results on screen, so nothing errors: pressing `Enter` does nothing and pressing the key that means *cancel* flies the camera at the first hit \u2014 the two most-pressed keys in a search box, swapped.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: '    if (e.key === "Enter" && searchResults.length > 0) {',
+    to: '    if (e.key === "Escape" && searchResults.length > 0) {',
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["without losing the selected node"],
+  },
 ];
 
 /**
