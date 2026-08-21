@@ -57,28 +57,33 @@ guaranteed archive. Anything a later reader will need — a contract decision, w
 an interface is shaped the way it is — belongs in `docs/`, `SPEC.md` or a commit
 message, where deleting it leaves a diff.
 
-**Recall is scoped by sender, and the two routes that do it disagree about how
-to say so.** Both refuse without `from`, with `400` — not the `403` the mailer's
-own guide describes.
+**Recall is scoped by sender, and the two routes that do it disagree.** Every
+shape, measured against `id=999999999` and `from=nobody-at-all`, neither of which
+can remove anything:
 
 ```
-DELETE /api/mail/<n>?from=<id>     404  {"success":false,"error":"Message not found
-                                          or you are not the sender of this message."}
-DELETE /api/mail?from=<id>&id=<n>  200  {"success":true,"cancelledCount":0}
+DELETE /api/mail?id=<n>                     400  `from` is required
+DELETE /api/mail?to=<id>&id=<n>             403  recipients cannot delete what they received
+DELETE /api/mail?from=<id>&id=<n>           200  {"success":true,"cancelledCount":0}
+DELETE /api/mail/<n>                        400  `from` is required
+DELETE /api/mail/<n>?to=<id>                400  `to` is ignored here
+DELETE /api/mail/<n>?from=<id>              404  "Message not found or you are not
+                                                  the sender of this message."
 ```
 
-The path form is honest, and its one sentence for *absent* and *not yours* is
-the right shape — the alternative tells a caller whether an id they guessed is
-real. The query form answers `200 {"success":true}` whatever happens:
-**`success` means the request was processed, and `cancelledCount` is the only
-field that says a row went.** Read `success` alone and a recall that removed
-nothing reads as one that worked.
+The path form is honest, and answering *absent* and *not yours* with one
+sentence is the right shape — the alternative tells a caller whether an id they
+guessed is real. **The query form is the one that needs the warning:** it
+answers `200 {"success":true}` for a sender that owns nothing, so `success`
+means the request was processed and **`cancelledCount` is the only field that
+says a row went.**
 
-Measured against `id=999999999` and `from=nobody-at-all`, neither of which
-destroys anything — a probe that fails is better than a probe that breaks its
-subject. Worth saying because an earlier version of this paragraph called both
-`cancelledCount: 0` cases measured when only the absent-id one had been, and
-took the other from a message.
+The `403` is query-form only and needs `to` — it is the recipient's refusal, a
+different question from the missing-`from` `400` beside it. Worth the space
+because two agents measured this on the same afternoon, one sending `to` and one
+not, and each corrected the other with a statement that was true of its own
+input and wrong as written. An earlier version of this paragraph also called
+both `cancelledCount: 0` cases measured when only the absent-id one had been.
 
 Delivery is bounded by a high-water mark in
 `~/.claude/agent-mesh/<identity>.mailbox-mark`, written every run. Losing that
