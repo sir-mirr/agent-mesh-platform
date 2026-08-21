@@ -3667,6 +3667,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/rpc/connect.test.ts",
     expect: ["an entry the caller may not act for is dropped"],
   },
+  {
+    id: "signature-required-only-where-a-key-exists",
+    defect:
+      "Whether a request must be signed stopped being a property of the identity's *type*. That is the open door this file's header describes: `requires_key = 1` means there is no unsigned path at all, and verifying only where an approved key already exists lets a caller register without one and then connect unsigned \u2014 skipping the authentication the audit trail depends on. It reads as backward compatibility, which is why it survived a draft.",
+    file: "packages/hub/src/signature.ts",
+    from: "    if (!mustSign) return OK_UNSIGNED;",
+    to: "    return OK_UNSIGNED;",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["an unsigned request from a type that requires one is refused"],
+  },
+  {
+    id: "signature-freshness-window-stops-biting",
+    defect:
+      "The \u00b1window check on `iat` stopped refusing, so a captured envelope verifies for ever. Freshness is checked before the nonce is claimed on purpose \u2014 a stale request is rejected without its nonce entering the window, so an attacker cannot fill the map with entries that were never going to be accepted \u2014 and with this gone both properties fall together.",
+    file: "packages/hub/src/signature.ts",
+    from: "  if (Math.abs(now - iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["an iat outside the freshness window is refused, on both sides"],
+  },
+  {
+    id: "a-spent-nonce-can-be-spent-again",
+    defect:
+      "The replay guard stopped consulting the nonce window, so one captured envelope can be presented repeatedly inside its freshness window. The claim happens *before* the signature is checked (\u00a7 8.1), which is what makes a failed attempt consume the nonce as well \u2014 recording only on success would let a captured envelope be replayed unboundedly against a hub whose key state had changed, because each attempt would fail verification and leave the nonce spendable.",
+    file: "packages/hub/src/signature.ts",
+    from: "  if (!nonces.claim(identity, nonce, iat)) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["a nonce already seen in the window is refused the second time"],
+  },
+  {
+    id: "no-approved-key-reported-as-a-bad-signature",
+    defect:
+      "`KEY_NOT_APPROVED` collapsed into the generic signature refusal, so a client cannot tell *wait for an operator* (`pending`) from *stop and ask a person* (`denied`, `revoked`) from *your signature is wrong*. Reporting them as one error makes a client retry through a shutoff, and the key status the refusal carries is the only thing that tells it which.",
+    file: "packages/hub/src/signature.ts",
+    from: '  if (outcome.reason === "no-approved-key") {',
+    to: "  if (false) {",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["an identity with no approved key is refused with its key status"],
+  },
 ];
 
 /**
