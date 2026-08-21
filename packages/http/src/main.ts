@@ -3164,8 +3164,27 @@ app.get('/api/v1/admin/chat-audits/agents', async (c) => {
     ).all() as Array<{ a: string }>
     return c.json({ agents: rows.map(r => r.a).filter(Boolean) })
   } catch (e: any) {
-    console.error('[chat-audits/agents] query failed:', e?.message ?? e)
-    return c.json({ agents: [] })
+    const message = e?.message ?? String(e)
+    console.error('[chat-audits/agents] query failed:', message)
+    // **An empty list is an answer, and this is not one.**
+    //
+    // This returned `{ agents: [] }`, so *the audit holds nobody* and *the
+    // query did not run* were one sentence to every caller — the shape
+    // `SC-DOWN-*` exists to catch on the front end, on the wrong side of it.
+    // A test written as this route's happy path passed through this branch
+    // without noticing, which is how invisible it was.
+    //
+    // 503, not 500: the request was valid and the deployment is degraded, so a
+    // caller that retries once the store is back gets its answer. Same shape as
+    // `AUDIT_READ_UNRECORDABLE` above (D-736).
+    return c.json(
+      {
+        ok: false,
+        error: 'the audit store did not answer, so who appears in it is unknown',
+        code: 'AUDIT_AGENTS_UNAVAILABLE',
+      },
+      503,
+    )
   }
 })
 

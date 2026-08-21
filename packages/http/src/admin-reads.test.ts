@@ -237,24 +237,44 @@ describe("who appears in the audit", () => {
   });
 
   /**
-   * **An empty list is also what a failed query answers**, and this pins that
-   * rather than approving it.
+   * **An empty list is an answer, and a broken query does not get to give one.**
    *
-   * The `catch` returns `{ agents: [] }` after logging, so *the audit holds
-   * nobody* and *the query did not run* are one sentence to every caller. That
-   * is the shape `SC-DOWN-*` exists to measure on the front end — a screen
-   * drawing zero for a backend that never answered — and this route is on the
-   * wrong side of it. Raised with `agent-mesh-local-pm` as a response-shape
-   * decision rather than changed here: it is a contract, and a route that
-   * starts answering `503` is a client's problem before it is an improvement.
+   * This route returned `{ agents: [] }` from its `catch`, so *the audit holds
+   * nobody* and *the query did not run* were one sentence to every caller —
+   * the shape `SC-DOWN-*` measures on the front end, on the wrong side of it.
+   * The first run of this file demonstrated it: the hub store did not exist in
+   * this process, the route logged `unable to open database file`, answered
+   * `200`, and the test above written as the happy path passed through the
+   * `catch` without noticing. It answers `503` with a code now (D-736).
+   *
+   * **Asserted over the source rather than by breaking the store**, and that is
+   * a deliberate step down. Forcing the branch means making the hub database
+   * unreadable, and the way that was first written — renaming `hub.db` while
+   * leaving `hub.db-wal` beside it — left a mismatched write-ahead log that
+   * took eight later tests in the same process down with it. A probe that
+   * breaks its subject for everyone after it is worse than one that measures
+   * less: `receive.test.ts` and `delivery-landing.test.ts` in this repository
+   * are both scarred by the same lesson.
+   *
+   * So this checks the shape the route now has, which is enough to catch the
+   * registered mutation putting the empty list back. What it does not do is run
+   * the branch, and saying so is the honest half.
    */
-  test("and the same empty list is what a broken query would answer", () => {
+  /** The source no longer contains the sentence that made the two identical. */
+  test("and no longer answers an empty list from its catch", () => {
     const source = readFileSync(new URL("./main.ts", import.meta.url).pathname, "utf8");
     const route = /app\.get\('\/api\/v1\/admin\/chat-audits\/agents'[\s\S]*?\n\}\)/.exec(source);
     expect(route, "the chat-audits agents route moved").not.toBeNull();
-    // Two returns, the same body. If the catch ever answers differently this
-    // fails and the test above is the one to rewrite.
-    expect([...route![0].matchAll(/c\.json\(\{ agents: \[\] \}\)/g)]).toHaveLength(1);
     expect(route![0]).toContain("catch");
+    expect(route![0]).toContain("AUDIT_AGENTS_UNAVAILABLE");
+    expect(route![0]).toContain("503,");
+
+    // **Prose may name the defect; that is how the reason survives.** The
+    // comment beside the fix quotes `{ agents: [] }` to say what it replaced,
+    // and the first version of this check matched it — the same carve-out
+    // `greppable.test.ts` makes, arrived at the same way.
+    const code = route![0].split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    expect(code).not.toMatch(/agents:\s*\[\]/);
+    expect(code).toContain("503,");
   });
 });

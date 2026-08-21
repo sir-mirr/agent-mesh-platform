@@ -4121,6 +4121,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/admin-reads.test.ts",
     expect: ["refuses an identity that is not shaped like one"],
   },
+  {
+    id: "a-broken-audit-query-answers-an-empty-list",
+    defect:
+      "`chat-audits/agents` went back to answering `{ agents: [] }` when its query throws, so *the audit holds nobody* and *the query did not run* become one sentence to every caller. That is the shape `SC-DOWN-*` measures on the front end \u2014 a screen drawing zero for a backend that never answered \u2014 and it is invisible from inside: a test written as this route's happy path passed through the `catch` without noticing, which is how the defect was found (D-736).",
+    file: "packages/http/src/main.ts",
+    from: "        code: 'AUDIT_AGENTS_UNAVAILABLE',\n      },\n      503,",
+    to: "        code: 'AUDIT_AGENTS_UNAVAILABLE',\n        agents: [],\n      },\n      200,",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["no longer answers an empty list from its catch"],
+  },
 ];
 
 /**
