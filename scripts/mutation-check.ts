@@ -6651,6 +6651,50 @@ const MUTATIONS: Mutation[] = [
     suite: "test/held-uncovered.test.ts",
     expect: ["every row says why, rather than only where"],
   },
+  {
+    id: "boundary-deep-import",
+    swept: true,
+    defect:
+      "A cross-package import that reaches past the barrel takes away the importee's freedom to move its own files, and does it silently — both halves still compile, and the specifier reads like any other relative path.",
+    file: "packages/hub/src/db.ts",
+    from: 'from "@agent-mesh/store";',
+    to: 'from "../../store/src/index";',
+    suite: "test/import-graph.test.ts",
+    expect: ["no file reaches into another package by relative path"],
+  },
+  {
+    id: "boundary-new-pair",
+    swept: true,
+    defect:
+      "A dependency added between two packages that had none. The table of pairs is the invariant: four at run time and one in a test, each with a reason written beside it, so a fifth arriving quietly is the thing this guard exists to refuse.",
+    file: "packages/store/src/index.ts",
+    from: 'export * from "./open";',
+    to: 'export * from "./open";\nexport * from "@agent-mesh/mailbox";',
+    suite: "test/import-graph.test.ts",
+    expect: ["has exactly these package pairs, four of them at run time"],
+  },
+  {
+    id: "boundary-cycle",
+    swept: true,
+    defect:
+      "A cycle is not a compile error in bun or in a bundler. It is a module half-initialised at run time, and which half is missing depends on which file was imported first — so it moves when an unrelated import is added, which is the worst property a defect can have.",
+    file: "packages/store/src/teardown.ts",
+    from: 'import { randomUUID } from "node:crypto";',
+    to: 'import { randomUUID } from "node:crypto";\nimport "./index";',
+    suite: "test/import-graph.test.ts",
+    expect: ["has no import cycle anywhere in it"],
+  },
+  {
+    id: "boundary-outside-consumer",
+    swept: true,
+    defect:
+      "`test/` drives the services as processes rather than importing them, which is what keeps the number of consumers outside `packages/` at one. A script or a suite that imports a package instead links this repository's tooling to its internals.",
+    file: "scripts/coverage.ts",
+    from: 'import { spawnSync } from "node:child_process";',
+    to: 'import { spawnSync } from "node:child_process";\nimport "@agent-mesh/hub";',
+    suite: "test/import-graph.test.ts",
+    expect: ["one consumer outside the packages, and it uses the front door"],
+  },
 ];
 
 /**
