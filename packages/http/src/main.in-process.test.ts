@@ -1903,3 +1903,205 @@ describe("a refused sign-in, in the record", () => {
     expect(refusals(lines)).toEqual([]);
   });
 });
+
+/**
+ * The audit poller, a pass at a time.
+ *
+ * Its whole body lived inside a `setInterval` callback, which is reachable
+ * only by waiting 1.5 seconds — so nothing had ever run it in a process an
+ * instrument was watching, and its two failure branches were unreachable at
+ * any price: they need a store that will not answer, and the timer owns when
+ * it asks.
+ *
+ * `auditPollerStartingPoint` and `auditPollerPass` are ordinary functions now.
+ * The timer calls them in production and this calls them here, which is the
+ * same seam `closeDatabases(stores)` and `requireJwtSecret(secret, refuse)`
+ * are: the thing that decides stays where it was, and what supplies it moves.
+ */
+describe("the audit poller", () => {
+  const hubDbPath = join(STATE, "hub.db");
+
+  // The interval `startup()` started would race every assertion below for the
+  // same rows, and take the anchor with it.
+  beforeAll(() => mod.stopAuditPoller());
+
+  const lines = (captured: string[], event: string) =>
+    captured
+      .filter((l) => l.includes(`"event":"${event}"`))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  function run<T>(body: () => T): { value: T; said: string[] } {
+    const capture = captureConsole();
+    try {
+      return { value: body(), said: capture.lines };
+    } finally {
+      capture.restore();
+    }
+  }
+
+  /** One message straight into the hub's store, as the hub would have left it. */
+  function putMessage(id: string, ts: string): void {
+    const db = new Database(hubDbPath, { readwrite: true });
+    try {
+      db.prepare(
+        `INSERT INTO messages (id, from_agent, to_agent, content, status, ts)
+         VALUES (?, 'poller-probe-from', 'poller-probe-to', 'poller probe', 'pending', ?)`,
+      ).run(id, ts);
+    } finally {
+      db.close();
+    }
+  }
+
+  async function withoutMessages<T>(body: () => Promise<T> | T): Promise<T> {
+    const db = new Database(hubDbPath, { readwrite: true });
+    db.exec(`ALTER TABLE messages RENAME TO messages_unavailable`);
+    try {
+      return await body();
+    } finally {
+      db.exec(`ALTER TABLE messages_unavailable RENAME TO messages`);
+      db.close();
+    }
+  }
+
+  test("takes its starting point from the newest row, and names it", () => {
+    putMessage("poller-anchor-1", "2030-01-01 00:00:00");
+    const { said } = run(() => mod.auditPollerStartingPoint());
+
+    const [started] = lines(said, "audit_poller_started");
+    expect(started, "the poller took a starting point without saying so").toBeDefined();
+    expect(started!.id).toBe("poller-anchor-1");
+    expect(started!.last_ts).toBe("2030-01-01 00:00:00");
+    expect(started!.level).toBe("info");
+  });
+
+  test("a pass with nothing newer says nothing at all", () => {
+    const { value, said } = run(() => mod.auditPollerPass());
+    expect(value).toBe(0);
+    expect(said).toEqual([]);
+  });
+
+  test("picks up what arrived after it, counts it, and does not pick it up twice", () => {
+    putMessage("poller-new-1", "2030-01-01 00:00:01");
+    putMessage("poller-new-2", "2030-01-01 00:00:02");
+
+    const first = run(() => mod.auditPollerPass());
+    expect(first.value).toBe(2);
+    expect(lines(first.said, "audit_poller_rows")[0]!.count).toBe(2);
+
+    // The anchor moved with the rows. Without that the same two are broadcast
+    // on every pass, which on an audit screen is the mesh appearing to repeat
+    // itself for ever.
+    const second = run(() => mod.auditPollerPass());
+    expect(second.value).toBe(0);
+    expect(second.said).toEqual([]);
+  });
+
+  test("a pass against a store that will not answer says so and comes back", async () => {
+    const said = await withoutMessages(() => run(() => mod.auditPollerPass()));
+
+    expect(said.value).toBe(0);
+    const [failed] = lines(said.said, "audit_poller_failed");
+    expect(failed, "a failed pass went unmentioned").toBeDefined();
+    expect(failed!.level).toBe("error");
+    expect(failed!.outcome).toBe("retrying");
+    expect(failed!.reason).toBe("store_unreadable");
+    expect(String(failed!.error)).toContain("messages");
+
+    // And the next pass, once the store answers again, is an ordinary one.
+    expect(run(() => mod.auditPollerPass()).value).toBe(0);
+  });
+
+  test("a starting point it cannot read starts from the beginning, loudly", async () => {
+    const said = await withoutMessages(() => run(() => mod.auditPollerStartingPoint()));
+
+    const [failed] = lines(said.said, "audit_poller_init_failed");
+    expect(failed, "the poller started from the epoch without saying why").toBeDefined();
+    expect(failed!.level).toBe("error");
+    expect(failed!.outcome).toBe("restarted_from_epoch");
+    expect(failed!.reason).toBe("store_unreadable");
+  });
+
+  test("an empty store is the epoch, and it says which row it starts after", () => {
+    const db = new Database(hubDbPath, { readwrite: true });
+    const saved = db.prepare(`SELECT * FROM messages`).all() as Array<Record<string, unknown>>;
+    const columns = Object.keys(saved[0] ?? { id: null });
+    try {
+      db.exec(`DELETE FROM messages`);
+      const { said } = run(() => mod.auditPollerStartingPoint());
+
+      const [started] = lines(said, "audit_poller_started");
+      expect(started, "an empty store produced no starting point").toBeDefined();
+      // `''`, not the newest id there is not — and an epoch timestamp, so the
+      // first pass reads the whole table rather than nothing.
+      expect(started!.id).toBe("");
+      expect(started!.last_ts).toBe("1970-01-01 00:00:00");
+    } finally {
+      // Put the rows back: every other suite in this file reads this store.
+      const insert = db.prepare(
+        `INSERT INTO messages (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+      );
+      const restore = db.transaction((rows: Array<Record<string, unknown>>) => {
+        for (const row of rows) insert.run(...columns.map((c) => row[c] as never));
+      });
+      restore(saved);
+      db.close();
+    }
+    // And the anchor is put back where the rows are, so nothing after this
+    // sees a poller reading from 1970.
+    run(() => mod.auditPollerStartingPoint());
+  });
+});
+
+/**
+ * The watermark on an SSE stream.
+ *
+ * A console holds one stream open per open tab, so fifty-one attached clients
+ * is either a lot of operators or a client reconnecting without closing — and
+ * the second is worth catching before it becomes a memory question. Nothing is
+ * refused either way; the line is the whole behaviour.
+ *
+ * Standing up fifty-one live connections to reach one `if` is a suite nobody
+ * runs, so the count is an argument. The set membership was never the part
+ * that could be wrong.
+ */
+describe("a stream carrying more clients than anybody expected", () => {
+  const warnings = (said: string[]) =>
+    said
+      .filter((l) => l.includes('"event":"sse_clients_high"'))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  const note = (stream: "chat-audits" | "ai-usage", clients: number) => {
+    const capture = captureConsole();
+    try {
+      mod.noteStreamClients(stream, clients);
+    } finally {
+      capture.restore();
+    }
+    return warnings(capture.lines);
+  };
+
+  test("says nothing at the watermark", () => {
+    expect(note("chat-audits", 50)).toEqual([]);
+  });
+
+  test("says so one past it, and names which stream", () => {
+    const [said] = note("chat-audits", 51);
+    expect(said).toMatchObject({
+      level: "warn",
+      component: "http",
+      event: "sse_clients_high",
+      stream: "chat-audits",
+      clients: 51,
+      reason: "above_watermark",
+    });
+  });
+
+  test("the other stream is counted as itself", () => {
+    const [said] = note("ai-usage", 200);
+    expect({ stream: said!.stream, clients: said!.clients }).toEqual({ stream: "ai-usage", clients: 200 });
+  });
+
+  test("an empty stream is not a warning about zero", () => {
+    expect(note("ai-usage", 0)).toEqual([]);
+  });
+});

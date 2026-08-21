@@ -25,10 +25,24 @@ The count is deliberately not stated here, for the reason that document gives.
 ## The categories, and what each rests on
 
 **A process boundary.** `import.meta.main` blocks, `Bun.serve`, the signal
-handlers, the audit poller's interval. Every one of them runs in `test/`, in a
-process the runner spawns — which is exactly why coverage cannot see them:
-bun instruments the process it is in. These are covered by behaviour and
-uninstrumented, which is a different sentence from uncovered.
+handlers. Every one of them runs in `test/`, in a process the runner spawns —
+which is exactly why coverage cannot see them: bun instruments the process it
+is in. These are covered by behaviour and uninstrumented, which is a different
+sentence from uncovered.
+
+**Three rows left this table by being opened rather than argued.** The audit
+poller's interval and the two stream watermarks were here under *a timer that
+fires later than any suite waits*, and that reason was true of the timer and
+not of the decision inside it. `auditPollerStartingPoint` and
+`auditPollerPass` are ordinary functions the interval calls, and
+`noteStreamClients` takes the count rather than reading the set — so the
+branches that decide something are reachable in this process, including the
+two failure branches that need a store which will not answer and could not be
+reached at any price while the timer owned when it asked.
+
+That is the distinction worth holding on to when reading the rest of this
+table: *the timer* is not a reason, *waiting for a timer* is. A row whose
+reason is really the second one is a row somebody can retire.
 
 **A last-resort handler.** `app.onError` answers what every route already
 catches. Reaching it needs a defect, so a test for it plants one — and then
@@ -66,15 +80,12 @@ reason no longer describes anything and the row is stale.
 |---|---|---|
 | `packages/http/src/main.ts` | `if (import.meta.main) {` | The boot block: `Bun.serve`, the port log, the signal handlers. Runs in `test/`, in another process. |
 | `packages/http/src/main.ts` | `app.onError((err, c) => {` | Last-resort handler. Every route catches what it can fail on, so the only trigger is a defect. |
-| `packages/http/src/main.ts` | `function startAuditPoller` | An interval over `hub.db`, started by `startup()` and never inside a suite's lifetime. |
 | `packages/http/src/main.ts` | `function hasActiveSSE(toUser: string): boolean {` | Reached only through `sendPushForMessage`, which returns first unless VAPID keys are configured. |
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `packages/http/src/main.ts` | `새 사용자 승인 요청:` | The admin-notify send, behind `AGENT_MESH_ADMIN_NOTIFY_IDENTITY`, read at load. |
 | `packages/http/src/main.ts` | `self_provision_failed` | The hub refusing this server's own provisioning at startup. |
 | `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
-| `packages/http/src/main.ts` | `stream: 'chat-audits',` | Warns past fifty concurrent audit-stream clients. |
-| `packages/http/src/main.ts` | `stream: 'ai-usage',` | The same, for the AI-usage stream. |
 | `packages/http/src/main.ts` | `// Heartbeat every 30s to keep connection alive` | A 30-second timer's callback. |
 | `packages/http/src/main.ts` | `// 30s keepalive comment to keep proxies from closing the idle stream` | The same, on the audit stream. |
 | `packages/http/src/main.ts` | `// 20s heartbeat — keep proxies from closing idle stream (ping event)` | The same, on the AI-usage stream. |

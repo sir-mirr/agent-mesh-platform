@@ -380,15 +380,36 @@ type AuditSseClient = {
 }
 const auditSseClients = new Set<AuditSseClient>()
 
+/**
+ * Past this many attached clients, somebody should know.
+ *
+ * Not a limit — nothing is refused. A console holds one stream open per open
+ * tab, so a number this size is either a lot of operators or a client that
+ * reconnects without closing, and the second is the one worth catching before
+ * it is a memory question.
+ */
+const SSE_CLIENT_WATERMARK = 50
+
+/**
+ * Say so when a stream is carrying more clients than anybody expected.
+ *
+ * Taking the count as an argument rather than reading the set is what makes
+ * the *decision* testable: standing up fifty-one live SSE connections to reach
+ * one `if` is a suite nobody runs, and the set membership was never the part
+ * that could be wrong.
+ */
+export function noteStreamClients(stream: 'chat-audits' | 'ai-usage', clients: number): void {
+  if (clients <= SSE_CLIENT_WATERMARK) return
+  log.warn(`the ${stream} stream has ${clients} clients attached`, 'sse_clients_high', {
+    stream,
+    clients,
+    reason: 'above_watermark',
+  })
+}
+
 function addAuditSseClient(c: AuditSseClient): void {
   auditSseClients.add(c)
-  if (auditSseClients.size > 50) {
-    log.warn(`the audit stream has ${auditSseClients.size} clients attached`, 'sse_clients_high', {
-      stream: 'chat-audits',
-      clients: auditSseClients.size,
-      reason: 'above_watermark',
-    })
-  }
+  noteStreamClients('chat-audits', auditSseClients.size)
 }
 
 function removeAuditSseClient(c: AuditSseClient): void {
@@ -454,8 +475,17 @@ let auditPollerInterval: Timer | null = null
 // Shape of hub.db:messages. Declared by @agent-mesh/store, not restated here.
 type MsgRow = MessageRow
 
-function startAuditPoller(): void {
-  if (auditPollerInterval) return
+/**
+ * Where the poller starts reading, and what it says about it.
+ *
+ * Split out of the `setInterval` below for the reason every other seam in this
+ * repository was: the body of a timer callback is reachable only by waiting,
+ * and a suite that waits 1.5 seconds per assertion is one nobody runs. Both
+ * halves are ordinary functions that a test calls directly — the failure
+ * branches especially, which need a store that will not answer and are
+ * otherwise unreachable in this process.
+ */
+export function auditPollerStartingPoint(): void {
   try {
     const db = getHubDb()
     const row = db.prepare(`SELECT id, ts FROM messages ORDER BY ts DESC, id DESC LIMIT 1`).get() as { id: string; ts: string } | null
@@ -479,43 +509,62 @@ function startAuditPoller(): void {
     lastSeenMessageTs = '1970-01-01 00:00:00'
     lastSeenMessageId = ''
   }
+}
 
-  auditPollerInterval = setInterval(() => {
-    try {
-      const db = getHubDb()
-      const rows = db.prepare(`
-        SELECT id, from_agent, to_agent, content, reply_to, status, ts
-          FROM messages
-         WHERE (ts > $ts) OR (ts = $ts AND id > $id)
-         ORDER BY ts ASC, id ASC
-         LIMIT 200
-      `).all({ $ts: lastSeenMessageTs, $id: lastSeenMessageId }) as MsgRow[]
-      if (rows.length > 0) {
-        log.info(`the audit poller picked ${rows.length} new row(s)`, 'audit_poller_rows', {
-          count: rows.length,
-        })
-        for (const r of rows) {
-          broadcastAuditMessage({
-            id: r.id,
-            from_agent: r.from_agent,
-            to_agent: r.to_agent,
-            content: r.content ?? '',
-            reply_to: r.reply_to ?? null,
-            status: r.status ?? null,
-            ts: r.ts,
-          })
-          lastSeenMessageTs = r.ts
-          lastSeenMessageId = r.id
-        }
-      }
-    } catch (err) {
-      log.error('the audit poller failed a pass, and will try again', 'audit_poller_failed', {
-        outcome: 'retrying',
-        reason: 'store_unreadable',
-        error: err instanceof Error ? err.message : String(err),
+/** One pass. Returns how many rows it handed to the audit stream. */
+export function auditPollerPass(): number {
+  try {
+    const db = getHubDb()
+    const rows = db.prepare(`
+      SELECT id, from_agent, to_agent, content, reply_to, status, ts
+        FROM messages
+       WHERE (ts > $ts) OR (ts = $ts AND id > $id)
+       ORDER BY ts ASC, id ASC
+       LIMIT 200
+    `).all({ $ts: lastSeenMessageTs, $id: lastSeenMessageId }) as MsgRow[]
+    if (rows.length === 0) return 0
+    log.info(`the audit poller picked ${rows.length} new row(s)`, 'audit_poller_rows', {
+      count: rows.length,
+    })
+    for (const r of rows) {
+      broadcastAuditMessage({
+        id: r.id,
+        from_agent: r.from_agent,
+        to_agent: r.to_agent,
+        content: r.content ?? '',
+        reply_to: r.reply_to ?? null,
+        status: r.status ?? null,
+        ts: r.ts,
       })
+      lastSeenMessageTs = r.ts
+      lastSeenMessageId = r.id
     }
-  }, 1500)
+    return rows.length
+  } catch (err) {
+    log.error('the audit poller failed a pass, and will try again', 'audit_poller_failed', {
+      outcome: 'retrying',
+      reason: 'store_unreadable',
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return 0
+  }
+}
+
+function startAuditPoller(): void {
+  if (auditPollerInterval) return
+  auditPollerStartingPoint()
+  auditPollerInterval = setInterval(auditPollerPass, 1500)
+}
+
+/**
+ * Stop it. Exported because a test that drives `auditPollerPass` itself has to
+ * be the only caller — a timer running underneath would race it for the same
+ * rows and take the anchor with it.
+ */
+export function stopAuditPoller(): void {
+  if (!auditPollerInterval) return
+  clearInterval(auditPollerInterval)
+  auditPollerInterval = null
 }
 
 // --- AI Usage (task #79) ---
@@ -554,13 +603,7 @@ const aiUsageSseClients = new Set<ReadableStreamDefaultController>()
 
 function addAiUsageSseClient(c: ReadableStreamDefaultController): void {
   aiUsageSseClients.add(c)
-  if (aiUsageSseClients.size > 50) {
-    log.warn(`the ai-usage stream has ${aiUsageSseClients.size} clients attached`, 'sse_clients_high', {
-      stream: 'ai-usage',
-      clients: aiUsageSseClients.size,
-      reason: 'above_watermark',
-    })
-  }
+  noteStreamClients('ai-usage', aiUsageSseClients.size)
 }
 
 function removeAiUsageSseClient(c: ReadableStreamDefaultController): void {
@@ -4021,7 +4064,11 @@ if (import.meta.main) {
   // and never called — and `test/shutdown-closers.test.ts` checks this list
   // against the closers this file imports.
   const shutdown = (): void => runShutdown({
-    closers: [['counter snapshots', stopCounterSnapshots], ...SHUTDOWN_CLOSERS],
+    closers: [
+      ['counter snapshots', stopCounterSnapshots],
+      ['the audit poller', stopAuditPoller],
+      ...SHUTDOWN_CLOSERS,
+    ],
     stop: () => server.stop(),
     exit: (code) => process.exit(code),
   })

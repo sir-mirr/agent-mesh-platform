@@ -6930,6 +6930,46 @@ const MUTATIONS: Mutation[] = [
     suite: "test/readme.test.ts",
     expect: ["the introduction does not say the opposite of it"],
   },
+  {
+    id: "the-poller-anchor-stands-still",
+    defect:
+      "The audit poller stopped moving its anchor with the rows it read, so every pass broadcasts the same batch again. On an audit screen that is the mesh appearing to repeat itself for ever, at 1.5-second intervals, with nothing wrong in any store.",
+    file: "packages/http/src/main.ts",
+    from: "      lastSeenMessageTs = r.ts\n      lastSeenMessageId = r.id",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["picks up what arrived after it, counts it, and does not pick it up twice"],
+  },
+  {
+    id: "a-poller-that-cannot-read-says-nothing",
+    defect:
+      "A pass against a store that will not answer went back to failing silently. The poller is the only thing that puts other agents' conversations on the audit screen, so a store it cannot read is a screen that quietly stops updating \u2014 which looks exactly like a mesh with nothing happening on it.",
+    file: "packages/http/src/main.ts",
+    from: "    log.error('the audit poller failed a pass, and will try again', 'audit_poller_failed', {",
+    to: "    void ((..._unused: unknown[]) => {})('', '', {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a pass against a store that will not answer says so and comes back"],
+  },
+  {
+    id: "an-empty-store-anchors-on-nothing",
+    defect:
+      "A hub store with no messages stopped setting the epoch anchor, leaving `lastSeenMessageTs` null \u2014 so the first pass compares against null, matches nothing, and the poller never reads a row again on a deployment that started empty.",
+    file: "packages/http/src/main.ts",
+    from: "      lastSeenMessageTs = '1970-01-01 00:00:00'\n      lastSeenMessageId = ''\n    }\n    log.info('the audit poller has its starting point'",
+    to: "      lastSeenMessageTs = null\n      lastSeenMessageId = null\n    }\n    log.info('the audit poller has its starting point'",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["an empty store is the epoch, and it says which row it starts after"],
+  },
+  {
+    id: "the-watermark-is-off-by-one",
+    defect:
+      "The stream watermark started warning *at* fifty rather than past it. A threshold that fires on the boundary it names is one an operator stops reading, and this one exists to be noticed exactly once.",
+    file: "packages/http/src/main.ts",
+    from: "  if (clients <= SSE_CLIENT_WATERMARK) return",
+    to: "  if (clients < SSE_CLIENT_WATERMARK) return",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["says nothing at the watermark"],
+  },
 ];
 
 /**
