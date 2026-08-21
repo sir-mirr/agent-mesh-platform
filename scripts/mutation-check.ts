@@ -6617,6 +6617,39 @@ const MUTATIONS: Mutation[] = [
     suite: "test/hub.test.ts",
     expect: ["waiting for a close the hub never makes answers null, and a real one answers its code"],
   },
+  {
+    id: "held-table-anchor-stale",
+    swept: true,
+    defect:
+      "A document naming code is a copy of it. A row whose anchor has been renamed or deleted still reads as a decision somebody made about the code that is there now — which is worse than no document, because the reason is stated with confidence and points at nothing.",
+    file: "docs/decisions/what-the-coverage-number-leaves-out.md",
+    from: "| `packages/http/src/main.ts` | `app.onError((err, c) => {` |",
+    to: "| `packages/http/src/main.ts` | `app.onGiveUp((err, c) => {` |",
+    suite: "test/held-uncovered.test.ts",
+    expect: ["every anchor is still in the file it names"],
+  },
+  {
+    id: "held-table-file-moved",
+    swept: true,
+    defect:
+      "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
+    file: "docs/decisions/what-the-coverage-number-leaves-out.md",
+    from: "| `packages/hub/src/provenance.ts` | `Bun.spawnSync([\"git\"` |",
+    to: "| `packages/hub/src/where-it-used-to-be.ts` | `Bun.spawnSync([\"git\"` |",
+    suite: "test/held-uncovered.test.ts",
+    expect: ["every row names a tracked file"],
+  },
+  {
+    id: "held-table-reason-dropped",
+    swept: true,
+    defect:
+      "A row that says where and not why survives every other check and tells the next reader nothing. The failure this table was written against is not an uncovered line — it is an unexplained one.",
+    file: "docs/decisions/what-the-coverage-number-leaves-out.md",
+    from: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block.",
+    to: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | CLI.",
+    suite: "test/held-uncovered.test.ts",
+    expect: ["every row says why, rather than only where"],
+  },
 ];
 
 /**

@@ -1,0 +1,97 @@
+# What 99% leaves out — settled practice
+
+Status: **decided and in force.** `bun scripts/gate.ts "<label>" -- bun
+scripts/coverage.ts` prints the number; the lines below are the ones it does
+not cover, on purpose. `test/held-uncovered.test.ts` holds the table.
+
+---
+
+## Why a list of *uncovered* lines is worth writing down
+
+A percentage says how much ran. It says nothing about whether what did not run
+is the part that matters, and the two ways of raising it are not equally
+honest: exercising a path, or writing a test that loads the file and asserts
+something the code cannot fail. The second reads identically in the report.
+
+So the remaining lines are enumerated with the reason each is left, and the
+reason is a claim somebody can disagree with. **A line in this table is not a
+line to go and cover.** Covering one means either the reason stopped being
+true — in which case the row is wrong and should be corrected — or the test
+written for it asserts nothing, which is the defect
+[checks-that-check-nothing.md](checks-that-check-nothing.md) is about.
+
+The count is deliberately not stated here, for the reason that document gives.
+
+## The categories, and what each rests on
+
+**A process boundary.** `import.meta.main` blocks, `Bun.serve`, the signal
+handlers, the audit poller's interval. Every one of them runs in `test/`, in a
+process the runner spawns — which is exactly why coverage cannot see them:
+bun instruments the process it is in. These are covered by behaviour and
+uninstrumented, which is a different sentence from uncovered.
+
+**A last-resort handler.** `app.onError` answers what every route already
+catches. Reaching it needs a defect, so a test for it plants one — and then
+asserts that the handler this repository would rather never run, ran.
+
+**A timer that fires later than any suite waits.** The SSE heartbeats are 20
+and 30 seconds. A test that waits for one costs the suite that time on every
+run, for a `setInterval` callback whose body is one `enqueue` inside a `try`.
+
+**A deployment this machine is not.** `webpush` needs VAPID keys; the
+admin-notify path needs an identity to notify. Both are read at module load, so
+covering them means a second process with a second environment — which is
+`test/` again, and the same uninstrumented sentence.
+
+**A failure the harness exists to report.** `test/harness.ts`'s throws are what
+a broken boot says on the way out. Driving them means starting a mesh designed
+not to work, per case, at seconds each.
+
+**A branch with no producer.** Three in the console: an avatar image nothing
+sets, a mailbox depth `GET /api/v1/agents` does not report, and a breadcrumb
+for a route that redirects before it renders. Unreachable today, reachable the
+moment the producer appears — which is fe's call, not this side's (T-025).
+
+## The table
+
+Each row names a file, a string that must still be in it, and why the lines
+around that string are left. The string is the anchor: if it is gone, the
+reason no longer describes anything and the row is stale.
+
+| File | Anchor | Why it is left |
+|---|---|---|
+| `packages/http/src/main.ts` | `if (import.meta.main) {` | The boot block: `Bun.serve`, the port log, the signal handlers. Runs in `test/`, in another process. |
+| `packages/http/src/main.ts` | `app.onError((err, c) => {` | Last-resort handler. Every route catches what it can fail on, so the only trigger is a defect. |
+| `packages/http/src/main.ts` | `function startAuditPoller` | An interval over `hub.db`, started by `startup()` and never inside a suite's lifetime. |
+| `packages/http/src/main.ts` | `function hasActiveSSE(toUser: string): boolean {` | Reached only through `sendPushForMessage`, which returns first unless VAPID keys are configured. |
+| `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
+| `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
+| `packages/http/src/main.ts` | `새 사용자 승인 요청:` | The admin-notify send, behind `AGENT_MESH_ADMIN_NOTIFY_IDENTITY`, read at load. |
+| `packages/http/src/main.ts` | `could not register own identity` | The hub refusing this server's own provisioning at startup. |
+| `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
+| `packages/http/src/main.ts` | `[chat-audits/stream] high client count:` | Warns past fifty concurrent audit-stream clients. |
+| `packages/http/src/main.ts` | `[ai-usage/stream] high client count:` | The same, for the AI-usage stream. |
+| `packages/http/src/main.ts` | `// Heartbeat every 30s to keep connection alive` | A 30-second timer's callback. |
+| `packages/http/src/main.ts` | `// 30s keepalive comment to keep proxies from closing the idle stream` | The same, on the audit stream. |
+| `packages/http/src/main.ts` | `// 20s heartbeat — keep proxies from closing idle stream (ping event)` | The same, on the AI-usage stream. |
+| `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
+| `scripts/lint-preview.ts` | `Could not read CAPABILITY from @agent-mesh/contracts` | The refusal to fall back to a hand-written capability list, which needs the contracts package to be broken. |
+| `test/harness.ts` | `never became healthy:` | What a service that never opened its port says on the way out. |
+| `test/harness.ts` | `--- hub output ---` | Both processes' output, appended to a boot failure. |
+| `test/harness.ts` | `boot did not answer (attempt` | The port-collision retry, which needs the collision. |
+| `test/harness.ts` | `with a body that is not JSON` | A route answering HTML — the shape of a route moved out from under a caller. |
+| `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
+| `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
+| `packages/hub/src/provenance.ts` | `Bun.spawnSync(["git"` | The catch around a `git` that will not spawn, on a module read once at load. |
+| `packages/platform-web/src/pages/creator/TopologyPage.tsx` | `node.avatarImg ?` | Nothing sets `avatarImg`; the branch is fe's, and is reachable the moment a producer exists (T-025). |
+| `packages/platform-web/src/pages/creator/TopologyPage.tsx` | `selectedNode.avatarImg ?` | The same field, in the detail panel. |
+| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side. |
+| `packages/platform-web/src/components/layout/Breadcrumbs.tsx` | `case "/":` | `/` redirects to `/dashboard`, which mounts no trail. Dead in the same way the two `/tenant/*` spellings beside it are. |
+
+## What this table cannot check
+
+That it is complete. Deciding whether a file has uncovered lines takes a
+coverage run — five minutes, and the browser suite, which is why the check
+beside this document holds the anchors rather than the percentages. A row that
+goes stale fails; a row that is never written is invisible, and the only guard
+against that is running `scripts/coverage.ts` and reading what it prints.
