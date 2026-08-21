@@ -11,6 +11,12 @@ export function runLint(options?: {
   mockSpec?: string;
   mockHtmlFiles?: Record<string, string>;
   mockRbac?: string;
+  /**
+   * Where the capability vocabulary comes from. The real one is the contracts
+   * package; a test hands in a source that fails, which is the only way to
+   * reach the refusal below without breaking the package for everything else.
+   */
+  mockCapabilitySource?: () => Record<string, string>;
   minFloorOverride?: number;
   silent?: boolean;
 }): { errors: number; totalRoutesFound: number; totalAllowedRoutes: number; capabilityCount: number } {
@@ -125,10 +131,14 @@ export function runLint(options?: {
   //    So it is imported, and if it cannot be imported the lint fails rather
   //    than falling back to a list — falling back is what it is here to prevent.
   const rbacHtml = options?.mockRbac ?? readFileSync('preview/tenant/organization-rbac.html', 'utf-8');
+  const capabilitySource = options?.mockCapabilitySource
+    ?? (() => require('@agent-mesh/contracts').CAPABILITY as Record<string, string>);
   let CAPABILITIES: string[];
   try {
-    const contract = require('@agent-mesh/contracts');
-    CAPABILITIES = [...new Set(Object.values(contract.CAPABILITY as Record<string, string>))];
+    CAPABILITIES = [...new Set(Object.values(capabilitySource()))];
+    // An empty vocabulary is the same defect wearing a passing coat: the loop
+    // below runs zero times and the lint reports success having checked
+    // nothing.
     if (CAPABILITIES.length === 0) throw new Error('CAPABILITY is empty');
   } catch (err) {
     console.error(`❌ Could not read CAPABILITY from @agent-mesh/contracts: ${err instanceof Error ? err.message : String(err)}`);

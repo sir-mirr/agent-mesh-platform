@@ -35,11 +35,29 @@ export interface Provenance {
   dirty: boolean;
 }
 
-function read(): Provenance {
+/** As much of a finished `Bun.spawnSync` as this file reads. */
+export interface GitResult {
+  success: boolean;
+  stdout: Uint8Array;
+}
+
+export type GitRunner = (argv: string[]) => GitResult;
+
+/**
+ * Ask a checkout what it is.
+ *
+ * **The runner is a parameter**, defaulting to the real one. Every answer here
+ * other than *this is a git checkout and git works* was unreachable otherwise:
+ * a tarball deployment, a detached head, a `git` that will not spawn at all.
+ * Those are the answers that matter — the happy path is the one an operator
+ * never has to think about — and the way to reach them was either to break the
+ * repository this is running in or to accept never checking them.
+ */
+export function readProvenance(spawn: GitRunner = (argv) => Bun.spawnSync(argv)): Provenance {
   const root = resolve(import.meta.dir, "../../..");
   const git = (...args: string[]): string => {
     try {
-      const p = Bun.spawnSync(["git", "-C", root, ...args]);
+      const p = spawn(["git", "-C", root, ...args]);
       return p.success ? new TextDecoder().decode(p.stdout).trim() : "";
     } catch {
       return "";
@@ -47,13 +65,18 @@ function read(): Provenance {
   };
 
   const commit = git("rev-parse", "HEAD");
+  // No commit is not a failure. A deployment from a tarball has no `.git`, and
+  // saying `unknown` is the honest answer to which commit this is.
   if (!commit) return { commit: "unknown", branch: "unknown", dirty: false };
   return {
     commit,
+    // A detached head has a commit and no branch name. `git` answers `HEAD`
+    // for `--abbrev-ref` there, which reads as a branch called HEAD; this is
+    // the empty answer, from a `git` that failed on the second call only.
     branch: git("rev-parse", "--abbrev-ref", "HEAD") || "detached",
     dirty: git("status", "--porcelain") !== "",
   };
 }
 
 /** Computed at import, because it cannot change while the process lives. */
-export const PROVENANCE: Provenance = read();
+export const PROVENANCE: Provenance = readProvenance();

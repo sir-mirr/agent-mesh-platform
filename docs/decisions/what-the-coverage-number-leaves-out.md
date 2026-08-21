@@ -71,6 +71,18 @@ left no trace of the three hours between. The close path logs and counts now,
 and `hub_dial_failed` is kept distinct from it because only one of the two is
 fixed by editing configuration.
 
+**Two more of the same shape, and both were guarding something.** The hub's
+provenance read and the preview linter's capability vocabulary were here as
+*read once at module load*, which was true and was not a reason: each is one
+function call away from being a parameter. The git runner is a parameter now,
+so a tarball with no `.git`, a detached head and a `git` that will not spawn are
+all reachable without breaking the checkout the suite runs in — and the answer
+that mattered, `dirty`, had never been checked in either direction. The
+linter's vocabulary source is a parameter for a sharper reason: the thing it
+must never do is fall back to a hand-written list, and until now the branch that
+refuses to fall back was itself unreached. The mutation that makes it fall back
+is in the manifest.
+
 **A last-resort handler.** `app.onError` answers what every route already
 catches. Reaching it needs a defect, so a test for it plants one — and then
 asserts that the handler this repository would rather never run, ran.
@@ -115,14 +127,12 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
-| `scripts/lint-preview.ts` | `Could not read CAPABILITY from @agent-mesh/contracts` | The refusal to fall back to a hand-written capability list, which needs the contracts package to be broken. |
 | `test/harness.ts` | `never became healthy:` | What a service that never opened its port says on the way out. |
 | `test/harness.ts` | `--- hub output ---` | Both processes' output, appended to a boot failure. |
 | `test/harness.ts` | `boot did not answer (attempt` | The port-collision retry, which needs the collision. |
 | `test/harness.ts` | `with a body that is not JSON` | A route answering HTML — the shape of a route moved out from under a caller. |
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
 | `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
-| `packages/hub/src/provenance.ts` | `Bun.spawnSync(["git"` | The catch around a `git` that will not spawn, on a module read once at load. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
 ## What this table cannot check

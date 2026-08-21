@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { captureConsole } from "@agent-mesh/log";
+
 import { runLint } from "../scripts/lint-preview";
 
 /**
@@ -100,5 +102,73 @@ describe("the linter catches what it is for", () => {
   test("catches a SPEC it cannot read the route tables out of", () => {
     const r = runLint({ mockSpec: "# Invalid SPEC with no 9.1 section", silent: true });
     expect({ corruptSpec: r.errors > 0 }).toEqual({ corruptSpec: true });
+  });
+});
+
+/**
+ * The vocabulary is imported rather than restated, and the interesting part is
+ * what happens when the import does not work.
+ *
+ * Falling back to a hand-written list is the one thing this check must never
+ * do — it is the defect the check exists to catch, and a guard that reverts to
+ * its own copy of the answer when the real one is unavailable reports agreement
+ * with itself. So the source is a parameter, and these two cases are the reason
+ * it is: reaching them otherwise means breaking `@agent-mesh/contracts` for
+ * everything else in the process.
+ */
+describe("where the capability vocabulary comes from", () => {
+  test("refuses to lint at all when the contract cannot be read", () => {
+    const { lines, restore } = captureConsole();
+    let r;
+    try {
+      r = runLint({
+        mockCapabilitySource: () => { throw new Error("Cannot find module '@agent-mesh/contracts'"); },
+        silent: true,
+      });
+    } finally {
+      restore();
+    }
+
+    expect(r.errors).toBeGreaterThan(0);
+    // Zero capabilities checked, and said so — not a pass with an empty loop.
+    expect(r.capabilityCount).toBe(0);
+    // What went wrong, in the module system's own words, and the refusal.
+    expect(lines.join("\n")).toContain("Cannot find module '@agent-mesh/contracts'");
+    expect(lines.join("\n")).toContain("Not falling back to a hand-written list");
+  });
+
+  /**
+   * **An empty vocabulary is the same defect wearing a passing coat.** The
+   * check loops over the capabilities; zero of them means zero comparisons and
+   * a clean report from a lint that verified nothing — which is exactly the
+   * screen the nine-hand-written-names version showed while the contract held
+   * twelve.
+   */
+  test("an empty vocabulary is a failure, not a clean run", () => {
+    const { lines, restore } = captureConsole();
+    let r;
+    try {
+      r = runLint({ mockCapabilitySource: () => ({}), silent: true });
+    } finally {
+      restore();
+    }
+
+    expect(r.errors).toBeGreaterThan(0);
+    expect(lines.join("\n")).toContain("CAPABILITY is empty");
+  });
+
+  /**
+   * And the ordinary case still goes through the parameter, so the default is
+   * not the only path with a test. Duplicate values collapse: the vocabulary is
+   * the set of capability strings, not the number of names bound to them.
+   */
+  test("counts the distinct capabilities the source offers", () => {
+    const r = runLint({
+      mockCapabilitySource: () => ({ A: "key.approve", B: "key.approve", C: "user.admit" }),
+      mockRbac: "<div>key.approve user.admit</div>",
+      silent: true,
+    });
+
+    expect(r.capabilityCount).toBe(2);
   });
 });

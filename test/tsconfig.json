@@ -21,6 +21,8 @@
     "**/*.tsx",
     "../scripts/mutation-verdict.ts",
     "../scripts/lint-preview.ts",
+    // `captureConsole`, for the tests that read what a check printed.
+    "../packages/log/src/**/*.ts",
     // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
     // it rather than restating it, for the same reason the hooks do: a second
     // copy is a second thing that can disagree.

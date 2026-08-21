@@ -731,8 +731,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The capability count came from a list in this file again rather than from the contract. That is the defect this check exists to catch: the list said nine while the contract held twelve, and a linter reading its own copy agrees with itself for ever.",
     file: "scripts/lint-preview.ts",
-    from: "    const contract = require('@agent-mesh/contracts');\n    CAPABILITIES = [...new Set(Object.values(contract.CAPABILITY as Record<string, string>))];",
-    to: "    CAPABILITIES = ['agent.provision', 'agent.teardown', 'key.approve', 'role.grant', 'audit.read.metadata', 'audit.read.content', 'mailbox.read.depth', 'group.manage', 'type.manage'];",
+    from: "    ?? (() => require('@agent-mesh/contracts').CAPABILITY as Record<string, string>);",
+    to: "    ?? (() => ({ a: 'agent.provision', b: 'agent.teardown', c: 'key.approve', d: 'role.grant', e: 'audit.read.metadata', f: 'audit.read.content', g: 'mailbox.read.depth', h: 'group.manage', i: 'type.manage' }));",
     suite: "test/preview-lint.test.ts",
     expect: ["counts capabilities from the contract rather than a list of its own"],
   },
@@ -5111,6 +5111,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["connects anyway"],
   },
   {
+    id: "a-dirty-checkout-reports-itself-clean",
+    defect:
+      "The `dirty` flag was inverted. An instance serving uncommitted work says its commit describes what it is serving, and it does not \u2014 which is the whole failure this file was written after: twice, an instance was running something other than what its commit said, and both first diagnoses were wrong.",
+    file: "packages/hub/src/provenance.ts",
+    from: '    dirty: git("status", "--porcelain") !== "",',
+    to: '    dirty: git("status", "--porcelain") === "",',
+    suite: "packages/hub/src/provenance.test.ts",
+    expect: ["a tree with uncommitted work says so"],
+  },
+  {
+    id: "provenance-reads-whatever-directory-it-was-started-from",
+    defect:
+      "`git -C <root>` became a bare `git`. The answer is then about the process's working directory rather than about this checkout, so a hub started from a home directory reports that directory's commit \u2014 or `unknown`, which reads exactly like a tarball deployment.",
+    file: "packages/hub/src/provenance.ts",
+    from: '      const p = spawn(["git", "-C", root, ...args]);',
+    to: '      const p = spawn(["git", ...args]);',
+    suite: "packages/hub/src/provenance.test.ts",
+    expect: ["asks about its own checkout"],
+  },
+  {
+    id: "a-git-that-will-not-spawn-takes-the-hub-with-it",
+    defect:
+      "The catch around the spawn re-threw. This is read at import, so a machine with no `git` on the PATH \u2014 a container built from a tarball, most often \u2014 cannot start the hub at all, and the failure is in a module whose entire contract is *never fatal*.",
+    file: "packages/hub/src/provenance.ts",
+    from: '    } catch {\n      return "";\n    }',
+    to: '    } catch (err) {\n      throw err;\n    }',
+    suite: "packages/hub/src/provenance.test.ts",
+    expect: ["caught, not carried up"],
+  },
+  {
+    id: "a-failed-contract-read-falls-back-to-a-list",
+    defect:
+      "The capability check fell back to its own list when the contract could not be read \u2014 the exact defect it exists to catch. It printed nine verified names while the contract held twelve, and a guard whose denominator is its own copy of the answer reports agreement with itself.",
+    file: "scripts/lint-preview.ts",
+    from: "    CAPABILITIES = [];",
+    to: "    CAPABILITIES = ['key.approve', 'key.revoke', 'user.admit'];",
+    suite: "test/preview-lint.test.ts",
+    expect: ["refuses to lint at all"],
+  },
+  {
+    id: "an-empty-vocabulary-passes-the-lint",
+    defect:
+      "An empty `CAPABILITY` stopped being a failure. The loop below it runs zero times, so the lint reports a clean preview having compared nothing \u2014 the same screen a correct run shows, from a check that did not happen.",
+    file: "scripts/lint-preview.ts",
+    from: "    if (CAPABILITIES.length === 0) throw new Error('CAPABILITY is empty');",
+    to: "    if (CAPABILITIES.length < 0) throw new Error('CAPABILITY is empty');",
+    suite: "test/preview-lint.test.ts",
+    expect: ["an empty vocabulary is a failure"],
+  },
+  {
     id: "attachments-are-dropped-off-the-wire",
     defect:
       "A message carrying attachments went to the hub as its plain text. \u00a7 15.2 requires the `attachments` array to be *in* the message body and \u00a7 8.2's content is a flat string, so the two are reconciled by sending JSON holding both \u2014 without it the recipient gets the words and no `download_url`, and \u00a7 15.4's pull-on-demand loop has nothing to pull.",
@@ -6727,8 +6777,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/hub/src/provenance.ts` | `Bun.spawnSync([\"git\"` |",
-    to: "| `packages/hub/src/where-it-used-to-be.ts` | `Bun.spawnSync([\"git\"` |",
+    from: "| `packages/http/src/main.ts` | `app.onError((err, c) => {` |",
+    to: "| `packages/http/src/where-it-used-to-be.ts` | `app.onError((err, c) => {` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },
