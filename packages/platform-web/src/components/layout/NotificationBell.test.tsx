@@ -331,6 +331,32 @@ describe("a dropped stream is a third state, not a fourth reading of the queue",
 });
 
 describe("what a row says about a proposal", () => {
+  it("shows and clears the hover affordance only on a proposal that is still actionable", async () => {
+    queueAnswers({ ok: true, keys: [PROPOSAL] });
+    await mount();
+    openDropdown();
+
+    const row = rowFor(PROPOSAL.identity);
+    const propsKey = Object.keys(row).find((key) => key.startsWith("__reactProps$"));
+    const props = propsKey ? (row as unknown as Record<string, Record<string, unknown>>)[propsKey] : undefined;
+    const enter = props?.onMouseEnter;
+    const leave = props?.onMouseLeave;
+    if (typeof enter !== "function" || typeof leave !== "function") {
+      throw new Error("the pending proposal row has no hover callbacks");
+    }
+
+    const target = { style: { background: "" } };
+    enter({ currentTarget: target });
+    if (target.style.background !== "var(--color-bg-surface-sub)") {
+      throw new Error("the pending proposal did not show its hover affordance");
+    }
+
+    leave({ currentTarget: target });
+    if (String(target.style.background) !== "transparent") {
+      throw new Error(`the pending proposal kept its hover affordance after the pointer left: ${JSON.stringify(target.style.background)}`);
+    }
+  });
+
   it("carries the identity and the type the server sent, each in its own slot", async () => {
     queueAnswers({ ok: true, keys: [PROPOSAL] });
     await mount();
@@ -541,4 +567,3 @@ describe("a snapshot that empties the queue", () => {
     expect(dropdownText()).toContain("no-fingerprint");
   });
 });
-

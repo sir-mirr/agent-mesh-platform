@@ -416,6 +416,32 @@ describe("the count beside the heading", () => {
     // than by a row disappearing.
     expect(cellsOf(rowFor(OTHER.identity))[3]).toContain(en("reg.status.pending"));
   });
+
+  it("marks only the proposal whose fingerprint the server accepted for denial", async () => {
+    reply = (url) => {
+      if (url.endsWith(KEYS_PENDING)) return json(200, { ok: true, keys: [PROPOSAL, OTHER] });
+      if (url.endsWith("/api/v1/admin/keys/deny")) return json(200, { ok: true });
+      throw new TypeError("Failed to fetch");
+    };
+    await mount();
+
+    fireEvent.click(rowFor(PROPOSAL.identity).querySelector("button")!);
+    fireEvent.click(buttonSaying(en("common.reject"))!);
+    await settle();
+
+    const write = calls.find((c) => c.url.endsWith("/api/v1/admin/keys/deny"));
+    expect(JSON.parse(String(write?.init?.body ?? "{}"))).toEqual({
+      fingerprint: PROPOSAL.fingerprint,
+      reason: "Rejected by operator",
+    });
+    const denied = cellsOf(rowFor(PROPOSAL.identity));
+    if (!denied[3] || denied[3].includes(en("reg.status.pending")) || denied[3].includes(en("reg.status.approved"))) {
+      throw new Error(`the denied proposal did not move to its rejected status cell: ${JSON.stringify(denied)}`);
+    }
+    expect(denied[4]).toContain(en("reg.action.done"));
+    expect(cellsOf(rowFor(OTHER.identity))[3]).toContain(en("reg.status.pending"));
+    expect(queueHeading()).toContain(`(1 ${en("reg.queue.waiting")})`);
+  });
 });
 
 describe("issuing a pairing code", () => {

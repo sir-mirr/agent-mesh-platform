@@ -460,6 +460,50 @@ describe("Sidebar language control", () => {
     expect(localStorage.getItem(LANG_KEY)).toBe("en");
   });
 
+  it("offers hover feedback on whichever language is not selected", () => {
+    const hoverCallbacks = (button: HTMLButtonElement) => {
+      const propsKey = Object.keys(button).find((key) => key.startsWith("__reactProps$"));
+      const props = propsKey
+        ? (button as unknown as Record<string, Record<string, unknown>>)[propsKey]
+        : undefined;
+      if (typeof props?.onMouseEnter !== "function" || typeof props?.onMouseLeave !== "function") {
+        throw new Error("the language option has no hover callbacks");
+      }
+      return { enter: props.onMouseEnter, leave: props.onMouseLeave };
+    };
+
+    show();
+    openPopover();
+
+    const korean = koreanOption()?.closest("button") as HTMLButtonElement | null;
+    if (!korean) throw new Error("the language popover has no Korean option");
+    const koreanHover = hoverCallbacks(korean);
+    const koreanTarget = { style: { background: "" } };
+    koreanHover.enter({ currentTarget: koreanTarget });
+    if (koreanTarget.style.background !== "var(--color-bg-surface-hover, #F8FAFC)") {
+      throw new Error(`the inactive Korean option did not show its hover affordance: ${JSON.stringify(koreanTarget.style.background)}`);
+    }
+    koreanHover.leave({ currentTarget: koreanTarget });
+    if (String(koreanTarget.style.background) !== "transparent") {
+      throw new Error("the inactive Korean option kept its hover affordance after the pointer left");
+    }
+
+    fireEvent.click(korean);
+    openPopover("ko");
+    const english = screen.getByText("English").closest("button") as HTMLButtonElement | null;
+    if (!english) throw new Error("the language popover has no English option");
+    const englishHover = hoverCallbacks(english);
+    const englishTarget = { style: { background: "" } };
+    englishHover.enter({ currentTarget: englishTarget });
+    if (englishTarget.style.background !== "var(--color-bg-surface-hover, #F8FAFC)") {
+      throw new Error(`the inactive English option did not show its hover affordance: ${JSON.stringify(englishTarget.style.background)}`);
+    }
+    englishHover.leave({ currentTarget: englishTarget });
+    if (String(englishTarget.style.background) !== "transparent") {
+      throw new Error("the inactive English option kept its hover affordance after the pointer left");
+    }
+  });
+
   it("leaves the popover open when the mousedown is inside it", () => {
     // "Outside" is the whole rule, and nothing here checked it: closing on any
     // mousedown anywhere — the guard replaced by a bare `setIsLangOpen(false)`

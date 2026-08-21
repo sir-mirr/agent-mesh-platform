@@ -662,6 +662,25 @@ describe("what an irreversible teardown destroys", () => {
     });
   }
 
+  it("refuses an action outside the three teardown results instead of reporting a deletion", async () => {
+    readAgents = () => json(200, { agents: [ALPHA, beta()] });
+    destroyAgent = () => json(200, { ok: true, identity: beta().id, action: "retained" });
+    await mount();
+    openTeardownFor(beta().id);
+    typeConfirmation(beta().id);
+    fireEvent.click(confirmButton());
+    await settle();
+
+    const result = screen.getByTestId("teardown-result-failed");
+    const sentence = result.querySelectorAll("span")[1]?.textContent ?? "";
+    if (!sentence.includes("unknown teardown action: retained")) {
+      throw new Error(`the unknown teardown action was not refused in its failure place: ${sentence}`);
+    }
+    for (const action of ["soft-deleted", "already-deleted", "not-found"]) {
+      expect(screen.queryByTestId(`teardown-result-${action}`)).toBe(null);
+    }
+  });
+
   it("keeps all three teardown result sentences pairwise distinct", () => {
     expect(new Set([TORN_DOWN, ALREADY_TORN_DOWN, NOT_FOUND]).size).toBe(3);
   });
