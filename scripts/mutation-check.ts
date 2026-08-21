@@ -732,6 +732,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["counts capabilities from the contract rather than a list of its own"],
   },
   {
+    id: "audit-query-reads-the-digest-back-instead-of-recomputing-it",
+    defect:
+      "The integrity field compared the stored digest with itself. It always matches, which is why it looks fine \u2014 and it proves nothing: a row edited after ingest carries a digest edited with it, or one nobody compares. Recomputing over the bytes being returned is the only thing that says the payload is what was signed for. An audit store whose rows can change without detection is a log.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      digest_matches: createHash('sha256').update(row.payload, 'utf8').digest('hex') === row.payload_digest,",
+    to: "      digest_matches: row.payload_digest === row.payload_digest,",
+    suite: "packages/http/src/audit-query.test.ts",
+    expect: ["recomputes the digest over the bytes it is returning"],
+  },
+  {
+    id: "audit-query-cursor-compares-the-timestamp-alone",
+    defect:
+      "Paging compared `stored_at` on its own. Two events stored in the same millisecond give the cursor no way to say which it already returned, so a page boundary landing between them skips one or repeats it \u2014 silently, in an audit trail, which is the one place a missing row cannot be noticed by its absence.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    where.push('(stored_at, event_id) > (?, ?)')\n    args.push(c.storedAt, c.eventId)",
+    to: "    where.push('stored_at > ?')\n    args.push(c.storedAt)",
+    suite: "packages/http/src/audit-query.test.ts",
+    expect: ["does not skip or repeat an event that shares the boundary timestamp"],
+  },
+  {
+    id: "audit-query-hands-content-to-a-metadata-holder",
+    defect:
+      "\u00a7 11's line between metadata and content stopped being drawn on the way out of the audit. An operator holding `audit.read.metadata` and not `audit.read.content` reads every message body on the mesh, and the read is recorded as a metadata read \u2014 so the record understates what was disclosed.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    if (!withContent) payload = stripContent(payload)",
+    to: "",
+    suite: "packages/http/src/audit-query.test.ts",
+    expect: ["withholds the content, and gives its length"],
+  },
+  {
+    id: "audit-query-redacts-only-the-top-level",
+    defect:
+      "Redaction stopped recursing, so a secret one level down comes back whole. The payload is stored verbatim because the digest is over those bytes \u2014 removing it on the way out is the only place it can be removed at all, which makes a shallow pass the difference between redacted and published.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      out[k] = REDACTED_KEYS.has(k.toLowerCase()) ? '[redacted]' : redact(v)",
+    to: "      out[k] = REDACTED_KEYS.has(k.toLowerCase()) ? '[redacted]' : v",
+    suite: "packages/http/src/audit-query.test.ts",
+    expect: ["redacts secrets whatever the caller holds"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
