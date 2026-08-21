@@ -150,6 +150,19 @@ export class NonceWindow {
     }
   }
 
+  /**
+   * Identities currently held, for tests and diagnostics.
+   *
+   * **Separate from `size`**, because the two fail differently and only one of
+   * them is visible in the other. `size` counts nonces; a sweep that removes
+   * every nonce and leaves the identity behind keeps this number growing by
+   * name for the life of the process while `size` reports zero. A leak nothing
+   * can count is a leak nothing will notice.
+   */
+  identityCount(): number {
+    return this.seen.size;
+  }
+
   /** Entries currently held, for tests and diagnostics. */
   size(): number {
     let n = 0;

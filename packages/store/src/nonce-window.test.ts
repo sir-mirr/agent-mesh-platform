@@ -41,6 +41,10 @@ describe("sweeping expired nonces", () => {
     w.sweep(1_000 + WINDOW + 1);
 
     expect(w.size()).toBe(1);
+    // **Counted separately, because `size` cannot see it.** An identity whose
+    // nonces are all swept and whose entry stays behind leaves `size` at the
+    // right number while the map grows by name for ever.
+    expect(w.identityCount()).toBe(1);
     // `nw-a` is gone entirely, so its nonce is claimable again — which is
     // correct: it is outside the freshness window and refused there instead.
     expect(w.claim("nw-a", "nonce-1", 1_000)).toBe(true);
