@@ -253,3 +253,55 @@ describe("what it says it did", () => {
     expect(lines.join("\n")).not.toContain("push sent");
   });
 });
+
+
+/**
+ * Complaint C, from the § 3 drill: "I got no notification."
+ *
+ * Three different repairs -- set VAPID keys, nothing to repair, register a
+ * device -- and from outside all three look exactly like the push that failed.
+ * The header of `push.ts` claimed every path out says which one it took, and
+ * the three early ones said nothing.
+ */
+describe("why no notification was sent", () => {
+  const skipped = (lines: string[]) =>
+    lines
+      .filter((l) => l.includes('"event":"push_skipped"'))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  const run = (over: Partial<PushDeps>) => {
+    const capture = captureConsole();
+    try {
+      sendPushForMessage(wiring(over).deps, "kim", "agent", "hello");
+    } finally {
+      capture.restore();
+    }
+    return capture.lines;
+  };
+
+  test("a deployment with no push keys says so", () => {
+    expect(skipped(run({ configured: false }))).toEqual([
+      {
+        ts: expect.any(String),
+        level: "info",
+        component: "http",
+        event: "push_skipped",
+        actor: "kim",
+        outcome: "skipped",
+        reason: "not_configured",
+      },
+    ]);
+  });
+
+  test("somebody already looking at it says so", () => {
+    expect(skipped(run({ watching: () => true })).map((e) => e.reason)).toEqual(["already_watching"]);
+  });
+
+  test("nobody with a device registered says so", () => {
+    expect(skipped(run({ devices: () => [] })).map((e) => e.reason)).toEqual(["no_device_registered"]);
+  });
+
+  test("a push that was actually queued is not one of these", () => {
+    expect(skipped(run({}))).toEqual([]);
+  });
+});

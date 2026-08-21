@@ -104,11 +104,37 @@ export function sendPushForMessage(
   fromAgent: string,
   content: string,
 ): void {
-  if (!deps.configured) return;
-  if (deps.watching(toUser)) return;
+  // **Every path out of here says which one it took**, and the three that took
+  // it early said nothing at all until the § 3 drill asked why one person got
+  // no notification. Three different answers -- this deployment holds no VAPID
+  // keys, they already had the conversation open, no device is registered --
+  // and all three looked from the outside like the push that failed.
+  if (!deps.configured) {
+    log.info("no notification sent: this deployment holds no push keys", "push_skipped", {
+      actor: toUser,
+      outcome: "skipped",
+      reason: "not_configured",
+    });
+    return;
+  }
+  if (deps.watching(toUser)) {
+    log.info("no notification sent: they are already looking at it", "push_skipped", {
+      actor: toUser,
+      outcome: "skipped",
+      reason: "already_watching",
+    });
+    return;
+  }
   try {
     const subs = deps.devices(toUser);
-    if (subs.length === 0) return;
+    if (subs.length === 0) {
+      log.info("no notification sent: no device is registered", "push_skipped", {
+        actor: toUser,
+        outcome: "skipped",
+        reason: "no_device_registered",
+      });
+      return;
+    }
     const payload = JSON.stringify({
       title: fromAgent,
       body: content.length > PREVIEW_CHARS ? content.slice(0, PREVIEW_CHARS) + "..." : content,

@@ -5425,8 +5425,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The VAPID check went, so a deployment holding no keys still reached for the subscription table and handed payloads to `webpush` \u2014 an error per device, for every message, on a deployment that had deliberately not configured push.",
     file: "packages/http/src/push.ts",
-    from: "  if (!deps.configured) return;",
-    to: "  if (false) return;",
+    from: "  if (!deps.configured) {",
+    to: "  if (false) {",
     suite: "packages/http/src/push.test.ts",
     expect: ["sends nothing, and asks nothing, without VAPID keys"],
   },
@@ -5435,8 +5435,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The open-stream check went. Somebody reading a conversation then gets a lock-screen notification for the message already on their screen.",
     file: "packages/http/src/push.ts",
-    from: "  if (deps.watching(toUser)) return;",
-    to: "  if (false && deps.watching(toUser)) return;",
+    from: "  if (deps.watching(toUser)) {",
+    to: "  if (false && deps.watching(toUser)) {",
     suite: "packages/http/src/push.test.ts",
     expect: ["sends nothing to somebody already watching"],
   },
@@ -6829,6 +6829,36 @@ const MUTATIONS: Mutation[] = [
     to: "    const merged: EventFields = { ...fields, ...ambient.getStore() };",
     suite: "packages/log/src/index.test.ts",
     expect: ["lose to an explicit field at the call site"],
+  },
+  {
+    id: "a-refused-sign-in-says-nothing",
+    defect:
+      "A refused sign-in went back to writing nothing, so \"I cannot sign in\" is answerable only by asking the person to try again while somebody watches. Three different repairs \u2014 wrong shape, wrong password, an account that must change its password first \u2014 and from outside one sentence.",
+    file: "packages/http/src/main.ts",
+    from: "    refusedSignIn(username, 'bad_credentials')",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a wrong password is another, and names who tried"],
+  },
+  {
+    id: "an-unauthenticated-name-writes-its-own-line",
+    defect:
+      "The name from a sign-in attempt stopped being truncated and went into the sentence, where nothing escapes it. A caller then puts a newline and a plausible-looking line in its own username and writes whatever it likes into the record an operator reads.",
+    file: "packages/http/src/main.ts",
+    from: "  log.warn('refused a sign-in', 'sign_in_refused', {\n    actor: typeof username === 'string' ? username.slice(0, 128) : '<absent>',",
+    to: "  log.warn(`refused a sign-in for ${String(username)}`, 'sign_in_refused', {\n    actor: String(username),",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a name from an unauthenticated request cannot write its own line"],
+  },
+  {
+    id: "a-notification-nobody-got-has-no-reason",
+    defect:
+      "The three early exits from the push path went quiet again. `no VAPID keys`, `already watching` and `no device registered` are three different repairs, and without a line they are indistinguishable from the push that was attempted and failed \u2014 which is a fourth.",
+    file: "packages/http/src/push.ts",
+    from: "  if (!deps.configured) {\n    log.info(\"no notification sent: this deployment holds no push keys\", \"push_skipped\", {",
+    to: "  if (!deps.configured) {\n    void ((..._unused: unknown[]) => {})(\"\", \"\", {",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["a deployment with no push keys says so"],
   },
 ];
 

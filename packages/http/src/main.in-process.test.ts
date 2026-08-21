@@ -1832,3 +1832,74 @@ const asAdminWithId = (path: string, method: string, requestId: string, body?: u
     headers: { "content-type": "application/json", cookie, "x-request-id": requestId },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }));
+
+/**
+ * Complaint B, from the § 3 drill: "I cannot sign in."
+ *
+ * This route wrote nothing on any of its three refusals, so the only way to
+ * answer that was to ask the person to try again while somebody watched. The
+ * three are three different repairs -- a client sending the wrong shape, a
+ * wrong password, an account that must change its password first -- and from
+ * outside they are one sentence.
+ */
+describe("a refused sign-in, in the record", () => {
+  const refusals = (lines: string[]) =>
+    lines
+      .filter((l) => l.includes('"event":"sign_in_refused"'))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  const signIn = async (body: Record<string, unknown>) => {
+    const capture = captureConsole();
+    try {
+      await call("/auth/local", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+    } finally {
+      capture.restore();
+    }
+    return capture.lines;
+  };
+
+  test("a body with no fields is one reason", async () => {
+    const [refused] = refusals(await signIn({}));
+    expect(refused).toMatchObject({ level: "warn", reason: "missing_fields", outcome: "refused" });
+  });
+
+  test("a wrong password is another, and names who tried", async () => {
+    const [refused] = refusals(await signIn({ username: "admin", password: "not-the-password" }));
+    expect(refused).toMatchObject({ level: "warn", actor: "admin", reason: "bad_credentials" });
+  });
+
+  test("does not say whether the account exists", async () => {
+    const missing = refusals(await signIn({ username: "nobody-here", password: "x" }));
+    const wrong = refusals(await signIn({ username: "admin", password: "x" }));
+    // The route refuses both identically on purpose — distinguishing them is
+    // account enumeration, and a reason in a log somebody can read is the same
+    // enumeration one step later.
+    expect(missing[0]!.reason).toBe(wrong[0]!.reason);
+  });
+
+  test("a name from an unauthenticated request cannot write its own line", async () => {
+    const forged = 'x\n2026-08-22T00:00:00.000Z error [hub] everything is on fire {"ts":"x"}';
+    const lines = await signIn({ username: forged, password: "x" });
+
+    // One line, whatever the caller put in the name: the sentence is built here
+    // and the name is only ever a field, where `JSON.stringify` escapes it.
+    const written = lines.filter((l) => l.includes('"event":"sign_in_refused"'));
+    expect(written).toHaveLength(1);
+    expect(written[0]!.split("\n")).toHaveLength(1);
+    expect(written[0]).not.toContain("everything is on fire\n");
+  });
+
+  test("bounds a name nobody bounded", async () => {
+    const [refused] = refusals(await signIn({ username: "n".repeat(4000), password: "x" }));
+    expect((refused!.actor as string).length).toBe(128);
+  });
+
+  test("a sign-in that works says nothing", async () => {
+    const lines = await signIn({ username: "admin", password: "in-process-password" });
+    expect(refusals(lines)).toEqual([]);
+  });
+});

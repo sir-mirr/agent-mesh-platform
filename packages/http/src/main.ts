@@ -886,6 +886,30 @@ function sessionCookie(c: Context, jwt: string, maxAge: number): string {
   return `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
 }
 
+/**
+ * A refused sign-in, said once (T-022 § 3).
+ *
+ * This route wrote nothing on any of its three refusals, so "I could not sign
+ * in" was answerable only by asking the person to try again while somebody
+ * watched. The three are different repairs — a client sending the wrong shape,
+ * a wrong password, and an account that must change its password before
+ * anything else — and from outside they are one sentence.
+ *
+ * **The name goes in a field and never in the sentence.** Everything here
+ * arrives from an unauthenticated request: `JSON.stringify` escapes a newline
+ * inside the payload, and the head of the line is built by us, so a name
+ * interpolated into the sentence is how a caller writes its own log line.
+ * Truncated as well, because a field nobody bounds is a line length somebody
+ * else chooses.
+ */
+function refusedSignIn(username: unknown, reason: string): void {
+  log.warn('refused a sign-in', 'sign_in_refused', {
+    actor: typeof username === 'string' ? username.slice(0, 128) : '<absent>',
+    outcome: 'refused',
+    reason,
+  })
+}
+
 app.post('/auth/local', async (c) => {
   /**
    * **`content-type` says what was sent; `accept` says what is wanted back.**
@@ -925,13 +949,17 @@ app.post('/auth/local', async (c) => {
   const password = body.password as string
 
   if (!username || !password) {
+    refusedSignIn(username, 'missing_fields')
     return fail(400, 'username and password are required', '/?error=missing')
   }
 
   const user = await verifyLocalUser(username, password)
   if (!user) {
     // Deliberately not distinguishing "no such user" from "wrong password",
-    // which would turn this into a way to enumerate accounts.
+    // which would turn this into a way to enumerate accounts. The log does not
+    // distinguish them either, for the same reason — a refusal reason of
+    // `no_such_user` in a record somebody can read is the enumeration.
+    refusedSignIn(username, 'bad_credentials')
     return fail(401, 'invalid username or password', '/?error=invalid')
   }
 
@@ -1067,6 +1095,7 @@ app.use('*', async (c, next) => {
 
   const payload = await extractJwt(c)
   if (payload && mustChangePassword(payload.github_login)) {
+    refusedSignIn(payload.github_login, 'must_change_password')
     return c.json(
       { error: 'This account must change its password before anything else', must_change_password: true },
       403,
