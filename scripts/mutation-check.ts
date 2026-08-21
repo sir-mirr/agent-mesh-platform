@@ -662,6 +662,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["gives its own events ids that sort the way they happened"],
   },
   {
+    id: "mailbox-signs-the-path-without-its-query",
+    defect:
+      "The REST signature stopped covering the query string. `?peer=` and `?limit=` carry the request on this surface, so an attacker able to rewrite a query could redirect a history read at another peer while the signature still verified \u2014 the one place a path alone is not the request.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "  const auth = authenticate(method, req.path, req.authorization, req.body, req.observed ?? null);",
+    to: "  const auth = authenticate(method, req.pathname, req.authorization, req.body, req.observed ?? null);",
+    suite: "packages/hub/src/rest/mailbox-request.test.ts",
+    expect: ["honours a limit that came in signed"],
+  },
+  {
+    id: "mailbox-recall-forgets-to-record-it",
+    defect:
+      "A recall stopped writing its audit event. The `messages` row is deleted by the recall, so this event is the only place the withdrawal exists \u2014 without it the trail holds a `sent` and nothing saying it was taken back, which is the standalone mailer's defect (\u00a7 9.2.1): the sender able to shape the record.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "  if (row) recordRecalled(row, { scheme: \"AgentMeshSig\", authorization });",
+    to: "",
+    suite: "packages/hub/src/rest/mailbox-request.test.ts",
+    expect: ["records the withdrawal in the audit"],
+  },
+  {
+    id: "mailbox-recall-reads-the-row-after-the-delete",
+    defect:
+      "The row was read after the recall removed it, so the audit event has nothing to record and the withdrawal goes unrecorded exactly when it succeeds. The order is the property: read first, then delete.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "  const row = stmtMessageById.get(messageId) as\n    | { id: string; from_agent: string; to_agent: string; sent_by: string | null }\n    | undefined;\n\n  const outcome = outbox.recall(hubDb, caller.identity, messageId);",
+    to: "  const outcome = outbox.recall(hubDb, caller.identity, messageId);\n  const row = stmtMessageById.get(messageId) as\n    | { id: string; from_agent: string; to_agent: string; sent_by: string | null }\n    | undefined;",
+    suite: "packages/hub/src/rest/mailbox-request.test.ts",
+    expect: ["records the withdrawal in the audit"],
+  },
+  {
+    id: "mail-send-is-recorded-as-a-mesh-send",
+    defect:
+      "\u00a7 8.2a: the transport a message arrived on is recorded, and this route *is* the mailbox. Letting it default to `mesh` makes every mail-sent message indistinguishable from a socket send, which is the fact the routing rule is keyed on.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "    return handleSend(ws, params, 1, undefined, undefined, \"mailbox\")!;",
+    to: "    return handleSend(ws, params, 1, undefined, undefined)!;",
+    suite: "packages/hub/src/rest/mailbox-request.test.ts",
+    expect: ["records the channel it arrived on"],
+  },
+  {
+    id: "unwrap-flattens-every-refusal-to-500",
+    defect:
+      "The REST envelope stopped mapping JSON-RPC codes to statuses, so a malformed request, a conflict and an unentitled sender all come back `500`. A client cannot retry-classify on a status it shares with a server fault, and the `rpc_code` beside it is what carries the policy \u2014 both halves exist because neither is enough alone.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "      rpc.error.code === -32015 ? 409 :",
+    to: "      false ? 409 :",
+    suite: "packages/hub/src/rest/mailbox-request.test.ts",
+    expect: ["refuses a key reused for a different message"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
