@@ -3627,6 +3627,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/rpc/audit.test.ts",
     expect: ["attachments whose bytes are not on disk, naming each"],
   },
+  {
+    id: "refused-proxy-claim-still-gets-the-replay",
+    defect:
+      "The pending-mail replay walked the *declared* proxy list instead of the granted one, so a claim the caller was not entitled to still had that identity's queued mail sent down this socket and the rows flipped to `delivered`. The rightful recipient never receives it \u2014 a delivered row is never replayed \u2014 and the audit trail says they did. \u00a7 8.2 says a refused entry is not wired into the socket's routing, and the replay is routing. The comment above the loop already said `granted, not declared`; nothing asked whether the code agreed.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "  for (const pid of granted) {",
+    to: "  for (const pid of proxyFor) {",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["its queued mail is neither sent to that socket nor marked delivered"],
+  },
+  {
+    id: "connect-admits-an-identity-nobody-provisioned",
+    defect:
+      "`mesh.connect` stopped requiring the identity to exist in the agents table. That is the pattern `POST /api/v1/agents` was made the registration SSOT to end (\u00a7 10.1): connecting auto-created a typeless row, and the console showed the agent as `Unknown` for ever with nothing to say why.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "  if (!exists) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["an identity that was never provisioned"],
+  },
+  {
+    id: "a-contender-evicts-the-live-owner",
+    defect:
+      "The duplicate-identity guard stopped refusing, so a second socket claiming a live identity took the online map from the socket that was already there. The incumbent stays connected and silently stops receiving \u2014 the P0 stall this ownership check was added for. First established owner wins, however late the collision arrives.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "  if (!ownership.ok) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["a second socket claiming a live identity, keeping the incumbent"],
+  },
+  {
+    id: "any-socket-may-proxy-any-identity",
+    defect:
+      "The entitlement verdict on each `proxy_for` entry stopped being consulted, so a socket was wired into `proxyMap` for identities it may not act for (\u00a7 8.2). Combined with the replay above this is impersonation with delivery attached; alone it is enough, because `mesh.send` then routes that identity's traffic to a socket nobody entitled.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "      if (!verdict.ok) {",
+    to: "      if (false) {",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["an entry the caller may not act for is dropped"],
+  },
 ];
 
 /**
