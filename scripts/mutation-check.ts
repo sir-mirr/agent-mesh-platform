@@ -4081,6 +4081,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/streams.test.ts",
     expect: ["unregisters the client when the caller goes away"],
   },
+  {
+    id: "the-source-list-total-counts-only-what-it-returned",
+    defect:
+      "`agent-sources` reported the length of the page it returned instead of the number of rows there are. The list stops at 500, so a screen drawing 500 out of 3000 reports a smaller fleet than the one running \u2014 and with the total agreeing, no field in the response contradicts it. Undercounting reads as calm, which is the failure this count exists to prevent.",
+    file: "packages/http/src/main.ts",
+    from: "    : (db.prepare(`SELECT count(*) AS n FROM agent_sources`).get() as { n: number }).n",
+    to: "    : rows.length",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["caps the list at five hundred while still reporting the real total"],
+  },
+  {
+    id: "forwarded-addresses-lose-the-condition-they-depend-on",
+    defect:
+      "The `forwarded` evidence note dropped the qualifier. `X-Forwarded-For` is evidence only while the hub is unreachable except through the trusted proxy \u2014 a condition the hub cannot verify \u2014 and without that sentence an operator reads a header value as an observation. The two modes are not equally good evidence, and the prose is the only place that says so.",
+    file: "packages/http/src/main.ts",
+    from: "        ? 'Addresses come from X-Forwarded-For via a trusted proxy. They are evidence only while the hub is unreachable except through that proxy, which the hub cannot verify.'",
+    to: "        ? 'Addresses come from X-Forwarded-For via a trusted proxy.'",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["says what the addresses are evidence of, per mode"],
+  },
+  {
+    id: "an-unknown-capability-is-refused-without-naming-the-known-ones",
+    defect:
+      "The grant filter stopped answering with the vocabulary when it refused an unknown capability. A caller then guesses the valid set one request at a time, and a screen building a capability matrix has to compile its own copy \u2014 which is how a capability added here quietly never appears there.",
+    file: "packages/http/src/main.ts",
+    from: "      return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)",
+    to: "      return c.json({ ok: false, error: `unknown capability: ${capability}` }, 400)",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["hands the vocabulary over"],
+  },
+  {
+    id: "an-unshaped-identity-reaches-the-source-query",
+    defect:
+      "`agent-sources` stopped checking the identity's shape before using it in a query. The parameter is bound rather than interpolated, so this is not injection \u2014 it is a route that answers an empty list for a value that could never be an identity, which reads as *this identity has no observed sources* rather than *that is not an identity*.",
+    file: "packages/http/src/main.ts",
+    from: "  if (identity !== undefined && !IDENTITY_RE.test(identity)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["refuses an identity that is not shaped like one"],
+  },
 ];
 
 /**
