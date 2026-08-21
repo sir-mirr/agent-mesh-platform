@@ -60,7 +60,7 @@ import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb 
 import { recordContentRead, closeAuditAccessLog } from './audit-access-log'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
-import { readPushFailure } from './push'
+import { sendPushForMessage } from './push'
 import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -536,49 +536,31 @@ function broadcastAiUsage(snapshot: AiUsageSnapshot): void {
   }
 }
 
+/**
+ * Notify someone's devices, with this deployment's wiring.
+ *
+ * The loop itself lives in `push.ts`, beside the rule about which failures
+ * cost a subscription — for the same reason that rule was split out in the
+ * first place. What stays here is the wiring: this deployment's keys, its
+ * subscription table, and `webpush`'s idea of what a subscription looks like.
+ */
 function sendPushNotificationForMessage(toUser: string, fromAgent: string, content: string): void {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return
-  // Skip push if user has active SSE connection (web/app is open)
-  if (hasActiveSSE(toUser)) return
-  try {
-    const subs = getPushSubscriptions(toUser)
-    if (subs.length === 0) return
-    const payload = JSON.stringify({
-      title: fromAgent,
-      body: content.length > 100 ? content.slice(0, 100) + '...' : content,
-      data: { agent: fromAgent, url: '/chat' },
-    })
-    for (const sub of subs) {
-      webpush.sendNotification({
-        endpoint: sub.endpoint,
-        keys: { p256dh: sub.p256dh, auth: sub.auth },
-      }, payload).catch((error: unknown) => {
-        // **Every rejection used to delete the subscription.** A push service
-        // having a bad minute was treated exactly like a browser that had
-        // unsubscribed: the row went, the device went quiet, and nothing was
-        // logged — so the repair was for the person to notice and subscribe
-        // again. Only 404 and 410 mean the endpoint is gone; see `push.ts`.
-        const { drop, reason } = readPushFailure(error)
-        if (drop) deletePushSubscription(sub.endpoint)
-        console.warn(
-          `agent-mesh-http: push to ${toUser} failed — ${reason}` +
-            `${drop ? ' (subscription removed)' : ' (subscription kept)'}`,
-        )
-      })
-    }
-    // **Queued, not sent.** This line ran synchronously while every send was
-    // still in flight, so it claimed a delivery that had not happened and would
-    // print unchanged if all of them failed.
-    console.log(`agent-mesh-http: push queued to ${subs.length} device(s) for ${toUser} from ${fromAgent}`)
-  } catch (error) {
-    // Was a bare `catch {}`. Push is best-effort and must not fail a send, but
-    // best-effort is not the same as unobservable: an exception here means no
-    // device was even asked, and the sender is told nothing either way.
-    console.error(
-      `agent-mesh-http: push to ${toUser} could not be attempted:`,
-      error instanceof Error ? error.message : String(error),
-    )
-  }
+  sendPushForMessage(
+    {
+      configured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+      watching: hasActiveSSE,
+      devices: getPushSubscriptions,
+      send: (target, payload) =>
+        webpush.sendNotification(
+          { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
+          payload,
+        ),
+      drop: deletePushSubscription,
+    },
+    toUser,
+    fromAgent,
+    content,
+  )
 }
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? ''

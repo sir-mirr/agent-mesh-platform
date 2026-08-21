@@ -4621,6 +4621,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/audit-stream.test.ts",
     expect: ["strips newlines out of the id line"],
   },
+  {
+    id: "a-deployment-with-no-keys-pushes-anyway",
+    defect:
+      "The VAPID check went, so a deployment holding no keys still reached for the subscription table and handed payloads to `webpush` \u2014 an error per device, for every message, on a deployment that had deliberately not configured push.",
+    file: "packages/http/src/push.ts",
+    from: "  if (!deps.configured) return;",
+    to: "  if (false) return;",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["sends nothing, and asks nothing, without VAPID keys"],
+  },
+  {
+    id: "the-same-message-arrives-twice",
+    defect:
+      "The open-stream check went. Somebody reading a conversation then gets a lock-screen notification for the message already on their screen.",
+    file: "packages/http/src/push.ts",
+    from: "  if (deps.watching(toUser)) return;",
+    to: "  if (false && deps.watching(toUser)) return;",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["sends nothing to somebody already watching"],
+  },
+  {
+    id: "a-whole-message-claims-to-be-cut-short",
+    defect:
+      "The preview boundary moved to `>=`, so a message of exactly a hundred characters arrived with an ellipsis. That is a claim something was left out, on a notification whose reader cannot check.",
+    file: "packages/http/src/push.ts",
+    from: "      body: content.length > PREVIEW_CHARS ? content.slice(0, PREVIEW_CHARS) + \"...\" : content,",
+    to: "      body: content.length >= PREVIEW_CHARS ? content.slice(0, PREVIEW_CHARS) + \"...\" : content,",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["truncates past a hundred characters, and not at a hundred"],
+  },
+  {
+    id: "any-failure-costs-the-subscription-again",
+    defect:
+      "The drop decision stopped being consulted: every rejection deleted the subscription again, which is the defect `readPushFailure` was written for arriving one level up.",
+    file: "packages/http/src/push.ts",
+    from: "        if (drop) deps.drop(sub.endpoint);",
+    to: "        deps.drop(sub.endpoint);",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["keeps a subscription through a service failure"],
+  },
 ];
 
 /**
