@@ -87,6 +87,7 @@ const EMPTY = DICTIONARY.en["agents.empty"]!;
 const UNREACHABLE = DICTIONARY.en["agents.error"]!;
 const REFUSED = DICTIONARY.en["common.refusedRead"]!;
 const NEVER_SEEN = DICTIONARY.en["agents.neverSeen"]!;
+const INVALID_LAST_SEEN = DICTIONARY.en["agents.invalidLastSeen"]!;
 const AGO = DICTIONARY.en["agents.ago"]!;
 const HOUR = DICTIONARY.en["agents.unit.hour"]!;
 const NOT_REPORTED = DICTIONARY.en["agents.notReported"]!;
@@ -95,6 +96,8 @@ const PLAYGROUND = DICTIONARY.en["nav.playground"]!;
 const TEARDOWN_BTN = DICTIONARY.en["agents.teardownBtn"]!;
 const TEARDOWN_CONFIRM = DICTIONARY.en["agents.teardown.confirm"]!;
 const TORN_DOWN = DICTIONARY.en["agents.teardown.done"]!;
+const ALREADY_TORN_DOWN = DICTIONARY.en["agents.teardown.alreadyDeleted"]!;
+const NOT_FOUND = DICTIONARY.en["agents.teardown.notFound"]!;
 const TEARDOWN_FAILED = DICTIONARY.en["agents.teardown.failed"]!;
 
 const json = (status: number, body: unknown) =>
@@ -113,7 +116,7 @@ let held: string[] = [TEARDOWN_CAP];
 /** What `GET /api/v1/agents` does. */
 let readAgents: Reply = () => json(200, { agents: [] });
 /** What `DELETE /api/v1/admin/agents/<identity>` does. */
-let destroyAgent: Reply = () => json(200, { ok: true });
+let destroyAgent: Reply = () => json(200, { ok: true, identity: "agt_beta", action: "soft-deleted" });
 
 const session = (capabilities: string[]) => ({
   github_id: 4,
@@ -129,7 +132,7 @@ beforeEach(() => {
   calls.length = 0;
   held = [TEARDOWN_CAP];
   readAgents = () => json(200, { agents: [] });
-  destroyAgent = () => json(200, { ok: true });
+  destroyAgent = () => json(200, { ok: true, identity: "agt_beta", action: "soft-deleted" });
   // `AuthProvider` hydrates from storage and `I18nProvider` reads a saved
   // language out of it; happy-dom's storage belongs to the process, so a
   // leftover from another file would be a signed-in user or a second language.
@@ -442,6 +445,17 @@ describe("a row says only what the server sent", () => {
     expect(cellsOf(unseen)[2]).not.toBe(cellsOf(seen)[2]);
   });
 
+  it("puts an unparsable last_seen_at in its own invalid-value place and sentence", async () => {
+    readAgents = () => json(200, { agents: [{ ...ALPHA, last_seen_at: "not-a-date" }] });
+    await mount();
+
+    const row = rowFor(ALPHA.id);
+    expect(cellsOf(row)[2]).toBe(INVALID_LAST_SEEN);
+    expect(row.querySelector('[data-testid="invalid-last-seen"]')).not.toBe(null);
+    expect(row.querySelector('[data-testid="never-seen"]')).toBe(null);
+    expect(row.querySelector('[data-testid="last-seen"]')).toBe(null);
+  });
+
   it("shows an absent fingerprint as absent, and not as a constant every agent matches", async () => {
     readAgents = () => json(200, { agents: [ALPHA, beta()] });
     await mount();
@@ -610,6 +624,67 @@ describe("what an irreversible teardown destroys", () => {
     // The dialog closed on the way through; leaving it open over a fresh list
     // invites the same confirmation being submitted twice.
     expect(dialog()).toBe(null);
+  });
+
+  for (const outcome of [
+    {
+      action: "soft-deleted",
+      testId: "teardown-result-soft-deleted",
+      sentence: TORN_DOWN,
+    },
+    {
+      action: "already-deleted",
+      testId: "teardown-result-already-deleted",
+      sentence: ALREADY_TORN_DOWN,
+    },
+    {
+      action: "not-found",
+      testId: "teardown-result-not-found",
+      sentence: NOT_FOUND,
+    },
+  ] as const) {
+    it(`draws ${outcome.action} in its own named result place`, async () => {
+      readAgents = () => json(200, { agents: [ALPHA, beta()] });
+      destroyAgent = () => json(200, { ok: true, identity: beta().id, action: outcome.action });
+      await mount();
+      openTeardownFor(beta().id);
+      typeConfirmation(beta().id);
+      fireEvent.click(confirmButton());
+      await settle();
+
+      const result = screen.getByTestId(outcome.testId);
+      expect(result.querySelectorAll("span")[1]?.textContent).toBe(`${outcome.sentence}: ${beta().id}`);
+      for (const other of ["soft-deleted", "already-deleted", "not-found"]) {
+        if (other !== outcome.action) {
+          expect(screen.queryByTestId(`teardown-result-${other}`)).toBe(null);
+        }
+      }
+    });
+  }
+
+  it("keeps all three teardown result sentences pairwise distinct", () => {
+    expect(new Set([TORN_DOWN, ALREADY_TORN_DOWN, NOT_FOUND]).size).toBe(3);
+  });
+
+  it("disables confirmation in flight and sends one DELETE after two click attempts", async () => {
+    readAgents = () => json(200, { agents: [ALPHA, beta()] });
+    let release: (response: Response) => void = () => {};
+    destroyAgent = () => new Promise<Response>((resolve) => { release = resolve; });
+    await mount();
+    openTeardownFor(beta().id);
+    typeConfirmation(beta().id);
+
+    fireEvent.click(confirmButton());
+    await act(async () => {});
+    expect(confirmButton().disabled).toBe(true);
+    fireEvent.click(confirmButton());
+    expect(teardownWrites()).toHaveLength(1);
+
+    await act(async () => {
+      release(json(200, { ok: true, identity: beta().id, action: "soft-deleted" }));
+    });
+    await settle();
+    expect(teardownWrites()).toHaveLength(1);
   });
 
   it("does not call a refused teardown a teardown", async () => {

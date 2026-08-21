@@ -37,6 +37,18 @@ export interface PairingCodeResponse {
   ttl_seconds: number;
 }
 
+// Temporary local copy of the store result until teardown is published from
+// the contracts package. Keep the three literals byte-for-byte aligned with
+// `packages/store/src/teardown.ts`; the platform owns the cross-package guard.
+export type TeardownAction = "soft-deleted" | "already-deleted" | "not-found";
+
+export interface TeardownResponse {
+  ok: boolean;
+  identity: string;
+  action: TeardownAction;
+  deleted_at?: string | null;
+}
+
 export async function fetchAgents(): Promise<RegistryAgent[]> {
   const data = await apiClient<any>("/api/v1/agents");
   const list: any[] = Array.isArray(data) ? data : data.agents ?? [];
@@ -107,8 +119,8 @@ export async function createPairingCodeApi(identity: string, ttlSeconds: number 
   });
 }
 
-export async function teardownAgentApi(identity: string): Promise<{ ok: boolean }> {
-  return await apiClient<{ ok: boolean }>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {
+export async function teardownAgentApi(identity: string): Promise<TeardownResponse> {
+  return await apiClient<TeardownResponse>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {
     method: "DELETE",
   });
 }
@@ -119,8 +131,8 @@ export async function teardownAgentApi(identity: string): Promise<{ ok: boolean 
  * **`null` is not "offline".** SPEC § 9.1 says so at the route: `last_seen_at:
  * null` means the mesh holds no presence record for that identity, and whether
  * silence means `inactive` is an operating policy this screen does not get to
- * decide. So the three states stay three — seen at a time, never seen, and (for
- * a caller that has not asked yet) not loaded.
+ * decide. An unparsable value is also kept separate from no record: the server
+ * sent something, but the client cannot truthfully turn it into a time.
  */
 /**
  * **The api layer stops writing sentences.**
@@ -132,12 +144,13 @@ export async function teardownAgentApi(identity: string): Promise<{ ok: boolean 
  */
 export type LastSeen =
   | { kind: "never" }
+  | { kind: "invalid" }
   | { kind: "ago"; unit: "second" | "minute" | "hour" | "day"; value: number };
 
 export function lastSeen(lastSeenAt: string | null | undefined): LastSeen {
   if (!lastSeenAt) return { kind: "never" };
   const seen = new Date(lastSeenAt).getTime();
-  if (Number.isNaN(seen)) return { kind: "never" };
+  if (Number.isNaN(seen)) return { kind: "invalid" };
   const secs = Math.max(0, Math.round((Date.now() - seen) / 1000));
   if (secs < 60) return { kind: "ago", unit: "second", value: secs };
   if (secs < 3600) return { kind: "ago", unit: "minute", value: Math.floor(secs / 60) };
@@ -149,6 +162,7 @@ export function lastSeen(lastSeenAt: string | null | undefined): LastSeen {
 export function lastSeenText(t: (key: string, fallback: string) => string, at: string | null | undefined): string {
   const v = lastSeen(at);
   if (v.kind === "never") return t("agents.neverSeen", "접속 기록 없음");
+  if (v.kind === "invalid") return t("agents.invalidLastSeen", "마지막 접속 시각 형식 오류");
   const unit =
     v.unit === "second" ? t("agents.unit.second", "초")
     : v.unit === "minute" ? t("agents.unit.minute", "분")

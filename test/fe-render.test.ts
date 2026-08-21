@@ -486,6 +486,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }
 
+  async function armFirstTeardown(page: import("playwright").Page) {
+    const trigger = page.locator('button[data-testid^="teardown-"]').first();
+    const testId = await trigger.getAttribute("data-testid");
+    const identity = testId?.replace(/^teardown-/, "") ?? "";
+    expect(
+      { control: await trigger.count(), identity: identity.length > 0 },
+      "the teardown control did not name the identity it would destroy",
+    ).toEqual({ control: 1, identity: true });
+    await trigger.click();
+    await page.locator("input[type='text']").last().fill(identity);
+    const confirm = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
+    expect(
+      { confirm: await confirm.count(), enabled: await confirm.isEnabled() },
+      "the identity did not arm the destructive confirmation",
+    ).toEqual({ confirm: 1, enabled: true });
+    return { identity, confirm };
+  }
+
   async function withViewerPage<T>(cookie: string, route: string, fn: (pageInfo: { page: import("playwright").Page; errors: string[] }) => Promise<T>): Promise<T> {
     const { page, context, errors } = await createViewerAuthedPage(cookie, route);
     try {
@@ -1341,7 +1359,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         sent.push(route.request().url());
         // Answered here rather than let through: a real teardown would remove an
         // identity every other scenario in this file reads.
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, identity: "intercepted", action: "soft-deleted" }),
+        });
       });
 
       const before = await page.locator("tbody tr").count();
@@ -1363,6 +1385,140 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         { requests: sent.length, addressed: sent.some((u) => u.includes(encodeURIComponent(identity)) || u.includes(identity)) },
         "the screen reported a teardown it never sent, or sent one for a different identity",
       ).toEqual({ requests: 1, addressed: true });
+    });
+  }, 40_000);
+
+  async function assertTeardownOutcome(
+    page: import("playwright").Page,
+    action: "soft-deleted" | "already-deleted" | "not-found",
+    testId: string,
+    sentence: string,
+  ) {
+    await page.route("**/api/v1/admin/agents/**", async (route) => {
+      if (route.request().method() !== "DELETE") return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, identity: "intercepted", action }),
+      });
+    });
+    const { identity, confirm } = await armFirstTeardown(page);
+    await confirm.click();
+    const place = page.locator(`[data-testid="${testId}"]`);
+    const message = await eventually(
+      async () => await place.count() > 0 ? await place.locator("span").nth(1).innerText() : "",
+      (text) => text.length > 0,
+    );
+    expect(
+      { place: await place.count(), message },
+      `${action} was folded into another teardown result`,
+    ).toEqual({ place: 1, message: `${sentence}: ${identity}` });
+  }
+
+  it("[SC-WRITE-18] says soft-deleted in its own result place", async () => {
+    await withPage("/creator", async ({ page }) => {
+      await assertTeardownOutcome(
+        page,
+        "soft-deleted",
+        "teardown-result-soft-deleted",
+        "영구 삭제 완료",
+      );
+    });
+  }, 40_000);
+
+  it("[SC-WRITE-19] says already-deleted in its own result place", async () => {
+    await withPage("/creator", async ({ page }) => {
+      await assertTeardownOutcome(
+        page,
+        "already-deleted",
+        "teardown-result-already-deleted",
+        "이미 삭제되어 이번 요청에서 변경 없음",
+      );
+    });
+  }, 40_000);
+
+  it("[SC-WRITE-20] says not-found in its own result place", async () => {
+    await withPage("/creator", async ({ page }) => {
+      await assertTeardownOutcome(
+        page,
+        "not-found",
+        "teardown-result-not-found",
+        "등록된 에이전트가 없어 삭제하지 않음",
+      );
+    });
+  }, 40_000);
+
+  it("[SC-WRITE-21] disables an in-flight teardown and sends one DELETE for two click events", async () => {
+    await withPage("/creator", async ({ page }) => {
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const sent: string[] = [];
+      await page.route("**/api/v1/admin/agents/**", async (route) => {
+        if (route.request().method() !== "DELETE") return route.continue();
+        sent.push(route.request().url());
+        await held;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, identity: "intercepted", action: "soft-deleted" }),
+        });
+      });
+
+      const { confirm } = await armFirstTeardown(page);
+      await confirm.evaluate((button) => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      const requests = await eventually(async () => sent.length, (count) => count > 0);
+      expect(
+        { disabled: await confirm.isDisabled(), requests },
+        "the destructive confirmation stayed armed or emitted two DELETEs while the first was pending",
+      ).toEqual({ disabled: true, requests: 1 });
+      release();
+      await attemptOver(page);
+      expect(sent).toHaveLength(1);
+    });
+  }, 40_000);
+
+  it("[SC-INVENT-08] gives an unparsable last_seen_at one invalid-value place and sentence", async () => {
+    await withPage("/creator", async ({ page }) => {
+      await page.route("**/api/v1/agents", async (route) => route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          agents: [{
+            id: "invalid-last-seen",
+            name: "Invalid timestamp agent",
+            description: "Invalid timestamp agent",
+            channel: "websocket",
+            type: "worker",
+            created_at: "2026-08-01T10:00:00Z",
+            last_seen_at: "not-a-date",
+            fingerprint: null,
+          }],
+        }),
+      }));
+      await page.reload({ waitUntil: "networkidle" });
+      await settled(page);
+
+      const row = page.locator("tbody tr").filter({ hasText: "invalid-last-seen" });
+      const invalid = row.locator('[data-testid="invalid-last-seen"]');
+      expect(
+        {
+          row: await row.count(),
+          place: await invalid.count(),
+          noRecordPlace: await row.locator('[data-testid="never-seen"]').count(),
+          wrongPlace: await row.locator('[data-testid="last-seen"]').count(),
+          sentence: await invalid.count() > 0 ? await invalid.innerText() : "",
+        },
+        "the last-seen words and their named place disagreed",
+      ).toEqual({
+        row: 1,
+        place: 1,
+        noRecordPlace: 0,
+        wrongPlace: 0,
+        sentence: "마지막 접속 시각 형식 오류",
+      });
     });
   }, 40_000);
 

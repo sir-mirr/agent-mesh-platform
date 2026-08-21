@@ -26,8 +26,8 @@ interface AgentItem {
    * show which agents are not healthy. Unknown and down are different answers
    * and only one of them is true here.
    */
-  /** Whether the mesh has ever seen this identity. Measured; not "online". */
-  seen: boolean;
+  /** A measured timestamp, no record, or a value the client cannot parse. */
+  lastSeenKind: "ago" | "never" | "invalid";
   fingerprint: string | null;
   /**
    * `null` — this list has never carried it.
@@ -41,7 +41,13 @@ interface AgentItem {
   lastSeen: string;
 }
 
-import { fetchAgents, teardownAgentApi, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+interface TeardownNotice {
+  testId: `teardown-result-${"soft-deleted" | "already-deleted" | "not-found" | "failed"}`;
+  type: "success" | "info" | "warning" | "error";
+  message: string;
+}
+
+import { fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { hasCapability } = useRbac();
@@ -55,7 +61,9 @@ export function AgentsPage() {
   const [missing, setMissing] = useState<string | null>(null);
   const [teardownTarget, setTeardownTarget] = useState<AgentItem | null>(null);
   const [isTeardownOpen, setIsTeardownOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isTeardownPending, setIsTeardownPending] = useState(false);
+  const teardownInFlight = React.useRef(false);
+  const [teardownNotice, setTeardownNotice] = useState<TeardownNotice | null>(null);
 
   const loadAgents = async () => {
     setIsLoading(true);
@@ -64,19 +72,22 @@ export function AgentsPage() {
     try {
       const list = await fetchAgents();
       setAgents(
-        (list || []).map((a) => ({
-          id: a.identity,
-          name: a.description || a.identity,
-          groupName: a.type ?? "—",
-          // `status` is gone from the route on purpose (SPEC § 9.1). What the mesh
-          // measured is when it last saw the identity.
-          lastSeen: lastSeenText(t, a.last_seen_at),
-          seen: hasBeenSeen(a),
-          // Absent, not invented — see `fetchAgents`.
-          fingerprint: a.fingerprint ?? null,
-          // `GET /api/v1/agents` does not report queue depth. See the type.
-          inboxDepth: null,
-        }))
+        (list || []).map((a) => {
+          const seen = lastSeen(a.last_seen_at);
+          return {
+            id: a.identity,
+            name: a.description || a.identity,
+            groupName: a.type ?? "—",
+            // `status` is gone from the route on purpose (SPEC § 9.1). What the mesh
+            // measured is when it last saw the identity.
+            lastSeen: lastSeenText(t, a.last_seen_at),
+            lastSeenKind: seen.kind,
+            // Absent, not invented — see `fetchAgents`.
+            fingerprint: a.fingerprint ?? null,
+            // `GET /api/v1/agents` does not report queue depth. See the type.
+            inboxDepth: null,
+          };
+        })
       );
     } catch (err: unknown) {
       setIsError(true);
@@ -94,18 +105,55 @@ export function AgentsPage() {
   }, []);
 
   const handleTeardownConfirm = async () => {
-    if (!teardownTarget) return;
+    if (!teardownTarget || teardownInFlight.current) return;
+    teardownInFlight.current = true;
+    setIsTeardownPending(true);
+    const targetId = teardownTarget.id;
     try {
-      await teardownAgentApi(teardownTarget.id);
+      const result = await teardownAgentApi(targetId);
+      let notice: TeardownNotice;
+      switch (result.action) {
+        case "soft-deleted":
+          notice = {
+            testId: "teardown-result-soft-deleted",
+            type: "success",
+            message: `${t("agents.teardown.done", "영구 삭제 완료")}: ${targetId}`,
+          };
+          break;
+        case "already-deleted":
+          notice = {
+            testId: "teardown-result-already-deleted",
+            type: "info",
+            message: `${t("agents.teardown.alreadyDeleted", "이미 삭제되어 이번 요청에서 변경 없음")}: ${targetId}`,
+          };
+          break;
+        case "not-found":
+          notice = {
+            testId: "teardown-result-not-found",
+            type: "warning",
+            message: `${t("agents.teardown.notFound", "등록된 에이전트가 없어 삭제하지 않음")}: ${targetId}`,
+          };
+          break;
+        default: {
+          const unknownAction: never = result.action;
+          throw new Error(`unknown teardown action: ${unknownAction}`);
+        }
+      }
       setIsTeardownOpen(false);
-      const targetId = teardownTarget.id;
       setTeardownTarget(null);
-      setToastMessage(`${t("agents.teardown.done", "영구 삭제 완료")}: ${targetId}`);
+      setTeardownNotice(notice);
       await loadAgents();
     } catch (err: any) {
       setIsTeardownOpen(false);
       setTeardownTarget(null);
-      setToastMessage(`${t("agents.teardown.failed", "삭제 실패")}: ${err.message || t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}`);
+      setTeardownNotice({
+        testId: "teardown-result-failed",
+        type: "error",
+        message: `${t("agents.teardown.failed", "삭제 실패")}: ${err.message || t("agents.error", "에이전트 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}`,
+      });
+    } finally {
+      teardownInFlight.current = false;
+      setIsTeardownPending(false);
     }
   };
 
@@ -154,11 +202,15 @@ export function AgentsPage() {
       ),
     },
     {
-      key: "seen",
+      key: "lastSeenKind",
       header: t("agents.col.lastSeen", "마지막 접속"),
       render: (item: AgentItem) =>
-        item.seen ? (
+        item.lastSeenKind === "ago" ? (
           <span data-testid="last-seen" style={{ fontSize: "0.8rem", color: "var(--color-text-primary)" }}>
+            {item.lastSeen}
+          </span>
+        ) : item.lastSeenKind === "invalid" ? (
+          <span data-testid="invalid-last-seen" style={{ color: "var(--color-warning)", fontSize: "0.8rem" }}>
             {item.lastSeen}
           </span>
         ) : (
@@ -282,12 +334,19 @@ export function AgentsPage() {
           description={`${teardownTarget.name} (${teardownTarget.id}) — ${t("agents.teardown.body", "이 신원을 영구히 파괴합니다. 승인된 공개키는 침해 보관소로 옮겨지고, 같은 ID 로는 다시 등록할 수 없습니다 (409).")}`}
           confirmLabel={t("agents.teardown.confirm", "영구 Teardown 실행")}
           isDestructive={true}
+          isLoading={isTeardownPending}
           confirmPromptMatch={teardownTarget.id}
         />
       )}
 
-      {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+      {teardownNotice && (
+        <div data-testid={teardownNotice.testId}>
+          <Toast
+            type={teardownNotice.type}
+            message={teardownNotice.message}
+            onClose={() => setTeardownNotice(null)}
+          />
+        </div>
       )}
     </div>
   );

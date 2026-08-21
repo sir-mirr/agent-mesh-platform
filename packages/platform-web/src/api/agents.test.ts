@@ -13,6 +13,7 @@ import { setSystemTime } from "bun:test";
 import {
   fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
   createPairingCodeApi, teardownAgentApi, lastSeen, lastSeenText, hasBeenSeen,
+  type TeardownAction,
 } from "./agents.ts";
 
 const realFetch = globalThis.fetch;
@@ -93,10 +94,19 @@ describe("createPairingCodeApi", () => {
 
 describe("teardownAgentApi", () => {
   it("escapes the identity into the path", async () => {
-    const spy = spyOn({ ok: true });
+    const spy = spyOn({ ok: true, identity: "lane/a b", action: "soft-deleted" });
     await teardownAgentApi("lane/a b");
     expect(String(spy.mock.calls[0]![0])).toContain("lane%2Fa%20b");
     expect(spy.mock.calls[0]![1]!.method).toBe("DELETE");
+  });
+
+  it("preserves each teardown action instead of folding them into ok", async () => {
+    const actions: TeardownAction[] = ["soft-deleted", "already-deleted", "not-found"];
+    for (const action of actions) {
+      const reply = { ok: true, identity: "lane-a", action };
+      spyOn(reply);
+      expect(await teardownAgentApi("lane-a")).toEqual(reply);
+    }
   });
 });
 
@@ -105,8 +115,11 @@ describe("lastSeen", () => {
     // SPEC § 9.1: `last_seen_at: null` means the mesh holds no presence record.
     expect(lastSeen(null)).toEqual({ kind: "never" });
     expect(lastSeen(undefined)).toEqual({ kind: "never" });
-    expect(lastSeen("not a date")).toEqual({ kind: "never" });
+    expect(lastSeen("not a date")).toEqual({ kind: "invalid" });
     expect(hasBeenSeen({ last_seen_at: null })).toBe(false);
+    // Presence was reported even though its time cannot be parsed. Callers
+    // needing that distinction use `lastSeen`, not this boolean projection.
+    expect(hasBeenSeen({ last_seen_at: "not a date" })).toBe(true);
     expect(hasBeenSeen({ last_seen_at: "2026-08-20T12:00:00Z" })).toBe(true);
   });
 
@@ -130,6 +143,7 @@ describe("lastSeenText", () => {
     setSystemTime(new Date("2026-08-20T12:00:00Z"));
     const t = (key: string, _fallback: string) => `[${key}]`;
     expect(lastSeenText(t, null)).toBe("[agents.neverSeen]");
+    expect(lastSeenText(t, "not a date")).toBe("[agents.invalidLastSeen]");
     expect(lastSeenText(t, "2026-08-20T09:00:00Z")).toBe("3[agents.unit.hour] [agents.ago]");
   });
 });
