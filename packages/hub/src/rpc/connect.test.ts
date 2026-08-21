@@ -293,25 +293,34 @@ describe("replaying a queue to a socket that is going away", () => {
     expect(statusOf(second)).toBe("pending");
   });
 
-  test("a socket that throws on the second frame keeps the first delivery", () => {
+  /**
+   * **A failure ends the replay, it does not skip a message.** The queue is one
+   * conversation in order, so carrying on past a frame that failed hands the
+   * recipient a later message while an earlier one is still waiting — and the
+   * earlier one is the harder to notice missing.
+   */
+  test("a socket that fails once keeps what landed and stops there", () => {
     const identity = nextId("half-open");
     register(identity);
     const first = nextId("first");
     const second = nextId("second");
+    const third = nextId("third");
     queue(identity, first);
     queue(identity, second);
+    queue(identity, third);
     let frames = 0;
 
     deliverPending(identity, {
       ...socket(),
       send: (frame: string) => {
-        if (++frames > 1) throw new Error("socket write after close");
+        if (++frames === 2) throw new Error("socket write after close");
         return frame.length;
       },
     });
 
     expect(statusOf(first)).toBe("delivered");
     expect(statusOf(second)).toBe("pending");
+    expect(statusOf(third)).toBe("pending");
   });
 
   test("an identity with nothing queued asks the socket for nothing", () => {

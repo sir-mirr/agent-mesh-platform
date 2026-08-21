@@ -6540,7 +6540,7 @@ const MUTATIONS: Mutation[] = [
       "      break; // stop if connection is broken",
     to: "      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);",
     suite: "packages/hub/src/rpc/connect.test.ts",
-    expect: ["a socket that throws stops it the same way"],
+    expect: ["a socket that fails once keeps what landed and stops there"],
   },
   {
     id: "upload-counts-the-file-itself",
