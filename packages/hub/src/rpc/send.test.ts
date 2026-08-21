@@ -24,8 +24,8 @@ import { describe, expect, test } from "bun:test";
 import { MAILBOX_ERROR, MESH_ERROR } from "@agent-mesh/contracts";
 import { groups } from "@agent-mesh/store";
 
-import { agentsDb } from "../db";
-import { wsIdentities, wsProxies } from "../presence";
+import { agentsDb, db } from "../db";
+import { onlineAgents, wsIdentities, wsProxies } from "../presence";
 import { handleSend } from "./send";
 
 let n = 0;
@@ -247,5 +247,144 @@ describe("claiming another identity", () => {
     );
     expect(said[0]).toBe(said[1]);
     expect(said[0]).toContain("not entitled");
+  });
+});
+
+/**
+ * § 8.11.2. A key that has been silent for the dormancy window and then sends
+ * from a network it has never been seen on is refused until an operator has
+ * looked — the shape a stolen credential has, and the one thing the mesh can
+ * notice about it without asking anybody.
+ */
+describe("a dormant identity arriving from somewhere new", () => {
+  /** Silent since long before the window, with one network on record. */
+  function dormant(seenOn: string): string {
+    const identity = agent();
+    agentsDb.prepare("UPDATE agents SET last_send_at = '2020-01-01 00:00:00' WHERE identity = ?").run(identity);
+    agentsDb.prepare("INSERT INTO agent_sources (identity, observed) VALUES (?, ?)").run(identity, seenOn);
+    return identity;
+  }
+
+  /** A socket carrying the address the upgrade saw. */
+  const from = (identity: string, observed: string) => {
+    const ws = { observed };
+    wsIdentities.set(ws, identity);
+    return ws;
+  };
+
+  test("is refused, and told what an operator has to review", () => {
+    const identity = dormant("198.51.100.4");
+
+    const answered = send(from(identity, "203.0.113.7"), { to: agent(), content: "hello" });
+
+    expect(answered.error!.data.code).toBe("SOURCE_CHANGED");
+    expect(answered.error!.message).toContain("has not been seen on");
+  });
+
+  test("the same network it has always used is not new", () => {
+    const identity = dormant("198.51.100.4");
+
+    const answered = send(from(identity, "198.51.100.9"), { to: agent(), content: "hello" });
+
+    expect(answered.error).toBeUndefined();
+  });
+
+  test("a refused send does not stamp the clock it is measured against", () => {
+    const identity = dormant("198.51.100.4");
+
+    send(from(identity, "203.0.113.7"), { to: agent(), content: "hello" });
+
+    const row = agentsDb.prepare("SELECT last_send_at FROM agents WHERE identity = ?").get(identity) as
+      { last_send_at: string };
+    expect(row.last_send_at).toBe("2020-01-01 00:00:00");
+  });
+});
+
+/**
+ * What happens after the refusals: the write, and the frame.
+ *
+ * Both failure paths here were added for defects that took the hub down or
+ * lied about where a message went, and neither had ever run in a process a
+ * coverage report can see — one needs storage to refuse a write, the other a
+ * socket that fails on the way out.
+ */
+describe("when the write or the delivery fails", () => {
+  /** Storage that refuses, which is what a full volume looks like from here. */
+  function withUnwritableMessages<T>(body: () => T): T {
+    db.exec("ALTER TABLE messages RENAME TO messages_unavailable");
+    try {
+      return body();
+    } finally {
+      db.exec("ALTER TABLE messages_unavailable RENAME TO messages");
+    }
+  }
+
+  /**
+   * Unguarded this threw out of the WebSocket message handler and the send
+   * simply never answered — routing stopping because storage filled, which is
+   * the inversion § 15.6 exists to forbid.
+   */
+  test("a write that fails is answered, as a transient the caller can retry", () => {
+    const ws = connected(agent());
+    const to = agent();
+
+    const answered = withUnwritableMessages(() => send(ws, { to, content: "hello" }));
+
+    expect(answered.error!.message).toContain("could not persist message");
+    expect(answered.error!.data.retryable).toBe(true);
+  });
+
+  test("the hub keeps taking sends afterwards", () => {
+    const ws = connected(agent());
+    const to = agent();
+    withUnwritableMessages(() => send(ws, { to, content: "hello" }));
+
+    expect(send(ws, { to, content: "and again" }).error).toBeUndefined();
+  });
+
+  /** A socket in the map is somebody who connected, not somebody who received. */
+  function online(identity: string, socket: { send(data: string): number }) {
+    onlineAgents.set(identity, socket);
+    return () => onlineAgents.delete(identity);
+  }
+
+  test("a frame the socket drops is queued, not recorded as delivered", () => {
+    const to = agent();
+    const offline = online(to, { send: () => 0 });
+    try {
+      const answered = send(connected(agent()), { to, content: "hello" });
+
+      expect(answered.error).toBeUndefined();
+      expect(answered.result!.status).toBe("pending");
+    } finally {
+      offline();
+    }
+  });
+
+  test("a socket that throws on the way out is queued the same way", () => {
+    const to = agent();
+    const broken = online(to, { send: () => { throw new Error("socket write after close"); } });
+    try {
+      const answered = send(connected(agent()), { to, content: "hello" });
+
+      expect(answered.error).toBeUndefined();
+      expect(answered.result!.status).toBe("pending");
+    } finally {
+      broken();
+    }
+  });
+
+  test("a frame that lands is delivered", () => {
+    const to = agent();
+    const sent: string[] = [];
+    const offline = online(to, { send: (data: string) => sent.push(data) });
+    try {
+      const answered = send(connected(agent()), { to, content: "hello" });
+
+      expect(answered.result!.status).toBe("delivered");
+      expect(JSON.parse(sent[0]!).method).toBe("mesh.message");
+    } finally {
+      offline();
+    }
   });
 });

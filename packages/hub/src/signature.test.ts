@@ -80,6 +80,39 @@ describe("raw params extraction", () => {
     const text = '{"sig":{"kid":"k"},"method":"m","params":{"x":1}}';
     expect(rawParams(text)).toBe('{"x":1}');
   });
+
+  /**
+   * **Malformed text has to end the scan, not run off it.** This runs before
+   * `JSON.parse` on every signed frame — the preimage is built from the bytes
+   * that arrived, so the bytes are scanned before anything has established they
+   * are a document at all. A truncated frame is the ordinary case: a socket
+   * that closed mid-write produces one.
+   */
+  describe("text that is not a document", () => {
+    test("a params key with no value is not a params member", () => {
+      expect(rawParams('{"method":"m","params"}')).toBeNull();
+      expect(rawParams('{"method":"m","params" ')).toBeNull();
+    });
+
+    test("a string that never closes ends the scan", () => {
+      expect(rawParams('{"method":"m","params":"unterminated')).toBe('"unterminated');
+      expect(rawParams('{"method":"m","id":"unterminated')).toBeNull();
+    });
+
+    test("a value that never closes is taken as far as it goes", () => {
+      expect(rawParams('{"method":"m","params":{"a":1')).toBe('{"a":1');
+      expect(rawParams('{"method":"m","params":[1,2')).toBe("[1,2");
+    });
+
+    test("an escape at the very end does not read past it", () => {
+      expect(rawParams('{"method":"m","params":"a\\')).toBe('"a\\');
+    });
+
+    test("empty text has no params member", () => {
+      expect(rawParams("")).toBeNull();
+      expect(rawParams("{}")).toBeNull();
+    });
+  });
 });
 
 /**

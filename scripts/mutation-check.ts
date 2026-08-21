@@ -6363,6 +6363,121 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/key-proposals.test.ts",
     expect: ["a read that fails is reported and does not take the poll down"],
   },
+  {
+    id: "refusal-counts-ordering",
+    swept: true,
+    defect:
+      "The counters exist so an operator can ask *is something failing to get in*. A list not ordered by how often each reason fired answers that question with a directory, and the reason that is firing hundreds of times a minute sits wherever the map happened to put it.",
+    file: "packages/hub/src/refusals.ts",
+    from: "    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));",
+    to: "    .sort((a, b) => a.reason.localeCompare(b.reason));",
+    suite: "packages/hub/src/refusals.test.ts",
+    expect: ["most frequent first, and ties broken by reason so the order is stable"],
+  },
+  {
+    id: "teardown-records-actor",
+    defect:
+      "§ 10.2 requires each key transition to carry who caused it, and this is the whole reason teardown goes through an authenticated caller. Writing a constant records that a revocation happened without recording who is answerable for it.",
+    file: "packages/store/src/teardown.ts",
+    from: "      ).run(randomUUID(), identity, fingerprint, actor);",
+    to: "      ).run(randomUUID(), identity, fingerprint, 'hub');",
+    suite: "packages/store/src/teardown.test.ts",
+    expect: ["writes one history row per revoked key, naming the actor and the reason"],
+  },
+  {
+    id: "teardown-revokes-only-live-keys",
+    swept: true,
+    defect:
+      "The fingerprints are read before the revocation so the history explains the transition. Reading every key of the identity instead writes a second `revoked` event for one that was revoked months ago — and reports it in `revoked`, so the caller is told a key changed state that did not.",
+    file: "packages/store/src/teardown.ts",
+    from: "    .prepare(`SELECT fingerprint FROM agent_keys WHERE identity = ? AND status IN ('pending','approved')`)",
+    to: "    .prepare(`SELECT fingerprint FROM agent_keys WHERE identity = ?`)",
+    suite: "packages/store/src/teardown.test.ts",
+    expect: ["a key already revoked is left where it is, and writes no second event"],
+  },
+  {
+    id: "send-persist-failure-answered",
+    defect:
+      "Unguarded, a failed write threw out of the WebSocket message handler and the send simply never answered. On a full volume that is routing stopping because storage filled, which is the inversion § 15.6 exists to forbid.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "    return rpcError(id, SERVER_ERROR, `could not persist message: ${message}`, {",
+    to: "    throw err; return rpcError(id, SERVER_ERROR, `could not persist message: ${message}`, {",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["a write that fails is answered, as a transient the caller can retry"],
+  },
+  {
+    id: "send-dropped-frame-is-queued",
+    defect:
+      "A socket in the map is somebody who connected, not somebody who received: `ws.send` reports a drop by returning 0 rather than by throwing. Deciding the recorded status from presence and never revisiting it made every send to a socket that had gone away an audited delivery.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: `      stmtUpdateMessageStatus.run("pending", msgId);
+      status = "pending";`,
+    to: `      stmtUpdateMessageStatus.run("pending", msgId);
+      status = "delivered";`,
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["a frame the socket drops is queued, not recorded as delivered"],
+  },
+  {
+    id: "send-throwing-socket-is-queued",
+    defect:
+      "The other half of the same defect: a socket that throws on the way out is a message that did not arrive, and treating the throw as a delivery records one that never happened.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: `      landed = false;
+      why = err instanceof Error ? err.message : String(err);`,
+    to: "      landed = true;",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["a socket that throws on the way out is queued the same way"],
+  },
+  {
+    id: "dormancy-check-wired",
+    defect:
+      "§ 8.11.2 is a checker in `dormancy.ts` and one call in the send path. The checker is tested beside itself; unwiring the call leaves every one of those tests green while a key silent for months sends from anywhere it likes.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "  const dormancy = checkDormantSource(agentsDb, effectiveSender, senderIdentity, observedOf(ws));",
+    to: "  const dormancy = { refusal: null } as ReturnType<typeof checkDormantSource>;",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["is refused, and told what an operator has to review"],
+  },
+  {
+    id: "signed-freshness-checked",
+    defect:
+      "Without the freshness window a captured `Authorization` header is valid forever — the nonce stops it being replayed inside the window, and nothing stops it outside one.",
+    file: "packages/hub/src/rest/signed.ts",
+    from: "  if (Math.abs(now - auth.iat) > SIGNATURE_FRESHNESS_WINDOW_SECONDS) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/rest/signed.test.ts",
+    expect: ["an iat outside the freshness window, in either direction"],
+  },
+  {
+    id: "signed-nonce-spent",
+    defect:
+      "§ 8.1 spends the nonce before anything else can fail, so a captured request has one attempt whatever is wrong with it. Recording only on success leaves it replayable without limit.",
+    file: "packages/hub/src/rest/signed.ts",
+    from: "  if (!nonceWindow.claim(auth.kid, auth.nonce, auth.iat)) {",
+    to: "  if (false && !nonceWindow.claim(auth.kid, auth.nonce, auth.iat)) {",
+    suite: "packages/hub/src/rest/signed.test.ts",
+    expect: ["a nonce is spent even by a request whose signature does not verify"],
+  },
+  {
+    id: "signed-budget-taken",
+    defect:
+      "§ 14 exists so one lane cannot starve the others. A limiter that is consulted and never spends is decoration, and decoration and protection look identical from outside: no errors either way.",
+    file: "packages/hub/src/rest/signed.ts",
+    from: "  const budget = SIGNED_LIMIT.take(identity);",
+    to: "  const budget = { ok: true, retryAfter: 0, remaining: 0 };",
+    suite: "packages/hub/src/rest/signed.test.ts",
+    expect: ["a caller over its § 14 budget, with how long to wait"],
+  },
+  {
+    id: "signed-source-recorded",
+    defect:
+      "§ 8.11 records where each identity has been seen, and § 8.11.2 refuses a dormant key arriving from somewhere new by reading exactly that table. A signed surface that records nothing leaves the dormancy check with no history to compare against, so it never refuses anything.",
+    file: "packages/hub/src/rest/signed.ts",
+    from: "  sources.recordSource(agentsDb, identity, observed);",
+    to: "  void observed;",
+    suite: "packages/hub/src/rest/signed.test.ts",
+    expect: ["the address it was seen on is recorded"],
+  },
 ];
 
 /**
