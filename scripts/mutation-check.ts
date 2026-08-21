@@ -852,6 +852,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["gives each reason a distinct sentence"],
   },
   {
+    id: "send-checks-egress-after-it-has-written",
+    defect:
+      "\u00a7 12's egress check moved behind the write, so a send the policy forbids reaches the queue and is refused afterwards. Two things go wrong at once: the row exists for a message that was never allowed, and the dormancy clock has been stamped by an attempt that was refused \u2014 which resets the very silence \u00a7 8.11.2 measures.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "  const egress = groups.maySend(agentsDb, effectiveSender, to);\n  if (!egress.ok) {",
+    to: "  const egress = groups.maySend(agentsDb, effectiveSender, to);\n  if (false) {",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["writes no message when it refuses"],
+  },
+  {
+    id: "egress-rule-read-in-both-directions",
+    defect:
+      "An egress rule started answering for the reverse pair. Allowing `a \u2192 b` says nothing about `b \u2192 a`, and reading it both ways quietly widens every rule an operator has ever written \u2014 the kind of change nothing visible fails on.",
+    file: "packages/store/src/groups.ts",
+    from: "      `SELECT 1 FROM group_egress WHERE tenant = ? AND from_group = ? AND to_group = ? LIMIT 1`,\n    )\n    .get(tenant, fromGroup, toGroup);",
+    to: "      `SELECT 1 FROM group_egress WHERE tenant = ?1 AND ((from_group = ?2 AND to_group = ?3) OR (from_group = ?3 AND to_group = ?2)) LIMIT 1`,\n    )\n    .get(tenant, fromGroup, toGroup);",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["does not open the other direction"],
+  },
+  {
+    id: "send-accepts-an-undeclared-proxy-subject",
+    defect:
+      "The `proxy_for` check went, leaving only the store's entitlement. They are two questions: the store says which identities a caller *may* act for, `proxy_for` says which it *claimed* on connect. A socket entitled to ten identities has not claimed all ten, and a send as an undeclared one is a socket acting outside what it announced \u2014 which is what the declaration is for.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "    if (!wsProxies.get(ws)?.has(effectiveSender)) {",
+    to: "    if (false) {",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["refuses an identity it is entitled to but did not declare"],
+  },
+  {
+    id: "send-takes-an-idempotency-key-it-cannot-store",
+    defect:
+      "`client_message_id` stopped being validated, so an empty string or a value longer than the column holds is stored as a key. The key is how a retry is told from a new send; one that cannot round-trip means neither, and the failure appears later as a duplicate message or a conflict nobody can explain.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "    if (typeof clientMessageId !== \"string\" || clientMessageId.length === 0 || clientMessageId.length > 128) {",
+    to: "    if (false) {",
+    suite: "packages/hub/src/rpc/send.test.ts",
+    expect: ["refuses an idempotency key it cannot use"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
