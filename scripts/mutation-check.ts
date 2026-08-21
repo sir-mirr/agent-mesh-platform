@@ -3901,6 +3901,56 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/teardown-union.test.ts",
     expect: ["the console's local copy matches the store's"],
   },
+  {
+    id: "blob-upload-skips-the-grant-check",
+    defect:
+      "The blob upload stopped asking whether the grant authorises *this* upload, so a nonce issued for one blob writes to any key, at any size. The grant is the whole authorisation \u2014 `identity` is taken from it rather than from the request \u2014 and without the comparison a caller with any valid nonce can overwrite any content-addressed blob it can name.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "  if (!check.ok) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["a key the grant was not issued for"],
+  },
+  {
+    id: "blob-upload-names-which-bound-field-disagreed",
+    defect:
+      "The grant refusal put `check.reason` back into the message. Naming which bound field disagreed lets a caller holding a nonce probe what it was issued for \u2014 key, size, or holder \u2014 one request at a time. The reason belongs in the log, where the operator is and the caller is not. This is not hypothetical: the message carried the reason under a comment forbidding it from the commit that introduced both.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "    return refuse(403, 'upload grant does not authorise this upload')",
+    to: "    return refuse(403, `upload grant does not authorise this upload (${check.reason})`)",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["a key the grant was not issued for"],
+  },
+  {
+    id: "a-stolen-nonce-is-enough-to-upload",
+    defect:
+      "The upload stopped verifying the signature, so possession of a nonce is possession of the grant. Grants travel in a response body and the signature is what makes a stolen one useless \u2014 it is checked against the *grant holder's* approved key, not against any identity the request names, so a thief cannot substitute a key of their own either.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "  if (!outcome.ok) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["someone else's key over the right grant"],
+  },
+  {
+    id: "blob-stored-without-matching-its-digest",
+    defect:
+      "The upload stopped comparing what arrived against the digest the grant authorised, so bytes land under a content-addressed key that does not describe them. Every later reader trusts the key as the digest; an audit event referencing that blob then claims an attachment it does not have. The rename happens last precisely so nothing exists under that name until the digest matches.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "  if (digest !== grant.sha256) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["refuses bytes whose digest is not the one the grant authorised"],
+  },
+  {
+    id: "a-truncated-upload-is-accepted-as-whole",
+    defect:
+      "The upload stopped checking that the byte count it received is the one the grant authorised, so a connection that drops mid-stream is stored as a complete blob. `prepare_blobs` reports a blob present only when the stored size matches, for exactly this reason \u2014 a file of the right name and the wrong length is an interrupted upload, and accepting it lets an event reference truncated bytes as verified.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "  if (received !== grant.size) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["refuses a body shorter than the declaration"],
+  },
 ];
 
 /**

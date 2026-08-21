@@ -117,9 +117,16 @@ export async function putBlob(blobKey: string, req: Request): Promise<BlobPutRes
 
   const check = nonces.checkGrant(db, auth.nonce, grantRow.identity, blobKey, size)
   if (!check.ok) {
-    // One message for every refusal. Telling a caller *which* bound field
-    // disagreed would let it probe what a grant was issued for.
-    return refuse(403, `upload grant does not authorise this upload (${check.reason})`)
+    // **One message for every refusal**, because naming which bound field
+    // disagreed lets a caller holding a nonce probe what it was issued for —
+    // key, size, or holder — one request at a time.
+    //
+    // The reason went into the message until now, under this comment saying it
+    // must not: both arrived in the same commit, so it was never a drift. The
+    // operator still needs it, so it goes where the operator is and the caller
+    // is not.
+    console.warn(`[audit-blobs] grant ${auth.nonce} refused for ${blobKey}: ${check.reason}`)
+    return refuse(403, 'upload grant does not authorise this upload')
   }
   const grant = check.grant
 
