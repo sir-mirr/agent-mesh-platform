@@ -472,6 +472,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["screens exist that no scenario opens"],
   },
   {
+    id: "telemetry-reports-an-unreachable-hub-as-a-calm-mesh",
+    defect:
+      "`/api/v1/admin/telemetry` stopped carrying why the hub did not answer about its rate limits. `rate_limits: null` with no error beside it draws the same screen as a mesh where no limit has fired \u2014 the operator is told everything is calm while the hub is unreachable, which is the one reading they cannot check.",
+    file: "packages/http/src/main.ts",
+    from: "    limitersError = err instanceof Error ? err.message : String(err)",
+    to: "    limitersError = null",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["names the reason when the hub cannot be reached"],
+  },
+  {
+    id: "telemetry-hides-a-hub-refusal",
+    defect:
+      "The same silence one branch over: the hub answered, with a status saying no. Losing `hub answered 503` leaves a screen that cannot distinguish a refusal from a mesh with nothing to report.",
+    file: "packages/http/src/main.ts",
+    from: "    else limitersError = `hub answered ${res.status}`",
+    to: "    else limitersError = null",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["names the status when the hub refuses"],
+  },
+  {
+    id: "telemetry-truncates-the-lane-list-silently",
+    defect:
+      "The lane list is capped at ten and the total beside it stopped being counted separately, so ten rows out of two hundred draws a screen saying the problem is small. This route shipped with the silent version for an hour, which is how the comment came to be written.",
+    file: "packages/http/src/main.ts",
+    from: "    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending'`,",
+    to: "    `SELECT count(DISTINCT to_agent) AS n FROM messages WHERE status = 'pending' LIMIT 10`,",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["says how many lanes it is showing, and how many there are"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",

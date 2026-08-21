@@ -419,3 +419,75 @@ describe("how deep the queues are", () => {
     expect((await res.json()).messages).toEqual([]);
   });
 });
+
+/**
+ * **"The hub did not answer" and "no limit has fired" are different facts.**
+ *
+ * `/api/v1/admin/telemetry` asks the hub process for its rate-limit buckets,
+ * because they live there and nowhere else. When that ask fails, the route
+ * carries the reason rather than leaving the counts at zero — a screen showing
+ * `0` for both tells an operator the mesh is calm while it is unreachable,
+ * which is the one reading they cannot check.
+ *
+ * Both failures are driven by answering for the hub: a `fetch` that refuses,
+ * and one that throws.
+ */
+describe("when the hub will not say what it is limiting", () => {
+  const telemetry = (cookie: string) => get("/api/v1/admin/telemetry", cookie);
+
+  /** Answer every hub call with this status, or throw if `null`. */
+  function hubLimits(status: number | null, body: unknown = {}) {
+    globalThis.fetch = (async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (!url.includes("/api/v1/limits")) throw new Error(`unexpected fetch: ${url}`);
+      if (status === null) throw new Error("connection refused");
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+  }
+
+  test("names the status when the hub refuses", async () => {
+    const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    hubLimits(503);
+    const body = await (await telemetry(op.cookie)).json();
+    expect(body.rate_limits_error).toBe("hub answered 503");
+    expect(body.rate_limits).toBeNull();
+    expect(body.refusals).toBeNull();
+  });
+
+  test("names the reason when the hub cannot be reached", async () => {
+    const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    hubLimits(null);
+    const body = await (await telemetry(op.cookie)).json();
+    expect(body.rate_limits_error).toContain("connection refused");
+    expect(body.rate_limits).toBeNull();
+  });
+
+  /** And when it does answer, the counts are the hub's and the error is absent. */
+  test("carries the hub's own buckets when it answers", async () => {
+    const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    hubLimits(200, {
+      limiters: [{ name: "send", refusals: 4 }],
+      refusals: [{ kind: "signature", count: 2 }],
+    });
+    const body = await (await telemetry(op.cookie)).json();
+    expect(body.rate_limits_error).toBeNull();
+    expect(body.rate_limits).toEqual([{ name: "send", refusals: 4 }]);
+    expect(body.refusals).toEqual([{ kind: "signature", count: 2 }]);
+  });
+
+  /**
+   * The truncated list carries its total. Ten rows out of two hundred draws a
+   * screen saying the problem is small, and nothing else in the response would
+   * disagree.
+   */
+  test("says how many lanes it is showing, and how many there are", async () => {
+    const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
+    hubLimits(200);
+    const body = await (await telemetry(op.cookie)).json();
+    expect(body.lanes_not_draining_shown).toBe(body.lanes_not_draining.length);
+    expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(body.lanes_not_draining_shown);
+  });
+});
