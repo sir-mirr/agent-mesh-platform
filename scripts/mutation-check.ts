@@ -5161,6 +5161,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["an empty vocabulary is a failure"],
   },
   {
+    id: "the-500-hands-back-the-exception",
+    defect:
+      "The last-resort handler answered with the exception message. Whatever threw decides what the caller reads \u2014 a connection string, a row, a file path, a token that arrived in a query \u2014 and it is the one answer in this service nobody vetted, because it is written by the failure rather than by anyone here.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ error: 'Internal server error' }, 500)",
+    to: "  return c.json({ error: err.message }, 500)",
+    suite: "packages/http/src/unhandled.test.ts",
+    expect: ["told a 500 happened, and nothing else"],
+  },
+  {
+    id: "the-500-logs-the-whole-url",
+    defect:
+      "The unhandled-error line logged the URL rather than the pathname. The query string is caller input and lands in the journal verbatim; a session token in a pasted link is then written down by the one code path that runs when something has already gone wrong.",
+    file: "packages/http/src/main.ts",
+    from: "    route: new URL(c.req.url).pathname,",
+    to: "    route: c.req.url,",
+    suite: "packages/http/src/unhandled.test.ts",
+    expect: ["does not follow the route into the log"],
+  },
+  {
+    id: "a-thrown-request-is-only-a-warning",
+    defect:
+      "A handler throwing was logged at `warn`. Nothing about it worked as designed \u2014 the caller got a 500 \u2014 and at `warn` it sits among the refusals, which are the lines an operator has learned to scroll past.",
+    file: "packages/http/src/main.ts",
+    from: "  log.error('a request handler threw, so the caller is answered a 500'",
+    to: "  log.warn('a request handler threw, so the caller is answered a 500'",
+    suite: "packages/http/src/unhandled.test.ts",
+    expect: ["which route, and what it said"],
+  },
+  {
     id: "attachments-are-dropped-off-the-wire",
     defect:
       "A message carrying attachments went to the hub as its plain text. \u00a7 15.2 requires the `attachments` array to be *in* the message body and \u00a7 8.2's content is a flat string, so the two are reconciled by sending JSON holding both \u2014 without it the recipient gets the words and no `download_url`, and \u00a7 15.4's pull-on-demand loop has nothing to pull.",
@@ -6766,8 +6796,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A document naming code is a copy of it. A row whose anchor has been renamed or deleted still reads as a decision somebody made about the code that is there now — which is worse than no document, because the reason is stated with confidence and points at nothing.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `app.onError((err, c) => {` |",
-    to: "| `packages/http/src/main.ts` | `app.onGiveUp((err, c) => {` |",
+    from: "| `packages/http/src/main.ts` | `webpush.sendNotification(` |",
+    to: "| `packages/http/src/main.ts` | `webpush.deliverNotification(` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every anchor is still in the file it names"],
   },
@@ -6777,8 +6807,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `app.onError((err, c) => {` |",
-    to: "| `packages/http/src/where-it-used-to-be.ts` | `app.onError((err, c) => {` |",
+    from: "| `packages/http/src/main.ts` | `webpush.setVapidDetails(` |",
+    to: "| `packages/http/src/where-it-used-to-be.ts` | `webpush.setVapidDetails(` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },

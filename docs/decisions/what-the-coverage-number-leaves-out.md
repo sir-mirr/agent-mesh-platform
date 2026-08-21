@@ -83,9 +83,20 @@ must never do is fall back to a hand-written list, and until now the branch that
 refuses to fall back was itself unreached. The mutation that makes it fall back
 is in the manifest.
 
-**A last-resort handler.** `app.onError` answers what every route already
-catches. Reaching it needs a defect, so a test for it plants one — and then
-asserts that the handler this repository would rather never run, ran.
+**A last-resort handler, which turned out to be reachable by asking.** This
+category held `app.onError`, on the reasoning that getting there needs a defect.
+True of the route, not of the handler: it is a function, and it is exported now,
+so a four-line Hono app whose route throws runs the real one. Both of its
+decisions are about what leaves the process — the caller is told a 500 happened
+and nothing else, the log is told the message and the route — and neither had
+been checked. The route is the pathname on purpose, because a query string is
+caller input and one of them is a session token in a link somebody pasted.
+
+Opening it also removed a line. `err instanceof Error ? err.message : String(err)`
+could not run: Hono re-throws anything that is not an `Error` instead of calling
+the handler, so a thrown string leaves through the framework and the guard sat
+there reading as though the case were handled. The behaviour is held by a test
+rather than argued in a comment, so the guard comes back if Hono ever wraps.
 
 **A timer that fires later than any suite waits.** This category is now empty,
 and how it emptied is the useful part. The three SSE keepalives were here — 20
@@ -123,7 +134,6 @@ reason no longer describes anything and the row is stale.
 | File | Anchor | Why it is left |
 |---|---|---|
 | `packages/http/src/main.ts` | `if (import.meta.main) {` | The boot block: `Bun.serve`, the port log, the signal handlers. Runs in `test/`, in another process. |
-| `packages/http/src/main.ts` | `app.onError((err, c) => {` | Last-resort handler. Every route catches what it can fail on, so the only trigger is a defect. |
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |

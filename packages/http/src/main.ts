@@ -4101,15 +4101,37 @@ app.notFound((c) => {
 
 // --- Global error handler ---
 
-app.onError((err, c) => {
+/**
+ * The answer to a request whose handler threw.
+ *
+ * **Exported so it can be called.** Reaching it through a route needs a defect,
+ * which is why it sat uncovered — and a handler nobody has run is a handler
+ * whose two decisions nobody has checked. Both are about what leaves the
+ * process: the caller is told a 500 happened and nothing else, because an
+ * exception message is written for whoever wrote the code and can carry a path,
+ * a query or a row; the log gets the message and the route, because that is
+ * where the person who can fix it is looking.
+ *
+ * `err` is an `Error` and the guard for anything else is gone. Hono's
+ * `#handleError` re-throws whatever is not one rather than calling this, so the
+ * branch could not run — and a branch that cannot run is one nobody has
+ * checked, sitting where it reads as though the case is handled. It is not: a
+ * thrown string leaves through the framework, and `unhandled.test.ts` holds
+ * that behaviour so the guard comes back if Hono ever starts wrapping.
+ */
+export function answerUnhandled(err: Error, c: Context): Response {
   log.error('a request handler threw, so the caller is answered a 500', 'unhandled_error', {
+    // The pathname, never the URL. A query string is caller input and one of
+    // them is a session token in a link somebody pasted.
     route: new URL(c.req.url).pathname,
     outcome: 'failed',
     reason: 'unhandled_exception',
-    error: err instanceof Error ? err.message : String(err),
+    error: err.message,
   })
   return c.json({ error: 'Internal server error' }, 500)
-})
+}
+
+app.onError(answerUnhandled)
 
 // --- Start server ---
 
