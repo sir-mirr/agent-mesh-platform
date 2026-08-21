@@ -36,7 +36,9 @@ import { auditDb } from "../db";
 import { wsIdentities } from "../presence";
 import { UPLOAD_DIR, blobPath } from "../blobs";
 import {
+  AUDIT_BUSY,
   AUDIT_MISSING_BLOBS,
+  AUDIT_STORAGE_EXHAUSTED,
   handleAuditAppend,
   handlePrepareBlobs,
   recordDelivered,
@@ -407,5 +409,160 @@ describe("what the hub records for itself", () => {
     expect(ids).toHaveLength(5);
     expect(ids.every((id) => id.startsWith("evt_"))).toBe(true);
     expect([...ids].sort()).toEqual(ids);
+  });
+});
+
+/**
+ * What the method answers when the store itself will not take the event.
+ *
+ * § 15.6 forbids audit exhaustion taking message delivery with it, and § 8.9.3
+ * divides the answers into transient and permanent — a conformant client
+ * retries a transient one "with backoff and jitter and no maximum attempt
+ * count". So which class a failure lands in is a promise about what the client
+ * will do with it, and until now every one of these paths was reasoning with
+ * nothing standing under it: the hub is a separate process in `test/`, and no
+ * suite had ever made this store refuse.
+ *
+ * The refusals are made at the store, by the store: a table renamed away, and
+ * a trigger that aborts with the message a full disk produces. Each is put
+ * back in a `finally`, so a case that fails does not take the rest of the run
+ * with it.
+ */
+describe("when the audit store will not take it", () => {
+  /** This block's own reader: the outer one belongs to the block above it. */
+  const recorded = (correlationId: string) =>
+    auditDb
+      .prepare(`SELECT event_type, payload FROM audit_events WHERE correlation_id = ?`)
+      .all(correlationId) as Array<Record<string, any>>;
+
+  /** Run `body` with `audit_events` renamed out from under the statements. */
+  function withNoAuditTable<T>(body: () => T): T {
+    auditDb.exec("ALTER TABLE audit_events RENAME TO audit_events_unavailable");
+    try {
+      return body();
+    } finally {
+      auditDb.exec("ALTER TABLE audit_events_unavailable RENAME TO audit_events");
+    }
+  }
+
+  /** Run `body` with every insert aborting, as SQLite reports the named cause. */
+  function withInsertsRefused<T>(cause: string, body: () => T): T {
+    auditDb.exec(
+      `CREATE TRIGGER aap_refuse_insert BEFORE INSERT ON audit_events
+       BEGIN SELECT RAISE(ABORT, '${cause}'); END`,
+    );
+    try {
+      return body();
+    } finally {
+      auditDb.exec("DROP TRIGGER aap_refuse_insert");
+    }
+  }
+
+  test("a duplicate check that cannot be read is answered, not thrown", () => {
+    const { ws } = connected();
+
+    const answered = withNoAuditTable(() => append(ws, event()));
+
+    expect(answered.error!.data!.code).toBe("AUDIT_APPEND_FAILED");
+    expect(answered.error!.message).toContain("audit append failed");
+    expect(answered.result).toBeUndefined();
+  });
+
+  test("a full volume is transient, and says so in its own code", () => {
+    const { ws } = connected();
+
+    const answered = withInsertsRefused("database or disk is full", () => append(ws, event()));
+
+    expect(answered.error!.code).toBe(AUDIT_STORAGE_EXHAUSTED);
+    expect(answered.error!.data!.code).toBe("AUDIT_STORAGE_EXHAUSTED");
+  });
+
+  test("a busy store is transient, and says how long to wait", () => {
+    const { ws } = connected();
+
+    const answered = withInsertsRefused("database is locked", () => append(ws, event()));
+
+    expect(answered.error!.code).toBe(AUDIT_BUSY);
+    expect(answered.error!.data).toMatchObject({ code: "AUDIT_BUSY", retry_after_ms: 250 });
+  });
+
+  /**
+   * **Not `AUDIT_BUSY`.** A constraint violation, a schema mismatch or a bug in
+   * this handler fails identically on every attempt, and a client told it is
+   * transient keeps the event in its outbox forever while hammering a path that
+   * is already broken. Permanent instead, so it drops it and records the
+   * failure where a person can see it.
+   */
+  test("anything else is permanent, so the client stops rather than retrying forever", () => {
+    const { ws } = connected();
+
+    const answered = withInsertsRefused("CHECK constraint failed: schema_version", () => append(ws, event()));
+
+    expect(answered.error!.code).not.toBe(AUDIT_BUSY);
+    expect(answered.error!.data!.code).toBe("AUDIT_APPEND_FAILED");
+    expect(answered.error!.message).toContain("CHECK constraint failed");
+  });
+
+  test("nothing is committed by a refused append", () => {
+    const { ws } = connected();
+    const e = event();
+
+    withInsertsRefused("database or disk is full", () => append(ws, e));
+
+    expect(storedRow(e.event_id) ?? undefined).toBeUndefined();
+  });
+
+  test("the store recovers: the same event appends once the refusal is lifted", () => {
+    const { ws } = connected();
+    const e = event();
+    withInsertsRefused("database is locked", () => append(ws, e));
+
+    const answered = append(ws, e);
+
+    expect(answered.result).toMatchObject({ ok: true, committed: true, duplicate: false });
+  });
+
+  /**
+   * The hub's own events are recorded on paths that must not fail — a delivery
+   * that threw here would take the routing down with the audit store, which is
+   * § 15.6 inverted. They are swallowed and logged instead, which is the one
+   * place in this file where nothing is answered to anybody.
+   */
+  test("the hub's own message event is logged rather than thrown", () => {
+    const messageId = uniq("msg");
+
+    expect(() =>
+      withNoAuditTable(() =>
+        recordDelivered({
+          id: messageId, from_agent: "a", to_agent: "b", sent_by: "a",
+          content: "the body", reply_to: null,
+        }),
+      ),
+    ).not.toThrow();
+    expect(recorded(messageId)).toEqual([]);
+  });
+
+  test("the hub's own identity event is logged rather than thrown", () => {
+    const identity = uniq("agent");
+
+    expect(() =>
+      withNoAuditTable(() =>
+        recordIdentityEvent("mesh.identity.type_changed", {
+          identity, change: { from: "human", to: "ai-claude" }, actor: null,
+        }),
+      ),
+    ).not.toThrow();
+    expect(recorded(identity)).toEqual([]);
+  });
+
+  test("recording resumes afterwards", () => {
+    const identity = uniq("agent");
+    withNoAuditTable(() =>
+      recordIdentityEvent("mesh.identity.type_changed", { identity, change: {}, actor: null }),
+    );
+
+    recordIdentityEvent("mesh.identity.type_changed", { identity, change: {}, actor: "operator-1" });
+
+    expect(recorded(identity)).toHaveLength(1);
   });
 });

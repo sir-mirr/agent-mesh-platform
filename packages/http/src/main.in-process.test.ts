@@ -1687,3 +1687,81 @@ describe("naming a file on a send", () => {
     expect(res.status).toBe(201);
   });
 });
+
+/**
+ * What each of these routes does when the store under it will not answer.
+ *
+ * Every one of them is a `catch` written for a failure nothing had ever
+ * produced: the tables are there in every test and in every deployment until
+ * the day one of them is not. The refusals are made at the store, by renaming
+ * the table out from under the handle and putting it back in a `finally`, so a
+ * case that fails does not take the rest of the file with it.
+ */
+describe("when a store under a route will not answer", () => {
+  /** Rename one table away for the duration of `body`. */
+  async function withoutTable<T>(file: string, table: string, body: () => Promise<T> | T): Promise<T> {
+    const db = new Database(join(STATE, file), { readwrite: true });
+    db.exec(`ALTER TABLE ${table} RENAME TO ${table}_unavailable`);
+    try {
+      return await body();
+    } finally {
+      db.exec(`ALTER TABLE ${table}_unavailable RENAME TO ${table}`);
+      db.close();
+    }
+  }
+
+  /**
+   * A teardown is destructive and irreversible, so "it did not happen" has to
+   * be said out loud. Answering anything but an error here reports an identity
+   * torn down that is still live.
+   */
+  test("a teardown that could not be written is a 500 that says so", async () => {
+    const res = await withoutTable("agents.db", "agents", () =>
+      asAdmin("/api/v1/admin/agents/in-process-untearable", "DELETE"),
+    );
+
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toContain("db error");
+  });
+
+  /**
+   * § 11.3's telemetry is one document assembled from several stores, and a
+   * queue depth that cannot be read is `null` — not `0`, which is the answer an
+   * operator hopes for and would stop looking at.
+   */
+  test("a queue depth it cannot read is null, and the rest of the document still answers", async () => {
+    const res = await withoutTable("agent-mesh.db", "pending_approvals", () =>
+      asAdmin("/api/v1/admin/telemetry", "GET"),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.users_awaiting_decision).toEqual({ waiting: null, oldest: null });
+    expect(body.lanes_not_draining).toBeDefined();
+  });
+
+  /**
+   * The § 8.9 stream's gap fetch is a convenience: it hands a reconnecting
+   * console what it missed. A failure there must not take the stream with it,
+   * or a store hiccup turns every open console into one that cannot reconnect.
+   */
+  test("a gap fetch that fails leaves the stream open and live", async () => {
+    const res = await withoutTable("hub.db", "messages", () =>
+      call("/api/v1/admin/chat-audits/stream", { headers: { cookie, "last-event-id": "in-process-audit-anchor" } }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const reader = res.body!.getReader();
+    const first = await Promise.race([
+      reader.read().then((r) => new TextDecoder().decode(r.value)),
+      new Promise<string>((r) => setTimeout(() => r("<nothing>"), 250)),
+    ]);
+    await reader.cancel();
+    // The stream says hello and replays nothing, rather than failing the
+    // request or hanging with no answer at all.
+    expect(first).toContain("connected");
+    expect(first).not.toContain("event: message");
+  });
+});
+

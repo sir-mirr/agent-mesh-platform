@@ -28,7 +28,7 @@ import { AUDIT_LIMITS, MAX_SCHEMA_VERSION } from "./audit-limits";
 import { INVALID_PARAMS } from "../jsonrpc";
 import { agentsDb, db } from "../db";
 import { onlineAgents, proxyMap, wsIdentities } from "../presence";
-import { handleConnect, handleRegister, performConnect } from "./connect";
+import { deliverPending, handleConnect, handleRegister, performConnect } from "./connect";
 
 let n = 0;
 const nextId = (prefix: string) => `${prefix}-${++n}-${process.pid}`;
@@ -246,5 +246,81 @@ describe("proxy claims", () => {
     const proxy = nextId("not-an-array");
     register(proxy);
     expect(connect(socket(), { identity: proxy, proxy_for: "everyone" }).result?.ok).toBe(true);
+  });
+});
+
+/**
+ * The replay itself, driven directly.
+ *
+ * `ws.send` reports a dropped frame by returning 0 rather than by throwing, so
+ * both endings have to be checked: a socket that quietly drops, and one that
+ * fails outright. Either way the row stays `pending` — a row marked
+ * `delivered` is not replayed again, so a wrong claim here is not recoverable
+ * and § 8.9.4's delivery record would be a claim about a recipient that never
+ * received anything.
+ */
+describe("replaying a queue to a socket that is going away", () => {
+  test("a dropped frame stops the replay and leaves the rest queued", () => {
+    const identity = nextId("dropping");
+    register(identity);
+    const first = nextId("first");
+    const second = nextId("second");
+    queue(identity, first);
+    queue(identity, second);
+
+    deliverPending(identity, { ...socket(), send: () => 0 });
+
+    expect(statusOf(first)).toBe("pending");
+    expect(statusOf(second)).toBe("pending");
+  });
+
+  test("a socket that throws stops it the same way", () => {
+    const identity = nextId("throwing");
+    register(identity);
+    const first = nextId("first");
+    const second = nextId("second");
+    queue(identity, first);
+    queue(identity, second);
+
+    expect(() =>
+      deliverPending(identity, {
+        ...socket(),
+        send: () => { throw new Error("socket write after close"); },
+      }),
+    ).not.toThrow();
+
+    expect(statusOf(first)).toBe("pending");
+    expect(statusOf(second)).toBe("pending");
+  });
+
+  test("a socket that throws on the second frame keeps the first delivery", () => {
+    const identity = nextId("half-open");
+    register(identity);
+    const first = nextId("first");
+    const second = nextId("second");
+    queue(identity, first);
+    queue(identity, second);
+    let frames = 0;
+
+    deliverPending(identity, {
+      ...socket(),
+      send: (frame: string) => {
+        if (++frames > 1) throw new Error("socket write after close");
+        return frame.length;
+      },
+    });
+
+    expect(statusOf(first)).toBe("delivered");
+    expect(statusOf(second)).toBe("pending");
+  });
+
+  test("an identity with nothing queued asks the socket for nothing", () => {
+    const identity = nextId("empty-queue");
+    register(identity);
+    const ws = socket();
+
+    deliverPending(identity, ws);
+
+    expect(ws.sent).toEqual([]);
   });
 });

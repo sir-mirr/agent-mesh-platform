@@ -368,4 +368,32 @@ describe("proposing a key that is already someone else's", () => {
     expect(again.status).toBe("pending");
     db.close();
   });
+
+  /**
+   * The same question asked *before* the write, for a route that has to refuse
+   * without reporting. It answers a name, which is why § 10.2 has the caller
+   * compare and discard rather than pass it on — the refusal above is what the
+   * caller sends instead.
+   */
+  test("fingerprintHolder names the holder, and null for a fingerprint nobody holds", () => {
+    const db = seeded();
+    const { fingerprint } = keys.proposeKey(db, "owner", KEY, "test");
+
+    expect(keys.fingerprintHolder(db, fingerprint)).toBe("owner");
+    expect(keys.fingerprintHolder(db, "sha256:" + "0".repeat(64))).toBeNull();
+    db.close();
+  });
+
+  test("a revoked key is still held by the identity that proposed it", () => {
+    // The fingerprint does not become free again: § 9.3 keeps the row so past
+    // signatures stay verifiable, and a freed fingerprint would let a second
+    // identity take one that already appears in the history.
+    const db = seeded();
+    const { fingerprint } = keys.proposeKey(db, "owner", KEY, "test");
+    keys.approveKey(db, fingerprint, "test");
+    keys.revokeKey(db, fingerprint, "test", "rotation");
+
+    expect(keys.fingerprintHolder(db, fingerprint)).toBe("owner");
+    db.close();
+  });
 });

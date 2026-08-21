@@ -215,6 +215,34 @@ describe("the answer that is deliberately the same twice", () => {
     const res = await get(id, { cookie: me.cookie });
     expect(res.status).toBe(404);
   });
+
+  /**
+   * **A directory exists and is not bytes.** The path check answers *where*, so
+   * something that satisfies it and is not a file reaches the stream — and
+   * `Bun.file` on a directory is not a readable body. Nothing normal creates
+   * one under `uploads/`, which is the reason it has to be checked rather than
+   * assumed: what does create one is an operator, a restore, or a sibling
+   * process, and the answer to any of those is a `400`, not a stream that ends
+   * halfway or a handler that throws.
+   */
+  test("an id that names a directory is not a file, and says so", async () => {
+    const me = await approved();
+    const id = digestId();
+    carry(me.login, "peer-att", id);
+    const { mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const path = join(process.env.AGENT_MESH_STATE_DIR!, "uploads", id);
+    mkdirSync(path, { recursive: true });
+
+    try {
+      const res = await get(id, { cookie: me.cookie });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Not a file");
+    } finally {
+      rmSync(path, { recursive: true, force: true });
+    }
+  });
 });
 
 /**

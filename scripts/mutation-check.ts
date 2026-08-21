@@ -6478,6 +6478,127 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/rest/signed.test.ts",
     expect: ["the address it was seen on is recorded"],
   },
+  {
+    id: "audit-duplicate-check-answered",
+    swept: true,
+    defect:
+      "A duplicate check that cannot be read used to reach the dispatcher's last-resort handler, which answers a worse error than this one — and one § 8.9.3 does not classify, so a conformant client does not know whether to retry it.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: `    existing = stmtSelectAuditEvent.get(eventId) as
+      | { payload_digest: string; stored_at: string }
+      | undefined;`,
+    to: `    existing = (() => { try { return stmtSelectAuditEvent.get(eventId); } catch { return undefined; } })() as
+      | { payload_digest: string; stored_at: string }
+      | undefined;`,
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["a duplicate check that cannot be read is answered, not thrown"],
+  },
+  {
+    id: "audit-exhaustion-is-transient",
+    defect:
+      "§ 15.6: audit exhaustion must not take message delivery with it, and a full volume is the realistic case because separate volumes are a deployment choice. Reported as a permanent failure the client drops the event instead of holding it until an operator frees space.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    if (/disk|full|SQLITE_FULL|no space/i.test(message)) {",
+    to: "    if (false) {",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["a full volume is transient, and says so in its own code"],
+  },
+  {
+    id: "audit-unknown-failure-is-permanent",
+    defect:
+      "**Not `AUDIT_BUSY`.** § 8.9.3 classes that transient, and a conformant client retries transient errors with backoff and no maximum attempt count. A constraint violation or a bug in the handler fails identically on every attempt, so reporting one that way is the infinite retry the same paragraph exists to prevent.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    if (/locked|busy/i.test(message)) {",
+    to: "    if (true) {",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["anything else is permanent, so the client stops rather than retrying forever"],
+  },
+  {
+    id: "audit-own-event-never-throws",
+    defect:
+      "The hub's own § 8.9.4 records are written on the delivery path. An audit store that throws there takes routing down with it, which is § 15.6 inverted — so they are logged and swallowed, and nothing had ever made one fail.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    log(`audit: could not record ${eventType} for ${fields.identity}: ${err instanceof Error ? err.message : String(err)}`);",
+    to: "    throw err;",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["the hub's own identity event is logged rather than thrown"],
+  },
+  {
+    id: "replay-stops-on-a-dropped-frame",
+    defect:
+      "`ws.send` returns 0 for a dropped frame instead of throwing, so the replay used to walk a closing socket to the end, flip every row to `delivered`, and write an audit event per message saying a participant received mail that went nowhere. Not recoverable: a row marked delivered is not pending, so the next connect never replays it.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "      if (!landed) {",
+    to: "      if (false) {",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["a dropped frame stops the replay and leaves the rest queued"],
+  },
+  {
+    id: "replay-stops-on-a-throwing-socket",
+    swept: true,
+    defect:
+      "The other ending: a socket that throws mid-replay. Carrying on marks the rest delivered to a connection that is already gone, and each row is then invisible to the replay that would have handed it over.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from:
+      "      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);\n" +
+      "      break; // stop if connection is broken",
+    to: "      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);",
+    suite: "packages/hub/src/rpc/connect.test.ts",
+    expect: ["a socket that throws stops it the same way"],
+  },
+  {
+    id: "upload-counts-the-file-itself",
+    defect:
+      "`Content-Length` bounds the envelope and the envelope is not the file: the slack that covers the multipart boundary and headers is exactly the gap a file just over the ceiling fits into. The declaration is what an honest client always sends; the count is what a dishonest one cannot avoid.",
+    file: "packages/http/src/main.ts",
+    from: "  if (file.size > UPLOAD_MAX_BYTES) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/upload.test.ts",
+    expect: ["a file inside the envelope's slack and over the ceiling itself"],
+  },
+  {
+    id: "attachment-must-be-a-file",
+    swept: true,
+    defect:
+      "The path policy answers *where*, not *what*. A directory satisfies it and `existsSync`, and streaming one is not a download — it is a handler throwing where a `400` belongs.",
+    file: "packages/http/src/main.ts",
+    from: "  const stat = statSync(filePath)\n  if (!stat.isFile()) {",
+    to: "  const stat = statSync(filePath)\n  if (false) {",
+    suite: "packages/http/src/attachments.test.ts",
+    expect: ["an id that names a directory is not a file, and says so"],
+  },
+  {
+    id: "teardown-failure-is-reported",
+    defect:
+      "A teardown is destructive and irreversible, so a write that did not happen has to be said out loud. Answering anything but an error reports an identity torn down that is still live and still routing.",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ ok: false, error: `db error: ${msg}` }, 500)",
+    to: "    return c.json({ ok: true, action: 'soft-deleted' }, 200)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a teardown that could not be written is a 500 that says so"],
+  },
+  {
+    id: "telemetry-queue-unknown-is-null",
+    swept: true,
+    defect:
+      "§ 11.3's document is assembled from several stores. A queue depth that could not be read reported as `0` is the answer an operator hopes for, which is exactly when nobody questions it — the same reasoning as the mailbox column that reports `— 미보고` rather than zero.",
+    file: "packages/http/src/main.ts",
+    from: "        return { waiting: null, oldest: null }",
+    to: "        return { waiting: 0, oldest: null }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a queue depth it cannot read is null, and the rest of the document still answers"],
+  },
+  {
+    id: "audit-stream-survives-a-gap-fetch",
+    swept: true,
+    defect:
+      "The § 8.9 stream's gap fetch is a convenience — it hands a reconnecting console what it missed. A failure there taking the stream with it turns a store hiccup into every open console being unable to reconnect.",
+    file: "packages/http/src/main.ts",
+    from: "          console.error('[chat-audits/stream] gap fetch failed:', err)",
+    to: "          throw err",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a gap fetch that fails leaves the stream open and live"],
+  },
 ];
 
 /**

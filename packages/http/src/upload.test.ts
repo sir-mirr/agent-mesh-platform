@@ -137,6 +137,32 @@ describe("what it refuses before it reads a byte", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("No file provided");
   });
+
+  /**
+   * **The declaration is not the file.** The envelope bound is the ceiling plus
+   * enough slack for the boundary and headers, so a file between the ceiling
+   * and that sum passes the claim and is over the limit — which is exactly the
+   * gap a client with no intent to lie lands in. Refused on the real count,
+   * after the parse, which is the second half the ladder exists for.
+   */
+  test("a file inside the envelope's slack and over the ceiling itself", async () => {
+    const me = await session(true);
+    const bytes = new Uint8Array(UPLOAD_MAX_BYTES + 1);
+
+    const res = await upload(me, { name: "just-over.bin", bytes });
+
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toContain(String(UPLOAD_MAX_BYTES));
+  });
+
+  test("and one exactly at the ceiling is taken", async () => {
+    const me = await session(true);
+    const bytes = new Uint8Array(UPLOAD_MAX_BYTES);
+
+    const res = await upload(me, { name: "exactly.bin", bytes });
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("what it does with bytes it accepts", () => {
