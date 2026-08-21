@@ -23,7 +23,7 @@ import { connectionOwnership, dropConnection, onlineAgents, proxyMap, wsIdentiti
 import { handleDeleteAgent, handlePostAgents, handlePostAgentsV1, jsonResponse,
   handleGetAgentKeys,
 } from "./rest/agents";
-import { handleMailboxRoute } from "./rest/mailbox";
+import { handleMailboxRoute, handlesPath } from "./rest/mailbox";
 import { dispatch, dispatchHttp } from "./rpc/dispatch";
 
 // ---------------------------------------------------------------------------
@@ -182,8 +182,14 @@ const server = Bun.serve<SocketData, never>({
 
     // The signed inbox surface (§ 9.2.1). Answers `null` for a path it does
     // not own, so it cannot shadow a route that was already here.
-    if (url.pathname.startsWith("/api/v1/mailbox") ||
-        url.pathname === "/api/v1/capabilities") {
+    //
+    // **Which paths those are is `rest/mailbox.ts`'s answer, not this file's.**
+    // This branch decided it a second time with
+    // `startsWith("/api/v1/mailbox")` and the two disagreed: that claimed
+    // `/api/v1/mailboxfoo`, which the module then refused, and — because this
+    // branch `return`s rather than falling through — would have swallowed any
+    // route added below whose path began with those letters.
+    if (handlesPath(url.pathname)) {
       return req.text().then((body) =>
         handleMailboxRoute({
           method: req.method,

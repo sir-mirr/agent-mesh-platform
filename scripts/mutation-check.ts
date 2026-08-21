@@ -3567,6 +3567,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["a pairing code is minted for a name the mesh will accept"],
   },
+  {
+    id: "mailbox-prefix-claims-a-sibling-name",
+    defect:
+      "The hub dispatched on `startsWith(\"/api/v1/mailbox\")` while `rest/mailbox.ts` matched its four paths exactly, so `/api/v1/mailboxfoo` entered the branch and was refused inside it. Nothing leaked — the refusal is above `authenticate` — but the branch `return`s rather than falling through, so any route added below it whose path began with those letters was unreachable and nothing said so. Invisible from outside: measured on a booted hub, the sibling name answered `404 Not Found`, `text/plain`, nine bytes, exactly as an unrouted path does. 64a1be9 named this one and left it.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: '  return pathname === "/api/v1/capabilities" || isMailboxPath(pathname);',
+    to: '  return pathname === "/api/v1/capabilities" || pathname.startsWith("/api/v1/mailbox");',
+    suite: "packages/hub/src/mailbox-path.test.ts",
+    expect: ["/api/v1/mailboxfoo is not"],
+  },
+  {
+    id: "mailbox-recall-claims-a-sibling-name",
+    defect:
+      "The same boundary one level down. `/api/v1/mailbox/out/<id>` recalls a message a sender may still withdraw; dropping the trailing separator makes `/api/v1/mailbox/outfoo` a recall path, which the handler then routes on a suffix it parsed out of a name that was never an id. Registered beside the entry above because the fix for one is the reason to look at the other, and only a predicate test can tell either apart from a 404.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: '    pathname.startsWith("/api/v1/mailbox/out/")',
+    to: '    pathname.startsWith("/api/v1/mailbox/out")',
+    suite: "packages/hub/src/mailbox-path.test.ts",
+    expect: ["/api/v1/mailbox/outfoo is not"],
+  },
 ];
 
 /**

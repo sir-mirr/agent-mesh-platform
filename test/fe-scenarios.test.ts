@@ -1247,8 +1247,22 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(found).toBe(true);
   });
 
-  // SCR-07 / SC-SCR07-04: Non-existent lease ACK rejection
-  it("[SC-SCR07-04] refuses ACK for non-existent or invalid message lease", async () => {
+  // SCR-07 / SC-SCR07-04: there is no admin ACK route, and this says so.
+  //
+  // **It read as a guard and was measuring an absence.** `POST
+  // /api/v1/admin/mailbox/ack` is not served — `agent-mesh-http` has
+  // `/api/v1/admin/mailbox` and `/api/v1/admin/mailbox/:identity` and no third
+  // — so the `404` this always got satisfied `[400, 404]` and the scenario was
+  // recorded as "refuses an invalid lease" without a refusal existing. It was
+  // hidden twice over: `COVERAGE_INVENTORY.md` named the route, and the hub's
+  // dispatcher claimed `/api/v1/mailbox` by prefix, which exempted the name
+  // from `documented-routes.test.ts`. Tightening that prefix is what surfaced
+  // both.
+  //
+  // Pinned as `404` rather than widened: settling is `ack_ids` on the signed
+  // `POST /api/v1/mailbox/in` (SPEC § 9.2.1), so the day an admin ACK route
+  // exists this must fail and be rewritten against the guard it then has.
+  it("[SC-SCR07-04] has no admin ACK route to refuse an invalid lease with", async () => {
     const res = await fetch(`${mesh.http.url}/api/v1/admin/mailbox/ack`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: authCookie },
@@ -1257,7 +1271,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
         lease_id: "00000000-0000-0000-0000-000000000000",
       }),
     });
-    expect([400, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   // SCR-12 / SC-SCR12-02: Directional egress rule independence

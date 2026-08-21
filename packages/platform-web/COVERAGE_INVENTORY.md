@@ -165,7 +165,7 @@
 - **화면 ID**: `SCR-07`
 - **라우트**: `/creator/lease-queue`
 - **권한 요건**: Operator 이상
-- **데이터 소스**: `GET /api/v1/admin/mailbox`, `POST /api/v1/mailbox/lease`, `POST /api/v1/mailbox/ack`
+- **데이터 소스**: `GET /api/v1/admin/mailbox`, `POST /api/v1/mailbox/in` (리스와 ACK 둘 다 — `ack_ids` 로 직전 배치를 정산하고 다음 배치를 임대한다, SPEC § 9.2.1)
 
 | 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
 |---|---|---|---|---|

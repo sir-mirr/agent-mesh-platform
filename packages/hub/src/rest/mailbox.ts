@@ -104,6 +104,50 @@ export interface MailboxRequest {
 }
 
 /**
+ * The signed paths this module answers.
+ *
+ * **One word, and the direction is the caller's.** `in` is what has arrived
+ * for this caller; `out` is what they sent and may still recall. `inbox` and
+ * `outbox` named the same two directions from whichever end the reader
+ * happened to be standing at, which went wrong every time a proxy was in the
+ * path — see docs/decisions/mailbox-and-hub.md.
+ *
+ * Exported because the dispatcher in `main.ts` used to decide the same thing a
+ * second time, with `startsWith("/api/v1/mailbox")` — and the two disagreed.
+ * A name-space claimed in two places is claimed twice differently sooner or
+ * later; this is the one place that decides.
+ */
+export function isMailboxPath(pathname: string): boolean {
+  return (
+    pathname === "/api/v1/mailbox/in" ||
+    pathname === "/api/v1/mailbox/history" ||
+    pathname === "/api/v1/mailbox/out" ||
+    pathname.startsWith("/api/v1/mailbox/out/")
+  );
+}
+
+/**
+ * Every path this module answers, signed surface and the unsigned route beside
+ * it — what the hub's dispatcher must hand over and nothing more.
+ *
+ * **The boundary is the separator, not the word.** The dispatcher matched
+ * `startsWith("/api/v1/mailbox")`, which also claimed `/api/v1/mailboxfoo`,
+ * and that branch `return`s rather than falling through — so any route added
+ * below it whose path merely began with those letters would be unreachable and
+ * nothing would say so.
+ *
+ * Measured before changing, on a hub booted for it: `/api/v1/mailboxfoo`
+ * answered `404 Not Found`, `text/plain`, nine bytes — byte-for-byte what an
+ * unrouted path answers, and no log line either. It reached nothing, because
+ * `isMailboxPath` above refuses before `authenticate` runs. So this was never
+ * the defect `/api/v1/files` had; what it cost was the request body read above
+ * a refusal, and a claim on names this module does not own.
+ */
+export function handlesPath(pathname: string): boolean {
+  return pathname === "/api/v1/capabilities" || isMailboxPath(pathname);
+}
+
+/**
  * Route one request, or return null when the path is not ours.
  *
  * Returning null rather than 404 lets the caller fall through to the routes
@@ -158,17 +202,7 @@ export function handleMailboxRoute(req: MailboxRequest): Response | null {
     });
   }
 
-  // **One word, and the direction is the caller's.** `in` is what has arrived
-  // for this caller; `out` is what they sent and may still recall. `inbox` and
-  // `outbox` named the same two directions from whichever end the reader
-  // happened to be standing at, which went wrong every time a proxy was in the
-  // path — see docs/decisions/mailbox-and-hub.md.
-  const isOurs =
-    pathname === "/api/v1/mailbox/in" ||
-    pathname === "/api/v1/mailbox/history" ||
-    pathname === "/api/v1/mailbox/out" ||
-    pathname.startsWith("/api/v1/mailbox/out/");
-  if (!isOurs) return null;
+  if (!isMailboxPath(pathname)) return null;
 
   const auth = authenticate(method, req.path, req.authorization, req.body, req.observed ?? null);
   if (!auth.ok) return json(auth.refusal.status, auth.refusal.body);
