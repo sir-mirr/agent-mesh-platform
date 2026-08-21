@@ -10,7 +10,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { DEFAULT_LIMIT, MAX_LIMIT, listChatAudits, pageLimit } from "./chat-audits";
+import { DEFAULT_LIMIT, MAX_LIMIT, likeContains, listChatAudits, pageLimit } from "./chat-audits";
 
 type Row = { id: string; from: string; to: string; content: string; ts: string };
 
@@ -78,16 +78,34 @@ describe("filtering", () => {
   });
 
   /**
-   * **`search` is a `LIKE` pattern, and its wildcards are not escaped.** The
-   * value is bound, so this is over-matching rather than injection: `%`
-   * matches any run and `_` any single character, so an operator searching for
-   * a literal `50%` gets every message. Pinned as it stands — a change here
-   * changes what the console's search box means, which is not this file's to
-   * decide (`docs/open-questions.md` § 9).
+   * **`search` is a literal substring (D-743).** The value is bound, so the
+   * unescaped version was over-matching rather than injection — but `%`
+   * matched any run, and an operator searching for `50%` was handed every
+   * message in the audit. On this screen the wrong direction to fail in is
+   * *more content than was asked for*, against the one capability that exists
+   * to keep it narrow. Decided by the console's owner (fe-codex), adopted as
+   * D-743.
    */
-  test("passes LIKE wildcards through unescaped", () => {
-    expect(ids(listChatAudits(three(), { search: "%" }))).toEqual(["m3", "m2", "m1"]);
-    expect(ids(listChatAudits(three(), { search: "s_cond" }))).toEqual(["m2"]);
+  test("treats LIKE wildcards as the characters they are", () => {
+    const db = store([
+      { id: "p1", from: "x", to: "y", content: "at 50% capacity", ts: at(1) },
+      { id: "p2", from: "x", to: "y", content: "no percentage here", ts: at(2) },
+      { id: "p3", from: "x", to: "y", content: "an a_b identifier", ts: at(3) },
+      { id: "p4", from: "x", to: "y", content: "an axb identifier", ts: at(4) },
+      { id: "p5", from: "x", to: "y", content: "a back\\slash", ts: at(5) },
+    ]);
+    expect(ids(listChatAudits(db, { search: "%" }))).toEqual(["p1"]);
+    expect(ids(listChatAudits(db, { search: "50%" }))).toEqual(["p1"]);
+    expect(ids(listChatAudits(db, { search: "a_b" }))).toEqual(["p3"]);
+    expect(ids(listChatAudits(db, { search: "\\" }))).toEqual(["p5"]);
+  });
+
+  test("escapes the escape character before the wildcards it introduces", () => {
+    expect(likeContains("plain")).toBe("%plain%");
+    expect(likeContains("50%")).toBe("%50\\%%");
+    expect(likeContains("a_b")).toBe("%a\\_b%");
+    expect(likeContains("\\")).toBe("%\\\\%");
+    expect(likeContains("\\%")).toBe("%\\\\\\%%");
   });
 });
 

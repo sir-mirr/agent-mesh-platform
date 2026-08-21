@@ -36,6 +36,23 @@ export interface ChatAuditsResult {
     | { error: string; detail: string };
 }
 
+/**
+ * **`search` is a literal substring, not a `LIKE` pattern (D-743).**
+ *
+ * The value was bound but its wildcards were not escaped, so `%` matched any
+ * run and `_` any single character: an operator searching for `50%` was handed
+ * every message in the audit. That is over-matching rather than injection, and
+ * on an audit screen over-matching is the expensive direction — it is more
+ * message content on screen than the search asked for, against a capability
+ * that exists to keep that narrow.
+ *
+ * The escape character is escaped first; doing it after would double the
+ * backslashes this function had just introduced.
+ */
+export function likeContains(value: string): string {
+  return "%" + value.replace(/[\\%_]/g, (ch) => "\\" + ch) + "%";
+}
+
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 200;
 
@@ -102,8 +119,8 @@ export function listChatAudits(openHub: () => Database, q: ChatAuditQuery): Chat
       params.push(toAgent);
     }
     if (search !== null) {
-      where.push("content LIKE ?");
-      params.push("%" + search + "%");
+      where.push("content LIKE ? ESCAPE '\\'");
+      params.push(likeContains(search));
     }
 
     const whereClause = where.length > 0 ? "WHERE " + where.join(" AND ") : "";

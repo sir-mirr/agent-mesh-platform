@@ -362,6 +362,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses with the reason, rather than an empty page"],
   },
   {
+    id: "chat-audits-search-is-a-pattern-again",
+    defect:
+      "The audit search stopped escaping `LIKE`'s wildcards, so an operator's text became a pattern again: `%` matches any run, `_` any single character, and a search for `50%` returns every message in the audit. Bound, so this is over-matching rather than injection \u2014 and on an audit screen over-matching is the expensive direction, because it is message content on screen that the capability gating this route exists to keep narrow (D-743).",
+    file: "packages/http/src/chat-audits.ts",
+    from: '  return "%" + value.replace(/[\\\\%_]/g, (ch) => "\\\\" + ch) + "%";',
+    to: '  return "%" + value + "%";',
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["treats LIKE wildcards as the characters they are"],
+  },
+  {
     id: "grant-author-is-self-reported",
     defect:
       "`grantedBy` started falling back to a field the caller sent. The grant record is the only account of how somebody came to hold a capability, and one whose author is self-reported records whatever the author wanted recorded \u2014 including a name that never made the grant.",
