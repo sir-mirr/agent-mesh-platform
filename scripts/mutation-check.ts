@@ -4241,6 +4241,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["is not drawn, not audited, and not pushed"],
   },
+  {
+    id: "a-hub-reply-resolves-whichever-request-is-waiting",
+    defect:
+      "`sendViaHub` stopped correlating its reply by id and took the first frame it saw. One socket carries every caller's traffic, so a send would resolve on somebody else's answer and hand this caller another message's id \u2014 which is then written into the row and reported as the delivery.",
+    file: "packages/http/src/main.ts",
+    from: "        if (data.id === reqId) {",
+    to: "        if (true) {",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["ignores an answer that is not to its request"],
+  },
+  {
+    id: "attachments-are-dropped-off-the-wire",
+    defect:
+      "A message carrying attachments went to the hub as its plain text. \u00a7 15.2 requires the `attachments` array to be *in* the message body and \u00a7 8.2's content is a flat string, so the two are reconciled by sending JSON holding both \u2014 without it the recipient gets the words and no `download_url`, and \u00a7 15.4's pull-on-demand loop has nothing to pull.",
+    file: "packages/http/src/main.ts",
+    from: "    ? JSON.stringify({ text, attachments })",
+    to: "    ? text",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["wraps a message with attachments, and leaves a plain one alone"],
+  },
+  {
+    id: "a-refused-message-stays-pending-in-the-row",
+    defect:
+      "A message the hub would not take was corrected in the object the response is built from and not in the table. The history route, the conversation view and search all serve the stored value, so the caller was told the truth once and every later read was told it is still waiting for its recipient \u2014 a message that never left this machine, labelled `pending` for ever.",
+    file: "packages/http/src/main.ts",
+    from: "    if (!updateMessageStatus(msg.id, 'failed')) {",
+    to: "    if (false) {",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["marks a message the hub would not take as failed, in the row too"],
+  },
 ];
 
 /**

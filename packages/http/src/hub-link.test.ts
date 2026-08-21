@@ -26,7 +26,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 process.env.JWT_SECRET ||= "hub-link-probe";
 
 const { app, connectToHub, sseClientCount } = await import("./main.ts");
-const { getDb, upsertApprovedWebUser } = await import("./db");
+const { getDb, upsertApprovedWebUser, upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 
 let n = 0;
@@ -51,6 +51,10 @@ type Fake = {
   message: (frame: unknown) => void;
   /** Deliver bytes the hub would never send, to reach the parse failure. */
   messageRaw: (raw: string) => void;
+  /** Answer a request frame the way the hub would, correlated by its id. */
+  reply: (result: unknown, overrideId?: number) => void;
+  /** How many message listeners are still attached. */
+  listeners: () => number;
   /** Drop the link without scheduling anything. See `hangUp` below. */
   error: () => void;
 };
@@ -65,23 +69,37 @@ type Fake = {
 function standInSocket(): Fake {
   const sent: string[] = [];
   let ws: any;
+  // **Real listener bookkeeping.** `sendViaHub` correlates a reply by adding a
+  // `message` listener and removing it again, so a stand-in with no-op
+  // `addEventListener` leaves every send waiting out its five-second timeout —
+  // and a leak there is invisible without somewhere to count them.
+  const listeners = new Set<(e: { data: string }) => void>();
   globalThis.WebSocket = function (this: any) {
     ws = this;
     this.send = (frame: string) => {
       sent.push(frame);
       steps.push({ kind: "ws", frame: JSON.parse(frame) });
     };
-    this.addEventListener = () => {};
-    this.removeEventListener = () => {};
+    this.addEventListener = (kind: string, fn: any) => { if (kind === "message") listeners.add(fn); };
+    this.removeEventListener = (kind: string, fn: any) => { if (kind === "message") listeners.delete(fn); };
     this.close = () => {};
     return this;
   } as any;
+  const deliver = (raw: string) => {
+    ws.onmessage?.({ data: raw });
+    for (const fn of [...listeners]) fn({ data: raw });
+  };
 
   return {
     sent,
     open: async () => { await ws.onopen(); },
     message: (frame: unknown) => ws.onmessage({ data: JSON.stringify(frame) }),
     messageRaw: (raw: string) => ws.onmessage({ data: raw }),
+    reply: (result: unknown, overrideId?: number) => {
+      const request = sent.map((f) => JSON.parse(f)).reverse().find((f) => typeof f.id === "number");
+      deliver(JSON.stringify({ jsonrpc: "2.0", id: overrideId ?? request?.id, result }));
+    },
+    listeners: () => listeners.size,
     error: () => ws.onerror(),
   };
 }
@@ -390,5 +408,157 @@ describe("what it does with a frame the hub pushes", () => {
       }),
     ).not.toThrow();
     expect(stored(id)).toBeNull();
+  });
+});
+
+/**
+ * `sendViaHub`, reached the only way a caller can reach it.
+ *
+ * It is module-private and its whole job is correlation: put a request on the
+ * socket, wait for the frame carrying the same id, hand back the hub's message
+ * id. Nothing had ever driven it with a hub that answers — the suite could
+ * only ever see the `hubConnected === false` shortcut, which is the branch that
+ * does not correlate anything.
+ */
+describe("sending through the hub", () => {
+  /** An approved person, and the cookie their browser would carry. */
+  async function sender() {
+    const login = uniq("sender");
+    const user = upsertUser(650000 + n, login);
+    createPendingApproval(login, user.github_id);
+    expect(approveUser(login)).toBe(true);
+    upsertApprovedWebUser(login);
+    // **A member may message only what a policy allows.** `role: "admin"` would
+    // skip the check entirely, and skipping it here would make every assertion
+    // below true of a session nobody in this deployment actually has.
+    getDb().prepare(`INSERT OR IGNORE INTO policies (github_login, allowed_agent) VALUES (?, '*')`).run(login);
+    const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
+    return { login, cookie: `mesh_token=${jwt}` };
+  }
+
+  /**
+   * A recipient this server knows about.
+   *
+   * `POST /api/v1/messages` answers `404` for an identity absent from *this*
+   * server's `agent_registry` (SPEC § 9.1) — a different table from the hub's,
+   * on the same namespace. An identity can exist on the mesh, connect, hold an
+   * approved key, and still not be addressable here.
+   */
+  const recipient = () => {
+    const id = uniq("agent");
+    getDb().prepare(
+      `INSERT OR IGNORE INTO agent_registry (id, name, channel, type, approved) VALUES (?, ?, 'mesh', 'agent', 1)`,
+    ).run(id, id);
+    return id;
+  };
+
+  const post = (cookie: string, body: Record<string, unknown>) =>
+    app.fetch(new Request("http://hub-probe/api/v1/messages", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+
+  const rowOf = (id: string) =>
+    getDb().prepare(`SELECT status FROM messages WHERE id = ?`).get(id) as { status: string } | null;
+
+  async function connected() {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    connectToHub();
+    await ws.open();
+    return ws;
+  }
+
+  test("puts the message on the wire and takes the hub's id for the answer", async () => {
+    const ws = await connected();
+    const me = await sender();
+    const to = recipient();
+
+    const inFlight = post(me.cookie, { to, text: "hello there" });
+    await Bun.sleep(5);
+    const request = parse(ws.sent).find((f) => f.method === "mesh.send");
+    expect(request, "nothing was sent to the hub").toBeDefined();
+    expect(request.params).toEqual({ to, content: "hello there", from: me.login });
+
+    ws.reply({ id: "hub-assigned-1" });
+    const res = await inFlight;
+    // `201`: the message was created here before the hub was asked, which is
+    // also why the row exists to be corrected when the hub refuses it.
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    // Accepted by the hub, so the row is `pending` — waiting for its
+    // recipient — rather than `failed`.
+    expect(body.message.status).toBe("pending");
+    expect(rowOf(body.message.id)?.status).toBe("pending");
+  });
+
+  /**
+   * **§ 15.2 puts the attachments *in* the body and § 8.2's content is a flat
+   * string**, so a message carrying them goes on the wire as JSON holding both.
+   * One without them stays a plain string, which is the case that must not
+   * change.
+   */
+  test("wraps a message with attachments, and leaves a plain one alone", async () => {
+    const ws = await connected();
+    const me = await sender();
+    const to = recipient();
+
+    const attachment = { id: "a".repeat(64) + ".txt", download_url: "http://x/api/v1/attachments/a" };
+    const inFlight = post(me.cookie, { to, text: "see attached", attachments: [attachment] });
+    await Bun.sleep(5);
+    const request = parse(ws.sent).find((f) => f.method === "mesh.send");
+    expect(JSON.parse(request.params.content)).toEqual({ text: "see attached", attachments: [attachment] });
+    ws.reply({ id: "hub-assigned-2" });
+    await inFlight;
+  });
+
+  /**
+   * **A reply for another request must not resolve this one.** The id is the
+   * whole of the correlation — a socket carries every caller's traffic, so a
+   * handler that took the first frame it saw would hand one caller another's
+   * answer.
+   */
+  test("ignores an answer that is not to its request", async () => {
+    const ws = await connected();
+    const me = await sender();
+
+    const inFlight = post(me.cookie, { to: recipient(), text: "correlated" });
+    await Bun.sleep(5);
+    const before = ws.listeners();
+    expect(before).toBeGreaterThan(0);
+
+    ws.reply({ id: "not-mine" }, 999999);
+    await Bun.sleep(5);
+    // Still waiting: the listener is attached and the request is unresolved.
+    expect(ws.listeners()).toBe(before);
+
+    ws.reply({ id: "hub-assigned-3" });
+    await inFlight;
+    // And it lets go once its own answer arrives — the listener is added per
+    // request, so one that is never removed is a leak per message sent.
+    expect(ws.listeners()).toBe(before - 1);
+  });
+
+  /**
+   * **`failed`, and written back.** A message the hub refused used to be
+   * written locally and rendered as though it had been routed: the person saw a
+   * sent message nobody would ever receive. The row is corrected, not only the
+   * object the response is built from — the history route, the conversation
+   * view and search all serve the stored value.
+   */
+  test("marks a message the hub would not take as failed, in the row too", async () => {
+    const ws = await connected();
+    const me = await sender();
+
+    const inFlight = post(me.cookie, { to: recipient(), text: "refused" });
+    await Bun.sleep(5);
+    // An answer with no message id is the hub declining to take it.
+    ws.reply({});
+    const body = await (await inFlight).json();
+
+    expect(body.message.status).toBe("failed");
+    expect(rowOf(body.message.id)?.status).toBe("failed");
   });
 });
