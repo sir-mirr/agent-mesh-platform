@@ -53,6 +53,7 @@ import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
 import { auditAgents } from './audit-agents'
 import { listChatAudits } from './chat-audits'
+import { readBehaviour } from './telemetry-behaviour'
 import { runShutdown } from './shutdown'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
@@ -3214,62 +3215,14 @@ app.get('/api/v1/admin/telemetry/behaviour', async (c) => {
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
 
-  let pendingKeys: number | null = null
-  try {
-    const r = listPendingKeys()
-    pendingKeys = r.status === 200 ? ((r.body as any).proposals?.length ?? 0) : null
-  } catch {
-    pendingKeys = null
-  }
+  const read = readBehaviour({
+    pendingKeys: listPendingKeys,
+    pendingApprovals: listPendingApprovals,
+    openHub: getHubDb,
+    now: () => Date.now(),
+  })
 
-  // The other decision queue. Read through the same helper the route uses, so
-  // the number an operator sees in telemetry and the list they see on the page
-  // cannot disagree.
-  //
-  // Two queues answer on this server and this file counted one: key proposals
-  // were here, the people waiting on `/api/v1/admin/pending` were not. An
-  // operator reading telemetry saw a calm mesh while somebody waited to be let
-  // in. `agent-mesh-local-pm` found the pair by counting routes that share a
-  // last segment.
-  let pendingUsers: number | null = null
-  let oldestPendingUserMs: number | null = null
-  try {
-    const waiting = listPendingApprovals() as Array<{ requested_at?: string }>
-    pendingUsers = waiting.length
-    // `requested_at` is SQLite's `CURRENT_TIMESTAMP` — UTC with no zone marker,
-    // so it is stamped as UTC rather than parsed as local time, which would read
-    // hours old. The same reading the message-age query above spells in SQL.
-    const stamps = waiting
-      .map((row) => (row.requested_at ? Date.parse(`${row.requested_at.replace(" ", "T")}Z`) : NaN))
-      .filter((ms) => Number.isFinite(ms))
-    oldestPendingUserMs = stamps.length > 0 ? Date.now() - Math.min(...stamps) : 0
-  } catch {
-    pendingUsers = null
-    oldestPendingUserMs = null
-  }
-  let oldestPendingMs: number | null = null
-  let accepted: number | null = null
-  try {
-    const db = getHubDb()
-    // `ts` is written by SQLite's `CURRENT_TIMESTAMP`, which is UTC without a
-    // zone marker — read as an epoch here rather than parsed in JavaScript,
-    // where it would be taken as local time and read hours old.
-    const oldest = db
-      .prepare(
-        `SELECT (strftime('%s','now') - strftime('%s', MIN(ts))) * 1000 AS ms
-         FROM messages WHERE status = 'pending'`,
-      )
-      .get() as { ms: number | null }
-    // No pending message is a real zero, not an unknown: the query answered.
-    oldestPendingMs = oldest?.ms ?? 0
-    const total = db.prepare(`SELECT COUNT(*) AS n FROM messages`).get() as { n: number }
-    accepted = total.n
-  } catch {
-    oldestPendingMs = null
-    accepted = null
-  }
-
-  return c.json({ ok: true, ...shapeMetrics({ limits, pendingKeys, pendingUsers, oldestPendingUserMs, oldestPendingMs, accepted }) })
+  return c.json({ ok: true, ...shapeMetrics({ limits, ...read }) })
 })
 
 app.get('/api/v1/admin/ai-usage', async (c) => {

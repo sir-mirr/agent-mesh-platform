@@ -372,6 +372,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["treats LIKE wildcards as the characters they are"],
   },
   {
+    id: "telemetry-reads-the-key-queue-from-a-field-that-is-not-there",
+    defect:
+      "The key-proposal count read `body.proposals`, and the helper answers `{ ok, keys }`. `?? 0` then answered for the missing field, so telemetry reported an empty key queue however many proposals were waiting \u2014 for every deployment that has ever run. A wrong `0` is worse here than an unread marker: four of these six metrics read `0` when the mesh is calm, so nothing about it looks wrong.",
+    file: "packages/http/src/telemetry-behaviour.ts",
+    from: "    pendingKeys = r.status === 200 ? ((r.body as any).keys?.length ?? 0) : null;",
+    to: "    pendingKeys = r.status === 200 ? ((r.body as any).proposals?.length ?? 0) : null;",
+    suite: "packages/http/src/telemetry-behaviour.test.ts",
+    expect: ["counts the proposals the helper actually returns"],
+  },
+  {
+    id: "telemetry-reports-an-unreadable-store-as-zero",
+    defect:
+      "An unreadable message store came back as `0` rather than `null`, so `shapeMetrics` published a count instead of an unread marker. `0 accepted` and `0 pending` describe a calm mesh; a store nobody can read describes a broken server, and the operator cannot tell them apart.",
+    file: "packages/http/src/telemetry-behaviour.ts",
+    from: "  } catch {\n    oldestPendingMs = null;\n    accepted = null;\n  }",
+    to: "  } catch {\n    oldestPendingMs = 0;\n    accepted = 0;\n  }",
+    suite: "packages/http/src/telemetry-behaviour.test.ts",
+    expect: ["reports both as unread when the store will not answer"],
+  },
+  {
+    id: "telemetry-dates-a-queue-in-local-time",
+    defect:
+      "The admission queue's stamp stopped being read as UTC. `CURRENT_TIMESTAMP` carries no zone marker, so `Date.parse` takes it as local time and the queue is reported hours older or younger than it is \u2014 in whichever direction the server sits from UTC, which is also why it looks correct on a machine running UTC and wrong nowhere the author tested.",
+    file: "packages/http/src/telemetry-behaviour.ts",
+    from: '  return Date.parse(`${stamp.replace(" ", "T")}Z`);',
+    to: "  return Date.parse(stamp);",
+    suite: "packages/http/src/telemetry-behaviour.test.ts",
+    expect: ["reads the stamp as UTC"],
+  },
+  {
+    id: "telemetry-loses-a-row-it-cannot-date",
+    defect:
+      "A pending-approval row whose stamp will not parse stopped being counted, because the filter that drops unparseable stamps was applied to the count as well as to the age. Somebody waiting to be admitted disappears from the queue depth on account of a bad timestamp, and the screen that exists to notice them does not.",
+    file: "packages/http/src/telemetry-behaviour.ts",
+    from: "    pendingUsers = waiting.length;",
+    to: "    pendingUsers = waiting.filter((row) => row.requested_at).length;",
+    suite: "packages/http/src/telemetry-behaviour.test.ts",
+    expect: ["reports no age when no row can be dated"],
+  },
+  {
     id: "grant-author-is-self-reported",
     defect:
       "`grantedBy` started falling back to a field the caller sent. The grant record is the only account of how somebody came to hold a capability, and one whose author is self-reported records whatever the author wanted recorded \u2014 including a name that never made the grant.",
