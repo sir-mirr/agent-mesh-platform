@@ -23,7 +23,7 @@ import { formatUploadAuthorization, uploadSignaturePreimage } from "@agent-mesh/
 import { STORE_FILES, agentsSchema, keys, nonces, openAt, stateDir } from "@agent-mesh/store";
 import { join } from "node:path";
 
-import { MAX_BLOB_BYTES, putBlob } from "./audit-blobs";
+import { MAX_BLOB_BYTES, closeBlobDb, putBlob } from "./audit-blobs";
 
 /**
  * The same file `audit-blobs.ts` opens, opened here as well.
@@ -300,5 +300,40 @@ describe("what it does with bytes it accepts", () => {
     // And nothing is left behind under the key it was aiming at.
     const retry = await putBlob(p.blobKey, request(who, g.nonce, p));
     expect(retry.status).toBe(201);
+  });
+});
+
+/**
+ * The handle this module opens lazily, and the close nothing in a coverage run
+ * had ever called: `test/` reaches it through a process it then kills.
+ */
+describe("closeBlobDb", () => {
+  test("the upload after a shutdown gets a working handle, not a closed one", async () => {
+    const who = signer();
+    const first = payload("before the close");
+    expect((await putBlob(first.blobKey, request(who, grantFor(who, first).nonce, first))).status).toBe(201);
+
+    closeBlobDb();
+
+    const after = payload("after the close");
+    expect((await putBlob(after.blobKey, request(who, grantFor(who, after).nonce, after))).status).toBe(201);
+  });
+
+  test("closing a handle nothing opened is not an error", () => {
+    closeBlobDb();
+
+    expect(() => closeBlobDb()).not.toThrow();
+  });
+
+  test("a body larger than the stream will take in one write still lands whole", async () => {
+    const who = signer();
+    // Past the write stream's high-water mark, so the sink refuses a chunk and
+    // the upload has to wait for it to drain rather than dropping the rest.
+    const p = payload("x".repeat(2 * 1024 * 1024));
+
+    const r = await putBlob(p.blobKey, request(who, grantFor(who, p).nonce, p));
+
+    expect(r.status).toBe(201);
+    expect(r.body).toMatchObject({ ok: true, sha256: p.sha256, size: p.size });
   });
 });

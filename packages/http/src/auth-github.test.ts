@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "auth-github-probe";
 
-const { exchangeCodeForToken, getGithubUser } = await import("./auth");
+const { exchangeCodeForToken, getGithubUser, requireJwtSecret } = await import("./auth");
 const { app } = await import("./main.ts");
 const { getPendingApproval } = await import("./db");
 
@@ -155,5 +155,36 @@ describe("the callback a person actually arrives on", () => {
     await callback("?code=good");
     const second = getPendingApproval(who);
     expect(second).toEqual(first);
+  });
+});
+
+/**
+ * **The refusal that has to happen before anything else does.** A missing
+ * `JWT_SECRET` used to fall back to a published constant, which is worse than
+ * no authentication: every session this process issued could be forged by
+ * anyone who had read the source, and a deployment that forgot the variable
+ * looked exactly like one that had set it.
+ */
+describe("requireJwtSecret", () => {
+  test("a stated secret is the secret", () => {
+    expect(requireJwtSecret("not-the-published-one")).toBe("not-the-published-one");
+  });
+
+  test("an unset secret refuses, saying what is unset and why it matters", () => {
+    const refusals: string[] = [];
+    const refuse = (message: string): never => {
+      refusals.push(message);
+      throw new Error("refused");
+    };
+
+    expect(() => requireJwtSecret(undefined, refuse)).toThrow("refused");
+    expect(refusals[0]).toContain("JWT_SECRET is not set");
+    expect(refusals[0]).toContain("forge");
+  });
+
+  test("an empty secret is an unset one", () => {
+    const refuse = (): never => { throw new Error("refused"); };
+
+    expect(() => requireJwtSecret("", refuse)).toThrow("refused");
   });
 });

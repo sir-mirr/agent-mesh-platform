@@ -4005,8 +4005,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Starting without `JWT_SECRET` and failing only when somebody tries to log in. Signing sessions with a default would mean anyone who has read the file can forge them, and the comment above the check says the rest: a misconfiguration that runs is one nobody finds. It was the last row of agent-mesh-local-pm's feature table still resting on *the source says so*, and the table had it serving a redirect with no cookie — which is what would happen if the check were gone.",
     file: "packages/http/src/auth.ts",
-    from: "    process.exit(1)",
-    to: "    return 'insecure-default'",
+    from: "  process.exit(1)",
+    to: "  return 'insecure-default' as never",
     suite: "test/misconfigured-boot.test.ts",
     expect: ["the http server refuses to start without a JWT secret"],
   },
@@ -6233,6 +6233,135 @@ const MUTATIONS: Mutation[] = [
     to: "  if (true) {",
     suite: "packages/hub/src/db-stores.test.ts",
     expect: ["opens the scheduler's store on first use and hands back the same handle after"],
+  },
+  {
+    id: "keys-decision-store-failure",
+    swept: true,
+    defect:
+      "`KeyTransitionError` says the operator's request was wrong — the fingerprint does not exist, or somebody decided it first. Anything else says this server could not answer at all, and reporting that as a 404 sends an operator looking for a fingerprint that is sitting exactly where they left it.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "    if (err instanceof KeyTransitionError) {",
+    to: "    if (true) {",
+    suite: "packages/http/src/keys-admin.test.ts",
+    expect: ["a store that cannot answer is a 500 carrying the reason"],
+  },
+  {
+    id: "agents-handle-reopened",
+    swept: true,
+    defect:
+      "A close that does not forget the handle hands the next caller a closed database, and every key decision after a shutdown fails with `Database has closed` rather than opening the store again.",
+    file: "packages/http/src/keys-admin.ts",
+    from: `    _agentsDb.close()
+  }
+  _agentsDb = null`,
+    to: `    _agentsDb.close()
+  }`,
+    suite: "packages/http/src/store-handles.test.ts",
+    expect: ["hands out a new handle rather than the closed one"],
+  },
+  {
+    id: "agents-close-folds",
+    swept: true,
+    defect:
+      "`close()` on a handle with statements prepared against it is a safe close in bun: marked closed to JavaScript, file left open, nothing checkpointed. The fold has to be explicit or the identity store goes out with its log beside it.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "    checkpointForShutdown(_agentsDb)",
+    to: "    void _agentsDb",
+    suite: "packages/http/src/store-handles.test.ts",
+    expect: ["folds the identity store's log"],
+  },
+  {
+    id: "audit-query-handle-reopened",
+    swept: true,
+    defect:
+      "The § 9.1 query handle is read-only and lazy. Closing it without forgetting it leaves every audit read after a shutdown failing on a closed database.",
+    file: "packages/http/src/audit-query.ts",
+    from: `  _auditDb?.close()
+  _auditDb = null`,
+    to: "  _auditDb?.close()",
+    suite: "packages/http/src/store-handles.test.ts",
+    expect: ["the query handle is reopened for the next caller"],
+  },
+  {
+    id: "access-log-handle-reopened",
+    swept: true,
+    defect:
+      "The § 8.9 access log is written before a read is served, and its handle is lazy. A close that keeps the closed handle means the first read after a shutdown cannot be recorded — and a read that cannot be recorded is refused, so the store closing quietly stops audit reads.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: `    _db.close()
+  }
+  _db = null`,
+    to: `    _db.close()
+  }`,
+    suite: "packages/http/src/store-handles.test.ts",
+    expect: ["the next read is recorded, on a handle opened again"],
+  },
+  {
+    id: "blob-handle-reopened",
+    swept: true,
+    defect:
+      "Same shape on the upload path: the handle the § 8.9.2 grant is checked against is lazy, and a close that keeps it means the next upload is refused by a closed database rather than by its grant.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: `    _agentsDb.close()
+  }
+  _agentsDb = null`,
+    to: `    _agentsDb.close()
+  }`,
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["the upload after a shutdown gets a working handle"],
+  },
+  {
+    id: "provision-identity-rule",
+    swept: true,
+    defect:
+      "§ 10.1 compares identities case-sensitively and the hub applies the pattern. Sending a login the rule rejects means the refusal comes back from the hub as an opaque 400 instead of naming the rule, and nothing local ever says which login could not be a mesh identity.",
+    file: "packages/http/src/provision.ts",
+    from: "  if (!IDENTITY_RE.test(identity)) {",
+    to: "  if (!/^.*$/.test(identity)) {",
+    suite: "packages/http/src/provision.test.ts",
+    expect: ["a login § 10.1 would refuse is reported, not mangled to fit"],
+  },
+  {
+    id: "provision-reports-hub-reason",
+    swept: true,
+    defect:
+      "`HTTP 409` on its own does not say whether the identity is taken, torn down, or misspelled. The hub sends the reason and this is the only place a person sees it.",
+    file: "packages/http/src/provision.ts",
+    from: "    if (parsed?.error) detail = `${detail}: ${parsed.error}`",
+    to: "    void parsed",
+    suite: "packages/http/src/provision.test.ts",
+    expect: ["a refusal carries the hub's own reason"],
+  },
+  {
+    id: "provision-names-the-failures",
+    swept: true,
+    defect:
+      "An unregistered person still signs in, sends and receives — the hub simply has no record of who they are. Nothing else in the service announces that, so a silent loop here is a mesh half of whose people do not exist.",
+    file: "packages/http/src/provision.ts",
+    from: "    console.warn(`[http-server] could not register ${failures.length} person(s): ${failures.join(', ')}`)",
+    to: "    void failures",
+    suite: "packages/http/src/provision.test.ts",
+    expect: ["names everyone it could not register, and why"],
+  },
+  {
+    id: "jwt-secret-required",
+    defect:
+      "It used to fall back to a published constant, which is worse than no authentication: every session token this process issued could be forged by anyone who had read the source, and a deployment that forgot the variable looked exactly like one that had set it. An empty string is the same misconfiguration wearing a different value.",
+    file: "packages/http/src/auth.ts",
+    from: "  if (secret) return secret",
+    to: "  if (secret !== undefined) return secret",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["an empty secret is an unset one"],
+  },
+  {
+    id: "key-proposal-poll-reports",
+    defect:
+      "The first version swallowed the error in silence, under a comment saying silence is the failure this file exists to prevent. A broken query then left the § 10.2.1 stream looking perfectly healthy while it pushed nothing.",
+    file: "packages/http/src/key-proposals.ts",
+    from: "      console.error(",
+    to: "      void 0 && console.error(",
+    suite: "packages/http/src/key-proposals.test.ts",
+    expect: ["a read that fails is reported and does not take the poll down"],
   },
 ];
 

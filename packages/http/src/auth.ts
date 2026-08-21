@@ -19,17 +19,28 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? ''
  * Failing at startup is the point. An unset secret is a misconfiguration, and
  * a misconfiguration that runs is one nobody finds.
  */
-const JWT_SECRET = (() => {
-  const secret = process.env.JWT_SECRET
-  if (!secret) {
-    console.error(
-      '[http-server] JWT_SECRET is not set. Refusing to start: signing sessions ' +
-        'with a default would mean anyone who has read this file can forge them.',
-    )
-    process.exit(1)
-  }
-  return secret
-})()
+const refuseToStart = (message: string): never => {
+  console.error(message)
+  process.exit(1)
+}
+
+/**
+ * `refuse` is a parameter so the refusal can be observed. Calling this with no
+ * secret is the whole behaviour, and the only way to run it in-process without
+ * ending the process is to hand it somewhere else to go.
+ */
+export function requireJwtSecret(
+  secret: string | undefined,
+  refuse: (message: string) => never = refuseToStart,
+): string {
+  if (secret) return secret
+  return refuse(
+    '[http-server] JWT_SECRET is not set. Refusing to start: signing sessions ' +
+      'with a default would mean anyone who has read this file can forge them.',
+  )
+}
+
+const JWT_SECRET = requireJwtSecret(process.env.JWT_SECRET)
 const CALLBACK_URL =
   process.env.CALLBACK_URL ??
   process.env.AGENT_MESH_CALLBACK_URL ??

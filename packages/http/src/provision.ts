@@ -24,11 +24,11 @@ const HUB_WS_URL =
   'ws://127.0.0.1:3100/ws'
 
 /** `ws://host:port/ws` → `http://host:port`. The hub serves both on one port. */
-export function restBase(): string {
+export function restBase(hubWsUrl: string = HUB_WS_URL): string {
   const explicit = process.env.AGENT_MESH_HUB_REST_URL?.trim()
   if (explicit) return explicit.replace(/\/+$/, '')
   try {
-    const u = new URL(HUB_WS_URL)
+    const u = new URL(hubWsUrl)
     u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:'
     return u.origin
   } catch {

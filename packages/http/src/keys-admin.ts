@@ -118,8 +118,8 @@ export function decide(
   fingerprint: string,
   actor: string,
   reason: string | null,
+  db: Database = agentsDb(),
 ): KeyDecisionResult {
-  const db = agentsDb()
   try {
     let row
     switch (decision) {

@@ -22,6 +22,8 @@ import { generateKeyPairSync } from "node:crypto";
 import { STORE_FILES, agentsSchema, keys, openAt, stateDir } from "@agent-mesh/store";
 import { join } from "node:path";
 
+import { Database } from "bun:sqlite";
+
 import { agentsDb, decide, keyHistory, listPending } from "./keys-admin";
 
 let n = 0;
@@ -150,5 +152,21 @@ describe("deciding", () => {
     const again = decide("approve", k.fingerprint, "operator-2", null);
     expect(again.status).toBe(409);
     expect(body(again).error).toBeTruthy();
+  });
+
+  /**
+   * **A store failure is not a decision.** `KeyTransitionError` says the
+   * operator's request was wrong; anything else says this server could not
+   * answer, and answering 404 to that sends an operator looking for a
+   * fingerprint that is sitting exactly where they left it.
+   */
+  test("a store that cannot answer is a 500 carrying the reason", () => {
+    const broken = new Database(":memory:");
+
+    const r = decide("approve", "f".repeat(64), "operator-1", null, broken);
+
+    expect(r.status).toBe(500);
+    expect(String(body(r).error)).toContain("agent_keys");
+    expect(body(r).ok).toBe(false);
   });
 });
