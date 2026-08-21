@@ -4794,10 +4794,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-same-identity-is-offered-twice",
     defect:
-      "`UNION` became `UNION ALL`, so an identity on both sides of a conversation appears twice in the operator's list \u2014 once for every message it sent and once for every one it received.",
+      "An identity on both sides of a conversation appears twice in the operator's list \u2014 once per message sent and once per message received.\n\n**Registered against both guards at once, because either alone is sufficient.** The query dedups twice: `UNION` (not `UNION ALL`) inside, and `SELECT DISTINCT` outside. Changing one survived the suite, and it should have \u2014 the other still holds. That is not a guard nobody checks; it is one fact with two owners, and only removing both is a defect. Written down so a reader who deletes one of them knows they are right, and knows what the second deletion would cost.",
     file: "packages/http/src/audit-agents.ts",
-    from: "SELECT from_agent AS a FROM messages UNION SELECT to_agent AS a FROM messages",
-    to: "SELECT from_agent AS a FROM messages UNION ALL SELECT to_agent AS a FROM messages",
+    from: "SELECT DISTINCT a FROM (SELECT from_agent AS a FROM messages UNION SELECT to_agent AS a FROM messages) ORDER BY a COLLATE NOCASE",
+    to: "SELECT a FROM (SELECT from_agent AS a FROM messages UNION ALL SELECT to_agent AS a FROM messages) ORDER BY a COLLATE NOCASE",
     suite: "packages/http/src/audit-degraded.test.ts",
     expect: ["names both ends of every message, once each"],
   },
