@@ -38,6 +38,9 @@
       "@agent-mesh/mailbox": [
         "./packages/mailbox/src/index.ts"
       ],
+      "@agent-mesh/log": [
+        "./packages/log/src/index.ts"
+      ],
       "@agent-mesh/platform-web": [
         "./packages/platform-web/src/main.tsx"
       ]
@@ -50,6 +53,9 @@
     },
     {
       "path": "./packages/mailbox/tsconfig.json"
+    },
+    {
+      "path": "./packages/log/tsconfig.json"
     },
     {
       "path": "./packages/hub/tsconfig.json"

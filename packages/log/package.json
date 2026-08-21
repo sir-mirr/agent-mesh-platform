@@ -1,0 +1,14 @@
+{
+  "name": "@agent-mesh/log",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "agentMeshSpec": "0.2",
+  "description": "One log line shape for every service, and the counter that shadows it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "bun --bun tsc -p tsconfig.json --pretty false"
+  }
+}
