@@ -1664,8 +1664,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`closeAuditAccessLog` was imported into the http server's shutdown and never called, so the § 8.9 access-log handle on `audit.db` — a second read-write connection — went out unfolded and unclosed. Invisible while the hub happened to stop last, because the hub folds that store too.",
     file: "packages/http/src/main.ts",
-    from: "  closeAuditAccessLog()",
-    to: "  void closeAuditAccessLog",
+    from: "  ['audit (access log)', closeAuditAccessLog],",
+    to: "  ['audit (access log)', () => {}],",
     suite: "test/wal-shutdown.test.ts",
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
   },
@@ -4880,6 +4880,46 @@ export const MUTATIONS: Mutation[] = [
     to: "        code: \"AUDIT_NOBODY_NAMED_THIS\",",
     suite: "test/versioning.test.ts",
     expect: ["every data.code the services emit has a name in contracts"],
+  },
+  {
+    id: "one-unclosable-store-costs-every-other-one",
+    defect:
+      "The closers went back to running in a row with nothing catching them, so the first failure skipped every close after it and the exit too. A process asked to stop then stays up until systemd `SIGKILL`s it \u2014 the ungraceful ending the closers exist to avoid, reached by way of the closers.",
+    file: "packages/http/src/shutdown.ts",
+    from: "    try {\n      close();\n    } catch (err) {\n      warn(`agent-mesh-http: could not close ${name} cleanly`, err);\n    }",
+    to: "    close();\n    void name;\n    void warn;",
+    suite: "packages/http/src/shutdown.test.ts",
+    expect: ["keeps closing after one refuses, and still leaves"],
+  },
+  {
+    id: "the-server-stops-before-its-databases-close",
+    defect:
+      "Serving stopped before the stores closed, so a request still in flight is answered by a handler whose database has already gone.",
+    file: "packages/http/src/shutdown.ts",
+    from: "  for (const [name, close] of w.closers) {",
+    to: "  w.stop();\n  for (const [name, close] of w.closers) {",
+    suite: "packages/http/src/shutdown.test.ts",
+    expect: ["does not stop the server before the stores are closed"],
+  },
+  {
+    id: "a-server-that-will-not-stop-keeps-the-process-alive",
+    defect:
+      "The exit moved inside the stop's success path, so a server that refuses to stop leaves the process running after everything it was serving with is closed \u2014 alive, useless, and holding its port.",
+    file: "packages/http/src/shutdown.ts",
+    from: "  } catch (err) {\n    warn(\"agent-mesh-http: could not stop the server cleanly\", err);\n  }\n\n  w.exit(0);",
+    to: "    w.exit(0);\n  } catch (err) {\n    warn(\"agent-mesh-http: could not stop the server cleanly\", err);\n  }",
+    suite: "packages/http/src/shutdown.test.ts",
+    expect: ["leaves even when the server will not stop"],
+  },
+  {
+    id: "a-store-is-opened-and-never-closed",
+    defect:
+      "A store's closer was imported and left out of the shutdown list \u2014 the exact omission that left `audit.db`'s read-write handle unfolded, and the exact thing no runtime test can see, because an uncalled import leaves nothing behind.",
+    file: "packages/http/src/main.ts",
+    from: "  ['audit (access log)', closeAuditAccessLog],\n]",
+    to: "]",
+    suite: "packages/http/src/shutdown.test.ts",
+    expect: ["every closer main.ts imports is one it closes"],
   },
 ];
 

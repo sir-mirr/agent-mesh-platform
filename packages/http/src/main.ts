@@ -51,6 +51,7 @@ import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
 import { auditAgents } from './audit-agents'
+import { runShutdown } from './shutdown'
 import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
@@ -2867,6 +2868,21 @@ app.delete('/api/v1/admin/agents/:identity', async (c) => {
   return teardownAs(c, actor, identity)
 })
 
+/**
+ * Every store this process opens, and the function that closes it.
+ *
+ * `audit.db` appears once here and is opened twice — read-only by the query
+ * path and read-write by the access log — so both handles are named. The
+ * second was the one that went unclosed.
+ */
+const SHUTDOWN_CLOSERS: ReadonlyArray<readonly [string, () => void]> = [
+  ['messages', closeDb],
+  ['agents', closeAgentsDb],
+  ['blobs', closeBlobDb],
+  ['audit (reads)', closeAuditDb],
+  ['audit (access log)', closeAuditAccessLog],
+]
+
 /** The agents store, named short because these routes use it constantly. */
 const db_ = () => agentsDb()
 
@@ -3893,20 +3909,15 @@ if (import.meta.main) {
 
   console.log(`agent-mesh-http: listening on http://localhost:${server.port}`)
 
-  // Graceful shutdown
-  function shutdown(): void {
-    console.log('agent-mesh-http: shutting down')
-    closeDb()
-    closeAgentsDb()
-    closeBlobDb()
-    closeAuditDb()
-    // `audit.db` is opened read-write here too, to record who read what (§ 8.9).
-    // It was imported and never called, so that handle went out unfolded and
-    // unclosed — the same omission the hub had, in the other process.
-    closeAuditAccessLog()
-    server.stop()
-    process.exit(0)
-  }
+  // Graceful shutdown. The list is a value rather than a run of statements
+  // because the defect here was an omission — `closeAuditAccessLog` imported
+  // and never called — and `test/shutdown-closers.test.ts` checks this list
+  // against the closers this file imports.
+  const shutdown = (): void => runShutdown({
+    closers: SHUTDOWN_CLOSERS,
+    stop: () => server.stop(),
+    exit: (code) => process.exit(code),
+  })
 
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
