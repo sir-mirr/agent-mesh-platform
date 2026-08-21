@@ -3951,6 +3951,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/audit-blobs.test.ts",
     expect: ["refuses a body shorter than the declaration"],
   },
+  {
+    id: "a-refused-oauth-code-mints-a-session",
+    defect:
+      "`exchangeCodeForToken` stopped reading the error GitHub returns. GitHub answers `200` with an error *body* for a stale or replayed code, so the status is not the signal \u2014 dropping the payload check makes a refused exchange look like a successful one, and the callback then signs a JWT around `undefined`.",
+    file: "packages/http/src/auth.ts",
+    from: "  if (data.error || !data.access_token) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["throws GitHub's own description when it refuses the code"],
+  },
+  {
+    id: "a-rejected-github-token-reads-as-a-user",
+    defect:
+      "`getGithubUser` stopped checking `res.ok`, so a `401` from GitHub is parsed as a user record. Every field then arrives `undefined`, and the identity a session is minted around is nobody \u2014 which is worse than an error, because it succeeds.",
+    file: "packages/http/src/auth.ts",
+    from: "  if (!res.ok) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["throws with the status when GitHub refuses the token"],
+  },
+  {
+    id: "oauth-callback-runs-without-a-code",
+    defect:
+      "The callback stopped requiring `code`, so an arrival with no parameter reaches the token exchange and fails there instead. The person sees a `500` where they should see a plain refusal, and the service makes a request to GitHub on behalf of a request that carried nothing.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!code) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["refuses to start without a code"],
+  },
+  {
+    id: "nobody-learns-an-account-is-waiting",
+    defect:
+      "An unapproved sign-in stopped leaving a pending approval behind. From the browser it is indistinguishable from an approved one \u2014 same `302`, same cookie \u2014 and the only difference is a row an operator later reads. Without it nobody ever learns somebody is waiting, and the person meets a console that refuses them with no way to ask.",
+    file: "packages/http/src/main.ts",
+    from: "      if (!existing || existing.status === 'denied') {",
+    to: "      if (false) {",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["leaves a pending approval behind for someone not yet approved"],
+  },
 ];
 
 /**
