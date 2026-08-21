@@ -47,10 +47,14 @@ covering them means a second process with a second environment — which is
 a broken boot says on the way out. Driving them means starting a mesh designed
 not to work, per case, at seconds each.
 
-**A branch with no producer.** Three in the console: an avatar image nothing
-sets, a mailbox depth `GET /api/v1/agents` does not report, and a breadcrumb
-for a route that redirects before it renders. Unreachable today, reachable the
-moment the producer appears — which is fe's call, not this side's (T-025).
+**A branch with no producer.** There were three in the console: an avatar image
+nothing set, a breadcrumb for a route that redirects before it renders, and a
+mailbox depth `GET /api/v1/agents` does not report. fe-codex ruled on all three
+under D-745 (T-025) and the answer was not the same for each — the first two
+were deleted, because nothing was going to set them; the third stays, with the
+producer named in a comment beside it. That is the distinction this category
+turns on: a branch waiting for a producer somebody has decided to build is
+different from one waiting for nothing.
 
 ## The table
 
@@ -83,10 +87,7 @@ reason no longer describes anything and the row is stale.
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
 | `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
 | `packages/hub/src/provenance.ts` | `Bun.spawnSync(["git"` | The catch around a `git` that will not spawn, on a module read once at load. |
-| `packages/platform-web/src/pages/creator/TopologyPage.tsx` | `node.avatarImg ?` | Nothing sets `avatarImg`; the branch is fe's, and is reachable the moment a producer exists (T-025). |
-| `packages/platform-web/src/pages/creator/TopologyPage.tsx` | `selectedNode.avatarImg ?` | The same field, in the detail panel. |
-| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side. |
-| `packages/platform-web/src/components/layout/Breadcrumbs.tsx` | `case "/":` | `/` redirects to `/dashboard`, which mounts no trail. Dead in the same way the two `/tenant/*` spellings beside it are. |
+| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
 ## What this table cannot check
 
