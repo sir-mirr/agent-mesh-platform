@@ -4301,6 +4301,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/push-routes.test.ts",
     expect: ["refuses a body that is not JSON, and one with no endpoint"],
   },
+  {
+    id: "an-upload-is-accepted-without-declaring-its-size",
+    defect:
+      "`POST /api/v1/upload` stopped requiring `Content-Length`. It is the only bound available *before* bytes are accepted, and the reason it is there is measured: `formData()` parses the whole body into memory and `arrayBuffer()` copied it again, so a 100 MiB upload cost 200 MiB and the size check ran after both \u2014 a handful of concurrent uploads took the process down. Without the declaration the ceiling can only be enforced by counting an unbounded stream that has already arrived.",
+    file: "packages/http/src/main.ts",
+    from: "  if (declared === undefined) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/upload.test.ts",
+    expect: ["a request that declares no length"],
+  },
+  {
+    id: "the-declared-upload-size-is-not-bounded",
+    defect:
+      "The declared length stopped being compared against the ceiling, so the refusal moves after the parse \u2014 which is the arrangement this check replaced. The envelope is bounded rather than the file because multipart adds a boundary and headers, and bounding the envelope bounds what is inside it.",
+    file: "packages/http/src/main.ts",
+    from: "  if (declaredSize > UPLOAD_MAX_BYTES + UPLOAD_ENVELOPE_SLACK) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/upload.test.ts",
+    expect: ["a declared length over the ceiling plus its envelope slack"],
+  },
 ];
 
 /**
