@@ -1,7 +1,7 @@
 /**
  * The shape of this repository, as an assertion (T-021).
  *
- * Six packages under `packages/<pkg>/src`, and the interesting thing about them is
+ * Seven packages under `packages/<pkg>/src`, and the interesting thing about them is
  * what they *do not* do to each other. Four facts were established twice by
  * two methods that agreed — fe-codex's sweep and this file's own scan — and
  * they are worth holding because each one degrades silently:
@@ -14,7 +14,7 @@
  *   `@agent-mesh/mailbox` are the two doors. A deep import reaches past
  *   whatever the barrel chose to export, so the package stops being able to
  *   move its own files.
- * - **Five pairs, four of them at run time.** The fifth is a test importing the
+ * - **Eight pairs, seven of them at run time.** The eighth is a test importing the
  *   schema its subject writes against, named below. A pair appearing here that
  *   is not in the table is a dependency somebody added without saying so.
  * - **One consumer from outside `packages/`.** `scripts/` and `test/` reach in
@@ -23,13 +23,13 @@
  * ## The denominator, which is half of every number above
  *
  * Everything is measured over **every `.ts`/`.tsx` file under
- * `packages/<pkg>/src`, tests included** — 256 files and 381 resolved internal
+ * `packages/<pkg>/src`, tests included** — 259 files and 391 resolved internal
  * edges at the commit this was pinned. Tests are in because a test that
  * imports across a boundary creates the same coupling as source does; it is
  * counted separately rather than excluded, which is why the fifth pair is
  * visible at all instead of hiding inside "no cross-package imports".
  *
- * `@agent-mesh/contracts` is **not** one of the six. It is an external
+ * `@agent-mesh/contracts` is **not** one of the seven. It is an external
  * dependency (`node_modules/@agent-mesh/contracts`, pinned to a tag of the
  * `agent-mesh-contracts` repository), so every package depending on it is the
  * intended shape and not a pair. Counting it would have made the table read
@@ -45,9 +45,25 @@ import { join, dirname, normalize, relative, sep } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 
-/** The six packages this repository builds. */
-const PACKAGES = ["http", "hub", "mailbox", "platform-web", "self-reminder", "store"] as const;
-type Pkg = (typeof PACKAGES)[number];
+/**
+ * The packages this repository builds, **read off the disk**.
+ *
+ * This was a hand-written list of six, and every measurement below was derived
+ * from it: the file walk started there, and a cross-package edge was only
+ * counted if both ends were in it. A seventh package was therefore invisible
+ * -- its files unscanned, its edges filtered out -- and the denominator check
+ * agreed, because it compared the packages found in `FILES` against the list
+ * `FILES` was built from. `@agent-mesh/log` arrived in T-022 and nothing here
+ * moved.
+ *
+ * Read from the filesystem, a new package shows up as a failure of the
+ * expected-set assertion below -- one line to change, deliberately -- rather
+ * than as silence.
+ */
+const PACKAGES = readdirSync(join(import.meta.dir, "..", "packages"))
+  .filter((name) => existsSync(join(import.meta.dir, "..", "packages", name, "package.json")))
+  .sort();
+type Pkg = string;
 
 function sources(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -183,6 +199,18 @@ describe("the repository's import graph", () => {
    * check goes vacuous without failing.
    */
   test("scans every package's whole source tree", () => {
+    // Stated, not derived. `FILES` comes from `PACKAGES`, so comparing the two
+    // can only ever agree -- it agreed for the whole time `packages/log`
+    // existed unscanned. This is the list a reader is asserting against.
+    expect(PACKAGES).toEqual([
+      "http",
+      "hub",
+      "log",
+      "mailbox",
+      "platform-web",
+      "self-reminder",
+      "store",
+    ]);
     expect([...new Set(FILES.map(packageOf))].sort()).toEqual([...PACKAGES].sort());
     expect(FILES.length).toBeGreaterThan(200);
     expect(FILES.filter(isTest).length).toBeGreaterThan(60);
@@ -207,19 +235,22 @@ describe("the repository's import graph", () => {
    * writes to — the hub owns that DDL (SPEC § 3.1), so the test asserts
    * against the owner's definition rather than a second copy.
    */
-  test("has exactly these package pairs, four of them at run time", () => {
+  test("has exactly these package pairs, seven of them at run time", () => {
     const runtime = [...new Set(cross.filter((e) => !e.test).map(pairKey))].sort();
     const testOnly = [...new Set(cross.filter((e) => e.test).map(pairKey))].sort()
       .filter((p) => !runtime.includes(p));
 
     expect(runtime).toEqual([
+      "http -> log",
       "http -> store",
+      "hub -> log",
       "hub -> mailbox",
       "hub -> store",
+      "self-reminder -> log",
       "self-reminder -> store",
     ]);
     expect(testOnly).toEqual(["mailbox -> store"]);
-    expect(new Set([...runtime, ...testOnly]).size).toBe(5);
+    expect(new Set([...runtime, ...testOnly]).size).toBe(8);
   });
 
   test("names the one file the fifth pair rests on", () => {
@@ -234,6 +265,7 @@ describe("the repository's import graph", () => {
    */
   test("every cross-package import lands on a barrel, and none goes deeper", () => {
     expect([...new Set(cross.map((e) => e.spec))].sort()).toEqual([
+      "@agent-mesh/log",
       "@agent-mesh/mailbox",
       "@agent-mesh/store",
     ]);
@@ -242,7 +274,11 @@ describe("the repository's import graph", () => {
   });
 
   test("the two barrels are the files those specifiers name", () => {
-    for (const barrel of ["packages/store/src/index.ts", "packages/mailbox/src/index.ts"]) {
+    for (const barrel of [
+      "packages/store/src/index.ts",
+      "packages/mailbox/src/index.ts",
+      "packages/log/src/index.ts",
+    ]) {
       expect({ barrel, there: existsSync(join(ROOT, barrel)) }).toEqual({ barrel, there: true });
     }
   });
