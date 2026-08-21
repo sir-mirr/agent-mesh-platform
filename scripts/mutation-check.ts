@@ -4131,6 +4131,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/admin-reads.test.ts",
     expect: ["no longer answers an empty list from its catch"],
   },
+  {
+    id: "the-proxy-claim-is-made-before-the-people-exist",
+    defect:
+      "The http server claimed `proxy_for` without provisioning the people first. \u00a7 8.2 checks both halves of a claim against stored rows rather than against what the socket says, so a person the hub has no `human` row for is dropped from the claim \u2014 and every message sent on their behalf is then refused, with nothing on this side reporting anything. The order is the whole defence, and it is invisible in a passing connect.",
+    file: "packages/http/src/main.ts",
+    from: "      await provisionAllHumans(webUsers)",
+    to: "      void provisionAllHumans",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["provisions before it claims"],
+  },
+  {
+    id: "the-proxy-claim-names-everyone-in-the-registry",
+    defect:
+      "The claim was built from every registry row rather than the approved ones. The hub drops the unapproved entries anyway, so nothing breaks \u2014 what changes is that this service tells the mesh it believes it may speak for someone an operator has not admitted, on every reconnect.",
+    file: "packages/http/src/main.ts",
+    from: "      const webUsers = listApprovedWebUserIds()",
+    to: "      const webUsers = listRegistryAgentIds()",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["does not claim a person the operator has not approved"],
+  },
 ];
 
 /**

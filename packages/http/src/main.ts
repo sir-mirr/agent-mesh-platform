@@ -112,7 +112,24 @@ const HUB_IDENTITY = 'http-server' + (IS_DEV ? '-dev' : '')
 let hubWs: WebSocket | null = null
 let hubConnected = false
 
-function connectToHub(): void {
+/**
+ * Dial the hub.
+ *
+ * **Exported as a test seam**, in the shape `sseClientCount` beside it and the
+ * nonce window in `hub/src/signature.ts`. Nothing else calls it — the served
+ * process crosses `import.meta.main` below — and the whole of what it does
+ * happens inside two socket callbacks, so a test that cannot invoke it cannot
+ * reach any of it.
+ *
+ * What is worth reaching: the registration order on `onopen`. § 8.2 checks both
+ * halves of a proxy claim against stored rows rather than against what the
+ * socket says, so this identity must exist and carry `can_proxy`, and each
+ * person must exist as type `human`, *before* `mesh.connect` names them —
+ * otherwise the hub drops the claims and every message sent on their behalf is
+ * refused. Done on connect rather than at startup because the hub is provably
+ * reachable at this instant.
+ */
+export function connectToHub(): void {
   try {
     hubWs = new WebSocket(HUB_URL)
     hubWs.onopen = async () => {
