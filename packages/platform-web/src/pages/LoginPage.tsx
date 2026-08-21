@@ -58,10 +58,13 @@ export function LoginPage() {
   // On a deployment with the backend down that is the only screen reachable,
   // and pressing the button on it did nothing at all, silently.
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setLoginError(null);
+    setIsSubmitting(true);
     try {
       await loginWithLocal(username, password);
     } catch (err: any) {
@@ -71,6 +74,8 @@ export function LoginPage() {
           : err?.message || t("login.failed", "로그인에 실패했습니다."),
       );
       return;
+    } finally {
+      setIsSubmitting(false);
     }
     navigate("/dashboard");
   };
@@ -773,8 +778,18 @@ export function LoginPage() {
             </div>
           )}
 
-          <button type="submit" style={btnPrimaryStyle}>
-            {t("login.submit", "Sign in")}
+          <button
+            type="submit"
+            data-testid="login-submit"
+            aria-busy={isSubmitting}
+            disabled={isSubmitting}
+            style={btnPrimaryStyle}
+          >
+            {isSubmitting ? (
+              <span data-testid="login-pending">{t("login.pending", "로그인 확인 중...")}</span>
+            ) : (
+              t("login.submit", "Sign in")
+            )}
           </button>
         </form>
 

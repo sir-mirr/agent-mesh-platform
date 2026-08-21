@@ -56,6 +56,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "login.idPlaceholder": "아이디",
     "login.password": "비밀번호 (Password)",
     "login.submit": "로그인하기",
+    "login.pending": "로그인 확인 중...",
     "login.capNote": "사이드바 메뉴는 서버가 이 계정에 부여한 capability 로 갈립니다. 화면이 고르는 것이 아닙니다.",
     // Navigation Sections
     "nav.sec.overview": "핵심 개요",
@@ -593,6 +594,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "login.idPlaceholder": "username",
     "login.password": "Password",
     "login.submit": "Sign in",
+    "login.pending": "Signing in…",
     "login.capNote": "The sidebar shows what the server granted this account. The screen does not choose it.",
     // Navigation Sections
     "nav.sec.overview": "Overview",
