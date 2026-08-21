@@ -21,6 +21,8 @@
  * high-water mark stays correct even after the hook empties the inbox.
  */
 
+import { STANDING_ORDER } from "./standing-order";
+
 const MAILBOX = process.env.AGENT_MESH_MAILBOX_URL ?? "http://localhost:3300/api/mail";
 const AGENT_ID = process.env.AGENT_MESH_AGENT_ID ?? "platform-claude";
 const INTERVAL_MS = Number(process.env.AGENT_MESH_MAILBOX_POLL_SECONDS ?? 30) * 1000;
@@ -86,9 +88,14 @@ while (true) {
     const ellipsis = m.body.length > PREVIEW_CHARS ? " …" : "";
     await emit(`mail #${m.id} from ${m.from} (${m.body.length} chars): ${preview}${ellipsis}`);
   }
+  // The same sentence the delivery ends on. A notification that only says
+  // *mail arrived* gets answered and stopped on; this says what the wake is
+  // for. Last, so it reads as the closing line of the burst rather than a
+  // header nobody reaches.
+  await emit(STANDING_ORDER.replace(/\n/g, " "));
 }
 
-// Top-level `await` needs this file to be a module, and it imports nothing.
-// Without it the file is a script, every `await` above is a syntax error to
-// `tsc`, and nothing said so while `.claude/hooks` sat outside the typecheck.
-export {};
+// Top-level `await` needs this file to be a module. The import above makes it
+// one; the bare `export {}` that used to do that job is gone with the sentence
+// explaining it, because a file with an import is already a module and a second
+// declaration of the same fact is one that can disagree.

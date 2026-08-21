@@ -20,6 +20,10 @@
     "**/*.ts",
     "**/*.tsx",
     "../scripts/mutation-verdict.ts",
-    "../scripts/lint-preview.ts"
+    "../scripts/lint-preview.ts",
+    // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
+    // it rather than restating it, for the same reason the hooks do: a second
+    // copy is a second thing that can disagree.
+    "../.claude/hooks/standing-order.ts"
   ]
 }

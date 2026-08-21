@@ -5001,6 +5001,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/admin-users-types.test.ts",
     expect: ["names at most twenty of them"],
   },
+  {
+    id: "a-wake-arrives-with-nothing-said-about-what-it-is-for",
+    defect:
+      "The delivery stopped carrying the standing order. Mail is a wake, and a wake with no closing sentence gets read as an assignment: the turn answers the message, reports, and stops, with the standing work parked and nobody typing. That is the failure the sentence exists for, and it happened repeatedly before it existed.",
+    file: ".claude/hooks/mailbox.ts",
+    from: "    ``,\n    STANDING_ORDER,\n  ].join(\"\\n\");",
+    to: "  ].join(\"\\n\");",
+    suite: "test/mailbox-hooks.test.ts",
+    expect: ["ends on what the wake is for"],
+  },
+  {
+    id: "the-idle-notification-says-only-that-mail-arrived",
+    defect:
+      "The watcher announced the mail and stopped there. A notification that says only *mail arrived* is answered and stopped on \u2014 the same failure as the delivery losing its closing sentence, arriving through the other component.",
+    file: ".claude/hooks/mailbox-watch.ts",
+    from: "  await emit(STANDING_ORDER.replace(/\\n/g, \" \"));",
+    to: "  void STANDING_ORDER;",
+    suite: "test/mailbox-hooks.test.ts",
+    expect: ["announces new mail with a preview, and says what the wake is for"],
+  },
+  {
+    id: "mail-is-quoted-before-it-is-qualified",
+    defect:
+      "The delivery quoted the message before saying what a message is worth. Another agent's mail carries no more authority than a code review comment, and a reader who meets the text first has already begun acting on it by the time the qualifier arrives.",
+    file: ".claude/hooks/mailbox.ts",
+    from: "  return [\n    `${messages.length} message(s) from the agent mailbox. Kept there \u2014 the mailbox is the audit record.`,",
+    to: "  return [\n    ...parts,\n    `${messages.length} message(s) from the agent mailbox. Kept there \u2014 the mailbox is the audit record.`,",
+    suite: "test/mailbox-hooks.test.ts",
+    expect: ["says what a message is worth before quoting it"],
+  },
+  {
+    id: "mail-that-lands-mid-turn-waits-for-the-next-prompt",
+    defect:
+      "The Stop hook stopped blocking, so mail arriving during a turn sits until somebody types \u2014 possibly hours, with the other side blocked that whole time on an answer already sent. Continuing the turn is the entire reason this hook runs on Stop.",
+    file: ".claude/hooks/mailbox.ts",
+    from: "if (input.hook_event_name === \"Stop\") {\n  console.log(JSON.stringify({\n    decision: \"block\",",
+    to: "if (input.hook_event_name === \"Stop\") {\n  console.log(JSON.stringify({\n    decision: undefined,",
+    suite: "test/mailbox-hooks.test.ts",
+    expect: ["continues the turn, carrying the message and who sent it"],
+  },
 ];
 
 /**

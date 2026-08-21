@@ -38,6 +38,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { STANDING_ORDER } from "./standing-order";
+
 const MAILBOX = process.env.AGENT_MESH_MAILBOX_URL ?? "http://localhost:3300/api/mail";
 const AGENT_ID = process.env.AGENT_MESH_AGENT_ID ?? "platform-claude";
 const TIMEOUT_MS = 2000;
@@ -149,6 +151,8 @@ function render(messages: Mail[]): string {
     ...parts,
     ``,
     `Reply with: POST ${MAILBOX} {"from":"${AGENT_ID}","to":"<agent>","body":"..."}`,
+    ``,
+    STANDING_ORDER,
   ].join("\n");
 }
 
