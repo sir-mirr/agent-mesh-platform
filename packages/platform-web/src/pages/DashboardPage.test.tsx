@@ -193,6 +193,18 @@ const bodyText = (): string => document.body.textContent ?? "";
 const buttonSaying = (word: string): HTMLButtonElement | undefined =>
   [...document.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(word));
 
+type DashboardGroupState = "loading" | "refused" | "unreachable" | "empty" | "present";
+const DASHBOARD_GROUP_STATES: DashboardGroupState[] = ["loading", "refused", "unreachable", "empty", "present"];
+
+/** One role panel says exactly one thing about its groups read. */
+const expectDashboardGroupState = (prefix: "tenant-groups" | "group-groups", shown: DashboardGroupState) => {
+  for (const state of DASHBOARD_GROUP_STATES) {
+    const found = screen.queryByTestId(`${prefix}-${state}`);
+    if (state === shown) expect(found, `${prefix} did not draw its ${shown} state`).not.toBe(null);
+    else expect(found, `${prefix} drew ${state} beside ${shown}`).toBe(null);
+  }
+};
+
 /**
  * The fleet row that renders `identity` in a cell of its own.
  *
@@ -403,6 +415,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     await mount();
 
     expect(kpiValue(en("dash.ta.groups"))).toBe("2");
+    expectDashboardGroupState("tenant-groups", "present");
     expect(kpiValue(en("dash.ta.agents"))).toBe("2");
     if (kpiValue(en("dash.ta.egress")) !== "2") {
       throw new Error("the tenant dashboard did not sum the egress rules the route returned");
@@ -424,6 +437,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     await mount();
 
     expect(kpiValue(en("dash.ta.groups"))).toBe("0");
+    expectDashboardGroupState("tenant-groups", "empty");
     expect(kpiValue(en("dash.ta.agents"))).toBe("0");
     expect(bodyText()).toContain(en("dash.ta.groupsEmpty"));
     expect(bodyText()).toContain(en("dash.ta.keysEmpty"));
@@ -446,11 +460,128 @@ describe("the two role panels that exist below today's browser gate", () => {
     await mount();
 
     expect(kpiValue(en("dash.ga.groups"))).toBe("1");
+    expectDashboardGroupState("group-groups", "present");
     expect(kpiValue(en("dash.ga.agents"))).toBe("2");
     expect(kpiValue(en("dash.ga.lease"))).toBe("4");
     expect(kpiValue(en("dash.ga.health"))).toBe("50%");
     expect(bodyText()).toContain(SEEN_ROW.id);
     expect(bodyText()).toContain(UNSEEN_ROW.id);
+  });
+
+  it("keeps the tenant group read's pending, refused, and unreachable states out of empty", async () => {
+    const check = async (
+      answer: () => Answer,
+      state: "loading" | "refused" | "unreachable",
+      sentence: string,
+    ) => {
+      cleanup();
+      localStorage.clear();
+      remember("TENANT_ADMIN");
+      routes = [
+        [ME, stillOut],
+        [GROUPS, answer],
+        [AGENTS, answers({ agents: [] })],
+        [KEYS_PENDING, answers({ keys: [] })],
+      ];
+      await mount();
+
+      expectDashboardGroupState("tenant-groups", state);
+      expect(screen.getByTestId(`tenant-groups-${state}`).textContent).toBe(sentence);
+      expect(screen.getByTestId("tenant-groups-count").textContent).not.toBe("0");
+      expect(screen.getByTestId("tenant-egress-count").textContent).not.toBe("0");
+      expect(bodyText()).not.toContain(en("dash.ta.groupsEmpty"));
+    };
+
+    await check(stillOut, "loading", en("common.loading"));
+    await check(
+      refusal(CAPABILITY.GROUP_MANAGE),
+      "refused",
+      `${en("common.refusedRead")} (${CAPABILITY.GROUP_MANAGE}).`,
+    );
+    expect(bodyText()).not.toContain(en("groups.error"));
+
+    await check(down, "unreachable", en("groups.error"));
+    expect(bodyText()).not.toContain(en("common.refusedRead"));
+  });
+
+  it("keeps the group-admin group read's pending, refused, and unreachable states out of empty", async () => {
+    const check = async (
+      answer: () => Answer,
+      state: "loading" | "refused" | "unreachable",
+      sentence: string,
+    ) => {
+      cleanup();
+      localStorage.clear();
+      remember("GROUP_ADMIN");
+      routes = [
+        [ME, stillOut],
+        [GROUPS, answer],
+        [AGENTS, answers({ agents: [] })],
+        [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+      ];
+      await mount();
+
+      expectDashboardGroupState("group-groups", state);
+      expect(screen.getByTestId(`group-groups-${state}`).textContent).toBe(sentence);
+      expect(screen.getByTestId("group-groups-count").textContent).not.toBe("0");
+      expect(bodyText()).not.toContain(en("dash.ga.groupsEmpty"));
+    };
+
+    await check(stillOut, "loading", en("common.loading"));
+    await check(
+      refusal(CAPABILITY.GROUP_MANAGE),
+      "refused",
+      `${en("common.refusedRead")} (${CAPABILITY.GROUP_MANAGE}).`,
+    );
+    expect(bodyText()).not.toContain(en("groups.error"));
+
+    await check(down, "unreachable", en("groups.error"));
+    expect(bodyText()).not.toContain(en("common.refusedRead"));
+  });
+
+  it("renders the group component's answered-and-empty branch as empty", async () => {
+    remember("GROUP_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [] })],
+      [AGENTS, answers({ agents: [] })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    expectDashboardGroupState("group-groups", "empty");
+    expect(kpiValue(en("dash.ga.groups"))).toBe("0");
+    expect(bodyText()).toContain(en("dash.ga.groupsEmpty"));
+  });
+
+  it("keeps each group answer tied to its own route when neighbouring reads fail", async () => {
+    remember("TENANT_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{ group_id: "tenant-alone", name: "Tenant alone", members: [] }] })],
+      [AGENTS, down],
+      [KEYS_PENDING, down],
+    ];
+    await mount();
+
+    // The agents and key reads failed. Neither failure answers the separate
+    // groups question, so a shared `isError` must not take this row down.
+    expectDashboardGroupState("tenant-groups", "present");
+    expect(screen.getByTestId("tenant-groups-present").textContent).toContain("Tenant alone");
+
+    cleanup();
+    localStorage.clear();
+    remember("GROUP_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{ group_id: "group-alone", name: "Group alone", members: [] }] })],
+      [AGENTS, down],
+      [MAILBOX, down],
+    ];
+    await mount();
+
+    expectDashboardGroupState("group-groups", "present");
+    expect(screen.getByTestId("group-groups-present").textContent).toContain("Group alone");
   });
 });
 
