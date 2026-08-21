@@ -3991,6 +3991,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/auth-github.test.ts",
     expect: ["leaves a pending approval behind for someone not yet approved"],
   },
+  {
+    id: "an-attachment-route-that-names-what-it-holds",
+    defect:
+      "The attachment route stopped answering *not party to it* and *does not exist* with one sentence. The ids are digests, so an answer distinguishing them is a probe for which content the mesh holds \u2014 a caller who has seen an id in a log line, an audit event or a forwarded `download_url` can then confirm the bytes are here without being party to anything.",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: 'Not found' }, 404)\n  }\n\n  const filePath = join(UPLOAD_DIR, id)",
+    to: "    return c.json({ error: 'Not a party to this attachment' }, 403)\n  }\n\n  const filePath = join(UPLOAD_DIR, id)",
+    suite: "packages/http/src/attachments.test.ts",
+    expect: ["an attachment the caller is not party to reads as not found"],
+  },
+  {
+    id: "a-proxy-counts-as-party-to-what-it-carried",
+    defect:
+      "`mayDownload` began counting `sent_by`, so a proxy that carried a message may read its attachments. \u00a7 8.2 distinguishes the two names for exactly this: carrying a message is not being party to it, and the http server declares every approved person on one socket \u2014 so one proxy entitlement would open every conversation it ever relayed.",
+    file: "packages/http/src/attachment-access.ts",
+    from: "        WHERE (from_agent = ? OR to_agent = ?)",
+    to: "        WHERE (from_agent = ? OR to_agent = ? OR sent_by = ?)",
+    suite: "packages/http/src/attachments.test.ts",
+    expect: ["neither does the proxy that carried it"],
+  },
+  {
+    id: "an-unapproved-session-is-told-to-sign-in-again",
+    defect:
+      "A signed-in but unapproved person was answered `401` instead of `403`. They proved who they are; what they lack is permission, and telling them to sign in sends them to fix the wrong thing \u2014 into a loop through an identity provider that will keep succeeding.",
+    file: "packages/http/src/main.ts",
+    from: "      ? { identity: session.github_login as string }\n      : { refusal: 403 }",
+    to: "      ? { identity: session.github_login as string }\n      : { refusal: 401 }",
+    suite: "packages/http/src/attachments.test.ts",
+    expect: ["a signed-in person the operator has not approved yet"],
+  },
 ];
 
 /**
