@@ -1,8 +1,24 @@
 # Open questions — identity and authentication
 
-Status: **items 1-4 are now decided.** Their design lives in
+Status: **everything numbered here has been ruled on.** What follows is the
+record of those rulings and, in two places, the condition that would make a
+question live again. Items 1-4's design lives in
 [`decisions/identity-and-authentication.md`](decisions/identity-and-authentication.md).
-What follows are the items still open.
+
+| # | Question | Where it stands |
+|---|---|---|
+| 1-4 | Identity and authentication | decided; see the decision document |
+| 5 | Attachment download is unauthenticated | ruled — parties to the message (SPEC § 15.3) |
+| 6 | One token guards the whole lane HTTP surface | ruled for the deployment; **the SPEC § 4.5 contract question is still open** |
+| 7 | HTTP server hardening | closed — all three fixed |
+| 8 | Where the http admin surface's refusal codes are named | settled for now (D-740); **reopens the moment any repository reads one** |
+| 9 | What the audit console's search box means | closed — a literal substring (D-743) |
+
+**The heading said "what follows are the items still open" while four of the
+five below carried `~~closed~~` in their own titles.** Nothing was hidden — a
+reader who got as far as the headings saw it — but the first three lines of a
+document are what a reader in a hurry takes away, and those said this file was
+a list of live questions. It is a ledger with two conditions in it.
 
 The four resolved items were, in short: hub connect carried no credential;
 `proxy_for` entitlement was unenforced; `mesh.send` accepted a caller-supplied
@@ -21,8 +37,9 @@ reach the port until teardown moved to `agent-mesh-http` behind the admin JWT
 (§ 9.3). Until then a single unauthenticated request revoked every key an
 identity held, and § 9.3 forbids re-registering the name afterwards.
 
-The remaining items below are independent of that work and can move at any
-time. Nothing here should be treated as agreed.
+The items below are independent of that work. Each states what was ruled and,
+underneath, the original entry as it was written — the reasoning is the record,
+so nothing is deleted when a question closes.
 
 **This file holds questions nobody has ruled on.**
 [`deferred.md`](deferred.md) holds the opposite: things that were decided and
@@ -194,16 +211,23 @@ a migration; nothing here forecloses it.
 
 ---
 
-## Sequencing note
+## What is still live
 
-Item 6 partly resolves itself: once per-message signatures land, a lane
-authenticates itself and the shared-token shape stops being the only option.
-Deciding it now would produce a mechanism the signature work replaces, so it is
-worth leaving until then — the question that survives either way is what
-SPEC § 4.5 should require of a conformant lane, and that stays here even after
-the lane components left the repository.
+Two conditions, and no open question.
 
-Items 5 and 7 depend on nothing and can move whenever someone wants them.
+**Item 6, the contract half.** Per-message signatures landed (SPEC § 8.1, built),
+so the reasoning this note used to carry — *wait, because the signature work
+will replace whatever mechanism you pick* — has expired. What survives is what
+it always said would: **what SPEC § 4.5 should require of a conformant lane.**
+The lane components are in another repository; the contract is here, and this
+is the only thing on this page nobody has ruled on.
 
-Item 5 is also entangled with retention: an unauthenticated blob write is only
-bounded by whatever size and retention caps exist, and there are none yet.
+**Item 8, the promotion condition.** The four http-admin refusal codes stay out
+of `agent-mesh-contracts` while nobody reads them as strings. The moment any
+repository branches on one — most likely the front end teaching `ApiError` to
+keep `code` — they follow `PROVISION_ERROR` into contracts and a tag is cut.
+
+Item 5's retention entanglement went with the ruling: access is now decided by
+participation rather than by an unguessable id, so an unbounded blob write is a
+capacity question and not an access one. Size and retention caps still do not
+exist, and that belongs with [`deferred.md`](deferred.md) rather than here.
