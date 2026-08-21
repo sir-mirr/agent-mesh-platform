@@ -5041,6 +5041,66 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/mailbox-hooks.test.ts",
     expect: ["continues the turn, carrying the message and who sent it"],
   },
+  {
+    id: "a-closed-tab-is-written-to-for-ever",
+    defect:
+      "The `catch` around `enqueue` went, so a controller whose browser has gone is never dropped. The set grows for the life of the process and nothing reports it \u2014 a leak that is invisible until the service is writing to thousands of dead controllers.",
+    file: "packages/http/src/main.ts",
+    from: "    try { controller.enqueue(payload) } catch { set.delete(controller) }\n  }\n}\n\nfunction hasActiveSSE",
+    to: "    controller.enqueue(payload)\n  }\n}\n\nfunction hasActiveSSE",
+    suite: "packages/http/src/sse-fanout.test.ts",
+    expect: ["forgets a browser that has gone, the next time it writes"],
+  },
+  {
+    id: "a-sent-message-never-appears-as-sent",
+    defect:
+      "The second fan-out went, so a frame reaches the recipient's stream and not the sender's. A person watching their own outbox sees nothing when their message lands \u2014 the screen they are looking at is the one direction that stopped being pushed.",
+    file: "packages/http/src/main.ts",
+    from: "          // Also push to user\u2192agent direction (sent confirmation)\n          pushToSSE(msg.to, msg.from, 'message', sseMsg)",
+    to: "          // Also push to user\u2192agent direction (sent confirmation)\n          void sseMsg",
+    suite: "packages/http/src/sse-fanout.test.ts",
+    expect: ["reaches the sender's own view as well as the recipient's"],
+  },
+  {
+    id: "a-new-password-may-be-one-character",
+    defect:
+      "The length floor went. An account handed a temporary password may replace it with a single character, which is the one moment the deployment gets to insist on anything.",
+    file: "packages/http/src/main.ts",
+    from: "  if (typeof current !== 'string' || typeof next !== 'string' || next.length < 8) {",
+    to: "  if (typeof current !== 'string' || typeof next !== 'string') {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses a next that is missing, short, or not a string"],
+  },
+  {
+    id: "changing-a-password-to-itself-passes-the-gate",
+    defect:
+      "The same-password check went, so an account clears the first-login flag by re-entering the password it was handed. The gate exists to stop a password read aloud from being the account's password, and this walks straight through it.",
+    file: "packages/http/src/main.ts",
+    from: "  if (next === current) {\n    return c.json({ error: '`next` must differ from `current`' }, 400)\n  }",
+    to: "  if (false) {\n    return c.json({ error: '`next` must differ from `current`' }, 400)\n  }",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses a next that is the current one"],
+  },
+  {
+    id: "a-wrong-password-says-the-account-is-not-there",
+    defect:
+      "A wrong current password started answering 404 \u2014 the answer that means *no such account*. A prober then tells a real account from an invented one by getting the password wrong, which is the cheapest possible probe.",
+    file: "packages/http/src/main.ts",
+    from: "  if (outcome === 'wrong-current') return c.json({ error: '`current` is not this account\\'s password' }, 403)",
+    to: "  if (outcome === 'wrong-current') return c.json({ error: '`current` is not this account\\'s password' }, 404)",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses a wrong current password without denying the account exists"],
+  },
+  {
+    id: "the-password-changed-and-the-gate-stayed-shut",
+    defect:
+      "The change reported success while still declaring the account must change its password. The console then sends the person back to the change screen they just came from, with no way to tell that anything happened.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, must_change_password: false })",
+    to: "  return c.json({ ok: true, must_change_password: true })",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["clears the flag, and the refusal with it"],
+  },
 ];
 
 /**

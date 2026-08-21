@@ -397,3 +397,100 @@ describe("taking a type away", () => {
     expect(await again.json()).toEqual({ ok: true, type, action: "not-found" });
   });
 });
+
+// --- Passing the gate (POST /auth/local/password) --------------------------
+
+describe("changing the password that was handed to you", () => {
+  /** An account admitted through the route above, holding its temporary password. */
+  async function admitted() {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    const username = uniq("holder");
+    const res = await post("/api/v1/admin/users", op.cookie, { username });
+    const { temporary_password } = await res.json();
+    const jwt = await signJwt({ github_id: 0, github_login: username, role: "member" });
+    return { username, password: temporary_password as string, cookie: `mesh_token=${jwt}` };
+  }
+
+  const change = (cookie: string, body: unknown) =>
+    post("/auth/local/password", cookie, body);
+
+  test("refuses a body it cannot parse", async () => {
+    const who = await admitted();
+    expect((await change(who.cookie, "{not json")).status).toBe(400);
+  });
+
+  /**
+   * Eight characters is the floor, and both halves have to be strings. The
+   * check is on `next` only — `current` is whatever the account already has,
+   * and refusing a short one would lock out an account admitted before the
+   * floor existed.
+   */
+  test("refuses a next that is missing, short, or not a string", async () => {
+    const who = await admitted();
+    for (const body of [
+      {}, { current: who.password }, { next: "longenough" },
+      { current: who.password, next: "short" },
+      { current: who.password, next: 12345678 },
+      { current: 7, next: "longenough" },
+    ]) {
+      const res = await change(who.cookie, body);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("`next`");
+    }
+  });
+
+  /** Changing it to itself is not a change, and a gate it passes is not passed. */
+  test("refuses a next that is the current one", async () => {
+    const who = await admitted();
+    const res = await change(who.cookie, { current: who.password, next: who.password });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("must differ");
+  });
+
+  /**
+   * `403`, not `404`. The account exists and the caller does not know its
+   * password — a `404` would say the opposite and hand a prober a way to tell
+   * a real account from an invented one.
+   */
+  test("refuses a wrong current password without denying the account exists", async () => {
+    const who = await admitted();
+    const res = await change(who.cookie, { current: "not-the-password", next: "longenough" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain("`current`");
+  });
+
+  /** A session with no local account behind it has nothing to change. */
+  test("answers 404 for a session that is not a local account", async () => {
+    const github = await holder(CAPABILITY.USER_ADMIT);   // an OAuth session
+    const res = await change(github.cookie, { current: "whatever", next: "longenough" });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toContain("no local account");
+  });
+
+  /**
+   * **The gate opens.** The point of the whole flow: the account was refused
+   * everywhere until this succeeded, and is refused nowhere after.
+   */
+  test("clears the flag, and the refusal with it", async () => {
+    const who = await admitted();
+    expect((await get("/api/v1/admin/users", who.cookie)).status).toBe(403);
+
+    const res = await change(who.cookie, { current: who.password, next: "a-longer-one" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, must_change_password: false });
+    expect(getLocalUser(who.username)?.must_change_password).toBe(0);
+
+    // No longer refused by the gate. `403` for a missing capability is a
+    // different refusal and the body says which.
+    const after = await get("/api/v1/admin/users", who.cookie);
+    expect(await after.json()).not.toMatchObject({ must_change_password: true });
+  });
+
+  /** And the old password stops working, which is what changing one means. */
+  test("leaves the password it replaced unusable", async () => {
+    const who = await admitted();
+    await change(who.cookie, { current: who.password, next: "a-longer-one" });
+    const again = await change(who.cookie, { current: who.password, next: "another-longer-one" });
+    expect(again.status).toBe(403);
+  });
+});
