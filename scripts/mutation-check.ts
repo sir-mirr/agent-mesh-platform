@@ -1991,16 +1991,20 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "§ 0 of the FE coverage inventory stated per-family totals as literals — a second declaration of what the test files register — and two of them had gone quietly wrong: `SC-DOWN-*` said 8 with nine registered, `SC-WRITE-*` said 6 with eight. The inventory is the denominator for goal ②, so an undercount reads as work not yet done and gets written twice.",
     file: "packages/platform-web/COVERAGE_INVENTORY.md",
-    // **Re-anchored twice now, and the reason is the same both times:** this row
-    // grows whenever a scenario is added to the family, so an anchor written
+    // **Re-anchored three times now, and the reason is the same every time:**
+    // this row grows whenever a scenario joins the family, so an anchor written
     // against its tail goes stale the moment the axis it counts does any work.
-    // The count is what the entry is about, so only the count is changed.
-    from: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 17 |",
-    to: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 15 |",
+    // The count *is* what the entry is about, so the count has to be in the
+    // anchor and the staleness is the price. `--anchors` charges it immediately
+    // rather than letting the entry sit checking nothing, which is the whole
+    // reason that check exists — it caught this one within a minute of
+    // `fe-console` landing four new `SC-WRITE-*` scenarios.
+    from: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 21 |",
+    to: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 19 |",
     suite: "test/scenario-ids.test.ts",
     // Moved with the anchor: the number the mutant produces is the number the
     // expected message quotes.
-    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 15"],
+    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 19"],
   },
   {
     id: "inventory-axis-missing-row",
@@ -2776,8 +2780,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`teardownAgentApi` returns `{ ok: true }` without sending the `DELETE`. The row goes, the screen reports the identity torn down, and the agent is still in the mesh \u2014 an irreversible-looking action that did nothing, which is worse than one that fails loudly.",
     file: "packages/platform-web/src/api/agents.ts",
-    from: "  return await apiClient<{ ok: boolean }>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {\n    method: \"DELETE\",\n  });",
-    to: "  return { ok: true };",
+    from: "  return await apiClient<TeardownResponse>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {\n    method: \"DELETE\",\n  });",
+    to: '  return { ok: true, identity, action: "soft-deleted" };',
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-13", "reported a teardown it never sent"],
   },
@@ -3836,6 +3840,66 @@ export const MUTATIONS: Mutation[] = [
     to: "  WHERE (from_agent = ?2 AND to_agent = ?1)",
     suite: "packages/hub/src/rpc/messages.test.ts",
     expect: ["the conversation, not one side of it, newest first"],
+  },
+  {
+    id: "torn-down-and-already-gone-look-the-same",
+    defect:
+      "The console folded `soft-deleted` into `already-deleted`, so an identity destroyed on this click reads as one that was already gone. The route has answered all three since 071db59 and the screen threw the distinction away for a day; teardown is irreversible, and a console that cannot say whether *this* call did it is the most expensive place to be vague.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: '            testId: "teardown-result-soft-deleted",',
+    to: '            testId: "teardown-result-already-deleted",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-18", "soft-deleted was folded"],
+  },
+  {
+    id: "already-gone-reads-as-torn-down-now",
+    defect:
+      "The other direction: `already-deleted` drawn as `soft-deleted`, so a second confirm on an identity somebody else tore down reports a destruction this operator did not cause. Worse than the first fold, because the route is idempotent and answers `200` \u2014 nothing else on the screen contradicts it.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: '            testId: "teardown-result-already-deleted",',
+    to: '            testId: "teardown-result-soft-deleted",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-19", "already-deleted was folded"],
+  },
+  {
+    id: "an-identity-that-was-never-there-reads-as-torn-down",
+    defect:
+      "`not-found` drawn as `soft-deleted`. The operator typed or clicked an identity this mesh does not hold, and the console tells them they destroyed it \u2014 a report of an irreversible act that never happened, against a name that may belong to a mesh they are not looking at.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: '            testId: "teardown-result-not-found",',
+    to: '            testId: "teardown-result-soft-deleted",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-20", "not-found was folded"],
+  },
+  {
+    id: "teardown-confirm-sends-twice",
+    defect:
+      "The in-flight guard on the teardown confirm was removed, so a second click while the `DELETE` is still going sends a second one. The dialog closes only after the await returns, which is what leaves the armed button live for the whole request. Bounded by the route being idempotent \u2014 which is exactly why nothing on screen would have shown it.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "    if (!teardownTarget || teardownInFlight.current) return;",
+    to: "    if (!teardownTarget) return;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-21"],
+  },
+  {
+    id: "an-unparseable-last-seen-reads-as-no-record",
+    defect:
+      "`lastSeen` folded its `invalid` branch into `never`, so a timestamp the mesh *did* send but that will not parse is drawn as *no presence record*. \u00a7 9.1 makes those two different facts \u2014 `null` means the mesh holds no record, and a malformed value means something upstream is broken \u2014 and collapsing them hides the second behind a sentence that reads as normal.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: '  if (Number.isNaN(seen)) return { kind: "invalid" };',
+    to: '  if (Number.isNaN(seen)) return { kind: "never" };',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-08"],
+  },
+  {
+    id: "the-console-union-drifts-from-the-store",
+    defect:
+      "The console's local `TeardownAction` stopped matching `packages/store/src/teardown.ts`. It is a copy on purpose \u2014 `@agent-mesh/store` opens `bun:sqlite` and a browser bundle must not take its type graph, and `@agent-mesh/contracts` does not carry teardown yet \u2014 so nothing but a source comparison can see the two come apart. Neither module imports the other, so both halves compile; the screen then tests `action === \"not-found\"` against a value the route never sends and every teardown falls through to the failure branch.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: 'export type TeardownAction = "soft-deleted" | "already-deleted" | "not-found";',
+    to: 'export type TeardownAction = "soft-deleted" | "already-deleted" | "missing";',
+    suite: "test/teardown-union.test.ts",
+    expect: ["the console's local copy matches the store's"],
   },
 ];
 
