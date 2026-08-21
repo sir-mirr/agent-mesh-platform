@@ -462,6 +462,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a directory, which exists and is not a file"],
   },
   {
+    id: "teardown-by-ownership-skips-the-name-check",
+    defect:
+      "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
+    file: "packages/http/src/main.ts",
+    from: "    if (!IDENTITY_RE.test(identity)) return badIdentity(c)\n    return teardownAs(c, subject!, identity)",
+    to: "    return teardownAs(c, subject!, identity)",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses a malformed identity even from its owner"],
+  },
+  {
+    id: "teardown-takes-ownership-of-one-agent-for-all",
+    defect:
+      "The ownership check stopped naming the identity, so holding `agent.teardown` at any scope plus owning *anything* tears down *anything*. \u00a7 11.3 scopes teardown for the reason \u00a7 9.3 makes it irreversible: reaching one identity too far is not recoverable, and the name is never usable again.",
+    file: "packages/http/src/main.ts",
+    from: "      ownership.isOwner(agentsDb(), subject, identity)",
+    to: "      ownership.ownedBy(agentsDb(), subject).length > 0",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses the same holder on an identity they do not own"],
+  },
+  {
     id: "sign-in-crashes-on-a-body-it-can-parse",
     defect:
       "`POST /auth/local` read its fields straight off whatever the body parsed to. `null` is valid JSON, so the one malformed body this route could parse became an unhandled `TypeError` and a `500`, while `\"a string\"`, `[]` and `123` all got the `400` they should. Four characters on an unauthenticated route, answered with the server's error handler.",

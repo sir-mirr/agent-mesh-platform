@@ -22,7 +22,7 @@ process.env.JWT_SECRET ||= "ownership-probe";
 const { app } = await import("./main.ts");
 const { upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
-const { STORE_FILES, agentsSchema, entitlement, grants, openAt, ownership, stateDir } =
+const { STORE_FILES, agentsSchema, entitlement, grants, groups, openAt, ownership, stateDir } =
   await import("@agent-mesh/store");
 const { CAPABILITY, SCOPE_TENANT } = await import("@agent-mesh/contracts");
 const { join } = await import("node:path");
@@ -31,6 +31,10 @@ const db = openAt(join(stateDir(), STORE_FILES.agents), { create: true });
 agentsSchema.migrate(db);
 grants.migrate(db);
 ownership.migrate(db);
+// The teardown route asks which group an identity is in before deciding, so
+// the table has to exist here even though nothing in this file uses groups —
+// run alone, its absence came back as `500` from the global error handler.
+groups.migrate(db);
 
 let n = 0;
 const uniq = (p: string) => `own-${p}-${++n}-${process.pid}`;
@@ -441,5 +445,69 @@ describe("granting the right to speak for others", () => {
     const bystander = registered();
     await setProxy(target, { can_proxy: true }, op.cookie);
     expect(entitlement.canProxy(db, bystander)).toBe(false);
+  });
+});
+
+/**
+ * **Teardown by ownership, when the capability alone does not reach.**
+ *
+ * § 11.3 lets a scoped `agent.teardown` holder tear down what they own. The
+ * capability check answers the tenant-wide and per-identity grants; ownership
+ * answers *it is mine* — and holding `agent.teardown` scoped to `lane-a` says
+ * nothing about `lane-b`, which matters here more than anywhere because § 9.3
+ * is irreversible: the name is never usable again.
+ */
+describe("tearing down what you own", () => {
+  const teardown = (identity: string, cookie: string) =>
+    app.fetch(new Request(`http://own-probe/api/v1/admin/agents/${identity}`, {
+      method: "DELETE",
+      headers: { cookie },
+    }));
+
+  /** A holder scoped to some other agent, who owns this one. */
+  async function ownerOf(identity: string) {
+    const login = uniq("owner");
+    const user = upsertUser(371000 + n, login);
+    createPendingApproval(login, user.github_id);
+    approveUser(login);
+    grants.grant(db, {
+      subject: login,
+      capability: CAPABILITY.AGENT_TEARDOWN,
+      scope: uniq("elsewhere"),          // deliberately not this identity, nor the tenant
+      grantedBy: "ownership-test",
+    });
+    ownership.assign(db, { identity, owner: login, grantedBy: "ownership-test" });
+    const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
+    return { login, cookie: `mesh_token=${jwt}` };
+  }
+
+  test("admits an owner whose grant names another agent", async () => {
+    const identity = registered();
+    const who = await ownerOf(identity);
+    const res = await teardown(identity, who.cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, identity, action: "soft-deleted" });
+  });
+
+  /** Ownership of one agent is not ownership of the next. */
+  test("refuses the same holder on an identity they do not own", async () => {
+    const mine = registered();
+    const theirs = registered();
+    const who = await ownerOf(mine);
+    expect((await teardown(theirs, who.cookie)).status).toBe(403);
+  });
+
+  /**
+   * **Validated after the owner is known, and still validated.** A name that
+   * cannot be an identity is refused with `400` rather than passed to the
+   * store — ownership of a malformed name is a row somebody wrote, not a
+   * reason to act on it.
+   */
+  test("refuses a malformed identity even from its owner", async () => {
+    const bad = "-not-an-identity";
+    const who = await ownerOf(bad);
+    const res = await teardown(bad, who.cookie);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("invalid identity format");
   });
 });
