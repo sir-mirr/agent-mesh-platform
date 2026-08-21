@@ -6484,12 +6484,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A duplicate check that cannot be read used to reach the dispatcher's last-resort handler, which answers a worse error than this one — and one § 8.9.3 does not classify, so a conformant client does not know whether to retry it.",
     file: "packages/hub/src/rpc/audit.ts",
-    from: `    existing = stmtSelectAuditEvent.get(eventId) as
-      | { payload_digest: string; stored_at: string }
-      | undefined;`,
-    to: `    existing = (() => { try { return stmtSelectAuditEvent.get(eventId); } catch { return undefined; } })() as
-      | { payload_digest: string; stored_at: string }
-      | undefined;`,
+    from: "    log(`audit duplicate check failed for ${eventId}: ${message}`);",
+    to: "    throw err;",
     suite: "packages/hub/src/rpc/audit-append.test.ts",
     expect: ["a duplicate check that cannot be read is answered, not thrown"],
   },
