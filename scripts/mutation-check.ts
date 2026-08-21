@@ -362,6 +362,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses with the reason, rather than an empty page"],
   },
   {
+    id: "grant-author-is-self-reported",
+    defect:
+      "`grantedBy` started falling back to a field the caller sent. The grant record is the only account of how somebody came to hold a capability, and one whose author is self-reported records whatever the author wanted recorded \u2014 including a name that never made the grant.",
+    file: "packages/http/src/main.ts",
+    from: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: actor })",
+    to: "  grants.grant(agentsDb(), { subject, capability, scope, grantedBy: body.grantedBy ?? actor })",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["records the actor as the author, whatever the body claims"],
+  },
+  {
+    id: "grant-vocabulary-left-open",
+    defect:
+      "The write route stopped checking the capability against `ALL_CAPABILITIES`, so a mistyped name is stored as a grant that no check will ever match. It fails silently and in the safe direction \u2014 the operator believes the person has the capability, the person does not, and nothing anywhere says so.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {\n    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)",
+    to: "  if (false) {\n    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["refuses a capability nobody defines, and says which exist"],
+  },
+  {
+    id: "revoke-accepts-half-a-row",
+    defect:
+      "The revocation stopped requiring both halves of the row it names. A request missing `capability` then reaches the store as `undefined`, removes nothing, and answers `not-found` \u2014 which an operator reads as *the grant was already gone* rather than *you did not name one*.",
+    file: "packages/http/src/main.ts",
+    from: "  if (typeof subject !== 'string' || typeof capability !== 'string') {\n    return c.json({ ok: false, error: 'subject and capability are required' }, 400)\n  }",
+    to: "  if (false) {\n    return c.json({ ok: false, error: 'subject and capability are required' }, 400)\n  }",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["refuses a revocation that names no grant"],
+  },
+  {
+    id: "any-scope-gate-demands-the-whole-tenant",
+    defect:
+      "`requireCapabilityAnyScope` fell back to a tenant-scoped check, which is the failure \u00a7 11.3 names: it refuses every operator who holds `key.approve` on their own agents only. The answer for them is a short list \u2014 the approval queue's empty state \u2014 not a `403` for a capability they do hold.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!grants.hasAny(agentsDb(), subject, capability)) {",
+    to: "  if (!grants.has(agentsDb(), subject, capability)) {",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["admits a holder scoped to a single agent"],
+  },
+  {
+    id: "pending-keys-unfiltered-for-an-owner",
+    defect:
+      "The pending-key queue stopped narrowing to what the operator owns, handing every scoped holder every proposal in the tenant. The queue is a work list, and one that shows an operator agents they cannot decide on is both a leak of who else runs what and a list nobody can act on.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ...body, keys: (body.keys ?? []).filter((k) => mine.has(k.identity)) }, 200)",
+    to: "  return c.json({ ...body, keys: body.keys ?? [] }, 200)",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["shows an owner their own proposals and nobody else's"],
+  },
+  {
     id: "ai-usage-read-borrows-the-audit-grant",
     defect:
       "The AI-usage read stopped asking for `usage.read` and took the audit's grant instead. \u00a7 11 separates them because they answer different questions: an operator cleared to read message content is not thereby cleared to read what the deployment spends, and a capability that stands in for another is one nobody can revoke separately.",
