@@ -572,6 +572,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["takes ack ids only when they are strings"],
   },
   {
+    id: "audit-append-acks-before-it-commits",
+    defect:
+      "The ACK stopped being read back from the committed row. A client told its outbox entry is safe drops it, so acknowledging before the transaction commits is how an event is lost with both sides believing it was stored \u2014 and nothing later says otherwise, because the outbox is empty.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "  const stored = stmtSelectAuditEvent.get(eventId) as { stored_at: string };",
+    to: "  const stored = { stored_at: new Date().toISOString() };",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["commits it, and answers only afterwards"],
+  },
+  {
+    id: "audit-append-treats-a-collision-as-a-retry",
+    defect:
+      "An event reusing an id with *different* bytes was answered as a duplicate. The two are not alike: identical bytes mean the client did not hear the ACK, different bytes under one id mean a client defect retrying cannot fix. Answering `duplicate: true` tells that client the event is stored when what is stored is somebody else's.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    if (existing.payload_digest === payloadDigest) {",
+    to: "    if (true) {",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["refuses a second event that reuses an id with different bytes"],
+  },
+  {
+    id: "audit-append-records-the-caller-as-producer",
+    defect:
+      "The stored `identity` came from the payload rather than from the connection. \u00a7 8.9.3's record is only worth reading if the *who* is the hub's own knowledge \u2014 an event that says who it is about is an event anyone can write about anyone.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "        params.producer_id ?? null,\n        identity,\n        \"adapter\",",
+    to: "        params.producer_id ?? null,\n        (params.identity as string) ?? identity,\n        \"adapter\",",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["commits it, and answers only afterwards"],
+  },
+  {
+    id: "audit-append-accepts-a-truncated-blob",
+    defect:
+      "The size check went, so a file of the right name and the wrong length counts as present. That is an interrupted upload, and accepting it commits an event that references truncated bytes as verified \u2014 the one thing the check exists for, and unrecoverable afterwards because the event is signed over what it claims.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    if (!stat || stat.size !== size) {",
+    to: "    if (!stat) {",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["refuses a blob whose stored size is not the declared one"],
+  },
+  {
+    id: "prepare-blobs-reports-a-partial-upload-as-present",
+    defect:
+      "The same rule one method earlier: `prepare_blobs` reported a stored file of the wrong length as `present`, so the client never re-uploads it and the append that follows references bytes nobody completed. The two checks are copies of one rule and either can stop alone.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "    if (existing && existing.size === b.size) {",
+    to: "    if (existing) {",
+    suite: "packages/hub/src/rpc/audit-append.test.ts",
+    expect: ["reports one of the wrong length as missing, and grants an upload"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
