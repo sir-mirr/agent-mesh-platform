@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "auth-github-probe";
 
-const { exchangeCodeForToken, getGithubUser, requireJwtSecret } = await import("./auth");
+const { exchangeCodeForToken, getGithubUser, refuseToStart, requireJwtSecret } = await import("./auth");
 const { app } = await import("./main.ts");
 const { getPendingApproval } = await import("./db");
 
@@ -186,5 +186,34 @@ describe("requireJwtSecret", () => {
     const refuse = (): never => { throw new Error("refused"); };
 
     expect(() => requireJwtSecret("", refuse)).toThrow("refused");
+  });
+
+  /**
+   * The refusal this deployment actually uses, which is the one that ends the
+   * process. **Failing at startup is the point**: an unset secret is a
+   * misconfiguration, and a misconfiguration that runs is one nobody finds — so
+   * what is asserted is that it says what is wrong on the way out and leaves
+   * with a non-zero status, rather than logging and carrying on.
+   */
+  test("the default refusal reports the reason and stops the process", () => {
+    const realExit = process.exit;
+    const realError = console.error;
+    const said: string[] = [];
+    let exited: number | undefined;
+    console.error = (...args: unknown[]) => { said.push(args.join(" ")); };
+    process.exit = ((code?: number) => {
+      exited = code;
+      throw new Error("process.exit");
+    }) as typeof process.exit;
+
+    try {
+      expect(() => refuseToStart("[http-server] JWT_SECRET is not set.")).toThrow("process.exit");
+    } finally {
+      process.exit = realExit;
+      console.error = realError;
+    }
+
+    expect(exited).toBe(1);
+    expect(said).toEqual(["[http-server] JWT_SECRET is not set."]);
   });
 });

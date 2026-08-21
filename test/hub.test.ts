@@ -123,6 +123,28 @@ describe("mesh.connect", () => {
     expect((await rpc.call("mesh.connect", {})).error).toMatchObject({ code: -32602 });
     rpc.close();
   });
+
+  /**
+   * **A wait for a close gives up rather than hanging the suite.**
+   *
+   * `closed()` is how a scenario asserts the hub hung up on a socket, and the
+   * interesting case for the harness itself is the one where it does not: a
+   * wait with no deadline turns "the hub did not close this" into a run that
+   * never finishes and a CI job killed with no failure to read. Both endings
+   * are checked here because the harness is the instrument every other file in
+   * this directory rests on.
+   */
+  test("waiting for a close the hub never makes answers null, and a real one answers its code", async () => {
+    const open = await connectRpc(mesh.hub);
+    await open.call("mesh.connect", { identity: "agent-a" });
+
+    expect(await open.closed(150)).toBeNull();
+
+    open.close();
+    // Now it has closed, so the same wait answers immediately with the code
+    // rather than waiting again.
+    expect(typeof (await open.closed(2_000))).toBe("number");
+  });
 });
 
 describe("messaging", () => {

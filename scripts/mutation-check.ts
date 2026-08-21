@@ -6595,6 +6595,28 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["a gap fetch that fails leaves the stream open and live"],
   },
+  {
+    id: "jwt-refusal-says-why",
+    swept: true,
+    defect:
+      "Exiting without saying why is a process that dies at boot with nothing in the log — the operator sees a service that will not start and no reason, which is the same investigation as the misconfiguration itself.",
+    file: "packages/http/src/auth.ts",
+    from: "  console.error(message)",
+    to: "  void message",
+    suite: "packages/http/src/auth-github.test.ts",
+    expect: ["the default refusal reports the reason and stops the process"],
+  },
+  {
+    id: "harness-close-wait-answers-what-it-knows",
+    swept: true,
+    defect:
+      "`closed()` is how a scenario asserts the hub hung up. Waiting again for a socket that has already closed means the answer arrives at the deadline instead of immediately — and for a close that already happened, never: the waiter is registered after the event it is waiting for.",
+    file: "test/harness.ts",
+    from: "      if (closeCode !== null) return Promise.resolve(closeCode);",
+    to: "      if (false) return Promise.resolve(closeCode);",
+    suite: "test/hub.test.ts",
+    expect: ["waiting for a close the hub never makes answers null, and a real one answers its code"],
+  },
 ];
 
 /**

@@ -19,7 +19,7 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? ''
  * Failing at startup is the point. An unset secret is a misconfiguration, and
  * a misconfiguration that runs is one nobody finds.
  */
-const refuseToStart = (message: string): never => {
+export const refuseToStart = (message: string): never => {
   console.error(message)
   process.exit(1)
 }
