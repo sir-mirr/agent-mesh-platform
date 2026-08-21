@@ -772,6 +772,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["redacts secrets whatever the caller holds"],
   },
   {
+    id: "revocation-without-a-reason-is-accepted",
+    defect:
+      "A key revocation stopped requiring a reason. `rotation` and `compromise` say different things about every signature made before the revocation \u2014 one says nothing, the other casts doubt on the whole window \u2014 and the recorded reason is the only thing that tells a verifier which happened. By the time anybody asks, nobody remembers.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        if (!reason) {",
+    to: "        if (false) {",
+    suite: "packages/http/src/keys-admin.test.ts",
+    expect: ["refuses a revocation that gives no reason"],
+  },
+  {
+    id: "key-decision-conflates-missing-with-already-decided",
+    defect:
+      "A fingerprint that does not exist and one already decided came back as the same status. They mean different things to the operator holding a stale listing: one says *you have the wrong string*, the other says *somebody got there first*, and only the second is a reason to reload rather than retype.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        status: err.code === 'not-found' ? 404 : 409,",
+    to: "        status: 409,",
+    suite: "packages/http/src/keys-admin.test.ts",
+    expect: ["tells a wrong fingerprint apart from one already decided"],
+  },
+  {
+    id: "key-decision-records-no-actor",
+    defect:
+      "The decision stopped naming who made it. \u00a7 10.2 requires each transition to say who caused it, and an approval nobody is named for is an approval nobody can be asked about \u2014 which is exactly the state the unauthenticated version of this route left every row in.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        row = keys.approveKey(db, fingerprint, actor)",
+    to: "        row = keys.approveKey(db, fingerprint, 'hub')",
+    suite: "packages/http/src/keys-admin.test.ts",
+    expect: ["records who approved it, and when"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
