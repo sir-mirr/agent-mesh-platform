@@ -71,10 +71,10 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `packages/http/src/main.ts` | `새 사용자 승인 요청:` | The admin-notify send, behind `AGENT_MESH_ADMIN_NOTIFY_IDENTITY`, read at load. |
-| `packages/http/src/main.ts` | `could not register own identity` | The hub refusing this server's own provisioning at startup. |
+| `packages/http/src/main.ts` | `self_provision_failed` | The hub refusing this server's own provisioning at startup. |
 | `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
-| `packages/http/src/main.ts` | `[chat-audits/stream] high client count:` | Warns past fifty concurrent audit-stream clients. |
-| `packages/http/src/main.ts` | `[ai-usage/stream] high client count:` | The same, for the AI-usage stream. |
+| `packages/http/src/main.ts` | `stream: 'chat-audits',` | Warns past fifty concurrent audit-stream clients. |
+| `packages/http/src/main.ts` | `stream: 'ai-usage',` | The same, for the AI-usage stream. |
 | `packages/http/src/main.ts` | `// Heartbeat every 30s to keep connection alive` | A 30-second timer's callback. |
 | `packages/http/src/main.ts` | `// 30s keepalive comment to keep proxies from closing the idle stream` | The same, on the audit stream. |
 | `packages/http/src/main.ts` | `// 20s heartbeat — keep proxies from closing idle stream (ping event)` | The same, on the AI-usage stream. |

@@ -63,6 +63,7 @@ import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } fr
 import { renderLandingPage } from './ui/landing'
 import { BUILD_VERSION, IS_DEV, THEME } from './ui/theme'
 import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
+import { log } from './log'
 
 // --- Configuration ---
 
@@ -129,7 +130,7 @@ export function connectToHub(): void {
     hubWs = new WebSocket(HUB_URL)
     hubWs.onopen = async () => {
       hubConnected = true
-      console.log(`[http-server] connected to hub at ${HUB_URL}`)
+      log.info(`connected to the hub at ${HUB_URL}`, 'hub_connected', { url: HUB_URL })
 
       // Registration before mesh.connect, and in this order, because § 8.2 now
       // checks both halves against stored rows rather than against what the
@@ -142,7 +143,12 @@ export function connectToHub(): void {
       // wanted for anything missed while it was down.
       const self = await provisionSelf(HUB_IDENTITY)
       if (!self.ok) {
-        console.warn(`[http-server] could not register own identity: ${self.reason}`)
+        log.warn('could not register this service\'s own identity with the hub', 'self_provision_failed', {
+          actor: HUB_IDENTITY,
+          outcome: 'failed',
+          reason: 'hub_refused',
+          detail: self.reason,
+        })
       }
       const webUsers = listApprovedWebUserIds()
       await provisionAllHumans(webUsers)
@@ -153,7 +159,10 @@ export function connectToHub(): void {
         id: 1,
       }))
       if (webUsers.length > 0) {
-        console.log(`[http-server] proxying for: ${webUsers.join(', ')}`)
+        log.info(`proxying for ${webUsers.length} web user(s)`, 'proxies_declared', {
+          count: webUsers.length,
+          identities: webUsers,
+        })
       }
     }
     hubWs.onmessage = (e) => {
@@ -198,11 +207,20 @@ export function connectToHub(): void {
           })
           // 3. Send push notification
           sendPushNotificationForMessage(msg.to, msg.from, msg.content)
-          console.log(`[http-server] hub→sse: ${msg.from} → ${msg.to}`)
+          log.info(`hub→sse: ${msg.from} → ${msg.to}`, 'hub_frame_forwarded', {
+            id: msg.id,
+            actor: msg.from,
+            to: msg.to,
+          })
         }
         if (data.method === 'mesh.delivered' && data.params) {
           const d = data.params
-          console.log(`[http-server] mesh.delivered: ${d.from} → ${d.to} (${d.id}), pushing to SSE key ${d.to}:${d.from}`)
+          log.info(`mesh.delivered: ${d.from} → ${d.to}`, 'delivery_receipt', {
+            id: d.id,
+            actor: d.from,
+            to: d.to,
+            outcome: 'delivered',
+          })
           // Notify sender's SSE that message was delivered (show typing indicator)
           pushToSSE(d.to, d.from, 'delivered', { id: d.id, to: d.to, ts: d.ts })
         }
@@ -221,10 +239,13 @@ export function connectToHub(): void {
         // one silently. What to do with the frame itself is a separate
         // question about this service's contract with the hub.
         const reason = err instanceof Error ? err.message : String(err)
-        console.error(
-          `[http-server] dropped a hub frame: id=${String(frameId ?? 'unknown')} ` +
-          `from=${String(frameFrom ?? 'unknown')} reason=${reason}`,
-        )
+        log.error('dropped a hub frame', 'frame_dropped', {
+          id: String(frameId ?? 'unknown'),
+          actor: String(frameFrom ?? 'unknown'),
+          outcome: 'dropped',
+          reason: 'threw',
+          error: reason,
+        })
       }
     }
     hubWs.onclose = () => {
@@ -359,7 +380,11 @@ const auditSseClients = new Set<AuditSseClient>()
 function addAuditSseClient(c: AuditSseClient): void {
   auditSseClients.add(c)
   if (auditSseClients.size > 50) {
-    console.warn(`[chat-audits/stream] high client count: ${auditSseClients.size}`)
+    log.warn(`the audit stream has ${auditSseClients.size} clients attached`, 'sse_clients_high', {
+      stream: 'chat-audits',
+      clients: auditSseClients.size,
+      reason: 'above_watermark',
+    })
   }
 }
 
@@ -438,9 +463,16 @@ function startAuditPoller(): void {
       lastSeenMessageTs = '1970-01-01 00:00:00'
       lastSeenMessageId = ''
     }
-    console.log(`[http-server] audit poller initial last ts=${lastSeenMessageTs} id=${lastSeenMessageId}`)
+    log.info('the audit poller has its starting point', 'audit_poller_started', {
+      id: lastSeenMessageId,
+      last_ts: lastSeenMessageTs,
+    })
   } catch (err) {
-    console.error('[http-server] audit poller init error:', err)
+    log.error('the audit poller could not read a starting point, so it starts from the beginning', 'audit_poller_init_failed', {
+      outcome: 'restarted_from_epoch',
+      reason: 'store_unreadable',
+      error: err instanceof Error ? err.message : String(err),
+    })
     lastSeenMessageTs = '1970-01-01 00:00:00'
     lastSeenMessageId = ''
   }
@@ -456,7 +488,9 @@ function startAuditPoller(): void {
          LIMIT 200
       `).all({ $ts: lastSeenMessageTs, $id: lastSeenMessageId }) as MsgRow[]
       if (rows.length > 0) {
-        console.log(`[http-server] audit poller picked ${rows.length} new rows`)
+        log.info(`the audit poller picked ${rows.length} new row(s)`, 'audit_poller_rows', {
+          count: rows.length,
+        })
         for (const r of rows) {
           broadcastAuditMessage({
             id: r.id,
@@ -472,7 +506,11 @@ function startAuditPoller(): void {
         }
       }
     } catch (err) {
-      console.error('[http-server] audit poller error:', err)
+      log.error('the audit poller failed a pass, and will try again', 'audit_poller_failed', {
+        outcome: 'retrying',
+        reason: 'store_unreadable',
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }, 1500)
 }
@@ -514,7 +552,11 @@ const aiUsageSseClients = new Set<ReadableStreamDefaultController>()
 function addAiUsageSseClient(c: ReadableStreamDefaultController): void {
   aiUsageSseClients.add(c)
   if (aiUsageSseClients.size > 50) {
-    console.warn(`[ai-usage/stream] high client count: ${aiUsageSseClients.size}`)
+    log.warn(`the ai-usage stream has ${aiUsageSseClients.size} clients attached`, 'sse_clients_high', {
+      stream: 'ai-usage',
+      clients: aiUsageSseClients.size,
+      reason: 'above_watermark',
+    })
   }
 }
 
@@ -609,12 +651,20 @@ function notifyApprovalRequest(githubLogin: string, _githubId: number): void {
   // Deployment-specific. Unset means approvals wait in /api/v1/admin/pending
   // without an out-of-band ping.
   if (!ADMIN_NOTIFY_IDENTITY) {
-    console.log(`agent-mesh-http: approval pending for ${githubLogin}; AGENT_MESH_ADMIN_NOTIFY_IDENTITY unset, no notification sent`)
+    log.warn(`${githubLogin} is waiting for approval and nobody was told`, 'admin_notify_skipped', {
+      actor: githubLogin,
+      outcome: 'skipped',
+      reason: 'notify_identity_unset',
+    })
     return
   }
   const msg = `새 사용자 승인 요청: ${githubLogin} (GitHub). /api/v1/admin/pending에서 확인하세요.`
   sendViaHub(ADMIN_NOTIFY_IDENTITY, msg, 'system').catch(() => {
-    console.error('agent-mesh-http: failed to send approval notification via hub')
+    log.error(`could not tell an admin that ${githubLogin} is waiting for approval`, 'admin_notify_failed', {
+      actor: githubLogin,
+      outcome: 'failed',
+      reason: 'hub_send_failed',
+    })
   })
 }
 
@@ -1019,7 +1069,9 @@ app.post('/auth/local/password', async (c) => {
   if (outcome === 'no-user') return c.json({ error: 'no local account for this session' }, 404)
   if (outcome === 'wrong-current') return c.json({ error: '`current` is not this account\'s password' }, 403)
 
-  console.log(`[http-server] ${payload.github_login} changed their password`)
+  log.info(`${payload.github_login} changed their password`, 'password_changed', {
+    actor: payload.github_login,
+  })
   return c.json({ ok: true, must_change_password: false })
 })
 
@@ -1435,7 +1487,12 @@ app.post('/api/v1/messages', async (c) => {
   // person saw a sent message that no one would ever receive.
   const hubMessageId = await sendViaHub(to, wireContent, from, replyTo).catch(() => null)
   if (!hubMessageId) {
-    console.warn(`[http-server] ${from} -> ${to}: the hub did not accept this message`)
+    log.warn(`the hub did not accept a message from ${from} to ${to}`, 'send_not_accepted', {
+      actor: from,
+      to,
+      outcome: 'failed',
+      reason: 'hub_refused',
+    })
   }
 
   // Push to SSE clients so sender's UI updates immediately.
@@ -1919,7 +1976,11 @@ app.post('/api/v1/admin/pairing-codes', async (c) => {
   }
 
   const code = ownership.issueCode(agentsDb(), { identity, issuedBy: actor, ttlSeconds: ttl })
-  console.log(`[http-server] ${actor} issued a pairing code for ${identity}`)
+  log.info(`${actor} issued a pairing code for ${identity}`, 'pairing_code_issued', {
+    id: identity,
+    actor,
+    ttl_seconds: ttl,
+  })
   // The code itself is returned once and never read back — every later route
   // answers about it without repeating it, so a screen that loses it has to
   // issue another rather than recover this one.
@@ -1969,7 +2030,11 @@ app.post('/api/v1/pairing-codes/redeem', async (c) => {
     const status = outcome.reason === 'unknown' ? 404 : 409
     return c.json({ ok: false, reason: outcome.reason, error: `pairing code ${outcome.reason}` }, status)
   }
-  console.log(`[http-server] ${owner} claimed ${outcome.identity} via pairing code`)
+  log.info(`${owner} claimed ${outcome.identity} with a pairing code`, 'pairing_code_claimed', {
+    id: outcome.identity,
+    actor: owner,
+    outcome: 'claimed',
+  })
   return c.json({ ok: true, identity: outcome.identity, owner: outcome.owner })
 })
 
@@ -2020,7 +2085,11 @@ app.post('/api/v1/admin/agents/:identity/can-proxy', async (c) => {
   if (!exists) return c.json({ ok: false, error: `identity '${identity}' is not registered` }, 404)
 
   db.prepare(`UPDATE agents SET can_proxy = ? WHERE identity = ?`).run(body.can_proxy ? 1 : 0, identity)
-  console.log(`[http-server] ${actor} set can_proxy=${body.can_proxy} on ${identity}`)
+  log.info(`${actor} set can_proxy=${body.can_proxy} on ${identity}`, 'can_proxy_set', {
+    id: identity,
+    actor,
+    can_proxy: body.can_proxy,
+  })
   return c.json({ ok: true, identity, can_proxy: body.can_proxy })
 })
 
@@ -2099,7 +2168,12 @@ app.post('/api/v1/admin/groups/:group_id/members', async (c) => {
   }
   const from = groupsStore.groupOf(db, identity)
   groupsStore.moveTo(db, { identity, groupId, movedBy: actor })
-  console.log(`[http-server] ${actor} moved ${identity} from ${from} to ${groupId}`)
+  log.info(`${actor} moved ${identity} from ${from} to ${groupId}`, 'group_moved', {
+    id: identity,
+    actor,
+    from_group: from,
+    to_group: groupId,
+  })
   return c.json({ ok: true, identity, from_group: from, to_group: groupId })
 })
 
@@ -2246,7 +2320,12 @@ for (const decision of ['approve', 'deny', 'revoke'] as const) {
 
     const r = decideKey(decision, fingerprint, actor, reason)
     if (r.status === 200) {
-      console.log(`[http-server] ${actor} ${decision}d key ${fingerprint}` + (reason ? ` (${reason})` : ''))
+      log.info(`${actor} ${decision}d a key`, 'key_decided', {
+        id: fingerprint,
+        actor,
+        outcome: `${decision}d`,
+        ...(reason ? { detail: reason } : {}),
+      })
     }
     return c.json(r.body, r.status as any)
   })
@@ -2710,7 +2789,11 @@ app.post('/api/v1/admin/users', async (c) => {
     tenant,
     role: typeof body?.role === 'string' ? body.role : undefined,
   })
-  console.log(`[http-server] ${actor} admitted ${username} to tenant ${tenant}`)
+  log.info(`${actor} admitted ${username} to tenant ${tenant}`, 'user_admitted', {
+    id: username,
+    actor,
+    tenant,
+  })
 
   return c.json(
     {
@@ -2748,7 +2831,10 @@ app.post('/api/v1/admin/users/:username/password', async (c) => {
     return c.json({ ok: false, error: `no local account named '${username}'` }, 404)
   }
 
-  console.log(`[http-server] ${actor} reissued a temporary password for ${username}`)
+  log.info(`${actor} reissued a temporary password for ${username}`, 'password_reissued', {
+    id: username,
+    actor,
+  })
   return c.json({ ok: true, username, temporary_password: temporary, must_change_password: true }, 200)
 })
 
@@ -2783,7 +2869,11 @@ app.post('/api/v1/admin/agent-types', async (c) => {
   if (!row) {
     return c.json({ ok: false, error: `type '${type}' already exists`, code: 'TYPE_EXISTS' }, 409)
   }
-  console.log(`[http-server] ${actor} added agent type ${type} (requires_key=${requiresKey})`)
+  log.info(`${actor} added the agent type ${type}`, 'agent_type_added', {
+    id: type,
+    actor,
+    requires_key: requiresKey,
+  })
   return c.json({ ok: true, type: row }, 201)
 })
 
@@ -2804,7 +2894,10 @@ app.delete('/api/v1/admin/agent-types/:type', async (c) => {
   if (!result.removed) {
     return c.json({ ok: true, type, action: 'not-found' })
   }
-  console.log(`[http-server] ${actor} removed agent type ${type}`)
+  log.info(`${actor} removed the agent type ${type}`, 'agent_type_removed', {
+    id: type,
+    actor,
+  })
   // `deleted`, not `removed`: one clause, one word. Four delete routes had
   // four vocabularies for the same two outcomes.
   return c.json({ ok: true, type, action: 'deleted' })
@@ -2901,12 +2994,23 @@ async function teardownAs(c: any, actor: string, identity: string) {
     result = teardown.teardownIdentity(agentsDb(), identity, actor)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error(`[http-server] teardown of ${identity} failed: ${msg}`)
+    log.error(`the teardown of ${identity} failed`, 'teardown_failed', {
+      id: identity,
+      actor,
+      outcome: 'failed',
+      reason: 'db_error',
+      error: msg,
+    })
     return c.json({ ok: false, error: `db error: ${msg}` }, 500)
   }
 
   if (result.action === 'soft-deleted') {
-    console.log(`[http-server] ${actor} tore down ${identity} (revoked ${result.revoked.length} key(s))`)
+    log.info(`${actor} tore down ${identity}`, 'teardown_done', {
+      id: identity,
+      actor,
+      outcome: 'soft_deleted',
+      revoked: result.revoked.length,
+    })
   }
   return c.json({
     ok: true,
@@ -2951,7 +3055,12 @@ app.post('/api/v1/admin/approve', async (c) => {
   // retries.
   const provisioned = await provisionHuman(githubLogin)
   if (!provisioned.ok) {
-    console.warn(`[http-server] approved ${githubLogin} but could not register the mesh identity: ${provisioned.reason}`)
+    log.warn(`approved ${githubLogin}, but the mesh identity could not be registered`, 'identity_registration_failed', {
+      actor: githubLogin,
+      outcome: 'failed',
+      reason: 'hub_refused',
+      detail: provisioned.reason,
+    })
   }
   // Without this the person could not be spoken for until this server next
   // reconnected — approved in the UI and unable to send.
@@ -3066,7 +3175,12 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
             if (gapCount > 100) {
               const summary = encoder.encode(`event: gap-too-large\ndata: ${JSON.stringify({ count: gapCount, truncated: true, last_event_id: lastEventId })}\n\n`)
               try { controller.enqueue(summary) } catch {}
-              console.log(`[chat-audits/stream] gap-too-large: ${gapCount} > 100, sent summary (last_event_id=${lastEventId})`)
+              log.info(`the gap is ${gapCount} messages, so a summary was sent instead`, 'audit_gap_summary', {
+                id: lastEventId,
+                gap: gapCount,
+                outcome: 'summarised',
+                reason: 'gap_too_large',
+              })
             } else if (gapCount > 0) {
               const sql = `SELECT id, from_agent, to_agent, content, reply_to, status, ts FROM messages ${whereClause} ORDER BY ts ASC, id ASC LIMIT 100`
               const rows = db.query(sql).all(...params) as Array<{
@@ -3078,13 +3192,26 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
                 const pkt = encoder.encode(`id: ${sseSafeId(m.id)}\nevent: message\ndata: ${JSON.stringify(Object.assign({}, m, { recovered: true }))}\n\n`)
                 try { controller.enqueue(pkt) } catch {}
               }
-              console.log(`[chat-audits/stream] gap fetch sent ${rows.length} msgs (last_event_id=${lastEventId})`)
+              log.info(`sent ${rows.length} message(s) a reconnecting console had missed`, 'audit_gap_fetch', {
+                id: lastEventId,
+                count: rows.length,
+                outcome: 'sent',
+              })
             }
           } else {
-            console.log(`[chat-audits/stream] last_event_id=${lastEventId} not found in hub.db (skipping gap fetch)`)
+            log.info('the anchor a console reconnected with is not in the store, so no gap was fetched', 'audit_gap_skipped', {
+              id: lastEventId,
+              outcome: 'skipped',
+              reason: 'anchor_not_found',
+            })
           }
         } catch (err) {
-          console.error('[chat-audits/stream] gap fetch failed:', err)
+          log.error('the gap fetch failed, and the stream stays open', 'audit_gap_failed', {
+            id: lastEventId,
+            outcome: 'failed',
+            reason: 'store_unreadable',
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
       }
 
@@ -3173,7 +3300,11 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
   }
   latestAiUsageSnapshot = snapshot
   broadcastAiUsage(snapshot)
-  console.log(`[ai-usage/ingest] snapshot accepted: source=${snapshot.source} accounts=${snapshot.accounts.length} ts=${snapshot.ts}`)
+  log.info(`accepted an ai-usage snapshot from ${snapshot.source}`, 'ai_usage_snapshot', {
+    actor: snapshot.source,
+    accounts: snapshot.accounts.length,
+    snapshot_ts: snapshot.ts,
+  })
   return c.json({ ok: true, accepted_at: snapshot.last_updated_at })
 })
 
@@ -3754,7 +3885,12 @@ app.notFound((c) => {
 // --- Global error handler ---
 
 app.onError((err, c) => {
-  console.error('agent-mesh-http: unhandled error:', err)
+  log.error('a request handler threw, so the caller is answered a 500', 'unhandled_error', {
+    route: new URL(c.req.url).pathname,
+    outcome: 'failed',
+    reason: 'unhandled_exception',
+    error: err instanceof Error ? err.message : String(err),
+  })
   return c.json({ error: 'Internal server error' }, 500)
 })
 
@@ -3792,8 +3928,10 @@ export async function startup(): Promise<void> {
 //
 // Nothing imported this module before, so the guard changes no caller.
 if (import.meta.main) {
-  console.log(`agent-mesh-http: starting on port ${PORT}`)
-  console.log(`agent-mesh-http: STATE_DIR = ${STATE_DIR}`)
+  log.info(`agent-mesh-http: starting on port ${PORT}`, 'http_starting', {
+    port: PORT,
+    state_dir: STATE_DIR,
+  })
 
   await startup()
 
@@ -3803,7 +3941,9 @@ if (import.meta.main) {
     idleTimeout: 255, // max value, prevents SSE connection drops
   })
 
-  console.log(`agent-mesh-http: listening on http://localhost:${server.port}`)
+  log.info(`agent-mesh-http: listening on http://localhost:${server.port}`, 'http_listening', {
+    port: server.port,
+  })
 
   // Graceful shutdown. The list is a value rather than a run of statements
   // because the defect here was an omission — `closeAuditAccessLog` imported

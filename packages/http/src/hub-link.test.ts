@@ -296,7 +296,7 @@ describe("what it does with a frame the hub pushes", () => {
       // last statement of the branch, after the SSE push and the audit
       // broadcast — its absence is what says none of them ran.
       expect(stored(frame.params.id as string)).toBeNull();
-      expect(logged.some((l) => l.includes("hub→sse"))).toBe(false);
+      expect(logged.some((l) => l.includes('"event":"hub_frame_forwarded"'))).toBe(false);
 
       // And it is named, so an operator can go and look for it on the far side.
       const line = errored.find((l) => l.includes("dropped a hub frame"));
@@ -365,9 +365,9 @@ describe("what it does with a frame the hub pushes", () => {
       ws.messageRaw("{ not json");
       const line = said.find((l) => l.includes("dropped a hub frame"));
       expect(line, "an unparseable frame was dropped without a word").toBeDefined();
-      expect(line).toContain("id=unknown");
-      expect(line).toContain("from=unknown");
-      expect(line).toMatch(/reason=\S/);
+      expect(line).toContain('"id":"unknown"');
+      expect(line).toContain('"actor":"unknown"');
+      expect(line).toMatch(/"error":"\S/);
     } finally {
       console.error = realError;
     }

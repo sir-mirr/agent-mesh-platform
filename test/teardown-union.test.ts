@@ -66,9 +66,16 @@ describe("the teardown outcome is the same three words everywhere", () => {
     const route = readFileSync(ROUTE, "utf8");
     const fn = /async function teardownAs\([\s\S]*?\n\}/.exec(route);
     expect(fn, "teardownAs is no longer a function in this file").not.toBeNull();
-    const body = /return c\.json\(\{([\s\S]*?)\n\s*\}\)/.exec(fn![0]);
-    expect(body, "the teardown route no longer answers with an object literal").not.toBeNull();
-    const sent = new Set([...body![1]!.matchAll(/([a-z_]+):/g)].map((m) => m[1]!));
+    // The **last** `c.json({...})` in the function, not the first. The first is
+    // the `500` the catch answers, whose object is closed on its own line — so
+    // a lazy match from there runs on through whatever the catch does before
+    // it and reads those keys as fields the route sends. It did, once this
+    // file's `console.error` became a multi-line `log.error`.
+    const answers = [...fn![0].matchAll(/return c\.json\(\{([\s\S]*?)\n\s*\}\)/g)];
+    expect(answers.length, "the teardown route no longer answers with an object literal").toBeGreaterThan(0);
+    const sent = new Set(
+      [...answers[answers.length - 1]![1]!.matchAll(/([a-z_]+):/g)].map((m) => m[1]!),
+    );
     expect(sent.has("identity")).toBe(true);
     expect(sent.has("action")).toBe(true);
     expect(sent.has("deleted_at")).toBe(true);

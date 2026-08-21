@@ -5022,8 +5022,11 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The socket handler's `catch` went back to swallowing. A frame this service cannot handle then disappears with no line anywhere \u2014 the hub has recorded a delivery and this side has nothing, and nobody is told. Logging is not the repair, the frame is still dropped; it is the difference between a mesh that loses a message and one that loses it silently (D-737).",
     file: "packages/http/src/main.ts",
-    from: "        const reason = err instanceof Error ? err.message : String(err)\n        console.error(",
-    to: "        const reason = err instanceof Error ? err.message : String(err)\n        void reason\n        void ((...__: unknown[]) => {})(",
+    from: "        const reason = err instanceof Error ? err.message : String(err)\n        log.error(",
+    to:
+      "        const reason = err instanceof Error ? err.message : String(err)\n" +
+      "        void reason\n" +
+      "        void ((..._unused: unknown[]) => {})(",
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["names a frame it could not even parse, and why"],
   },
@@ -6614,7 +6617,13 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The § 8.9 stream's gap fetch is a convenience — it hands a reconnecting console what it missed. A failure there taking the stream with it turns a store hiccup into every open console being unable to reconnect.",
     file: "packages/http/src/main.ts",
-    from: "          console.error('[chat-audits/stream] gap fetch failed:', err)",
+    from:
+      "          log.error('the gap fetch failed, and the stream stays open', 'audit_gap_failed', {\n" +
+      "            id: lastEventId,\n" +
+      "            outcome: 'failed',\n" +
+      "            reason: 'store_unreadable',\n" +
+      "            error: err instanceof Error ? err.message : String(err),\n" +
+      "          })",
     to: "          throw err",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["a gap fetch that fails leaves the stream open and live"],

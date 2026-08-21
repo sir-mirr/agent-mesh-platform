@@ -21,6 +21,8 @@
  * happens regardless.
  */
 
+import { log as httpLog } from "./log";
+
 /** One store, named so a failure says which. */
 export type Closer = readonly [name: string, close: () => void];
 
@@ -35,8 +37,13 @@ export interface ShutdownWiring {
 }
 
 export function runShutdown(w: ShutdownWiring): void {
-  const log = w.log ?? ((m: string) => console.log(m));
-  const warn = w.warn ?? ((m: string, err: unknown) => console.error(m, err));
+  const log = w.log ?? ((m: string) => httpLog.info(m, "shutdown_step", {}));
+  const warn = w.warn ?? ((m: string, err: unknown) =>
+    httpLog.error(m, "shutdown_step_failed", {
+      outcome: "failed",
+      reason: "close_threw",
+      error: err instanceof Error ? err.message : String(err),
+    }));
   log("agent-mesh-http: shutting down");
 
   for (const [name, close] of w.closers) {
