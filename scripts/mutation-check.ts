@@ -3707,6 +3707,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/signature.test.ts",
     expect: ["an identity with no approved key is refused with its key status"],
   },
+  {
+    id: "signed-mailbox-surface-stops-checking-the-signature",
+    defect:
+      "The REST mailbox surface stopped acting on the authentication verdict, so every route beneath it \u2014 taking delivery, reading history, listing and recalling \u2014 answers an unsigned caller. \u00a7 9.2.1 is the whole reason these routes exist as a *signed* surface rather than a mailer with a token.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "  if (!auth.ok) return json(auth.refusal.status, auth.refusal.body);",
+    to: "  if (false) return json(401, { ok: false });",
+    suite: "packages/hub/src/rest/mailbox-routes.test.ts",
+    expect: ["every owned path when nothing is signed"],
+  },
+  {
+    id: "capabilities-falls-behind-the-signature-it-precedes",
+    defect:
+      "`/api/v1/capabilities` stopped being answered here, so it falls past the mailbox branch and the hub answers `404`. It is unsigned deliberately (\u00a7 9.2.1): the values matter most while a caller cannot yet sign, so a `pending` key can read the lease window it needs to size its retry loop before an operator has approved anything. Putting it behind the signature it exists to precede is a deadlock, not a hardening.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: '  if (pathname === "/api/v1/capabilities") {',
+    to: "  if (false) {",
+    suite: "packages/hub/src/rest/mailbox-routes.test.ts",
+    expect: ["capabilities answers without a signature"],
+  },
+  {
+    id: "history-without-a-peer-is-answered-instead-of-refused",
+    defect:
+      "`GET /api/v1/mailbox/history` stopped requiring `peer`. The route is a conversation between two identities; without the other one it either answers everything the caller can see or nothing, and both are a different question from the one the route is for.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: '      return json(400, { ok: false, error: "peer is required", rpc_code: MESH_ERROR.INVALID_PARAMS });',
+    to: "      return json(200, { ok: true, messages: [] });",
+    suite: "packages/hub/src/rest/mailbox-routes.test.ts",
+    expect: ["a history request with no peer"],
+  },
+  {
+    id: "recall-of-a-stranger-message-answers-something-else",
+    defect:
+      "A recall scoped to the sender stopped refusing a message this sender never sent. The refusal is the same sentence as for an id that does not exist, on purpose \u2014 the alternative tells a caller whether an id they guessed is real, which is an enumeration oracle over every message on the mesh.",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: '    return json(404, { ok: false, error: "no such message from this sender" });',
+    to: "    return json(200, { ok: true, recalled: false });",
+    suite: "packages/hub/src/rest/mailbox-routes.test.ts",
+    expect: ["a recall of a message this sender never sent"],
+  },
 ];
 
 /**
