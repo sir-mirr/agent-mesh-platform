@@ -802,6 +802,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["records who approved it, and when"],
   },
   {
+    id: "drop-connection-evicts-the-owner-when-a-contender-goes",
+    defect:
+      "A losing contender's departure took the working connection offline with it. \u00a7 8.1 gives the identity to whoever holds it: a second socket claiming an identity already held does not take it, and when that contender goes the incumbent must still be online. Dropping the check makes any short-lived duplicate connection a way to disconnect the real one.",
+    file: "packages/hub/src/presence.ts",
+    from: "  if (released?.wasOwner && onlineAgents.get(identity) === ws) {",
+    to: "  if (onlineAgents.get(identity) === ws || true) {",
+    suite: "packages/hub/src/presence.test.ts",
+    expect: ["leaves the identity online when a contender goes"],
+  },
+  {
+    id: "drop-connection-steals-a-proxy-entry-back",
+    defect:
+      "A departing proxy removed a `proxyMap` entry that another socket had since taken. Two sockets can proxy for one user in sequence, and the one leaving must not unroute the connection still serving them \u2014 the user goes offline because somebody else disconnected.",
+    file: "packages/hub/src/presence.ts",
+    from: "      if (proxyMap.get(pid) === ws) proxyMap.delete(pid);",
+    to: "      proxyMap.delete(pid);",
+    suite: "packages/hub/src/presence.test.ts",
+    expect: ["does not remove a proxy entry another socket now owns"],
+  },
+  {
+    id: "nonce-sweep-keeps-an-identity-with-nothing-in-it",
+    defect:
+      "The replay window stopped dropping an identity once its last nonce expired, so the map grows by name for the life of the process \u2014 one entry per identity that has ever signed, never released. The nonces inside are swept; the shell is what is left.",
+    file: "packages/store/src/verify.ts",
+    from: "      if (nonces.size === 0) this.seen.delete(identity);",
+    to: "",
+    suite: "packages/store/src/nonce-window.test.ts",
+    expect: ["forgets an identity once its last nonce goes"],
+  },
+  {
+    id: "nonce-sweep-drops-what-is-still-in-the-window",
+    defect:
+      "The sweep compared against the wrong side of the window and removed entries still inside it. A nonce forgotten early is a signed request that can be replayed \u2014 which is the one thing this map exists to prevent, and the failure leaves no trace anywhere.",
+    file: "packages/store/src/verify.ts",
+    from: "    const cutoff = nowSeconds - this.windowSeconds;",
+    to: "    const cutoff = nowSeconds + this.windowSeconds;",
+    suite: "packages/store/src/nonce-window.test.ts",
+    expect: ["keeps what is still inside the window"],
+  },
+  {
+    id: "entitlement-refusals-all-say-the-same-thing",
+    defect:
+      "The four refusal reasons collapsed into one sentence. *No such identity* and *that identity signs for itself* send an operator to different places \u2014 provisioning, or the agent's own key \u2014 and one message for both sends them to neither.",
+    file: "packages/store/src/entitlement.ts",
+    from: "    case \"unknown-identity\":\n      return `cannot act for '${subject}': no such identity`;",
+    to: "    case \"unknown-identity\":\n      return `not entitled to act for '${subject}'`;",
+    suite: "packages/store/src/entitlement.test.ts",
+    expect: ["gives each reason a distinct sentence"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
