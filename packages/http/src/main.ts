@@ -365,8 +365,31 @@ function pushToSSE(agentId: string, userLogin: string, event: string, data: unkn
   }
 }
 
-function hasActiveSSE(toUser: string): boolean {
-  for (const [key, set] of sseClients) {
+/**
+ * Whether this person has a conversation open right now.
+ *
+ * It decides whether a notification is sent, and *not sending* is the branch
+ * that matters: a lock-screen alert beside a message already on their screen
+ * is the same message twice. It could not be reached in this process, because
+ * the only caller returns before it unless the deployment holds VAPID keys —
+ * and setting those for a test sets them for every other file in it.
+ *
+ * The map is a parameter with the module's own as the default, which is the
+ * seam used everywhere else here (`closeDatabases(stores)`,
+ * `requireJwtSecret(secret, refuse)`). Production calls it with one argument
+ * and nothing about it moved.
+ *
+ * **The key is `agent:person`, so the match is on the suffix.** One person
+ * watching one conversation must count as watching, and the same person is a
+ * different key for every agent they have open — which is why this scans
+ * rather than looks up, and why a person named as a suffix of another
+ * (`kim` inside `joakim`) would match if the colon were not part of it.
+ */
+export function hasActiveSSE(
+  toUser: string,
+  clients: Map<string, Set<ReadableStreamDefaultController>> = sseClients,
+): boolean {
+  for (const [key, set] of clients) {
     if (key.endsWith(`:${toUser}`) && set.size > 0) return true
   }
   return false
@@ -723,10 +746,30 @@ function isUserApproved(githubLogin: string, role: string): boolean {
   return false
 }
 
-function notifyApprovalRequest(githubLogin: string, _githubId: number): void {
+/**
+ * Tell somebody a person is waiting to be let in.
+ *
+ * The identity and the sender are parameters with the module's own as
+ * defaults, for the reason the rest of this file uses that seam: both are read
+ * at module load, so the branches below were decided before any test could
+ * exist and could not be reached from inside this process at all.
+ *
+ * **Opening it found the failure this could not report.** The old body was
+ * `sendViaHub(...).catch(...)`, and `sendViaHub` does not reject — when the
+ * hub socket is down it resolves `null`, which is the *likeliest* way this
+ * fails and the one that said nothing. An approval nobody was told about
+ * looked exactly like one that was, and the person waits until an operator
+ * happens to open `/api/v1/admin/pending`.
+ */
+export function notifyApprovalRequest(
+  githubLogin: string,
+  _githubId: number,
+  notifyIdentity: string | null = ADMIN_NOTIFY_IDENTITY,
+  send: (to: string, content: string, from: string) => Promise<string | null> = sendViaHub,
+): void {
   // Deployment-specific. Unset means approvals wait in /api/v1/admin/pending
   // without an out-of-band ping.
-  if (!ADMIN_NOTIFY_IDENTITY) {
+  if (!notifyIdentity) {
     log.warn(`${githubLogin} is waiting for approval and nobody was told`, 'admin_notify_skipped', {
       actor: githubLogin,
       outcome: 'skipped',
@@ -735,13 +778,23 @@ function notifyApprovalRequest(githubLogin: string, _githubId: number): void {
     return
   }
   const msg = `새 사용자 승인 요청: ${githubLogin} (GitHub). /api/v1/admin/pending에서 확인하세요.`
-  sendViaHub(ADMIN_NOTIFY_IDENTITY, msg, 'system').catch(() => {
+  const failed = (reason: string) =>
     log.error(`could not tell an admin that ${githubLogin} is waiting for approval`, 'admin_notify_failed', {
       actor: githubLogin,
+      to: notifyIdentity,
       outcome: 'failed',
-      reason: 'hub_send_failed',
+      reason,
     })
-  })
+
+  void send(notifyIdentity, msg, 'system')
+    .then((id) => {
+      if (id) return
+      // No id is no message: the socket was down, or the hub answered without
+      // one. Either way nobody was told, which is the whole subject of this
+      // function.
+      failed('hub_did_not_accept')
+    })
+    .catch(() => failed('hub_send_threw'))
 }
 
 type Message = {

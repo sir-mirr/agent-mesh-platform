@@ -5845,8 +5845,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The `catch` around `enqueue` went, so a controller whose browser has gone is never dropped. The set grows for the life of the process and nothing reports it \u2014 a leak that is invisible until the service is writing to thousands of dead controllers.",
     file: "packages/http/src/main.ts",
-    from: "    try { controller.enqueue(payload) } catch { set.delete(controller) }\n  }\n}\n\nfunction hasActiveSSE",
-    to: "    controller.enqueue(payload)\n  }\n}\n\nfunction hasActiveSSE",
+    from: "    try { controller.enqueue(payload) } catch { set.delete(controller) }",
+    to: "    controller.enqueue(payload)",
     suite: "packages/http/src/sse-fanout.test.ts",
     expect: ["forgets a browser that has gone, the next time it writes"],
   },
@@ -6979,6 +6979,26 @@ const MUTATIONS: Mutation[] = [
     to: "    } catch {\n      // nothing\n    }",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["a write that throws is the stream ending, and the timer goes quietly"],
+  },
+  {
+    id: "one-persons-open-tab-silences-another",
+    defect:
+      "The colon left the suffix match, so a name ending in somebody else's matches it \u2014 `joakim` reading a conversation makes `kim` count as watching, and `kim`'s phone stays quiet for a message they never saw. The keys are `agent:person`, and the colon is what makes the suffix a whole name.",
+    file: "packages/http/src/main.ts",
+    from: "    if (key.endsWith(`:${toUser}`) && set.size > 0) return true",
+    to: "    if (key.endsWith(toUser) && set.size > 0) return true",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a name that ends in theirs is not them"],
+  },
+  {
+    id: "an-approval-nobody-was-told-about",
+    defect:
+      "The admin notification went back to reporting only a thrown send. `sendViaHub` does not throw \u2014 it resolves `null` when the hub socket is down, which is the likeliest way this fails \u2014 so an approval nobody was told about reads exactly like one that was, and the person waits until an operator happens to open the pending list.",
+    file: "packages/http/src/main.ts",
+    from: "      failed('hub_did_not_accept')",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a send the hub never took is a failure, not a silence"],
   },
 ];
 

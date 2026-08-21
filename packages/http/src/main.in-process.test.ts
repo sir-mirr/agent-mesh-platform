@@ -2187,3 +2187,123 @@ describe("keeping a stream open", () => {
     expect(() => stop()).not.toThrow();
   });
 });
+
+/**
+ * Whether somebody is already looking at the conversation.
+ *
+ * This decides whether a notification is sent, and *not sending* is the branch
+ * that matters — a lock-screen alert beside a message already on the screen is
+ * the same message twice. Nothing in this process could reach it: its only
+ * caller returns before it unless the deployment holds VAPID keys, and setting
+ * those for a test sets them for every other file in it.
+ */
+describe("whether a person is already watching", () => {
+  const open = (key: string, howMany = 1) =>
+    [key, new Set(Array.from({ length: howMany }, () => ({}) as ReadableStreamDefaultController))] as const;
+
+  test("nobody is watching an empty map", () => {
+    expect(mod.hasActiveSSE("kim", new Map())).toBe(false);
+  });
+
+  test("one open conversation is enough", () => {
+    expect(mod.hasActiveSSE("kim", new Map([open("agent-a:kim")]))).toBe(true);
+  });
+
+  test("any of their conversations counts, not a particular one", () => {
+    const clients = new Map([open("agent-a:kim"), open("agent-b:kim")]);
+    expect(mod.hasActiveSSE("kim", clients)).toBe(true);
+  });
+
+  test("somebody else's open stream is not theirs", () => {
+    expect(mod.hasActiveSSE("kim", new Map([open("agent-a:lee")]))).toBe(false);
+  });
+
+  test("a key with no clients left in it is not watching", () => {
+    // `removeSSEClient` deletes an emptied key, but a set that empties by any
+    // other route would otherwise read as a person sitting at their screen —
+    // and the cost of that reading is a notification nobody gets.
+    expect(mod.hasActiveSSE("kim", new Map([open("agent-a:kim", 0)]))).toBe(false);
+  });
+
+  test("a name that ends in theirs is not them", () => {
+    // `joakim` ends with `kim`. The colon is what makes the suffix a whole
+    // name, and without it one person's open tab silences another's phone.
+    expect(mod.hasActiveSSE("kim", new Map([open("agent-a:joakim")]))).toBe(false);
+  });
+
+  test("the agent side of the key is not searched", () => {
+    expect(mod.hasActiveSSE("kim", new Map([open("kim:lee")]))).toBe(false);
+  });
+});
+
+/**
+ * Telling somebody that a person is waiting to be let in.
+ *
+ * Both halves of this were decided at module load — the identity comes from
+ * the environment and the sender is the hub socket — so nothing in this
+ * process could reach either branch. Opening it turned up the failure it
+ * could not report: `sendViaHub` does not reject, it resolves `null` when the
+ * socket is down, so the likeliest way this fails was the one that said
+ * nothing.
+ */
+describe("telling an admin somebody is waiting", () => {
+  const said = (lines: string[], event: string) =>
+    lines
+      .filter((l) => l.includes(`"event":"${event}"`))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  async function notify(identity: string | null, send?: () => Promise<string | null>) {
+    const capture = captureConsole();
+    try {
+      mod.notifyApprovalRequest("gh-waiting", 1, identity, send ?? (async () => "msg-1"));
+      // The send is a promise; its endings are what this is about.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    } finally {
+      capture.restore();
+    }
+    return capture.lines;
+  }
+
+  test("a deployment that named nobody says so, and names who is waiting", async () => {
+    const [skipped] = said(await notify(null), "admin_notify_skipped");
+    expect(skipped).toMatchObject({
+      level: "warn",
+      actor: "gh-waiting",
+      outcome: "skipped",
+      reason: "notify_identity_unset",
+    });
+  });
+
+  test("a send that lands says nothing", async () => {
+    const lines = await notify("ops");
+    expect(said(lines, "admin_notify_failed")).toEqual([]);
+    expect(said(lines, "admin_notify_skipped")).toEqual([]);
+  });
+
+  /**
+   * The defect this seam existed to find. `sendViaHub` returns `null` rather
+   * than rejecting when the hub socket is down, so the old `.catch()` never
+   * ran and an approval nobody was told about looked exactly like one that was.
+   */
+  test("a send the hub never took is a failure, not a silence", async () => {
+    const [failed] = said(await notify("ops", async () => null), "admin_notify_failed");
+    expect(failed, "nobody was told, and nobody was told about that").toBeDefined();
+    expect(failed).toMatchObject({
+      level: "error",
+      actor: "gh-waiting",
+      to: "ops",
+      outcome: "failed",
+      reason: "hub_did_not_accept",
+    });
+  });
+
+  test("a send that throws is its own reason", async () => {
+    const [failed] = said(
+      await notify("ops", async () => { throw new Error("socket is gone"); }),
+      "admin_notify_failed",
+    );
+    expect(failed?.reason).toBe("hub_send_threw");
+  });
+});

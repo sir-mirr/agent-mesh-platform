@@ -44,6 +44,16 @@ That is the distinction worth holding on to when reading the rest of this
 table: *the timer* is not a reason, *waiting for a timer* is. A row whose
 reason is really the second one is a row somebody can retire.
 
+**Two more went the same way, and one of them was hiding a defect.**
+`hasActiveSSE` was here because its only caller returns first unless the
+deployment holds VAPID keys; the map is a parameter now. The admin-notify send
+was here because the identity and the socket are both read at module load;
+both are parameters now. Opening the second turned up what it could not
+report: `sendViaHub` does not reject, it resolves `null` when the socket is
+down, so the `.catch()` never ran and an approval nobody was told about looked
+exactly like one that was. A line that cannot fire is a line that was never
+checked, and *held for a good reason* is not the same as *known to work*.
+
 **A last-resort handler.** `app.onError` answers what every route already
 catches. Reaching it needs a defect, so a test for it plants one — and then
 asserts that the handler this repository would rather never run, ran.
@@ -85,10 +95,8 @@ reason no longer describes anything and the row is stale.
 |---|---|---|
 | `packages/http/src/main.ts` | `if (import.meta.main) {` | The boot block: `Bun.serve`, the port log, the signal handlers. Runs in `test/`, in another process. |
 | `packages/http/src/main.ts` | `app.onError((err, c) => {` | Last-resort handler. Every route catches what it can fail on, so the only trigger is a defect. |
-| `packages/http/src/main.ts` | `function hasActiveSSE(toUser: string): boolean {` | Reached only through `sendPushForMessage`, which returns first unless VAPID keys are configured. |
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
-| `packages/http/src/main.ts` | `새 사용자 승인 요청:` | The admin-notify send, behind `AGENT_MESH_ADMIN_NOTIFY_IDENTITY`, read at load. |
 | `packages/http/src/main.ts` | `self_provision_failed` | The hub refusing this server's own provisioning at startup. |
 | `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
