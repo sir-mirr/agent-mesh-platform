@@ -1151,7 +1151,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Every failed boot became retryable, so the two misconfigured-boot checks would pass against a server that had stopped refusing to start.",
     file: "test/harness.ts",
-    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
     to: "  return true;",
     suite: "test/boot-retryable.test.ts",
     expect: ["a service that refused is the answer"],
@@ -1161,7 +1161,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The retry stopped firing at all, and a lost port race \u2014 the thing freePort's bind-then-release window makes routine \u2014 failed the run instead of taking another port.",
     file: "test/harness.ts",
-    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
     to: "  return false;",
     suite: "test/boot-retryable.test.ts",
     expect: ["a boot that named a port is retried"],
@@ -1171,8 +1171,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The port-race clause went away, so the original failure this guard was written for stopped being retried.",
     file: "test/harness.ts",
-    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
-    to: "  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
+    from: "  if (PORT_TAKEN.test(said)) return true;\n  return said.replace(NEVER_HEALTHY, \"\").replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
+    to: "  return said.replace(NEVER_HEALTHY, \"\").replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
     suite: "test/boot-retryable.test.ts",
     expect: ["a boot that named a port is retried"],
   },
@@ -1181,8 +1181,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The harness's own timeout sentence counted as the child having spoken, so every slow boot looked like a refusal and was never retried \u2014 the exact failure this widening was for.",
     file: "test/harness.ts",
-    from: "  return said.replace(NEVER_HEALTHY, \"\").trim() === \"\";",
-    to: "  return said.trim() === \"\";",
+    from: "  return said.replace(NEVER_HEALTHY, \"\").replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
+    to: "  return said.replace(HARNESS_SECTIONS, \"\").trim() === \"\";",
     suite: "test/boot-retryable.test.ts",
     expect: ["does not count as the child speaking"],
   },
@@ -5189,6 +5189,66 @@ const MUTATIONS: Mutation[] = [
     to: "  log.warn('a request handler threw, so the caller is answered a 500'",
     suite: "packages/http/src/unhandled.test.ts",
     expect: ["which route, and what it said"],
+  },
+  {
+    id: "silence-cannot-reach-the-silence-rule",
+    defect:
+      "`bootRetryable` stopped stripping the harness's own section headers, which is the state this was found in. The string it is handed always carries `--- hub output ---`, so *the child said nothing* \u2014 the case the rule exists for \u2014 leaves the headers behind and reads as the child having spoken. The retry then only ever fires for a boot that named a port, which is the branch that was already there.",
+    file: "test/harness.ts",
+    from: '  return said.replace(NEVER_HEALTHY, "").replace(HARNESS_SECTIONS, "").trim() === "";',
+    to: '  return said.replace(NEVER_HEALTHY, "").trim() === "";',
+    suite: "test/harness-boot.test.ts",
+    expect: ["the retry can see what either child said"],
+  },
+  {
+    id: "a-boot-failure-reports-one-child",
+    defect:
+      "The boot failure went back to appending the hub's output alone. An http server that died on startup is then reported underneath the hub's healthy log \u2014 and `bootRetryable` reads this same string, so every race the http child lost became invisible to the retry.",
+    file: "test/harness.ts",
+    from: '  const httpSaid = httpOutput === null ? "" : `\\n--- http output ---\\n${httpOutput}`;',
+    to: '  const httpSaid = "";',
+    suite: "test/harness-boot.test.ts",
+    expect: ["carries both children, labelled"],
+  },
+  {
+    id: "a-service-that-is-listening-and-unwell-says-nothing-about-it",
+    defect:
+      "The health wait stopped carrying the status it got. *Never became healthy* then covers both nothing-is-listening-there and it-is-listening-and-refusing, which are opposite repairs, and the sentence is read at the moment nothing else is working.",
+    file: "test/harness.ts",
+    from: "      lastError = `status ${res.status}`;",
+    to: '      lastError = "not ready";',
+    suite: "test/harness-boot.test.ts",
+    expect: ["says the status when it is listening and unwell"],
+  },
+  {
+    id: "a-refusal-is-retried-twice-before-being-believed",
+    defect:
+      "The retry stopped asking whether the failure was worth another port. A service that refuses says why, and retrying it reports the same answer three times as slowly \u2014 worse, `misconfigured-boot.test.ts` asserts those refusals, so a server that stopped refusing would take three attempts to look green rather than one to look red.",
+    file: "test/harness.ts",
+    from: "      if (!bootRetryable(said)) throw err;",
+    to: "      if (false) throw err;",
+    suite: "test/harness-boot.test.ts",
+    expect: ["does not try again when the boot said why"],
+  },
+  {
+    id: "three-lost-races-end-in-a-sentence-about-counting",
+    defect:
+      "Giving up threw a fresh error instead of the last one. The only description of what actually happened \u2014 which port, which child, what it said \u2014 is dropped and replaced by the fact that it happened three times.",
+    file: "test/harness.ts",
+    from: "  throw last;",
+    to: '  throw new Error("gave up after 3 attempts");',
+    suite: "test/harness-boot.test.ts",
+    expect: ["with what the third one said"],
+  },
+  {
+    id: "a-whole-error-page-in-the-failure",
+    defect:
+      "The not-JSON failure pasted the entire body. An HTML error page is thousands of characters of markup around the one line that matters, and the sentence naming the route disappears above the scrollback.",
+    file: "test/harness.ts",
+    from: "      `POST /api/v1/rpc (${method}) answered ${status} with a body that is not JSON: ${text.slice(0, 200)}`,",
+    to: "      `POST /api/v1/rpc (${method}) answered ${status} with a body that is not JSON: ${text}`,",
+    suite: "test/harness-boot.test.ts",
+    expect: ["does not paste a whole page"],
   },
   {
     id: "attachments-are-dropped-off-the-wire",

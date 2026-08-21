@@ -105,7 +105,17 @@ export async function freePort(): Promise<number> {
   return port;
 }
 
-async function waitForHealth(url: string, timeoutMs = 15_000): Promise<void> {
+/**
+ * Wait for a port to answer, and say what it said if it never does.
+ *
+ * **Exported for its failure, not its success.** The sentence it throws is the
+ * first thing a person reads when a suite goes red for a reason that is not the
+ * code, and `bootRetryable` reads it too — it strips this exact wording to ask
+ * whether the *child* said anything. Two readers of one string, and until this
+ * was exported neither the wording nor the last error it carries had ever been
+ * checked.
+ */
+export async function waitForHealth(url: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastError = "no attempt made";
   while (Date.now() < deadline) {
@@ -305,8 +315,7 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
     hubProc.stop();
     httpProc?.stop();
     const said = err instanceof Error ? err.message : String(err);
-    const httpSaid = httpProc ? `\n--- http output ---\n${httpProc.output()}` : "";
-    throw new Error(`${said}\n--- hub output ---\n${hubProc.output()}${httpSaid}`);
+    throw new Error(bootFailureMessage(said, hubProc.output(), httpProc ? httpProc.output() : null));
   }
 
   return {
@@ -369,12 +378,44 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
 export const PORT_TAKEN = /EADDRINUSE|Failed to start server|address (already )?in use/i;
 
 /**
+ * What a boot that never came up says on the way out.
+ *
+ * **Both children, always.** This appended the hub's output alone, so an http
+ * server that died on startup was reported with the hub's healthy log
+ * underneath it — and `bootRetryable` reads this same string to decide whether
+ * the failure is worth another port, so half the races it exists for were
+ * invisible to it. The two are tested against each other for that reason.
+ *
+ * `null` for the http output rather than an empty string: a mesh that never got
+ * as far as starting an http server is a different report from one whose http
+ * server started and said nothing, and an empty section reads as the second.
+ */
+export function bootFailureMessage(said: string, hubOutput: string, httpOutput: string | null): string {
+  const httpSaid = httpOutput === null ? "" : `\n--- http output ---\n${httpOutput}`;
+  return `${said}\n--- hub output ---\n${hubOutput}${httpSaid}`;
+}
+
+/**
  * The harness's own wrapper around a boot that never answered.
  *
  * Stripped before asking whether the *child* said anything, because this
  * sentence is the harness's opinion and not the service's.
  */
 const NEVER_HEALTHY = /service at \S+ never became healthy:[^\n]*/g;
+
+/**
+ * The section labels this file puts around the children's output.
+ *
+ * **Stripped for the same reason as the sentence above, and finding that out
+ * cost a dead branch.** `bootRetryable` is handed the message
+ * `bootFailureMessage` builds, and that message always carries at least
+ * `--- hub output ---`. So *the child said nothing* — the case the silence rule
+ * exists for, and the one its own comment describes — could not be reached from
+ * the path that calls it: what was left after stripping was the harness's own
+ * headers, which trim to something rather than to nothing. The rule was tested
+ * against `""` and `"   \n\n  "`, which are shapes it is never handed.
+ */
+const HARNESS_SECTIONS = /^--- (?:hub|http) output ---$/gm;
 
 /**
  * Is a failed boot worth another port, or is it the answer?
@@ -398,14 +439,26 @@ const NEVER_HEALTHY = /service at \S+ never became healthy:[^\n]*/g;
  */
 export function bootRetryable(said: string): boolean {
   if (PORT_TAKEN.test(said)) return true;
-  return said.replace(NEVER_HEALTHY, "").trim() === "";
+  return said.replace(NEVER_HEALTHY, "").replace(HARNESS_SECTIONS, "").trim() === "";
 }
 
-export async function startMesh(opts: StartOptions = {}): Promise<Mesh> {
+/**
+ * Three attempts at a mesh, and the policy for when a second one is honest.
+ *
+ * `boot` is a parameter so the policy can be exercised without booting
+ * anything. It decides whether a red run is a flake or a defect, which is the
+ * one judgement in this file that a person acts on without reading — and until
+ * it was a parameter, the only way to see a retry happen was to lose the race
+ * it exists for.
+ */
+export async function startMesh(
+  opts: StartOptions = {},
+  boot: (o: StartOptions) => Promise<Mesh> = startMeshOnce,
+): Promise<Mesh> {
   let last: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      return await startMeshOnce(opts);
+      return await boot(opts);
     } catch (err) {
       last = err;
       const said = err instanceof Error ? err.message : String(err);
@@ -594,11 +647,24 @@ export async function callHttp(
   // at the wrong address — a route moved out from under a caller looks like a
   // parser bug.
   const text = await res.text();
+  return rpcAnswer(method, res.status, text);
+}
+
+/**
+ * A response body, or a sentence naming the route that did not send one.
+ *
+ * The failure is the point. `await res.json()` on a plain-text body throws a
+ * bare `SyntaxError`, which sends the reader to the harness rather than to the
+ * route that answered — the right verdict at the wrong address, and a route
+ * moved out from under a caller then looks like a parser bug. The status and
+ * the first two hundred characters are what say which it is.
+ */
+export function rpcAnswer(method: string, status: number, text: string): { status: number; body: any } {
   try {
-    return { status: res.status, body: JSON.parse(text) };
+    return { status, body: JSON.parse(text) };
   } catch {
     throw new Error(
-      `POST /api/v1/rpc (${method}) answered ${res.status} with a body that is not JSON: ${text.slice(0, 200)}`,
+      `POST /api/v1/rpc (${method}) answered ${status} with a body that is not JSON: ${text.slice(0, 200)}`,
     );
   }
 }

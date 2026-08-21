@@ -114,7 +114,24 @@ covering them means a second process with a second environment — which is
 
 **A failure the harness exists to report.** `test/harness.ts`'s throws are what
 a broken boot says on the way out. Driving them means starting a mesh designed
-not to work, per case, at seconds each.
+not to work, per case, at seconds each — which is true of the two that are
+left, and was not true of the four that have gone. Those four were *messages*:
+the health-wait sentence, the boot failure carrying both children, the retry
+notice, and the one an rpc route answering HTML gets. A message is a function of
+its inputs, and the boot to retry is a parameter now, so the whole policy runs
+in-process with nothing started.
+
+**And the fourth of those was hiding a branch that could not run.**
+`bootRetryable` decides whether a red run is a race worth another port or an
+answer, and its silence rule — *a child that said nothing never reached the
+point of having an opinion* — was unreachable from the path that calls it. The
+string it is handed is the boot failure message, which always carries at least
+`--- hub output ---`, so what remained after stripping the harness's timeout
+sentence was the harness's own section headers: not nothing. It was tested
+against `""` and `"   \n\n  "`, shapes it is never handed. The rule strips its
+own headers now, and the tests feed it what the caller actually builds. This is
+the argument for the whole exercise in one row: the reason on it was true, and
+the line behind it was wrong.
 
 **A branch with no producer.** There were three in the console: an avatar image
 nothing set, a breadcrumb for a route that redirects before it renders, and a
@@ -137,10 +154,6 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
-| `test/harness.ts` | `never became healthy:` | What a service that never opened its port says on the way out. |
-| `test/harness.ts` | `--- hub output ---` | Both processes' output, appended to a boot failure. |
-| `test/harness.ts` | `boot did not answer (attempt` | The port-collision retry, which needs the collision. |
-| `test/harness.ts` | `with a body that is not JSON` | A route answering HTML — the shape of a route moved out from under a caller. |
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
 | `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |

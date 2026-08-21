@@ -33,6 +33,14 @@ describe("what is worth another port", () => {
       .toEqual({ empty: true, blank: true });
   });
 
+  /**
+   * **These two shapes are not the ones it is handed.** `startMesh` calls this
+   * with the message `bootFailureMessage` builds, which always carries at least
+   * a `--- hub output ---` header — so a silence rule tested only against `""`
+   * and blanks passed while the branch could not run in production. The
+   * realistic shapes are in `harness-boot.test.ts`, against both builders at
+   * once; these stay as the rule's own boundary cases.
+   */
   test("the harness's own timeout sentence does not count as the child speaking", () => {
     // `waitForHealth` throws this, and it is the harness describing its own
     // wait rather than the service explaining itself. Counting it as speech
