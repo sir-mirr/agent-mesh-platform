@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
-import { fetchAgents, fetchPendingKeys, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+import { fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
@@ -133,6 +133,96 @@ function DashboardGroupReadState({
     ? refusedText(t, read.missing)
     : state === "unreachable"
     ? t("groups.error", "그룹 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+    : emptyMessage;
+  const failed = state === "refused" || state === "unreachable";
+
+  return (
+    <div
+      data-testid={`${testIdPrefix}-${state}`}
+      style={{ padding: 20, textAlign: "center", color: failed ? "var(--color-danger)" : "var(--color-text-muted)", fontSize: "0.82rem" }}
+    >
+      {message}
+    </div>
+  );
+}
+
+/**
+ * The other list reads in the tenant and group panels need the same answer
+ * vocabulary as groups, without pretending that one route answered another.
+ * A separate value per request is deliberate: sharing one error bit made a
+ * failed agents read take down a healthy groups answer, while keeping only the
+ * arrays made every unanswered read look empty.
+ */
+type DashboardListRead<T> =
+  | { kind: "loading"; items: T[]; missing: null }
+  | { kind: "ready"; items: T[]; missing: null }
+  | { kind: FailureKind; items: T[]; missing: string | null };
+
+function useDashboardList<T>(load: () => Promise<T[]>): DashboardListRead<T> {
+  const [read, setRead] = useState<DashboardListRead<T>>({ kind: "loading", items: [], missing: null });
+
+  React.useEffect(() => {
+    let mounted = true;
+    load()
+      .then((items) => {
+        if (mounted) setRead({ kind: "ready", items, missing: null });
+      })
+      .catch((err: unknown) => {
+        if (!mounted) return;
+        setRead({ kind: failureKind(err), items: [], missing: refusedCapability(err) });
+      });
+    return () => { mounted = false; };
+  }, [load]);
+
+  return read;
+}
+
+type DashboardListState = "loading" | "refused" | "unreachable" | "empty" | "present";
+
+function dashboardListState<T>(read: DashboardListRead<T>): DashboardListState {
+  return read.kind === "ready" ? read.items.length > 0 ? "present" : "empty" : read.kind;
+}
+
+function measuredListValue<T>(read: DashboardListRead<T>, value: string | number): string {
+  if (read.kind === "loading") return "...";
+  return read.kind === "ready" ? String(value) : "—";
+}
+
+function listReadCaption<T>(
+  t: (key: string, fallback: string) => string,
+  read: DashboardListRead<T>,
+  answered: string,
+): string {
+  if (read.kind === "loading") return t("common.loading", "조회 중...");
+  if (read.kind === "refused") return refusedText(t, read.missing);
+  if (read.kind === "unreachable") return t("common.errorLoad", "불러오지 못함");
+  return answered;
+}
+
+function DashboardListReadState<T>({
+  read,
+  testIdPrefix,
+  emptyMessage,
+  children,
+}: {
+  read: DashboardListRead<T>;
+  testIdPrefix: string;
+  emptyMessage: string;
+  children: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const state = dashboardListState(read);
+
+  if (state === "present") {
+    return <div data-testid={`${testIdPrefix}-present`} style={{ display: "contents" }}>{children}</div>;
+  }
+
+  const message = state === "loading"
+    ? t("common.loading", "조회 중...")
+    : state === "refused"
+    ? refusedText(t, read.missing)
+    : state === "unreachable"
+    ? t("common.errorLoad", "불러오지 못함")
     : emptyMessage;
   const failed = state === "refused" || state === "unreachable";
 
@@ -408,17 +498,10 @@ function TenantAdminDashboard() {
   const { t } = useI18n();
   const groupsRead = useDashboardGroups();
   const groups = groupsRead.groups;
-  const [agents, setAgents] = useState<RegistryAgent[]>([]);
-  const [pendingKeys, setPendingKeys] = useState<any[]>([]);
-
-React.useEffect(() => {
-    fetchAgents().then(setAgents).catch(() => {
-      setAgents([]);
-    });
-    fetchPendingKeys().then(setPendingKeys).catch(() => {
-      setPendingKeys([]);
-    });
-  }, []);
+  const agentsRead = useDashboardList<RegistryAgent>(fetchAgents);
+  const agents = agentsRead.items;
+  const pendingKeysRead = useDashboardList<KeyProposal>(fetchPendingKeys);
+  const pendingKeys = pendingKeysRead.items;
 
   const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);
 
@@ -439,8 +522,9 @@ React.useEffect(() => {
         />
         <KpiCard
           label={t("dash.ta.agents", "총 소속 에이전트")}
-          value={String(agents.length)}
-          subValue={t("dash.ta.agentsSub", "레지스트리 실데이터")}
+          value={measuredListValue(agentsRead, agents.length)}
+          valueTestId={`tenant-agents-${dashboardListState(agentsRead)}`}
+          subValue={listReadCaption(t, agentsRead, t("dash.ta.agentsSub", "레지스트리 실데이터"))}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -454,8 +538,13 @@ React.useEffect(() => {
         />
         <KpiCard
           label={t("dash.ta.approval", "미승인 키 대기 큐")}
-          value={String(pendingKeys.length)}
-          subValue={pendingKeys.length > 0 ? t("dash.ta.review", "검토 필요") : t("dash.ta.noPending", "대기 없음")}
+          value={measuredListValue(pendingKeysRead, pendingKeys.length)}
+          valueTestId="tenant-pending-keys-count"
+          subValue={listReadCaption(
+            t,
+            pendingKeysRead,
+            pendingKeys.length > 0 ? t("dash.ta.review", "검토 필요") : t("dash.ta.noPending", "대기 없음"),
+          )}
           color="var(--color-warning)"
           icon="🔑"
         />
@@ -550,12 +639,12 @@ React.useEffect(() => {
             </Link>
           </div>
 
-          {pendingKeys.length === 0 ? (
-            <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
-              {t("dash.ta.keysEmpty", "현재 대기 중인 공개키 제안이 없습니다 (All Verified).")}
-            </div>
-          ) : (
-            pendingKeys.map((p) => (
+          <DashboardListReadState
+            read={pendingKeysRead}
+            testIdPrefix="tenant-pending-keys"
+            emptyMessage={t("dash.ta.keysEmpty", "현재 대기 중인 공개키 제안이 없습니다 (All Verified).")}
+          >
+            {pendingKeys.map((p) => (
               <div
                 key={p.fingerprint}
                 style={{
@@ -580,8 +669,8 @@ React.useEffect(() => {
                   Fingerprint: {p.fingerprint}
                 </div>
               </div>
-            ))
-          )}
+            ))}
+          </DashboardListReadState>
         </div>
       </div>
     </>
@@ -595,13 +684,11 @@ function GroupAdminDashboard() {
   const { t } = useI18n();
   const groupsRead = useDashboardGroups();
   const groups = groupsRead.groups;
-  const [agents, setAgents] = useState<RegistryAgent[]>([]);
+  const agentsRead = useDashboardList<RegistryAgent>(fetchAgents);
+  const agents = agentsRead.items;
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
 React.useEffect(() => {
-    fetchAgents().then(setAgents).catch(() => {
-      setAgents([]);
-    });
     fetchAdminMailbox().then(setMailbox).catch(() => setMailbox(null));
   }, []);
 
@@ -618,8 +705,13 @@ React.useEffect(() => {
         />
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
-          value={String(agents.length)}
-          subValue={agents.length > 0 ? `${agents.length} ${t("dash.ga.nodes", "개 노드 등록")}` : t("dash.ga.noAgents", "에이전트 없음")}
+          value={measuredListValue(agentsRead, agents.length)}
+          valueTestId={`group-agents-${dashboardListState(agentsRead)}`}
+          subValue={listReadCaption(
+            t,
+            agentsRead,
+            agents.length > 0 ? `${agents.length} ${t("dash.ga.nodes", "개 노드 등록")}` : t("dash.ga.noAgents", "에이전트 없음"),
+          )}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -632,8 +724,11 @@ React.useEffect(() => {
         />
         <KpiCard
           label={t("dash.ga.health", "온라인 에이전트 비율")}
-          value={agents.length > 0 ? `${Math.round((agents.filter(hasBeenSeen).length / agents.length) * 100)}%` : "—"}
-          subValue={t("dash.ga.socketBasis", "소켓 연결 기준")}
+          value={measuredListValue(
+            agentsRead,
+            agents.length > 0 ? `${Math.round((agents.filter(hasBeenSeen).length / agents.length) * 100)}%` : "—",
+          )}
+          subValue={listReadCaption(t, agentsRead, t("dash.ga.socketBasis", "소켓 연결 기준"))}
           color="#6366F1"
           icon="💚"
         />

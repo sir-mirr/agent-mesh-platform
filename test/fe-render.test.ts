@@ -4656,21 +4656,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * with the remembered role the component consumes and `/auth/me` still in
    * flight — the same reachable component boundary its unit suite documents.
    *
-   * Each panel is then given all five visible readings: rows, an answered empty
-   * list, a read still in flight, a named refusal, and no response. The last two
-   * are one broad “could not know” state, but they must use different words and
-   * test ids: one sends the operator to permissions, the other to connectivity.
+   * Each independent groups, agents, and pending-key read is then given all
+   * five visible readings: rows, an answered empty list, a read still in flight,
+   * a refusal, and no response. The last two are one broad “could not know”
+   * state, but they must use different words and test ids: one sends the
+   * operator to permissions, the other to connectivity.
    */
   it("[SC-DOWN-15] keeps tenant and group dashboard reads in their own states", async () => {
-    type RolePanel = { role: "TENANT_ADMIN" | "GROUP_ADMIN"; prefix: "tenant-groups" | "group-groups" };
+    type Resource = "groups" | "agents" | "keys";
     type Reading = "present" | "empty" | "loading" | "refused" | "unreachable";
+    type RolePanel = {
+      role: "TENANT_ADMIN" | "GROUP_ADMIN";
+      resource: Resource;
+      prefix: "tenant-groups" | "tenant-agents" | "tenant-pending-keys" | "group-groups" | "group-agents";
+      refusalCapability: string | null;
+    };
     const panels: RolePanel[] = [
-      { role: "TENANT_ADMIN", prefix: "tenant-groups" },
-      { role: "GROUP_ADMIN", prefix: "group-groups" },
+      { role: "TENANT_ADMIN", resource: "groups", prefix: "tenant-groups", refusalCapability: "group.manage" },
+      { role: "TENANT_ADMIN", resource: "agents", prefix: "tenant-agents", refusalCapability: null },
+      { role: "TENANT_ADMIN", resource: "keys", prefix: "tenant-pending-keys", refusalCapability: "key.approve" },
+      { role: "GROUP_ADMIN", resource: "groups", prefix: "group-groups", refusalCapability: "group.manage" },
+      { role: "GROUP_ADMIN", resource: "agents", prefix: "group-agents", refusalCapability: null },
     ];
     const readings: Reading[] = ["present", "empty", "loading", "refused", "unreachable"];
 
-    const read = async ({ role, prefix }: RolePanel, reading: Reading) => {
+    const read = async (panel: RolePanel, reading: Reading) => {
+      const { role, resource, prefix } = panel;
       const context = await newContext("en");
       const page = await context.newPage();
       const errors: string[] = [];
@@ -4680,34 +4691,40 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // React root racing the component probe below.
         await page.goto(`${viteBaseUrl}/node_modules/.vite/deps/react.js`, { waitUntil: "domcontentloaded" });
         await page.route("**/auth/me", () => new Promise<void>(() => {}));
-        await page.route("**/api/v1/agents", (route) =>
-          route.fulfill({ status: 200, contentType: "application/json", body: '{"agents":[]}' }),
-        );
-        await page.route("**/api/v1/admin/keys/pending", (route) =>
-          route.fulfill({ status: 200, contentType: "application/json", body: '{"keys":[]}' }),
-        );
-        await page.route("**/api/v1/admin/mailbox", (route) =>
-          route.fulfill({ status: 200, contentType: "application/json", body: '{"mailboxes":[],"total_queued":0}' }),
-        );
-        await page.route("**/api/v1/admin/groups", (route) => {
+        const emptyBody: Record<Resource, unknown> = {
+          groups: { groups: [], egress: [] },
+          agents: { agents: [] },
+          keys: { keys: [] },
+        };
+        const presentBody: Record<Resource, unknown> = {
+          groups: { groups: [{ group_id: "t019-group", name: "T-019 group", members: [], description: "state witness" }], egress: [] },
+          agents: { agents: [{ id: "t019-agent", name: "T-019 agent", channel: "web", type: "worker" }] },
+          keys: { keys: [{ identity: "t019-key", fingerprint: "sha256:t019" }] },
+        };
+        const answerRead = async (route: any, routed: Resource) => {
+          if (resource !== routed) {
+            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyBody[routed]) });
+          }
           if (reading === "loading") return new Promise<void>(() => {});
           if (reading === "unreachable") return route.abort("connectionrefused");
           if (reading === "refused") {
-            return route.fulfill({
-              status: 403,
-              contentType: "application/json",
-              body: '{"error":"not allowed","capability":"group.manage"}',
-            });
+            const refused = panel.refusalCapability
+              ? { error: "not allowed", capability: panel.refusalCapability }
+              : { error: "not allowed" };
+            return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify(refused) });
           }
-          const groups = reading === "present"
-            ? [{ group_id: "t019-group", name: "T-019 group", members: [], description: "state witness" }]
-            : [];
           return route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify({ groups, egress: [] }),
+            body: JSON.stringify(reading === "present" ? presentBody[routed] : emptyBody[routed]),
           });
-        });
+        };
+        await page.route("**/api/v1/agents", (route) => answerRead(route, "agents"));
+        await page.route("**/api/v1/admin/keys/pending", (route) => answerRead(route, "keys"));
+        await page.route("**/api/v1/admin/mailbox", (route) =>
+          route.fulfill({ status: 200, contentType: "application/json", body: '{"mailboxes":[],"total_queued":0}' }),
+        );
+        await page.route("**/api/v1/admin/groups", (route) => answerRead(route, "groups"));
 
         await page.evaluate(async ({ chosenRole }) => {
           localStorage.setItem("agent_mesh_user", JSON.stringify({
@@ -4764,12 +4781,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           await page.locator(`[data-testid="${prefix}-${state}"]`).count(),
         ])));
         const text = await page.evaluate(
-          ({ testId }) => document.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? "",
-          { testId: `${prefix}-${reading}` },
+          ({ testId, copyBesideValue }) => {
+            const state = document.querySelector(`[data-testid="${testId}"]`);
+            const copy = copyBesideValue ? state?.parentElement?.children[1] : state;
+            return copy?.textContent?.trim() ?? "";
+          },
+          { testId: `${prefix}-${reading}`, copyBesideValue: resource === "agents" },
         );
+        const countTestId = resource === "agents" ? `${prefix}-${reading}` : `${prefix}-count`;
         const count = await page.evaluate(
           ({ testId }) => document.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? "",
-          { testId: `${prefix}-count` },
+          { testId: countTestId },
         );
         const body = (await page.locator("body").innerText()).slice(0, 600);
         return { visible, text, count, errors, body };
@@ -4789,11 +4811,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
         if (reading === "loading") expect(result.text).toBe("Loading…");
         if (reading === "refused") {
-          expect(result.text).toBe("This account may not read this screen (group.manage).");
-          expect(result.text).not.toContain("server did not answer");
+          const named = panel.refusalCapability ? ` (${panel.refusalCapability})` : "";
+          expect(result.text).toBe(`This account may not read this screen${named}.`);
+          expect(result.text).not.toContain("Could not load");
         }
         if (reading === "unreachable") {
-          expect(result.text).toContain("server did not answer");
+          expect(result.text).toBe(panel.resource === "groups"
+            ? "Could not read the groups (the server did not answer)."
+            : "Could not load");
           expect(result.text).not.toContain("may not read");
         }
         if (reading === "empty") expect(result.count).toBe("0");

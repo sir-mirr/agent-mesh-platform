@@ -105,7 +105,7 @@
 | 글로벌 KPI 메트릭 | 노드 수, 소켓 수, 테넌트 수, p99 지연 | `telemetry.ts`, `agents.ts`, `groups.ts` | • 로딩: Skeleton UI<br>• API 차단: '-' 및 '통신 불가' 라벨<br>• 정상: 실데이터 숫자 렌더링 (T-136 준수) | `SC-SCR02-01` |
 | 실시간 텔레메트리 바 | CPU %, RAM MB, 활성 세션 | `/api/v1/admin/ai-usage` | • API 실패: 텔레메트리 카드 숨김 / 오프라인<br>• 정상: 실시간 퍼센티지 바 | `SC-SCR02-02` |
 | 테넌트 조직 요약 카드 | 조직별 에이전트 및 Egress 규칙 수 | `fetchGroups()` | • 0건: "등록된 테넌트 없음"<br>• n건: 동적 카드 렌더링 | `SC-SCR02-03` |
-| Tenant/Group 역할별 그룹 요약 | 그룹 수·Egress 수·멤버십 목록 | `fetchGroups()` | • 로딩: 아직 모름, 숫자 없음<br>• 거절: 서버가 이름 붙인 권한 문구와 `*-refused` 자리<br>• 무응답: 연결 실패 문구와 `*-unreachable` 자리<br>• 0건: 답을 받은 뒤에만 그룹 없음·0<br>• n건: 실데이터와 `*-present` 자리 | `SC-DOWN-15` |
+| Tenant/Group 역할별 그룹·에이전트·키 요약 | 그룹 수·Egress 수·에이전트 수·미승인 키 수·멤버십 목록 | `fetchGroups()`, `fetchAgents()`, `fetchPendingKeys()` | • 각 읽기의 로딩: 아직 모름, 숫자 없음<br>• 거절: 서버가 이름 붙인 권한 문구와 `*-refused` 자리<br>• 무응답: 연결 실패 문구와 `*-unreachable` 자리<br>• 0건: 해당 읽기의 답을 받은 뒤에만 없음·0<br>• n건: 해당 라우트 실데이터와 `*-present` 자리 | `SC-DOWN-15` |
 
 ---
 
