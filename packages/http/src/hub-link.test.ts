@@ -49,6 +49,8 @@ type Fake = {
   sent: string[];
   open: () => Promise<void>;
   message: (frame: unknown) => void;
+  /** Deliver bytes the hub would never send, to reach the parse failure. */
+  messageRaw: (raw: string) => void;
   /** Drop the link without scheduling anything. See `hangUp` below. */
   error: () => void;
 };
@@ -79,6 +81,7 @@ function standInSocket(): Fake {
     sent,
     open: async () => { await ws.onopen(); },
     message: (frame: unknown) => ws.onmessage({ data: JSON.stringify(frame) }),
+    messageRaw: (raw: string) => ws.onmessage({ data: raw }),
     error: () => ws.onerror(),
   };
 }
@@ -233,31 +236,100 @@ describe("what it does with a frame the hub pushes", () => {
   });
 
   /**
-   * **A frame the store will not take is drawn, audited, and not kept.**
+   * **A frame the store will not take reaches nobody** (D-737).
    *
-   * Measured three times, and the first two readings were wrong — which is why
-   * this comment is longer than the test.
+   * This took three readings to get right, and the first two were wrong in
+   * different ways — the comment is longer than the test because the wrong
+   * answers were both plausible.
    *
-   * A `mesh.message` with no `content` is what an older hub sends. It reaches
-   * `insertMessage`, whose statement is `INSERT OR IGNORE`, so the `NOT NULL`
-   * on `content` is not an error here: **the row is silently not written.**
-   * Nothing throws, so the handler runs to the end — the message is pushed to
-   * the operator's screen, broadcast to the audit stream, and a push
-   * notification is sent. Everything downstream believes it happened.
+   * A `mesh.message` with no `content` is what an older hub sends. It used to
+   * reach `insertMessage`, whose statement was `INSERT OR IGNORE`, so the
+   * `NOT NULL` on `content` was not an error: **the row was silently not
+   * written, nothing threw, and the handler ran to the end.** The message went
+   * to the operator's screen, to the audit stream and out as a push
+   * notification, while being absent from this service's own history. On
+   * screen, in the audit trail, gone from the record — a reload lost it and the
+   * audit said it was delivered.
    *
-   * The consequence is narrower and worse than *the frame vanishes*: it is on
-   * screen, it is in the audit trail, and it is absent from this service's own
-   * history. A reload loses it, and the audit says it was delivered.
-   *
-   * The `?? ''` beside the audit broadcast therefore **does** fire, and its
-   * comment is right about why it is there. An earlier version of this test
-   * asserted the opposite on the strength of a probe that showed no row and no
-   * throw — two facts consistent with both readings, and I picked one.
-   *
-   * Pinned as measured. What to do about a write that is ignored rather than
-   * refused is with `agent-mesh-local-pm`.
+   * The clause is `ON CONFLICT(id) DO NOTHING` now. The tolerance that was
+   * wanted is for a repeated id — the socket path and the audit poller both
+   * reach this — and nothing else. So the write raises, the caller's `catch`
+   * names the frame, and the three things downstream do not happen.
    */
-  test("draws and audits a frame the store silently refuses to keep", async () => {
+  test("is not drawn, not audited, and not pushed", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    connectToHub();
+    await ws.open();
+
+    const logged: string[] = [];
+    const errored: string[] = [];
+    const realLog = console.log;
+    const realError = console.error;
+    console.log = (...args: unknown[]) => { logged.push(args.join(" ")); };
+    console.error = (...args: unknown[]) => { errored.push(args.join(" ")); };
+    try {
+      const frame = message();
+      delete (frame.params as Record<string, unknown>).content;
+      expect(() => ws.message(frame)).not.toThrow();
+
+      // Not kept, and not handled on past the failed write. `hub→sse` is the
+      // last statement of the branch, after the SSE push and the audit
+      // broadcast — its absence is what says none of them ran.
+      expect(stored(frame.params.id as string)).toBeNull();
+      expect(logged.some((l) => l.includes("hub→sse"))).toBe(false);
+
+      // And it is named, so an operator can go and look for it on the far side.
+      const line = errored.find((l) => l.includes("dropped a hub frame"));
+      expect(line, "the frame was dropped without a word").toBeDefined();
+      expect(line).toContain(String(frame.params.id));
+      expect(line).toContain(String(frame.params.from));
+    } finally {
+      console.log = realLog;
+      console.error = realError;
+    }
+  });
+
+  /**
+   * The tolerance that *is* wanted: one message, arriving twice.
+   *
+   * The socket path and the audit poller both reach `insertMessage` with the
+   * same id, and storing it once is right. Narrowing the clause had to keep
+   * that, or the fix above would turn every ordinary duplicate into a dropped
+   * frame and a log line.
+   */
+  test("and a message that arrives twice is stored once, quietly", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    connectToHub();
+    await ws.open();
+
+    const errored: string[] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => { errored.push(args.join(" ")); };
+    try {
+      const frame = message();
+      ws.message(frame);
+      ws.message(frame);
+      expect(stored(frame.params.id as string)).not.toBeNull();
+      expect(errored.some((l) => l.includes("dropped a hub frame"))).toBe(false);
+    } finally {
+      console.error = realError;
+    }
+  });
+
+  /**
+   * The `catch` that used to be empty (D-737).
+   *
+   * A frame that is not JSON is the reachable way in: `JSON.parse` throws
+   * before anything else runs, so the handler has no id and no sender to name
+   * and says so rather than saying nothing. The line has to carry the reason —
+   * an operator who knows only that a frame was dropped cannot tell a truncated
+   * write from a hub speaking a protocol this build does not know.
+   */
+  test("names a frame it could not even parse, and why", async () => {
     hubAccepts();
     const ws = standInSocket();
     live = ws;
@@ -265,20 +337,21 @@ describe("what it does with a frame the hub pushes", () => {
     await ws.open();
 
     const said: string[] = [];
-    const realLog = console.log;
-    console.log = (...args: unknown[]) => { said.push(args.join(" ")); };
+    const realError = console.error;
+    console.error = (...args: unknown[]) => { said.push(args.join(" ")); };
     try {
-      const frame = message();
-      delete (frame.params as Record<string, unknown>).content;
-      expect(() => ws.message(frame)).not.toThrow();
-
-      // Not kept.
-      expect(stored(frame.params.id as string)).toBeNull();
-      // And yet handled to the end: this line is the last statement of the
-      // `mesh.message` branch, after the SSE push and the audit broadcast.
-      expect(said.some((l) => l.includes("hub→sse") && l.includes(String(frame.params.from)))).toBe(true);
+      // Straight past `JSON.stringify`, so what arrives is not a frame at all.
+      expect(() => (ws as any).message).not.toThrow();
+      const rawSocket = said.length;
+      void rawSocket;
+      ws.messageRaw("{ not json");
+      const line = said.find((l) => l.includes("dropped a hub frame"));
+      expect(line, "an unparseable frame was dropped without a word").toBeDefined();
+      expect(line).toContain("id=unknown");
+      expect(line).toContain("from=unknown");
+      expect(line).toMatch(/reason=\S/);
     } finally {
-      console.log = realLog;
+      console.error = realError;
     }
   });
 

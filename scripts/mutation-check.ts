@@ -4221,6 +4221,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
     expect: ["does not treat a wide world's minimap letterbox as navigable world space"],
   },
+  {
+    id: "a-dropped-hub-frame-goes-unmentioned",
+    defect:
+      "The socket handler's `catch` went back to swallowing. A frame this service cannot handle then disappears with no line anywhere \u2014 the hub has recorded a delivery and this side has nothing, and nobody is told. Logging is not the repair, the frame is still dropped; it is the difference between a mesh that loses a message and one that loses it silently (D-737).",
+    file: "packages/http/src/main.ts",
+    from: "        const reason = err instanceof Error ? err.message : String(err)\n        console.error(",
+    to: "        const reason = err instanceof Error ? err.message : String(err)\n        void reason\n        void ((...__: unknown[]) => {})(",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["names a frame it could not even parse, and why"],
+  },
+  {
+    id: "a-write-that-cannot-happen-is-ignored-like-a-duplicate",
+    defect:
+      "`insertMessage` went back to `INSERT OR IGNORE`, which tolerates a repeated id \u2014 what is wanted \u2014 and everything else with it, including a `NOT NULL` violation. A `mesh.message` with no `content` is then silently not stored while the handler runs on to push it to the operator's screen, broadcast it to the audit stream and send a notification: on screen, in the audit trail, absent from the history. A reload loses it and the audit says it was delivered (D-737).",
+    file: "packages/http/src/db.ts",
+    from: "    INSERT INTO messages (id, from_agent, to_agent, content, reply_to, file_path, status, ts)\n    VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n    ON CONFLICT(id) DO NOTHING",
+    to: "    INSERT OR IGNORE INTO messages (id, from_agent, to_agent, content, reply_to, file_path, status, ts)\n    VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["is not drawn, not audited, and not pushed"],
+  },
 ];
 
 /**

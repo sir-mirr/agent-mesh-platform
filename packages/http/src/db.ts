@@ -282,9 +282,24 @@ export function insertMessage(msg: {
   ts: string
 }): void {
   const db = getDb()
+  // **`ON CONFLICT(id) DO NOTHING`, not `OR IGNORE`** (D-737).
+  //
+  // The tolerance wanted here is for a repeated id: the same message can arrive
+  // twice — the hub's socket path and the audit poller both reach this — and
+  // storing it once is right. `OR IGNORE` grants that and everything else with
+  // it, including a `NOT NULL` violation, so a row that could not be written
+  // was indistinguishable from one that was already there.
+  //
+  // What that hid: a `mesh.message` carrying no `content` (an older hub) was
+  // silently not stored while the handler ran on to push it to the operator's
+  // screen, broadcast it to the audit stream and send a notification. On
+  // screen, in the audit trail, absent from the history — a reload lost it and
+  // the audit said it was delivered. Narrowing the clause makes that throw,
+  // which the caller's `catch` reports and stops.
   const stmt = db.prepare(`
-    INSERT OR IGNORE INTO messages (id, from_agent, to_agent, content, reply_to, file_path, status, ts)
+    INSERT INTO messages (id, from_agent, to_agent, content, reply_to, file_path, status, ts)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO NOTHING
   `)
   stmt.run(msg.id, msg.from, msg.to, msg.content, msg.reply_to ?? null, msg.file_path ?? null, msg.status, msg.ts)
 }
