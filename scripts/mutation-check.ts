@@ -3787,6 +3787,56 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/store/src/schema/self-reminder.test.ts",
     expect: ["a delivery status outside the six"],
   },
+  {
+    id: "upload-grant-authorises-another-key",
+    defect:
+      "`checkGrant` stopped comparing `blob_key`, so a grant issued for one blob authorises a write to any other. Every bound field is compared rather than trusted from the request because the request is what is being authorised \u2014 without this an upload can be redirected over an unrelated blob, using a grant its holder was legitimately given.",
+    file: "packages/store/src/nonces.ts",
+    from: '  if (row.blob_key !== blobKey) return { ok: false, reason: "wrong-blob" };',
+    to: "  // no key check",
+    suite: "packages/store/src/nonces.test.ts",
+    expect: ["a write aimed at a different key"],
+  },
+  {
+    id: "upload-grant-outlives-its-window",
+    defect:
+      "`checkGrant` stopped refusing an expired grant. The sweep is deliberately not on the upload path \u2014 an expired row is already refused by this check, so sweeping there would make every upload pay for the whole table \u2014 which means removing the check leaves nothing at all enforcing the window: an old grant works until a sweep happens to run.",
+    file: "packages/store/src/nonces.ts",
+    from: '  if (row.expired) return { ok: false, reason: "expired" };',
+    to: "  // never expires",
+    suite: "packages/store/src/nonces.test.ts",
+    expect: ["a grant whose window has passed"],
+  },
+  {
+    id: "upload-grant-is-transferable",
+    defect:
+      "`checkGrant` stopped comparing the identity, so any caller holding a nonce can upload under the grant it was issued to. Grants travel in a response body; the binding is what stops one being used by whoever reads it next.",
+    file: "packages/store/src/nonces.ts",
+    from: '  if (row.identity !== identity) return { ok: false, reason: "wrong-identity" };',
+    to: "  // anyone may present it",
+    suite: "packages/store/src/nonces.test.ts",
+    expect: ["another identity presenting it"],
+  },
+  {
+    id: "fetch-messages-reaches-past-its-ceiling",
+    defect:
+      "`mesh.fetch_messages` stopped clamping `limit` to 200. \u00a7 8.4 dropped the cursor, so `limit` is the only reach a caller has and the ceiling is the only thing bounding one request \u2014 an unclamped value asks the store for the whole conversation in a single frame.",
+    file: "packages/hub/src/rpc/messages.ts",
+    from: '  const limit = Math.min(Math.max(parseInt(params.limit ?? "20", 10) || 20, 1), 200);',
+    to: '  const limit = Math.max(parseInt(params.limit ?? "20", 10) || 20, 1);',
+    suite: "packages/hub/src/rpc/messages.test.ts",
+    expect: ["down to two hundred, whatever is asked for"],
+  },
+  {
+    id: "fetch-messages-answers-one-side-of-a-conversation",
+    defect:
+      "The history query stopped being symmetric, so `mesh.fetch_messages` answers only what the peer sent. History *with a peer* is not *what they sent me*: whoever spoke last sees an empty conversation, and a client rendering it draws a thread missing every one of its own messages.",
+    file: "packages/hub/src/db.ts",
+    from: "  WHERE (from_agent = ?1 AND to_agent = ?2)\n     OR (from_agent = ?2 AND to_agent = ?1)",
+    to: "  WHERE (from_agent = ?2 AND to_agent = ?1)",
+    suite: "packages/hub/src/rpc/messages.test.ts",
+    expect: ["the conversation, not one side of it, newest first"],
+  },
 ];
 
 /**
