@@ -243,8 +243,17 @@ describe("what must not reach disk", () => {
       authorization: authHeader(grant.upload.nonce, grant.blob_key, sha256(bytes), bytes.length),
     });
 
+    // **The status is what names the check.** A digest mismatch is `422` and a
+    // grant mismatch is `403`, so `403` here already says the stream was never
+    // read — which is the ordering this test is about.
+    //
+    // It read the reason out of the body until `c4bae0b` moved it to the log:
+    // naming which bound field disagreed lets a caller holding a nonce probe
+    // what it was issued for, one request at a time. That census missed this
+    // line, because it searched for the sentence and this asserts one word of
+    // the parenthetical.
     expect(res.status).toBe(403);
-    expect((await res.json()).error).toContain("wrong-size");
+    expect((await res.json()).error).toBe("upload grant does not authorise this upload");
     expect(existsSync(join(uploadsDir(), grant.blob_key))).toBe(false);
     // Not even a temp file: a leftover .part would accumulate unnoticed.
     expect(listUploads()).toEqual(before);
