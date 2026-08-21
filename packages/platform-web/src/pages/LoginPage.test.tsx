@@ -189,6 +189,9 @@ const signIn = async (user: string, pass: string) => {
 
 /** Everything the page says about the last attempt, or `null` when it says nothing. */
 const verdict = (): string | null => screen.queryByTestId("login-error")?.textContent ?? null;
+/** The request that has left but has no verdict yet, or `null`. */
+const pending = (): string | null => screen.queryByTestId("login-pending")?.textContent ?? null;
+const submitButton = (): HTMLButtonElement => screen.getByTestId("login-submit") as HTMLButtonElement;
 const consoleOpened = (): boolean => screen.queryByTestId("console-opened") !== null;
 const stillOnTheForm = (): boolean => document.querySelector("form") !== null;
 const bodyText = (): string => document.body.textContent ?? "";
@@ -210,6 +213,11 @@ describe("the credential the form comes up with", () => {
     // And the password is masked. A `type="text"` here is the credential
     // readable over the shoulder of anyone signing in to a real server.
     expect(field("current-password").type).toBe("password");
+    // A signed-out session is the resting form, not an attempt already running.
+    expect(pending()).toBe(null);
+    expect(verdict()).toBe(null);
+    expect(submitButton().disabled).toBe(false);
+    expect(submitButton().getAttribute("aria-busy")).toBe("false");
   });
 
   it("sends what was typed rather than a credential of its own", async () => {
@@ -234,6 +242,7 @@ describe("a refused credential and an unreachable backend are different sentence
     // The server answered. Telling this person the backend is down sends them
     // to check a healthy network for a password they simply mistyped.
     expect(verdict()).toBe("invalid username or password");
+    expect(pending()).toBe(null);
     expect(bodyText()).not.toContain(en("login.unreachable"));
     // And a refused credential is not a session: the console stays shut.
     expect(consoleOpened()).toBe(false);
@@ -261,6 +270,7 @@ describe("a refused credential and an unreachable backend are different sentence
     // password is wrong retypes it; a person told the server is not answering
     // waits, which is the only one of the two that ends.
     expect(verdict()).toBe(en("login.unreachable"));
+    expect(pending()).toBe(null);
     // `toBe` above is the check — this names what the wrong branch would have
     // shown, which is a proxy's word for its own failure read as a verdict on
     // a credential the backend never saw.
@@ -306,7 +316,7 @@ describe("a refused credential and an unreachable backend are different sentence
 });
 
 describe("what the page says before the server has said anything", () => {
-  it("does not answer for the server while the credential is still out", async () => {
+  it("shows an in-flight credential as pending in its own place", async () => {
     routes = [[ME, NO_SESSION], [LOCAL, stillOut]];
     await mount();
     await signIn("operator-1", "pw");
@@ -317,7 +327,19 @@ describe("what the page says before the server has said anything", () => {
     expect(posted(LOCAL).length).toBe(1);
     expect(consoleOpened()).toBe(false);
     expect(verdict()).toBe(null);
+    expect(pending()).toBe(en("login.pending"));
+    expect(submitButton().disabled).toBe(true);
+    expect(submitButton().getAttribute("aria-busy")).toBe("true");
+    expect(bodyText()).not.toContain(en("login.unreachable"));
+    expect(bodyText()).not.toContain(en("login.failed"));
     expect(stillOnTheForm()).toBe(true);
+
+    // A second submit event while the first request is pending does not put a
+    // second credential on the wire. The disabled button covers pointer input;
+    // the handler guard covers submit events produced another way.
+    fireEvent.submit(document.querySelector("form")!);
+    await settle();
+    expect(posted(LOCAL).length).toBe(1);
   });
 
   it("takes the last attempt's verdict down when the next one goes out", async () => {
@@ -336,6 +358,7 @@ describe("what the page says before the server has said anything", () => {
     // they are being told it about the attempt they can see failing.
     expect(posted(LOCAL).length).toBe(2);
     expect(verdict()).toBe(null);
+    expect(pending()).toBe(en("login.pending"));
     expect(consoleOpened()).toBe(false);
   });
 });
@@ -355,6 +378,7 @@ describe("an answer that carried no session", () => {
     // deployment this is the only page reachable, and pressing the button on it
     // did nothing at all.
     expect(verdict()).not.toBe(null);
+    expect(pending()).toBe(null);
     // The server did answer. "Cannot reach the backend" would send an operator
     // to look at a network that is working.
     expect(verdict()).not.toBe(en("login.unreachable"));

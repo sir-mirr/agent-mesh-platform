@@ -2536,6 +2536,74 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 15000);
 
+  /**
+   * SC-LOAD-07 — a submitted credential that has no verdict yet.
+   *
+   * The form already split refusal from an unreachable backend, but between
+   * the click and either result it looked exactly like the resting signed-out
+   * form. This holds the real request at the browser boundary, reads the
+   * pending sentence and its own test id, then releases a refusal and proves
+   * that the pending state is replaced rather than left beside the verdict.
+   */
+  it("[SC-LOAD-07] says a sign-in is pending until the server answers", async () => {
+    const context = await newContext("en");
+    const page = await context.newPage();
+    try {
+      await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
+      const heldRequest: { release?: () => void } = {};
+      const held = new Promise<void>((resolve) => { heldRequest.release = resolve; });
+      await page.route("**/auth/local", async (route) => {
+        await held;
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "invalid username or password" }),
+        });
+      });
+
+      const submit = page.locator('[data-testid="login-submit"]');
+      const before = {
+        pending: await page.locator('[data-testid="login-pending"]').count(),
+        error: await page.locator('[data-testid="login-error"]').count(),
+        disabled: await submit.isDisabled(),
+      };
+
+      await page.locator('input[autocomplete="username"]').fill("operator-1");
+      await page.locator('input[autocomplete="current-password"]').fill("still-checking");
+      await submit.click();
+      const pending = page.locator('[data-testid="login-pending"]');
+      await pending.waitFor({ timeout: 5000 });
+      const during = {
+        text: (await pending.innerText()).trim(),
+        error: await page.locator('[data-testid="login-error"]').count(),
+        disabled: await submit.isDisabled(),
+        busy: await submit.getAttribute("aria-busy"),
+        stayed: page.url().includes("/login"),
+      };
+
+      const release = heldRequest.release;
+      if (!release) throw new Error("the held login request cannot be released");
+      release();
+      const error = page.locator('[data-testid="login-error"]');
+      await error.waitFor({ timeout: 5000 });
+      const after = {
+        pending: await page.locator('[data-testid="login-pending"]').count(),
+        error: (await error.innerText()).trim(),
+        disabled: await submit.isDisabled(),
+        busy: await submit.getAttribute("aria-busy"),
+        stayed: page.url().includes("/login"),
+      };
+
+      expect({ before, during, after }, "the pending attempt shared a result's words or place").toEqual({
+        before: { pending: 0, error: 0, disabled: false },
+        during: { text: "Signing in…", error: 0, disabled: true, busy: "true", stayed: true },
+        after: { pending: 0, error: "invalid username or password", disabled: false, busy: "false", stayed: true },
+      });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 15000);
+
   // SC-DOWN-08: /platform/telemetry does not show active_sockets=0 or info cards when disconnected
   it("[SC-DOWN-08] renders /platform/telemetry with connection error and no 0 sessions when disconnected", async () => {
     const context = await newContext();
