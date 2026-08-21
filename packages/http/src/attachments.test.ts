@@ -216,3 +216,96 @@ describe("the answer that is deliberately the same twice", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * The bytes themselves, which the refusals above never reach.
+ *
+ * Getting here needs a real blob, and the only thing that makes one is
+ * `POST /api/v1/upload` — so this drives both ends of § 15: the route that
+ * stores content-addressed bytes, and the one that serves them to a party of
+ * the message carrying them.
+ */
+describe("serving an attachment to somebody entitled to it", () => {
+  /** Upload as this person, and return the § 15.2 metadata. */
+  async function store(cookie: string, name: string, content: string) {
+    const boundary = `----att-probe-${++n}`;
+    const enc = new TextEncoder();
+    const head = enc.encode(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\n` +
+      `Content-Type: application/octet-stream\r\n\r\n`,
+    );
+    const bytes = enc.encode(content);
+    const tail = enc.encode(`\r\n--${boundary}--\r\n`);
+    const body = new Uint8Array(head.length + bytes.length + tail.length);
+    body.set(head, 0); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
+    const res = await app.fetch(new Request("http://att-probe/api/v1/upload", {
+      method: "POST",
+      headers: { cookie, "content-type": `multipart/form-data; boundary=${boundary}`, "content-length": String(body.length) },
+      body: body as unknown as BodyInit,
+    }));
+    expect(res.status).toBe(200);
+    return (await res.json()) as { id: string; sha256: string; size: number };
+  }
+
+  test("answers the bytes, their type, and a name a browser can save", async () => {
+    const me = await approved();
+    const content = `the quick brown fox ${uniq("body")}`;
+    const meta = await store(me.cookie, "report.txt", content);
+    carry(me.login, "peer-att", meta.id);
+
+    const res = await get(meta.id, { cookie: me.cookie });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(res.headers.get("content-length")).toBe(String(meta.size));
+    // `inline`, because these are shown in a conversation rather than saved by
+    // default — and the filename is what a browser writes if somebody does.
+    expect(res.headers.get("content-disposition")).toContain("inline");
+    expect(await res.text()).toBe(content);
+  });
+
+  /**
+   * **The original name is lost on purpose.** A `sha256` id is the file; the
+   * name a person typed is not part of it, so the display name falls back to
+   * the id rather than to something the server never kept.
+   */
+  test("names a digest-keyed attachment after its digest", async () => {
+    const me = await approved();
+    const meta = await store(me.cookie, "quarterly summary.txt", `named ${uniq("body")}`);
+    carry(me.login, "peer-att", meta.id);
+    const res = await get(meta.id, { cookie: me.cookie });
+    expect(res.headers.get("content-disposition")).toContain(meta.id);
+    expect(res.headers.get("content-disposition")).not.toContain("quarterly");
+  });
+
+  /**
+   * A legacy `<ts>-<name>` id kept the name on disk, so that one is served
+   * under it. Both id shapes are accepted (§ 15.2 and the pre-hash contract),
+   * and the difference is only which name a browser is given.
+   */
+  test("and a legacy id after the name inside it", async () => {
+    const me = await approved();
+    // The name is captured rather than rebuilt: `n` moves whenever any helper
+    // in this file runs, and an id read twice is two ids.
+    const legacyName = `notes-${++n}.txt`;
+    const legacyId = `1734567890123-${legacyName}`;
+    const { writeFileSync } = await import("node:fs");
+    const { join: joinPath } = await import("node:path");
+    const { stateDir: dir } = await import("@agent-mesh/store");
+    writeFileSync(joinPath(dir(), "uploads", legacyId), "legacy bytes");
+    carry(me.login, "peer-att", legacyId);
+
+    const res = await get(legacyId, { cookie: me.cookie });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toContain(legacyName);
+    expect(res.headers.get("content-disposition")).not.toContain("1734567890123");
+  });
+
+  /** The recipient is a party too, not only the sender. */
+  test("serves it to the recipient as readily as to the sender", async () => {
+    const sender = await approved();
+    const recipient = await approved();
+    const meta = await store(sender.cookie, "shared.txt", `shared ${uniq("body")}`);
+    carry(sender.login, recipient.login, meta.id);
+    expect((await get(meta.id, { cookie: recipient.cookie })).status).toBe(200);
+  });
+});

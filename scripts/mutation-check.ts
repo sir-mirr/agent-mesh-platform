@@ -4371,6 +4371,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/pages/LoginPage.test.tsx",
     expect: ["shows an in-flight credential as pending in its own place"],
   },
+  {
+    id: "a-legacy-attachment-loses-the-name-it-kept",
+    defect:
+      "A legacy `<ts>-<name>` id stopped being served under the name inside it, so the one id shape that still carries a person's filename hands the browser a timestamp instead. Digest-keyed ids have no name to lose \u2014 that is why they fall back to the id \u2014 but these do, and it is the whole difference between the two shapes.",
+    file: "packages/http/src/main.ts",
+    from: "    filename = dashIdx > 0 ? id.slice(dashIdx + 1) : id",
+    to: "    filename = id",
+    suite: "packages/http/src/attachments.test.ts",
+    expect: ["a legacy id after the name inside it"],
+  },
 ];
 
 /**
