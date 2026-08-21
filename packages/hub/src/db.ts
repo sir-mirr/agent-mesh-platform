@@ -47,12 +47,16 @@ groupsSchema.migrate(agentsDb);
  * `POST /api/v1/admin/agents/{identity}/can-proxy` made a decision, and a hub
  * restart clearing it would undo that silently.
  */
-export const DECLARED_PROXIES: ReadonlySet<string> = new Set(
-  (process.env.AGENT_MESH_PROXY_IDENTITIES ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
+export function parseDeclaredProxies(raw: string | undefined): ReadonlySet<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+}
+
+export const DECLARED_PROXIES: ReadonlySet<string> = parseDeclaredProxies(process.env.AGENT_MESH_PROXY_IDENTITIES);
 
 /**
  * Apply the declaration to one identity.
@@ -63,9 +67,13 @@ export const DECLARED_PROXIES: ReadonlySet<string> = new Set(
  * is the common case — `agent-mesh-http` registers itself after connecting —
  * and doing only the first left it unable to proxy at all.
  */
-export function applyDeclaredProxy(identity: string): void {
-  if (!DECLARED_PROXIES.has(identity)) return;
-  agentsDb.prepare(`UPDATE agents SET can_proxy = 1 WHERE identity = ?`).run(identity);
+export function applyDeclaredProxy(
+  identity: string,
+  declared: ReadonlySet<string> = DECLARED_PROXIES,
+  agents: Database = agentsDb,
+): void {
+  if (!declared.has(identity)) return;
+  agents.prepare(`UPDATE agents SET can_proxy = 1 WHERE identity = ?`).run(identity);
 }
 
 for (const identity of DECLARED_PROXIES) applyDeclaredProxy(identity);
@@ -111,14 +119,36 @@ export function srDb(): Database {
  * nothing on disk in exchange. The checkpoint gets the whole benefit the close
  * was wanted for and costs none of that.
  */
-export function closeDatabases(): void {
-  for (const store of [db, agentsDb, auditDb, _srDb]) {
+export interface HubStores {
+  routing: Database;
+  agents: Database;
+  /** Folded and deliberately left open — see above. */
+  audit: Database;
+  /** Absent until a reminder RPC has opened it. */
+  selfReminder: Database | null;
+}
+
+/** The handles this module owns, as the shutdown path takes them. */
+export function hubStores(): HubStores {
+  return { routing: db, agents: agentsDb, audit: auditDb, selfReminder: _srDb };
+}
+
+/**
+ * Takes the stores rather than reaching for the module's own, so the shutdown
+ * can be run against handles a caller opened — which is the only way to assert
+ * what it does to a file, in a process that has to survive the assertion.
+ */
+export function closeDatabases(stores: HubStores = hubStores()): void {
+  for (const store of [stores.routing, stores.agents, stores.audit, stores.selfReminder]) {
     if (store) checkpointForShutdown(store);
   }
-  db.close();
-  agentsDb.close();
-  _srDb?.close();
-  _srDb = null;
+  stores.routing.close();
+  stores.agents.close();
+  stores.selfReminder?.close();
+  // Only this module's lazy handle is forgotten, and only when it is the one
+  // that was closed: a caller shutting down stores it opened itself must not
+  // take this one with it, or the next reminder RPC gets a closed handle.
+  if (stores.selfReminder === _srDb) _srDb = null;
 }
 
 // --- agents -----------------------------------------------------------------

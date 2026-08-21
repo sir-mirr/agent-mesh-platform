@@ -5932,6 +5932,297 @@ const MUTATIONS: Mutation[] = [
     suite: "test/gate-window.test.ts",
     expect: ["runs anyway when nobody is listening"],
   },
+  {
+    id: "lifecycle-stop-category",
+    swept: true,
+    defect:
+      "A `stop()` that rejected the in-flight RPC with the wrong category told the caller the hub had gone away, when what happened is that this process is shutting down. The scheduler retries one of those and not the other.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: '      this.rejectGeneration(current.generation, new HubRpcError("hub lifecycle stopped", "stopped"));',
+    to: '      this.rejectGeneration(current.generation, new HubRpcError("hub lifecycle stopped", "hub_closed"));',
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["rejects the in-flight request as stopped and closes the socket", "hub_closed"],
+  },
+  {
+    id: "lifecycle-stop-closes-socket",
+    swept: true,
+    defect:
+      "Stopping without closing the socket leaves the hub holding a registration for a process that is going away, and the identity taken until the connection times out on the other side.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: '      try { current.ws.close(1000, "self-reminder stopping"); } catch {}',
+    to: "      void current;",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["rejects the in-flight request as stopped and closes the socket"],
+  },
+  {
+    id: "lifecycle-stop-disarms-reconnect",
+    swept: true,
+    defect:
+      "A `stop()` that left the reconnect timer armed reconnected after the shutdown — the guard is one inverted condition away, and `stopped` alone does not stop it, because the timer's callback is what consults it.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "    if (!this.reconnectTimer) return;",
+    to: "    if (this.reconnectTimer) return;",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["disarms a reconnect that was already scheduled"],
+  },
+  {
+    id: "lifecycle-request-needs-open-socket",
+    swept: true,
+    defect:
+      "`ready` says the hub accepted the registration; it does not say the socket is still open. Sending on a closing socket throws inside the promise and the caller gets `rpc_send_failed` for what is really an unavailable hub.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "    if (!this.ready || !current || current.ws.readyState !== 1) {",
+    to: "    if (!this.ready || !current) {",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["is unavailable while the registered socket is closing"],
+  },
+  {
+    id: "lifecycle-rpc-timeout-category",
+    swept: true,
+    defect:
+      "A timeout reported as `hub_unavailable` is indistinguishable from a hub that never registered, and the two want different responses: one waits for the reconnect, the other is a hub that is up and slow.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "        reject(new HubRpcError(`rpc timeout: ${method}`, \"rpc_timeout\"));",
+    to: "        reject(new HubRpcError(`rpc timeout: ${method}`, \"hub_unavailable\"));",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["times out at the configured deadline", "hub_unavailable"],
+  },
+  {
+    id: "lifecycle-rpc-timeout-deadline",
+    swept: true,
+    defect:
+      "The RPC deadline armed from the reconnect backoff instead of `rpcTimeoutMs`: the same number in the default configuration, and an unrelated one in any deployment that tunes either.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "      }, this.rpcTimeoutMs);",
+    to: "      }, this.reconnectBaseMs);",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["times out at the configured deadline"],
+  },
+  {
+    id: "lifecycle-stale-socket-error",
+    swept: true,
+    defect:
+      "Every callback in this file is tied to a generation so a superseded socket cannot act on the live one. The error handler only logs — and a log attributed to the wrong generation is how a reconnect that worked reads as one that did not.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: `    ws.on("error", () => {
+      if (!this.owns(generation, ws)) return;
+      this.log("hub_socket_error", { generation });
+    });`,
+    to: `    ws.on("error", () => {
+      this.log("hub_socket_error", { generation });
+    });`,
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["an error from a superseded socket is not logged"],
+  },
+  {
+    id: "lifecycle-post-registration-reason",
+    swept: true,
+    defect:
+      "The post-registration failure log carried the category and discarded the message, which is the half that says what actually failed. `String(error)` on an `Error` is its class name and message glued together, not the message.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "          error: error instanceof Error ? error.message : String(error),",
+    to: "          error: String(error),",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["a failure carries its category and message", "state write failed"],
+  },
+  {
+    id: "conversation-order",
+    swept: true,
+    defect:
+      "The conversation query reads newest-first and reverses, so the `LIMIT` keeps the newest messages. Ordering ascending keeps the oldest instead — a thread that shows its first twenty messages and never its last.",
+    file: "packages/http/src/db.ts",
+    from: `    WHERE (from_agent = ? AND to_agent = ?) OR (from_agent = ? AND to_agent = ?)
+    ORDER BY ts DESC`,
+    to: `    WHERE (from_agent = ? AND to_agent = ?) OR (from_agent = ? AND to_agent = ?)
+    ORDER BY ts ASC`,
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["the limit keeps the newest and still answers oldest first"],
+  },
+  {
+    id: "conversation-chronological",
+    swept: true,
+    defect:
+      "Dropping the reverse serves a conversation newest-first, which every caller renders top-down.",
+    file: "packages/http/src/db.ts",
+    from: `  const rows = stmt.all(agent1, agent2, agent2, agent1, limit) as DbMessage[]
+  return rows.reverse() // chronological order`,
+    to: `  const rows = stmt.all(agent1, agent2, agent2, agent1, limit) as DbMessage[]
+  return rows`,
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["returns both directions between the two agents and nothing else"],
+  },
+  {
+    id: "conversation-both-directions",
+    swept: true,
+    defect:
+      "One direction of a conversation is not a conversation: the replies vanish and the thread reads as though nobody answered.",
+    file: "packages/http/src/db.ts",
+    from: "    WHERE (from_agent = ? AND to_agent = ?) OR (from_agent = ? AND to_agent = ?)",
+    to: "    WHERE (from_agent = ? AND to_agent = ?) OR (from_agent = ? AND to_agent = ? AND 0)",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["returns both directions between the two agents and nothing else"],
+  },
+  {
+    id: "registry-count",
+    swept: true,
+    defect:
+      "The registry count is what the admin screens page on. A count that does not move with the table pages a list that does.",
+    file: "packages/http/src/db.ts",
+    from: `  const row = db.prepare('SELECT COUNT(*) as cnt FROM agent_registry').get() as { cnt: number }
+  return row.cnt`,
+    to: `  const row = db.prepare('SELECT COUNT(*) as cnt FROM agent_registry WHERE 0').get() as { cnt: number }
+  return row.cnt`,
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["rises by one for a registry agent that is new"],
+  },
+  {
+    id: "admin-seed-stated-password",
+    defect:
+      "`AGENT_MESH_ADMIN_PASSWORD` is how a deployment refuses the published `admin`/`admin`. Seeding the default while the variable is set is that refusal being ignored, silently, on exactly the host that asked for it.",
+    file: "packages/http/src/db.ts",
+    from: "    const hash = await Bun.password.hash(supplied ?? 'admin', { algorithm: 'bcrypt' })",
+    to: "    const hash = await Bun.password.hash('admin', { algorithm: 'bcrypt' })",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["with a password stated, seeds that one and names the variable"],
+  },
+  {
+    id: "admin-seed-must-change",
+    defect:
+      "The owner's decision is that the first login always lands on the change screen. Without the mark, a stated password becomes the permanent one and nothing ever says so.",
+    file: "packages/http/src/db.ts",
+    from: `    // leave every deployment's first password permanent.
+    db.prepare(\`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'\`).run()`,
+    to: `    // leave every deployment's first password permanent.
+    void db`,
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["a stated password is an initial one"],
+  },
+  {
+    id: "admin-reseed-verifies-first",
+    defect:
+      "The re-seed marks an admin that still has its initial password. Marking without asking locks out somebody who already chose one — the boot after their change sends them back to the change screen with a password the screen will not accept.",
+    file: "packages/http/src/db.ts",
+    from: "      if (await Bun.password.verify(initial, admin.password_hash)) {",
+    to: "      if (true) {",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["an admin who chose a password is left alone"],
+  },
+  {
+    id: "admin-reseed-initial-is-stated",
+    defect:
+      "The password being checked for is whatever this deployment seeded, not the documented default. Checking `admin` on a host that stated one asks a question whose answer is always no, and the account keeps its initial password with nothing marked.",
+    file: "packages/http/src/db.ts",
+    from: "      const initial = process.env.AGENT_MESH_ADMIN_PASSWORD ?? 'admin'",
+    to: "      const initial = 'admin'",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["the initial password it checks against is the stated one"],
+  },
+  {
+    id: "admin-reseed-skips-marked",
+    defect:
+      "An admin already marked is asked again on every boot, which costs a bcrypt verify per start and warns about an initial password that the next login is already going to change.",
+    file: "packages/http/src/db.ts",
+    from: "    if (admin && admin.must_change_password !== 1) {",
+    to: "    if (admin) {",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["an admin already marked is not re-checked against the initial password"],
+  },
+  {
+    id: "http-db-close-folds",
+    defect:
+      "`close()` on a handle with statements still prepared against it is a safe close in bun: marked closed to JavaScript, file left open, nothing checkpointed. `agent-mesh.db` folded on a bare close and `audit.db` did not, in the same process on the same run — which is why the checkpoint is explicit here rather than left to the close.",
+    file: "packages/http/src/db.ts",
+    from: "    checkpointForShutdown(_db)",
+    to: "    void _db",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["folds the log rather than leaving it beside a one-page database"],
+  },
+  {
+    id: "http-db-close-forgets-handle",
+    defect:
+      "Closing without forgetting the handle hands the next caller a closed database, and every read after a shutdown fails with `Database has closed` rather than reopening.",
+    file: "packages/http/src/db.ts",
+    from: `    _db.close()
+    _db = null`,
+    to: "    _db.close()",
+    suite: "packages/http/src/db-store.test.ts",
+    expect: ["opens a new handle rather than handing back the closed one"],
+  },
+  {
+    id: "declared-proxies-trim",
+    swept: true,
+    defect:
+      "`AGENT_MESH_PROXY_IDENTITIES=a, b` is how anybody writes a list. Without the trim the second identity is ` b`, which matches no row, and the proxy silently cannot proxy.",
+    file: "packages/hub/src/db.ts",
+    from: "      .map((s) => s.trim())",
+    to: "      .map((s) => s)",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["reads a comma-separated list, spacing and all"],
+  },
+  {
+    id: "declared-proxies-empty-segment",
+    swept: true,
+    defect:
+      "An unset variable splits to one empty string, so without the filter every deployment declares the empty identity a proxy. Harmless only for as long as no row has that identity.",
+    file: "packages/hub/src/db.ts",
+    from: "      .filter(Boolean),",
+    to: "      .filter(() => true),",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["an empty segment is not an identity"],
+  },
+  {
+    id: "declared-proxy-guard",
+    defect:
+      "Speaking on behalf of other identities is the strongest thing a participant holds, and § 8.2 has an operator declare who may. Applying it to whoever asks is the hole the declaration exists to close.",
+    file: "packages/hub/src/db.ts",
+    from: "  if (!declared.has(identity)) return;",
+    to: "  if (declared.has(identity)) return;",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["grants the declared identity"],
+  },
+  {
+    id: "shutdown-folds-audit",
+    defect:
+      "`audit` is the store § 8.9 keeps indefinitely and the one the hub never closes. Leaving it out of the fold is invisible in every suite and shows up as a log beside a database that never grew.",
+    file: "packages/hub/src/db.ts",
+    from: "  for (const store of [stores.routing, stores.agents, stores.audit, stores.selfReminder]) {",
+    to: "  for (const store of [stores.routing, stores.agents, stores.selfReminder]) {",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["folds every log it owns, including the store it does not close", "audit.db"],
+  },
+  {
+    id: "shutdown-closes-agents",
+    swept: true,
+    defect:
+      "The closes are what stops further use after the fold — a smaller job than the checkpoint, and the one that keeps a shutdown from being a suggestion.",
+    file: "packages/hub/src/db.ts",
+    from: "  stores.agents.close();",
+    to: "  void stores.agents;",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["stops further use of the routing and identity stores"],
+  },
+  {
+    id: "shutdown-keeps-lazy-handle",
+    swept: true,
+    defect:
+      "Forgetting the module's lazy handle whenever anything is shut down means a caller closing stores it opened itself takes the hub's scheduler handle with it, and the next reminder RPC opens a second one against a file that already has a writer.",
+    file: "packages/hub/src/db.ts",
+    from: "  if (stores.selfReminder === _srDb) _srDb = null;",
+    to: "  _srDb = null;",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["closing another caller's stores does not take this module's lazy handle with it"],
+  },
+  {
+    id: "sr-db-memoised",
+    swept: true,
+    defect:
+      "A getter that reopens on every call hands out a new writer per reminder RPC, each with its own lock on the same file — the shape that produces `database is locked` under any concurrency at all.",
+    file: "packages/hub/src/db.ts",
+    from: "  if (!_srDb) {",
+    to: "  if (true) {",
+    suite: "packages/hub/src/db-stores.test.ts",
+    expect: ["opens the scheduler's store on first use and hands back the same handle after"],
+  },
 ];
 
 /**
