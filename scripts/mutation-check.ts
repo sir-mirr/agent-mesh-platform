@@ -121,7 +121,15 @@ export { markFor, readVerdict, summarise, verdictsAgree, type Verdict };
 /** Why an entry was not counted as caught. */
 type FailureKind = import("./mutation-verdict").FailureKindName;
 
-export const MUTATIONS: Mutation[] = [
+export const SEND_HEAD = `app.post('/api/v1/messages', async (c) => {
+  // --- Auth required ---
+  const payload = await extractJwt(c)
+  if (!payload) {
+    return c.json({ error: 'Unauthorized — provide Authorization: Bearer <jwt>' }, 401)
+  }
+  if (!isUserApproved(payload.github_login, payload.role)) {`
+
+const MUTATIONS: Mutation[] = [
   {
     id: "egress-deny",
     defect: "A group with no egress rule could send anyway (§ 12).",
@@ -259,6 +267,99 @@ export const MUTATIONS: Mutation[] = [
     to: "  const token = process.env.AI_USAGE_INGEST_TOKEN ?? 'in-process-ingest-token'\n  if (!token) {",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["refuses everyone while ingest is switched off"],
+  },
+  {
+    id: "send-lets-an-unapproved-account-post",
+    defect:
+      "The send route stopped checking that the account is approved, so anybody who completed the OAuth flow could put messages on the mesh while still waiting on an admin. \u00a7 9.2a makes admission the gate; authentication only says who is asking. The check is copied into every route on this surface rather than shared, which is why it is worth a mutation: it is only as good as the least recently edited copy.",
+    file: "packages/http/src/main.ts",
+    from: SEND_HEAD,
+    to: SEND_HEAD.replace(
+      "  if (!isUserApproved(payload.github_login, payload.role)) {",
+      "  if (false) {",
+    ),
+    suite: "packages/http/src/send-refusals.test.ts",
+    expect: ["refuses an account still waiting on an admin"],
+  },
+  {
+    id: "send-ignores-the-policy",
+    defect:
+      "\u00a7 11's per-user policy stopped being consulted, so any approved member could message any agent in the registry. Refusal is the default here \u2014 a member with no policy row may message nobody \u2014 and removing the check turns the absence of a grant into a grant.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!isAllowedToMessage(payload.github_login, payload.role, to)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/send-refusals.test.ts",
+    expect: ["refuses a member whose policy admits nobody"],
+  },
+  {
+    id: "send-names-the-wrong-missing-field",
+    defect:
+      "Both malformed-body refusals came back naming `to`. A client that dropped `text` is told to look at the field it sent correctly, and the two are dropped by different bugs \u2014 which is the whole reason each refusal names its own field rather than saying \"bad request\".",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: 'Missing or invalid \"text\" field' }, 400)",
+    to: "    return c.json({ error: 'Missing or invalid \"to\" field' }, 400)",
+    suite: "packages/http/src/send-refusals.test.ts",
+    expect: ["names the field it is missing"],
+  },
+  {
+    id: "send-failure-corrects-nothing-quietly",
+    defect:
+      "The write-back that marks a hub-refused message `failed` stopped reporting a miss. The row is inserted moments earlier in the same handler, so a miss means the insert did not take \u2014 and a correction that silently applied to nothing leaves every later read serving `pending` for a message that never left this machine.",
+    file: "packages/http/src/send-failure.ts",
+    from: "  console.error(`[http-server] could not mark ${id} failed: no such row`)",
+    to: "",
+    suite: "packages/http/src/send-failure.test.ts",
+    expect: ["names the message when the correction matched no row"],
+  },
+  {
+    id: "chat-audits-reads-a-cleared-box-as-a-filter",
+    defect:
+      "An empty query value became a filter on the empty string. A console that clears its search box sends `?search=`, and the audit then answers with nothing \u2014 the same screen as a mesh that carried no traffic, which is the one answer an operator cannot check.",
+    file: "packages/http/src/chat-audits.ts",
+    from: '  typeof v === "string" && v ? v : null;',
+    to: '  typeof v === "string" ? v : null;',
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["treats a cleared box as no filter at all"],
+  },
+  {
+    id: "chat-audits-cursor-skips-a-shared-instant",
+    defect:
+      "Pagination anchored on `ts` alone. Two messages written in the same millisecond page over each other: the second is never returned on any page, and nothing in the response says a message was skipped. The `id` tiebreak is what makes the order total.",
+    file: "packages/http/src/chat-audits.ts",
+    from: '      where.push("(ts < ? OR (ts = ? AND id < ?))");\n      params.push(cursorTs, cursorTs, beforeId);',
+    to: '      where.push("ts < ?");\n      params.push(cursorTs);',
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["does not skip a message that shares the cursor's instant"],
+  },
+  {
+    id: "chat-audits-guesses-has-more",
+    defect:
+      "The query stopped fetching one row beyond the page, so `has_more` was computed from a list that could never exceed the limit and came back `false` on every full page. The console stops offering the next page while the audit still has one, and the operator has no way to tell a complete list from a truncated one.",
+    file: "packages/http/src/chat-audits.ts",
+    from: "    const rows = db.query(sql).all(...params, limit + 1) as ChatAuditMessage[];",
+    to: "    const rows = db.query(sql).all(...params, limit) as ChatAuditMessage[];",
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["measures has_more rather than guessing it"],
+  },
+  {
+    id: "chat-audits-page-size-unbounded",
+    defect:
+      "`limit` stopped being clamped, so a caller asking for a million rows holds the whole audit in memory to serve one screen. The value arrives as text from a query string, which is also why the `NaN` guard beside it is reachable here and unreachable behind a JSON body.",
+    file: "packages/http/src/chat-audits.ts",
+    from: "  return n > MAX_LIMIT ? MAX_LIMIT : n;",
+    to: "  return n;",
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["is clamped rather than trusted"],
+  },
+  {
+    id: "chat-audits-reports-a-failed-query-as-an-empty-audit",
+    defect:
+      "The catch returned an empty page instead of refusing \u2014 the exact defect `audit-agents.ts` was split out of `main.ts` to end, one route over. *The audit holds nothing* and *the query did not run* become one sentence, and the front end's `SC-DOWN-*` shapes never see the failure they exist to catch.",
+    file: "packages/http/src/chat-audits.ts",
+    from: '    return {\n      status: 500,\n      body: { error: "Failed to query chat audits", detail: String(e?.message ?? e) },\n    };',
+    to: "    return { status: 200, body: { messages: [], has_more: false, oldest_id: null } };",
+    suite: "packages/http/src/chat-audits.test.ts",
+    expect: ["refuses with the reason, rather than an empty page"],
   },
   {
     id: "ai-usage-read-borrows-the-audit-grant",
@@ -544,7 +645,7 @@ export const MUTATIONS: Mutation[] = [
     id: "audit-list-ignores-cursor",
     defect:
       "The audit list ignored its cursor, so paging returned the first page again and a reader scrolling could not tell.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/chat-audits.ts",
     from: "    if (cursorTs !== null) {",
     to: "    if (false) {",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -554,9 +655,9 @@ export const MUTATIONS: Mutation[] = [
     id: "audit-list-ignores-filter",
     defect:
       "The audit list dropped the from_agent filter, handing a console watching one conversation every conversation on the mesh.",
-    file: "packages/http/src/main.ts",
-    from: "    if (fromAgent) {\n      where.push('from_agent = ?')\n      params.push(fromAgent)\n    }\n    if (toAgent) {\n      where.push('to_agent = ?')",
-    to: "    if (false) {\n      where.push('from_agent = ?')\n      params.push(fromAgent)\n    }\n    if (toAgent) {\n      where.push('to_agent = ?')",
+    file: "packages/http/src/chat-audits.ts",
+    from: '    if (fromAgent) {\n      where.push("from_agent = ?");\n      params.push(fromAgent);\n    }',
+    to: '    if (false) {\n      where.push("from_agent = ?");\n      params.push(fromAgent);\n    }',
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["narrows to the conversation"],
   },
@@ -564,9 +665,9 @@ export const MUTATIONS: Mutation[] = [
     id: "audit-list-limit-unclamped",
     defect:
       "A limit that is not a number was passed through, so a mistyped query answered with nothing and looked like an empty audit.",
-    file: "packages/http/src/main.ts",
-    from: "  if (!Number.isFinite(limit) || limit <= 0) limit = 100",
-    to: "  if (false) limit = 100",
+    file: "packages/http/src/chat-audits.ts",
+    from: "  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;",
+    to: "  if (false) return DEFAULT_LIMIT;",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["takes a limit it can honour"],
   },
@@ -818,9 +919,9 @@ export const MUTATIONS: Mutation[] = [
     id: "hubless-send-row",
     defect:
       "The refusal was corrected in the reply only; the stored row kept `pending`, so history, conversation and search all reported a message that never left the machine as waiting.",
-    file: "packages/http/src/main.ts",
-    from: "if (!updateMessageStatus(msg.id, 'failed'))",
-    to: "if (!updateMessageStatus(msg.id, 'pending'))",
+    file: "packages/http/src/send-failure.ts",
+    from: "  if (update(id, 'failed')) return true",
+    to: "  if (update(id, 'pending')) return true",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["failed in the answer and in the row"],
   },
@@ -1634,8 +1735,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`POST /api/v1/messages` corrected a refused message's status on the object it answers from and never on the row. No UPDATE of that table existed in the package, so the response said `failed` and the record said `pending` — and the record is what the history route, the conversation view and search all serve, for the rest of the message's life.",
     file: "packages/http/src/main.ts",
-    from: "    if (!updateMessageStatus(msg.id, 'failed')) {",
-    to: "    if (false) {",
+    from: "    markSendFailed(msg.id)",
+    to: "",
     suite: "test/message-status.test.ts",
     expect: ["is recorded as failed, not left pending for ever"],
   },
@@ -4306,8 +4407,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A message the hub would not take was corrected in the object the response is built from and not in the table. The history route, the conversation view and search all serve the stored value, so the caller was told the truth once and every later read was told it is still waiting for its recipient \u2014 a message that never left this machine, labelled `pending` for ever.",
     file: "packages/http/src/main.ts",
-    from: "    if (!updateMessageStatus(msg.id, 'failed')) {",
-    to: "    if (false) {",
+    from: "    markSendFailed(msg.id)",
+    to: "",
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["marks a message the hub would not take as failed, in the row too"],
   },

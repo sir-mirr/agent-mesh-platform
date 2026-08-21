@@ -172,6 +172,32 @@ of these code *strings* — the likeliest trigger being the front end teaching
 their own constant and a tag gets cut. Written here so the next person finds a
 condition rather than an open question.
 
+## 9. What the audit console's search box means
+
+`GET /api/v1/admin/chat-audits?search=` builds `content LIKE '%' || ? || '%'`
+with the operator's text bound as the parameter. The value is bound, so this is
+not injection — but `LIKE`'s own wildcards are not escaped, so `%` matches any
+run and `_` any single character. An operator searching for a literal `50%`
+gets every message in the audit, and one searching `a_b` gets `axb`.
+
+Three readings, and the code currently implements none of them deliberately:
+
+- **Substring.** Escape `%`, `_` and the escape character, and add
+  `ESCAPE '\\'`. What most people mean by a search box.
+- **Pattern.** Keep it, and say so in the UI — useful for an operator who
+  knows, surprising for everyone else.
+- **Full text.** An FTS index over `content`, which is a different feature and
+  a migration.
+
+Nothing is broken today: over-matching returns more than was asked for, never
+less, and the audit read is already recorded. It is written down because the
+behaviour is now pinned by a test (`chat-audits.test.ts`, "passes LIKE
+wildcards through unescaped"), and a pinned accident reads as a decision to the
+next person unless the file says otherwise. Whoever owns the console's search
+box decides; changing it without them changes what a screen means.
+
+---
+
 ---
 
 ## Sequencing note

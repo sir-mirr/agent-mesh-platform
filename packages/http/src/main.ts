@@ -47,12 +47,14 @@ import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeA
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentReadOrRefuse, closeAuditAccessLog } from './audit-access-log'
+import { markSendFailed } from './send-failure'
 import * as keyProposals from './key-proposals'
 import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
 import { auditAgents } from './audit-agents'
+import { listChatAudits } from './chat-audits'
 import { runShutdown } from './shutdown'
-import { insertMessage, updateMessageStatus, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -1447,12 +1449,7 @@ app.post('/api/v1/messages', async (c) => {
   // its recipient.
   if (!hubMessageId) {
     msg.status = 'failed'
-    if (!updateMessageStatus(msg.id, 'failed')) {
-      // The row was inserted moments ago in this same handler, so a miss means
-      // the insert did not take — worth saying out loud rather than leaving a
-      // correction that quietly applied to nothing.
-      console.error(`[http-server] could not mark ${msg.id} failed: no such row`)
-    }
+    markSendFailed(msg.id)
   }
   const sseMsg = { id: msg.id, from: msg.from, to: msg.to, ts: msg.ts, content: msg.content, reply_to: msg.reply_to ?? null, file_path: msg.file_path ?? null, status: msg.status }
   pushToSSE(msg.to, msg.from, 'message', sseMsg)
@@ -3021,69 +3018,8 @@ app.get('/api/v1/admin/chat-audits', async (c) => {
   const refused = logContentRead(c, actor, true, 'chat-audits:list', c.req.query())
   if (refused) return refused
 
-  const q = c.req.query()
-  const beforeId = typeof q.before_id === 'string' && q.before_id ? q.before_id : null
-  const fromAgent = typeof q.from_agent === 'string' && q.from_agent ? q.from_agent : null
-  const toAgent = typeof q.to_agent === 'string' && q.to_agent ? q.to_agent : null
-  const search = typeof q.search === 'string' && q.search ? q.search : null
-
-  let limit = parseInt(q.limit ?? '100', 10)
-  if (!Number.isFinite(limit) || limit <= 0) limit = 100
-  if (limit > 200) limit = 200
-
-  try {
-    const db = getHubDb()
-
-    // Resolve cursor: ts of before_id (if any). PK id is not sortable lexically,
-    // so we anchor pagination on ts (+ id as secondary tiebreak).
-    let cursorTs: string | null = null
-    if (beforeId) {
-      const row = db.query('SELECT ts FROM messages WHERE id = ?').get(beforeId) as { ts: string } | undefined
-      if (row) cursorTs = row.ts
-    }
-
-    const where: string[] = []
-    const params: any[] = []
-    if (cursorTs !== null) {
-      // Strictly older than cursor ts, or same ts but different id (strictly ordered).
-      where.push('(ts < ? OR (ts = ? AND id < ?))')
-      params.push(cursorTs, cursorTs, beforeId)
-    }
-    if (fromAgent) {
-      where.push('from_agent = ?')
-      params.push(fromAgent)
-    }
-    if (toAgent) {
-      where.push('to_agent = ?')
-      params.push(toAgent)
-    }
-    if (search) {
-      where.push('content LIKE ?')
-      params.push('%' + search + '%')
-    }
-
-    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : ''
-    // Fetch limit+1 to detect has_more
-    const sql = `SELECT id, from_agent, to_agent, content, reply_to, status, ts FROM messages ${whereClause} ORDER BY ts DESC, id DESC LIMIT ?`
-    const rows = db.query(sql).all(...params, limit + 1) as Array<{
-      id: string
-      from_agent: string
-      to_agent: string
-      content: string
-      reply_to: string | null
-      status: string | null
-      ts: string
-    }>
-
-    const hasMore = rows.length > limit
-    const messages = hasMore ? rows.slice(0, limit) : rows
-    const oldestId = messages.length > 0 ? messages[messages.length - 1]!.id : null
-
-    return c.json({ messages, has_more: hasMore, oldest_id: oldestId })
-  } catch (e: any) {
-    console.error('[chat-audits] query failed:', e?.message ?? e)
-    return c.json({ error: 'Failed to query chat audits', detail: String(e?.message ?? e) }, 500)
-  }
+  const r = listChatAudits(getHubDb, c.req.query())
+  return c.json(r.body, r.status)
 })
 
 app.get('/api/v1/admin/chat-audits/stream', async (c) => {
