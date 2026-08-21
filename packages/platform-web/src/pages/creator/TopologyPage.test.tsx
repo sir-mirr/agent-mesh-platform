@@ -837,6 +837,83 @@ describe("the populated canvas controls", () => {
     expect(beta.style.opacity).toBe("0.2");
   });
 
+  it("does not treat a wide world's minimap letterbox as navigable world space", async () => {
+    const groups = Array.from({ length: 4 }, (_, index) => ({
+      group_id: `grp_${index + 1}`,
+      name: `Group ${index + 1}`,
+      members: [`agent-${index + 1}`],
+    }));
+    const agents = groups.map((group, index) => ({
+      id: group.members[0],
+      name: `Agent ${index + 1}`,
+      description: `Agent ${index + 1}`,
+      type: "runtime",
+      last_seen_at: null,
+    }));
+    serve({
+      [GROUPS]: () => json(200, { groups }),
+      [AGENTS]: () => json(200, { agents }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+
+    const realRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const realCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    const frames: FrameRequestCallback[] = [];
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    globalThis.cancelAnimationFrame = () => {};
+
+    const finishAnimation = async () => {
+      const callback = frames.shift();
+      if (!callback) throw new Error("the minimap navigation did not start its camera move");
+      await act(async () => { callback(performance.now() + 1000); });
+    };
+
+    try {
+      await mount();
+      const minimap = document.querySelector(".minimap-container") as HTMLElement | null;
+      const viewport = minimap?.parentElement as HTMLElement | null;
+      if (!minimap || !viewport) throw new Error("the wide topology has no minimap navigation surface");
+
+      Object.defineProperty(viewport, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1200, bottom: 1, width: 1200, height: 1, toJSON: () => ({}) }),
+      });
+      Object.defineProperty(minimap, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ x: 20, y: 570, left: 20, top: 570, right: 220, bottom: 680, width: 200, height: 110, toJSON: () => ({}) }),
+      });
+
+      const cameraTransform = (): string => {
+        const value = [...document.querySelectorAll("g")]
+          .map((group) => group.getAttribute("transform") ?? "")
+          .find((transform) => transform.startsWith("translate("));
+        if (!value) throw new Error("the wide topology has no camera transform");
+        return value;
+      };
+
+      fireEvent.mouseDown(minimap, { clientX: 120, clientY: 575 });
+      await finishAnimation();
+      const atTop = cameraTransform();
+      fireEvent.mouseUp(minimap);
+
+      fireEvent.mouseDown(minimap, { clientX: 120, clientY: 585 });
+      await finishAnimation();
+      const stillInLetterbox = cameraTransform();
+      fireEvent.mouseUp(minimap);
+
+      if (stillInLetterbox !== atTop) {
+        throw new Error("the topology minimap treated its letterbox as world space");
+      }
+    } finally {
+      cleanup();
+      globalThis.requestAnimationFrame = realRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = realCancelAnimationFrame;
+    }
+  });
+
   it("draws an answered registry under an explicit no-group placeholder", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: [] }),

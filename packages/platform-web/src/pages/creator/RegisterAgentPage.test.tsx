@@ -24,15 +24,10 @@
  *
  * ## What is deliberately not asserted
  *
- * Three things on this page are wrong today, and a green assertion over any of
+ * Two things on this page are wrong today, and a green assertion over either of
  * them would pin the defect in place rather than record it. They are reported
  * rather than tested, and each belongs to somebody's fix:
  *
- * - `handleApproveFromModal` and `handleDenyFromModal` mark the row decided
- *   *below* the `try`, so a refused or unreachable write still draws `approved`
- *   / `denied` and raises the "approved and paired" toast. That is `SC-WRITE-10`
- *   — the same defect `NotificationBell` fixed, in the page beside it. The
- *   decision test below therefore only walks the path where the server agreed.
  * - the failure toast on the generator prints `err.message` raw, so a refusal
  *   and an outage arrive as one sentence — and an outage arrives as the
  *   browser's own `Failed to fetch`. The queue on the same screen splits them
@@ -64,6 +59,7 @@ const { RegisterAgentPage } = await import("./RegisterAgentPage.tsx");
 
 const KEYS_PENDING = "/api/v1/admin/keys/pending";
 const KEYS_APPROVE = "/api/v1/admin/keys/approve";
+const KEYS_DENY = "/api/v1/admin/keys/deny";
 const PAIRING_CODES = "/api/v1/admin/pairing-codes";
 const REDEEM = "/api/v1/pairing-codes/redeem";
 const LANG_KEY = "agent_mesh_lang";
@@ -415,6 +411,76 @@ describe("the count beside the heading", () => {
     // The untouched row is untouched, so the count fell by a decision rather
     // than by a row disappearing.
     expect(cellsOf(rowFor(OTHER.identity))[3]).toContain(en("reg.status.pending"));
+  });
+
+  it("marks only the proposal whose fingerprint the server accepted for denial", async () => {
+    reply = (url) => {
+      if (url.endsWith(KEYS_PENDING)) return json(200, { ok: true, keys: [PROPOSAL, OTHER] });
+      if (url.endsWith(KEYS_DENY)) return json(200, { ok: true });
+      throw new TypeError("Failed to fetch");
+    };
+    await mount();
+
+    fireEvent.click(rowFor(PROPOSAL.identity).querySelector("button")!);
+    fireEvent.click(buttonSaying(en("common.reject"))!);
+    await settle();
+
+    const write = calls.find((c) => c.url.endsWith(KEYS_DENY));
+    expect(JSON.parse(String(write?.init?.body ?? "{}"))).toEqual({
+      fingerprint: PROPOSAL.fingerprint,
+      reason: "Rejected by operator",
+    });
+    const denied = cellsOf(rowFor(PROPOSAL.identity));
+    if (!denied[3] || denied[3].includes(en("reg.status.pending")) || denied[3].includes(en("reg.status.approved"))) {
+      throw new Error(`the denied proposal did not move to its rejected status cell: ${JSON.stringify(denied)}`);
+    }
+    expect(denied[4]).toContain(en("reg.action.done"));
+    expect(cellsOf(rowFor(OTHER.identity))[3]).toContain(en("reg.status.pending"));
+    expect(queueHeading()).toContain(`(1 ${en("reg.queue.waiting")})`);
+  });
+
+  it("keeps a refused approval pending and names the failed write in its own place", async () => {
+    reply = (url) => {
+      if (url.endsWith(KEYS_PENDING)) return json(200, { ok: true, keys: [PROPOSAL] });
+      if (url.endsWith(KEYS_APPROVE)) return json(403, { error: "not allowed", capability: CAPABILITY.KEY_APPROVE });
+      throw new TypeError("Failed to fetch");
+    };
+    await mount();
+
+    fireEvent.click(rowFor(PROPOSAL.identity).querySelector("button")!);
+    fireEvent.click(buttonSaying(en("pairing.modal.approveAndBind"))!);
+    await settle();
+
+    const failed = screen.queryByTestId("registration-approve-failed");
+    if (!failed) throw new Error("the refused approval had no failure place");
+    expect(failed.textContent).toContain(en("reg.toast.approveFailed"));
+    expect(failed.textContent).toContain(PROPOSAL.identity);
+    expect(failed.textContent).toContain("not allowed");
+    expect(screen.queryByTestId("registration-approved")).toBeNull();
+    expect(bodyText()).not.toContain(en("reg.toast.approved"));
+    expect(cellsOf(rowFor(PROPOSAL.identity))[3]).toContain(en("reg.status.pending"));
+    expect(cellsOf(rowFor(PROPOSAL.identity))[4]).toContain(en("reg.action.pair"));
+    expect(queueHeading()).toContain(`(1 ${en("reg.queue.waiting")})`);
+  });
+
+  it("keeps an unreachable denial pending and names the failed write in its own place", async () => {
+    queueAnswers({ ok: true, keys: [PROPOSAL] });
+    await mount();
+
+    fireEvent.click(rowFor(PROPOSAL.identity).querySelector("button")!);
+    fireEvent.click(buttonSaying(en("common.reject"))!);
+    await settle();
+
+    const failed = screen.queryByTestId("registration-deny-failed");
+    if (!failed) throw new Error("the unreachable denial had no failure place");
+    expect(failed.textContent).toContain(en("reg.toast.denyFailed"));
+    expect(failed.textContent).toContain(PROPOSAL.identity);
+    expect(failed.textContent).toContain("Failed to fetch");
+    expect(screen.queryByTestId("registration-denied")).toBeNull();
+    expect(bodyText()).not.toContain(en("reg.toast.denied"));
+    expect(cellsOf(rowFor(PROPOSAL.identity))[3]).toContain(en("reg.status.pending"));
+    expect(cellsOf(rowFor(PROPOSAL.identity))[4]).toContain(en("reg.action.pair"));
+    expect(queueHeading()).toContain(`(1 ${en("reg.queue.waiting")})`);
   });
 });
 
