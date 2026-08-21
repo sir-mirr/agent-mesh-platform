@@ -4,6 +4,8 @@ import {
   consoleSink,
   createLogger,
   createRecordingLogger,
+  currentFields,
+  withFields,
   startCounterHeartbeat,
   eventCounts,
   resetCountsForTest,
@@ -482,5 +484,100 @@ describe("saying what the counters hold", () => {
       clearTimer: () => {},
     });
     expect(asked).toEqual([900_000]);
+  });
+});
+
+/**
+ * Correlation (T-022 § 5, D-741).
+ *
+ * A message has an id both sides already know. Everything else does not, and
+ * the answer is a request id that reaches every line the request produced --
+ * including the ones written from three layers down inside a failure, which is
+ * where correlating is worth anything.
+ */
+describe("fields that come from the surroundings", () => {
+  test("reach a line written anywhere inside the scope", async () => {
+    const log = createRecordingLogger("http", clock());
+
+    await withFields({ request_id: "req-1" }, async () => {
+      await Promise.resolve();
+      const deep = async () => log.error("could not write", "db_failed", { reason: "disk_full" });
+      await deep();
+    });
+
+    expect(log.lines[0]!.event).toEqual({
+      ts: "2026-08-22T05:00:00.000Z",
+      level: "error",
+      component: "http",
+      event: "db_failed",
+      request_id: "req-1",
+      reason: "disk_full",
+    });
+  });
+
+  test("do not reach a line written outside it", () => {
+    const log = createRecordingLogger("http", clock());
+    withFields({ request_id: "req-1" }, () => log.info("inside", "a"));
+    log.info("outside", "b");
+
+    expect(log.recorded("a")[0]!.event.request_id).toBe("req-1");
+    expect(log.recorded("b")[0]!.event.request_id).toBeUndefined();
+  });
+
+  test("nest, and the inner scope adds without erasing", () => {
+    const log = createRecordingLogger("http", clock());
+    withFields({ request_id: "req-1" }, () => {
+      withFields({ actor: "kim" }, () => log.info("both", "a"));
+    });
+
+    expect(log.recorded("a")[0]!.event).toMatchObject({ request_id: "req-1", actor: "kim" });
+  });
+
+  test("lose to an explicit field at the call site", () => {
+    const log = createRecordingLogger("http", clock());
+    withFields({ actor: "ambient" }, () => log.info("named", "a", { actor: "stated" }));
+
+    expect(log.recorded("a")[0]!.event.actor).toBe("stated");
+  });
+
+  test("cannot forge the four the logger owns", () => {
+    const log = createRecordingLogger("http", clock());
+    withFields({ component: "not-http", level: "error", event: "not_a", ts: "1999" }, () =>
+      log.info("named", "a"),
+    );
+
+    expect(log.recorded("a")[0]!.event).toEqual({
+      ts: "2026-08-22T05:00:00.000Z",
+      level: "info",
+      component: "http",
+      event: "a",
+    });
+  });
+
+  test("are readable, for a caller that has to hand them on itself", () => {
+    expect(currentFields()).toEqual({});
+    withFields({ request_id: "req-1" }, () => {
+      expect(currentFields()).toEqual({ request_id: "req-1" });
+    });
+  });
+
+  test("do not key the counter on their own", () => {
+    resetCountsForTest();
+    withFields({ request_id: "req-1" }, () => createRecordingLogger("http", clock()).info("x", "a"));
+    withFields({ request_id: "req-2" }, () => createRecordingLogger("http", clock()).info("x", "a"));
+
+    expect(eventCounts()).toEqual([
+      { component: "http", event: "a", reason: "", count: 2 },
+    ]);
+  });
+
+  test("an ambient reason does key it, and is bounded like any other", () => {
+    resetCountsForTest();
+    const log = createRecordingLogger("http", clock());
+    withFields({ reason: "request " + "x".repeat(100) }, () => log.warn("x", "a"));
+
+    expect(eventCounts()).toEqual([
+      { component: "http", event: "a", reason: "other", count: 1 },
+    ]);
   });
 });

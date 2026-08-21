@@ -6800,6 +6800,36 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/mailbox/src/receive.test.ts",
     expect: ["counts the re-offered ones only, in a batch that mixes both"],
   },
+  {
+    id: "a-request-id-is-believed-as-sent",
+    defect:
+      "The bound on `x-request-id` stopped applying, so whatever a caller sends is written into the record an operator reads \u2014 a kilobyte, a newline, a forged line of its own. The field exists to help somebody read a log and would have become the way to make one unreadable.",
+    file: "packages/http/src/main.ts",
+    from: "  const requestId = REQUEST_ID.test(offered) ? offered : randomUUID()",
+    to: "  const requestId = offered || randomUUID()",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["replaces a value that does not belong in a log line, rather than refusing"],
+  },
+  {
+    id: "the-request-id-reaches-nothing",
+    defect:
+      "The id was echoed to the caller and never put on a line. A person then holds a reference that appears nowhere in the record \u2014 which is worse than having none, because both sides believe the correlation exists.",
+    file: "packages/http/src/main.ts",
+    from: "  await withFields({ request_id: requestId }, () => next())",
+    to: "  await next()",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["reaches the lines the request writes"],
+  },
+  {
+    id: "the-surroundings-overrule-the-call-site",
+    defect:
+      "Ambient fields went back over the caller's. A handler naming the identity it refused would then have it replaced by whatever the request scope carried, and the line would describe the wrong subject with complete confidence.",
+    file: "packages/log/src/index.ts",
+    from: "    const merged: EventFields = { ...ambient.getStore(), ...fields };",
+    to: "    const merged: EventFields = { ...fields, ...ambient.getStore() };",
+    suite: "packages/log/src/index.test.ts",
+    expect: ["lose to an explicit field at the call site"],
+  },
 ];
 
 /**

@@ -26,6 +26,7 @@ import { agentsSchema, auditSchema, groups, hubSchema, ownership } from "@agent-
 import { createHash, generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
 import { formatRestAuthorization, keyFingerprint, restSignaturePreimage, SIGNATURE_FRESHNESS_WINDOW_SECONDS }
   from "@agent-mesh/contracts";
+import { captureConsole } from "@agent-mesh/log";
 
 // The run's state directory, set by `scripts/test-state-dir.ts` before any
 // test file loaded — which is the only moment early enough, because the paths
@@ -1765,3 +1766,69 @@ describe("when a store under a route will not answer", () => {
   });
 });
 
+/**
+ * Correlation (T-022 § 5, D-741).
+ *
+ * A message has an id both sides already know. Everything else did not, and a
+ * complaint about signing in was answered by pairing a person's account of the
+ * time against a log — two clocks, one endpoint, and a guess. One header
+ * replaces the guess.
+ */
+describe("the id that pairs a complaint with a log line", () => {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  test("takes the one the caller sent, and echoes it back", async () => {
+    const res = await call("/", { headers: { "x-request-id": "console-42" } });
+    expect(res.headers.get("x-request-id")).toBe("console-42");
+  });
+
+  test("makes one when the caller sent none", async () => {
+    const res = await call("/");
+    expect(res.headers.get("x-request-id")).toMatch(uuid);
+  });
+
+  test("replaces a value that does not belong in a log line, rather than refusing", async () => {
+    for (const offered of ["with space", "x".repeat(200), "line\tbreakish", ""]) {
+      const res = await call("/", { headers: { "x-request-id": offered } });
+      expect({ offered, echoed: res.headers.get("x-request-id") })
+        .toEqual({ offered, echoed: expect.stringMatching(uuid) });
+    }
+  });
+
+  test("gives two requests two ids", async () => {
+    const [a, b] = await Promise.all([call("/"), call("/")]);
+    expect(a.headers.get("x-request-id")).not.toBe(b.headers.get("x-request-id"));
+  });
+
+  /**
+   * The point of the header, and the only assertion here that is about the
+   * log rather than about the response: a line written from inside a handler
+   * carries the id the caller was given back.
+   */
+  test("reaches the lines the request writes", async () => {
+    const capture = captureConsole();
+    let echoed: string | null = null;
+    try {
+      const res = await asAdminWithId("/api/v1/admin/agent-types", "POST", "corr-probe-1", {
+        type: `corr-probe-${Date.now()}`,
+        requires_key: false,
+      });
+      echoed = res.headers.get("x-request-id");
+    } finally {
+      capture.restore();
+    }
+
+    expect(echoed).toBe("corr-probe-1");
+    const line = capture.lines.find((l) => l.includes('"event":"agent_type_added"'));
+    expect(line, "adding an agent type wrote no line to correlate").toBeDefined();
+    expect(line).toContain('"request_id":"corr-probe-1"');
+  });
+});
+
+/** As the admin, carrying a stated request id. */
+const asAdminWithId = (path: string, method: string, requestId: string, body?: unknown) =>
+  app.fetch(new Request(`http://in-process${path}`, {
+    method,
+    headers: { "content-type": "application/json", cookie, "x-request-id": requestId },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }));

@@ -53,6 +53,8 @@
  * says almost nothing.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 export type Level = "error" | "warn" | "info";
 
 /**
@@ -116,6 +118,34 @@ const BOUNDED_REASON = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
 const counts = new Map<string, number>();
 
 /**
+ * Fields that belong to whatever is currently being handled, not to one call.
+ *
+ * A request id has to reach every line a request produces, and threading it
+ * through forty call sites would mean forty chances to forget -- and the lines
+ * that would be missing it are the ones written from deep inside a failure,
+ * which is where correlation is worth having.
+ *
+ * `AsyncLocalStorage` follows the await chain instead, so a line written three
+ * layers down carries the same id as the one written at the door.
+ */
+const ambient = new AsyncLocalStorage<EventFields>();
+
+/**
+ * Run `body` with these fields on every line it writes, however deep.
+ *
+ * An explicit field at the call site wins: the ambient value is context, and
+ * context does not get to contradict what the caller says it is looking at.
+ */
+export function withFields<T>(fields: EventFields, body: () => T): T {
+  return ambient.run({ ...ambient.getStore(), ...fields }, body);
+}
+
+/** What a line written right now would carry from its surroundings. */
+export function currentFields(): EventFields {
+  return { ...ambient.getStore() };
+}
+
+/**
  * When this process began counting.
  *
  * Without it a `0` cannot be read: "nothing has gone wrong" and "this process
@@ -167,13 +197,21 @@ export function createLogger(
   now: () => string = () => new Date().toISOString(),
 ): Logger {
   const emit = (level: Level, sentence: string, event: string, fields: EventFields = {}): void => {
-    // The four canonical fields belong to the logger, not to the caller. Taking
-    // them out of `fields` first means a caller that happens to have its own
-    // `level` or `component` cannot make the JSON tail disagree with the
-    // sentence the head renders -- one call, one event, one level.
-    const { ts: _ts, level: _level, component: _component, event: _event, ...rest } = fields;
+    // The four canonical fields belong to the logger, not to the caller and not
+    // to the surroundings. Taking them out of the merge means neither can make
+    // the JSON tail disagree with the sentence the head renders -- one call,
+    // one event, one level.
+    //
+    // The call site wins over the ambient scope: the scope is context, and
+    // context does not get to contradict what the caller says it is looking at.
+    const merged: EventFields = { ...ambient.getStore(), ...fields };
+    const { ts: _ts, level: _level, component: _component, event: _event, ...rest } = merged;
     const payload: LoggedEvent = { ts: now(), level, component, event, ...rest };
-    const stated = fields.reason;
+    // From the merge, not from `fields`: an event whose reason came from its
+    // surroundings is still an event with that reason, and a counter that
+    // disagreed with the line beside it would be the one thing worse than no
+    // counter.
+    const stated = rest.reason;
     const reason =
       stated === undefined
         ? ""

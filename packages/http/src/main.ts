@@ -63,7 +63,9 @@ import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } fr
 import { renderLandingPage } from './ui/landing'
 import { BUILD_VERSION, IS_DEV, THEME } from './ui/theme'
 import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
-import { startCounterHeartbeat } from '@agent-mesh/log'
+import { randomUUID } from 'node:crypto'
+
+import { startCounterHeartbeat, withFields } from '@agent-mesh/log'
 import { log } from './log'
 
 // --- Configuration ---
@@ -743,6 +745,38 @@ app.use(
     credentials: true,
   }),
 )
+
+/**
+ * Correlation, one header wide (T-022 § 5, D-741).
+ *
+ * A message has an id both sides already know, so a complaint about one is
+ * answerable from the bundle and the server log without anything new. Every
+ * other operation had nothing: a person says "I could not sign in at about
+ * ten past", and pairing that against a log meant guessing from a clock, an
+ * endpoint and a name — three approximations, and the clocks are not the same
+ * clock.
+ *
+ * So the client's id is taken if it sent one and made here if it did not, it
+ * reaches every line the request writes through `withFields`, and it is echoed
+ * back so the client can record it beside its own account of what happened.
+ * Pairing by time and endpoint stays available for a caller that sends
+ * nothing; it is the fallback rather than the convention.
+ *
+ * **Bounded before it is believed.** The value keys nothing and is not counted,
+ * but it is written into a record an operator reads, so a caller does not get
+ * to put a kilobyte or a newline in it. Anything that is not a short token is
+ * replaced rather than refused — the request is not the problem, and refusing
+ * it would make an unfamiliar client's requests fail for a field that exists
+ * to help somebody read a log.
+ */
+const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/
+
+app.use('*', async (c, next) => {
+  const offered = c.req.header('x-request-id') ?? ''
+  const requestId = REQUEST_ID.test(offered) ? offered : randomUUID()
+  c.header('x-request-id', requestId)
+  await withFields({ request_id: requestId }, () => next())
+})
 
 // --- Landing Page ---
 
