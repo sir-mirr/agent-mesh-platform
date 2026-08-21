@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { createLogger } from "@agent-mesh/log";
+import { createLogger, startCounterHeartbeat } from "@agent-mesh/log";
 import { checkpointForShutdown, openAt, selfReminderSchema } from "@agent-mesh/store";
 import WebSocket from "ws";
 
@@ -124,6 +124,7 @@ const poll = setInterval(() => {
  */
 function shutdown(signal: string): void {
   log.info("shutting down", "shutting_down", { reason: signal.toLowerCase() });
+  stopCounterSnapshots();
   clearInterval(poll);
   try {
     lifecycle.stop();
@@ -138,6 +139,11 @@ function shutdown(signal: string): void {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+// The counters, into the same record as the lines — see `startCounterHeartbeat`.
+const stopCounterSnapshots = startCounterHeartbeat(log, {
+  intervalMs: Number(process.env.AGENT_MESH_COUNTER_SNAPSHOT_MS ?? 900_000),
+});
 
 log.info("scheduler started", "scheduler_started", {
   actor: IDENTITY,

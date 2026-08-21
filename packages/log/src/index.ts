@@ -268,3 +268,45 @@ export function createRecordingLogger(
     recorded: (event) => (event === undefined ? lines : lines.filter((l) => l.event.event === event)),
   };
 }
+
+/**
+ * Say what the counters hold, on a timer, into the same record as the lines.
+ *
+ * A counter nobody can read is a counter nobody has. There is no metrics
+ * endpoint here and journald is the record (T-022 § 2), so the counters go
+ * where the lines go and an operator answers *has this path run at all* with
+ * the same `journalctl` they already have open.
+ *
+ * The first snapshot is emitted immediately, at boot, and it is the useful one:
+ * it stamps `COUNTING_SINCE` into the record next to a set of zeros, so a later
+ * zero can be read as "ran and found nothing" rather than "started a minute
+ * ago". Without that pairing the two are the same number on a screen.
+ *
+ * It counts itself. `counter_snapshot` appears in the next snapshot, which is
+ * one key, bounded, and true.
+ */
+export function startCounterHeartbeat(
+  logger: Logger,
+  options: {
+    intervalMs?: number;
+    setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setInterval>;
+    clearTimer?: (timer: ReturnType<typeof setInterval>) => void;
+  } = {},
+): () => void {
+  const intervalMs = options.intervalMs ?? 900_000;
+  const setTimer = options.setTimer ?? setInterval;
+  const clearTimer = options.clearTimer ?? clearInterval;
+
+  const emit = () => {
+    const counts = eventCounts();
+    logger.info(
+      `counters since ${COUNTING_SINCE}: ${counts.length} kind(s) of event`,
+      "counter_snapshot",
+      { since: COUNTING_SINCE, kinds: counts.length, counts },
+    );
+  };
+
+  emit();
+  const timer = setTimer(emit, intervalMs);
+  return () => clearTimer(timer);
+}

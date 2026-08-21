@@ -63,6 +63,7 @@ import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } fr
 import { renderLandingPage } from './ui/landing'
 import { BUILD_VERSION, IS_DEV, THEME } from './ui/theme'
 import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
+import { startCounterHeartbeat } from '@agent-mesh/log'
 import { log } from './log'
 
 // --- Configuration ---
@@ -3945,12 +3946,19 @@ if (import.meta.main) {
     port: server.port,
   })
 
+  // The counters, into the same record as the lines. There is no metrics
+  // endpoint here and journald is the record, so `journalctl -u agent-mesh-http
+  // | grep counter_snapshot` is how an operator asks whether a path ran at all.
+  const stopCounterSnapshots = startCounterHeartbeat(log, {
+    intervalMs: Number(process.env.AGENT_MESH_COUNTER_SNAPSHOT_MS ?? 900_000),
+  })
+
   // Graceful shutdown. The list is a value rather than a run of statements
   // because the defect here was an omission — `closeAuditAccessLog` imported
   // and never called — and `test/shutdown-closers.test.ts` checks this list
   // against the closers this file imports.
   const shutdown = (): void => runShutdown({
-    closers: SHUTDOWN_CLOSERS,
+    closers: [['counter snapshots', stopCounterSnapshots], ...SHUTDOWN_CLOSERS],
     stop: () => server.stop(),
     exit: (code) => process.exit(code),
   })

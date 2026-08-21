@@ -4,6 +4,7 @@ import {
   consoleSink,
   createLogger,
   createRecordingLogger,
+  startCounterHeartbeat,
   eventCounts,
   resetCountsForTest,
   type Level,
@@ -396,5 +397,90 @@ describe("the recording logger a test uses", () => {
 
   test("names its component like any other logger", () => {
     expect(createRecordingLogger("http").component).toBe("http");
+  });
+});
+
+describe("saying what the counters hold", () => {
+  /** A timer under the test's control, so nothing here waits fifteen minutes. */
+  function fakeTimer() {
+    const fired: Array<() => void> = [];
+    let cleared = 0;
+    return {
+      fired,
+      cleared: () => cleared,
+      setTimer: (fn: () => void) => { fired.push(fn); return fired.length as unknown as ReturnType<typeof setInterval>; },
+      clearTimer: () => { cleared += 1; },
+    };
+  }
+
+  test("stamps the zero at boot next to the time counting began", () => {
+    const log = createRecordingLogger("hub", clock());
+    const timer = fakeTimer();
+    startCounterHeartbeat(log, { setTimer: timer.setTimer, clearTimer: timer.clearTimer });
+
+    const [snapshot] = log.recorded("counter_snapshot");
+    expect(snapshot!.event.since).toBe(COUNTING_SINCE);
+    expect(snapshot!.event.counts).toEqual([]);
+    expect(snapshot!.event.kinds).toBe(0);
+    expect(snapshot!.stream).toBe("out");
+  });
+
+  test("reports what has been counted when the timer fires", () => {
+    const log = createRecordingLogger("hub", clock());
+    const timer = fakeTimer();
+    startCounterHeartbeat(log, { setTimer: timer.setTimer, clearTimer: timer.clearTimer });
+    log.warn("refused", "send_refused", { reason: "egress_denied" });
+    log.warn("refused", "send_refused", { reason: "egress_denied" });
+
+    timer.fired[0]!();
+
+    const snapshots = log.recorded("counter_snapshot");
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]!.event.counts).toEqual([
+      { component: "hub", event: "send_refused", reason: "egress_denied", count: 2 },
+      { component: "hub", event: "counter_snapshot", reason: "", count: 1 },
+    ]);
+  });
+
+  test("counts itself, which is one key and true", () => {
+    const log = createRecordingLogger("hub", clock());
+    const timer = fakeTimer();
+    startCounterHeartbeat(log, { setTimer: timer.setTimer, clearTimer: timer.clearTimer });
+    timer.fired[0]!();
+    timer.fired[0]!();
+
+    expect(eventCounts()).toEqual([
+      { component: "hub", event: "counter_snapshot", reason: "", count: 3 },
+    ]);
+  });
+
+  test("stops when the caller stops it", () => {
+    const log = createRecordingLogger("hub", clock());
+    const timer = fakeTimer();
+    const stop = startCounterHeartbeat(log, { setTimer: timer.setTimer, clearTimer: timer.clearTimer });
+    expect(timer.cleared()).toBe(0);
+    stop();
+    expect(timer.cleared()).toBe(1);
+  });
+
+  test("asks for the interval it was given", () => {
+    const log = createRecordingLogger("hub", clock());
+    const asked: number[] = [];
+    startCounterHeartbeat(log, {
+      intervalMs: 60_000,
+      setTimer: ((fn: () => void, ms: number) => { asked.push(ms); return 1 as never; }) as never,
+      clearTimer: () => {},
+    });
+    expect(asked).toEqual([60_000]);
+  });
+
+  test("defaults to a quarter of an hour", () => {
+    const log = createRecordingLogger("hub", clock());
+    const asked: number[] = [];
+    startCounterHeartbeat(log, {
+      setTimer: ((fn: () => void, ms: number) => { asked.push(ms); return 1 as never; }) as never,
+      clearTimer: () => {},
+    });
+    expect(asked).toEqual([900_000]);
   });
 });

@@ -14,6 +14,7 @@ import manifest from "../package.json" with { type: "json" };
 import { closeDatabases, stmtUpdateLastSeen } from "./db";
 import { Heartbeat } from "./heartbeat";
 import { SERVER_ERROR, rpcError } from "./jsonrpc";
+import { startCounterHeartbeat } from "@agent-mesh/log";
 import { log } from "./log";
 import { OBSERVED } from "./observed-config";
 import { observedSource } from "./observed";
@@ -386,12 +387,18 @@ const server = Bun.serve<SocketData, never>({
 
 log.info(`Hub server listening on ws://0.0.0.0:${server.port}`, "hub_listening", { port: server.port });
 
+// The counters, into the same record as the lines — see `startCounterHeartbeat`.
+const stopCounterSnapshots = startCounterHeartbeat(log, {
+  intervalMs: Number(process.env.AGENT_MESH_COUNTER_SNAPSHOT_MS ?? 900_000),
+});
+
 // ---------------------------------------------------------------------------
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
 function shutdown() {
   log.info("shutting down", "shutting_down", {});
+  stopCounterSnapshots();
   clearInterval(heartbeatInterval);
   clearInterval(rateLimitSweep);
 
