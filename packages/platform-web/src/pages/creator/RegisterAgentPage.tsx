@@ -16,6 +16,12 @@ import { AgentPairingModal, type PendingAgentRequest } from "@/components/feedba
 import { fetchPendingKeys, createPairingCodeApi, approveKeyProposal, denyKeyProposal } from "@/api/agents.ts";
 import { publicApiOrigin } from "@/config/env.ts";
 
+type ToastNotice = {
+  type: "success" | "error" | "info";
+  message: string;
+  testId: string;
+};
+
 export function RegisterAgentPage() {
   const { t } = useI18n();
   const [targetIdentity, setTargetIdentity] = useState("");
@@ -31,7 +37,7 @@ export function RegisterAgentPage() {
   /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
   const [missing, setMissing] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<PendingAgentRequest | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastNotice, setToastNotice] = useState<ToastNotice | null>(null);
 
   // Fetch real pending proposals on mount
   React.useEffect(() => {
@@ -71,10 +77,18 @@ export function RegisterAgentPage() {
       setGeneratedCode(res.code);
       setTtl(res.ttl_seconds || selectedTtl);
       setCopied(false);
-      setToastMessage(`${t("reg.toast.issued", "페어링 코드 발급")}: ${targetIdentity} · ${selectedTtl / 60}${t("reg.minutes", "분")}`);
+      setToastNotice({
+        type: "success",
+        testId: "pairing-code-issued",
+        message: `${t("reg.toast.issued", "페어링 코드 발급")}: ${targetIdentity} · ${selectedTtl / 60}${t("reg.minutes", "분")}`,
+      });
     } catch (err: any) {
       setGeneratedCode(null);
-      setToastMessage(`${t("reg.toast.failed", "페어링 코드 발급 실패")}: ${err.message}`);
+      setToastNotice({
+        type: "error",
+        testId: "pairing-code-issue-failed",
+        message: `${t("reg.toast.failed", "페어링 코드 발급 실패")}: ${err.message}`,
+      });
     }
   };
 
@@ -91,11 +105,21 @@ export function RegisterAgentPage() {
       await approveKeyProposal(fingerprint);
     } catch (err: any) {
       console.warn("[Approve] API error:", err.message);
+      setToastNotice({
+        type: "error",
+        testId: "registration-approve-failed",
+        message: `${t("reg.toast.approveFailed", "에이전트 승인 실패")}: ${identity} — ${err.message}`,
+      });
+      return;
     }
     setPendingList((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "approved" } : r))
     );
-    setToastMessage(`${t("reg.toast.approved", "승인 및 페어링 완료")}: ${identity} · ${code}`);
+    setToastNotice({
+      type: "success",
+      testId: "registration-approved",
+      message: `${t("reg.toast.approved", "승인 및 페어링 완료")}: ${identity} · ${code}`,
+    });
   };
 
   const handleDenyFromModal = async (fingerprint: string, identity: string) => {
@@ -103,11 +127,21 @@ export function RegisterAgentPage() {
       await denyKeyProposal(fingerprint);
     } catch (err: any) {
       console.warn("[Deny] API error:", err.message);
+      setToastNotice({
+        type: "error",
+        testId: "registration-deny-failed",
+        message: `${t("reg.toast.denyFailed", "에이전트 등록 거절 실패")}: ${identity} — ${err.message}`,
+      });
+      return;
     }
     setPendingList((prev) =>
       prev.map((r) => (r.fingerprint === fingerprint || r.identity === identity ? { ...r, status: "rejected" } : r))
     );
-    setToastMessage(`${t("reg.toast.denied", "등록 요청 거절")}: ${identity}`);
+    setToastNotice({
+      type: "success",
+      testId: "registration-denied",
+      message: `${t("reg.toast.denied", "등록 요청 거절")}: ${identity}`,
+    });
   };
 
   const columns = [
@@ -186,12 +220,14 @@ export function RegisterAgentPage() {
         subtitle={t("reg.subtitle", "클라이언트 AI 에이전트의 자동 등록 요청 수신, 1회용 페어링 코드(Pairing Code) 발급 및 소유권 승인 (SPEC § 11.3)")}
       />
 
-      {toastMessage && (
-        <Toast
-          type="info"
-          message={toastMessage}
-          onClose={() => setToastMessage(null)}
-        />
+      {toastNotice && (
+        <div data-testid={toastNotice.testId}>
+          <Toast
+            type={toastNotice.type}
+            message={toastNotice.message}
+            onClose={() => setToastNotice(null)}
+          />
+        </div>
       )}
 
       {/* Architecture Flow Guide */}
@@ -394,4 +430,3 @@ curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem -H 'Content-Type: 
     </div>
   );
 }
-
