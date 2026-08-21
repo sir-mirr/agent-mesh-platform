@@ -4381,6 +4381,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/attachments.test.ts",
     expect: ["a legacy id after the name inside it"],
   },
+  {
+    id: "an-admitted-person-may-message-nobody",
+    defect:
+      "Approving stopped writing the wildcard messaging policy, so a person is admitted, appears in the registry, holds a mesh identity \u2014 and `isAllowedToMessage` refuses every recipient they name. The screen lets them in and nothing they send goes anywhere, with no line saying why.",
+    file: "packages/http/src/main.ts",
+    from: "  db.prepare(`INSERT OR IGNORE INTO policies (github_login, allowed_agent) VALUES (?, '*')`).run(githubLogin)",
+    to: "  void githubLogin",
+    suite: "packages/http/src/admission.test.ts",
+    expect: ["approves, registers, provisions, and grants a policy"],
+  },
+  {
+    id: "an-admitted-person-is-not-in-the-registry",
+    defect:
+      "Approving stopped adding the registry row. That table is what `listApprovedWebUserIds` builds the hub proxy claim from, so an admitted person is never claimed on the socket \u2014 \u00a7 8.2 then refuses every message sent on their behalf, and this side reports nothing.",
+    file: "packages/http/src/main.ts",
+    from: "  upsertApprovedWebUser(githubLogin)",
+    to: "  void 0",
+    suite: "packages/http/src/admission.test.ts",
+    expect: ["approves, registers, provisions, and grants a policy"],
+  },
+  {
+    id: "a-denial-grants-what-an-approval-does",
+    defect:
+      "Denying began writing the registry row an approval writes. A person turned away then appears in the list this service speaks for \u2014 the asymmetry between the two routes is the design: one write for a denial, because there is nothing to withdraw later if nothing was granted.",
+    file: "packages/http/src/main.ts",
+    from: "  const updated = dbDenyUser(githubLogin)",
+    to: "  const updated = dbDenyUser(githubLogin)\n  upsertApprovedWebUser(githubLogin)",
+    suite: "packages/http/src/admission.test.ts",
+    expect: ["marks the row denied and grants nothing"],
+  },
 ];
 
 /**
