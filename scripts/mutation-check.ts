@@ -4921,6 +4921,86 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/shutdown.test.ts",
     expect: ["every closer main.ts imports is one it closes"],
   },
+  {
+    id: "the-user-listing-starts-carrying-the-hash",
+    defect:
+      "The listing stopped naming its columns and took whatever the table has, so the password hash goes out to every caller of the admin user list. The route above it exists so that the temporary password lives in one response and nowhere else; this is the second route being helpful.",
+    file: "packages/http/src/db.ts",
+    from: "      `SELECT username, display_name, role, created_at,",
+    to: "      `SELECT *, COALESCE(tenant, 'default') AS tenant2, username, display_name, role, created_at,",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["hands back a password that appears nowhere else"],
+  },
+  {
+    id: "a-reissue-and-an-admission-report-the-same-absence",
+    defect:
+      "A reissue for a name nobody holds answered 409, the same as admission refusing a name somebody does. Two different absences with one answer sends an operator looking for the wrong thing \u2014 and it is how the missing reissue route hid: the attempt came back 409 and read as *already exists*.",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ ok: false, error: `no local account named '${username}'` }, 404)",
+    to: "    return c.json({ ok: false, error: `no local account named '${username}'` }, 409)",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["answers a different absence than admission does"],
+  },
+  {
+    id: "a-flagged-session-is-only-redirected",
+    defect:
+      "The password gate stopped refusing. A redirect is what the operator sees; it is not what stops `curl` carrying the same cookie, and a guard that only moves a page looks like authorisation and is decoration.",
+    file: "packages/http/src/main.ts",
+    from: "  const payload = await extractJwt(c)\n  if (payload && mustChangePassword(payload.github_login)) {",
+    to: "  const payload = await extractJwt(c)\n  if (false && payload && mustChangePassword(payload.github_login)) {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["is refused everywhere, with the reason in the body"],
+  },
+  {
+    id: "a-flagged-session-cannot-even-change-its-password",
+    defect:
+      "The allowlist emptied, so an account behind the first-login gate is refused on the very route that would let it through \u2014 and on `/auth/me`, so the console cannot even find out why. The account becomes unusable rather than restricted.",
+    file: "packages/http/src/main.ts",
+    from: "const OPEN_WHILE_FLAGGED = new Set(['/auth/local/password', '/auth/me', '/auth/logout'])",
+    to: "const OPEN_WHILE_FLAGGED = new Set<string>([])",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["may change its password, ask why, and leave"],
+  },
+  {
+    id: "an-unstated-key-requirement-defaults-to-none",
+    defect:
+      "`requires_key` defaulted to 0 when the caller said nothing. Every identity of a type created without the field then connects without a key \u2014 \u00a7 8.1's signing requirement disarmed by an omission in a request body.",
+    file: "packages/http/src/main.ts",
+    from: "  const requiresKey = body.requires_key === 0 || body.requires_key === false ? 0 : 1",
+    to: "  const requiresKey = body.requires_key === 1 || body.requires_key === true ? 1 : 0",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["requires a key unless told otherwise in so many words"],
+  },
+  {
+    id: "adding-a-type-updates-the-one-that-is-there",
+    defect:
+      "`addType` became an upsert. An operator re-adding an existing type with `requires_key: 0` then lowers it for every identity already carrying that type \u2014 provisioned long before anybody thought about it, and connecting without a key from the next reconnect.",
+    file: "packages/store/src/schema/agents.ts",
+    from: "      `INSERT INTO agent_types (type, description, requires_key) VALUES (?, ?, ?)\n       ON CONFLICT(type) DO NOTHING`,",
+    to: "      `INSERT INTO agent_types (type, description, requires_key) VALUES (?, ?, ?)\n       ON CONFLICT(type) DO UPDATE SET requires_key = excluded.requires_key`,",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses to update an existing type rather than lowering its guard"],
+  },
+  {
+    id: "a-torn-down-identity-stops-holding-its-type",
+    defect:
+      "The in-use check stopped counting soft-deleted identities, so a type could be removed out from under one. Bringing that identity back then restores it as a kind that no longer exists.",
+    file: "packages/store/src/schema/agents.ts",
+    from: "  return (db.prepare(`SELECT identity FROM agents WHERE type = ?`).all(type) as Array<{ identity: string }>)",
+    to: "  return (db.prepare(`SELECT identity FROM agents WHERE type = ? AND deleted_at IS NULL`).all(type) as Array<{ identity: string }>)",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["counts an identity that has been torn down"],
+  },
+  {
+    id: "a-refusal-lists-every-identity-there-is",
+    defect:
+      "The refusal stopped capping the identities it names. An operator needs enough of them to go and look, not all of them \u2014 a type carried by ten thousand agents answers with ten thousand names.",
+    file: "packages/http/src/main.ts",
+    from: "      identities: result.inUseBy.slice(0, 20),",
+    to: "      identities: result.inUseBy,",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["names at most twenty of them"],
+  },
 ];
 
 /**
