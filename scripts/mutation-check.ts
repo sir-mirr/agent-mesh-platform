@@ -3587,6 +3587,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/mailbox-path.test.ts",
     expect: ["/api/v1/mailbox/outfoo is not"],
   },
+  {
+    id: "audit-append-accepts-a-schema-it-cannot-validate",
+    defect:
+      "`mesh.audit.append` stopped refusing an event whose `schema_version` is newer than this hub validates. The event is then stored, and storing an event the hub cannot validate records `validated` as a falsehood — which is why the refusal exists rather than a best-effort parse. Nothing is lost by refusing: the client's outbox retries and drains after the hub is upgraded.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "  if (schemaVersion > MAX_SCHEMA_VERSION) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/rpc/audit.test.ts",
+    expect: ["a schema_version newer than this hub validates"],
+  },
+  {
+    id: "prepare-blobs-forgets-the-per-event-total",
+    defect:
+      "`mesh.audit.prepare_blobs` checked each blob against `max_blob_bytes` and stopped checking their sum against `max_attachments_bytes_per_event`. Every blob is individually legal and the event is not — the limit only a sum can breach, and the one a per-blob check cannot see. The hub would issue upload grants for more bytes than it advertises it will hold.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "  if (declaredTotal > AUDIT_LIMITS.max_attachments_bytes_per_event) {",
+    to: "  if (false) {",
+    suite: "packages/hub/src/rpc/audit.test.ts",
+    expect: ["blobs that are each small enough and too large together"],
+  },
+  {
+    id: "prepare-blobs-accepts-a-blob-with-no-name",
+    defect:
+      "The storage key retains the file extension (\u00a7 15.2), so the digest alone does not determine where the bytes land. Dropping the `name` requirement makes two implementations of one normalisation rule two chances to disagree, and a disagreement here does not fail loudly \u2014 it splits one blob into two, found much later as storage that will not deduplicate.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: '    if (typeof name !== "string" || name.length === 0) {',
+    to: "    if (false) {",
+    suite: "packages/hub/src/rpc/audit.test.ts",
+    expect: ["a blob with no name"],
+  },
+  {
+    id: "missing-blobs-refuses-without-naming-which",
+    defect:
+      "The `AUDIT_MISSING_BLOBS` refusal stopped carrying `missing_sha256`. The refusal is transient by design \u2014 the client uploads and retries \u2014 but a client told only that *some* attachment is missing has to re-upload all of them, which is the cost this list exists to avoid.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: "      missing_sha256: missing,",
+    to: "      missing_sha256: [],",
+    suite: "packages/hub/src/rpc/audit.test.ts",
+    expect: ["attachments whose bytes are not on disk, naming each"],
+  },
 ];
 
 /**
