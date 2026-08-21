@@ -518,6 +518,25 @@ function removeAiUsageSseClient(c: ReadableStreamDefaultController): void {
   aiUsageSseClients.delete(c)
 }
 
+/**
+ * How many AI-usage stream subscribers this process believes it has.
+ *
+ * **The same seam as `sseClientCount` below, for the same reason.** The set is
+ * module-private, so a subscriber registered on connect and never unregistered
+ * on departure fails at no particular moment: the set grows for the life of the
+ * process, and every push writes to a controller whose socket is gone.
+ *
+ * It measures the departure a test can cause — a cancelled stream, which runs
+ * the source's `cancel`. The other one it cannot: `broadcastAiUsage` also drops
+ * a controller whose `enqueue` throws, and in-process there is no way to make a
+ * registered controller throw without cancelling it first, which removes it by
+ * the other path. That branch is defence in depth behind a path that is
+ * measured, and it is named here rather than left looking covered.
+ */
+export function aiUsageSseClientCount(): number {
+  return aiUsageSseClients.size
+}
+
 function broadcastAiUsage(snapshot: AiUsageSnapshot): void {
   if (aiUsageSseClients.size === 0) return
   const encoder = new TextEncoder()

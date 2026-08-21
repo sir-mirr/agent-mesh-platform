@@ -261,6 +261,46 @@ export const MUTATIONS: Mutation[] = [
     expect: ["refuses everyone while ingest is switched off"],
   },
   {
+    id: "ai-usage-read-borrows-the-audit-grant",
+    defect:
+      "The AI-usage read stopped asking for `usage.read` and took the audit's grant instead. \u00a7 11 separates them because they answer different questions: an operator cleared to read message content is not thereby cleared to read what the deployment spends, and a capability that stands in for another is one nobody can revoke separately.",
+    file: "packages/http/src/main.ts",
+    from: "  const actor = await requireCapability(c, CAPABILITY.USAGE_READ)\n  if (typeof actor !== 'string') return actor\n  void actor\n  return c.json({ snapshot: latestAiUsageSnapshot })",
+    to: "  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_CONTENT)\n  if (typeof actor !== 'string') return actor\n  void actor\n  return c.json({ snapshot: latestAiUsageSnapshot })",
+    suite: "packages/http/src/ai-usage.test.ts",
+    expect: ["is not satisfied by a grant that answers another question"],
+  },
+  {
+    id: "ai-usage-stream-waits-for-the-next-tick",
+    defect:
+      "The stream stopped pushing the snapshot it was already holding on connect. Nothing is lost forever \u2014 the next monitor tick arrives \u2014 but the tick is five minutes wide, so a console opens on an empty panel while the server holds the answer, and the emptiness is indistinguishable from a monitor that has stopped.",
+    file: "packages/http/src/main.ts",
+    from: "      if (latestAiUsageSnapshot) {",
+    to: "      if (false) {",
+    suite: "packages/http/src/ai-usage.test.ts",
+    expect: ["pushes what it already has, without waiting for the next tick"],
+  },
+  {
+    id: "ai-usage-stream-leaks-a-departed-subscriber",
+    defect:
+      "A subscriber that cancelled its stream was left in the fan-out set. This fails at no particular moment: the set grows for the life of the process and every push writes to a controller whose socket is gone. The same defect `sseClientCount` exists to make visible, one route over \u2014 and it is visible only because `aiUsageSseClientCount` is exported, since nothing outside can otherwise count these clients.",
+    file: "packages/http/src/main.ts",
+    from: "      if (controllerRef) removeAiUsageSseClient(controllerRef)",
+    to: "",
+    suite: "packages/http/src/ai-usage.test.ts",
+    expect: ["unregisters a subscriber that leaves, and still serves the rest"],
+  },
+  {
+    id: "ingest-accepts-a-snapshot-with-no-accounts",
+    defect:
+      "Ingest accepted a snapshot carrying an empty `accounts` array, which the console then renders as a deployment that spent nothing. A monitor that failed to read any account reports exactly this shape, and accepting it overwrites the last figures that were true with a zero nobody can tell from a real one.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!Array.isArray(body.accounts) || body.accounts.length < 1) {",
+    to: "  if (!Array.isArray(body.accounts)) {",
+    suite: "packages/http/src/ai-usage.test.ts",
+    expect: ["refuses a snapshot it cannot use, and says which part"],
+  },
+  {
     id: "ingest-schema-version-unchecked",
     defect:
       "A snapshot declaring a schema this build does not know was accepted and read as if it were v1.",
