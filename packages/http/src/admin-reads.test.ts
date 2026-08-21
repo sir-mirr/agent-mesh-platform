@@ -278,3 +278,154 @@ describe("who appears in the audit", () => {
     expect(code).toContain("503,");
   });
 });
+
+// --- Queue depth (GET /api/v1/admin/mailbox, /:identity) -------------------
+//
+// The operator's answer to "why is this agent not receiving". An empty queue
+// and one held entirely under leases by a caller that died look identical from
+// outside, so `leased` is reported beside `pending` rather than folded into it.
+
+/** A message sitting in the hub's queue for someone. */
+function queued(
+  to: string,
+  o: { from?: string; content?: string; ts?: string; status?: string; lease?: string | null } = {},
+): string {
+  const id = uniq("msg");
+  hub.prepare(
+    `INSERT INTO messages (id, from_agent, to_agent, content, status, ts, leased_until)
+     VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?)`,
+  ).run(
+    id, o.from ?? uniq("sender"), to, o.content ?? "hello",
+    o.status ?? "pending", o.ts ?? null, o.lease ?? null,
+  );
+  return id;
+}
+
+const pendingNow = () =>
+  (hub.prepare(`SELECT count(*) AS n FROM messages WHERE status = 'pending'`).get() as { n: number }).n;
+
+describe("how deep the queues are", () => {
+  test("refuses a caller without mailbox.read_depth", async () => {
+    const nobody = await holder();
+    expect((await get("/api/v1/admin/mailbox", "")).status).toBe(401);
+    expect((await get("/api/v1/admin/mailbox", nobody.cookie)).status).toBe(403);
+  });
+
+  /**
+   * **A live lease and a lapsed one are not the same thing.** The lapsed one is
+   * pending again — the caller holding it died — and counting it as leased
+   * tells an operator to wait for a delivery nobody is going to make.
+   */
+  test("counts pending per agent, and only live leases as leased", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const identity = uniq("busy");
+    queued(identity, { ts: "2026-01-01 00:00:00" });
+    queued(identity, { lease: "2026-01-01 00:00:00" });          // lapsed
+    queued(identity, { lease: "2099-01-01 00:00:00" });          // held
+    queued(identity, { status: "delivered" });                   // not pending at all
+
+    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    const row = body.mailboxes.find((q: any) => q.identity === identity);
+    expect(row).toMatchObject({ identity, pending: 3, leased: 1, oldest: "2026-01-01 00:00:00" });
+  });
+
+  /**
+   * The total is the route's own `count(*)`. The console used to sum the rows
+   * over a field named `depth` that this route has never emitted, so its
+   * "messages queued" tile read `0` whether the mesh was idle or backed up.
+   */
+  test("answers a total it counted itself", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    queued(uniq("someone"));
+    const before = pendingNow();
+    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    expect(body.ok).toBe(true);
+    expect(body.total_queued).toBe(before);
+    expect(body.total_queued).toBeGreaterThan(0);
+  });
+
+  /** Deepest first — the operator is looking for the one that is stuck. */
+  test("puts the deepest queue first", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const few = uniq("few");
+    const many = uniq("many");
+    queued(few);
+    for (let i = 0; i < 4; i++) queued(many);
+
+    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    const mine = body.mailboxes.filter((q: any) => q.identity === few || q.identity === many);
+    expect(mine.map((q: any) => q.identity)).toEqual([many, few]);
+  });
+
+  test("refuses an off-pattern identity", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const res = await get("/api/v1/admin/mailbox/has%20space", op.cookie);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("invalid identity format");
+  });
+
+  /**
+   * One agent's queue, oldest first, and `leased` as a boolean rather than the
+   * `1`/`0` SQLite answers with — a reader doing `if (m.leased)` on `0` is
+   * right by luck, and one doing `m.leased === true` is wrong.
+   */
+  test("lists one agent's pending messages, oldest first", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const identity = uniq("queue");
+    const sender = uniq("sender");
+    const second = queued(identity, { from: sender, content: "second", ts: "2026-02-02 00:00:00" });
+    const first = queued(identity, { from: sender, content: "first!", ts: "2026-01-01 00:00:00",
+      lease: "2099-01-01 00:00:00" });
+    queued(identity, { status: "delivered", ts: "2020-01-01 00:00:00" });
+    queued(uniq("other"), { ts: "2019-01-01 00:00:00" });
+
+    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.cookie)).json();
+    expect(body).toEqual({
+      ok: true,
+      identity,
+      messages: [
+        { id: first, from: sender, ts: "2026-01-01 00:00:00", size: 6, leased: true },
+        { id: second, from: sender, ts: "2026-02-02 00:00:00", size: 6, leased: false },
+      ],
+    });
+  });
+
+  /** `size` is the content's length, not the row's — the body itself is not served here. */
+  test("reports the size without the content", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const identity = uniq("sized");
+    queued(identity, { content: "x".repeat(4096) });
+    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.cookie)).json();
+    expect(body.messages[0].size).toBe(4096);
+    expect(JSON.stringify(body)).not.toContain("xxxx");
+  });
+
+  /**
+   * The ceiling is 500 and the floor is 1, and anything unreadable takes the
+   * default rather than the floor — `Number('') || 100` is the guard, and a
+   * missing `limit` must not answer with one message.
+   */
+  test("clamps the limit, and defaults what it cannot read", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const identity = uniq("many");
+    for (let i = 0; i < 6; i++) queued(identity, { ts: `2026-03-0${i + 1} 00:00:00` });
+
+    const count = async (q: string) =>
+      (await (await get(`/api/v1/admin/mailbox/${identity}${q}`, op.cookie)).json()).messages.length;
+
+    expect(await count("?limit=2")).toBe(2);
+    expect(await count("?limit=0")).toBe(6);      // 0 is falsy -> default 100
+    expect(await count("?limit=-5")).toBe(1);     // negative -> floor
+    expect(await count("?limit=nonsense")).toBe(6);
+    expect(await count("")).toBe(6);
+    expect(await count("?limit=9999")).toBe(6);   // ceiling is above what is here
+  });
+
+  /** A name with nothing queued is an empty list, not a 404. */
+  test("answers an empty queue rather than refusing", async () => {
+    const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
+    const res = await get(`/api/v1/admin/mailbox/${uniq("idle")}`, op.cookie);
+    expect(res.status).toBe(200);
+    expect((await res.json()).messages).toEqual([]);
+  });
+});

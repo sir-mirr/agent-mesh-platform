@@ -4411,6 +4411,216 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/admission.test.ts",
     expect: ["marks the row denied and grants nothing"],
   },
+  {
+    id: "a-pairing-code-records-the-address-the-client-chose",
+    defect:
+      "The redemption recorded the first entry in `x-forwarded-for` instead of the last. That header is client-appended, so everything but the hop nearest this server is a value the caller typed \u2014 and this is the one transaction \u00a7 8.11 gets to observe an agent's host from.",
+    file: "packages/http/src/main.ts",
+    from: "    (c.req.header('x-forwarded-for')?.split(',').pop() ?? '').trim() ||",
+    to: "    (c.req.header('x-forwarded-for')?.split(',').shift() ?? '').trim() ||",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["records the nearest address in x-forwarded-for"],
+  },
+  {
+    id: "three-redemption-failures-collapse-into-one",
+    defect:
+      "Every redemption failure answered 409. `unknown` and `already-redeemed` call for different reactions \u2014 ask for another code, or find out who took yours \u2014 and collapsing them hides a race from the person who lost it.",
+    file: "packages/http/src/main.ts",
+    from: "    const status = outcome.reason === 'unknown' ? 404 : 409",
+    to: "    const status = 409",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["distinguishes unknown, expired, and already-redeemed"],
+  },
+  {
+    id: "a-spent-pairing-code-is-spent-again",
+    defect:
+      "The single-statement spend stopped checking `redeemed_at`, so a second caller redeeming the same code was handed the identity the first one already claimed. `changes` is what decides this in one statement; the guard is half of that statement.",
+    file: "packages/store/src/ownership.ts",
+    from: "        WHERE code = ? AND redeemed_at IS NULL AND expires_at > datetime('now')",
+    to: "        WHERE code = ? AND expires_at > datetime('now')",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["gives the loser of a race no ownership"],
+  },
+  {
+    id: "ownership-credits-the-person-who-typed-the-code",
+    defect:
+      "The ownership row recorded the redeemer as its own grantor. The authenticated party is the operator who issued the code; the redeemer is a CLI holding a string. Writing `pairing:<redeemer>` makes the record vouch for itself.",
+    file: "packages/store/src/ownership.ts",
+    from: ").run(row.tenant, row.identity, owner, `pairing:${row.issued_by}`);",
+    to: ").run(row.tenant, row.identity, owner, `pairing:${owner}`);",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["records the issuer as the grantor, not the redeemer"],
+  },
+  {
+    id: "the-granted-window-stops-travelling-with-the-code",
+    defect:
+      "`ttl_seconds` left the response. The console then fell back to `res.ttl_seconds || selectedTtl` \u2014 the value it asked for \u2014 so the screen reported a window derived from the request rather than from the server that granted it.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, code: code.code, identity, expires_at: code.expires_at, ttl_seconds: ttl }, 201)",
+    to: "  return c.json({ ok: true, code: code.code, identity, expires_at: code.expires_at }, 201)",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["issues a code, and says how long it is good for"],
+  },
+  {
+    id: "a-pairing-window-with-no-ceiling",
+    defect:
+      "The ttl bound stopped refusing anything above the hour. A pairing code good for a day is a password, and one good for a negative window is a row SQLite writes with no expiry at all.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!Number.isFinite(ttl) || ttl <= 0 || ttl > PAIRING_TTL_MAX_SECONDS) {",
+    to: "  if (!Number.isFinite(ttl)) {",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses a ttl outside 1..3600"],
+  },
+  {
+    id: "proxy-rights-widen-to-the-whole-tenant",
+    defect:
+      "The `can_proxy` gate stopped scoping to the identity being changed. Holding `agent.provision` on one agent then flipped proxy rights on any of them \u2014 the strongest capability in the system, widened by dropping one argument.",
+    file: "packages/http/src/main.ts",
+    from: "  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION, identity)",
+    to: "  const actor = await requireCapability(c, CAPABILITY.AGENT_PROVISION)",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses a grant held on a different identity"],
+  },
+  {
+    id: "can-proxy-accepts-anything-truthy",
+    defect:
+      "The boolean check became a presence check, so the string `\"false\"` \u2014 what an HTML form sends \u2014 turned proxy rights on.",
+    file: "packages/http/src/main.ts",
+    from: "  if (typeof body?.can_proxy !== 'boolean') {",
+    to: "  if (body?.can_proxy === undefined) {",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses can_proxy that is not a boolean"],
+  },
+  {
+    id: "a-torn-down-identity-can-still-be-given-proxy-rights",
+    defect:
+      "The registry lookup stopped excluding torn-down rows, so an identity somebody had removed could be handed the right to speak for others.",
+    file: "packages/http/src/main.ts",
+    from: "  const exists = db.prepare(`SELECT 1 FROM agents WHERE identity = ? AND deleted_at IS NULL`).get(identity)",
+    to: "  const exists = db.prepare(`SELECT 1 FROM agents WHERE identity = ?`).get(identity)",
+    suite: "packages/http/src/ownership-routes.test.ts",
+    expect: ["refuses an identity that has been torn down"],
+  },
+  {
+    id: "a-lapsed-lease-still-counts-as-held",
+    defect:
+      "Queue depth counted every lease ever taken as live. An operator asking why an agent is not receiving is then told the queue is held by a caller that died hours ago, when those messages are pending again.",
+    file: "packages/http/src/main.ts",
+    from: "           sum(CASE WHEN leased_until IS NOT NULL AND leased_until >= datetime('now') THEN 1 ELSE 0 END) AS leased,",
+    to: "           sum(CASE WHEN leased_until IS NOT NULL THEN 1 ELSE 0 END) AS leased,",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["counts pending per agent, and only live leases as leased"],
+  },
+  {
+    id: "the-queued-total-counts-messages-that-are-not-queued",
+    defect:
+      "The total dropped its `status = 'pending'` filter and counted delivered messages too. The tile reading `0` on a backed-up mesh was the last bug in this number; a total that only grows is the same failure facing the other way.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare(`SELECT count(*) AS n FROM messages WHERE status = 'pending'`)",
+    to: "    .prepare(`SELECT count(*) AS n FROM messages`)",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["answers a total it counted itself"],
+  },
+  {
+    id: "a-negative-limit-empties-the-queue-view",
+    defect:
+      "The limit floor dropped to zero, so `?limit=-5` answered `LIMIT 0` \u2014 an empty list for a queue that is not empty, which is the one answer an operator must never be given by accident.",
+    file: "packages/http/src/main.ts",
+    from: "  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 1), 500)",
+    to: "  const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 100) || 100, 0), 500)",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["clamps the limit, and defaults what it cannot read"],
+  },
+  {
+    id: "leased-is-served-as-sqlite-wrote-it",
+    defect:
+      "`leased` went out as SQLite's `1`/`0` instead of a boolean. A reader doing `m.leased === true` then sees every message as unleased, and one doing `if (m.leased)` is right by luck.",
+    file: "packages/http/src/main.ts",
+    from: "    messages: messages.map((m) => ({ ...m, leased: m.leased === 1 })),",
+    to: "    messages: messages.map((m) => ({ ...m, leased: m.leased })),",
+    suite: "packages/http/src/admin-reads.test.ts",
+    expect: ["lists one agent's pending messages, oldest first"],
+  },
+  {
+    id: "watching-the-audit-stream-is-not-recorded",
+    defect:
+      "The stream stopped recording the read. It serves whole message bodies, and \u00a7 11.0.1 is explicit that holding `audit.read.content` is defensible and holding it without the record is not \u2014 this route already shipped once with a role check and no record.",
+    file: "packages/http/src/main.ts",
+    from: "  const refused = logContentRead(c, actor, true, 'chat-audits:stream', c.req.query())",
+    to: "  const refused: Response | null = null",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["records the read, with the query and not the content"],
+  },
+  {
+    id: "a-gap-of-exactly-a-hundred-is-refused",
+    defect:
+      "The gap boundary moved to `>= 100`, so a client that missed exactly a hundred messages was told the gap was too large instead of being sent it.",
+    file: "packages/http/src/main.ts",
+    from: "            if (gapCount > 100) {",
+    to: "            if (gapCount >= 100) {",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["sends a hundred, and refuses only past it"],
+  },
+  {
+    id: "the-anchor-is-replayed-to-the-client-that-has-it",
+    defect:
+      "The tie-break became `id >= ?`, so every reconnect replayed the last message the client had already seen. Two messages sharing a timestamp is what makes the second half of that clause load-bearing.",
+    file: "packages/http/src/main.ts",
+    from: "            const where: string[] = ['(ts > ? OR (ts = ? AND id > ?))']",
+    to: "            const where: string[] = ['(ts > ? OR (ts = ? AND id >= ?))']",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["does not replay the anchor to the client that already has it"],
+  },
+  {
+    id: "a-replay-looks-like-a-live-message",
+    defect:
+      "Replayed messages lost the `recovered` flag, so a console could not tell history from what is happening now \u2014 and an audit view that cannot is one that reports the past as the present.",
+    file: "packages/http/src/main.ts",
+    from: "Object.assign({}, m, { recovered: true })",
+    to: "m",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["replays what happened while the client was away"],
+  },
+  {
+    id: "every-conversation-appears-twice",
+    defect:
+      "The dedup guard stopped short-circuiting. The hub socket and the audit poller both see every message, so without it a console shows the whole mesh doubled.",
+    file: "packages/http/src/main.ts",
+    from: "  if (recentSentIds.has(msg.id)) return",
+    to: "  if (recentSentIds.has(msg.id)) void 0",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["sends one id once"],
+  },
+  {
+    id: "the-audit-search-became-case-sensitive",
+    defect:
+      "The content half of the search filter stopped folding case, so a filter typed in lower case silently missed every message that used capitals.",
+    file: "packages/http/src/main.ts",
+    from: "  if (f.search && !msg.content.toLowerCase().includes(f.search.toLowerCase())) return false",
+    to: "  if (f.search && !msg.content.includes(f.search)) return false",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["passes only what the filters name"],
+  },
+  {
+    id: "a-filtered-stream-receives-everybody-elses-messages",
+    defect:
+      "The recipient filter stopped excluding anything, so a stream scoped to one conversation was handed the whole mesh \u2014 content the operator's own filter said they were not reading.",
+    file: "packages/http/src/main.ts",
+    from: "  if (f.to_agent && msg.to_agent !== f.to_agent) return false",
+    to: "  if (f.to_agent && msg.to_agent !== f.to_agent) void 0",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["decides per subscriber, not per message"],
+  },
+  {
+    id: "a-message-id-can-open-an-sse-frame",
+    defect:
+      "`id:` stopped stripping newlines, so a message id containing one injects fields into every watcher's stream \u2014 the envelope is line-oriented and the id is a line in it.",
+    file: "packages/http/src/main.ts",
+    from: "  return String(id).replace(/[\\r\\n\\0]/g, '')",
+    to: "  return String(id).replace(/[\\r\\0]/g, '')",
+    suite: "packages/http/src/audit-stream.test.ts",
+    expect: ["strips newlines out of the id line"],
+  },
 ];
 
 /**
