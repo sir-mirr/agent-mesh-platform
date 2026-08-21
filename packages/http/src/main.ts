@@ -381,6 +381,36 @@ type AuditSseClient = {
 const auditSseClients = new Set<AuditSseClient>()
 
 /**
+ * Keep a stream open through a proxy that would close it for being idle, and
+ * stop the moment the stream is gone.
+ *
+ * Written three times -- 30s on the chat stream, 30s on the audit stream, 20s
+ * on ai-usage -- with the same rule each time: write, and if the write throws,
+ * clear the timer. Three copies of one rule is three places for it to drift,
+ * and none of the three had ever run under an instrument, because reaching the
+ * body means waiting twenty seconds.
+ *
+ * The write throwing is the *normal* ending here, not an error: it is how a
+ * closed stream announces itself to a timer nobody has cancelled yet. Silence
+ * is right, and the timer clearing itself is the whole behaviour.
+ */
+export function startStreamKeepalive(
+  write: () => void,
+  everyMs: number,
+  setTimer: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+  clearTimer: (timer: ReturnType<typeof setInterval>) => void = clearInterval,
+): () => void {
+  const timer = setTimer(() => {
+    try {
+      write()
+    } catch {
+      clearTimer(timer)
+    }
+  }, everyMs)
+  return () => clearTimer(timer)
+}
+
+/**
  * Past this many attached clients, somebody should know.
  *
  * Not a limit — nothing is refused. A console holds one stream open per open
@@ -1718,15 +1748,13 @@ app.get('/api/v1/events/:agentId', async (c) => {
       // Register this SSE client for hub-driven push
       addSSEClient(agentId, userLogin, controller)
 
-      // Heartbeat every 30s to keep connection alive
-      const heartbeat = setInterval(() => {
-        try { send('ping', { ts: Date.now() }) } catch { clearInterval(heartbeat) }
-      }, 30000)
+      // Keep the connection alive through anything that would close it idle.
+      const stopHeartbeat = startStreamKeepalive(() => send('ping', { ts: Date.now() }), 30000)
 
       // Cleanup on close
       c.req.raw.signal.addEventListener('abort', () => {
         removeSSEClient(agentId, userLogin, controller)
-        clearInterval(heartbeat)
+        stopHeartbeat()
       })
     }
   })
@@ -3252,7 +3280,7 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
 
   const encoder = new TextEncoder()
   let client: AuditSseClient | null = null
-  let keepaliveInterval: ReturnType<typeof setInterval> | null = null
+  let stopKeepalive: (() => void) | null = null
 
   const stream = new ReadableStream({
     start(controller) {
@@ -3322,15 +3350,14 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
         }
       }
 
-      // 30s keepalive comment to keep proxies from closing the idle stream
-      keepaliveInterval = setInterval(() => {
-        try { controller.enqueue(encoder.encode(`:keepalive\n\n`)) } catch {
-          if (keepaliveInterval) clearInterval(keepaliveInterval)
-        }
-      }, 30000)
+      // A comment frame, so a proxy counting bytes does not call this idle.
+      stopKeepalive = startStreamKeepalive(
+        () => controller.enqueue(encoder.encode(`:keepalive\n\n`)),
+        30000,
+      )
     },
     cancel() {
-      if (keepaliveInterval) clearInterval(keepaliveInterval)
+      stopKeepalive?.()
       if (client) removeAuditSseClient(client)
     },
   })
@@ -3471,7 +3498,7 @@ app.get('/api/v1/admin/ai-usage/stream', async (c) => {
 
   const encoder = new TextEncoder()
   let controllerRef: ReadableStreamDefaultController | null = null
-  let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+  let stopHeartbeat: (() => void) | null = null
 
   const stream = new ReadableStream({
     start(controller) {
@@ -3486,15 +3513,14 @@ app.get('/api/v1/admin/ai-usage/stream', async (c) => {
         } catch {}
       }
 
-      // 20s heartbeat — keep proxies from closing idle stream (ping event)
-      heartbeatInterval = setInterval(() => {
-        try { controller.enqueue(encoder.encode(`event: ping\ndata: {}\n\n`)) } catch {
-          if (heartbeatInterval) clearInterval(heartbeatInterval)
-        }
-      }, 20000)
+      // A named `ping`, which this stream's clients read as one.
+      stopHeartbeat = startStreamKeepalive(
+        () => controller.enqueue(encoder.encode(`event: ping\ndata: {}\n\n`)),
+        20000,
+      )
     },
     cancel() {
-      if (heartbeatInterval) clearInterval(heartbeatInterval)
+      stopHeartbeat?.()
       if (controllerRef) removeAiUsageSseClient(controllerRef)
     },
   })

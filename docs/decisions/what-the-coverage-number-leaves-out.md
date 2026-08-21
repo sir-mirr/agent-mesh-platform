@@ -48,9 +48,14 @@ reason is really the second one is a row somebody can retire.
 catches. Reaching it needs a defect, so a test for it plants one — and then
 asserts that the handler this repository would rather never run, ran.
 
-**A timer that fires later than any suite waits.** The SSE heartbeats are 20
-and 30 seconds. A test that waits for one costs the suite that time on every
-run, for a `setInterval` callback whose body is one `enqueue` inside a `try`.
+**A timer that fires later than any suite waits.** This category is now empty,
+and how it emptied is the useful part. The three SSE keepalives were here — 20
+and 30 seconds, a `setInterval` whose body is one `enqueue` inside a `try` —
+and the reason given was the waiting. But the rule inside them was written
+three times, which is three places for it to drift, and a keepalive that
+stopped keeping alive shows up as a proxy closing a stream, minutes later, on
+somebody else's screen. `startStreamKeepalive(write, everyMs, setTimer)` is
+one copy, and a test that fires the timer by hand does not wait for anything.
 
 **A deployment this machine is not.** `webpush` needs VAPID keys; the
 admin-notify path needs an identity to notify. Both are read at module load, so
@@ -86,9 +91,6 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `새 사용자 승인 요청:` | The admin-notify send, behind `AGENT_MESH_ADMIN_NOTIFY_IDENTITY`, read at load. |
 | `packages/http/src/main.ts` | `self_provision_failed` | The hub refusing this server's own provisioning at startup. |
 | `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
-| `packages/http/src/main.ts` | `// Heartbeat every 30s to keep connection alive` | A 30-second timer's callback. |
-| `packages/http/src/main.ts` | `// 30s keepalive comment to keep proxies from closing the idle stream` | The same, on the audit stream. |
-| `packages/http/src/main.ts` | `// 20s heartbeat — keep proxies from closing idle stream (ping event)` | The same, on the AI-usage stream. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
 | `scripts/lint-preview.ts` | `Could not read CAPABILITY from @agent-mesh/contracts` | The refusal to fall back to a hand-written capability list, which needs the contracts package to be broken. |
 | `test/harness.ts` | `never became healthy:` | What a service that never opened its port says on the way out. |

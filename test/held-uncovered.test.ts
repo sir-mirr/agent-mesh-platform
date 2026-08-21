@@ -61,9 +61,18 @@ describe("what the coverage number leaves out", () => {
    * A parser that stopped matching agrees with everything, which is how a test
    * that reads its own subject goes quietly vacuous. The floor is well under
    * the current table and well over an empty one.
+   *
+   * **It is a floor on the parser, not on the table.** It was 20 against a
+   * table of 24, and then six rows were retired by opening the code they
+   * described — the audit poller, the two stream watermarks and the three SSE
+   * keepalives, all of which were held for being inside a timer, which is a
+   * reason about waiting rather than about the decision inside. Left at 20 it
+   * would have read as a table that must not shrink, which is the opposite of
+   * what this document is for: every row here is a line somebody could go and
+   * cover, and the good ending for one is to leave.
    */
   test("the table is still a table", () => {
-    expect(ROWS.length).toBeGreaterThan(20);
+    expect(ROWS.length).toBeGreaterThan(10);
     expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(4);
   });
 

@@ -6970,6 +6970,16 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["says nothing at the watermark"],
   },
+  {
+    id: "a-keepalive-that-outlives-its-stream",
+    defect:
+      "The keepalive stopped clearing itself when the write throws, so a timer whose stream is gone writes into a dead controller every twenty seconds for the life of the process \u2014 one per stream anybody ever opened. This rule was written three times before it was written once, and each copy had to remember it.",
+    file: "packages/http/src/main.ts",
+    from: "    } catch {\n      clearTimer(timer)\n    }",
+    to: "    } catch {\n      // nothing\n    }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a write that throws is the stream ending, and the timer goes quietly"],
+  },
 ];
 
 /**

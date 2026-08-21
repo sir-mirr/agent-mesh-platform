@@ -2105,3 +2105,85 @@ describe("a stream carrying more clients than anybody expected", () => {
     expect(note("ai-usage", 0)).toEqual([]);
   });
 });
+
+/**
+ * The keepalive on a stream nobody is writing to.
+ *
+ * The same rule was written three times — 30s on the chat stream, 30s on the
+ * audit stream, 20s on ai-usage — and none of the three had ever run under an
+ * instrument, because reaching the body means waiting twenty seconds. Three
+ * copies of one rule is three places for it to drift, and the drift would be
+ * invisible: a keepalive that stopped keeping alive shows up as a proxy
+ * closing a stream, minutes later, on somebody else's screen.
+ */
+describe("keeping a stream open", () => {
+  /** A timer the test fires by hand. */
+  function timers() {
+    const running = new Map<number, () => void>();
+    let next = 1;
+    const asked: number[] = [];
+    return {
+      asked,
+      running,
+      set: (fn: () => void, ms: number) => {
+        asked.push(ms);
+        running.set(next, fn);
+        return next++ as unknown as ReturnType<typeof setInterval>;
+      },
+      clear: (timer: ReturnType<typeof setInterval>) => { running.delete(timer as unknown as number); },
+      fire: () => [...running.values()].forEach((fn) => fn()),
+    };
+  }
+
+  test("writes on every tick, for as long as the stream takes it", () => {
+    const t = timers();
+    let written = 0;
+    mod.startStreamKeepalive(() => { written += 1; }, 30_000, t.set, t.clear);
+
+    t.fire();
+    t.fire();
+    expect({ written, still_running: t.running.size }).toEqual({ written: 2, still_running: 1 });
+    expect(t.asked).toEqual([30_000]);
+  });
+
+  test("a write that throws is the stream ending, and the timer goes quietly", () => {
+    const t = timers();
+    let written = 0;
+    mod.startStreamKeepalive(() => { written += 1; throw new Error("stream is closed"); }, 20_000, t.set, t.clear);
+
+    const capture = captureConsole();
+    try {
+      t.fire();
+    } finally {
+      capture.restore();
+    }
+
+    // Nothing said: a closed stream is how a timer nobody cancelled finds out,
+    // and it is the normal ending rather than a failure.
+    expect(capture.lines).toEqual([]);
+    expect({ written, still_running: t.running.size }).toEqual({ written: 1, still_running: 0 });
+
+    // And it does not keep trying. Before this was one function, each copy had
+    // to remember to clear itself, and a copy that forgot would write into a
+    // dead controller every twenty seconds for the life of the process.
+    t.fire();
+    expect(written).toBe(1);
+  });
+
+  test("the caller can stop it, which is what a cancelled stream does", () => {
+    const t = timers();
+    let written = 0;
+    const stop = mod.startStreamKeepalive(() => { written += 1; }, 30_000, t.set, t.clear);
+
+    stop();
+    t.fire();
+    expect({ written, still_running: t.running.size }).toEqual({ written: 0, still_running: 0 });
+  });
+
+  test("stopping twice is not an error, because a stream can end both ways", () => {
+    const t = timers();
+    const stop = mod.startStreamKeepalive(() => {}, 30_000, t.set, t.clear);
+    stop();
+    expect(() => stop()).not.toThrow();
+  });
+});
