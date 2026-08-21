@@ -57,11 +57,28 @@ guaranteed archive. Anything a later reader will need — a contract decision, w
 an interface is shaped the way it is — belongs in `docs/`, `SPEC.md` or a commit
 message, where deleting it leaves a diff.
 
-**Recall is scoped by sender**, so an identity can only clear what it sent, and
-`DELETE /api/mail?from=<id>&id=<n>` answers `200 {"success":true}` either way.
-`success` means the request was processed. **`cancelledCount` is the only field
-that says anything was removed** — it comes back `0` for another sender's
-message and for an id that never existed, both measured.
+**Recall is scoped by sender, and the two routes that do it disagree about how
+to say so.** Both refuse without `from`, with `400` — not the `403` the mailer's
+own guide describes.
+
+```
+DELETE /api/mail/<n>?from=<id>     404  {"success":false,"error":"Message not found
+                                          or you are not the sender of this message."}
+DELETE /api/mail?from=<id>&id=<n>  200  {"success":true,"cancelledCount":0}
+```
+
+The path form is honest, and its one sentence for *absent* and *not yours* is
+the right shape — the alternative tells a caller whether an id they guessed is
+real. The query form answers `200 {"success":true}` whatever happens:
+**`success` means the request was processed, and `cancelledCount` is the only
+field that says a row went.** Read `success` alone and a recall that removed
+nothing reads as one that worked.
+
+Measured against `id=999999999` and `from=nobody-at-all`, neither of which
+destroys anything — a probe that fails is better than a probe that breaks its
+subject. Worth saying because an earlier version of this paragraph called both
+`cancelledCount: 0` cases measured when only the absent-id one had been, and
+took the other from a message.
 
 Delivery is bounded by a high-water mark in
 `~/.claude/agent-mesh/<identity>.mailbox-mark`, written every run. Losing that
