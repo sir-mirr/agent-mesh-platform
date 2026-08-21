@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
 import { checkpointForShutdown, openAt, stateDir, STORE_FILES } from '@agent-mesh/store'
+import { log } from "./log"
 
 let _db: Database | null = null
 
@@ -130,7 +131,11 @@ export function recordContentReadOrRefuse(
     return null
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error(`[http-server] refusing a content read: could not record it (${message})`)
+    log.error("refusing a content read: the record of it could not be written", "audit_read_unrecordable", {
+      outcome: "refused",
+      reason: "store_unwritable",
+      error: message,
+    })
     return {
       ok: false,
       error: 'content reads are recorded, and the record could not be written',

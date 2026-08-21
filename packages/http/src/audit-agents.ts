@@ -17,6 +17,7 @@
  */
 
 import type { Database } from "bun:sqlite";
+import { log } from "./log";
 
 export interface AuditAgentsResult {
   status: 200 | 503;
@@ -41,7 +42,11 @@ export function auditAgents(openHub: () => Database): AuditAgentsResult {
     return { status: 200, body: { agents: rows.map((r) => r.a).filter(Boolean) } };
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error("[chat-audits/agents] query failed:", message);
+    log.error("the agent list could not be read, so the caller is told so", "audit_agents_query_failed", {
+      outcome: "failed",
+      reason: "store_unreadable",
+      error: message,
+    });
     // 503, not 500: the request was valid and the deployment is degraded, so a
     // caller that retries once the store is back gets its answer. Same shape
     // as `AUDIT_READ_UNRECORDABLE`.

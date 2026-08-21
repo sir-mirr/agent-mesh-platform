@@ -240,8 +240,8 @@ And in the http server's own log, one of these — **which one tells you whether
 this deployment stated a password**:
 
 ```
-[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD
-[db] seeded admin local user with the default password `admin`. Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.
+2026-08-22T05:00:00.000Z info [http] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD {"ts":...,"event":"db_admin_seeded","actor":"admin","reason":"from_environment"}
+2026-08-22T05:00:00.000Z warn [http] seeded admin local user with the default password `admin`. Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach. {"ts":...,"event":"db_admin_seeded","actor":"admin","reason":"default_password"}
 ```
 
 Keep it, if you are going to call an admin route:

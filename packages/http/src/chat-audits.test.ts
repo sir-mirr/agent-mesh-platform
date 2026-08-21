@@ -197,7 +197,7 @@ describe("when the store will not answer", () => {
     expect(body.error).toBe("Failed to query chat audits");
     expect(body.detail).toContain("messages");
     expect(said).toHaveLength(1);
-    expect(said[0]).toContain("[chat-audits] query failed");
+    expect(said[0]).toContain('"event":"chat_audits_query_failed"');
   });
 
   test("refuses the same way when the handle itself cannot be opened", () => {

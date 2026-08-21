@@ -15,6 +15,8 @@ import { join } from "node:path";
 
 import { stateDir } from "@agent-mesh/store";
 
+import { captureConsole } from "@agent-mesh/log";
+
 import {
   closeDb,
   countRegistryAgents,
@@ -131,21 +133,17 @@ describe("countRegistryAgents", () => {
 });
 
 describe("seedLocalUsers", () => {
-  const logged: string[] = [];
-  const realLog = console.log;
-  const realWarn = console.warn;
+  let logged: string[] = [];
+  let restore = () => {};
 
   beforeEach(() => {
-    logged.length = 0;
-    console.log = (...args: unknown[]) => { logged.push(args.join(" ")); };
-    console.warn = (...args: unknown[]) => { logged.push(args.join(" ")); };
+    ({ lines: logged, restore } = captureConsole());
     emptyLocalUsers();
     delete process.env.AGENT_MESH_ADMIN_PASSWORD;
   });
 
   afterEach(() => {
-    console.log = realLog;
-    console.warn = realWarn;
+    restore();
     delete process.env.AGENT_MESH_ADMIN_PASSWORD;
   });
 

@@ -195,6 +195,28 @@ export function createLogger(
   };
 }
 
+/**
+ * Capture what a module-level logger writes, for a test that cannot inject one.
+ *
+ * `consoleSink` is the only route to the terminal, so both of its methods are
+ * taken. A test that patched `console.warn` -- as several did while every
+ * subsystem invented its own call -- now captures nothing, because `warn` goes
+ * to stderr through `console.error` like any other line an operator wants
+ * separated from the healthy ones.
+ */
+export function captureConsole(): { lines: string[]; restore: () => void } {
+  const lines: string[] = [];
+  const realLog = console.log;
+  const realError = console.error;
+  const take = (...args: unknown[]) => { lines.push(args.join(" ")); };
+  console.log = take;
+  console.error = take;
+  return {
+    lines,
+    restore: () => { console.log = realLog; console.error = realError; },
+  };
+}
+
 /** One line as it was written, plus the two halves read back apart. */
 export interface RecordedLine {
   line: string;

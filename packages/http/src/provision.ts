@@ -18,6 +18,8 @@
  * checks that already exist, and the one place they are stated.
  */
 
+import { log } from "./log"
+
 const HUB_WS_URL =
   process.env.AGENT_MESH_HUB_URL ??
   process.env.HUB_URL ??
@@ -129,10 +131,19 @@ export async function provisionAllHumans(identities: readonly string[]): Promise
   }
 
   const registered = identities.length - failures.length
-  if (registered > 0) console.log(`[http-server] registered ${registered} person(s) as mesh identities`)
+  if (registered > 0) {
+    log.info(`registered ${registered} person(s) as mesh identities`, "people_provisioned", {
+      count: registered,
+    })
+  }
   // Loudly: an unregistered person still sends and receives, so this does not
   // announce itself as a failure anywhere else.
   if (failures.length > 0) {
-    console.warn(`[http-server] could not register ${failures.length} person(s): ${failures.join(', ')}`)
+    log.warn(`could not register ${failures.length} person(s) as mesh identities`, "people_provision_failed", {
+      count: failures.length,
+      failures,
+      outcome: "failed",
+      reason: "hub_refused",
+    })
   }
 }

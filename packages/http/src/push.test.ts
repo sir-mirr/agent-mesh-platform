@@ -14,6 +14,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { captureConsole } from "@agent-mesh/log";
+
 import { readPushFailure } from "./push";
 
 /** What `web-push` rejects with: an Error carrying the response status. */
@@ -239,16 +241,15 @@ describe("what it says it did", () => {
    * would print unchanged if all of them failed.
    */
   test("claims a queue rather than a delivery", () => {
-    const real = console.log;
-    const lines: string[] = [];
-    console.log = (...a: unknown[]) => { lines.push(a.join(" ")); };
+    const { lines, restore } = captureConsole();
     try {
       const w = wiring({ devices: () => [device(1), device(2)] });
       sendPushForMessage(w.deps, "kim", "agent", "hello");
     } finally {
-      console.log = real;
+      restore();
     }
-    expect(lines.join("\n")).toContain("push queued to 2 device(s) for kim from agent");
+    expect(lines.join("\n")).toContain("queued a push to 2 device(s) for kim");
+    expect(lines.join("\n")).toContain('"from":"agent"');
     expect(lines.join("\n")).not.toContain("push sent");
   });
 });

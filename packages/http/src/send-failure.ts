@@ -1,4 +1,5 @@
 import { updateMessageStatus } from './db'
+import { log } from "./log"
 
 /** How the row is corrected. Injected so the miss can be reached without breaking a database. */
 export type StatusWriter = (id: string, status: string) => boolean
@@ -23,6 +24,10 @@ export type StatusWriter = (id: string, status: string) => boolean
  */
 export function markSendFailed(id: string, update: StatusWriter = updateMessageStatus): boolean {
   if (update(id, 'failed')) return true
-  console.error(`[http-server] could not mark ${id} failed: no such row`)
+  log.error("could not mark a refused message failed: no such row", "send_failure_unrecorded", {
+    id,
+    outcome: "failed",
+    reason: "no_such_row",
+  })
   return false
 }

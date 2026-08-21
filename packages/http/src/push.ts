@@ -19,6 +19,8 @@
  * one function of one error, and that is the part that was wrong.
  */
 
+import { log } from "./log"
+
 /** The two statuses that mean this endpoint is not coming back. */
 const GONE = new Set([404, 410]);
 
@@ -121,24 +123,34 @@ export function sendPushForMessage(
         // again. Only 404 and 410 mean the endpoint is gone.
         const { drop, reason } = readPushFailure(error);
         if (drop) deps.drop(sub.endpoint);
-        console.warn(
-          `agent-mesh-http: push to ${toUser} failed — ${reason}` +
-            `${drop ? " (subscription removed)" : " (subscription kept)"}`,
+        log.warn(
+          `push to ${toUser} failed, so the subscription is ${drop ? "removed" : "kept"}`,
+          "push_failed",
+          {
+            actor: toUser,
+            outcome: drop ? "subscription_removed" : "subscription_kept",
+            reason: drop ? "endpoint_gone" : "push_service_error",
+            detail: reason,
+          },
         );
       });
     }
     // **Queued, not sent.** This line runs while every send is still in
     // flight, so wording it as a delivery would claim one that has not
     // happened and would print unchanged if all of them failed.
-    console.log(
-      `agent-mesh-http: push queued to ${subs.length} device(s) for ${toUser} from ${fromAgent}`,
-    );
+    log.info(`queued a push to ${subs.length} device(s) for ${toUser}`, "push_queued", {
+      actor: toUser,
+      from: fromAgent,
+      devices: subs.length,
+    });
   } catch (error) {
     // Was a bare `catch {}`. An exception here means no device was even asked,
     // and the sender is told nothing either way.
-    console.error(
-      `agent-mesh-http: push to ${toUser} could not be attempted:`,
-      error instanceof Error ? error.message : String(error),
-    );
+    log.error(`no device was even asked to notify ${toUser}`, "push_not_attempted", {
+      actor: toUser,
+      outcome: "failed",
+      reason: "threw",
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }

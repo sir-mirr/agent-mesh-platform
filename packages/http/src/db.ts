@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { checkpointForShutdown, openAt, stateDir } from '@agent-mesh/store'
+import { log } from "./log"
 
 const DB_PATH = join(stateDir(), 'agent-mesh.db')
 const LEGACY_REGISTRY_FILE = join(stateDir(), 'registry.json')
@@ -173,7 +174,12 @@ export function importLegacyRegistry(db: Database, registryPath: string = LEGACY
     const parsed = JSON.parse(readFileSync(registryPath, 'utf8')) as { agents?: Record<string, LegacyEntry> }
     agents = parsed.agents ?? {}
   } catch (error) {
-    console.error(`[db] could not read ${registryPath}, skipping registry import:`, error)
+    log.error("could not read the legacy registry, so no agent was imported", "db_registry_import_failed", {
+      path: registryPath,
+      outcome: "skipped",
+      reason: "unreadable",
+      error: error instanceof Error ? error.message : String(error),
+    })
     return
   }
 
@@ -198,7 +204,10 @@ export function importLegacyRegistry(db: Database, registryPath: string = LEGACY
     }
   })
   importAll(entries)
-  console.log(`[db] imported ${entries.length} agent(s) from ${registryPath} into agent_registry`)
+  log.info(`imported ${entries.length} agent(s) from the legacy registry`, "db_registry_imported", {
+    path: registryPath,
+    count: entries.length,
+  })
 }
 
 // --- Agent registry ---
@@ -555,11 +564,16 @@ export async function seedLocalUsers(): Promise<void> {
     // leave every deployment's first password permanent.
     db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
     if (supplied) {
-      console.log('[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD')
+      log.info('seeded admin local user with AGENT_MESH_ADMIN_PASSWORD', 'db_admin_seeded', {
+        actor: 'admin',
+        reason: 'from_environment',
+      })
     } else {
-      console.warn(
-        '[db] seeded admin local user with the default password `admin`. ' +
+      log.warn(
+        'seeded admin local user with the default password `admin`. ' +
           'Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.',
+        'db_admin_seeded',
+        { actor: 'admin', reason: 'default_password' },
       )
     }
   } else {
@@ -589,8 +603,10 @@ export async function seedLocalUsers(): Promise<void> {
       const initial = process.env.AGENT_MESH_ADMIN_PASSWORD ?? 'admin'
       if (await Bun.password.verify(initial, admin.password_hash)) {
         db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
-        console.warn(
-          '[db] the admin account still has its initial password; it must be changed at the next login',
+        log.warn(
+          'the admin account still has its initial password; it must be changed at the next login',
+          'db_admin_must_change_password',
+          { actor: 'admin', reason: 'initial_password_unchanged' },
         )
       }
     }

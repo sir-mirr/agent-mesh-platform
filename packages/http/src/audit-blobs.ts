@@ -33,6 +33,7 @@ import {
 } from '@agent-mesh/contracts'
 import { checkpointForShutdown, openAt, stateDir, STORE_FILES, nonces, verify } from '@agent-mesh/store'
 import type { Database } from 'bun:sqlite'
+import { log } from "./log"
 
 /**
  * SPEC § 8.9.1, from the contract rather than restated.
@@ -125,7 +126,12 @@ export async function putBlob(blobKey: string, req: Request): Promise<BlobPutRes
     // must not: both arrived in the same commit, so it was never a drift. The
     // operator still needs it, so it goes where the operator is and the caller
     // is not.
-    console.warn(`[audit-blobs] grant ${auth.nonce} refused for ${blobKey}: ${check.reason}`)
+    log.warn("refused an upload: the grant does not authorise this key", "blob_upload_refused", {
+      id: blobKey,
+      nonce: auth.nonce,
+      outcome: "refused",
+      reason: check.reason,
+    })
     return refuse(403, 'upload grant does not authorise this upload')
   }
   const grant = check.grant

@@ -10,6 +10,8 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { captureConsole } from "@agent-mesh/log";
+
 import { provisionAllHumans, provisionHuman, restBase } from "./provision";
 
 let n = 0;
@@ -125,18 +127,13 @@ describe("provisionAllHumans", () => {
 
   test("names everyone it could not register, and why", async () => {
     const good = uniq("Good");
-    const logs: string[] = [];
-    const realWarn = console.warn;
-    const realLog = console.log;
-    console.warn = (...a: unknown[]) => { logs.push(a.join(" ")); };
-    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    const { lines: logs, restore } = captureConsole();
     hub((url) => url.endsWith("/api/v1/agents") ? Response.json({ error: "taken" }, { status: 409 }) : ok());
 
     try {
       await provisionAllHumans([good, "-refused"]);
     } finally {
-      console.warn = realWarn;
-      console.log = realLog;
+      restore();
     }
 
     expect(logs.join("\n")).toContain("could not register 2 person(s)");
@@ -145,15 +142,13 @@ describe("provisionAllHumans", () => {
   });
 
   test("counts the ones that worked", async () => {
-    const logs: string[] = [];
-    const realLog = console.log;
-    console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
+    const { lines: logs, restore } = captureConsole();
     hub(() => ok());
 
     try {
       await provisionAllHumans([uniq("A"), uniq("B")]);
     } finally {
-      console.log = realLog;
+      restore();
     }
 
     expect(logs.join("\n")).toContain("registered 2 person(s)");

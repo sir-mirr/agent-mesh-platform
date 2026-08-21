@@ -359,9 +359,14 @@ describe("running-locally's quoted log lines", () => {
   const DOC = readFileSync(join(REPO_ROOT, "docs", "running-locally.md"), "utf8");
 
   test("every `[service]` line it quotes is printed by this source", () => {
-    // Only lines that open a quoted block line with a bracketed service tag —
-    // the shape a reader matches against their own terminal.
-    const quoted = [...DOC.matchAll(/^\[(?:db|hub|http-server|self-reminder)\] ([^\n]+)$/gm)].map((m) => m[1]!.trim());
+    // Only lines in the shape every service now writes: a timestamp, a level,
+    // a bracketed component, and then the sentence a reader matches against
+    // their own terminal. The pattern was `^[db] …` until T-022 gave the three
+    // services one line; a pattern left behind would have gone on passing
+    // against the two lines it could still find and stopped checking the rest.
+    const quoted = [
+      ...DOC.matchAll(/^\d{4}-\d\d-\d\dT\S+ (?:error|warn|info) \[(?:hub|http|self-reminder)\] ([^\n]+)$/gm),
+    ].map((m) => m[1]!.trim());
     expect(quoted.length, "no quoted service log line found — the pattern went stale").toBeGreaterThan(1);
 
     const sources = new Map<string, string>();

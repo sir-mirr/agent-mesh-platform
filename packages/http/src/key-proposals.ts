@@ -35,6 +35,7 @@
  */
 
 import type { Database } from 'bun:sqlite'
+import { log } from "./log"
 
 export interface KeyProposal {
   identity: string
@@ -93,9 +94,11 @@ export function watchProposals(
       // swallowed it in silence under a comment saying silence is the failure
       // this file exists to prevent — and then a broken query made the stream
       // look perfectly healthy while pushing nothing.
-      console.error(
-        `[http-server] key-proposal poll failed: ${err instanceof Error ? err.message : String(err)}`,
-      )
+      log.error("the key-proposal poll failed, so the stream is pushing nothing", "key_proposal_poll_failed", {
+        outcome: "failed",
+        reason: "query_failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
   const timer = setInterval(tick, intervalMs)

@@ -15,6 +15,7 @@
  */
 
 import type { Database, SQLQueryBindings } from "bun:sqlite";
+import { log } from "./log";
 
 /** `c.req.query()`: every value a string, or absent. */
 export type ChatAuditQuery = Record<string, string | undefined>;
@@ -134,7 +135,11 @@ export function listChatAudits(openHub: () => Database, q: ChatAuditQuery): Chat
 
     return { status: 200, body: { messages, has_more: hasMore, oldest_id: oldestId } };
   } catch (e: any) {
-    console.error("[chat-audits] query failed:", e?.message ?? e);
+    log.error("the chat audit query failed", "chat_audits_query_failed", {
+      outcome: "failed",
+      reason: "store_unreadable",
+      error: String(e?.message ?? e),
+    });
     return {
       status: 500,
       body: { error: "Failed to query chat audits", detail: String(e?.message ?? e) },

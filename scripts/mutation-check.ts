@@ -306,7 +306,12 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The write-back that marks a hub-refused message `failed` stopped reporting a miss. The row is inserted moments earlier in the same handler, so a miss means the insert did not take \u2014 and a correction that silently applied to nothing leaves every later read serving `pending` for a message that never left this machine.",
     file: "packages/http/src/send-failure.ts",
-    from: "  console.error(`[http-server] could not mark ${id} failed: no such row`)",
+    from:
+      '  log.error("could not mark a refused message failed: no such row", "send_failure_unrecorded", {\n' +
+      "    id,\n" +
+      '    outcome: "failed",\n' +
+      '    reason: "no_such_row",\n' +
+      "  })",
     to: "",
     suite: "packages/http/src/send-failure.test.ts",
     expect: ["names the message when the correction matched no row"],
@@ -3811,8 +3816,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "§ 5 quoted `[db] seeded default admin local user` after `651597e` replaced it with two lines that say *which password was used*. Quoted output is the part of a document a reader compares against their own terminal, so a reader who does not see it has no way to tell a defect from a version skew — and here the line they would miss is the warning that the deployment is running on the published default.",
     file: "docs/running-locally.md",
-    from: "[db] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD",
-    to: "[db] seeded default admin local user",
+    from: "info [http] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD",
+    to: "info [http] seeded default admin local user",
     suite: "test/readme.test.ts",
     expect: ["the document quotes a log line this source does not print", "seeded default admin local user"],
   },
@@ -6340,7 +6345,13 @@ const MUTATIONS: Mutation[] = [
     defect:
       "An unregistered person still signs in, sends and receives — the hub simply has no record of who they are. Nothing else in the service announces that, so a silent loop here is a mesh half of whose people do not exist.",
     file: "packages/http/src/provision.ts",
-    from: "    console.warn(`[http-server] could not register ${failures.length} person(s): ${failures.join(', ')}`)",
+    from:
+      "    log.warn(`could not register ${failures.length} person(s) as mesh identities`, \"people_provision_failed\", {\n" +
+      "      count: failures.length,\n" +
+      "      failures,\n" +
+      '      outcome: "failed",\n' +
+      '      reason: "hub_refused",\n' +
+      "    })",
     to: "    void failures",
     suite: "packages/http/src/provision.test.ts",
     expect: ["names everyone it could not register, and why"],
@@ -6360,8 +6371,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The first version swallowed the error in silence, under a comment saying silence is the failure this file exists to prevent. A broken query then left the § 10.2.1 stream looking perfectly healthy while it pushed nothing.",
     file: "packages/http/src/key-proposals.ts",
-    from: "      console.error(",
-    to: "      void 0 && console.error(",
+    from: "      log.error(",
+    to: "      void 0 && log.error(",
     suite: "packages/http/src/key-proposals.test.ts",
     expect: ["a read that fails is reported and does not take the poll down"],
   },
