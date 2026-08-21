@@ -54,6 +54,23 @@ down, so the `.catch()` never ran and an approval nobody was told about looked
 exactly like one that was. A line that cannot fire is a line that was never
 checked, and *held for a good reason* is not the same as *known to work*.
 
+**Two of the hub-link rows were a timer wearing a process boundary's clothes.**
+`hubWs.onclose` and the `catch` around the dial were left as *belonging to a
+running pair of processes*, and the socket does — but neither line touches it.
+Both set a flag and call `setTimeout(connectToHub, 5000)`, and the real cost was
+the timer: a reconnect armed in a shared runner fires during whatever file is
+executing five seconds later. Owning the timer is the fix, not avoiding it, so
+the schedule is a parameter with `setTimeout` as its default. `provisionSelf`
+refusing went with them, since it is one `await` inside the same callback and a
+`fetch` stub was already standing in for the hub's REST side.
+
+What that turned up is the same shape as the admin notify: losing the hub said
+nothing at all. `sendViaHub` answers `null` while the link is down, every caller
+reads that as *sent nothing*, and a hub that went away at 3am and came back at 6
+left no trace of the three hours between. The close path logs and counts now,
+and `hub_dial_failed` is kept distinct from it because only one of the two is
+fixed by editing configuration.
+
 **A last-resort handler.** `app.onError` answers what every route already
 catches. Reaching it needs a defect, so a test for it plants one — and then
 asserts that the handler this repository would rather never run, ran.
@@ -97,8 +114,6 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `app.onError((err, c) => {` | Last-resort handler. Every route catches what it can fail on, so the only trigger is a defect. |
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
-| `packages/http/src/main.ts` | `self_provision_failed` | The hub refusing this server's own provisioning at startup. |
-| `packages/http/src/main.ts` | `hubWs.onclose = () => {` | The socket to the hub closing, and the connect that throws — both belong to a running pair of processes. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
 | `scripts/lint-preview.ts` | `Could not read CAPABILITY from @agent-mesh/contracts` | The refusal to fall back to a hand-written capability list, which needs the contracts package to be broken. |
 | `test/harness.ts` | `never became healthy:` | What a service that never opened its port says on the way out. |

@@ -76,8 +76,8 @@ describe("the logging operations document", () => {
     expect(missing, "the document names a reason no service writes").toEqual([]);
   });
 
-  test("the five counters it names are all in it", () => {
-    for (const counter of ["lease_expired", "frame_dropped", "push_failed", "audit_gap_fetch", "wal_recovered"]) {
+  test("the six counters it names are all in it", () => {
+    for (const counter of ["lease_expired", "frame_dropped", "push_failed", "audit_gap_fetch", "wal_recovered", "hub_disconnected"]) {
       expect({ counter, named: NAMED.includes(counter) }).toEqual({ counter, named: true });
     }
   });

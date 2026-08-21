@@ -5051,6 +5051,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["ignores an answer that is not to its request"],
   },
   {
+    id: "losing-the-hub-is-only-worth-a-mention",
+    defect:
+      "Losing the link was logged at `info`. It reads fine in a full journal and disappears from every filter an operator actually runs \u2014 and this is the line that explains why sends during the outage were answered with nothing, so the one time it is read is the one time it is not there.",
+    file: "packages/http/src/main.ts",
+    from: '      log.warn(`lost the hub link, redialling in ${HUB_RECONNECT_MS}ms`',
+    to: '      log.info(`lost the hub link, redialling in ${HUB_RECONNECT_MS}ms`',
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["says the link is gone"],
+  },
+  {
+    id: "a-lost-link-still-reads-as-connected",
+    defect:
+      "`onclose` left `hubConnected` true. Every later send is written to a socket the hub is no longer on and waits out its full five-second timeout before answering `null`, and `redeclareProxies` claims people over a link that is gone.",
+    file: "packages/http/src/main.ts",
+    from: 'hubWs.onclose = () => {\n      hubConnected = false',
+    to: 'hubWs.onclose = () => {\n      hubConnected = true',
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["nothing is sent on the socket it just lost"],
+  },
+  {
+    id: "the-redial-arms-a-timer-nobody-owns",
+    defect:
+      "The reconnect reached for the module's default schedule instead of the one it was given. In production nothing changes; in a shared test process the second close arms a real five-second dial that fires inside whatever file is running by then, and the failure lands on a test that never touched the hub.",
+    file: "packages/http/src/main.ts",
+    from: "      schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)",
+    to: "      schedule(() => connectToHub(), HUB_RECONNECT_MS)",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["scheduled on the same clock"],
+  },
+  {
+    id: "a-dial-that-never-connected-reads-as-a-disconnect",
+    defect:
+      "The constructor throwing was reported as `hub_disconnected`. The two want opposite responses \u2014 a link that was lost comes back on its own, a dial that threw is a URL somebody has to fix \u2014 and merging them means the second is waited out as if it were the first.",
+    file: "packages/http/src/main.ts",
+    from: "'hub_dial_failed', {",
+    to: "'hub_disconnected', {",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["reported as a dial, not as a disconnect"],
+  },
+  {
+    id: "the-dial-failure-says-nothing-about-the-dial",
+    defect:
+      "The line dropped what the socket constructor actually said. `hub_dial_failed` on its own does not separate a typo in the hub URL from a hub that is not listening, and those are not the same repair.",
+    file: "packages/http/src/main.ts",
+    from: "      detail: err instanceof Error ? err.message : String(err),",
+    to: "      detail: 'dial failed',",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["reported as a dial, not as a disconnect"],
+  },
+  {
+    id: "the-hub-refusing-this-server-passes-for-success",
+    defect:
+      "The self-provisioning check ran backwards, so a refusal was silent. \u00a7 8.2 reads the proxy grant off the row this call creates: without it every message sent on a person's behalf is refused at the far end, one refusal per message, with nothing on this side naming the cause.",
+    file: "packages/http/src/main.ts",
+    from: "      if (!self.ok) {",
+    to: "      if (self.ok) {",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["connects anyway"],
+  },
+  {
     id: "attachments-are-dropped-off-the-wire",
     defect:
       "A message carrying attachments went to the hub as its plain text. \u00a7 15.2 requires the `attachments` array to be *in* the message body and \u00a7 8.2's content is a flat string, so the two are reconciled by sending JSON holding both \u2014 without it the recipient gets the words and no `download_url`, and \u00a7 15.4's pull-on-demand loop has nothing to pull.",

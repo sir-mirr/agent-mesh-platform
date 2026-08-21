@@ -7,12 +7,16 @@
  * and a test does not. It is exported as a seam now, and `WebSocket` is stood
  * in for.
  *
- * **The close path is deliberately not driven.** `onclose` schedules
- * `setTimeout(connectToHub, 5000)`, and a reconnect timer left running in a
+ * **The close path is driven now.** It was held back because `onclose` called
+ * `setTimeout(connectToHub, 5000)` and a reconnect timer left running in a
  * shared test process fires during whatever file happens to be executing five
- * seconds later. Reaching those four lines is not worth handing every later
- * test a socket dial it did not ask for — the same judgement as not breaking
- * the hub database to reach a `catch`.
+ * seconds later — a real cost, and the reason the lines sat uncovered. But the
+ * timer was never the thing worth avoiding; *owning* the timer is the fix, so
+ * the schedule is a parameter with `setTimeout` as its default. What that
+ * uncovered on the way in: losing the hub said nothing at all. `sendViaHub`
+ * answers `null` while the link is down and every caller reads that as "sent
+ * nothing", so a hub that went away at 3am and came back at 6 left no trace of
+ * the three hours between.
  *
  * The order on `onopen` is the point. § 8.2 checks both halves of a proxy claim
  * against stored rows rather than against what the socket says, so this
@@ -23,9 +27,11 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { captureConsole } from "@agent-mesh/log";
+
 process.env.JWT_SECRET ||= "hub-link-probe";
 
-const { app, connectToHub, redeclareProxies, sseClientCount } = await import("./main.ts");
+const { app, connectToHub, redeclareProxies, sseClientCount, HUB_RECONNECT_MS } = await import("./main.ts");
 const { getDb, upsertApprovedWebUser, upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 
@@ -57,6 +63,10 @@ type Fake = {
   listeners: () => number;
   /** Drop the link without scheduling anything. See `hangUp` below. */
   error: () => void;
+  /** Drop the link the way the hub going away drops it — schedule and all. */
+  close: () => void;
+  /** How many times the service has dialled, across reconnects. */
+  dials: () => number;
 };
 
 /**
@@ -74,8 +84,10 @@ function standInSocket(): Fake {
   // `addEventListener` leaves every send waiting out its five-second timeout —
   // and a leak there is invisible without somewhere to count them.
   const listeners = new Set<(e: { data: string }) => void>();
+  let dials = 0;
   globalThis.WebSocket = function (this: any) {
     ws = this;
+    dials++;
     this.send = (frame: string) => {
       sent.push(frame);
       steps.push({ kind: "ws", frame: JSON.parse(frame) });
@@ -101,6 +113,8 @@ function standInSocket(): Fake {
     },
     listeners: () => listeners.size,
     error: () => ws.onerror(),
+    close: () => ws.onclose(),
+    dials: () => dials,
   };
 }
 
@@ -163,6 +177,12 @@ async function approvedWebUser(): Promise<string> {
 }
 
 const parse = (frames: string[]) => frames.map((f) => JSON.parse(f));
+
+/** The machine-readable half of each log line. Split on the LAST ` {"ts":"`,
+ *  because the sentence in front of it may quote one. */
+const events = (lines: string[]) =>
+  lines.filter((l) => l.includes(' {"ts":"'))
+    .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
 
 describe("what it says when the hub answers", () => {
   test("provisions before it claims, and claims every approved person", async () => {
@@ -616,5 +636,190 @@ describe("re-declaring who may be spoken for", () => {
     const claimAt = steps.findIndex((s) => s.kind === "ws" && s.frame.method === "mesh.connect");
     expect(claimAt).toBeGreaterThan(-1);
     expect(steps.some((s, i) => s.kind === "http" && i < claimAt && s.body.includes(late))).toBe(true);
+  });
+});
+
+
+/**
+ * Losing the link, and dialling again.
+ *
+ * The reconnect timer is a parameter here, so the whole path can run without
+ * arming anything that outlives the test. Threading it through the *retry* as
+ * well is the part worth watching: a redial that reached for the global
+ * `setTimeout` would leave a five-second dial behind on the second close, in
+ * some later file, with no test still looking.
+ */
+describe("when the hub goes away", () => {
+  /** Every retry the service asked for, and how long it wanted to wait. */
+  function recordingClock() {
+    const due: { ms: number; fn: () => void }[] = [];
+    return {
+      due,
+      schedule: (fn: () => void, ms: number) => { due.push({ ms, fn }); return 0 as unknown; },
+      /** Run the retry the way the timer would, and forget it. */
+      fire: () => { const next = due.shift(); next!.fn(); },
+    };
+  }
+
+  test("says the link is gone, and asks to be dialled again", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    const clock = recordingClock();
+    const { lines, restore } = captureConsole();
+    try {
+      connectToHub(clock.schedule);
+      await ws.open();
+      ws.close();
+    } finally {
+      restore();
+    }
+
+    const gone = events(lines).find((e) => e.event === "hub_disconnected");
+    expect(gone).toBeDefined();
+    // An operator reading this needs to know it is coming back on its own, and
+    // when — otherwise the only honest next step is to restart the process.
+    expect(gone.level).toBe("warn");
+    expect(gone.reason).toBe("socket_closed");
+    expect(gone.retry_in_ms).toBe(HUB_RECONNECT_MS);
+
+    expect(clock.due).toHaveLength(1);
+    expect(clock.due[0]!.ms).toBe(HUB_RECONNECT_MS);
+  });
+
+  /**
+   * **The retry keeps the clock it was given.** If the redial fell back to the
+   * global `setTimeout`, this second close would schedule nothing here and a
+   * real five-second dial somewhere else. Counting the dials is what tells the
+   * two apart: `due` staying at one could equally mean the retry never ran.
+   */
+  test("and the socket it opens next is scheduled on the same clock", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    const clock = recordingClock();
+    connectToHub(clock.schedule);
+    await ws.open();
+    expect(ws.dials()).toBe(1);
+
+    ws.close();
+    clock.fire();
+    expect(ws.dials()).toBe(2);
+
+    ws.close();
+    expect(clock.due).toHaveLength(1);
+  });
+
+  /**
+   * A closed link is a link that cannot be spoken on. `redeclareProxies`
+   * returning silently is the observable half of `hubConnected = false` —
+   * without it the flag could stay true and every later send would wait out its
+   * five-second timeout against a socket nobody is answering.
+   */
+  test("and nothing is sent on the socket it just lost", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    const clock = recordingClock();
+    connectToHub(clock.schedule);
+    await ws.open();
+
+    ws.close();
+    await approvedWebUser();
+    steps = [];
+    await redeclareProxies();
+    expect(steps).toEqual([]);
+  });
+
+  /**
+   * The dial that never becomes a link at all — a hub URL that is not a URL is
+   * the usual way. Reported apart from `hub_disconnected` because only this one
+   * is fixed by editing configuration; the other fixes itself.
+   */
+  test("a dial that throws is reported as a dial, not as a disconnect", async () => {
+    globalThis.WebSocket = function () { throw new Error("bad hub url"); } as any;
+    const clock = recordingClock();
+    const { lines, restore } = captureConsole();
+    try {
+      connectToHub(clock.schedule);
+    } finally {
+      restore();
+    }
+
+    const failed = events(lines).find((e) => e.event === "hub_dial_failed");
+    expect(failed).toBeDefined();
+    expect(failed.reason).toBe("dial_threw");
+    // The constructor's own words. Without them the line says a dial failed
+    // and leaves the operator to guess between a typo and a hub that is down.
+    expect(failed.detail).toContain("bad hub url");
+    expect(events(lines).some((e) => e.event === "hub_disconnected")).toBe(false);
+
+    expect(clock.due).toHaveLength(1);
+    expect(clock.due[0]!.ms).toBe(HUB_RECONNECT_MS);
+  });
+});
+
+/**
+ * The hub refusing this service's own row.
+ *
+ * It matters because § 8.2 reads the proxy grant off that row: without it every
+ * message sent on a person's behalf is refused by entitlement, and the refusals
+ * arrive one per message, at the far end, with no cause attached. This is the
+ * one place the cause is visible.
+ *
+ * And it is a warning, not a stop. The socket is up, the people still need
+ * provisioning, and a self-registration that failed on this dial is retried on
+ * the next one — so aborting the connect here would turn a degraded link into
+ * no link at all.
+ */
+describe("when the hub will not register this service", () => {
+  /** Refuse the service row; accept the people. Only the body says which. */
+  function hubRefusesTheService() {
+    steps = [];
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const body = typeof init?.body === "string" ? init.body : "";
+      steps.push({ kind: "http", url: typeof input === "string" ? input : input.url, body });
+      if (body.includes('"type":"service"')) {
+        return new Response(JSON.stringify({ error: "identity is soft-deleted" }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  test("says so, with what the hub said, and connects anyway", async () => {
+    const who = await approvedWebUser();
+    hubRefusesTheService();
+    const ws = standInSocket();
+    live = ws;
+    const { lines, restore } = captureConsole();
+    try {
+      connectToHub();
+      await ws.open();
+    } finally {
+      restore();
+    }
+
+    const refused = events(lines).find((e) => e.event === "self_provision_failed");
+    expect(refused).toBeDefined();
+    expect(refused.level).toBe("warn");
+    expect(refused.reason).toBe("hub_refused");
+    // The status and the hub's own sentence. `reason` is the bounded key a
+    // counter groups on; `detail` is the part that says which 409 this was.
+    expect(refused.detail).toContain("409");
+    expect(refused.detail).toContain("identity is soft-deleted");
+
+    // Still claimed, and still claiming the people. A failed self-registration
+    // is a degraded link, not a refusal to have one.
+    const frames = parse(ws.sent);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].method).toBe("mesh.connect");
+    expect(frames[0].params.proxy_for).toContain(who);
+    expect(steps.some((s) => s.kind === "http" && s.body.includes(who))).toBe(true);
   });
 });

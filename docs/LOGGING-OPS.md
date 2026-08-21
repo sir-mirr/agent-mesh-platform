@@ -116,7 +116,7 @@ anything assembled from a request, or lifted from a database's error message —
 is counted as `other` while the line still carries it in full. A counter map
 keyed on caller input is a memory leak whose rate the caller chooses.
 
-### The five worth naming
+### The six worth naming
 
 | Counter | Where | What it says |
 |---|---|---|
@@ -125,6 +125,7 @@ keyed on caller input is a memory leak whose rate the caller chooses.
 | `push_failed` | `http` | a notification failed; `reason: endpoint_gone` is the 404/410 that removes the subscription |
 | `audit_gap_fetch` | `http` | a reconnecting console was handed what it missed (`audit_gap_summary`, `audit_gap_skipped` are the other two endings) |
 | `wal_recovered` | `store` | a store was opened carrying a write-ahead log the last process did not fold |
+| `hub_disconnected` | `http` | the link to the hub went away; its rate is how often sends are answered with nothing |
 
 ---
 
@@ -180,6 +181,24 @@ One of these answers:
 | *nothing at all* | it never reached the hub — look at the sender's side |
 
 `send_persist_failed` is the one case where the sender was told to retry.
+
+**Nothing at all, for a message sent from the web UI**, is most often the link
+rather than the message. The http server answers `null` to every send while its
+hub socket is down, and a `null` there is indistinguishable from a hub that
+refused — so ask the sender's side which it was:
+
+```bash
+journalctl -u agent-mesh-http | grep '"event":"hub_disconnected"'
+```
+
+| `event` | Reading |
+|---|---|
+| `hub_disconnected` | the link was up and went away; `retry_in_ms` says when the next dial was due, and the next `hub_connected` closes the outage |
+| `hub_dial_failed` | there was never a link — `detail` carries what the socket constructor said. This one does not fix itself; it is configuration |
+| `self_provision_failed` | the link is up but this server has no row on the hub, so § 8.2 refuses every message it sends on a person's behalf |
+
+The last is the quiet one: the socket is connected, the sends leave, and each is
+refused at the far end for an entitlement the sender never saw fail.
 
 ### B. "I cannot sign in"
 

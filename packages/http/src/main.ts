@@ -108,6 +108,9 @@ const HUB_HTTP_URL = HUB_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 const PAIRING_TTL_SECONDS = parseInt(process.env.AGENT_MESH_PAIRING_TTL ?? '300', 10)
 const PAIRING_TTL_MAX_SECONDS = 3600
 const HUB_IDENTITY = 'http-server' + (IS_DEV ? '-dev' : '')
+/** How long the link stays down before the next dial. Named so the log line
+ *  and the timer cannot drift apart. */
+export const HUB_RECONNECT_MS = 5000
 let hubWs: WebSocket | null = null
 let hubConnected = false
 
@@ -120,6 +123,13 @@ let hubConnected = false
  * happens inside two socket callbacks, so a test that cannot invoke it cannot
  * reach any of it.
  *
+ * The reconnect schedule is a parameter for the same reason, defaulting to
+ * `setTimeout`. It was not, and the close path went untested because of it: a
+ * five-second redial armed inside a shared test process fires during whatever
+ * file happens to be running by then. The timer was never the thing to avoid —
+ * owning it is — and the path it was guarding is where this service says out
+ * loud that it has no hub.
+ *
  * What is worth reaching: the registration order on `onopen`. § 8.2 checks both
  * halves of a proxy claim against stored rows rather than against what the
  * socket says, so this identity must exist and carry `can_proxy`, and each
@@ -128,7 +138,9 @@ let hubConnected = false
  * refused. Done on connect rather than at startup because the hub is provably
  * reachable at this instant.
  */
-export function connectToHub(): void {
+export function connectToHub(
+  schedule: (fn: () => void, ms: number) => unknown = setTimeout,
+): void {
   try {
     hubWs = new WebSocket(HUB_URL)
     hubWs.onopen = async () => {
@@ -253,12 +265,31 @@ export function connectToHub(): void {
     }
     hubWs.onclose = () => {
       hubConnected = false
-      setTimeout(connectToHub, 5000)
+      // Said out loud because nothing downstream says it. `sendViaHub` answers
+      // `null` while the link is down and every caller treats that as "sent
+      // nothing" without asking why -- so a hub that went away at 3am and came
+      // back at 6 left no trace of the three hours in between.
+      log.warn(`lost the hub link, redialling in ${HUB_RECONNECT_MS}ms`, 'hub_disconnected', {
+        url: HUB_URL,
+        outcome: 'failed',
+        reason: 'socket_closed',
+        retry_in_ms: HUB_RECONNECT_MS,
+      })
+      schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)
     }
     hubWs.onerror = () => { hubConnected = false }
-  } catch {
+  } catch (err) {
     hubConnected = false
-    setTimeout(connectToHub, 5000)
+    // The constructor itself refusing -- a URL that is not one, most often.
+    // Distinct from `hub_disconnected`: that one had a link and lost it, this
+    // one never had it, and only the second is fixed by editing config.
+    log.warn(`could not dial the hub at ${HUB_URL}`, 'hub_dial_failed', {
+      url: HUB_URL,
+      outcome: 'failed',
+      reason: 'dial_threw',
+      detail: err instanceof Error ? err.message : String(err),
+    })
+    schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)
   }
 }
 
