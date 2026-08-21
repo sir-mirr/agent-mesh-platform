@@ -564,7 +564,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "receive-trusts-the-ack-list",
     defect:
-      "The acknowledgement list stopped being filtered to strings. A number, a null or an object reaches a prepared statement as an id, and the settle step runs before the lease is granted \u2014 so a malformed list does not just fail to settle, it takes the batch down with it.",
+      "The acknowledgement list stopped being filtered to strings. `bun:sqlite` reads an array as the whole positional list, so a nested `[\"x\"]` raises *expected 2 values, received 1* from inside the transaction \u2014 and the settle step runs before the lease is granted, so the throw does not merely fail to settle, it takes the batch down with it. A number, a null or an object is inert against these statements; the array is the one that bites, which is why the case carries one.",
     file: "packages/hub/src/rpc/receive.ts",
     from: "  const ackIds: string[] = Array.isArray(params.ack_ids)\n    ? params.ack_ids.filter((x: unknown) => typeof x === \"string\")\n    : [];",
     to: "  const ackIds: string[] = Array.isArray(params.ack_ids) ? params.ack_ids : [];",

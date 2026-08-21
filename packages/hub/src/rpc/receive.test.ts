@@ -131,7 +131,7 @@ describe("what comes back", () => {
     const me = uniq("worker");
     const ids = [waiting(me, "a", -30), waiting(me, "b", -20), waiting(me, "c", -10)];
     const batch = call(me, { limit: 1 }).result!;
-    expect(batch.messages.map((m) => m.id)).toEqual([ids[0]]);
+    expect(batch.messages.map((m) => m.id)).toEqual([ids[0]!]);
     expect(batch.remaining).toBe(2);
   });
 });
@@ -199,15 +199,27 @@ describe("settling the last batch", () => {
     expect(deliveredEvents(id)).toBe(1);
   });
 
+  /**
+   * **Filtered, not trusted**, and the list an unfiltered version cannot
+   * survive is the nested one: `bun:sqlite` reads an array as the whole
+   * positional list, so `[["x"]]` raises *expected 2 values, received 1* from
+   * inside the transaction. The settle step runs before the lease is granted,
+   * so that throw does not merely fail to settle — it takes the batch down
+   * with it, and the caller is handed nothing on a call it could not have
+   * known was malformed. (A number, a null or an object is inert against these
+   * statements; the array is the one that bites.)
+   */
   test("takes ack ids only when they are strings", () => {
-    // A number or a null in the list would reach a prepared statement as an id,
-    // and the settle step runs before the lease is granted.
     const me = uniq("worker");
     const id = waiting(me);
-    call(me);
-    const answered = call(me, { ack_ids: [id, 2, null, { id }] as unknown[] });
+    const other = waiting(me, "still here");
+    call(me, { limit: 1 });
+    const answered = call(me, { ack_ids: [id, 2, null, { id }, ["x"], true] as unknown[] });
     expect(answered.error).toBeUndefined();
     expect(statusOf(id)!.status).toBe("delivered");
+    // The batch was still claimed: the malformed entries settled nothing and
+    // stopped nothing.
+    expect(answered.result!.messages.map((m) => m.id)).toContain(other);
   });
 
   test("takes no ack ids at all when the parameter is not a list", () => {
