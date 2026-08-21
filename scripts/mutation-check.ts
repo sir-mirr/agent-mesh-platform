@@ -4051,6 +4051,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
     expect: ["without losing the selected node"],
   },
+  {
+    id: "message-search-runs-on-an-empty-query",
+    defect:
+      "`GET /api/v1/messages/search` stopped refusing an absent or blank `q`, so the `LIKE '%%'` it builds matches every message the caller is party to. A search box that returns everything on an accidental Enter reads as a feature until somebody notices the response is the whole history.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!q || typeof q !== 'string' || q.trim().length === 0) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/streams.test.ts",
+    expect: ["refuses a query that is absent, empty, or only spaces"],
+  },
+  {
+    id: "the-event-stream-opens-without-its-first-frame",
+    defect:
+      "The per-agent stream stopped sending `connected`, so the socket opens and says nothing. A client waiting for its first frame before rendering hangs on a connection that is working, and the failure is indistinguishable from a slow mesh — which is the reason a stream sends a frame it does not otherwise need.",
+    file: "packages/http/src/main.ts",
+    from: "      send('connected', { agent: agentId })",
+    to: "      void agentId",
+    suite: "packages/http/src/streams.test.ts",
+    expect: ["opens with a connected frame naming the agent"],
+  },
+  {
+    id: "a-departed-sse-client-is-never-unregistered",
+    defect:
+      "The abort listener stopped removing the client from the module-level set. Nothing fails at the time: the set grows for the life of the process and every push writes to controllers whose sockets are gone. Invisible until a long-running deployment is broadcasting to thousands of dead connections.",
+    file: "packages/http/src/main.ts",
+    from: "        removeSSEClient(agentId, userLogin, controller)",
+    to: "        void controller",
+    suite: "packages/http/src/streams.test.ts",
+    expect: ["unregisters the client when the caller goes away"],
+  },
 ];
 
 /**

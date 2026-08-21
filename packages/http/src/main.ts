@@ -272,6 +272,26 @@ function removeSSEClient(agentId: string, userLogin: string, controller: Readabl
   }
 }
 
+/**
+ * How many live event-stream clients this process believes it has.
+ *
+ * **A test seam, in the shape `hub/src/signature.ts` already uses for its nonce
+ * window.** The registry is module-private and nothing else can see it, so a
+ * client that is registered on connect and never unregistered on departure
+ * fails at no particular moment: the map grows for the life of the process and
+ * every push writes to controllers whose sockets are gone.
+ *
+ * Exported because the alternative was a test asserting that an
+ * `AbortController` it had just aborted was aborted — which is true whatever
+ * the handler does, and a registered mutation removing the unregister survived
+ * it. A property nothing can observe is a property nothing can hold.
+ */
+export function sseClientCount(): number {
+  let n = 0
+  for (const set of sseClients.values()) n += set.size
+  return n
+}
+
 function pushToSSE(agentId: string, userLogin: string, event: string, data: unknown): void {
   const key = sseKey(agentId, userLogin)
   const set = sseClients.get(key)
