@@ -69,12 +69,21 @@ describe("the linter catches what it is for", () => {
    * seven is a parser that broke rather than a preview that shrank.
    */
   test("catches an extraction that has quietly stopped working", () => {
-    const r = runLint({
-      mockHtmlFiles: { "test.html": `<div>${Array(7).fill("/api/v1/inbox").join(" ")}</div>` },
-      minFloorOverride: 60,
-      silent: true,
-    });
-    expect({ degraded: r.errors > 0 }).toEqual({ degraded: true });
+    // **An authorised route, repeated.** The version this replaces used
+    // `/api/v1/inbox`, which SPEC does not authorise — so the unauthorised-route
+    // check reported seven errors and the case passed with the floor removed
+    // entirely. Two sufficient guards for one assertion measure neither.
+    const authorised = "/api/v1/mailbox/in";
+    const seven = { "test.html": `<div>${Array(7).fill(authorised).join(" ")}</div>` };
+
+    // Below the floor: refused, and for the floor's reason alone.
+    const degraded = runLint({ mockHtmlFiles: seven, minFloorOverride: 60, silent: true });
+    expect({ degraded: degraded.errors > 0 }).toEqual({ degraded: true });
+
+    // The same input under a floor it clears passes, which is what says the
+    // refusal above came from the count rather than from the content.
+    const fine = runLint({ mockHtmlFiles: seven, minFloorOverride: 7, silent: true });
+    expect({ errors: fine.errors, found: fine.totalRoutesFound }).toEqual({ errors: 0, found: 7 });
   });
 
   test("catches an RBAC page missing a capability the contract defines", () => {
