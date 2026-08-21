@@ -6890,6 +6890,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/import-graph.test.ts",
     expect: ["the architecture document names every package there is"],
   },
+  {
+    id: "a-queued-message-does-not-say-why",
+    defect:
+      "The reason a message was queued stopped being named, so *waiting for somebody who is not connected* and *this service could not hand it over* answer the same complaint with the same line. The \u00a7 3 drill exists to be run by somebody who was not here, and a drill that passes on a log that names no cause is a rehearsal of nothing.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: '      reason: "recipient_offline",',
+    to: "",
+    suite: "test/logging-drills.test.ts",
+    expect: ["names the recipient being offline, and does not say that when they are not"],
+  },
 ];
 
 /**
