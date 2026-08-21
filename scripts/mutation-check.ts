@@ -4661,6 +4661,126 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/push.test.ts",
     expect: ["keeps a subscription through a service failure"],
   },
+  {
+    id: "a-body-asking-for-more-than-it-gets-is-told-yes",
+    defect:
+      "The create route went back to dropping fields it does not implement. This repository's own fixture sent `members` and `name` for four months and was answered 201 every time \u2014 the groups were empty and the response said the whole request had happened.",
+    file: "packages/http/src/main.ts",
+    from: "  const unsupported = Object.keys(body).filter((k) => !GROUP_CREATE_FIELDS.has(k))",
+    to: "  const unsupported: string[] = []",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["refuses a field it does not implement, and names it"],
+  },
+  {
+    id: "a-new-group-is-given-the-one-rule-it-was-made-to-state",
+    defect:
+      "Creating a group seeded a rule letting it send to itself. That guesses the single thing the operator created the group in order to say, and a guessed rule is indistinguishable from a stated one afterwards.",
+    file: "packages/http/src/main.ts",
+    from: "  const created = groupsStore.createGroup(db_(), {\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })",
+    to: "  const created = groupsStore.createGroup(db_(), {\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })\n  groupsStore.allowEgress(db_(), { fromGroup: groupId, toGroup: groupId, grantedBy: actor })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["grants the new group nothing, not even to itself"],
+  },
+  {
+    id: "a-description-is-whatever-was-sent",
+    defect:
+      "The description stopped being checked for being a string, so a number went into the column and out to every reader of the group list.",
+    file: "packages/http/src/main.ts",
+    from: "    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,",
+    to: "    groupId, description: body?.description ?? null, createdBy: actor,",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["keeps a description only when it is a string"],
+  },
+  {
+    id: "somebody-is-moved-into-a-group-that-does-not-exist",
+    defect:
+      "The membership route stopped checking that the group exists. The identity lands somewhere no egress rule can ever name, which is silence rather than an error \u2014 it can send nowhere and nothing says why.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!groupsStore.listGroups(db).some((g) => g.group_id === groupId)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["refuses a group that does not exist"],
+  },
+  {
+    id: "a-move-reports-the-place-it-moved-to-as-the-place-it-came-from",
+    defect:
+      "The previous group was read after the move instead of before, so `from_group` and `to_group` were always the same. An operator is then told nothing about what the identity stopped being able to do.",
+    file: "packages/http/src/main.ts",
+    from: "  const from = groupsStore.groupOf(db, identity)\n  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })",
+    to: "  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })\n  const from = groupsStore.groupOf(db, identity)",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["reports where the identity came from"],
+  },
+  {
+    id: "egress-became-symmetric",
+    defect:
+      "Granting egress opened the reverse direction too. Agents allowed to report into an aggregator became agents it may command, and the narrower grant is no longer expressible at all.",
+    file: "packages/http/src/main.ts",
+    from: "  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })",
+    to: "  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })\n  groupsStore.allowEgress(db_(), { fromGroup: toGroup, toGroup: c.req.param('group_id'), grantedBy: actor })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["grants one direction and not the other"],
+  },
+  {
+    id: "a-revoke-that-removed-nothing-says-it-deleted",
+    defect:
+      "The revoke answer stopped distinguishing the two outcomes. An operator who mistyped a group is told the rule was deleted, and the rule they meant is still there.",
+    file: "packages/http/src/main.ts",
+    from: "  // about the same call, and a contract scenario had ratified the `404`.\n  return c.json({ ok: true, action: removed ? 'deleted' : 'not-found' })",
+    to: "  // about the same call, and a contract scenario had ratified the `404`.\n  return c.json({ ok: true, action: 'deleted' })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["says which of delete and not-found happened, and never disagrees with itself"],
+  },
+  {
+    id: "a-revoke-takes-both-directions",
+    defect:
+      "Revoking one direction removed the other as well, so withdrawing a reply path silently withdrew the reporting path it was answering.",
+    file: "packages/http/src/main.ts",
+    from: "  const removed = groupsStore.revokeEgress(db_(), {\n    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })",
+    to: "  const removed = groupsStore.revokeEgress(db_(), {\n    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })\n  groupsStore.revokeEgress(db_(), { fromGroup: c.req.param('to_group'), toGroup: c.req.param('group_id') })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["takes back only the direction it names"],
+  },
+  {
+    id: "a-send-names-a-file-that-is-not-there",
+    defect:
+      "The send route stopped stating the path. The message is accepted and delivered, and fails at the far end with an error about a file the recipient never had \u2014 \u00a7 15.2 puts the check on the side that can actually answer it.",
+    file: "packages/http/src/main.ts",
+    from: "    if (!existsSync(filePath)) {",
+    to: "    if (false) {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["refuses a path this server cannot see, and names it"],
+  },
+  {
+    id: "a-proxy-claim-is-sent-down-a-link-that-is-not-there",
+    defect:
+      "`redeclareProxies` stopped checking for a live socket. Called from the approval route it then throws into a request that had otherwise succeeded \u2014 or is swallowed by the `.catch(() => {})` at the call site, and the approval reports success with nothing sent.",
+    file: "packages/http/src/main.ts",
+    from: "export async function redeclareProxies(): Promise<void> {\n  if (!hubConnected || !hubWs) return",
+    to: "export async function redeclareProxies(): Promise<void> {\n  if (!hubConnected) void 0",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["does nothing when the hub is not connected"],
+  },
+  {
+    id: "a-newly-approved-person-is-claimed-but-never-registered",
+    defect:
+      "The re-declaration named the new person without registering them first. \u00a7 8.2 checks both halves of a claim against stored rows, so the hub drops it: every message sent on their behalf is refused and nothing on this side reports anything.",
+    file: "packages/http/src/main.ts",
+    from: "  const webUsers = listApprovedWebUserIds()\n  await provisionAllHumans(webUsers)\n  hubWs.send(JSON.stringify({",
+    to: "  const webUsers = listApprovedWebUserIds()\n  hubWs.send(JSON.stringify({",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["provisions the new person, then names them in a fresh claim"],
+  },
+  {
+    id: "the-owners-route-answers-about-a-name-that-cannot-exist",
+    defect:
+      "The owners route stopped checking the identity's shape, so it answers 200 with an empty list for a string no identity could ever be \u2014 a caller cannot tell *nobody owns this* from *that is not a name*.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!IDENTITY_RE.test(identity)) return c.json({ ok: false, error: 'invalid identity format' }, 400)\n  return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })",
+    to: "  return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["refuses a caller without agent.provision, and an off-pattern name"],
+  },
 ];
 
 /**

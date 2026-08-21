@@ -1,0 +1,372 @@
+/**
+ * Groups, and what a group is allowed to send (SPEC § 12).
+ *
+ * **Deny by default**, which is what makes these routes the only way a
+ * deployment says anything at all. A mesh that shipped permissive would stay
+ * open until somebody configured it, and nobody configures what already works.
+ *
+ * Two of the decisions here are corrections rather than designs, and both are
+ * pinned below because the wrong version passed for months:
+ *
+ * - A body asking for more than this route implements is **refused, not
+ *   dropped**. This repository's own fixture sent `members` and `name` to the
+ *   create route and was answered `201` every time — so the groups were empty
+ *   and the response said the whole of the request had happened.
+ * - Revoking egress answers `200` either way and says which happened in
+ *   `action`. It used to answer `404` with `ok: true` — a status and a body
+ *   saying opposite things about the same call — and a contract scenario had
+ *   ratified it.
+ *
+ * This file owns the `grp-` prefix.
+ */
+import { describe, expect, test } from "bun:test";
+
+process.env.JWT_SECRET ||= "groups-probe";
+
+const { app } = await import("./main.ts");
+const { upsertUser, approveUser, createPendingApproval } = await import("./db");
+const { signJwt } = await import("./auth");
+const { STORE_FILES, agentsSchema, grants, groups, openAt, ownership, stateDir } =
+  await import("@agent-mesh/store");
+const { CAPABILITY } = await import("@agent-mesh/contracts");
+const { join } = await import("node:path");
+
+const db = openAt(join(stateDir(), STORE_FILES.agents), { create: true });
+agentsSchema.migrate(db);
+grants.migrate(db);
+groups.migrate(db);
+ownership.migrate(db);
+
+let n = 0;
+const uniq = (p: string) => `grp-${p}-${++n}-${process.pid}`;
+
+async function holder(...caps: string[]) {
+  const login = uniq("op");
+  const user = upsertUser(950000 + n, login);
+  createPendingApproval(login, user.github_id);
+  expect(approveUser(login)).toBe(true);
+  for (const capability of caps) {
+    grants.grant(db, { subject: login, capability, grantedBy: "groups-test" });
+  }
+  const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
+  return { login, cookie: `mesh_token=${jwt}` };
+}
+
+const req = (method: string, path: string, cookie: string, body?: unknown) =>
+  app.fetch(new Request(`http://grp-probe${path}`, {
+    method,
+    headers: { "content-type": "application/json", cookie },
+    ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
+  }));
+
+const get = (path: string, cookie: string) => req("GET", path, cookie);
+const post = (path: string, cookie: string, body?: unknown) => req("POST", path, cookie, body);
+const del = (path: string, cookie: string) => req("DELETE", path, cookie);
+
+/** A group that exists, made through the route that makes them. */
+async function group(cookie: string, description?: string): Promise<string> {
+  const groupId = uniq("team");
+  const res = await post("/api/v1/admin/groups", cookie,
+    description === undefined ? { group_id: groupId } : { group_id: groupId, description });
+  expect(res.status).toBe(201);
+  return groupId;
+}
+
+const ROUTES: Array<[string, string]> = [
+  ["GET", "/api/v1/admin/groups"],
+  ["POST", "/api/v1/admin/groups"],
+  ["POST", "/api/v1/admin/groups/some-group/members"],
+  ["POST", "/api/v1/admin/groups/some-group/egress"],
+  ["DELETE", "/api/v1/admin/groups/some-group/egress/other-group"],
+];
+
+describe("who may configure a mesh", () => {
+  test("refuses every route to a caller without group.manage", async () => {
+    const nobody = await holder();
+    for (const [method, path] of ROUTES) {
+      expect((await req(method, path, "", {})).status).toBe(401);
+      const res = await req(method, path, nobody.cookie, {});
+      expect(res.status).toBe(403);
+      expect((await res.json()).capability).toBe(CAPABILITY.GROUP_MANAGE);
+    }
+  });
+});
+
+describe("making a group", () => {
+  test("refuses a body it cannot parse", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    expect((await post("/api/v1/admin/groups", op.cookie, "{not json")).status).toBe(400);
+  });
+
+  test("refuses a group_id that is missing or off-pattern", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    for (const group_id of [undefined, 7, "", "-leading", "has space", "under_score"]) {
+      const res = await post("/api/v1/admin/groups", op.cookie, { group_id });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("group_id");
+    }
+  });
+
+  /**
+   * **The four-month bug.** `members` and `name` were accepted and dropped, and
+   * the `201` said otherwise. A field this route does not implement is refused,
+   * and the refusal names it — an operator told "unsupported field(s)" with no
+   * list is being asked to guess which of theirs it was.
+   */
+  test("refuses a field it does not implement, and names it", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const res = await post("/api/v1/admin/groups", op.cookie,
+      { group_id: uniq("team"), name: "Team", colour: "blue" });
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error).toContain("name");
+    expect(error).toContain("colour");
+    expect(error).toContain("group_id and description");
+  });
+
+  /** `members` gets the sentence that says where membership actually goes. */
+  test("points a body carrying members at the route that moves one", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const res = await post("/api/v1/admin/groups", op.cookie,
+      { group_id: uniq("team"), members: ["a", "b"] });
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error).toContain("/members");
+    expect(error).toContain("one identity per call");
+  });
+
+  test("creates one, and says it was already there the second time", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = uniq("team");
+    const first = await post("/api/v1/admin/groups", op.cookie,
+      { group_id: groupId, description: "the reporting side" });
+    expect(first.status).toBe(201);
+    expect(await first.json()).toEqual({ ok: true, group_id: groupId, created: true });
+
+    const again = await post("/api/v1/admin/groups", op.cookie, { group_id: groupId });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ ok: true, group_id: groupId, created: false });
+
+    // And the second call did not overwrite the description with nothing.
+    const listed = (await (await get("/api/v1/admin/groups", op.cookie)).json())
+      .groups.find((g: any) => g.group_id === groupId);
+    expect(listed.description).toBe("the reporting side");
+    expect(listed.created_by).toBe(op.login);
+  });
+
+  test("keeps a description only when it is a string", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = uniq("team");
+    await post("/api/v1/admin/groups", op.cookie, { group_id: groupId, description: 7 });
+    const listed = (await (await get("/api/v1/admin/groups", op.cookie)).json())
+      .groups.find((g: any) => g.group_id === groupId);
+    expect(listed.description).toBeNull();
+  });
+
+  /**
+   * **A new group can send nowhere, including to itself.** Seeding a self-rule
+   * would guess the one thing the operator created the group to state.
+   */
+  test("grants the new group nothing, not even to itself", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = await group(op.cookie);
+    const one = uniq("agent");
+    const other = uniq("agent");
+    for (const identity of [one, other]) {
+      await post(`/api/v1/admin/groups/${groupId}/members`, op.cookie, { identity });
+    }
+    const { egress } = await (await get("/api/v1/admin/groups", op.cookie)).json();
+    expect(egress.filter((e: any) => e.from_group === groupId)).toEqual([]);
+    // Two agents in the same new group still cannot reach each other.
+    expect(groups.maySend(db, one, other).ok).toBe(false);
+    // `default` is the one group that starts able to send, and it is seeded.
+    expect(groups.maySend(db, uniq("nobody"), uniq("nobody"))).toEqual({
+      ok: true, fromGroup: "default", toGroup: "default",
+    });
+  });
+});
+
+describe("listing them", () => {
+  test("carries each group's members with it", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = await group(op.cookie);
+    const member = uniq("agent");
+    await post(`/api/v1/admin/groups/${groupId}/members`, op.cookie, { identity: member });
+
+    const body = await (await get("/api/v1/admin/groups", op.cookie)).json();
+    expect(body.ok).toBe(true);
+    const listed = body.groups.find((g: any) => g.group_id === groupId);
+    expect(listed.members).toEqual([member]);
+    // A group nobody is in carries an empty list, not a missing field.
+    const empty = await group(op.cookie);
+    const after = await (await get("/api/v1/admin/groups", op.cookie)).json();
+    expect(after.groups.find((g: any) => g.group_id === empty).members).toEqual([]);
+  });
+});
+
+describe("moving somebody into one", () => {
+  test("refuses a body it cannot parse, or one naming no identity", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = await group(op.cookie);
+    expect((await post(`/api/v1/admin/groups/${groupId}/members`, op.cookie, "{not json")).status).toBe(400);
+    for (const identity of [undefined, 7, "", "has space"]) {
+      const res = await post(`/api/v1/admin/groups/${groupId}/members`, op.cookie, { identity });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("identity");
+    }
+  });
+
+  /**
+   * A group that does not exist is `404`. Moving an identity there would put it
+   * somewhere no rule can ever name, which is silence rather than an error.
+   */
+  test("refuses a group that does not exist", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const missing = uniq("nowhere");
+    const res = await post(`/api/v1/admin/groups/${missing}/members`, op.cookie,
+      { identity: uniq("agent") });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toContain(missing);
+  });
+
+  /**
+   * **A move, not an addition.** The answer names both ends, because an
+   * operator needs to know what the identity stopped being able to do as well
+   * as what it can now.
+   */
+  test("reports where the identity came from", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const first = await group(op.cookie);
+    const second = await group(op.cookie);
+    const identity = uniq("agent");
+
+    const into = await post(`/api/v1/admin/groups/${first}/members`, op.cookie, { identity });
+    expect(await into.json()).toEqual({
+      ok: true, identity, from_group: "default", to_group: first,
+    });
+
+    const moved = await post(`/api/v1/admin/groups/${second}/members`, op.cookie, { identity });
+    expect(await moved.json()).toEqual({
+      ok: true, identity, from_group: first, to_group: second,
+    });
+    expect(groups.membersOf(db, first)).not.toContain(identity);
+    expect(groups.groupOf(db, identity)).toBe(second);
+  });
+});
+
+describe("what a group may send", () => {
+  test("refuses a body it cannot parse, or one naming no group", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const groupId = await group(op.cookie);
+    expect((await post(`/api/v1/admin/groups/${groupId}/egress`, op.cookie, "{not json")).status).toBe(400);
+    for (const to_group of [undefined, 7, "", "has space"]) {
+      const res = await post(`/api/v1/admin/groups/${groupId}/egress`, op.cookie, { to_group });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain("to_group");
+    }
+  });
+
+  /**
+   * **Directional, and the route shape says so.** Agents allowed to report into
+   * an aggregator are not agents it may command; treating the rule as
+   * symmetric would make the narrower grant inexpressible.
+   */
+  test("grants one direction and not the other", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const reporters = await group(op.cookie);
+    const aggregator = await group(op.cookie);
+    const reporter = uniq("reporter");
+    const collector = uniq("collector");
+    await post(`/api/v1/admin/groups/${reporters}/members`, op.cookie, { identity: reporter });
+    await post(`/api/v1/admin/groups/${aggregator}/members`, op.cookie, { identity: collector });
+
+    const res = await post(`/api/v1/admin/groups/${reporters}/egress`, op.cookie,
+      { to_group: aggregator });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true, from_group: reporters, to_group: aggregator });
+
+    expect(groups.maySend(db, reporter, collector).ok).toBe(true);
+    expect(groups.maySend(db, collector, reporter).ok).toBe(false);
+  });
+
+  test("grants a rule to a group that does not exist yet, and it holds when it does", async () => {
+    // The route does not check the far end. A deployment configured before its
+    // groups exist is a deployment configured in whatever order suits it.
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const from = await group(op.cookie);
+    const later = uniq("later");
+    expect((await post(`/api/v1/admin/groups/${from}/egress`, op.cookie, { to_group: later })).status)
+      .toBe(201);
+    const { egress } = await (await get("/api/v1/admin/groups", op.cookie)).json();
+    expect(egress).toContainEqual(expect.objectContaining({
+      from_group: from, to_group: later, granted_by: op.login,
+    }));
+  });
+});
+
+describe("taking a rule back", () => {
+  /**
+   * **`200` either way, and `action` says which.** This answered `404` with
+   * `ok: true` — a status and a body saying opposite things about the same
+   * call — and a contract scenario had ratified it (§ 9.2a).
+   */
+  test("says which of delete and not-found happened, and never disagrees with itself", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const from = await group(op.cookie);
+    const to = await group(op.cookie);
+    await post(`/api/v1/admin/groups/${from}/egress`, op.cookie, { to_group: to });
+
+    const deleted = await del(`/api/v1/admin/groups/${from}/egress/${to}`, op.cookie);
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ ok: true, action: "deleted" });
+
+    const again = await del(`/api/v1/admin/groups/${from}/egress/${to}`, op.cookie);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ ok: true, action: "not-found" });
+  });
+
+  /** Revoking one direction leaves the other alone. */
+  test("takes back only the direction it names", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const a = await group(op.cookie);
+    const b = await group(op.cookie);
+    await post(`/api/v1/admin/groups/${a}/egress`, op.cookie, { to_group: b });
+    await post(`/api/v1/admin/groups/${b}/egress`, op.cookie, { to_group: a });
+
+    await del(`/api/v1/admin/groups/${a}/egress/${b}`, op.cookie);
+    const { egress } = await (await get("/api/v1/admin/groups", op.cookie)).json();
+    expect(egress).not.toContainEqual(expect.objectContaining({ from_group: a, to_group: b }));
+    expect(egress).toContainEqual(expect.objectContaining({ from_group: b, to_group: a }));
+  });
+});
+
+describe("who is answerable for an identity", () => {
+  test("refuses a caller without agent.provision, and an off-pattern name", async () => {
+    const nobody = await holder();
+    expect((await get(`/api/v1/admin/agents/${uniq("a")}/owners`, nobody.cookie)).status).toBe(403);
+    const op = await holder(CAPABILITY.AGENT_PROVISION);
+    const bad = await get("/api/v1/admin/agents/has%20space/owners", op.cookie);
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toContain("invalid identity format");
+  });
+
+  /** Owners are plural, and the answer says how each claim was made. */
+  test("lists every owner, with how the claim was made", async () => {
+    const op = await holder(CAPABILITY.AGENT_PROVISION);
+    const identity = uniq("agent");
+    ownership.assign(db, { identity, owner: uniq("first"), grantedBy: "groups-test" });
+    ownership.assign(db, { identity, owner: uniq("second"), grantedBy: "groups-test" });
+
+    const body = await (await get(`/api/v1/admin/agents/${identity}/owners`, op.cookie)).json();
+    expect(body.ok).toBe(true);
+    expect(body.identity).toBe(identity);
+    expect(body.owners).toHaveLength(2);
+    expect(body.owners.every((o: any) => o.granted_by === "groups-test")).toBe(true);
+  });
+
+  test("answers an empty list for an identity nobody claimed", async () => {
+    const op = await holder(CAPABILITY.AGENT_PROVISION);
+    const body = await (await get(`/api/v1/admin/agents/${uniq("unclaimed")}/owners`, op.cookie)).json();
+    expect(body.owners).toEqual([]);
+  });
+});

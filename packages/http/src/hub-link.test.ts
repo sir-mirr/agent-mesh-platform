@@ -25,7 +25,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "hub-link-probe";
 
-const { app, connectToHub, sseClientCount } = await import("./main.ts");
+const { app, connectToHub, redeclareProxies, sseClientCount } = await import("./main.ts");
 const { getDb, upsertApprovedWebUser, upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 
@@ -560,5 +560,61 @@ describe("sending through the hub", () => {
 
     expect(body.message.status).toBe("failed");
     expect(rowOf(body.message.id)?.status).toBe("failed");
+  });
+});
+
+/**
+ * Saying the claim again, without waiting for a reconnect.
+ *
+ * `mesh.connect` names everyone this service may speak for, and the hub reads
+ * it once. Somebody admitted a minute later is therefore not in it — every
+ * message sent on their behalf is refused until the socket happens to drop,
+ * which could be hours. `redeclareProxies` is what the approval route calls so
+ * that the gap is a moment rather than an outage, and § 8.2 makes the
+ * provisioning half necessary too: the hub checks both halves of a claim
+ * against stored rows, so a person named in the frame but absent from the
+ * registry is a claim it drops.
+ */
+describe("re-declaring who may be spoken for", () => {
+  /**
+   * **Nothing at all when there is no link.** Not an error and not a queued
+   * retry: the next `onopen` sends the current list anyway, so anything kept
+   * here would be a second, older answer to the same question.
+   */
+  test("does nothing when the hub is not connected", async () => {
+    hangUp();
+    hubAccepts();
+    await approvedWebUser();
+    await redeclareProxies();
+    expect(steps).toEqual([]);
+  });
+
+  test("provisions the new person, then names them in a fresh claim", async () => {
+    hubAccepts();
+    const ws = standInSocket();
+    live = ws;
+    connectToHub();
+    await ws.open();
+
+    const before = parse(ws.sent).filter((f) => f.method === "mesh.connect");
+    expect(before).toHaveLength(1);
+
+    // Admitted after the socket opened — the case this exists for.
+    const late = await approvedWebUser();
+    expect(before[0].params.proxy_for).not.toContain(late);
+
+    steps = [];
+    await redeclareProxies();
+
+    const claims = parse(ws.sent).filter((f) => f.method === "mesh.connect");
+    expect(claims).toHaveLength(2);
+    expect(claims[1].params.proxy_for).toContain(late);
+    expect(claims[1].params.identity).toBe(before[0].params.identity);
+
+    // **Registered before claimed**, the same order `onopen` uses. A frame
+    // naming somebody the hub has no row for is a claim it drops.
+    const claimAt = steps.findIndex((s) => s.kind === "ws" && s.frame.method === "mesh.connect");
+    expect(claimAt).toBeGreaterThan(-1);
+    expect(steps.some((s, i) => s.kind === "http" && i < claimAt && s.body.includes(late))).toBe(true);
   });
 });

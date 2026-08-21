@@ -1642,3 +1642,48 @@ describe("paging the audit list", () => {
     expect({ garbage: garbage.length > 0, huge: huge.length <= 200 }).toEqual({ garbage: true, huge: true });
   });
 });
+
+/**
+ * `file_path` on a send, and the two ways it is wrong (§ 15.2).
+ *
+ * The field names a file on **this server's** filesystem, which is why the
+ * route stats it before doing anything else: a send that referenced a path
+ * nobody could read would be accepted, delivered, and then fail at the far end
+ * with an error about a file the recipient never had.
+ *
+ * The refusal comes before the policy check, so the answer does not depend on
+ * whether the sender was allowed to message that agent — a wrong path is wrong
+ * either way, and pinning the order stops a later edit from turning this into
+ * a way to probe who may talk to whom.
+ */
+describe("naming a file on a send", () => {
+  const RECIPIENT = "in-process-with-a-file";
+
+  test("refuses a file_path that is not a string", async () => {
+    upsertApprovedWebUser(RECIPIENT);
+    const res = await asAdmin("/api/v1/messages", "POST", {
+      to: RECIPIENT, text: "in-process-file-path-type", file_path: 7,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("must be a string");
+  });
+
+  test("refuses a path this server cannot see, and names it", async () => {
+    upsertApprovedWebUser(RECIPIENT);
+    const missing = `/nonexistent/in-process-${process.pid}.txt`;
+    const res = await asAdmin("/api/v1/messages", "POST", {
+      to: RECIPIENT, text: "in-process-file-path-missing", file_path: missing,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(missing);
+  });
+
+  /** A path that exists gets past the check — the send then proceeds as any other. */
+  test("accepts a path that is there", async () => {
+    upsertApprovedWebUser(RECIPIENT);
+    const res = await asAdmin("/api/v1/messages", "POST", {
+      to: RECIPIENT, text: "in-process-file-path-present", file_path: import.meta.path,
+    });
+    expect(res.status).toBe(201);
+  });
+});
