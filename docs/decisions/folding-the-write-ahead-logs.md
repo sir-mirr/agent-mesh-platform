@@ -96,6 +96,26 @@ open, on purpose:
 
 So the line is not missing. It was measured, and it buys nothing.
 
+## Where the property is checked, and why twice
+
+`closeDatabases` takes the stores it acts on, defaulting to `hubStores()` —
+the module's own. That is what lets the fold be asserted at all:
+
+- `packages/hub/src/db-stores.test.ts` opens four stores in a directory of its
+  own, fills them until each has a log, and calls the shutdown against those.
+  Every log folds; `audit` folds and stays usable; the module's lazy
+  `selfReminder` handle is not taken along with somebody else's. In-process, so
+  a coverage run sees it.
+- `packages/hub/src/close-databases.test.ts` calls it with no argument, against
+  the singletons, in a **child process** — because a shutdown belongs at the end
+  of a process and a test that calls one has to supply the process. What that
+  file proves is the wiring: that the handles this module opens are the handles
+  the shutdown acts on.
+
+Neither one covers the other. The first would pass with `hubStores()` returning
+the wrong four; the second cannot report a line as covered, because coverage is
+measured in the process that runs the test and this one is not that process.
+
 ## What is *not* established, and the honest reason
 
 Adding `auditDb.close()` was recorded in `docs/deferred.md` as turning `test/`
