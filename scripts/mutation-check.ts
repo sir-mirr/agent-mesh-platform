@@ -399,7 +399,7 @@ const MUTATIONS: Mutation[] = [
     from: '  return Date.parse(`${stamp.replace(" ", "T")}Z`);',
     to: "  return Date.parse(stamp);",
     suite: "packages/http/src/telemetry-behaviour.test.ts",
-    expect: ["reads the stamp as UTC"],
+    expect: ["reads the stamp as UTC, from a machine that is not"],
   },
   {
     id: "telemetry-loses-a-row-it-cannot-date",

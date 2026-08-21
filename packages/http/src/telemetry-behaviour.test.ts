@@ -93,15 +93,30 @@ describe("the admission queue", () => {
   });
 
   /**
-   * **UTC, stamped rather than assumed.** `CURRENT_TIMESTAMP` carries no zone
-   * marker, so handing it to `Date.parse` reads it as local time — a queue
-   * reported hours older or younger than it is, in whichever direction the
-   * server happens to sit from UTC.
+   * **UTC, stamped rather than assumed** — and asserted from a machine that is
+   * not on it.
+   *
+   * `CURRENT_TIMESTAMP` carries no zone marker, so handing it to `Date.parse`
+   * reads it as local time: a queue reported older or younger than it is by
+   * exactly the server's offset. UTC is the one machine where that is
+   * harmless, and `bun test` runs with `TZ=UTC` by default — so the registered
+   * mutation that drops the `Z` survived this test until it moved the zone.
+   * A property only observable off UTC has to be asserted off UTC.
    */
-  test("reads the stamp as UTC", () => {
-    expect(parseSqliteUtc("2027-05-05 11:00:00")).toBe(Date.parse("2027-05-05T11:00:00.000Z"));
-    const r = readBehaviour(deps({ pendingApprovals: () => [{ requested_at: "2027-05-05 11:00:00" }] }));
-    expect(r.oldestPendingUserMs).toBe(3_600_000);
+  test("reads the stamp as UTC, from a machine that is not", () => {
+    const real = process.env.TZ;
+    process.env.TZ = "Asia/Seoul";                       // +09:00
+    try {
+      expect(new Date().getTimezoneOffset()).not.toBe(0);   // the premise, not the property
+      expect(parseSqliteUtc("2027-05-05 11:00:00")).toBe(Date.parse("2027-05-05T11:00:00.000Z"));
+      const r = readBehaviour(deps({
+        pendingApprovals: () => [{ requested_at: "2027-05-05 11:00:00" }],
+      }));
+      expect(r.oldestPendingUserMs).toBe(3_600_000);
+    } finally {
+      if (real === undefined) delete process.env.TZ;
+      else process.env.TZ = real;
+    }
   });
 
   /** Nobody waiting is an age of zero — the question was answered. */
