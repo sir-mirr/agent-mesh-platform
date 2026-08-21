@@ -826,11 +826,17 @@ app.post('/auth/local', async (c) => {
   const fail = (status: 400 | 401, error: string, redirect: string) =>
     wantsJson ? c.json({ ok: false, error }, status) : c.redirect(redirect)
 
-  const body = sentJson
-    ? await c.req.json().catch(() => ({} as Record<string, unknown>))
-    : await c.req.parseBody()
-  const username = (body as Record<string, unknown>).username as string
-  const password = (body as Record<string, unknown>).password as string
+  // **A body that parses is not a body with fields.** `null` is valid JSON, and
+  // reading `.username` off it threw — so the one malformed body this route
+  // answered with `500` was the one it could parse, while `"a string"`, `[]`
+  // and `123` all got the `400` they should. A public sign-in route that can be
+  // made to log an unhandled error by posting four characters is also a free
+  // way to fill somebody's log.
+  const parsed = sentJson ? await c.req.json().catch(() => null) : await c.req.parseBody()
+  const body: Record<string, unknown> =
+    parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+  const username = body.username as string
+  const password = body.password as string
 
   if (!username || !password) {
     return fail(400, 'username and password are required', '/?error=missing')

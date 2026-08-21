@@ -432,6 +432,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["tell an account still waiting that it is waiting"],
   },
   {
+    id: "sign-in-crashes-on-a-body-it-can-parse",
+    defect:
+      "`POST /auth/local` read its fields straight off whatever the body parsed to. `null` is valid JSON, so the one malformed body this route could parse became an unhandled `TypeError` and a `500`, while `\"a string\"`, `[]` and `123` all got the `400` they should. Four characters on an unauthenticated route, answered with the server's error handler.",
+    file: "packages/http/src/main.ts",
+    from: "  const body: Record<string, unknown> =\n    parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}",
+    to: "  const body = parsed as Record<string, unknown>",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["refuses every body that carries no credential, in one shape"],
+  },
+  {
     id: "sign-in-form-says-which-half-was-wrong",
     defect:
       "The form's failed sign-in stopped using one redirect for both causes, so `?error=` distinguishes an unknown username from a wrong password. That turns the landing page into an account enumerator: a caller learns which names exist without ever holding a credential.",

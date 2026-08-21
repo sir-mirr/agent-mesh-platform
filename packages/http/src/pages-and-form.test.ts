@@ -147,6 +147,38 @@ describe("the chat pages", () => {
   });
 });
 
+describe("the JSON half of the same form", () => {
+  const asJson = (body: string) =>
+    app.fetch(new Request("http://pg-probe/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      redirect: "manual",
+    }));
+
+  /**
+   * **A body that parses is not a body with fields.** `null` is valid JSON,
+   * and reading `.username` off it threw — so the one malformed body this
+   * route could parse was the one it answered with `500`, while `"a string"`,
+   * `[]` and `123` all got the refusal they should. Four characters on a
+   * public sign-in route is also a free way to fill somebody's error log.
+   */
+  test("refuses every body that carries no credential, in one shape", async () => {
+    for (const body of ["null", '"a string"', "[]", "123", "{}", '{"username":"someone"}']) {
+      const res = await asJson(body);
+      expect(`${body} -> ${res.status}`).toBe(`${body} -> 400`);
+      expect(await res.json()).toEqual({ ok: false, error: "username and password are required" });
+    }
+  });
+
+  /** A body that is not JSON at all is the same refusal, not a parser error. */
+  test("refuses a body it cannot parse the same way", async () => {
+    const res = await asJson("{ not json");
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("username and password are required");
+  });
+});
+
 describe("asking who you are", () => {
   /** The one place a session is *asked about* rather than used, so it refuses in JSON. */
   test("refuses without a session, in the shape a client can read", async () => {
