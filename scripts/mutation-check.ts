@@ -5969,12 +5969,23 @@ const MUTATIONS: Mutation[] = [
     id: "lifecycle-request-needs-open-socket",
     swept: true,
     defect:
-      "`ready` says the hub accepted the registration; it does not say the socket is still open. Sending on a closing socket throws inside the promise and the caller gets `rpc_send_failed` for what is really an unavailable hub.",
+      "`ready` says the hub accepted the registration; it does not say the socket is still open. Sending on a closing socket throws where a real socket is used, and the caller gets `rpc_send_failed` for what is really an unavailable hub.",
     file: "packages/self-reminder/src/lifecycle.ts",
-    from: "    if (!this.ready || !current || current.ws.readyState !== 1) {",
-    to: "    if (!this.ready || !current) {",
+    from: "    if (!this.owns(current.generation, current.ws) || current.ws.readyState !== 1) {",
+    to: "    if (!this.owns(current.generation, current.ws)) {",
     suite: "packages/self-reminder/src/lifecycle.test.ts",
-    expect: ["is unavailable while the registered socket is closing"],
+    expect: ["is unavailable while the registered socket is closing", "rpc_send_failed"],
+  },
+  {
+    id: "lifecycle-request-needs-registration",
+    swept: true,
+    defect:
+      "A request sent before `mesh.connect` was answered goes onto a socket the hub has not associated with an identity. The hub answers nothing, so it does not fail — it waits for the RPC deadline, once per call, for as long as registration is in flight.",
+    file: "packages/self-reminder/src/lifecycle.ts",
+    from: "    if (!this.ready || !current) {",
+    to: "    if (!current) {",
+    suite: "packages/self-reminder/src/lifecycle.test.ts",
+    expect: ["is unavailable before the hub has accepted the registration", "mesh.connect"],
   },
   {
     id: "lifecycle-rpc-timeout-category",

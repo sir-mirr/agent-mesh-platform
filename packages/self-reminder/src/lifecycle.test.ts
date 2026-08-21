@@ -11,7 +11,12 @@ class FakeSocket implements SocketLike {
   on(event: "open" | "message" | "close" | "error", listener: (...args: any[]) => void): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
   }
-  send(data: string): void { this.sent.push(JSON.parse(data)); }
+  send(data: string): void {
+    // What a real socket does: sending on one that is not open throws, rather
+    // than accepting a frame nobody will read.
+    if (this.readyState !== 1) throw new Error("InvalidStateError: socket is not open");
+    this.sent.push(JSON.parse(data));
+  }
   close(): void { this.closed = true; this.readyState = 3; this.emit("close"); }
   emit(event: "open" | "message" | "close" | "error", ...args: any[]): void {
     if (event === "open") this.readyState = 1;
@@ -178,7 +183,10 @@ describe("HubLifecycle.request", () => {
     const h = harness();
     h.lifecycle.start();
     h.sockets[0]!.emit("open");
-    expect(await categoryOf(h.lifecycle.request("reminders.due", {}))).toBe("hub_unavailable");
+
+    const rejected = h.lifecycle.request("reminders.due", {});
+    expect(h.sockets[0]!.sent.map((frame) => frame.method)).toEqual(["mesh.connect"]);
+    expect(await categoryOf(rejected)).toBe("hub_unavailable");
   });
 
   test("is unavailable after the socket closes", async () => {
@@ -190,6 +198,9 @@ describe("HubLifecycle.request", () => {
   test("is unavailable while the registered socket is closing", async () => {
     const h = await registered();
     h.sockets[0]!.readyState = 2;
+
+    // Not `rpc_send_failed`: the frame is refused before it is written, so the
+    // caller is told the hub is unreachable rather than that its request broke.
     expect(await categoryOf(h.lifecycle.request("reminders.due", {}))).toBe("hub_unavailable");
     expect(h.sockets[0]!.sent).toHaveLength(1);
   });

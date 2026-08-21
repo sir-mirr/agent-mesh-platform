@@ -96,7 +96,12 @@ export class HubLifecycle {
 
   request(method: string, params: Record<string, unknown>): Promise<any> {
     const current = this.current;
-    if (!this.ready || !current || current.ws.readyState !== 1) {
+    // Registration only. Whether the socket is still open is decided in one
+    // place, `requestOn`, which every caller goes through — and which answers
+    // *"hub socket is not open"* rather than repeating this one's "not
+    // registered", the less true of the two for a socket that registered and
+    // is now closing.
+    if (!this.ready || !current) {
       return Promise.reject(new HubRpcError("hub is not registered", "hub_unavailable"));
     }
     return this.requestOn(current, method, params);
