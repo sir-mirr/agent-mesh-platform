@@ -103,6 +103,29 @@ describe("reading a run", () => {
     expect(readVerdict(output, EXPECT, 0)).toEqual({ kind: "not-caught" });
   });
 
+  /**
+   * **A failure message can quote something shaped like a summary.** Bun prints
+   * its counts at the end and everything above them is the run's own output, so
+   * reading the *first* `N pass` reads whatever the test happened to print.
+   *
+   * Observed, not imagined: `exiting-zero-is-reported-as-a-result` mutates a
+   * broadcast into the words `0 pass / 0 fail`, the assertion failure quotes it
+   * back, and a correctly caught mutation was reported as *nothing ran* — this
+   * script producing a wrong verdict about its own blindness, which is the
+   * failure it exists to hunt arriving one level up.
+   */
+  test("reads the summary at the end, not a summary the run quoted", () => {
+    const output = [
+      "(fail) a socket that dropped the frame",
+      'Received: "[측정 종료] 0 pass / 0 fail · exit 0"',
+      "",
+      " 5 pass",
+      " 1 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1)).toEqual({ kind: "caught" });
+  });
+
   test("a one-test suite whose only test failed is still a verdict", () => {
     // **The regression.** `message-status.test.ts` holds one test, so a caught
     // mutation reports `0 pass / 1 fail` — indistinguishable by count from a

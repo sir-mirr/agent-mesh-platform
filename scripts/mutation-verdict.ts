@@ -27,8 +27,20 @@ export type Verdict =
  * own.
  */
 export function readVerdict(output: string, expect: string[], exitCode: number): Verdict {
-  const passed = Number(/(\d+) pass/.exec(output)?.[1] ?? "0");
-  const failed = Number(/(\d+) fail/.exec(output)?.[1] ?? "0");
+  // **The last counts, not the first.** Bun prints its summary at the end, and
+  // everything before it is the run's own output — including a failure message
+  // quoting a string that happens to read like a summary. That is not
+  // hypothetical: `exiting-zero-is-reported-as-a-result` mutates a broadcast to
+  // say `0 pass / 0 fail`, the assertion failure quotes it, and reading the
+  // first match made a correctly caught mutation report as *nothing ran*. A
+  // verdict this script produces about its own blindness is the failure it
+  // exists to hunt, arriving one level up.
+  const counts = (unit: string): number => {
+    const seen = [...output.matchAll(new RegExp(`(\\d+) ${unit}`, "g"))];
+    return Number(seen.at(-1)?.[1] ?? "0");
+  };
+  const passed = counts("pass");
+  const failed = counts("fail");
   const expected = expect.every((e) => output.includes(e));
   // Bun's phrasing when a suite dies before its tests.
   const hookDied = /\bhook (timed out|failed|threw)/i.test(output);
