@@ -86,6 +86,15 @@ export interface Sink {
   err(line: string): void;
 }
 
+/**
+ * Drops the lines. For a default -- a service that was handed no sink is silent
+ * rather than noisy -- and for a test that only reads the counters.
+ *
+ * The event is still counted. The sink decides where a line goes, including
+ * nowhere; it does not decide whether the event happened.
+ */
+export const silentSink: Sink = { out: () => {}, err: () => {} };
+
 export const consoleSink: Sink = {
   out: (line) => console.log(line),
   err: (line) => console.error(line),

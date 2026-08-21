@@ -1,3 +1,5 @@
+import { createLogger, silentSink, type Logger } from "@agent-mesh/log";
+
 export interface SocketLike {
   readonly readyState: number;
   on(event: "open" | "message" | "close" | "error", listener: (...args: any[]) => void): void;
@@ -14,7 +16,7 @@ export interface HubLifecycleOptions {
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
-  log?: (event: string, fields?: Record<string, unknown>) => void;
+  log?: Logger;
   onConnectivityState?: (state: "connecting" | "registered" | "unavailable") => void;
   onUnavailable?: (category: string) => void;
   onRegistered?: () => void | Promise<void>;
@@ -53,7 +55,7 @@ export class HubLifecycle {
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
   private readonly clearTimer: (timer: ReturnType<typeof setTimeout>) => void;
-  private readonly log: (event: string, fields?: Record<string, unknown>) => void;
+  private readonly log: Logger;
   private generation = 0;
   private current: { generation: number; ws: SocketLike } | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,7 +72,7 @@ export class HubLifecycle {
     this.now = options.now ?? Date.now;
     this.setTimer = options.setTimer ?? setTimeout;
     this.clearTimer = options.clearTimer ?? clearTimeout;
-    this.log = options.log ?? (() => {});
+    this.log = options.log ?? createLogger("self-reminder", silentSink);
   }
 
   isReady(): boolean {
@@ -121,7 +123,7 @@ export class HubLifecycle {
     this.current = { generation, ws };
     this.ready = false;
     this.options.onConnectivityState?.("connecting");
-    this.log("hub_connecting", { generation });
+    this.log.info("connecting to the hub", "hub_connecting", { generation });
 
     ws.on("open", () => {
       if (!this.owns(generation, ws)) return;
@@ -131,7 +133,7 @@ export class HubLifecycle {
     ws.on("close", () => this.handleClose(generation, ws));
     ws.on("error", () => {
       if (!this.owns(generation, ws)) return;
-      this.log("hub_socket_error", { generation });
+      this.log.warn("the hub socket reported an error", "hub_socket_error", { generation });
     });
   }
 
@@ -145,7 +147,11 @@ export class HubLifecycle {
       this.ready = true;
       this.reconnectAttempt = 0;
       this.options.onConnectivityState?.("registered");
-      this.log("hub_registered", { generation });
+      this.log.info("registered with the hub", "hub_registered", {
+        generation,
+        actor: this.options.identity,
+        outcome: "registered",
+      });
       // **Named for a failure it cannot observe.** `onHubRegistered` catches
       // every `sendAlert` rejection inside its own loop and does not rethrow,
       // so this handler never sees an alert that failed to send — those are
@@ -158,16 +164,21 @@ export class HubLifecycle {
       // and the message too — a category alone says which family, and the
       // family for anything that is not a hub error is the unhelpful one.
       void Promise.resolve(this.options.onRegistered?.()).catch((error) => {
-        this.log("hub_post_registration_failed", {
+        this.log.error("recovery work after registering failed", "hub_post_registration_failed", {
           generation,
-          error_category: hubErrorCategory(error),
+          reason: hubErrorCategory(error),
           error: error instanceof Error ? error.message : String(error),
         });
       });
     } catch (error) {
       if (!this.owns(generation, ws)) return;
       const category = error instanceof HubRpcError ? error.category : "registration_failed";
-      this.log("hub_registration_rejected", { generation, error_category: category });
+      this.log.error("the hub refused to register this service", "hub_registration_rejected", {
+        generation,
+        actor: this.options.identity,
+        outcome: "refused",
+        reason: category,
+      });
       this.rejectAndReconnect(generation, ws, category);
     }
   }
@@ -201,7 +212,11 @@ export class HubLifecycle {
     try {
       message = JSON.parse(String(data));
     } catch {
-      this.log("hub_message_parse_error", { generation });
+      this.log.warn("dropped a frame from the hub that is not JSON", "frame_dropped", {
+        generation,
+        outcome: "dropped",
+        reason: "not_json",
+      });
       return;
     }
     if (message.id === undefined || message.id === null) return;
@@ -248,7 +263,10 @@ export class HubLifecycle {
     if (this.stopped || this.reconnectTimer) return;
     const exponent = Math.min(this.reconnectAttempt++, 10);
     const delay = Math.min(this.reconnectMaxMs, this.reconnectBaseMs * 2 ** exponent);
-    this.log("hub_reconnect_scheduled", { delay_ms: delay, attempt: this.reconnectAttempt });
+    this.log.info("will reconnect to the hub after a delay", "hub_reconnect_scheduled", {
+      delay_ms: delay,
+      attempt: this.reconnectAttempt,
+    });
     this.reconnectTimer = this.setTimer(() => {
       this.reconnectTimer = null;
       this.connect();

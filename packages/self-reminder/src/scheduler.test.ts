@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
+import { createRecordingLogger } from "@agent-mesh/log";
+
 import { ReminderScheduler, fireKey } from "./scheduler";
 
 function testDb(): Database {
@@ -225,13 +227,13 @@ describe("interval reminders repeat", () => {
     const now = new Date("2026-07-14T09:00:00.000Z");
     db.prepare(`INSERT INTO reminders (id, agent_id, type, schedule_spec, payload, context, status, next_fire_at, created_by) VALUES ('bad', 'agent-a', 'weekly', '{"every":"7d"}', 'body', '{}', 'active', ?, 'agent-a')`)
       .run("2026-07-14 09:00:00");
-    const events: Array<[string, Record<string, unknown>]> = [];
-    const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
+    const log = createRecordingLogger("self-reminder");
+    const scheduler = new ReminderScheduler(db, { now: () => now, log });
 
     await scheduler.advanceDue(true, async () => ({ status: "delivered" }));
 
     expect(rowOf(db, "bad").status).toBe("dead");
-    expect(events.some(([e]) => e === "advance_failed")).toBe(true);
+    expect(log.recorded("advance_failed")).toHaveLength(1);
   });
 
   test("an interval whose spec lost its `every` dies rather than repeating blindly", async () => {
@@ -392,13 +394,13 @@ describe("a fire is delivered under a key that identifies the fire", () => {
     const db = testDb();
     const now = new Date("2026-07-14T09:00:00.000Z");
     addDue(db, "2026-07-14 09:00:00");
-    const events: Array<[string, Record<string, unknown>]> = [];
-    const scheduler = new ReminderScheduler(db, { now: () => now, log: (e, f) => events.push([e, f]) });
+    const log = createRecordingLogger("self-reminder");
+    const scheduler = new ReminderScheduler(db, { now: () => now, log });
 
     await scheduler.advanceDue(true, async () => ({ status: "delivered", duplicate: true }));
 
-    const fired = events.find(([e]) => e === "reminder_fired");
-    expect(fired?.[1].deduplicated).toBe(true);
+    const [fired] = log.recorded("reminder_fired");
+    expect(fired?.event.deduplicated).toBe(true);
   });
 
   test("the envelope carries a per-fire handle a consumer can deduplicate on", async () => {

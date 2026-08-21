@@ -7,6 +7,7 @@
  */
 import { createHash } from "node:crypto";
 
+import { createLogger } from "@agent-mesh/log";
 import { checkpointForShutdown, openAt, selfReminderSchema } from "@agent-mesh/store";
 import WebSocket from "ws";
 
@@ -34,9 +35,7 @@ const RECOVERY_ALERT_RECIPIENTS = (process.env.SELF_REMINDER_RECOVERY_ALERT_RECI
   .map((value) => value.trim())
   .filter(Boolean);
 
-function log(event: string, fields: Record<string, unknown> = {}): void {
-  console.log(`[self-reminder ${new Date().toISOString()}] ${event}`, JSON.stringify(fields));
-}
+const log = createLogger("self-reminder");
 
 // `openAt` rather than `new Database` with the two pragmas repeated here. They
 // were identical, which is exactly how a second copy stays invisible: WAL and
@@ -46,7 +45,13 @@ const db = openAt(DB_PATH, { create: true });
 selfReminderSchema.migrate(db);
 
 const recovered = db.prepare(`UPDATE reminders SET status = 'active', updated_at = datetime('now') WHERE status = 'firing'`).run();
-if (recovered.changes > 0) log("recovered_stuck_firing_rows", { count: recovered.changes });
+if (recovered.changes > 0) {
+  log.warn("recovered reminders left mid-fire by an earlier crash", "recovered_stuck_firing_rows", {
+    count: recovered.changes,
+    outcome: "recovered",
+    reason: "left_firing",
+  });
+}
 
 const scheduler = new ReminderScheduler(db, {
   overdueHoldMs: OVERDUE_HOLD_MS,
@@ -93,7 +98,12 @@ const poll = setInterval(() => {
     // anything. This is also simply truer.
     lifecycle.request("mesh.send", { to: reminder.agent_id, content, client_message_id: clientMessageId })
       .catch((error) => {
-        log("reminder_delivery_rpc_failed", { reminder_id: reminder.id, error_category: hubErrorCategory(error) });
+        log.error("the hub refused or lost a reminder send", "reminder_delivery_rpc_failed", {
+          id: reminder.id,
+          actor: reminder.agent_id,
+          outcome: "failed",
+          reason: hubErrorCategory(error),
+        });
         throw error;
       }));
 }, POLL_MS);
@@ -113,7 +123,7 @@ const poll = setInterval(() => {
  * checkpoint's own budget is 250ms.
  */
 function shutdown(signal: string): void {
-  log("shutting_down", { signal });
+  log.info("shutting down", "shutting_down", { reason: signal.toLowerCase() });
   clearInterval(poll);
   try {
     lifecycle.stop();
@@ -122,11 +132,16 @@ function shutdown(signal: string): void {
   }
   checkpointForShutdown(db);
   db.close();
-  log("shutdown_complete", {});
+  log.info("shutdown complete", "shutdown_complete", { outcome: "clean" });
   process.exit(0);
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-log("scheduler_started", { db_path: DB_PATH, poll_ms: POLL_MS, identity: IDENTITY, overdue_policy: "hold_pending_operator_decision" });
+log.info("scheduler started", "scheduler_started", {
+  actor: IDENTITY,
+  db_path: DB_PATH,
+  poll_ms: POLL_MS,
+  overdue_policy: "hold_pending_operator_decision",
+});

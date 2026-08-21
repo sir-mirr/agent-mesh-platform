@@ -24,6 +24,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
+import { createRecordingLogger } from "@agent-mesh/log";
+
 import { HubRpcError } from "./lifecycle";
 import { ReminderScheduler } from "./scheduler";
 
@@ -118,14 +120,14 @@ describe("delivering the recovery alert itself", () => {
     // longest: nothing downstream reads it, so nothing downstream could be
     // wrong in a way anybody noticed.
     const db = testDb();
-    const logs: Array<{ event: string; fields: Record<string, unknown> }> = [];
+    const log = createRecordingLogger("self-reminder");
     const scheduler = new ReminderScheduler(db, {
       now: () => new Date("2026-07-14T00:00:00.000Z"),
       overdueHoldMs: 60_000,
       stalledAfterMs: 60_000,
       stallLogIntervalMs: 60_000,
       recoveryAlertRecipients: ["ops"],
-      log: (event: string, fields: Record<string, unknown>) => { logs.push({ event, fields }); },
+      log,
     } as any);
     scheduler.setConnectivity("unavailable", "hub_unavailable");
 
@@ -133,8 +135,8 @@ describe("delivering the recovery alert itself", () => {
       throw new HubRpcError("no egress rule", "egress_denied");
     });
 
-    const failed = logs.find((l) => l.event === "scheduler_recovery_alert_delivery_failed");
+    const [failed] = log.recorded("scheduler_recovery_alert_delivery_failed");
     expect(failed, "the alert delivery did not fail, so this proves nothing").toBeDefined();
-    expect(failed!.fields.error_category).toBe("egress_denied");
+    expect(failed!.event.reason).toBe("egress_denied");
   });
 });

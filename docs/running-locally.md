@@ -315,8 +315,8 @@ curl -s -X POST "http://127.0.0.1:$HUB_PORT/api/v1/agents" \
 ```
 HTTP 201  {"ok":true,"identity":"self-reminder","type":"service",...,"action":"inserted"}
 
-[self-reminder] scheduler_started {"poll_ms":1000,"identity":"self-reminder",...}
-[self-reminder] hub_registered    {"generation":1}
+2026-08-22T05:00:00.000Z info [self-reminder] scheduler started {"ts":...,"event":"scheduler_started","actor":"self-reminder","poll_ms":1000,...}
+2026-08-22T05:00:00.100Z info [self-reminder] registered with the hub {"ts":...,"event":"hub_registered","actor":"self-reminder","outcome":"registered","generation":1}
 ```
 
 No key in the response, none in the database (`SELECT ... FROM agent_keys` is

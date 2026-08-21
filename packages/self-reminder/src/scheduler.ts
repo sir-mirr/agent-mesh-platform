@@ -1,4 +1,5 @@
 import { hubErrorCategory } from "./lifecycle";
+import { createLogger, silentSink, type Logger } from "@agent-mesh/log";
 import { nextIntervalFire, parseScheduleSpec } from "@agent-mesh/contracts";
 import { createHash } from "node:crypto";
 
@@ -22,7 +23,7 @@ export interface SchedulerOptions {
   overdueHoldMs?: number;
   stalledAfterMs?: number;
   stallLogIntervalMs?: number;
-  log?: (event: string, fields: Record<string, unknown>) => void;
+  log?: Logger;
   /** Identities notified when the scheduler recovers from a hub outage.
    *  Deployment-specific — the scheduler ships with no built-in recipients. */
   recoveryAlertRecipients?: readonly string[];
@@ -99,7 +100,7 @@ export class ReminderScheduler {
   private readonly overdueHoldMs: number;
   private readonly stalledAfterMs: number;
   private readonly stallLogIntervalMs: number;
-  private readonly log: (event: string, fields: Record<string, unknown>) => void;
+  private readonly log: Logger;
   private readonly recoveryAlertRecipients: readonly string[];
   private readonly overdueApprovalPrefix: string;
   private ticking = false;
@@ -109,7 +110,7 @@ export class ReminderScheduler {
     this.overdueHoldMs = options.overdueHoldMs ?? 5 * 60_000;
     this.stalledAfterMs = options.stalledAfterMs ?? 5 * 60_000;
     this.stallLogIntervalMs = options.stallLogIntervalMs ?? 5 * 60_000;
-    this.log = options.log ?? (() => {});
+    this.log = options.log ?? createLogger("self-reminder", silentSink);
     this.recoveryAlertRecipients = options.recoveryAlertRecipients ?? [];
     this.overdueApprovalPrefix = options.overdueApprovalPrefix ?? "APPROVED:";
     this.migrate();
@@ -150,7 +151,10 @@ export class ReminderScheduler {
     this.putState("recovery_alert_outage", outageStarted, now);
     this.recordEvent("scheduler_recovered", { outage_started: outageStarted, due_active_count: dueCount, error_category: category }, now);
     if (this.recoveryAlertRecipients.length === 0) {
-      this.log("scheduler_recovery_alert_skipped", { reason: "no_recipients_configured" });
+      this.log.warn("recovered, but no recipient is configured for the alert", "scheduler_recovery_alert_skipped", {
+        outcome: "skipped",
+        reason: "no_recipients_configured",
+      });
       return;
     }
     for (const recipient of this.recoveryAlertRecipients) {
@@ -164,9 +168,10 @@ export class ReminderScheduler {
         // case the constant is right for is the case where the real answer is
         // unavailable anyway, and every other case it overwrites an answer that
         // was there.
-        this.log("scheduler_recovery_alert_delivery_failed", {
-          recipient,
-          error_category: hubErrorCategory(error),
+        this.log.error("could not deliver the recovery alert", "scheduler_recovery_alert_delivery_failed", {
+          actor: recipient,
+          outcome: "failed",
+          reason: hubErrorCategory(error),
         });
       }
     }
@@ -217,8 +222,10 @@ export class ReminderScheduler {
           this.insertAudit(reminder, status, result.id ?? null, null, now);
           this.advanceOrComplete(reminder, now);
           this.putState("last_successful_reminder_fire", now.toISOString(), now);
-          this.log("reminder_fired", {
-            reminder_id: reminder.id,
+          this.log.info("fired a reminder", "reminder_fired", {
+            id: reminder.id,
+            actor: reminder.agent_id,
+            outcome: status,
             delivery_status: status,
             // True when this fire had already reached the hub and only the
             // response was lost. Worth seeing: it is the difference between a
@@ -236,7 +243,12 @@ export class ReminderScheduler {
           this.insertAudit(reminder, "failed", null, category, now);
           this.db.prepare(`UPDATE reminders SET status = 'active', updated_at = ? WHERE id = ?`).run(nowSql, reminder.id);
           this.putState("last_hub_error_category", category, now);
-          this.log("reminder_fire_failed", { reminder_id: reminder.id, error_category: category });
+          this.log.error("a reminder could not be delivered", "reminder_fire_failed", {
+            id: reminder.id,
+            actor: reminder.agent_id,
+            outcome: "failed",
+            reason: category,
+          });
         }
       }
       this.maybeRecordStall("no_successful_fire", due.length, now);
@@ -292,7 +304,12 @@ export class ReminderScheduler {
     if (!this.getState(holdKey)) {
       this.putState(holdKey, now.toISOString(), now);
       this.recordEvent("overdue_hold", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_operator_decision" }, now);
-      this.log("overdue_reminder_held", { reminder_id: reminder.id, scheduled_at: reminder.next_fire_at, reason: "awaiting_operator_decision" });
+      this.log.warn("holding an overdue reminder for an operator", "overdue_reminder_held", {
+        id: reminder.id,
+        scheduled_at: reminder.next_fire_at,
+        outcome: "held",
+        reason: "awaiting_operator_decision",
+      });
     }
     return true;
   }
@@ -309,7 +326,11 @@ export class ReminderScheduler {
     this.putState("last_scheduler_stalled", now.toISOString(), now);
     this.putState("last_stall_category", category, now);
     this.recordEvent("scheduler_stalled", { due_active_count: dueCount, error_category: category }, now);
-    this.log("scheduler_stalled", { due_active_count: dueCount, error_category: category });
+    this.log.error("the scheduler is stalled", "scheduler_stalled", {
+      due_active_count: dueCount,
+      outcome: "stalled",
+      reason: category,
+    });
   }
 
   /**
@@ -335,11 +356,12 @@ export class ReminderScheduler {
       // `dead`, not `active`: the spec cannot be parsed, so retrying would fail
       // identically every scan and the row would churn the log forever.
       this.db.prepare(`UPDATE reminders SET status = 'dead', updated_at = ? WHERE id = ?`).run(nowSql, reminder.id);
-      this.log("advance_failed", {
-        reminder_id: reminder.id,
+      this.log.error("cannot schedule the next fire, so the reminder is dead", "advance_failed", {
+        id: reminder.id,
         reminder_type: reminder.type,
-        error_category: "invalid_schedule",
-        reason: err instanceof Error ? err.message : String(err),
+        outcome: "dead",
+        reason: "invalid_schedule",
+        error: err instanceof Error ? err.message : String(err),
       });
       return;
     }

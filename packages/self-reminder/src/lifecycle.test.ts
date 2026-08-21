@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { createRecordingLogger, type RecordingLogger } from "@agent-mesh/log";
+
 import { HubLifecycle, type HubLifecycleOptions, type SocketLike } from "./lifecycle";
 
 class FakeSocket implements SocketLike {
@@ -92,23 +94,23 @@ class ClosePanicSocket extends FakeSocket {
 interface Harness {
   lifecycle: HubLifecycle;
   sockets: FakeSocket[];
-  logs: Array<{ event: string; fields: Record<string, unknown> | undefined }>;
+  log: RecordingLogger;
   timers: () => Array<{ fn: () => void; ms: number }>;
 }
 
 function harness(options: Partial<HubLifecycleOptions> = {}): Harness {
   const sockets: FakeSocket[] = [];
   let timers: Array<{ fn: () => void; ms: number }> = [];
-  const logs: Array<{ event: string; fields: Record<string, unknown> | undefined }> = [];
+  const log = createRecordingLogger("self-reminder", () => "2026-08-22T05:00:00.000Z");
   const lifecycle = new HubLifecycle({
     identity: "self-reminder",
     createSocket: () => { const socket = new FakeSocket(); sockets.push(socket); return socket; },
     setTimer: (fn, ms) => { const timer = { fn, ms }; timers.push(timer); return timer as any; },
     clearTimer: (timer) => { timers = timers.filter((candidate) => candidate !== (timer as unknown as { fn: () => void })); },
-    log: (event, fields) => logs.push({ event, fields }),
+    log,
     ...options,
   });
-  return { lifecycle, sockets, logs, timers: () => timers };
+  return { lifecycle, sockets, log, timers: () => timers };
 }
 
 /** Drives a harness to the point where the hub has accepted the registration. */
@@ -249,9 +251,16 @@ describe("HubLifecycle socket errors", () => {
   test("an error on the owning socket is logged against its generation", async () => {
     const h = await registered();
     h.sockets[0]!.emit("error", new Error("ECONNRESET"));
-    const logged = h.logs.filter((entry) => entry.event === "hub_socket_error");
+    const logged = h.log.recorded("hub_socket_error");
     expect(logged).toHaveLength(1);
-    expect(logged[0]!.fields).toEqual({ generation: 1 });
+    expect(logged[0]!.sentence).toBe("the hub socket reported an error");
+    expect(logged[0]!.event).toEqual({
+      ts: "2026-08-22T05:00:00.000Z",
+      level: "warn",
+      component: "self-reminder",
+      event: "hub_socket_error",
+      generation: 1,
+    });
     expect(h.lifecycle.isReady()).toBe(true);
   });
 
@@ -267,7 +276,7 @@ describe("HubLifecycle socket errors", () => {
     await Promise.resolve();
 
     h.sockets[0]!.emit("error", new Error("ECONNRESET"));
-    expect(h.logs.filter((entry) => entry.event === "hub_socket_error")).toHaveLength(0);
+    expect(h.log.recorded("hub_socket_error")).toHaveLength(0);
   });
 });
 
@@ -279,9 +288,17 @@ describe("HubLifecycle post-registration work", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const logged = h.logs.filter((entry) => entry.event === "hub_post_registration_failed");
+    const logged = h.log.recorded("hub_post_registration_failed");
     expect(logged).toHaveLength(1);
-    expect(logged[0]!.fields).toEqual({ generation: 1, error_category: "hub_rpc_failed", error: "state write failed" });
+    expect(logged[0]!.event).toEqual({
+      ts: "2026-08-22T05:00:00.000Z",
+      level: "error",
+      component: "self-reminder",
+      event: "hub_post_registration_failed",
+      generation: 1,
+      reason: "hub_rpc_failed",
+      error: "state write failed",
+    });
     expect(h.lifecycle.isReady()).toBe(true);
   });
 
@@ -290,9 +307,9 @@ describe("HubLifecycle post-registration work", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    const logged = h.logs.filter((entry) => entry.event === "hub_post_registration_failed");
+    const logged = h.log.recorded("hub_post_registration_failed");
     expect(logged).toHaveLength(1);
-    expect(logged[0]!.fields?.error).toBe("no reason given");
+    expect(logged[0]!.event.error).toBe("no reason given");
   });
 
   test("work that succeeds reports nothing", async () => {
@@ -302,6 +319,6 @@ describe("HubLifecycle post-registration work", () => {
     await Promise.resolve();
 
     expect(ran).toBe(1);
-    expect(h.logs.filter((entry) => entry.event === "hub_post_registration_failed")).toHaveLength(0);
+    expect(h.log.recorded("hub_post_registration_failed")).toHaveLength(0);
   });
 });
