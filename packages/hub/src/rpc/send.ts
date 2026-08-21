@@ -161,7 +161,14 @@ export function handleSend(
   // which messages disappear with no error anywhere.
   const egress = groups.maySend(agentsDb, effectiveSender, to);
   if (!egress.ok) {
-    log(`refused: ${effectiveSender} (${egress.fromGroup}) may not send to ${to} (${egress.toGroup})`);
+    log.warn(`refused a send: no egress rule from '${egress.fromGroup}' to '${egress.toGroup}'`, "send_refused", {
+      actor: effectiveSender,
+      to,
+      from_group: egress.fromGroup,
+      to_group: egress.toGroup,
+      outcome: "refused",
+      reason: "egress_denied",
+    });
     // The pair, not the identities. Group names come from `groups` in the
     // database rather than from the request, so the set is bounded by how many
     // groups an operator made — and the pair is what an operator acts on: a
@@ -174,7 +181,12 @@ export function handleSend(
 
   const dormancy = checkDormantSource(agentsDb, effectiveSender, senderIdentity, observedOf(ws));
   if (dormancy.refusal) {
-    log(`refused: ${effectiveSender} sent after dormancy from an unseen network`);
+    log.warn("refused a send: dormant, and from a network this key has not been on", "send_refused", {
+      actor: effectiveSender,
+      to,
+      outcome: "refused",
+      reason: "dormant_unseen_network",
+    });
     return rpcError(id, dormancy.refusal.code, dormancy.refusal.message, dormancy.refusal.data);
   }
 
@@ -186,11 +198,23 @@ export function handleSend(
   if (proxied) {
     const verdict = entitlement.mayProxy(agentsDb, senderIdentity, effectiveSender);
     if (!verdict.ok) {
-      log(`refused: ${senderIdentity} claimed to be ${effectiveSender} (${verdict.reason})`);
+      log.warn(`refused a send: ${senderIdentity} may not speak for ${effectiveSender}`, "send_refused", {
+        actor: senderIdentity,
+        claimed: effectiveSender,
+        to,
+        outcome: "refused",
+        reason: verdict.reason ?? "not_entitled",
+      });
       return rpcError(id, NOT_ENTITLED, entitlement.refusalMessage(effectiveSender, verdict.reason!));
     }
     if (!wsProxies.get(ws)?.has(effectiveSender)) {
-      log(`refused: ${senderIdentity} did not declare ${effectiveSender} in proxy_for`);
+      log.warn(`refused a send: ${effectiveSender} was not declared in this socket's proxy_for`, "send_refused", {
+        actor: senderIdentity,
+        claimed: effectiveSender,
+        to,
+        outcome: "refused",
+        reason: "proxy_not_declared",
+      });
       return rpcError(
         id,
         NOT_ENTITLED,
@@ -270,7 +294,14 @@ export function handleSend(
     // Reported instead, as a transient the caller can retry. The hub stays up
     // and every other socket keeps working; what fails is this one write.
     const message = err instanceof Error ? err.message : String(err);
-    log(`send failed to persist ${msgId} (${route}): ${message}`);
+    log.error("could not persist the message, so the caller is told to retry", "send_persist_failed", {
+      id: msgId,
+      actor: effectiveSender,
+      route,
+      outcome: "failed",
+      reason: "store_unwritable",
+      error: message,
+    });
     return rpcError(id, SERVER_ERROR, `could not persist message: ${message}`, {
       retryable: true,
     });
@@ -304,7 +335,12 @@ export function handleSend(
     }
 
     if (landed) {
-      log(`delivered: ${route} (${msgId})`);
+      log.info(`delivered ${route}`, "send_delivered", {
+        id: msgId,
+        actor: effectiveSender,
+        route,
+        outcome: "delivered",
+      });
       // Notify sender that message was delivered (for typing indicator)
       const senderWs = onlineAgents.get(effectiveSender) ?? proxyMap.get(effectiveSender);
       if (senderWs && senderWs !== deliverNow) {
@@ -322,10 +358,23 @@ export function handleSend(
       // mid-sentence.
       stmtUpdateMessageStatus.run("pending", msgId);
       status = "pending";
-      log(`delivery failed: ${route} (${msgId}), queued — ${why}`);
+      log.warn(`could not hand ${route} over, so it is queued`, "send_queued", {
+        id: msgId,
+        actor: effectiveSender,
+        route,
+        outcome: "queued",
+        reason: "delivery_failed",
+        error: why,
+      });
     }
   } else {
-    log(`queued: ${route} (${msgId})`);
+    log.info(`queued ${route}`, "send_queued", {
+      id: msgId,
+      actor: effectiveSender,
+      route,
+      outcome: "queued",
+      reason: "recipient_offline",
+    });
   }
 
   // Two events, and they answer different questions. `sent` is that the hub

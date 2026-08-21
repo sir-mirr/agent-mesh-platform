@@ -6015,13 +6015,15 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Every callback in this file is tied to a generation so a superseded socket cannot act on the live one. The error handler only logs — and a log attributed to the wrong generation is how a reconnect that worked reads as one that did not.",
     file: "packages/self-reminder/src/lifecycle.ts",
-    from: `    ws.on("error", () => {
-      if (!this.owns(generation, ws)) return;
-      this.log("hub_socket_error", { generation });
-    });`,
-    to: `    ws.on("error", () => {
-      this.log("hub_socket_error", { generation });
-    });`,
+    from:
+      '    ws.on("error", () => {\n' +
+      "      if (!this.owns(generation, ws)) return;\n" +
+      '      this.log.warn("the hub socket reported an error", "hub_socket_error", { generation });\n' +
+      "    });",
+    to:
+      '    ws.on("error", () => {\n' +
+      '      this.log.warn("the hub socket reported an error", "hub_socket_error", { generation });\n' +
+      "    });",
     suite: "packages/self-reminder/src/lifecycle.test.ts",
     expect: ["an error from a superseded socket is not logged"],
   },
@@ -6484,7 +6486,13 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A duplicate check that cannot be read used to reach the dispatcher's last-resort handler, which answers a worse error than this one — and one § 8.9.3 does not classify, so a conformant client does not know whether to retry it.",
     file: "packages/hub/src/rpc/audit.ts",
-    from: "    log(`audit duplicate check failed for ${eventId}: ${message}`);",
+    from:
+      '    log.error("could not read the audit store to check for a duplicate", "audit_duplicate_check_failed", {\n' +
+      "      id: eventId,\n" +
+      '      outcome: "failed",\n' +
+      '      reason: "store_unreadable",\n' +
+      "      error: message,\n" +
+      "    });",
     to: "    throw err;",
     suite: "packages/hub/src/rpc/audit-append.test.ts",
     expect: ["a duplicate check that cannot be read is answered, not thrown"],
@@ -6514,7 +6522,14 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The hub's own § 8.9.4 records are written on the delivery path. An audit store that throws there takes routing down with it, which is § 15.6 inverted — so they are logged and swallowed, and nothing had ever made one fail.",
     file: "packages/hub/src/rpc/audit.ts",
-    from: "    log(`audit: could not record ${eventType} for ${fields.identity}: ${err instanceof Error ? err.message : String(err)}`);",
+    from:
+      '    log.error(`could not record ${eventType}, and the change went through anyway`, "audit_own_event_failed", {\n' +
+      "      actor: fields.identity,\n" +
+      "      event_type: eventType,\n" +
+      '      outcome: "unrecorded",\n' +
+      '      reason: "store_unwritable",\n' +
+      "      error: err instanceof Error ? err.message : String(err),\n" +
+      "    });",
     to: "    throw err;",
     suite: "packages/hub/src/rpc/audit-append.test.ts",
     expect: ["the hub's own identity event is logged rather than thrown"],
@@ -6535,10 +6550,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other ending: a socket that throws mid-replay. Carrying on marks the rest delivered to a connection that is already gone, and each row is then invisible to the replay that would have handed it over.",
     file: "packages/hub/src/rpc/connect.ts",
-    from:
-      "      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);\n" +
-      "      break; // stop if connection is broken",
-    to: "      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);",
+    from: "      });\n      break; // stop if connection is broken",
+    to: "      });",
     suite: "packages/hub/src/rpc/connect.test.ts",
     expect: ["a socket that fails once keeps what landed and stops there"],
   },

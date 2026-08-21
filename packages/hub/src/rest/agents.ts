@@ -215,9 +215,16 @@ async function parseProvisionRequest(req: Request): Promise<ProvisionRequest | R
 function recordKey(route: string, r: ProvisionRequest): { fingerprint: string; status: string } | null {
   if (!r.publicKey) return null;
   const result = keys.proposeKey(agentsDb, r.identity, r.publicKey, "api");
-  log(
-    `${route}: key ${result.fingerprint} for ${r.identity} -> ${result.status}` +
-      (result.created ? " (new proposal)" : " (already on record)"),
+  log.info(
+    result.created ? "recorded a new key proposal" : "the key was already on record",
+    "key_proposed",
+    {
+      id: result.fingerprint,
+      actor: r.identity,
+      route,
+      outcome: result.status,
+      created: result.created,
+    },
   );
   return { fingerprint: result.fingerprint, status: result.status };
 }
@@ -237,11 +244,22 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
       created = stmtInsertAgentIfAbsent.run(r.identity, r.type, r.description).changes > 0;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log(`${route} db error for ${r.identity}: ${msg}`);
+      log.error("could not write the agent row", "provision_failed", {
+        actor: r.identity,
+        route,
+        outcome: "failed",
+        reason: "db_error",
+        error: msg,
+      });
       return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
     }
     if (!created) {
-      log(`${route}: refused ${r.identity} — already exists (create_only)`);
+      log.warn("refused to adopt an identity that already exists", "provision_refused", {
+      actor: r.identity,
+      route,
+      outcome: "refused",
+      reason: "identity_exists",
+    });
       return jsonResponse(409, {
         ok: false,
         code: PROVISION_ERROR.IDENTITY_EXISTS,
@@ -271,7 +289,13 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log(`${route} db error for ${r.identity}: ${msg}`);
+    log.error("could not write the agent row", "provision_failed", {
+      actor: r.identity,
+      route,
+      outcome: "failed",
+      reason: "db_error",
+      error: msg,
+    });
     return jsonResponse(500, { ok: false, error: `db error: ${msg}` });
   }
   // § 8.2. A declared proxy gets its flag the moment it registers, however
@@ -283,7 +307,12 @@ function upsert(route: string, r: ProvisionRequest): boolean | Response {
     // After the write, not inside the try: a failed audit must not turn a
     // completed provisioning into a `500` (§ 15.6). `recordIdentityEvent`
     // swallows its own errors for the same reason.
-    log(`${route}: ${r.identity} type ${before ?? "null"} -> ${r.type}`);
+    log.info(`${r.identity} changed type from ${before ?? "null"} to ${r.type}`, "agent_type_changed", {
+      actor: r.identity,
+      route,
+      from_type: before,
+      to_type: r.type,
+    });
     recordIdentityEvent("mesh.identity.type_changed", {
       identity: r.identity,
       change: { from: before, to: r.type },
@@ -307,7 +336,12 @@ export async function handlePostAgents(req: Request): Promise<Response> {
 
   const key = recordKey("POST /api/agents", parsed);
   const action = existed ? "updated" : "inserted";
-  log(`POST /api/agents: ${action} ${parsed.identity} (type=${parsed.type})`);
+  log.info(`${action} ${parsed.identity}`, "agent_provisioned", {
+    actor: parsed.identity,
+    route: "POST /api/agents",
+    outcome: action,
+    agent_type: parsed.type,
+  });
   return jsonResponse(200, {
     ok: true,
     identity: parsed.identity,
@@ -345,7 +379,13 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
   const key = recordKey("POST /api/v1/agents", parsed);
   const status = existed ? 200 : 201;
   const action = existed ? "updated" : "inserted";
-  log(`POST /api/v1/agents: ${action} ${parsed.identity} (type=${parsed.type}) -> ${status}`);
+  log.info(`${action} ${parsed.identity}`, "agent_provisioned", {
+    actor: parsed.identity,
+    route: "POST /api/v1/agents",
+    outcome: action,
+    agent_type: parsed.type,
+    status,
+  });
   return jsonResponse(status, {
     ok: true,
     identity: row?.identity ?? parsed.identity,
@@ -380,7 +420,12 @@ export async function handlePostAgentsV1(req: Request): Promise<Response> {
  * operation went.
  */
 export function handleDeleteAgent(identity: string): Response {
-  log(`DELETE /api/agents/${identity}: refused — teardown requires an admin session`);
+  log.warn("refused a teardown: the hub cannot authenticate a caller", "teardown_refused", {
+    actor: identity,
+    route: "DELETE /api/agents",
+    outcome: "refused",
+    reason: "requires_admin_session",
+  });
   return jsonResponse(403, {
     ok: false,
     error:

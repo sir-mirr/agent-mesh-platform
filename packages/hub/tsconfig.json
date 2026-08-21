@@ -8,6 +8,7 @@
     "src/**/*.ts",
     "../store/src/**/*.ts",
     "../mailbox/src/**/*.ts",
+    "../log/src/**/*.ts",
     // `/health` reports the SPEC version this build targets (§ 13) by reading
     // the manifest, rather than restating it as a constant that only has to
     // disagree once to tell an operator the wrong contract.

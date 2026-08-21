@@ -24,6 +24,8 @@
  */
 
 /** The part of a socket this needs. Anything else is the caller's business. */
+import type { Logger } from "@agent-mesh/log";
+
 export interface HeartbeatSocket {
   ping(): unknown;
   close(code?: number, reason?: string): void;
@@ -42,7 +44,7 @@ export interface HeartbeatDeps<Socket extends HeartbeatSocket> {
    * routes wired would keep sending someone else's mail into a dead socket.
    */
   drop(socket: Socket, identity: string): void;
-  log(message: string): void;
+  log: Logger;
 }
 
 /** Result of one sweep, so a caller — or a test — can assert on it. */
@@ -109,7 +111,11 @@ export class Heartbeat<Socket extends HeartbeatSocket> {
         } catch {
           // Already gone. The presence maps are what mattered and they are clean.
         }
-        this.deps.log(`heartbeat: ${identity} did not answer a ping, dropped`);
+        this.deps.log.warn("dropped an agent that did not answer a ping", "heartbeat_drop", {
+          actor: identity,
+          outcome: "dropped",
+          reason: "no_pong",
+        });
         dropped.push(identity);
         continue;
       }

@@ -211,7 +211,12 @@ const server = Bun.serve<SocketData, never>({
     if (url.pathname === "/api/agents" || url.pathname === "/api/v1/agents") {
       const verdict = PROVISION_LIMIT.take(observed ?? "unknown-source");
       if (!verdict.ok) {
-        log(`rate limited: ${observed ?? "unknown source"} on ${url.pathname}`);
+        log.warn("refused a provisioning request: too many from this source", "rate_limited", {
+          actor: observed ?? "unknown-source",
+          route: url.pathname,
+          outcome: "refused",
+          reason: "provisioning_rate",
+        });
         return new Response(
           JSON.stringify({
             ok: false,
@@ -300,9 +305,11 @@ const server = Bun.serve<SocketData, never>({
   },
 
   websocket: {
-    open(ws) {
-      log(`connection opened`);
-    },
+    // No line here. A socket that has opened but not registered has no
+     // identity to name, so the line said only that something connected --
+     // which is the banner § 2 asks not to write. What is worth a line is the
+     // registration, and `performConnect` writes that one.
+    open() {},
 
     // A pong is the answer the heartbeat asked for (SPEC § 3.1). Bun does not
     // surface it unless this handler exists, so without it every socket would
@@ -325,7 +332,12 @@ const server = Bun.serve<SocketData, never>({
         response = dispatch(ws, msg as string | Buffer);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log(`unhandled error dispatching a request: ${message}`);
+        log.error("a request handler threw, so the caller is answered an error", "dispatch_failed", {
+          id: String(requestId(msg) ?? "unknown"),
+          outcome: "failed",
+          reason: "unhandled_exception",
+          error: message,
+        });
         // **With the request's id**, recovered from the frame. Answering `null`
         // is answering nobody: a JSON-RPC caller correlates on id, so a reply
         // carrying none is discarded and the call waits out its own timeout —
@@ -358,22 +370,28 @@ const server = Bun.serve<SocketData, never>({
         }
         wsIdentities.delete(ws);
         stmtUpdateLastSeen.run(identity);
-        log(`disconnected: ${identity} (code=${code})`);
+        log.info("an agent disconnected", "disconnected", { actor: identity, close_code: code });
       } else {
-        log(`unregistered connection closed (code=${code})`);
+        // Not "never registered": the heartbeat drops a silent socket by
+        // clearing its identity first, so this is also the second half of a
+        // drop. What is true either way is that there is no identity to name.
+        log.info("a socket closed with no identity on it", "connection_closed", {
+          close_code: code,
+          reason: "no_identity",
+        });
       }
     },
   },
 });
 
-log(`Hub server listening on ws://0.0.0.0:${server.port}`);
+log.info(`Hub server listening on ws://0.0.0.0:${server.port}`, "hub_listening", { port: server.port });
 
 // ---------------------------------------------------------------------------
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
 function shutdown() {
-  log("shutting down...");
+  log.info("shutting down", "shutting_down", {});
   clearInterval(heartbeatInterval);
   clearInterval(rateLimitSweep);
 
@@ -386,7 +404,7 @@ function shutdown() {
     closeDatabases();
   } catch {}
 
-  log("shutdown complete");
+  log.info("shutdown complete", "shutdown_complete", { outcome: "clean" });
   process.exit(0);
 }
 

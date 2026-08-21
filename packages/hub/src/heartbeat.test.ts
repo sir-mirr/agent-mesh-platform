@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { createRecordingLogger } from "@agent-mesh/log";
+
 import { Heartbeat, type HeartbeatSocket } from "./heartbeat";
 
 interface FakeSocket extends HeartbeatSocket {
@@ -35,7 +37,7 @@ function harness() {
       dropped.push({ identity, socket: s });
       if (online.get(identity) === s) online.delete(identity);
     },
-    log: () => {},
+    log: createRecordingLogger("hub"),
   });
   return { online, touched, dropped, heartbeat };
 }
@@ -97,7 +99,7 @@ describe("Heartbeat", () => {
         order.push("drop");
         online.delete(identity);
       },
-      log: () => {},
+      log: createRecordingLogger("hub"),
     });
     online.set("agent-a", socket());
 

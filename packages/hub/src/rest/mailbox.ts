@@ -306,6 +306,10 @@ function recallOne(caller: SignedCaller, messageId: string, authorization: strin
   }
 
   if (row) recordRecalled(row, { scheme: "AgentMeshSig", authorization });
-  log(`recalled ${messageId} for ${caller.identity}`);
+  log.info("recalled a message nobody had been handed", "message_recalled", {
+    id: messageId,
+    actor: caller.identity,
+    outcome: "recalled",
+  });
   return json(200, { ok: true, recalled: true, id: messageId });
 }

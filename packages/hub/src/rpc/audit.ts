@@ -237,7 +237,12 @@ export function handleAuditAppend(
       | undefined;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    log(`audit duplicate check failed for ${eventId}: ${message}`);
+    log.error("could not read the audit store to check for a duplicate", "audit_duplicate_check_failed", {
+      id: eventId,
+      outcome: "failed",
+      reason: "store_unreadable",
+      error: message,
+    });
     return rpcError(id, MESH_ERROR.SERVER_ERROR, `audit append failed: ${message}`, {
       code: "AUDIT_APPEND_FAILED",
     });
@@ -346,7 +351,12 @@ export function handleAuditAppend(
     // Permanent instead, so the client drops it and records the failure
     // locally — which puts it somewhere a person can see, rather than in a
     // retry loop nobody is watching.
-    log(`audit append failed for ${eventId}: ${message}`);
+    log.error("could not append to the audit store", "audit_append_failed", {
+      id: eventId,
+      outcome: "failed",
+      reason: "store_unwritable",
+      error: message,
+    });
     return rpcError(id, MESH_ERROR.SERVER_ERROR, `audit append failed: ${message}`, {
       code: "AUDIT_APPEND_FAILED",
     });
@@ -457,7 +467,13 @@ export function recordMeshEvent(
       );
     })();
   } catch (err) {
-    log(`audit: could not record ${eventType} for ${fields.messageId}: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`could not record ${eventType}, and the message went through anyway`, "audit_own_event_failed", {
+      id: fields.messageId,
+      event_type: eventType,
+      outcome: "unrecorded",
+      reason: "store_unwritable",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -560,7 +576,13 @@ export function recordIdentityEvent(
       );
     })();
   } catch (err) {
-    log(`audit: could not record ${eventType} for ${fields.identity}: ${err instanceof Error ? err.message : String(err)}`);
+    log.error(`could not record ${eventType}, and the change went through anyway`, "audit_own_event_failed", {
+      actor: fields.identity,
+      event_type: eventType,
+      outcome: "unrecorded",
+      reason: "store_unwritable",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

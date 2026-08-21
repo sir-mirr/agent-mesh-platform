@@ -149,8 +149,15 @@ describe("heartbeat", () => {
     // than throwing and the failure branch was unreachable.
     expect(await waitFor(async () => (await onlineCount(hub)) === 0)).toBe(true);
 
-    const log = hub.output();
-    expect(log).toContain("silent-agent did not answer a ping");
+    // The fields, not the sentence. A sentence can be reworded without any
+    // operator noticing; `event` and `actor` are what a counter and a
+    // complaint are answered from, so those are what this holds to.
+    const dropped = hub.output()
+      .split("\n")
+      .filter((line) => line.includes('"event":"heartbeat_drop"'))
+      .map((line) => JSON.parse(line.slice(line.lastIndexOf(' {"ts":"') + 1)));
+    expect(dropped.map((event) => ({ actor: event.actor, reason: event.reason, level: event.level })))
+      .toEqual([{ actor: "silent-agent", reason: "no_pong", level: "warn" }]);
 
     client.close();
   }, 20_000);

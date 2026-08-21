@@ -165,7 +165,12 @@ function verifyRequestInner(
     // `pending` means wait for an operator, `denied` or `revoked` mean stop and
     // ask a human. Reporting them all as one error would make a client retry
     // through a shutoff.
-    log(`rejected ${method} from ${identity}: ${outcome.keyStatus} key`);
+    log.warn(`rejected ${method}: the signing key is not approved`, "signature_rejected", {
+      actor: identity,
+      method,
+      outcome: "refused",
+      reason: `key_${outcome.keyStatus}`,
+    });
     return {
       ok: false,
       code: KEY_NOT_APPROVED,
@@ -174,7 +179,12 @@ function verifyRequestInner(
     };
   }
 
-  log(`rejected ${method} from ${identity}: ${outcome.reason}`);
+  log.warn(`rejected ${method}: the signature did not verify`, "signature_rejected", {
+    actor: identity,
+    method,
+    outcome: "refused",
+    reason: outcome.reason,
+  });
   return {
     ok: false,
     code: SIGNATURE_INVALID,

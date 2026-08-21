@@ -64,9 +64,10 @@ export function performConnect(
   // can't keep the socket open.
   const exists = !!stmtAgentExists.get(identity);
   if (!exists) {
-    log(
-      `${via}-rejected: ${identity} (not pre-registered; POST /api/v1/agents required — ` +
-      `task #72 SSOT policy)`
+    log.warn(
+      `refused ${via}: the identity is not pre-registered — POST /api/v1/agents first`,
+      "connect_refused",
+      { actor: identity, via, outcome: "refused", reason: "not_registered" },
     );
     setTimeout(() => {
       try {
@@ -92,10 +93,14 @@ export function performConnect(
   // payload, context, or credentials.
   const ownership = connectionOwnership.claim(identity, ws);
   if (!ownership.ok) {
-    log(
-      `${via}-rejected duplicate identity=${identity} ` +
-      `incumbent_generation=${ownership.incumbentGeneration} contender_generation=${ownership.contenderGeneration}`
-    );
+    log.warn(`refused ${via}: that identity already has a live owner`, "connect_refused", {
+      actor: identity,
+      via,
+      outcome: "refused",
+      reason: "duplicate_identity",
+      incumbent_generation: ownership.incumbentGeneration,
+      contender_generation: ownership.contenderGeneration,
+    });
     setTimeout(() => {
       try { ws.close(1008, "duplicate identity owner active"); } catch {}
     }, 10);
@@ -146,14 +151,24 @@ export function performConnect(
     }
     wsProxies.set(ws, proxiedSet);
     if (granted.length > 0) {
-      log(`${via === "connect" ? "connected" : "registered"} proxy: ${identity} → [${granted.join(", ")}]`);
+      log.info(`granted proxy claims to ${identity}`, "proxy_granted", {
+        actor: identity,
+        via,
+        outcome: "granted",
+        granted,
+      });
     }
     if (refused.length > 0) {
-      log(`refused proxy claims by ${identity}: ${refused.join(", ")}`);
+      log.warn(`refused proxy claims by ${identity}`, "proxy_refused", {
+        actor: identity,
+        via,
+        outcome: "refused",
+        refused,
+      });
     }
   }
 
-  log(`${via === "connect" ? "connected" : "registered"}: ${identity}`);
+  log.info(`${identity} is connected`, "connected", { actor: identity, via, outcome: "connected" });
 
   // Deliver pending messages
   deliverPending(identity, ws);
@@ -217,9 +232,10 @@ export function handleRegister(
   id: string | number | null | undefined
 ): string {
   const identity = typeof params.identity === "string" ? params.identity : "?";
-  log(
-    `DEPRECATED: mesh.register called by ${identity}; migrate clients to mesh.connect ` +
-    `(task #72 — registration SSOT is POST /api/v1/agents; /api/agents is a legacy alias)`
+  log.warn(
+    `DEPRECATED: mesh.register called by ${identity}; migrate to mesh.connect`,
+    "deprecated_method",
+    { actor: identity, method: "mesh.register", reason: "superseded_by_mesh_connect" },
   );
   return performConnect(ws, params, id, "register");
 }
@@ -241,7 +257,10 @@ export function deliverPending(identity: string, ws: any) {
 
   if (pending.length === 0) return;
 
-  log(`delivering ${pending.length} pending message(s) to ${identity}`);
+  log.info(`delivering mail that accumulated while ${identity} was away`, "pending_delivery", {
+    actor: identity,
+    count: pending.length,
+  });
 
   for (const msg of pending) {
     try {
@@ -271,7 +290,12 @@ export function deliverPending(identity: string, ws: any) {
       // delivery record is a claim about the recipient, and this made the
       // claim from the sender's side of a socket that was already gone.
       if (!landed) {
-        log(`pending ${msg.id} to ${identity}: the socket dropped the frame — left pending`);
+        log.warn("the socket dropped a replayed frame, so the message stays pending", "frame_dropped", {
+          id: msg.id,
+          actor: identity,
+          outcome: "left_pending",
+          reason: "socket_dropped_frame",
+        });
         break;
       }
       stmtUpdateMessageStatus.run("delivered", msg.id);
@@ -279,7 +303,13 @@ export function deliverPending(identity: string, ws: any) {
       // (§ 8.9.4). A replay is a delivery and has to be recorded as one.
       recordDelivered(msg);
     } catch (err) {
-      log(`failed to deliver pending ${msg.id} to ${identity}:`, err);
+      log.error("replaying pending mail threw, so the rest stays queued", "pending_delivery_failed", {
+        id: msg.id,
+        actor: identity,
+        outcome: "left_pending",
+        reason: "send_threw",
+        error: err instanceof Error ? err.message : String(err),
+      });
       break; // stop if connection is broken
     }
   }
