@@ -412,6 +412,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["reports no age when no row can be dated"],
   },
   {
+    id: "chat-page-opens-for-an-account-still-waiting",
+    defect:
+      "The chat page stopped checking admission and rendered the conversation for an account still waiting on an admin. The API refuses every call it would then make, so the person gets a working-looking screen where nothing works \u2014 and the pending page exists precisely because *waiting* and *turned away* have different next actions.",
+    file: "packages/http/src/main.ts",
+    from: "  const approved = isUserApproved(user.github_login, user.role)\n  if (!approved) {\n    return c.html(renderPendingApprovalPage(user))\n  }\n\n  const agentId = c.req.param('agentId')",
+    to: "  const approved = true\n  if (!approved) {\n    return c.html(renderPendingApprovalPage(user))\n  }\n\n  const agentId = c.req.param('agentId')",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["tell an account still waiting that it is waiting"],
+  },
+  {
+    id: "sign-in-form-says-which-half-was-wrong",
+    defect:
+      "The form's failed sign-in stopped using one redirect for both causes, so `?error=` distinguishes an unknown username from a wrong password. That turns the landing page into an account enumerator: a caller learns which names exist without ever holding a credential.",
+    file: "packages/http/src/main.ts",
+    from: "  const user = await verifyLocalUser(username, password)\n  if (!user) {",
+    to: "  const user = await verifyLocalUser(username, password)\n  if (!user) {\n    if (!getLocalUser(username)) return fail(401, 'no such user', '/?error=nouser')",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["does not say which half of the credential was wrong"],
+  },
+  {
+    id: "sign-in-form-lands-without-a-session",
+    defect:
+      "The browser form's success stopped setting the cookie on the redirect. The person is sent to `/chat`, which finds no session and sends them back to `/` \u2014 a sign-in that succeeds and does nothing, twice in a row, with no error anywhere to say why.",
+    file: "packages/http/src/main.ts",
+    from: "    headers: { 'Location': '/chat', 'Set-Cookie': cookie },",
+    to: "    headers: { 'Location': '/chat' },",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["signs the browser in, and lands it on the conversation"],
+  },
+  {
     id: "grant-author-is-self-reported",
     defect:
       "`grantedBy` started falling back to a field the caller sent. The grant record is the only account of how somebody came to hold a capability, and one whose author is self-reported records whatever the author wanted recorded \u2014 including a name that never made the grant.",
