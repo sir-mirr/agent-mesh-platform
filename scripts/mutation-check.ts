@@ -462,6 +462,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a directory, which exists and is not a file"],
   },
   {
+    id: "screen-inventory-stops-noticing-an-unopened-screen",
+    defect:
+      "A screen the server draws stops being opened by any scenario \u2014 here `/admin`, by renaming the path the scenario navigates to. The inventory exists because a denominator taken from one producer measures that producer: three screens out of twenty-one had no scenario and all three came from the source nobody was reading. If this mutation is not caught, the inventory has gone quiet and nothing says so.",
+    file: "test/fe-render.test.ts",
+    from: '    const admin = await read("/admin");',
+    to: '    const admin = await read("/admin-renamed");',
+    suite: "test/scenario-ids.test.ts",
+    expect: ["screens exist that no scenario opens"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",

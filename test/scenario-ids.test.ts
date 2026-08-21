@@ -433,11 +433,24 @@ describe("every screen a person can open", () => {
     const read = (p: string) => readFileSync(p, "utf8");
 
     // Server-drawn: a GET whose handler answers HTML.
+    //
+    // **The window ends at the next route, not after a fixed 1500 characters,
+    // and `text/html` has to be a content type rather than a substring.** The
+    // fixed window read into whatever followed the handler, and the file-serve
+    // section's MIME map (`html: 'text/html'`) sits a few hundred characters
+    // below `/api/v1/messages/:agent` — so deleting twenty unrelated lines
+    // elsewhere in `main.ts` made a JSON route report as a screen with no
+    // scenario. A denominator that moves when unrelated code moves is not
+    // measuring the thing it names.
     const main = read("packages/http/src/main.ts");
     const server: string[] = [];
+    const routeAt = [...main.matchAll(/\napp\.(get|post|put|delete|patch|use|all)\(/g)]
+      .map((m) => m.index ?? 0);
+    const HTML = /c\.html\(|content-type['"]?\s*:\s*['"]text\/html/i;
     for (const m of main.matchAll(/app\.get\(\s*'([^']+)'/g)) {
-      const body = main.slice(m.index! + m[0].length, m.index! + m[0].length + 1500);
-      if (/c\.html\(|text\/html/.test(body)) server.push(m[1]!);
+      const from = m.index! + m[0].length;
+      const to = routeAt.find((i) => i > m.index!) ?? main.length;
+      if (HTML.test(main.slice(from, to))) server.push(m[1]!);
     }
     // App-drawn: the router's own list.
     const app = read("packages/platform-web/src/App.tsx");
