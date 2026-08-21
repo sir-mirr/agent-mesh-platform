@@ -110,3 +110,53 @@ describe("when it must not refuse", () => {
     d.close();
   });
 });
+
+/**
+ * **The clock this check reads, from a machine that is not on UTC.**
+ *
+ * `last_send_at` is SQLite's `datetime('now')`: UTC, space-separated, no zone
+ * marker. Reading it without stamping the `Z` takes it as local time, which on
+ * a server east of UTC makes every identity look idle by exactly the offset —
+ * and this control's whole value is how rarely it fires on someone legitimate.
+ * Nine hours of phantom idleness turns it into a control that refuses a
+ * working agent the first time it moves network.
+ *
+ * `bun test` runs with `TZ=UTC` by default, so the zone is set here: UTC is
+ * precisely the one machine where the bug cannot be observed, and every other
+ * test in this file would pass with the marker removed.
+ */
+describe("reading the timestamp", () => {
+  const inZone = (tz: string, body: () => void) => {
+    const real = process.env.TZ;
+    process.env.TZ = tz;
+    try {
+      body();
+    } finally {
+      if (real === undefined) delete process.env.TZ;
+      else process.env.TZ = real;
+    }
+  };
+
+  test("does not read a recent send as hours of idleness, east of UTC", () => {
+    inZone("Asia/Seoul", () => {                    // +09:00
+      expect(new Date().getTimezoneOffset()).not.toBe(0);   // the premise, not the property
+      const d = db();
+      sentAgo(d, "tz-east", 60);
+      seen(d, "tz-east", "203.0.113.10");
+      expect(checkDormantSource(d, "tz-east", "tz-east", "198.51.100.10").refusal).toBeNull();
+      d.close();
+    });
+  });
+
+  /** West of UTC the error runs the other way: a dormant identity looks fresh. */
+  test("still refuses a genuinely dormant identity, west of UTC", () => {
+    inZone("America/Los_Angeles", () => {           // -07:00/-08:00
+      expect(new Date().getTimezoneOffset()).not.toBe(0);
+      const d = db();
+      sentAgo(d, "tz-west", DORMANCY_SECONDS + 60);
+      seen(d, "tz-west", "203.0.113.10");
+      expect(checkDormantSource(d, "tz-west", "tz-west", "198.51.100.10").refusal?.code).toBe(-32017);
+      d.close();
+    });
+  });
+});

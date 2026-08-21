@@ -416,3 +416,40 @@ describe("a fire is delivered under a key that identifies the fire", () => {
     expect(content).toContain("fire=i1@2026-07-14T09:00:00Z");
   });
 });
+
+/**
+ * **`next_fire_at` is SQLite's format, and the zone marker is what makes it
+ * readable.** `datetime('now')` is UTC with no marker, so parsing it without
+ * stamping `Z` takes it as local time: on a server east of UTC a reminder due
+ * five minutes ago looks nine hours overdue, gets held for an operator
+ * decision, and never fires — the one failure mode this scheduler's overdue
+ * policy exists to make deliberate rather than silent.
+ *
+ * `bun test` runs on UTC, where that parse is correct, so every other test in
+ * this file passes with the marker removed. The zone is set here for the same
+ * reason `dormancy.test.ts` sets it.
+ */
+describe("reading a scheduled time", () => {
+  test("does not hold a barely-late reminder as overdue, east of UTC", async () => {
+    const real = process.env.TZ;
+    process.env.TZ = "Asia/Seoul";                       // +09:00
+    try {
+      expect(new Date().getTimezoneOffset()).not.toBe(0);   // the premise, not the property
+      const db = testDb();
+      let sent = 0;
+      const scheduler = new ReminderScheduler(db, {
+        now: () => new Date("2026-07-14T00:05:00.000Z"),
+        overdueHoldMs: 30 * 60_000,                      // half an hour of slack
+      });
+      addDue(db, "2026-07-14 00:00:00");                 // five minutes late
+      await scheduler.advanceDue(true, async () => { sent++; return { status: "delivered" }; });
+
+      expect(sent).toBe(1);
+      expect(db.prepare(`SELECT count(*) AS count FROM scheduler_events WHERE event_type = 'overdue_hold'`).get())
+        .toEqual({ count: 0 });
+    } finally {
+      if (real === undefined) delete process.env.TZ;
+      else process.env.TZ = real;
+    }
+  });
+});

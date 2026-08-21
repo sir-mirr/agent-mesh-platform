@@ -53,7 +53,7 @@ import * as attachmentAccess from './attachment-access'
 import { sendPushForMessage } from './push'
 import { auditAgents } from './audit-agents'
 import { listChatAudits } from './chat-audits'
-import { readBehaviour } from './telemetry-behaviour'
+import { parseSqliteUtc, readBehaviour } from './telemetry-behaviour'
 import { runShutdown } from './shutdown'
 import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
 import webpush from 'web-push'
@@ -2424,7 +2424,7 @@ app.get('/api/v1/admin/telemetry', async (c) => {
       try {
         const waiting = listPendingApprovals() as Array<{ requested_at?: string }>
         const stamps = waiting
-          .map((row) => (row.requested_at ? Date.parse(`${row.requested_at.replace(" ", "T")}Z`) : NaN))
+          .map((row) => (row.requested_at ? parseSqliteUtc(row.requested_at) : NaN))
           .filter((ms) => Number.isFinite(ms))
         return { waiting: waiting.length, oldest: stamps.length > 0 ? new Date(Math.min(...stamps)).toISOString() : null }
       } catch {

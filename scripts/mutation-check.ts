@@ -1746,6 +1746,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["re-registering a deleted identity is refused"],
   },
   {
+    id: "reminder-reads-its-schedule-in-local-time",
+    defect:
+      "`next_fire_at` is SQLite's zoneless UTC and the marker stopped being stamped before parsing, so `Date.parse` reads it as local time. East of UTC a reminder five minutes late looks nine hours overdue: it is held for an operator decision and never fires, which is the failure the overdue policy exists to make deliberate rather than silent. Invisible under `bun test`, which runs on UTC.",
+    file: "packages/self-reminder/src/scheduler.ts",
+    from: '  const parsed = new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);',
+    to: "  const parsed = new Date(value);",
+    suite: "packages/self-reminder/src/scheduler.test.ts",
+    expect: ["does not hold a barely-late reminder as overdue, east of UTC"],
+  },
+  {
+    id: "dormancy-reads-its-clock-in-local-time",
+    defect:
+      "`last_send_at` is SQLite's `datetime('now')` \u2014 UTC, space-separated, no zone marker \u2014 and the zone marker stopped being stamped before parsing. `Date.parse` then reads it as local time, so on a server east of UTC every identity looks idle by exactly the offset: nine hours of phantom idleness on the machine this was written on, and a control whose entire value is how rarely it fires on someone legitimate starts refusing working agents the first time they move network. Invisible under `bun test`, which runs on UTC.",
+    file: "packages/hub/src/dormancy.ts",
+    from: '  const idleSeconds = (Date.now() - Date.parse(`${last.replace(" ", "T")}Z`)) / 1000;',
+    to: "  const idleSeconds = (Date.now() - Date.parse(last)) / 1000;",
+    suite: "packages/hub/src/dormancy.test.ts",
+    expect: ["does not read a recent send as hours of idleness, east of UTC"],
+  },
+  {
     id: "dormancy-proxy-exempt",
     swept: true,
     defect: "The dormancy check ran on proxied sends too. `sent_by: http-server` is the same address for every web send, so it would refuse on the proxy's history and never on the sender's — a check that fires on the wrong party is worse than one that does not fire.",
