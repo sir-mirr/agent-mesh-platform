@@ -13,7 +13,7 @@
  * at the lines.
  */
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
@@ -112,6 +112,23 @@ describe("the logging operations document", () => {
     const applied = /const BOUNDED_REASON = (\/[^\n]+\/);/.exec(source);
     expect(applied, "BOUNDED_REASON moved or was renamed").not.toBeNull();
     expect(DOC).toContain(applied![1]!);
+  });
+
+  /**
+   * The units set no `StandardOutput`/`StandardError`, so systemd's default
+   * sends both streams to the journal with their priorities intact. An
+   * override to a file would split the record in two and quietly undo the
+   * reason `warn` and `error` go to stderr at all.
+   */
+  test("no unit file redirects a stream away from the journal", () => {
+    const unitDir = join(ROOT, "ops", "systemd");
+    const units = readdirSync(unitDir).filter((f) => f.endsWith(".service"));
+    expect(units.length, "no unit files found — the path went stale").toBeGreaterThan(2);
+
+    const redirected = units.filter((f) =>
+      /^\s*Standard(Output|Error)\s*=/m.test(readFileSync(join(unitDir, f), "utf8")),
+    );
+    expect(redirected, "a unit sends its output somewhere other than the journal").toEqual([]);
   });
 
   test("the environment variable it names is the one the services read", () => {

@@ -76,6 +76,10 @@ There is no second log file, and nothing here writes one. Rotation, retention
 and priority filtering are systemd's, which already had them; a duplicate file
 log is a second copy to keep, to rotate, and to disagree with the first.
 
+The units under `ops/systemd/` set no `StandardOutput` or `StandardError`,
+which is how both streams reach the journal with their priorities intact —
+`test/logging-ops.test.ts` fails if one starts overriding them.
+
 ```bash
 journalctl -u agent-mesh-hub -f                 # follow
 journalctl -u agent-mesh-http -p err --since today
