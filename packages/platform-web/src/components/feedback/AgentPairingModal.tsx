@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Modal, Button, StatusBadge, CodeBlock } from "@/components/index.ts";
+import { Button } from "../common/Button.tsx";
+import { StatusBadge } from "../common/StatusBadge.tsx";
+import { CodeBlock } from "../messaging/CodeBlock.tsx";
+import { Modal } from "./Modal.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { publicApiOrigin } from "@/config/env.ts";
 
