@@ -232,6 +232,10 @@ export function AgentsPage() {
     {
       key: "inboxDepth",
       header: t("agents.col.inbox", "메일함 적체"),
+      // D-745: keep the numeric branch for the existing admin-mailbox
+      // producer. A session with `mailbox.read.depth` can compose each
+      // identity's `pending` count into this row; a refused or failed request
+      // stays `null` and must never be collapsed to a reassuring zero.
       render: (item: AgentItem) =>
         item.inboxDepth === null ? (
           // Not `0`. Zero backlog is the answer an operator hopes for, so

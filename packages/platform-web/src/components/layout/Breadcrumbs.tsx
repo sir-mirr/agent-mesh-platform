@@ -18,12 +18,11 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
   const { t } = useI18n();
 
   const getRouteBreadcrumbs = (pathname: string): BreadcrumbItem[] => {
+    // D-745: there is deliberately no `/` case. `App.tsx` redirects that path
+    // to `/dashboard` before a page renders, and `DashboardPage` mounts no
+    // breadcrumbs. Home links may still target `/`; only its dead trail was
+    // removed.
     switch (pathname) {
-      case "/":
-        return [
-          { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.dashboard", "대시보드") },
-        ];
       case "/creator":
         return [
           { label: t("bc.home", "홈"), href: "/" },
