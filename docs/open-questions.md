@@ -159,8 +159,18 @@ into a file that happens to use double quotes — luck, not process. The scan
 reads both quote styles now, and the four are carved out by name in
 `HTTP_ADMIN_ONLY` so a fifth cannot join them quietly.
 
-Deciding this means cutting an `agent-mesh-contracts` tag, which is not this
-repository's to do alone.
+**Settled for now (D-740): no tag.** Measured on 2026-08-21, no repository
+reads any of the four as a string — `packages/platform-web` references none of
+them, calls neither route, and its `ApiError` keeps `message`, `status` and
+`capability` while discarding `errorData.code`, so the console cannot branch on
+one even if it wanted to. The client classifies by status. Cutting a tag for a
+vocabulary nobody reads buys the ceremony and the re-pin and nothing else.
+
+**Promote when somebody reads one.** The moment any repository branches on one
+of these code *strings* — the likeliest trigger being the front end teaching
+`ApiError` to keep `code` — they follow `PROVISION_ERROR` into contracts under
+their own constant and a tag gets cut. Written here so the next person finds a
+condition rather than an open question.
 
 ---
 
