@@ -522,6 +522,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a cookie that does not verify"],
   },
   {
+    id: "receive-hands-out-destructively",
+    defect:
+      "The batch was settled on hand-out instead of leased. A turn can end between the response arriving and anything being written, so a destructive read discards exactly what the caller did not survive to persist \u2014 and the loss is invisible, because the row says delivered.",
+    file: "packages/mailbox/src/receive.ts",
+    from: "    for (const m of page) stmt.leaseMessage.run(m.id, leaseSeconds);",
+    to: "    for (const m of page) stmt.ackMessage.run(m.id, identity);",
+    suite: "packages/hub/src/rpc/receive.test.ts",
+    expect: ["leaves the batch pending, under a lease"],
+  },
+  {
+    id: "receive-settles-a-message-twice",
+    defect:
+      "`ackMessage` stopped requiring the row to still be pending. SQLite counts a row rewritten with identical values as changed, so `receive()` fires its settle hook again and \u00a7 8.9.4's one `delivered` event per message becomes two \u2014 on the retry this design deliberately makes safe. The status cannot show it: the second write sets the value it already had.",
+    file: "packages/store/src/schema/hub.ts",
+    from: "      UPDATE messages SET status = 'delivered', leased_until = NULL\n      WHERE id = ?1 AND to_agent = ?2 AND status = 'pending'",
+    to: "      UPDATE messages SET status = 'delivered', leased_until = NULL\n      WHERE id = ?1 AND to_agent = ?2",
+    suite: "packages/hub/src/rpc/receive.test.ts",
+    expect: ["does not settle a message twice"],
+  },
+  {
+    id: "receive-acks-across-mailboxes",
+    defect:
+      "The acknowledgement stopped being scoped to the caller's own queue, so any caller can settle any message by naming its id \u2014 the recipient never receives it and the audit records it as delivered to somebody who never held it.",
+    file: "packages/store/src/schema/hub.ts",
+    from: "      WHERE id = ?1 AND to_agent = ?2 AND status = 'pending'",
+    to: "      WHERE id = ?1 AND status = 'pending'",
+    suite: "packages/hub/src/rpc/receive.test.ts",
+    expect: ["ignores an acknowledgement for somebody else's message"],
+  },
+  {
+    id: "receive-limit-passed-through",
+    defect:
+      "`limit` reached the query unclamped. A negative limit is *no limit* in SQLite, so a caller asking for `-1` is handed its whole queue in one leased batch \u2014 the opposite of what it asked for, from a parameter the wire controls.",
+    file: "packages/hub/src/rpc/receive.ts",
+    from: "  const limit = Math.min(\n    Math.max(parseInt(params.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 1),\n    MAILBOX_CAPABILITY_DEFAULTS.max_receive_batch,\n  );",
+    to: "  const limit = parseInt(params.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT;",
+    suite: "packages/hub/src/rpc/receive.test.ts",
+    expect: ["is clamped rather than passed through"],
+  },
+  {
+    id: "receive-trusts-the-ack-list",
+    defect:
+      "The acknowledgement list stopped being filtered to strings. A number, a null or an object reaches a prepared statement as an id, and the settle step runs before the lease is granted \u2014 so a malformed list does not just fail to settle, it takes the batch down with it.",
+    file: "packages/hub/src/rpc/receive.ts",
+    from: "  const ackIds: string[] = Array.isArray(params.ack_ids)\n    ? params.ack_ids.filter((x: unknown) => typeof x === \"string\")\n    : [];",
+    to: "  const ackIds: string[] = Array.isArray(params.ack_ids) ? params.ack_ids : [];",
+    suite: "packages/hub/src/rpc/receive.test.ts",
+    expect: ["takes ack ids only when they are strings"],
+  },
+  {
     id: "teardown-by-ownership-skips-the-name-check",
     defect:
       "On the ownership path the identity stopped being validated before the store was called. Ownership of a malformed name is a row somebody wrote, not a reason to act on it \u2014 and \u00a7 9.3 is irreversible, so a teardown that reaches a name nobody meant cannot be undone. The capability path validates; this one is the copy that stopped.",
