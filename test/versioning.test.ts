@@ -166,6 +166,58 @@ const HTTP_ADMIN_ONLY = new Set([
   "AUDIT_READ_UNRECORDABLE",    // any content read whose record failed, § 11.0.1
 ]);
 
+/**
+ * The build table's own summary, counted rather than asserted in prose.
+ *
+ * The paragraph above that table said "most are not implemented — the shipped
+ * build implements 0.1" while the table underneath it filled up with **yes**,
+ * one row at a time. Nothing made the sentence false in a way a reader could
+ * see: each row that changed made it more wrong, and a reader skimming takes
+ * the sentence, not the table.
+ *
+ * Counting is the only thing that would have caught it, and it costs one test.
+ */
+describe("the 0.2 build table says what it contains", () => {
+  const SPEC = readFileSync(join(REPO_ROOT, "SPEC.md"), "utf8");
+
+  /** Every `| § | Change | Built |` row, as its built-or-not verdict. */
+  function rows(): boolean[] {
+    const table = /\| § \| Change \| Built \|\n\|[^\n]*\|\n([\s\S]*?)\n\n/.exec(SPEC);
+    if (!table) throw new Error("SPEC.md's 0.2 build table moved or was renamed");
+    return table[1]!
+      .split("\n")
+      .filter((line) => line.startsWith("| "))
+      .map((line) => {
+        // The last cell, which is the verdict. Splitting on the pipe leaves an
+        // empty string after the trailing one, so the verdict is second from
+        // the end.
+        const cells = line.split("|").map((c) => c.trim());
+        return /^(?:\*\*)?yes\b/.test(cells[cells.length - 2] ?? "");
+      });
+  }
+
+  test("the table is still there to count", () => {
+    // A pattern that went stale would agree with any claim made about it.
+    expect(rows().length).toBeGreaterThan(10);
+  });
+
+  test("the paragraph's count is the table's count", () => {
+    const built = rows().filter(Boolean).length;
+    const total = rows().length;
+    const claim = /\*\*(\d+) of the (\d+) rows below are built\*\*/.exec(SPEC);
+    expect(claim, "the introduction no longer states how many rows are built").not.toBeNull();
+    expect({ built: Number(claim![1]), total: Number(claim![2]) }).toEqual({ built, total });
+  });
+
+  test("what is not built is said to be somewhere else, not missing", () => {
+    const unbuilt = rows().length - rows().filter(Boolean).length;
+    expect(SPEC).toContain("are lane components");
+    // The claim under the table names them; if the count changes, that
+    // paragraph is what a reader checks next.
+    expect({ unbuilt }).toEqual({ unbuilt: 2 });
+  });
+});
+
 describe("the error vocabulary is complete", () => {
   test("every data.code the services emit has a name in contracts", async () => {
     // The direction that goes wrong. A hub can start emitting a discriminator

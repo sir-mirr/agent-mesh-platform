@@ -6900,6 +6900,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/logging-drills.test.ts",
     expect: ["names the recipient being offline, and does not say that when they are not"],
   },
+  {
+    id: "the-build-table-summary-drifts",
+    defect:
+      "A row in SPEC's 0.2 table flipped to built and the paragraph above it went on stating the old count. That is exactly how the paragraph came to say \"most are not implemented\" while thirteen of fifteen rows said **yes** \u2014 each change made the sentence more wrong, and a reader skimming takes the sentence.",
+    file: "SPEC.md",
+    from: "| 4.1 | A Claude lane includes a runtime-adapter | no |",
+    to: "| 4.1 | A Claude lane includes a runtime-adapter | **yes** |",
+    suite: "test/versioning.test.ts",
+    expect: ["the paragraph's count is the table's count"],
+  },
 ];
 
 /**

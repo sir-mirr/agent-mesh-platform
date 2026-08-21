@@ -22,9 +22,17 @@ defined in RFC 2119 / RFC 8174.
 ### What 0.2 changes, and what does not exist yet
 
 0.2 carries the decisions taken while reviewing the audit ingestion proposal.
-They are settled contracts, but **most are not implemented** — the shipped
-build implements 0.1. This section is the list, so nothing here is mistaken
-for a description of running code.
+**13 of the 15 rows below are built** in this repository; the 2 that are not
+are lane components, and they are built in the lane repository rather than
+here. This section is the list, so a reader can tell a settled contract from
+running code without inferring either from the other.
+
+This paragraph said "**most are not implemented** — the shipped build
+implements 0.1" for as long as the table underneath it filled up with **yes**.
+It was written when it was true and nothing made it false in a way a reader
+could see: every row that changed made the sentence above it more wrong, and
+the sentence is what somebody skimming takes away. `test/versioning.test.ts`
+counts the rows and fails when the count here stops matching them.
 
 | § | Change | Built |
 |---|--------|-------|
