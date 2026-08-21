@@ -6860,6 +6860,26 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/push.test.ts",
     expect: ["a deployment with no push keys says so"],
   },
+  {
+    id: "an-event-the-document-names-is-renamed",
+    defect:
+      "An event was renamed and `docs/LOGGING-OPS.md` still tells an operator to grep for the old name. They grep, find nothing, and read it as nothing having gone wrong \u2014 which is the failure the whole of T-022 is about, arriving through the document instead of through the code.",
+    file: "packages/store/src/open.ts",
+    from: '"wal_recovered"',
+    to: '"wal_log_replayed"',
+    suite: "test/logging-ops.test.ts",
+    expect: ["every event it tells an operator to grep for is one a service emits"],
+  },
+  {
+    id: "the-document-quotes-a-bound-nothing-applies",
+    defect:
+      "The bound on `reason` changed and the document went on quoting the old pattern. Somebody adding a line then writes a token the document says is fine and the counter files it as `other`, which is the one thing a counter must not do quietly.",
+    file: "packages/log/src/index.ts",
+    from: "const BOUNDED_REASON = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;",
+    to: "const BOUNDED_REASON = /^[a-z0-9][a-z0-9_.:-]{0,31}$/;",
+    suite: "test/logging-ops.test.ts",
+    expect: ["the bound it quotes for a reason is the bound the logger applies"],
+  },
 ];
 
 /**
