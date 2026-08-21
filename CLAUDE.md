@@ -36,9 +36,32 @@ was written down rather than left in the mailbox.
 | `UserPromptSubmit` | before a turn starts — waiting mail arrives as context |
 | `Stop` | when a turn ends — mail that landed *during* the turn continues it |
 
-**Nothing is deleted.** The mailbox is the audit record of how the contract
-between the two repositories reached its current state, and an exchange that
-survives only in one agent's transcript is not a record anyone else can read.
+**Do not delete, and never someone else's.** The mailbox is the audit record of
+how the contract between the two repositories reached its current state, and an
+exchange that survives only in one agent's transcript is not a record anyone
+else can read.
+
+This said *nothing is deleted* until 2026-08-21, when it stopped being true.
+Retiring a front-end identity, the owner had its inbox cleared: 273 messages
+`agent-mesh-local-pm` had sent, and then 46 from `platform-claude` — the second
+batch after this file's rule was quoted back and the deletion declined, on the
+owner's re-confirmed instruction and using the declining identity's own name in
+the `from` scope the mailer requires. A backup of `mailer.db` was taken first
+and the two `to: *` broadcasts were left, being every recipient's row rather
+than one sender's.
+
+It is written down because a rule that says *nothing is deleted* over a mailbox
+things get deleted from is worse than either policy alone: the next reader
+believes the record is whole. What is true now is that the mailbox is not a
+guaranteed archive. Anything a later reader will need — a contract decision, why
+an interface is shaped the way it is — belongs in `docs/`, `SPEC.md` or a commit
+message, where deleting it leaves a diff.
+
+**Recall is scoped by sender**, so an identity can only clear what it sent, and
+`DELETE /api/mail?from=<id>&id=<n>` answers `200 {"success":true}` either way.
+`success` means the request was processed. **`cancelledCount` is the only field
+that says anything was removed** — it comes back `0` for another sender's
+message and for an id that never existed, both measured.
 
 Delivery is bounded by a high-water mark in
 `~/.claude/agent-mesh/<identity>.mailbox-mark`, written every run. Losing that
