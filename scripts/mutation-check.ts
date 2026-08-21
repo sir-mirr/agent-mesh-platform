@@ -5101,6 +5101,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/admin-users-types.test.ts",
     expect: ["clears the flag, and the refusal with it"],
   },
+  {
+    id: "a-red-run-leaves-the-window-held",
+    defect:
+      "The release moved behind a green run, so a window announced before a failing gate is never released. That is exactly the case where the other side most needs to know the machine is free \u2014 and where remembering to send it by hand fails, which is why this is a script at all.",
+    file: "scripts/gate.ts",
+    from: "const counts = summarise(captured);\nawait release(",
+    to: "const counts = summarise(captured);\nif (code === 0) await release(",
+    suite: "test/gate-window.test.ts",
+    expect: ["releases the window when the run fails"],
+  },
+  {
+    id: "a-stopped-run-never-says-the-machine-is-free",
+    defect:
+      "The signal handlers went. Somebody stops a gate with ^C and the machine is free that instant, with nothing about to say so \u2014 the other side waits on a release that cannot come, which is the observed failure this script was written for.",
+    file: "scripts/gate.ts",
+    from: "for (const signal of [\"SIGINT\", \"SIGTERM\"] as const) {",
+    to: "for (const signal of [] as const) {",
+    suite: "test/gate-window.test.ts",
+    expect: ["releases the window when the run is stopped"],
+  },
+  {
+    id: "exiting-zero-is-reported-as-a-result",
+    defect:
+      "A run that printed no counts started being reported by its exit code. A process can exit zero having run nothing, and calling that a pass is the shape this repository keeps finding behind its own checks \u2014 green that nobody measured.",
+    file: "scripts/gate.ts",
+    from: "    ? `exit ${code} \u00b7 \uc218\uce58 \uc5c6\uc74c \u2014 \uc2e4\ud589\uc774 pass/fail \uc904\uc744 \ucc0d\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.`",
+    to: "    ? `${code === 0 ? \"0 pass / 0 fail\" : \"\uc2e4\ud328\"} \u00b7 exit ${code}`",
+    suite: "test/gate-window.test.ts",
+    expect: ["says it measured nothing rather than reading the exit code as a result"],
+  },
+  {
+    id: "a-mailer-that-is-down-takes-the-gate-with-it",
+    defect:
+      "A broadcast failure stopped being swallowed, so a machine with no mailer cannot run its own gates. The run is the point and the broadcast is the courtesy; inverting that makes the coordination a dependency of the work it coordinates.",
+    file: "scripts/gate.ts",
+    from: "    } catch (err) {\n      // A mailer that is down must not take the gate with it: the run is the\n      // point and the broadcast is the courtesy. Said on stderr so the gap is\n      // visible here rather than only as silence on the other side.\n      console.error(`[gate] could not tell ${to}: ${err instanceof Error ? err.message : String(err)}`);\n    }",
+    to: "    } catch (err) {\n      throw err;\n    }",
+    suite: "test/gate-window.test.ts",
+    expect: ["runs anyway when nobody is listening"],
+  },
 ];
 
 /**
