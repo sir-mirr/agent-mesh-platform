@@ -3747,6 +3747,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "packages/hub/src/rest/mailbox-routes.test.ts",
     expect: ["a recall of a message this sender never sent"],
   },
+  {
+    id: "dedup-key-is-unique-for-ever-not-while-pending",
+    defect:
+      "The reminder dedup index stopped being scoped to `active`, so an idempotency key could be used once and never again. \u00a7 8.5 makes the key unique among a caller's *pending* reminders precisely so it can be reused after the previous one fired or was cancelled \u2014 without that, a daily job is schedulable exactly once. The careless refactor is small: dropping the status clause still leaves a valid, unique, plausible-looking index.",
+    file: "packages/store/src/schema/self-reminder.ts",
+    from: "      WHERE status = 'active' AND idempotency_key IS NOT NULL;",
+    to: "      WHERE idempotency_key IS NOT NULL;",
+    suite: "packages/store/src/schema/self-reminder.test.ts",
+    expect: ["the key is free once the first has fired or been cancelled"],
+  },
+  {
+    id: "dedup-key-is-global-instead-of-per-owner",
+    defect:
+      "The reminder dedup index stopped leading with the owner, making an idempotency key unique across the whole mesh. One caller's `daily-summary` would then refuse every other caller's \u2014 a cross-tenant collision on a value each of them chooses freely, and a way to discover that another identity holds a given key.",
+    file: "packages/store/src/schema/self-reminder.ts",
+    from: "      ON reminders (agent_id, idempotency_key)",
+    to: "      ON reminders (idempotency_key)",
+    suite: "packages/store/src/schema/self-reminder.test.ts",
+    expect: ["two owners may hold the same key at once"],
+  },
+  {
+    id: "reminder-schedule-type-stops-being-constrained",
+    defect:
+      "`reminders.type` stopped constraining itself to `once`, `cron` and `interval`. The scheduler switches on that column, so an unrecognised value is a row that is never fired and never reported \u2014 the reminder simply does not happen, and nothing says why.",
+    file: "packages/store/src/schema/self-reminder.ts",
+    from: "      type TEXT NOT NULL CHECK (type IN ('once','cron','interval')),",
+    to: "      type TEXT NOT NULL,",
+    suite: "packages/store/src/schema/self-reminder.test.ts",
+    expect: ["a schedule type outside the three"],
+  },
+  {
+    id: "delivery-status-stops-being-constrained",
+    defect:
+      "`audit_log.delivery_status` stopped constraining itself to the six outcomes. This column is the delivery record for a reminder (\u00a7 3.3), and a value outside the set is a row that reads as neither delivered nor failed \u2014 an audit trail that answers a question nobody can act on.",
+    file: "packages/store/src/schema/self-reminder.ts",
+    from: "        CHECK (delivery_status IN ('firing','delivered','queued','failed','skipped','dedup')),",
+    to: "        CHECK (delivery_status IS NOT NULL),",
+    suite: "packages/store/src/schema/self-reminder.test.ts",
+    expect: ["a delivery status outside the six"],
+  },
 ];
 
 /**
