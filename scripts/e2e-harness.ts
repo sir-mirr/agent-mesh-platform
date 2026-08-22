@@ -126,7 +126,25 @@ function freePort(): Promise<number> {
   });
 }
 
-const ADMIN_USER = "admin";
+/**
+ * The seeded administrator, `platform-admin` (T-026).
+ *
+ * **This said `admin` for as long as the seed did, and did not move when the
+ * seed did.** `client-claude` found it rather than any suite here: every
+ * scenario needing an admin session died on `admin login did not return a
+ * session (HTTP 302)`, sixty of a hundred and thirty, because
+ * `admin_test_handle` below carries this constant to whoever runs the list and
+ * a fresh state directory has no `admin` row to sign in as — `renameSeededAdmin`
+ * moves an *existing* one, and there was none.
+ *
+ * Spelled rather than imported, for the reason `test/harness.ts` spells it:
+ * `packages/http/src/db.ts` opens a state directory and `bun:sqlite` at module
+ * scope, which is not a cost a script that only spawns processes should carry
+ * for one string. The copies are compared instead —
+ * `test/http.test.ts`'s `the seeded administrator's name` reads both out of
+ * source, so the two disagreeing is a red rather than a runner's afternoon.
+ */
+const ADMIN_USER = "platform-admin";
 const ADMIN_PASSWORD = "admin";
 const JWT_SECRET = "e2e-harness-secret";
 

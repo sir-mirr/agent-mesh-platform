@@ -226,6 +226,27 @@ describe("the seeded administrator's name", () => {
     expect(declared, "the service no longer declares SEED_ADMIN_USERNAME").not.toBeNull();
     expect(declared![1]).toBe(SEED_ADMIN);
   });
+
+  /**
+   * And the *other* harness, which is the one that broke.
+   *
+   * `scripts/e2e-harness.ts` hands its credentials to whoever runs the shared
+   * scenario list, and nothing in this repository signs in with them: the check
+   * above compared the copy `test/` uses and was green while the copy the
+   * client uses said `admin`. Sixty of a hundred and thirty scenarios failed on
+   * a login, in another repository, for a rename that happened in this one.
+   *
+   * Read out of source rather than started up, for the same reason as above,
+   * and by the same regular expression shape — a fourth copy of the name, in a
+   * test whose whole subject is that there are too many, would be the joke it
+   * sounds like.
+   */
+  test("is also the one the e2e harness hands to a runner", () => {
+    const source = readFileSync(join(import.meta.dir, "..", "scripts", "e2e-harness.ts"), "utf8");
+    const declared = /const ADMIN_USER = "([^"]+)";/.exec(source);
+    expect(declared, "the e2e harness no longer declares ADMIN_USER").not.toBeNull();
+    expect(declared![1]).toBe(SEED_ADMIN);
+  });
 });
 
 describe("admitting a person", () => {
