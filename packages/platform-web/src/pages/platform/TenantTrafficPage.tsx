@@ -99,11 +99,8 @@ export function TenantTrafficPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="PLATFORM OPERATOR"
-        suiteBadgeColor="leased"
-        screenId="12"
-        title={t("traffic.title", "테넌트 라우팅 처리량 분석")}
-        subtitle={t("tt.subtitle", "테넌트별 수신 건수 · 발신/수신 주체 수 · 메일함 경유 트래픽")}
+        title={t("traffic.title", "그룹 메시지 현황")}
+        subtitle={t("tt.subtitle", "그룹별 수신 건수 · 발신/수신 주체 수 · 메일함 경유 메시지")}
       />
 
       <DataTable

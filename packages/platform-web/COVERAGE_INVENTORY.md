@@ -80,7 +80,7 @@
 
 ---
 
-## 2. 14개 화면별 전수 인벤토리 매트릭스 (14 Screens x Widgets x States)
+## 2. 15개 화면별 전수 인벤토리 매트릭스 (15 Screens x Widgets x States)
 
 ### 1) `/login` (로그인 화면)
 - **화면 ID**: `SCR-01`
@@ -290,6 +290,18 @@
 
 ---
 
+### 15) `/platform/tenant-directory` (테넌트 디렉터리 관리)
+- **화면 ID**: `SCR-15`
+- **라우트**: `/platform/tenant-directory`
+- **권한 요건**: Platform Admin (`role === 'admin'` — 계약 어휘에 `tenant.manage` 가 아직 없어 역할로 가드합니다)
+- **데이터 소스**: `GET /api/v1/admin/tenants/directory`, `POST /api/v1/admin/tenants`, `PATCH`·`DELETE /api/v1/admin/tenants/{id}`
+
+| 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
+|---|---|---|---|---|
+| 테넌트 목록 · 기본 테넌트 삭제 거절 | 표시 이름, id, 상태(사용 중 / Soft 삭제됨) | `fetchTenantDirectory()`, `deleteTenantApi()` | • 에러: "서버가 응답하지 않아 테넌트 목록을 읽지 못했다"<br>• `default`: 삭제 버튼 비활성 + 사유 표시 — 서버가 `409 DEFAULT_TENANT` 로 거절하는 것을 화면이 앞당겨 말합니다 | `SC-TDIR-01` |
+
+---
+
 ---
 
 ## 3. 프론트엔드 실 렌더링 검증 매트릭스 (14 Screens Live DOM/Render Verification)
@@ -317,8 +329,8 @@
 
 ## 4. 요약 및 시나리오 분모 통계
 
-- **대상 화면**: 총 14개
-- **이 문서가 등록한 시나리오 ID**: **59개**
+- **대상 화면**: 총 15개
+- **이 문서가 등록한 시나리오 ID**: **60개**
 
 > 여기 있던 *기능/위젯 24 · API 39 · 렌더 14 · 총합 53* 을 지웠습니다.
 > **네 숫자 중 셋이 틀려 있었습니다**(실측 위젯 64 · ID 54). 이 절의 제목이

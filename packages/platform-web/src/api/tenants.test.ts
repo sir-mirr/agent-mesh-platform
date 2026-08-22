@@ -16,7 +16,13 @@
  * is where those are held, against the real handler.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { fetchTenantTraffic } from "./tenants.ts";
+import {
+  createTenantApi,
+  deleteTenantApi,
+  fetchTenantDirectory,
+  fetchTenantTraffic,
+  renameTenantApi,
+} from "./tenants.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -105,5 +111,51 @@ describe("fetchTenantTraffic", () => {
     expect(await fetchTenantTraffic().then((res) => res, () => "rejected")).toBe("rejected");
     stub(mock(async () => { throw new TypeError("Failed to fetch"); }));
     expect(await fetchTenantTraffic().then((res) => res, () => "rejected")).toBe("rejected");
+  });
+});
+
+describe("the tenant directory contract", () => {
+  it("keeps the directory route distinct from traffic statistics", async () => {
+    const body = {
+      ok: true,
+      tenant: "default",
+      tenants: [{
+        id: "default",
+        name: String.fromCodePoint(0xd50c, 0xb7ab, 0xd3fc),
+        created_at: "now",
+        deleted_at: null,
+      }],
+    };
+    const spy = spyOn(body);
+    expect(await fetchTenantDirectory()).toEqual(body);
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/tenants\/directory$/);
+    expect((spy.mock.calls[0]![1]?.method ?? "GET").toUpperCase()).toBe("GET");
+  });
+
+  it("creates with the id and display name the operator supplied", async () => {
+    const spy = spyOn({ ok: true, tenant: null });
+    await createTenantApi("tenant-a", "Tenant A");
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/tenants$/);
+    expect(spy.mock.calls[0]![1]?.method).toBe("POST");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]?.body))).toEqual({ id: "tenant-a", name: "Tenant A" });
+  });
+
+  it("encodes a tenant id in rename and delete paths", async () => {
+    const renameSpy = spyOn({ ok: true, tenant: null });
+    await renameTenantApi("tenant/a", "Renamed");
+    expect(String(renameSpy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/tenants\/tenant%2Fa$/);
+    expect(renameSpy.mock.calls[0]![1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(renameSpy.mock.calls[0]![1]?.body))).toEqual({ name: "Renamed" });
+
+    const deleteSpy = spyOn({ ok: true, action: "deleted", tenant: null });
+    await deleteTenantApi("tenant/a");
+    expect(String(deleteSpy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/tenants\/tenant%2Fa$/);
+    expect(deleteSpy.mock.calls[0]![1]?.method).toBe("DELETE");
+    expect(deleteSpy.mock.calls[0]![1]?.body).toBeUndefined();
+  });
+
+  it("does not turn a refused directory read into an empty directory", async () => {
+    spyOn({ ok: false, error: "platform admin only" }, 403);
+    expect(await fetchTenantDirectory().then(() => "resolved", () => "rejected")).toBe("rejected");
   });
 });

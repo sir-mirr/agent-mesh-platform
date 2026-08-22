@@ -15,11 +15,11 @@ export class ApiError extends Error {
   /**
    * The capability the server named, when it named one.
    *
-   * § 11.3's refusal carries `capability` and `scope` as fields precisely so a
-   * client does not parse them out of the sentence. Every screen that says
-   * "you may not read this" had the name written into its own copy instead —
-   * six hand-typed guesses that go stale the moment a route's requirement
-   * changes, and the answer was in the response the whole time.
+   * § 11.3's refusal carries `capability` and `scope` as fields so code and
+   * diagnostics can distinguish the refused operation without parsing prose.
+   * Operator-facing screens intentionally do not print this machine key; they
+   * map the refusal to ordinary language and leave the field on the error for
+   * programmatic handling.
    */
   readonly capability: string | null;
   constructor(message: string, status: number | null, capability: string | null = null) {
@@ -101,23 +101,22 @@ export function failureKind(err: unknown): FailureKind {
 /**
  * What the server said was missing, or `null` when it did not say.
  *
- * A screen showing this is repeating the server rather than remembering what a
- * route used to require.
+ * Kept for programmatic decisions and diagnostics. Operator-facing copy must
+ * not print the returned machine key; `refusedText` deliberately ignores it.
  */
 export function refusedCapability(err: unknown): string | null {
   return err instanceof ApiError ? err.capability : null;
 }
 
 /**
- * The sentence a screen shows when the server refused, with the server's own
- * word for what is missing.
+ * The sentence a screen shows when the server refused.
  *
  * Nine screens had the capability typed into their copy — `(key.approve)`,
  * `(group.manage)`, `(mailbox.read.depth)` — nine guesses that were right on
- * the day they were written. § 11.3's refusal carries the name; this repeats it
- * and says only "not allowed" when the server did not name one.
+ * the day they were written. The machine key still stays on the error for code
+ * and diagnostics, but it is not operator-facing language.
  */
-export function refusedText(t: (key: string, fallback: string) => string, capability: string | null): string {
+export function refusedText(t: (key: string, fallback: string) => string, _capability: string | null): string {
   const base = t("common.refusedRead", "이 계정에는 이 화면을 볼 권한이 없습니다");
-  return capability ? `${base} (${capability}).` : `${base}.`;
+  return `${base}.`;
 }

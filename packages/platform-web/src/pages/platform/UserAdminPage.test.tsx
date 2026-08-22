@@ -50,6 +50,7 @@ const { UserAdminPage } = await import("./UserAdminPage.tsx");
 const en = (key: string) => DICTIONARY.en[key]!;
 
 const USERS = "/api/v1/admin/users";
+const TENANT_DIRECTORY = "/api/v1/admin/tenants/directory";
 /** People waiting to be admitted. */
 const QUEUE = "/api/v1/admin/pending";
 /** Keys waiting to be approved — a different queue, one path segment away. */
@@ -97,6 +98,7 @@ let usersRoute: Answer;
 let queueRoute: Answer;
 let admitRoute: Answer;
 let keyQueueRoute: Answer;
+let tenantRoute: Answer;
 
 beforeEach(() => {
   calls.length = 0;
@@ -105,6 +107,15 @@ beforeEach(() => {
   queueRoute = answers(200, { ok: true, users: [] });
   admitRoute = answers(201, { ok: true, user: { username: "someone" }, temporary_password: "unused" });
   keyQueueRoute = answers(200, { ok: true, keys: [] });
+  tenantRoute = answers(200, {
+    ok: true,
+    tenant: "default",
+    tenants: [
+      { id: "default", name: "\uD50C\uB7AB\uD3FC", created_at: "now", deleted_at: null },
+      { id: "tenant-b", name: "Tenant B", created_at: "now", deleted_at: null },
+      { id: "deleted", name: "Deleted", created_at: "then", deleted_at: "now" },
+    ],
+  });
   stub(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
@@ -113,6 +124,7 @@ beforeEach(() => {
     // tells a refused panel from a backend that is down.
     if (url.endsWith(KEY_QUEUE)) return await keyQueueRoute();
     if (url.endsWith(QUEUE)) return await queueRoute();
+    if (url.endsWith(TENANT_DIRECTORY)) return await tenantRoute();
     if (url.endsWith(USERS)) return method === "POST" ? await admitRoute() : await usersRoute();
     throw new TypeError("Failed to fetch");
   });
@@ -222,9 +234,10 @@ const typeInto = (testId: string, value: string) => {
   fireEvent.change(screen.getByTestId(testId), { target: { value } });
 };
 const submitButton = () => screen.getByTestId("admit-submit") as HTMLButtonElement;
-const admit = async (username: string, displayName = "") => {
+const admit = async (username: string, displayName = "", tenant?: string) => {
   typeInto("admit-username", username);
   typeInto("admit-display", displayName);
+  if (tenant) fireEvent.change(screen.getByTestId("admit-tenant"), { target: { value: tenant } });
   fireEvent.submit(screen.getByTestId("admit-form"));
   await settle();
 };
@@ -340,7 +353,7 @@ describe("the admission queue, in the four states it can be in", () => {
     // The server answered. Saying it did not sends the operator to check a
     // network for a permission they simply do not hold.
     expect(queueState()).toEqual({ loading: false, refused: true, unreachable: false, empty: false, rows: [] });
-    expect(textOf("admission-queue-refused")).toBe(`${en("common.refusedRead")} (${ADMIT}).`);
+    expect(textOf("admission-queue-refused")).toBe(`${en("common.refusedRead")}.`);
     expect(queueText()).not.toContain(en("users.queue.unreachable"));
     expect(queueText()).not.toContain(en("users.queue.empty"));
   });
@@ -431,7 +444,8 @@ describe("the roster of local accounts tells the same four apart", () => {
     // one sentence about the server not answering, at a server that had
     // answered `403`.
     expect(rosterState()).toEqual({ loading: false, refused: true, unreachable: false, empty: false, rows: [] });
-    expect(rosterText()).toContain(`${en("common.refusedRead")} (${ADMIT}).`);
+    expect(rosterText()).toContain(`${en("common.refusedRead")}.`);
+    expect(rosterText()).not.toContain(ADMIT);
   });
 
   it("does not call a broken proxy a refused roster", async () => {
@@ -466,7 +480,40 @@ describe("the one temporary password", () => {
     await admit("  newbie  ", "   ");
     // A username created with a leading space is an account whose holder
     // cannot sign in, and nothing on this screen would show the difference.
-    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({ username: "newbie" });
+    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({ username: "newbie", tenant: "default" });
+  });
+
+  it("defaults to the signed-in account's active tenant and sends the selected tenant", async () => {
+    admitRoute = answers(201, ISSUED);
+    await mount();
+    const select = screen.getByTestId("admit-tenant") as HTMLSelectElement;
+    expect(select.value).toBe("default");
+    expect([...select.options].map((option) => option.value)).toEqual(["default", "tenant-b"]);
+    expect(select.textContent).toContain("\uD50C\uB7AB\uD3FC (default)");
+    expect(select.textContent).not.toContain("Deleted");
+
+    await admit("newbie", "", "tenant-b");
+    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({ username: "newbie", tenant: "tenant-b" });
+  });
+
+  it("does not guess a tenant or admit when the directory could not be read", async () => {
+    tenantRoute = noAnswer;
+    await mount();
+    expect(screen.queryByTestId("admit-tenants-unreachable")).not.toBe(null);
+    expect((screen.getByTestId("admit-tenant") as HTMLSelectElement).disabled).toBe(true);
+    expect(submitButton().disabled).toBe(true);
+    await admit("newbie");
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("does not guess a tenant from a malformed directory response", async () => {
+    tenantRoute = answers(200, { ok: true, tenant: "default" });
+    await mount();
+    expect(screen.queryByTestId("admit-tenants-unreachable")).not.toBeNull();
+    expect((screen.getByTestId("admit-tenant") as HTMLSelectElement).disabled).toBe(true);
+    expect(submitButton().disabled).toBe(true);
+    await admit("newbie");
+    expect(posts()).toHaveLength(0);
   });
 
   it("loses the password on a reload, and never puts it in storage", async () => {

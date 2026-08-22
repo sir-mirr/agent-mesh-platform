@@ -51,8 +51,8 @@ describe("failureKind", () => {
 
 describe("refusedText", () => {
   const t = (_key: string, fallback: string) => fallback;
-  it("repeats the server's word for what is missing", () => {
-    expect(refusedText(t, "key.approve")).toContain("(key.approve)");
+  it("keeps the server's machine key out of operator copy", () => {
+    expect(refusedText(t, "key.approve")).not.toContain("key.approve");
   });
   it("says only that it is not allowed when the server named nothing", () => {
     expect(refusedText(t, null)).not.toContain("(");

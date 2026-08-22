@@ -4,7 +4,7 @@ import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
-import { fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
+import { agentRegistryEntries, fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
 
 interface ClusterConfig {
   id: string;
@@ -95,7 +95,7 @@ export function TopologyPage() {
     Promise.all([fetchGroups(), fetchAgents()])
       .then(([groups, agents]) => {
         setLiveGroups(groups || []);
-        setLiveAgents(agents || []);
+        setLiveAgents(agentRegistryEntries(agents || []));
       })
       .catch((err) => {
         console.warn("[Topology] API load error:", err);
@@ -172,8 +172,15 @@ export function TopologyPage() {
       };
     }
 
+    const agentIds = new Set(liveAgents.map((agent) => agent.identity));
     const effectiveGroups: GroupItem[] = liveGroups.length > 0
-      ? liveGroups
+      ? liveGroups.map((group) => ({
+          ...group,
+          // Group membership shares the unified identity namespace. Only an
+          // identity that the filtered agent registry confirms may become an
+          // agent node or contribute to an agent-labelled cluster count.
+          members: (group.members ?? []).filter((identity) => agentIds.has(identity)),
+        }))
       : [
           {
             id: "default",
@@ -239,7 +246,7 @@ export function TopologyPage() {
         groupName: `${cfg.name} (Gateway)`,
         type: "gateway-bridge",
         status: "Gateway",
-        desc: `${cfg.name} — ${t("topo.gateway", "그룹 간 라우팅과 Egress ACL 을 맡는 게이트웨이")}`,
+        desc: `${cfg.name} — ${t("topo.gateway", "그룹 사이의 메시지 전송 규칙을 적용하는 서버")}`,
         // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
         // put a synthesised node in the same list as real agents wearing the
         // same kind of value.
@@ -257,9 +264,7 @@ export function TopologyPage() {
       maxY = Math.max(maxY, cfg.gw.y + 40);
 
       const groupData = effectiveGroups.find((g) => g.id === cfg.id);
-      const memberList: string[] = (groupData && groupData.members && groupData.members.length > 0)
-        ? groupData.members
-        : liveAgents.filter((a) => a.type === cfg.id || a.type === cfg.name).map((a) => a.identity);
+      const memberList: string[] = groupData?.members ?? [];
 
       // **An empty membership is an empty membership**, which the cluster sizing
       // above already says in those words. What stood here contradicted it
@@ -1054,8 +1059,8 @@ export function TopologyPage() {
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
               <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
-              <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title={t("topo.egressTitle", "SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다")}>
-                {t("topo.hud.egress", "Egress")}: Active
+              <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title={t("topo.egressTitle", "그룹 간 메시지 전송 규칙이 적용 중입니다")}>
+                {t("topo.hud.egress", "그룹 간 전송 규칙")}: {t("topo.hud.active", "적용 중")}
               </span>
             </>
           )}

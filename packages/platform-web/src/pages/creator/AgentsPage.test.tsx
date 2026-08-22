@@ -95,6 +95,7 @@ const FP_ABSENT = DICTIONARY.en["fp.absent"]!;
 const PLAYGROUND = DICTIONARY.en["nav.playground"]!;
 const TEARDOWN_BTN = DICTIONARY.en["agents.teardownBtn"]!;
 const TEARDOWN_CONFIRM = DICTIONARY.en["agents.teardown.confirm"]!;
+const CANCEL = DICTIONARY.en["common.cancel"]!;
 const TORN_DOWN = DICTIONARY.en["agents.teardown.done"]!;
 const ALREADY_TORN_DOWN = DICTIONARY.en["agents.teardown.alreadyDeleted"]!;
 const NOT_FOUND = DICTIONARY.en["agents.teardown.notFound"]!;
@@ -293,6 +294,16 @@ const beta = () => ({
   last_seen_at: twoHoursAgo(),
   fingerprint: "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
 });
+const PERSON = {
+  id: "operator-1",
+  name: "operator-1",
+  description: "Local account",
+  channel: "web",
+  type: "user",
+  created_at: "2026-08-01T00:00:00Z",
+  last_seen_at: null,
+  fingerprint: null,
+};
 
 describe("the four things the table can be saying", () => {
   it("says it is still asking, and claims nothing about the fleet yet", async () => {
@@ -318,7 +329,8 @@ describe("the four things the table can be saying", () => {
     // The server answered. Reporting that as "the server did not answer" sends
     // an operator to check a network that is fine, for a permission they simply
     // do not hold — measured on this console with a member session.
-    expect(status()).toContain(`${REFUSED} (${PROVISION}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(PROVISION);
     expect(status()).not.toContain(UNREACHABLE);
     expect(status()).not.toContain(EMPTY);
     // A panel that never leaves the loading state is a third wrong sentence:
@@ -391,6 +403,26 @@ describe("the four things the table can be saying", () => {
 });
 
 describe("a row says only what the server sent", () => {
+  it("keeps people out of the agent registry while retaining agent and service rows", async () => {
+    readAgents = () => json(200, { agents: [PERSON, ALPHA, beta()] });
+    await mount();
+
+    expect(rows()).toHaveLength(2);
+    expect(rows().some((row) => (row.textContent ?? "").includes(PERSON.id))).toBe(false);
+    expect(rowFor(ALPHA.id)).toBeDefined();
+    expect(rowFor(beta().id)).toBeDefined();
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
+  it("treats a unified registry containing only a person as an empty agent list", async () => {
+    readAgents = () => json(200, { agents: [PERSON] });
+    await mount();
+
+    expect(rows()).toHaveLength(0);
+    expect(status()).toContain(EMPTY);
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
   it("puts each field in its own column and reports the two it was not given", async () => {
     readAgents = () => json(200, { agents: [ALPHA, beta()] });
     await mount();
@@ -495,6 +527,18 @@ describe("a row says only what the server sent", () => {
 });
 
 describe("teardown is offered only where the server granted it", () => {
+  it("never offers teardown for the signed-in identity, even if its row is mistyped as an agent", async () => {
+    held = [TEARDOWN_CAP];
+    readAgents = () => json(200, { agents: [{ ...PERSON, type: "worker" }] });
+    await mount();
+
+    // This second guard is deliberately independent of the `type: user`
+    // filter: migrated or malformed data must not expose a self-destroy action.
+    expect(rows()).toHaveLength(1);
+    expect(rowFor(PERSON.id)).toBeDefined();
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
   it("draws no teardown control for a session holding nothing", async () => {
     held = [];
     readAgents = () => json(200, { agents: [ALPHA] });
@@ -545,6 +589,19 @@ describe("what an irreversible teardown destroys", () => {
   const typeConfirmation = (text: string) => {
     fireEvent.change(confirmField(), { target: { value: text } });
   };
+
+  it("cancels the confirmation without sending a teardown", async () => {
+    readAgents = () => json(200, { agents: [ALPHA, beta()] });
+    await mount();
+    openTeardownFor(beta().id);
+    const cancel = [...(dialog()?.querySelectorAll("button") ?? [])]
+      .find((button) => button.textContent === CANCEL);
+    if (!cancel) throw new Error("the teardown dialog has no cancel control");
+    fireEvent.click(cancel);
+
+    expect(dialog()).toBeNull();
+    expect(teardownWrites()).toHaveLength(0);
+  });
 
   it("names the row the operator clicked, and no other", async () => {
     readAgents = () => json(200, { agents: [ALPHA, beta()] });
@@ -624,6 +681,12 @@ describe("what an irreversible teardown destroys", () => {
     // The dialog closed on the way through; leaving it open over a fresh list
     // invites the same confirmation being submitted twice.
     expect(dialog()).toBe(null);
+
+    const result = screen.getByTestId("teardown-result-soft-deleted");
+    const closeToast = result.querySelector("button");
+    if (!closeToast) throw new Error("the teardown result has no close control");
+    fireEvent.click(closeToast);
+    expect(screen.queryByTestId("teardown-result-soft-deleted")).toBeNull();
   });
 
   for (const outcome of [
@@ -763,7 +826,8 @@ describe("what an irreversible teardown destroys", () => {
     // current: one of these identities was just destroyed, and the screen no
     // longer knows anything about the rest.
     expect(rows()).toHaveLength(0);
-    expect(status()).toContain(`${REFUSED} (${PROVISION}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(PROVISION);
     expect(status()).not.toContain(EMPTY);
     expect(status()).not.toContain(UNREACHABLE);
   });

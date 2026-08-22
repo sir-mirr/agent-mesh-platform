@@ -1,19 +1,12 @@
 import React from "react";
-import { StatusBadge } from "@/components/common/StatusBadge.tsx";
 
 export interface PageHeaderProps {
-  suiteTag?: string;
-  suiteBadgeColor?: "leased" | "success" | "warning" | "neutral";
-  screenId?: string | number;
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
 }
 
 export function PageHeader({
-  suiteTag,
-  suiteBadgeColor = "neutral",
-  screenId,
   title,
   subtitle,
   actions,
@@ -30,38 +23,6 @@ export function PageHeader({
       }}
     >
       <div>
-        {(suiteTag || screenId) && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {suiteTag && (
-              <StatusBadge
-                label={suiteTag}
-                status={suiteBadgeColor === "leased" ? "leased" : "neutral"}
-                hasDot={false}
-                size="sm"
-              />
-            )}
-            {screenId && (
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "0.75rem",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                Screen #{screenId}
-              </span>
-            )}
-          </div>
-        )}
-
         <h1
           style={{
             fontSize: "1.5rem",

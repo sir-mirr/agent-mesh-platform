@@ -24,6 +24,7 @@ import { PlatformOverviewPage } from "@/pages/platform/PlatformOverviewPage.tsx"
 import { TelemetryPage } from "@/pages/platform/TelemetryPage.tsx";
 import { TenantTrafficPage } from "@/pages/platform/TenantTrafficPage.tsx";
 import { UserAdminPage } from "@/pages/platform/UserAdminPage.tsx";
+import { TenantManagementPage } from "@/pages/platform/TenantManagementPage.tsx";
 
 // Tenant Suite Pages
 import { TenantEgressAclPage } from "@/pages/tenant/TenantEgressAclPage.tsx";
@@ -71,6 +72,14 @@ export function App() {
                 element={
                   <GuardedRoute requiredCapability="user.admit">
                     <UserAdminPage />
+                  </GuardedRoute>
+                }
+              />
+              <Route
+                path="/platform/tenant-directory"
+                element={
+                  <GuardedRoute requiredRole="PLATFORM_ADMIN">
+                    <TenantManagementPage />
                   </GuardedRoute>
                 }
               />

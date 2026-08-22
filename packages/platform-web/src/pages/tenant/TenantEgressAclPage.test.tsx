@@ -174,15 +174,16 @@ const toggle = (sourceId: string, targetId: string) => {
  * Found by the icon the component always puts beside the message, so this is
  * the toast and not some other sentence that happens to share a word.
  */
-const toast = (): string => {
+const toastBox = (): HTMLElement | null => {
   for (const el of [...document.querySelectorAll("span")]) {
     const icon = el.textContent ?? "";
     if (icon !== "ℹ" && icon !== "✓" && icon !== "✕") continue;
     const box = el.parentElement;
-    if (box && (box.textContent ?? "").length > icon.length) return box.textContent ?? "";
+    if (box && (box.textContent ?? "").length > icon.length) return box;
   }
-  return "";
+  return null;
 };
+const toast = (): string => toastBox()?.textContent ?? "";
 
 const groupReads = () => calls.filter((c) => c.url.endsWith(GROUPS) && (c.init?.method ?? "GET") === "GET");
 const egressWrites = () => calls.filter((c) => c.url.includes("/egress"));
@@ -212,7 +213,8 @@ describe("the four things the matrix can be saying", () => {
     // The server answered. Reporting that as "the server did not answer" sends
     // an operator to check a network that is fine, for a permission they simply
     // do not hold.
-    expect(panelText()).toContain(`${REFUSED} (${MANAGE}).`);
+    expect(panelText()).toContain(`${REFUSED}.`);
+    expect(panelText()).not.toContain(MANAGE);
     expect(panelText()).not.toContain(UNREACHABLE);
     expect(panelText()).not.toContain(EMPTY);
     // A panel still saying "loading" after the read is over is a fourth wrong
@@ -385,6 +387,12 @@ describe("a toggle moves the policy only where the server moved", () => {
     // both directions would open a path the operator never granted.
     expect(verdict(BETA.group_id, ALPHA.group_id)).toBe(DENY);
     expect(toast()).toContain(`${UPDATED}: [${ALPHA.name}] → [${BETA.name}] : ${ALLOW}`);
+
+    const close = toastBox()?.querySelector("button");
+    if (!close) throw new Error("the egress result toast has no close control");
+    fireEvent.click(close);
+    expect(toastBox()).toBeNull();
+    expect(verdict(ALPHA.group_id, BETA.group_id)).toBe(ALLOW);
   });
 
   it("revokes the rule through the source group's own path", async () => {

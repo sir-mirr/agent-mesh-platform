@@ -900,10 +900,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const bodyCells = await page.locator("tbody tr td:nth-child(4)").allInnerTexts();
     expect(bodyCells.length).toBeGreaterThanOrEqual(4);
-    expect(bodyCells.every((c) => c.includes("content withheld"))).toBe(true);
+    expect(await page.locator("tbody tr td:nth-child(4) [data-testid='audit-withheld']").count())
+      .toBe(bodyCells.length);
 
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("[content withheld — requires audit.read.content]");
+    expect(mainText).toContain("본문을 볼 권한이 없어 숨겼습니다");
+    expect(mainText).not.toContain("[content withheld");
+    expect(mainText).not.toContain("audit.read.content");
     expect(mainText).not.toContain("hello security via proxy");
 
     await context.close();
@@ -1081,11 +1084,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const banner = page.locator("[data-testid='telemetry-refused']");
     await banner.waitFor({ state: "visible", timeout: 5000 });
 
-    // The capability, not just "an error" — the reader has to know what to ask
-    // for, and "something went wrong" sends them to the wrong person.
+    // Operator language explains the withheld reads without leaking server keys.
     const said = (await banner.textContent()) ?? "";
-    expect({ names: said.includes("usage.read") && said.includes("mailbox.read.depth") })
-      .toEqual({ names: true });
+    expect({ count: said.includes("(2)"), leaksKeys: said.includes("usage.read") || said.includes("mailbox.read.depth") })
+      .toEqual({ count: true, leaksKeys: false });
 
     // And it is genuinely different from what an admin sees.
     const admin = await createAuthedPage("/platform/telemetry");
@@ -1959,10 +1961,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
     await settled(page);
 
-    await shows(page, "메일함 리스 큐를 불러오지 못했습니다");
+    // `lease.error`, which the console rewrote from "메일함 리스 큐를" to
+    // "메일함 처리 현황을" — the sentence a scenario waits for is a copy of the
+    // product's, and this one is checked by `test/scenario-ids.test.ts`.
+    await shows(page, "메일함 처리 현황을 불러오지 못했습니다");
 
     const downText = await page.locator("#root").innerText();
-    expect(downText).toContain("메일함 리스 큐를 불러오지 못했습니다");
+    expect(downText).toContain("메일함 처리 현황을 불러오지 못했습니다");
     expect(downText).toContain("측정 불가");
 
     await context.close();
@@ -2643,11 +2648,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/**", (route) => route.abort());
       await page.goto(`${viteBaseUrl}/platform/telemetry`, { waitUntil: "networkidle" });
       await settled(page);
-      await shows(page, "텔레메트리를 불러오지 못했습니다");
+      // `tel.error`: "텔레메트리" became "운영 지표" when the console stopped
+      // naming its screens after the transport that fills them.
+      await shows(page, "운영 지표를 불러오지 못했습니다");
       const downText = await page.locator("#root").innerText();
       expect(downText).not.toContain("active_sockets=0");
       expect(downText).not.toContain("0 sessions");
-      expect(downText).toContain("텔레메트리를 불러오지 못했습니다");
+      expect(downText).toContain("운영 지표를 불러오지 못했습니다");
     } finally {
       await context.close().catch(() => {});
     }
@@ -2717,7 +2724,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   });
 
   // Data-Driven Comprehensive Down State Assertion Across All 13 Screens (D-145)
-  const ALL_13_SCREENS = [
+  // **Named for what it is rather than for how many.** It was `ALL_13_SCREENS`
+  // until the tenant directory landed and made it fourteen — a count in a name
+  // is a fact that has to be maintained in two places, and the one that rots is
+  // the one nothing runs.
+  const ALL_SCREENS = [
     "/dashboard",
     "/creator",
     "/creator/groups",
@@ -2728,15 +2739,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     "/platform",
     "/platform/telemetry",
     "/platform/tenants",
+    "/platform/tenant-directory",
     "/tenant/egress-acl",
     "/tenant/audits",
     "/tenant/rbac",
   ];
 
   const ZERO_REGEX = /(?:기록된|등록된|데이터가|내역이|요청이)\s*없|0개|0명|\b0 sessions|active_sockets=0|Groups: 0|테넌트 없음/;
-  const UNKNOWN_REGEX = /불러오지 못|불러올 수 없|통신 불가|연결 불가|연결할 수 없|측정 불가|OFFLINE|수집 중/;
+  // `읽지 못` for the tenant directory, which says "서버가 응답하지 않아 테넌트
+  // 목록을 읽지 못했다" — the same statement in a verb this list did not hold.
+  // Without it the screen reads as one that says nothing about the failure,
+  // which is the defect this scenario exists to catch rather than a wording.
+  const UNKNOWN_REGEX = /불러오지 못|불러올 수 없|읽지 못|통신 불가|연결 불가|연결할 수 없|측정 불가|OFFLINE|수집 중/;
 
-  for (const route of ALL_13_SCREENS) {
+  for (const route of ALL_SCREENS) {
     it(`[SC-DOWN-ALL] ${route} distinguishes disconnected state from empty (D-145)`, async () => {
       // 1. Up text
       const upText = await withPage(route, async ({ page }) => {
@@ -2778,6 +2794,44 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       }
     });
   }
+
+  // SC-TDIR-01: the directory of tenants the platform owns, and the one
+  // deletion it must not offer.
+  //
+  // Minted while the console's tenant work was merged in: the route was in
+  // `App.tsx` with no scenario opening it, which is a screen nobody has looked
+  // at through a browser once — `test/scenario-ids.test.ts` reports exactly
+  // that, and reported it here.
+  //
+  // **The default tenant is the half worth asserting.** Every row that was
+  // never given a tenant points at `default`, so the server answers
+  // `409 DEFAULT_TENANT` and the store refuses before it. A console that offers
+  // the button anyway teaches an operator that the platform is broken rather
+  // than that the deletion is refused — and the refusal is not a rule this
+  // screen invented, so leaving it enabled is the screen disagreeing with the
+  // server about what is possible.
+  it("[SC-TDIR-01] lists the platform's tenants and does not offer the default one's deletion", async () => {
+    await withPage("/platform/tenant-directory", async ({ page }) => {
+      await shows(page, "테넌트 관리");
+
+      // The seeded tenant, by id rather than by display name: the name is
+      // editable from this very screen, and an assertion on it would be a test
+      // of what somebody last typed.
+      const listed = page.locator('[data-testid="tenant-id-default"]');
+      expect(await listed.count(), "the default tenant is missing from the directory").toBe(1);
+      expect(await page.locator('[data-testid="tenant-status-default"]').innerText()).toContain("사용 중");
+
+      const remove = page.locator('[data-testid="tenant-delete-default"]');
+      expect(
+        { offered: await remove.count(), enabled: await remove.isEnabled() },
+        "the console offered a deletion the server answers 409 DEFAULT_TENANT to",
+      ).toEqual({ offered: 1, enabled: false });
+
+      // Disabled and silent is a control an operator reads as a bug in the
+      // page. The reason is the screen saying which side refused.
+      await shows(page, "기본 테넌트는");
+    });
+  });
 
   // SC-WRITE-01: /creator/groups write abort does not claim success and row count does not increase
   it("[SC-WRITE-01] handles group creation abort without claiming success or increasing rows", async () => {
@@ -2886,7 +2940,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // credential that will not work, and finds out from the other side.
   it("[SC-WRITE-08] handles a pairing-code abort without displaying a code", async () => {
     await withPage("/creator/register", async ({ page }) => {
-      await shows(page, "페어링");
+      // "페어링" is gone from the console: the screen calls it a 연결 코드 now.
+      await shows(page, "연결 코드");
 
       // By placeholder: the shared `Input` component does not set `type`, so
       // `input[type='text']` matches nothing here — the first version of this
@@ -2931,8 +2986,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // saw a toast: the scenario stayed green with the page's catch rewritten
       // to announce success. Same shape as the probe that matched "에이전트" in
       // the sidebar.
-      const FAILED = "페어링 코드 발급 실패";
-      const CLAIMED = "페어링 코드가 발급되었습니다";
+      // **The claim is the issued-code panel, not the success toast.** The
+      // toast now reads "연결 코드 발급", which is a prefix of the failure's
+      // "연결 코드 발급 실패" — an alternation on those two matches the failure
+      // for both halves, and the assertion below would then refuse a screen
+      // that behaved correctly. `reg.issued.label` renders only when a code
+      // exists, so it cannot be said by a failed write.
+      const FAILED = "연결 코드 발급 실패";
+      const CLAIMED = "발급된 1회용 인증코드";
       await showsMatch(page, new RegExp(`${FAILED}|${CLAIMED}`));
 
       if (writes === 0) {
@@ -3103,7 +3164,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await capabilityViewer(mesh, "usage.read");
 
     await withPage("/tenant/rbac", async ({ page }) => {
-      await shows(page, "usage.read");
+      await page.locator('[data-testid$="-usage.read"]').first().waitFor({ state: "visible" });
 
       // Only the write. The read has to succeed or there are no chips to click.
       await page.route("**/api/v1/admin/grants", (route) => {

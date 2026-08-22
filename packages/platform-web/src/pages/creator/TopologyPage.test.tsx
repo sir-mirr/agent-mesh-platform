@@ -184,8 +184,10 @@ const clusterLabels = (): string[] =>
   screen.queryAllByTestId("topology-cluster").map((g) => g.querySelector("text")?.textContent ?? "");
 
 /** The banner a send raises. `Toast` is the one `inline-flex` div on the page. */
+const toastBox = (): HTMLElement | null =>
+  [...document.querySelectorAll("div")].find((d) => d.style.display === "inline-flex") ?? null;
 const toastText = (): string => {
-  const el = [...document.querySelectorAll("div")].find((d) => d.style.display === "inline-flex");
+  const el = toastBox();
   if (!el) throw new Error("the send raised no toast");
   return el.textContent ?? "";
 };
@@ -241,11 +243,10 @@ describe("a read that never finished is not an empty mesh", () => {
 });
 
 describe("a refusal is the server answering, and says so", () => {
-  it("repeats the capability the server named instead of one it read out of the sentence", async () => {
-    // The message names a *different* capability from the field. A screen
-    // regexing the prose gets `OTHER`; one reading § 11.3's field gets `NAMED`.
-    // Nine screens on this console had the name typed into their own copy, and
-    // every one of them went stale the day a route's requirement moved.
+  it("summarises the refusal without exposing internal permission identifiers", async () => {
+    // The message and field intentionally name different internal permissions.
+    // Neither belongs in operator-facing copy; the refusal state is enough to
+    // explain why the protected section is unavailable.
     serve({
       [GROUPS]: () => json(403, { error: `missing capability ${OTHER}`, capability: NAMED }),
       [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
@@ -254,7 +255,7 @@ describe("a refusal is the server answering, and says so", () => {
     await mount();
 
     expect(overlayText()).toContain(REFUSED);
-    expect(overlayText()).toContain(`(${NAMED})`);
+    expect(overlayText()).not.toContain(NAMED);
     expect(overlayText()).not.toContain(OTHER);
   });
 
@@ -333,6 +334,20 @@ describe("no answer at all is a third thing", () => {
     // A read that failed is one the operator can try again; an empty mesh is
     // not. The control belongs to both failures and to neither of the others.
     expect(overlayText()).toContain(say("common.retry"));
+
+    const locationPrototype = Object.getPrototypeOf(window.location) as { reload: () => void };
+    const realReload = locationPrototype.reload;
+    let reloads = 0;
+    locationPrototype.reload = () => { reloads += 1; };
+    try {
+      const retry = [...document.querySelectorAll("button")]
+        .find((button) => (button.textContent ?? "").includes(say("common.retry")));
+      if (!retry) throw new Error("the unreachable topology has no retry control");
+      fireEvent.click(retry);
+      expect(reloads).toBe(1);
+    } finally {
+      locationPrototype.reload = realReload;
+    }
   });
 
   it("does not read a broken proxy as the server saying no", async () => {
@@ -403,6 +418,48 @@ describe("empty is what the server said, and only that", () => {
 });
 
 describe("the heading counts what is actually on the canvas", () => {
+  it("does not draw or count a person that shares the unified registry and group namespace", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "default", name: "Default", members: ["admin", "svc-alpha-1"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
+        AGENT_ROWS[0],
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-agent")).toBe(1);
+    expect(clusterLabels()).toEqual(["Default (1)"]);
+    expect(subtitle()).toBe(
+      say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "1"),
+    );
+    expect(hudText()).toContain(`${say("topo.hud.agents")}: 1`);
+    expect(document.body.textContent ?? "").not.toContain("Local account");
+  });
+
+  it("reports zero agents when the only registry row is a person", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "default", name: "Default", members: ["admin"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-agent")).toBe(0);
+    expect(clusterLabels()).toEqual(["Default (0)"]);
+    expect(subtitle()).toBe(
+      say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "0"),
+    );
+    expect(hudText()).toContain(`${say("topo.hud.agents")}: 0`);
+  });
+
   it("states the same number of agents the canvas drew, and does not fold gateways into it", async () => {
     healthy();
     await mount();
@@ -539,6 +596,10 @@ describe("a receipt is read, not assumed", () => {
     // the test above on its own.
     expect(toastText()).toContain(say("topo.send.accepted"));
     expect(toastText()).not.toContain(say("topo.send.refused"));
+    const close = toastBox()?.querySelector("button");
+    if (!close) throw new Error("the send result toast has no close control");
+    fireEvent.click(close);
+    expect(toastBox()).toBeNull();
   });
 
   it("does not report a send the server never took", async () => {
@@ -688,6 +749,8 @@ describe("the populated canvas controls", () => {
       expect(resultsOpen()).toBe(true);
       fireEvent.keyDown(search, { key: "Escape" });
       expect(resultsOpen()).toBe(false);
+      fireEvent.focus(search);
+      expect(resultsOpen()).toBe(true);
       fireEvent.change(search, { target: { value: "Alpha" } });
       fireEvent.mouseDown(document.body);
       expect(resultsOpen()).toBe(false);
@@ -716,12 +779,41 @@ describe("the populated canvas controls", () => {
       fireEvent.click(closeDrawer);
       if (panel()) throw new Error("the topology drawer stayed open after its close control was used");
 
+      const gateway = screen.queryAllByTestId("topology-gateway")[0];
+      const gatewayLabel = gateway?.querySelectorAll("text")[1]?.textContent;
+      if (!gateway || !gatewayLabel) throw new Error("the topology canvas did not draw a named gateway");
+      fireEvent.click(gateway);
+      await finishAnimations();
+      expect(panelText()).toContain(gatewayLabel);
+
       const alphaOneNode = screen.queryAllByTestId("topology-agent")
         .find((node) => [...node.querySelectorAll("text")].some((label) => label.textContent === "Alpha One"));
       if (!alphaOneNode) throw new Error("the topology canvas did not draw Alpha One");
       fireEvent.click(alphaOneNode);
       await finishAnimations();
       expectValidCamera("node navigation");
+
+      const drawer = panel();
+      if (!drawer) throw new Error("node navigation did not open the drawer");
+      let escapedPointerDown = 0;
+      let escapedMouseDown = 0;
+      const onPointerDown = () => { escapedPointerDown += 1; };
+      const onMouseDown = () => { escapedMouseDown += 1; };
+      document.addEventListener("pointerdown", onPointerDown);
+      document.addEventListener("mousedown", onMouseDown);
+      try {
+        fireEvent.pointerDown(drawer, { pointerId: 3, clientX: 1, clientY: 1 });
+        fireEvent.mouseDown(drawer, { clientX: 1, clientY: 1 });
+      } finally {
+        document.removeEventListener("pointerdown", onPointerDown);
+        document.removeEventListener("mousedown", onMouseDown);
+      }
+      expect({ escapedPointerDown, escapedMouseDown }).toEqual({ escapedPointerDown: 0, escapedMouseDown: 0 });
+
+      const quickMessage = drawer.querySelector('input[type="text"]') as HTMLInputElement | null;
+      if (!quickMessage) throw new Error("the selected node drawer has no quick-message field");
+      fireEvent.change(quickMessage, { target: { value: "health check" } });
+      expect(quickMessage.value).toBe("health check");
 
       const filter = document.querySelector("select") as HTMLSelectElement | null;
       if (!filter) throw new Error("the topology canvas has no group filter");

@@ -152,4 +152,20 @@ describe("GuardedRoute", () => {
     expect(screen.queryByTestId("content")).not.toBe(null);
     expect(landedOn()).toBe(null);
   });
+
+  it("uses the server role for the temporary platform-admin-only tenant route", async () => {
+    await show(signedIn({ role: "member", github_login: "platform-admin" }), {
+      requiredRole: "PLATFORM_ADMIN",
+    });
+    expect(landedOn()).toBe("/dashboard");
+    expect(screen.queryByTestId("content")).toBe(null);
+
+    cleanup();
+    localStorage.clear();
+    await show(signedIn({ role: "admin", github_login: "somebody-else" }), {
+      requiredRole: "PLATFORM_ADMIN",
+    });
+    expect(screen.queryByTestId("content")).not.toBe(null);
+    expect(landedOn()).toBe(null);
+  });
 });

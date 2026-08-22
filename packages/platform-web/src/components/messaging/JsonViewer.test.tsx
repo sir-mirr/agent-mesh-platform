@@ -73,21 +73,21 @@ describe("JsonViewer given a value that is not JSON", () => {
     // constant, and that is reported rather than frozen by a test.
     const container = draw(circular);
     expect(container.querySelector("code")).not.toBe(null);
-    expect(container.textContent).toContain("JSON Payload");
+    expect(container.textContent).toContain("JSON message body");
   });
 
   it("labels the block from the caller's title, which is not a claim about the content", () => {
-    // The header reads "JSON Payload" over a body nothing here has checked is
+    // The header reads "JSON message body" over a body nothing here has checked is
     // JSON. That is the caller's word, not the viewer's finding — pinned so a
     // future change that starts validating has to come here and say so.
-    expect(draw("not json at all").textContent).toContain("JSON Payload");
+    expect(draw("not json at all").textContent).toContain("JSON message body");
     const titled = render(
       <I18nProvider>
         <JsonViewer data={{ ok: true }} title="Dispatched body" />
       </I18nProvider>,
     ).container;
     expect(titled.textContent).toContain("Dispatched body");
-    expect(titled.textContent).not.toContain("JSON Payload");
+    expect(titled.textContent).not.toContain("JSON message body");
   });
 });
 

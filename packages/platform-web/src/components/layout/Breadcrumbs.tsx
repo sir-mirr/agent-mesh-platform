@@ -69,39 +69,45 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
         return [
           { label: t("bc.home", "홈"), href: "/" },
           { label: t("bc.platform", "실시간 서버 모니터링"), href: "/platform" },
-          { label: t("bc.telemetry", "노드 텔레메트리") },
+          { label: t("bc.telemetry", "운영 동작 지표") },
         ];
       case "/platform/tenants":
         return [
           { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/platform/tenants" },
-          { label: t("bc.tenants", "테넌트 트래픽 격리") },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/platform/tenants" },
+          { label: t("bc.tenants", "그룹 메시지 현황") },
+        ];
+      case "/platform/tenant-directory":
+        return [
+          { label: t("bc.home", "홈"), href: "/" },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/platform/tenant-directory" },
+          { label: t("bc.tenantDirectory", "테넌트 관리") },
         ];
       case "/tenant/egress-acl":
       case "/tenant/egress":
         return [
           { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/tenant/egress-acl" },
-          { label: t("bc.egress", "Egress ACL 매트릭스") },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/tenant/egress-acl" },
+          { label: t("bc.egress", "그룹 간 전송 규칙") },
         ];
       case "/tenant/audits":
       case "/tenant/audit":
         return [
           { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/tenant/audits" },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/tenant/audits" },
           { label: t("bc.audit", "보안 감사 로그") },
         ];
       case "/platform/users":
         return [
           { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/platform/users" },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/platform/users" },
           { label: t("bc.users", "로컬 계정") },
         ];
       case "/tenant/rbac":
         return [
           { label: t("bc.home", "홈"), href: "/" },
-          { label: t("bc.governance", "플랫폼 거버넌스"), href: "/tenant/rbac" },
-          { label: t("bc.rbac", "RBAC 권한 관리") },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/tenant/rbac" },
+          { label: t("bc.rbac", "계정 권한 관리") },
         ];
       default:
         return [

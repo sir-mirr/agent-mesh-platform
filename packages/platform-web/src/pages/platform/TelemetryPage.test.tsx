@@ -42,7 +42,7 @@ const { render, screen, cleanup, fireEvent, act } = await import("@testing-libra
 const { MemoryRouter } = await import("react-router-dom");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
-const { TelemetryPage } = await import("./TelemetryPage.tsx");
+const { TelemetryPage, formatElapsed } = await import("./TelemetryPage.tsx");
 
 const en = (key: string) => DICTIONARY.en[key]!;
 
@@ -112,7 +112,7 @@ const AGENT_ROWS = [
   { identity: "a-2", status: "idle" },
   { identity: "a-3", status: "offline", channel: "web" },
 ];
-const LIVE_SOCKETS = 2;
+const WEB_CHANNEL_IDENTITIES = 1;
 const HEALTH_OK = { status: "ok", agent_count: 5, uptime: 900, version: "0.2.0" };
 
 const COUNTING_SINCE = "2026-08-19T10:00:00.000Z";
@@ -214,22 +214,16 @@ const unmeasuredReason = (label: string) =>
   metricCard(label).querySelector("[data-testid='metric-unmeasured']")?.getAttribute("title") ?? null;
 
 /**
- * The socket gauge's number and its ceiling, from the cell next to the label.
+ * The web-channel registry card's value.
  *
  * Read out of that one cell rather than out of the card: the caption underneath
  * says "sockets healthy" no matter what the number is, so a card-wide match
  * cannot tell a measured zero from a drawn one.
  */
 const socketsValue = (): string | null => {
-  const label = [...document.querySelectorAll("span")].find((s) => s.textContent === en("tel.sockets"));
-  return label?.nextElementSibling?.textContent ?? null;
+  const card = document.querySelector(`[data-kpi="${en("tel.sockets")}"]`);
+  return card?.children[1]?.children[0]?.textContent ?? null;
 };
-
-/** The one diagnostic line, whose `<div>` holds it and nothing else. */
-const logLine = (): string =>
-  [...document.querySelectorAll("div")]
-    .map((d) => d.textContent ?? "")
-    .find((text) => text.startsWith("[INFO telemetry.tick]")) ?? "";
 
 const refreshButton = () => screen.getByText(en("telem.refreshBtn"));
 const refresh = async () => {
@@ -278,7 +272,6 @@ describe("the four things a blank telemetry screen can mean", () => {
     // renders anyway with `—` and `0` in the cells, and a zeroed gauge under a
     // "sockets healthy" caption is a measurement of a machine nobody reached.
     expect(socketsValue()).toBe(null);
-    expect(logLine()).toBe("");
     expect(screen.queryByTestId("behaviour-metrics")).toBe(null);
     expect(pageText()).not.toContain(en("common.unmeasured"));
     // Nothing answered, so nothing refused either — and "still collecting" is
@@ -299,9 +292,9 @@ describe("the four things a blank telemetry screen can mean", () => {
     const withheld = pageText();
     const banner = refusalBanner();
     expect(banner).not.toBe(null);
-    expect(banner!.textContent).toContain(PANEL_AGENTS);
+    expect(banner!.textContent).not.toContain(PANEL_AGENTS);
     expect(banner!.textContent).toContain(en("tel.partial.note"));
-    expect(socketsValue()).toBe("0 / Max 500");
+    expect(socketsValue()).toBe(en("common.unmeasured"));
 
     cleanup();
     calls.length = 0;
@@ -312,8 +305,7 @@ describe("the four things a blank telemetry screen can mean", () => {
     expect(idle).not.toContain(en("tel.partial"));
     // Same number, and it means the opposite thing. The server answered this
     // one, so the gauge is a reading rather than a hole.
-    expect(socketsValue()).toBe("0 / Max 500");
-    expect(logLine()).toBe("[INFO telemetry.tick] active_sockets=0 total_agents=0");
+    expect(socketsValue()).toBe("0");
 
     // The measurement itself: two backends in different states must not produce
     // the same page.
@@ -348,13 +340,13 @@ describe("refused is read off the status, never out of the sentence", () => {
     // The whole banner, so a panel named without its capability — or a
     // capability named without the note that explains what the blank cells
     // below mean — fails here.
-    expect(banner!.textContent).toBe(
-      `${en("tel.partial")} — ${PANEL_BEHAVIOUR} (${USAGE_READ}). ${en("tel.partial.note")}`,
-    );
+    expect(banner!.textContent).toBe(`${en("tel.partial")} (1). ${en("tel.partial.note")}`);
+    expect(banner!.textContent).not.toContain(USAGE_READ);
+    expect(banner!.textContent).not.toContain(PANEL_BEHAVIOUR);
     // A refusal of one panel is not the backend being down: the other four
     // answered and the page still has a dashboard to draw.
     expect(pageText()).not.toContain(en("tel.error"));
-    expect(socketsValue()).toBe(`${LIVE_SOCKETS} / Max 500`);
+    expect(socketsValue()).toBe(String(WEB_CHANNEL_IDENTITIES));
   });
 
   it("does not call a broken proxy a refusal because its body said forbidden", async () => {
@@ -390,18 +382,21 @@ describe("refused is read off the status, never out of the sentence", () => {
     await mount();
     const banner = refusalBanner();
     expect(banner).not.toBe(null);
-    expect(banner!.textContent).toContain(`${PANEL_MAILBOX} (${STATS})`);
+    expect(banner!.textContent).toContain("(2)");
+    expect(banner!.textContent).not.toContain(STATS);
     expect(banner!.textContent).not.toContain(DEPTH);
     // Both refusals are named, not just whichever one came back first — a
     // banner that stops at one leaves the operator hunting the second blank
     // panel on their own.
-    expect(banner!.textContent).toContain(`${PANEL_BEHAVIOUR} (${USAGE_READ})`);
+    expect(banner!.textContent).not.toContain(USAGE_READ);
+    expect(banner!.textContent).not.toContain(PANEL_BEHAVIOUR);
   });
 
   it("falls back to the route's own requirement when the server named nothing", async () => {
     mailboxRoute = refuses(null);
     await mount();
-    expect(refusalBanner()!.textContent).toContain(`${PANEL_MAILBOX} (${DEPTH})`);
+    expect(refusalBanner()!.textContent).not.toContain(DEPTH);
+    expect(refusalBanner()!.textContent).not.toContain(PANEL_MAILBOX);
   });
 });
 
@@ -424,7 +419,7 @@ describe("a counter that was not read is not a counter reading zero", () => {
     // an operator is hoping for and will not question.
     expect(metricText(en("tel.m.pending"))).toBe(`${en("tel.m.pending")}0`);
     expect(metricText(en("tel.m.sig"))).toBe(`${en("tel.m.sig")}4`);
-    expect(metricText("rate limit")).toBe("rate limit0");
+    expect(metricText(en("tel.m.rate"))).toBe(`${en("tel.m.rate")}0`);
     expect(metricText(en("tel.m.accepted"))).toBe(`${en("tel.m.accepted")}0`);
 
     expect(metricText(en("tel.m.oldest"))).toBe(`${en("tel.m.oldest")}${en("common.unmeasured")}`);
@@ -433,6 +428,26 @@ describe("a counter that was not read is not a counter reading zero", () => {
     expect(metricText(en("tel.m.oldest"))).not.toContain("0");
     expect(metricText(en("tel.m.oldest"))).not.toContain("ms");
     expect(metricText(en("tel.m.egress"))).toBe(`${en("tel.m.egress")}${en("common.unmeasured")}`);
+  });
+
+  it("turns a long wait into human time instead of raw milliseconds", async () => {
+    const rawWait = 181_835_000;
+    behaviourRoute = answers(200, {
+      ...BEHAVIOUR_MEASURED,
+      oldest_pending_ms: { value: rawWait },
+    });
+    await mount();
+
+    const shown = metricText(en("tel.m.oldest"));
+    expect(shown).toContain(formatElapsed(rawWait, "en"));
+    expect(shown).not.toContain(String(rawWait));
+    expect(shown).not.toContain("ms");
+    expect(formatElapsed(rawWait, "ko")).toBe(
+      `2${DICTIONARY.ko["agents.unit.day"]} 2${DICTIONARY.ko["agents.unit.hour"]}`,
+    );
+    expect(formatElapsed(90 * 60 * 1000, "en")).toBe(
+      `1${DICTIONARY.en["agents.unit.hour"]} 30${DICTIONARY.en["agents.unit.minute"]}`,
+    );
   });
 
   it("carries each unread counter's own reason rather than one shared sentence", async () => {
@@ -488,41 +503,22 @@ describe("a counter that was not read is not a counter reading zero", () => {
     expect(screen.queryByText(en("tel.m.sig"))).toBe(null);
     expect(screen.queryByTestId("counting-since")).toBe(null);
     // The rest of the page answered and is still drawn.
-    expect(socketsValue()).toBe(`${LIVE_SOCKETS} / Max 500`);
+    expect(socketsValue()).toBe(String(WEB_CHANNEL_IDENTITIES));
   });
 });
 
-describe("the diagnostic line counts two different things", () => {
-  it("keeps the registry's live sockets apart from the hub's agent count", async () => {
+describe("the registry card says exactly what the agent rows report", () => {
+  it("counts only identities whose channel is web", async () => {
     await mount();
-    // Two tables, two questions: `health.agent_count` counts mesh identities
-    // that are alive, `agents` counts rows in this server's chat registry, and
-    // neither contains the other. Substituting one for the other puts a
-    // different quantity under the same label and nothing says it changed —
-    // measured at 12 against 13 on the standing stack.
-    expect(logLine()).toBe("[INFO telemetry.tick] active_sockets=2 total_agents=5");
-    expect(socketsValue()).toBe(`${LIVE_SOCKETS} / Max 500`);
+    expect(socketsValue()).toBe(String(WEB_CHANNEL_IDENTITIES));
+    expect(socketsValue()).not.toBe(String(AGENT_ROWS.length));
+    expect(pageText()).not.toContain("active_sockets");
   });
 
-  it("says the agent count is unmeasured rather than borrowing the registry's", async () => {
-    // The health route answered, but without the field. There is no number to
-    // print, and the registry's three rows are a different quantity.
-    healthRoute = answers(200, { status: "ok" });
+  it("says the registry count is unmeasured when the agent list did not answer", async () => {
+    agentsRoute = noAnswer;
     await mount();
-    expect(logLine()).toBe(
-      `[INFO telemetry.tick] active_sockets=${LIVE_SOCKETS} total_agents=${en("common.unmeasured")}`,
-    );
-    expect(logLine()).not.toContain("total_agents=3");
-    expect(logLine()).not.toContain("total_agents=0");
-  });
-
-  it("says the agent count is unmeasured when the health route never answered", async () => {
-    healthRoute = noAnswer;
-    await mount();
-    // A zero here reads as an empty mesh, which is the whole defect in one
-    // field: the hub was never asked and the line says nobody is connected.
-    expect(logLine()).toContain(`total_agents=${en("common.unmeasured")}`);
-    expect(logLine()).not.toContain("total_agents=0");
+    expect(socketsValue()).toBe(en("common.unmeasured"));
   });
 });
 
@@ -551,12 +547,12 @@ describe("refreshing asks again, and drops what the last answer said", () => {
     // ignore, which costs the banner that matters.
     expect(pageText()).not.toContain(en("tel.error"));
     expect(screen.queryByTestId("behaviour-metrics")).not.toBe(null);
-    expect(socketsValue()).toBe(`${LIVE_SOCKETS} / Max 500`);
+    expect(socketsValue()).toBe(String(WEB_CHANNEL_IDENTITIES));
   });
 
   it("does not leave the last good dashboard up when the refresh failed", async () => {
     await mount();
-    expect(socketsValue()).toBe(`${LIVE_SOCKETS} / Max 500`);
+    expect(socketsValue()).toBe(String(WEB_CHANNEL_IDENTITIES));
 
     usageRoute = noAnswer;
     agentsRoute = noAnswer;
@@ -570,7 +566,6 @@ describe("refreshing asks again, and drops what the last answer said", () => {
     // something is wrong.
     expect(pageText()).toContain(en("tel.error"));
     expect(socketsValue()).toBe(null);
-    expect(logLine()).toBe("");
     expect(screen.queryByTestId("behaviour-metrics")).toBe(null);
   });
 

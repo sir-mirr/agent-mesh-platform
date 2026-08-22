@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { fetchLocalUsers, admitLocalUserApi, fetchPendingAdmissions, type LocalUser, type PendingAdmission } from "@/api/users.ts";
+import { fetchTenantDirectory, type TenantDirectoryItem } from "@/api/tenants.ts";
 import { ApiError, failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 
 /**
@@ -30,6 +31,11 @@ export function UserAdminPage() {
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [tenants, setTenants] = useState<TenantDirectoryItem[] | null>(null);
+  const [selectedTenant, setSelectedTenant] = useState("");
+  const [tenantLoading, setTenantLoading] = useState(true);
+  const [tenantFailure, setTenantFailure] = useState<FailureKind | null>(null);
+  const [tenantMissing, setTenantMissing] = useState<string | null>(null);
   /**
    * The other decision queue. Four states, not two: a list, an empty list, a
    * refusal, and a read that did not happen. `[]` and *could not ask* are the
@@ -75,19 +81,50 @@ export function UserAdminPage() {
     }
   };
 
+  const loadTenants = async () => {
+    setTenantLoading(true);
+    try {
+      const response = await fetchTenantDirectory();
+      if (!Array.isArray(response.tenants)) {
+        throw new Error("tenant directory response did not include tenants");
+      }
+      // Deleted tenants remain in the management directory for history, but
+      // are not offered for new accounts. The server enforces the same rule.
+      const available = response.tenants.filter((tenant) => tenant.deleted_at === null);
+      setTenants(available);
+      setSelectedTenant((current) => {
+        if (available.some((tenant) => tenant.id === current)) return current;
+        return available.find((tenant) => tenant.id === response.tenant)?.id ?? available[0]?.id ?? "";
+      });
+      setTenantFailure(null);
+      setTenantMissing(null);
+    } catch (err: unknown) {
+      // Do not silently admit into a guessed tenant when the picker could not
+      // be populated. The server has a default, but the operator was promised
+      // a visible choice and a failed read is not that choice.
+      setTenants(null);
+      setSelectedTenant("");
+      setTenantFailure(failureKind(err));
+      setTenantMissing(refusedCapability(err));
+    } finally {
+      setTenantLoading(false);
+    }
+  };
+
   useEffect(() => {
     void load();
     void loadQueue();
+    void loadTenants();
   }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || busy) return;
+    if (!username.trim() || !selectedTenant || tenantLoading || tenants === null || busy) return;
     setBusy(true);
     setRefusal(null);
     setIssued(null);
     try {
-      const res = await admitLocalUserApi(username.trim(), displayName.trim());
+      const res = await admitLocalUserApi(username.trim(), displayName.trim(), selectedTenant);
       setIssued({ username: res.user?.username ?? username.trim(), password: res.temporary_password });
       setUsername("");
       setDisplayName("");
@@ -147,9 +184,6 @@ export function UserAdminPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-testid="user-admin">
       <Breadcrumbs />
       <PageHeader
-        suiteTag="PLATFORM ADMIN"
-        suiteBadgeColor="leased"
-        screenId="37"
         title={t("users.title", "Local accounts")}
         subtitle={t(
           "users.subtitle",
@@ -202,10 +236,60 @@ export function UserAdminPage() {
             }}
           />
         </label>
-        <Button type="submit" data-testid="admit-submit" disabled={busy}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
+          {t("users.field.tenant", "Tenant")}
+          <select
+            data-testid="admit-tenant"
+            value={selectedTenant}
+            onChange={(event) => setSelectedTenant(event.target.value)}
+            disabled={tenantLoading || tenants === null || tenants.length === 0}
+            style={{
+              padding: "8px 10px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-bg-surface-sub)",
+              color: "var(--color-text-primary)",
+              minWidth: 180,
+            }}
+          >
+            {tenantLoading ? (
+              <option value="">{t("users.tenants.loading", "Reading tenants…")}</option>
+            ) : tenants?.length ? (
+              tenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name} ({tenant.id})
+                </option>
+              ))
+            ) : (
+              <option value="">{t("users.tenants.none", "No tenant can be selected")}</option>
+            )}
+          </select>
+        </label>
+        <Button
+          type="submit"
+          data-testid="admit-submit"
+          disabled={busy || tenantLoading || tenants === null || tenants.length === 0 || !selectedTenant}
+        >
           {busy ? t("users.admitting", "Admitting…") : t("users.admit", "Admit")}
         </Button>
       </form>
+
+      {!tenantLoading && tenants === null ? (
+        <div
+          data-testid={tenantFailure === "refused" ? "admit-tenants-refused" : "admit-tenants-unreachable"}
+          style={{
+            padding: 12,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-danger)",
+            color: "var(--color-danger)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {tenantFailure === "refused"
+            ? refusedText(t, tenantMissing)
+            : t("users.tenants.unreachable", "The tenant list could not be read. No tenant has been assumed.")}
+        </div>
+      ) : null}
 
       {refusal && (
         <div

@@ -11,7 +11,7 @@
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { setSystemTime } from "bun:test";
 import {
-  fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
+  agentMemberIdentities, agentRegistryEntries, fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
   createPairingCodeApi, teardownAgentApi, lastSeen, lastSeenText, hasBeenSeen,
   type TeardownAction,
 } from "./agents.ts";
@@ -32,12 +32,46 @@ const spyOn = (body: unknown) => {
 afterEach(() => { globalThis.fetch = realFetch; setSystemTime(); });
 
 describe("fetchAgents", () => {
+  it("keeps the unified response intact and lets agent-labelled views remove people", async () => {
+    spyOn({ agents: [
+      { id: "admin", type: "user", tenant: "default" },
+      { id: "worker-1", type: "worker", tenant: "acme" },
+      { id: "relay-1", type: "service", tenant: "acme" },
+    ] });
+
+    const registry = await fetchAgents();
+    // The API reader still represents the server's whole unified registry.
+    expect(registry.map((entry) => entry.identity)).toEqual(["admin", "worker-1", "relay-1"]);
+    // The view rule is narrower: a person never becomes an agent count or row.
+    expect(agentRegistryEntries(registry).map((entry) => entry.identity)).toEqual(["worker-1", "relay-1"]);
+    expect(registry.map((entry) => entry.tenant)).toEqual(["default", "acme", "acme"]);
+  });
+
+  it("asks the registry for one tenant when a group picker names it", async () => {
+    const spy = spyOn({ agents: [{ id: "worker-1", type: "worker", tenant: "lane/a" }] });
+    await fetchAgents("lane/a");
+
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/agents\?tenant=lane%2Fa$/);
+  });
+
+  it("keeps only registry-confirmed agents inside a mixed identity group", () => {
+    const registry = [
+      { identity: "admin", type: "user" },
+      { identity: "worker-1", type: "worker" },
+      { identity: "relay-1", type: "service" },
+    ];
+
+    expect(agentMemberIdentities(["admin", "worker-1", "unknown", "relay-1"], registry))
+      .toEqual(["worker-1", "relay-1"]);
+  });
+
   it("leaves an absent fingerprint absent", async () => {
     spyOn({ agents: [{ identity: "a-1" }] });
     const [row] = await fetchAgents();
     // A constant here makes every agent match the one an operator is checking
     // against, and the word `verified` in it invites skipping the check.
     expect(row!.fingerprint).toBe(null);
+    expect(row!.tenant).toBe(null);
   });
 
   it("falls back through the names a row might carry, and says unknown last", async () => {

@@ -61,22 +61,28 @@ const sidebarSource = readFileSync(join(WEB, "components", "layout", "Sidebar.ts
  * before the next route begins. A `GuardedRoute` further away belongs to
  * something else.
  */
-function routeGuards(): Map<string, string | null> {
-  const out = new Map<string, string | null>();
+type Guard = { capability: string | null; role: string | null };
+
+function routeGuards(): Map<string, Guard> {
+  const out = new Map<string, Guard>();
   const chunks = appSource.split(/path=\s*"/).slice(1);
   for (const chunk of chunks) {
     const path = chunk.slice(0, chunk.indexOf('"'));
     if (!path.startsWith("/") || path === "/" || path === "*") continue;
     const body = chunk.slice(0, chunk.indexOf("/>") + 1 || undefined);
-    const guard = /requiredCapability=\s*"([^"]+)"/.exec(body);
-    out.set(path, guard ? guard[1]! : null);
+    const capability = /requiredCapability=\s*"([^"]+)"/.exec(body);
+    const role = /requiredRole=\s*"([^"]+)"/.exec(body);
+    out.set(path, {
+      capability: capability ? capability[1]! : null,
+      role: role ? role[1]! : null,
+    });
   }
   return out;
 }
 
 /** Every sidebar item, as `href` and the capability it demands. */
-function menuItems(): Map<string, string | null> {
-  const out = new Map<string, string | null>();
+function menuItems(): Map<string, Guard> {
+  const out = new Map<string, Guard>();
   const chunks = sidebarSource.split(/href:\s*"/).slice(1);
   for (const chunk of chunks) {
     const href = chunk.slice(0, chunk.indexOf('"'));
@@ -85,8 +91,12 @@ function menuItems(): Map<string, string | null> {
     // following entry, and reading into it would attribute its capability here.
     const end = chunk.indexOf("label:");
     const body = end === -1 ? chunk : chunk.slice(0, end);
-    const cap = /requiredCapability:\s*"([^"]+)"/.exec(body);
-    out.set(href, cap ? cap[1]! : null);
+    const capability = /requiredCapability:\s*"([^"]+)"/.exec(body);
+    const role = /requiredRole:\s*"([^"]+)"/.exec(body);
+    out.set(href, {
+      capability: capability ? capability[1]! : null,
+      role: role ? role[1]! : null,
+    });
   }
   return out;
 }
@@ -114,8 +124,14 @@ describe("the sidebar and the router", () => {
     const routes = routeGuards();
     const disagreements = [...menuItems().entries()]
       .filter(([href]) => routes.has(href))
-      .filter(([href, cap]) => routes.get(href) !== cap)
-      .map(([href, cap]) => `${href}: menu ${cap ?? "none"} vs route ${routes.get(href) ?? "none"}`);
+      .filter(([href, guard]) => {
+        const route = routes.get(href)!;
+        return route.capability !== guard.capability || route.role !== guard.role;
+      })
+      .map(([href, guard]) => {
+        const route = routes.get(href)!;
+        return `${href}: menu ${JSON.stringify(guard)} vs route ${JSON.stringify(route)}`;
+      });
 
     expect(
       disagreements,

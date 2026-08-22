@@ -14,6 +14,8 @@ export interface AuditEventItem {
   sentBy: string | null;
   contentLength: number;
   rawContent: string;
+  /** True when the server supplied its redaction sentinel instead of a body. */
+  redacted: boolean;
   /** `integrity.digest_matches` — computed when the response was built. */
   digestMatches: boolean | null;
   signature: SignatureFact;
@@ -30,8 +32,9 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
     const sender = msg.from || msg.sender || item.sender || item.identity || item.producer_id || "unknown";
     const recipient = msg.to || msg.recipient || item.recipient || item.target || "unknown";
     const sentBy = msg.sent_by || msg.carrier || item.carrier || (item.identity && item.identity !== sender ? item.identity : null);
-    const content = typeof msg.content === "string" ? msg.content : (typeof payload.content === "string" ? payload.content : (typeof item.content === "string" ? item.content : (payload ? JSON.stringify(payload) : "[content withheld]")));
-    const contentLength = item.content_length ?? (typeof content === "string" ? content.length : 0);
+    const content = typeof msg.content === "string" ? msg.content : (typeof payload.content === "string" ? payload.content : (typeof item.content === "string" ? item.content : (payload ? JSON.stringify(payload) : "")));
+    const redacted = /^\[content withheld\b/i.test(content);
+    const contentLength = item.content_length ?? msg.content_length ?? payload.content_length ?? content.length;
     const timestamp = item.occurred_at || item.stored_at || item.timestamp || item.ts || "—";
     
     let attestationObj: any = null;
@@ -73,6 +76,7 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
       sentBy,
       contentLength,
       rawContent: content,
+      redacted,
         digestMatches,
       signature,
     };

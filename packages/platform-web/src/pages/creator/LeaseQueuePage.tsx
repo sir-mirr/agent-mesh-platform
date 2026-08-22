@@ -4,18 +4,9 @@ import {
   PageHeader,
   Breadcrumbs,
   DataTable,
-  StatusBadge,
-  TelemetryCard,
-  Button,
-  Toast,
+  KpiCard,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-
-interface AgentIdentity {
-  id: string;
-  name: string;
-  group: string;
-}
 
 /**
  * **A mailbox, which is what the route returns.**
@@ -47,7 +38,6 @@ export function LeaseQueuePage() {
   const [failure, setFailure] = useState<FailureKind | null>(null);
   /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
   const [missing, setMissing] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Load real admin mailbox metrics on mount
   useEffect(() => {
@@ -128,7 +118,7 @@ export function LeaseQueuePage() {
     },
     {
       key: "leased",
-      header: t("lease.col.leased", "임대 중"),
+      header: t("lease.col.leased", "처리 중"),
       render: (item: MailboxRow) => (
         <span style={{ fontFamily: "var(--font-mono)" }}>{item.leased}</span>
       ),
@@ -149,20 +139,9 @@ export function LeaseQueuePage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="42"
-        title={t("lease.title", "에이전트 메일함 리스 큐 & 300초 리스 감시")}
-        subtitle={t("lease.subtitle", "At-Least-Once 보증 메일함 리스 상태머신 (Available → Leased → Acked) 실시간 감시 (SPEC § 9)")}
+        title={t("lease.title", "에이전트 메일함 처리 현황")}
+        subtitle={t("lease.subtitle", "메일함별 대기 수, 처리 중 수, 가장 오래 기다린 메시지를 보여줍니다")}
       />
-
-      {toastMessage && (
-        <Toast
-          type="info"
-          message={toastMessage}
-          onClose={() => setToastMessage(null)}
-        />
-      )}
 
       {/* Guide Banner: Explaining Lease & 300s TTL Architecture */}
       <div
@@ -180,7 +159,7 @@ export function LeaseQueuePage() {
           <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>⏱️</div>
           <div>
             <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
-              {t("lease.what.title", "What a lease is")}
+              {t("lease.what.title", "메시지가 처리 중일 때")}
             </strong>
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
               {t("lease.what.body", "When an asynchronous or serverless worker takes a message it is not deleted straight away — it is locked for a time so no other worker processes it twice.")}
@@ -192,10 +171,10 @@ export function LeaseQueuePage() {
           <div style={{ fontSize: "1.5rem", lineHeight: 1 }}>🛡️</div>
           <div>
             <strong style={{ fontSize: "0.88rem", color: "var(--color-text-primary)" }}>
-              {t("lease.ttl.title", "300s TTL (the at-least-once safeguard)")}
+              {t("lease.ttl.title", "처리가 끝나지 않으면 다시 배달됩니다")}
             </strong>
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", marginTop: 4, lineHeight: 1.4 }}>
-              {t("lease.ttl.body", "An ACK from a worker that finished releases it for good. If the worker dies and nothing answers for 300 seconds the message returns to Available and is processed again rather than lost.")}
+              {t("lease.ttl.body", "작업자가 처리를 완료하면 메시지는 대기 목록에서 사라집니다. 응답 없이 5분이 지나면 메시지가 다시 대기 상태로 돌아와 다른 작업자가 처리할 수 있습니다.")}
             </p>
           </div>
         </div>
@@ -203,22 +182,20 @@ export function LeaseQueuePage() {
 
       {/* Telemetry row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <TelemetryCard
-          label={t("lease.kpi.leased", "임대 중인 메시지")}
-          currentValue={isError ? t("common.unmeasurable", "측정 불가") : String(leasedCount)}
-          maxLabel={t("lease.total", "총 적체")}
-          percentage={isError ? 0 : (leasedCount / Math.max(1, queue.length)) * 100}
-          barColor="var(--color-leased)"
-          statusText={isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("lease.down", "서버 연결 불가")) : t("lease.working", "워커가 처리 중 (300s TTL 카운트다운)")}
+        <KpiCard
+          label={t("lease.kpi.leased", "처리 중인 메시지")}
+          value={isLoading ? "..." : isError ? t("common.unmeasured", "— 미측정") : String(leasedCount)}
+          subValue={isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("lease.down", "서버 연결 불가")) : t("lease.working", "작업자가 처리 중이며, 끝나지 않으면 5분 뒤 다시 배달됩니다")}
+          color="var(--color-leased)"
+          icon="⚙️"
         />
-        <TelemetryCard
+        <KpiCard
           label={t("lease.kpi.available", "대기 중인 메시지")}
-          currentValue={isError ? t("common.unmeasurable", "측정 불가") : String(availableCount)}
+          value={isLoading ? "..." : isError ? t("common.unmeasured", "— 미측정") : String(availableCount)}
           valueTestId="lease-available"
-          maxLabel={t("lease.total", "총 적체")}
-          percentage={isError ? 0 : (availableCount / Math.max(1, queue.length)) * 100}
-          barColor="var(--color-warning)"
-          statusText={isError ? t("lease.down", "서버 연결 불가") : t("lease.ready", "워커가 가져갈 수 있는 상태")}
+          subValue={isError ? t("lease.down", "서버 연결 불가") : t("lease.ready", "작업자가 가져갈 수 있는 상태")}
+          color="var(--color-warning)"
+          icon="📥"
         />
       </div>
 
@@ -231,7 +208,7 @@ export function LeaseQueuePage() {
         errorMessage={
           failure === "refused"
             ? refusedText(t, missing)
-            : t("lease.error", "메일함 리스 큐를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+            : t("lease.error", "메일함 처리 현황을 불러오지 못했습니다 (서버가 답하지 않았습니다).")
         }
         emptyMessage={t("lease.empty", "대기 중인 메일함이 없습니다.")}
       />

@@ -82,9 +82,9 @@ export function AuditLogsPage() {
     },
     {
       key: "content",
-      header: t("audit.col.content", "메시지 본문 (§ 11.0 프라이버시 경계)"),
+      header: t("audit.col.content", "메시지 본문"),
       render: (item: AuditEventItem) => {
-        if (!canReadContent) {
+        if (!canReadContent || item.redacted) {
           return (
             <span
               style={{
@@ -97,7 +97,7 @@ export function AuditLogsPage() {
               }}
               data-testid="audit-withheld"
             >
-              {t("audit.held", "[content withheld — requires audit.read.content]")}
+              {t("audit.held", "본문을 볼 권한이 없어 숨겼습니다")}
             </span>
           );
         }
@@ -160,11 +160,8 @@ export function AuditLogsPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="TENANT ADMIN"
-        suiteBadgeColor="leased"
-        screenId="33"
         title={t("audit.title", "참가자 본문 감사 스트림")}
-        subtitle={t("audit.subtitle", "SPEC § 11.0 프라이버시 경계: audit.read.content 권한 보유자에게만 본문 노출, 미보유 시 [content withheld] 리댁션")}
+        subtitle={t("audit.subtitle", "본문 열람 권한이 있으면 메시지 내용을 보여주고, 없으면 내용만 숨깁니다")}
         actions={
           <Button variant="secondary" size="sm" onClick={loadAuditEvents}>
             {t("audit.refreshBtn", "↻ 감사 로그 갱신")}
@@ -188,8 +185,8 @@ export function AuditLogsPage() {
           {t("audit.status.label", "현재 권한 상태")}:{" "}
           <strong>
             {canReadContent
-              ? t("audit.status.has", "✓ audit.read.content 보유 (본문 열람 가능 — 열람 시 내부 감사 로그 기록됨)")
-              : t("audit.status.none", "⚠️ audit.read.content 미보유 (본문 유출 차단, 메타데이터만 열람)")}
+              ? t("audit.status.has", "✓ 메시지 본문을 볼 수 있습니다. 열람 기록은 감사 로그에 남습니다")
+              : t("audit.status.none", "⚠️ 메시지 본문은 숨기고 시간·경로·길이만 표시합니다")}
           </strong>
         </span>
       </div>

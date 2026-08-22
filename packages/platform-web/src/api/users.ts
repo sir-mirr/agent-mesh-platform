@@ -32,10 +32,18 @@ export interface AdmittedUser {
   temporary_password: string;
 }
 
-export async function admitLocalUserApi(username: string, displayName?: string): Promise<AdmittedUser> {
+export async function admitLocalUserApi(
+  username: string,
+  displayName?: string,
+  tenant?: string,
+): Promise<AdmittedUser> {
   return await apiClient<AdmittedUser>("/api/v1/admin/users", {
     method: "POST",
-    body: JSON.stringify({ username, display_name: displayName || undefined }),
+    body: JSON.stringify({
+      username,
+      display_name: displayName || undefined,
+      tenant: tenant || undefined,
+    }),
   });
 }
 

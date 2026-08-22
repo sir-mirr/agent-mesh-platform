@@ -34,7 +34,7 @@ if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register
 
 // `await import`, not a statement: a static import is hoisted above the
 // registrator and would run against a process with no document.
-const { render, cleanup } = await import("@testing-library/react");
+const { render, cleanup, fireEvent } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { Breadcrumbs } = await import("./Breadcrumbs.tsx");
@@ -162,6 +162,7 @@ const ROUTES: Array<[string, Array<[string, string | null]>]> = [
   ["/platform", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.server", null]]],
   ["/platform/telemetry", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.telemetry", null]]],
   ["/platform/tenants", [["bc.home", "/"], ["bc.governance", "/platform/tenants"], ["bc.tenants", null]]],
+  ["/platform/tenant-directory", [["bc.home", "/"], ["bc.governance", "/platform/tenant-directory"], ["bc.tenantDirectory", null]]],
   ["/platform/users", [["bc.home", "/"], ["bc.governance", "/platform/users"], ["bc.users", null]]],
   ["/tenant/egress-acl", [["bc.home", "/"], ["bc.governance", "/tenant/egress-acl"], ["bc.egress", null]]],
   ["/tenant/audits", [["bc.home", "/"], ["bc.governance", "/tenant/audits"], ["bc.audit", null]]],
@@ -237,6 +238,17 @@ describe("Breadcrumbs, from the route", () => {
     // Separators are decoration. One rendered as an anchor would offer
     // navigation to nothing and would take a keyboard tab stop to do it.
     expect(kids.some((el) => el.tagName === "A" && (el.textContent ?? "").trim() === "/")).toBe(false);
+  });
+
+  it("shows which earlier step is under the pointer, then restores it", () => {
+    const link = navAt("/creator/groups").querySelector("a");
+    if (!link) throw new Error("the route trail has no linked earlier step");
+
+    expect(link.style.color).toBe("var(--color-text-secondary)");
+    fireEvent.mouseEnter(link);
+    expect(link.style.color).toBe("var(--color-primary)");
+    fireEvent.mouseLeave(link);
+    expect(link.style.color).toBe("var(--color-text-secondary)");
   });
 
   it("mounts the registration bell beside the trail, outside the nav", () => {

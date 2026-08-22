@@ -12,6 +12,7 @@ import {
   Toast,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentItem {
@@ -47,9 +48,10 @@ interface TeardownNotice {
   message: string;
 }
 
-import { fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
+import { agentRegistryEntries, fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
 
 export function AgentsPage() {
+  const { user } = useAuth();
   const { hasCapability } = useRbac();
   const canTeardown = hasCapability("agent.teardown");
   const { t } = useI18n();
@@ -70,7 +72,7 @@ export function AgentsPage() {
     setIsError(false);
       setFailure(null);
     try {
-      const list = await fetchAgents();
+      const list = agentRegistryEntries(await fetchAgents());
       setAgents(
         (list || []).map((a) => {
           const seen = lastSeen(a.last_seen_at);
@@ -224,7 +226,7 @@ export function AgentsPage() {
     },
     {
       key: "fingerprint",
-      header: t("agents.col.fingerprint", "Ed25519 공개키 지문"),
+      header: t("agents.col.fingerprint", "공개키 지문"),
       render: (item: AgentItem) => (
         <FingerprintBox fingerprint={item.fingerprint} showCopy={true} />
       ),
@@ -278,7 +280,11 @@ export function AgentsPage() {
 
             `hasCapability` reads what `/auth/me` granted, not a role.
           */}
-          {canTeardown && (
+          {/* Filtering `type: user` removes the normal self row. Keep identity
+              equality as a second, independent guard: a malformed or migrated
+              registry row must never offer the signed-in person a control that
+              destroys their own identity from an agent-management screen. */}
+          {canTeardown && item.id !== user?.name && (
             <Button
               variant="danger"
               size="sm"
@@ -301,11 +307,8 @@ export function AgentsPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="37"
         title={t("agents.title", "소유 에이전트 운영 스튜디오")}
-        subtitle={t("agents.subtitle", "등록된 자율 에이전트 플릿 관리, 실시간 온라인 웹소켓 상태 및 암호학적 지문 검증")}
+        subtitle={t("agents.subtitle", "등록된 에이전트의 공개키 지문과 마지막 접속 기록을 보여줍니다. 사람 계정은 로컬 계정에서 관리합니다")}
         actions={
           <Link to="/creator/register">
             <Button variant="primary" size="sm">
@@ -334,9 +337,9 @@ export function AgentsPage() {
           isOpen={isTeardownOpen}
           onClose={() => setIsTeardownOpen(false)}
           onConfirm={handleTeardownConfirm}
-          title={t("agents.teardown.title", "에이전트 영구 Teardown (§ 9.3)")}
+          title={t("agents.teardown.title", "에이전트 영구 삭제")}
           description={`${teardownTarget.name} (${teardownTarget.id}) — ${t("agents.teardown.body", "이 신원을 영구히 파괴합니다. 승인된 공개키는 침해 보관소로 옮겨지고, 같은 ID 로는 다시 등록할 수 없습니다 (409).")}`}
-          confirmLabel={t("agents.teardown.confirm", "영구 Teardown 실행")}
+          confirmLabel={t("agents.teardown.confirm", "영구 삭제")}
           isDestructive={true}
           isLoading={isTeardownPending}
           confirmPromptMatch={teardownTarget.id}

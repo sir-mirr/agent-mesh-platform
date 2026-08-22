@@ -1,7 +1,7 @@
 /**
- * Five panels, one call, and the difference between *may not* and *cannot*.
+ * Four panels, one call, and the difference between *may not* and *cannot*.
  *
- * `fetchTelemetry` asks five routes at once and each may fail on its own. A
+ * `fetchTelemetry` asks four routes at once and each may fail on its own. A
  * refusal is the operator lacking a capability and is worth naming on the
  * screen; anything else is the backend being unreachable, which the empty state
  * already says. Getting that wrong in either direction has shipped here before:
@@ -62,19 +62,18 @@ describe("fetchTelemetry", () => {
     // 12, not 3: the registry list and the mesh identity count are different
     // quantities and putting one under the other's label says nothing changed.
     expect(t.total_agents).toBe(12);
-    expect(t.active_sockets).toBe(2);
+    expect(t.web_channel_identities).toBe(1);
     expect(t.total_messages).toBe(7);
     expect(t.health_status).toBe("ok");
     expect(t.refused).toEqual([]);
   });
 
-  it("names the panel and capability when the server refuses one", async () => {
+  it("keeps the server's refusal details when one panel is refused", async () => {
     routes({
       health: { status: "ok", agent_count: 1 },
       agents: { agents: [] },
-      mailbox: { ok: true, mailboxes: [], total_queued: 0 },
       behaviour: { counting_since: null },
-      // `usage` unanswered → 403
+      // `mailbox` unanswered → 403
     });
     const t = await fetchTelemetry();
     // The capability comes from the server's field, not from the panel's guess.
@@ -105,6 +104,15 @@ describe("fetchTelemetry", () => {
     });
     // `0 queued` on a mesh with a backlog is the defect this null prevents.
     expect((await fetchTelemetry()).total_messages).toBe(null);
+  });
+
+  it("leaves the web-channel count null when the registry did not answer", async () => {
+    routes({
+      health: { status: "ok", agent_count: 1 },
+      mailbox: { ok: true, mailboxes: [], total_queued: 0 },
+      behaviour: { counting_since: null },
+    });
+    expect((await fetchTelemetry()).web_channel_identities).toBe(null);
   });
 
   it("throws only when every panel failed", async () => {

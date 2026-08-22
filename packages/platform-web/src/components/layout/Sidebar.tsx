@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import type { Capability } from "@/types/auth.ts";
+import type { Capability, UserRole } from "@/types/auth.ts";
 
 export interface NavItemDef {
   label: string;
@@ -22,6 +22,8 @@ export interface NavItemDef {
    * kept its own copy of the vocabulary and drifted alone.
    */
   requiredCapability?: Capability;
+  /** Used only where the server contract itself uses a role stand-in. */
+  requiredRole?: UserRole;
   badge?: string;
 }
 
@@ -90,7 +92,7 @@ export function Sidebar({
       items: [
         {
           label: t("nav.dashboard", "대시보드"),
-          description: t("nav.dashboard.desc", "통합 플릿 및 서버 현황 요약"),
+          description: t("nav.dashboard.desc", "등록 신원, 그룹, 메일함 적체 요약"),
           href: "/dashboard",
           icon: "📊",
         },
@@ -125,13 +127,13 @@ export function Sidebar({
         },
         {
           label: t("nav.mailbox", "에이전트 메일함"),
-          description: t("nav.mailbox.desc", "300s TTL 카운트다운 및 ACK/NACK"),
+          description: t("nav.mailbox.desc", "대기 메시지와 처리 중 메시지"),
           href: "/creator/lease-queue",
           icon: "📬",
         },
         {
           label: t("nav.register", "신규 에이전트 등록"),
-          description: t("nav.register.desc", "신원 등록 및 Ed25519 키 제안"),
+          description: t("nav.register.desc", "신원 등록 및 공개키 제안"),
           href: "/creator/register",
           icon: "➕",
         },
@@ -151,16 +153,16 @@ export function Sidebar({
           // is allowed to open it.
         },
         {
-          label: t("nav.telemetry", "노드 텔레메트리"),
-          description: t("nav.telemetry.desc", "프로세스 CPU, RAM 및 소켓 지표"),
+          label: t("nav.telemetry", "운영 동작 지표"),
+          description: t("nav.telemetry.desc", "등록 대기, 거절, 수락과 메시지 적체"),
           href: "/platform/telemetry",
           icon: "📈",
           // As above. The screen reads three routes with three different
           // gates, so the honest form is a partial render, not one name.
         },
         {
-          label: t("nav.tenants", "테넌트 라우팅 분석"),
-          description: t("nav.tenants.desc", "조직별 라우팅 처리량 및 스토리지"),
+          label: t("nav.tenants", "그룹 메시지 현황"),
+          description: t("nav.tenants.desc", "그룹별 수신·발신 주체와 메일함 경유 건수"),
           href: "/platform/tenants",
           icon: "🏢",
           requiredCapability: "tenant.read.stats",
@@ -171,7 +173,14 @@ export function Sidebar({
       title: t("nav.sec.tenant", "테넌트 관리 콘솔"),
       items: [
         {
-          label: t("nav.egress", "이그레스 ACL 행렬"),
+          label: t("nav.tenantDirectory", "테넌트 관리"),
+          description: t("nav.tenantDirectory.desc", "테넌트 생성·이름수정·soft 삭제"),
+          href: "/platform/tenant-directory",
+          icon: "🏬",
+          requiredRole: "PLATFORM_ADMIN",
+        },
+        {
+          label: t("nav.egress", "그룹 간 전송 규칙"),
           description: t("nav.egress.desc", "그룹 간 통신 허용/차단 제어"),
           href: "/tenant/egress-acl",
           icon: "🛡️",
@@ -179,7 +188,7 @@ export function Sidebar({
         },
         {
           label: t("nav.audit", "메시지 본문 감사"),
-          description: t("nav.audit.desc", "audit.read.content 기반 열람"),
+          description: t("nav.audit.desc", "메시지 본문 열람 기록"),
           href: "/tenant/audits",
           icon: "🔍",
           requiredCapability: "audit.read.metadata",
@@ -192,7 +201,7 @@ export function Sidebar({
           requiredCapability: "user.admit",
         },
         {
-          label: t("nav.rbac", "조직 멤버 RBAC"),
+          label: t("nav.rbac", "계정 권한"),
           description: t("nav.rbac.desc", "계정별 권한 부여 및 회수"),
           href: "/tenant/rbac",
           icon: "🔑",
@@ -304,7 +313,7 @@ export function Sidebar({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Phase 1 MVP · SPEC 0.2
+                  Agent Mesh Console
                 </div>
               </div>
             </div>
@@ -351,6 +360,7 @@ export function Sidebar({
       >
         {sections.map((section) => {
           const visibleItems = section.items.filter((item) => {
+            if (item.requiredRole && userRole !== item.requiredRole) return false;
             if (!item.requiredCapability) return true;
             // No `admin.all` fallback. It is not in the contract and must not
             // come back: § 11 exists because "is an administrator" is not a
