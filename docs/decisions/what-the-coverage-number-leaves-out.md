@@ -154,8 +154,7 @@ reason no longer describes anything and the row is stale.
 | `packages/http/src/main.ts` | `webpush.sendNotification(` | This deployment's wiring around a library that talks to a push service. |
 | `packages/http/src/main.ts` | `webpush.setVapidDetails(` | Same, at module load, when keys are present. |
 | `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |
-| `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
-| `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
+| `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password — a live route answering something other than 200, which needs the mesh. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
 ## What this table cannot check

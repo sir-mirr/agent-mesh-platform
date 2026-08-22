@@ -19,6 +19,7 @@ import {
   bootRetryable,
   freePort,
   rpcAnswer,
+  sessionCookie,
   startMesh,
   waitForHealth,
   type Mesh,
@@ -232,6 +233,44 @@ describe("taking another port", () => {
     }
 
     expect(lines[0]!.length).toBeLessThan(600);
+  });
+});
+
+/**
+ * **A 302 is not a session.** Reading the redirect as success cost an hour of
+ * somebody's night — the account did not exist, the route redirected anyway,
+ * and every request after it went out with no cookie and came back 401 from
+ * somewhere else entirely.
+ *
+ * There were four copies of this rule and they had drifted: `loginAsAdmin`
+ * threw only when there was no `Set-Cookie` at all, so any cookie counted, and
+ * the first sign-in inside `provision` checked nothing and let an empty string
+ * travel on to fail the password change with a 401 naming neither cause.
+ */
+describe("whether a sign-in produced a session", () => {
+  test("takes the cookie and drops its attributes", () => {
+    expect(sessionCookie("ada", 200, "mesh_token=abc.def; Path=/; HttpOnly; SameSite=Lax"))
+      .toBe("mesh_token=abc.def");
+  });
+
+  test("a redirect with no cookie is not a session", () => {
+    expect(() => sessionCookie("ada", 302, null))
+      .toThrow("ada could not sign in: 302, no mesh_token");
+  });
+
+  /**
+   * The case the old admin copy let through: a header is present, and it is
+   * not a session. A CSRF or a locale cookie set on the way to the login page
+   * is enough to satisfy *there was a Set-Cookie*.
+   */
+  test("and neither is some other cookie", () => {
+    expect(() => sessionCookie("ada", 302, "locale=en-GB; Path=/"))
+      .toThrow("no mesh_token");
+  });
+
+  test("and the name has to be the whole name", () => {
+    // `mesh_token_hint` starts with the same letters and is not the session.
+    expect(() => sessionCookie("ada", 200, "mesh_token_hint=1; Path=/")).toThrow("no mesh_token");
   });
 });
 

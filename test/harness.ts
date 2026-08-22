@@ -777,6 +777,31 @@ export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClie
   };
 }
 
+/**
+ * The session cookie a sign-in produced, or a sentence saying there is none.
+ *
+ * **A 302 is not a session.** Reading the redirect as success cost an hour of
+ * somebody's night: the account did not exist, the route redirected anyway, and
+ * every later request went out with no cookie and came back 401 from somewhere
+ * else entirely. The cookie, and specifically `mesh_token=`, is the thing that
+ * says it worked.
+ *
+ * There were four copies of this rule and they had already drifted apart. This
+ * one threw only when there was no `Set-Cookie` header at all, so any cookie
+ * counted as a session; the first sign-in inside `provision` checked nothing
+ * and let an empty string travel on to fail the password change with a 401 that
+ * named neither cause. One copy remains, in `scripts/fixtures/fe-screens.ts` —
+ * a standalone fixture script that imports nothing from here, and importing the
+ * harness into it would drag two spawned services behind one string check.
+ */
+export function sessionCookie(who: string, status: number, setCookie: string | null): string {
+  const cookie = (setCookie ?? "").split(";")[0] ?? "";
+  if (!cookie.startsWith("mesh_token=")) {
+    throw new Error(`${who} could not sign in: ${status}, no mesh_token`);
+  }
+  return cookie;
+}
+
 /** Log in as the seeded local admin and return the session cookie. */
 export async function loginAsAdmin(http: Service): Promise<string> {
   const res = await fetch(`${http.url}/auth/local`, {
@@ -785,9 +810,7 @@ export async function loginAsAdmin(http: Service): Promise<string> {
     body: "username=admin&password=admin",
     redirect: "manual",
   });
-  const cookie = res.headers.get("set-cookie");
-  if (!cookie) throw new Error(`login returned no cookie (status ${res.status})`);
-  return cookie.split(";")[0]!;
+  return sessionCookie("admin", res.status, res.headers.get("set-cookie"));
 }
 
 /** Tear down an identity the way an operator does — § 9.3, admin session. */
@@ -854,7 +877,7 @@ export async function capabilityViewer(
       body: JSON.stringify({ username, password: temporary }),
       redirect: "manual",
     });
-    const firstCookie = (first.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const firstCookie = sessionCookie(username, first.status, first.headers.get("set-cookie"));
     const changed = await fetch(`${mesh.http.url}/auth/local/password`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: firstCookie },
@@ -882,13 +905,7 @@ export async function capabilityViewer(
     body: JSON.stringify({ username, password }),
     redirect: "manual",
   });
-  const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
-  // **A 302 is not a session.** The cookie is what says the account exists and
-  // signed in; reading the redirect as success cost an hour of somebody's night.
-  if (!cookie.startsWith("mesh_token=")) {
-    throw new Error(`${username} could not sign in: ${login.status}, no mesh_token`);
-  }
-  return cookie;
+  return sessionCookie(username, login.status, login.headers.get("set-cookie"));
 }
 
 /**

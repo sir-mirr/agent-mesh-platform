@@ -6851,6 +6851,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["waiting for a close the hub never makes answers null, and a real one answers its code"],
   },
   {
+    id: "any-cookie-counts-as-a-session",
+    defect:
+      "The session check went back to *was there a Set-Cookie at all*, which is what `loginAsAdmin` did before the four copies were merged. A CSRF or locale cookie set on the way to the login page then reads as a signed-in account, and every request after it goes out unauthenticated to be refused somewhere else.",
+    file: "test/harness.ts",
+    from: '  if (!cookie.startsWith("mesh_token=")) {',
+    to: "  if (!cookie) {",
+    suite: "test/harness-boot.test.ts",
+    expect: ["neither is some other cookie"],
+  },
+  {
+    id: "a-cookie-that-merely-starts-like-the-session",
+    defect:
+      "The `=` came off the session cookie's name, so any cookie whose name begins with `mesh_token` \u2014 a hint, a flag, a next-version cookie set alongside \u2014 is taken for the session and sent as one.",
+    file: "test/harness.ts",
+    from: '  if (!cookie.startsWith("mesh_token=")) {',
+    to: '  if (!cookie.startsWith("mesh_token")) {',
+    suite: "test/harness-boot.test.ts",
+    expect: ["the name has to be the whole name"],
+  },
+  {
+    id: "the-session-carries-its-own-attributes-back",
+    defect:
+      "The cookie's attributes stopped being dropped. `Path`, `HttpOnly` and `SameSite` belong to `Set-Cookie` and are not part of what a client sends back, so every later request carries a `Cookie` header the server reads as further cookies with no values.",
+    file: "test/harness.ts",
+    from: '  const cookie = (setCookie ?? "").split(";")[0] ?? "";',
+    to: '  const cookie = setCookie ?? "";',
+    suite: "test/harness-boot.test.ts",
+    expect: ["drops its attributes"],
+  },
+  {
     id: "held-table-parser-stopped-matching",
     swept: true,
     defect:

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 
-import { openTestDb } from "./harness";
+import { openTestDb, sessionCookie } from "./harness";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
@@ -3472,10 +3472,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       body: JSON.stringify({ username, password }),
       redirect: "manual",
     });
-    const cookie = res.headers.get("set-cookie")?.split(";")[0] ?? "";
-    // A 302 is not a session — the cookie is what says so.
-    if (!cookie.startsWith("mesh_token=")) throw new Error(`${username} could not sign in: ${res.status}`);
-    return cookie;
+    // A 302 is not a session — the cookie is what says so. One copy of that
+    // rule, in the harness, because this was a fourth.
+    return sessionCookie(username, res.status, res.headers.get("set-cookie"));
   }
 
   it("[SC-PWCHG-01] sends a first login to the change screen, and opens the product once it changes", async () => {
