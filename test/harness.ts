@@ -844,6 +844,21 @@ export async function teardown(
 }
 
 /**
+ * The login `capabilityViewer` gives an account holding exactly these.
+ *
+ * Exported because a browser scenario has to *find that account's row* — the
+ * cookie says who you are signed in as, and says nothing about which row on a
+ * matrix belongs to them. `SC-WRITE-07` picked "the first chip on the page"
+ * instead, which is the seeded administrator's, whose chips are deliberately
+ * unclickable: the click did nothing, the wait for a toast ran its full thirty
+ * seconds, and bun killed the browser out from under the forty-seven scenarios
+ * that had not run yet.
+ */
+export function capabilityViewerName(...capabilities: string[]): string {
+  return `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
+}
+
+/**
  * A signed-in account holding exactly the capabilities named, and no others.
  *
  * **§ 11's middle states had no caller.** Every gate has three outcomes — no
@@ -871,7 +886,7 @@ export async function capabilityViewer(
   mesh: Mesh,
   ...capabilities: string[]
 ): Promise<string> {
-  const username = `viewer-${capabilities.join("-").replace(/[^a-z]+/g, "-")}`;
+  const username = capabilityViewerName(...capabilities);
   const password = `${username}-password`;
   const admin = await loginAsAdmin(mesh.http);
 

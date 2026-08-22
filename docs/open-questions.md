@@ -176,6 +176,23 @@ same commit, on an otherwise idle host, sampled across a day with `powermetrics`
 or equivalent beside it. Written down so the next person finds a method rather
 than a mood.
 
+**One thing the slow afternoon hid (2026-08-22, after the console merge).** The
+1154 s run reported 89 failures and the machine was blamed for both numbers. Run
+twice on an idle host at `863f23a`, the same suite took 308.08 s and 307.96 s and
+failed **67 times each, on the same scenarios** — a reproducible red, not a
+mood. Forty-seven of those were one cascade: `SC-WRITE-07` clicked a capability
+chip belonging to the seeded administrator, whose chips are deliberately fixed,
+so nothing was written, the wait for a toast ran its full thirty seconds, and
+bun killed the browser and the vite server out from under every scenario after
+it.
+
+So the host question stays open and stays unchased, and it is now separable from
+the suite's own state: a slow host multiplies wall-clock, and it did not invent
+these failures. The rest were scenarios still asserting the console's copy and
+behaviour from before the merge — which is a drift a scenario is *supposed* to
+catch, reported as a hundred failures because one of them took the browser with
+it.
+
 ## 8. Where the http admin surface's refusal codes are named
 
 Eleven codes leave this repository in REST bodies and are named nowhere in

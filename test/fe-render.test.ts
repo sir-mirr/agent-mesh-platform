@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { openTestDb, sessionCookie } from "./harness";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
-import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
+import { startMesh, newKeyPair, capabilityViewer, capabilityViewerName, freePort, SEED_ADMIN } from "./harness.ts";
 
 /**
  * **Twenty seconds, so a red here means a defect rather than a slow machine.**
@@ -76,7 +76,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const authRes = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ username: "platform-admin", password: "admin" }),
+      body: JSON.stringify({ username: SEED_ADMIN, password: "admin" }),
     });
     const setCookie = authRes.headers.get("set-cookie") || "";
     const match = setCookie.match(/mesh_token=([^;]+)/);
@@ -210,6 +210,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       httpDb.prepare(`
         INSERT OR IGNORE INTO agent_registry (id, name, description, channel, type, approved)
         VALUES ('agent-alpha', 'Agent Alpha (Claude)', 'High performance reasoning agent', 'hub', 'ai-claude', 1)
+      `).run();
+      // **An agent with no key, on purpose.** `SC-ADDR-02` needs one row with a
+      // fingerprint and one without, or its pair of assertions says nothing:
+      // keyed-only cannot catch a screen printing fingerprints it was never
+      // sent, and unkeyed-only cannot catch one that prints none at all. The
+      // second half used to be the operator's own account, which this console
+      // stopped listing as an agent — and `agent-beta` is provisioned into the
+      // hub rather than into this registry, so it is not here either.
+      httpDb.prepare(`
+        INSERT OR IGNORE INTO agent_registry (id, name, description, channel, type, approved)
+        VALUES ('agent-unkeyed', 'Agent Unkeyed', 'Registered, never proposed a key', 'hub', 'service', 1)
       `).run();
       httpDb.close();
     } catch {}
@@ -506,6 +517,19 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   }
 
+  /**
+   * `common.refusedRead` — what a screen says when the server refused it.
+   *
+   * **The sentence, because the capability is gone from it.** Nine screens used
+   * to print `(key.approve)`, `(group.manage)`, `(mailbox.read.depth)` into
+   * their own copy; the console decided a machine key is for code and
+   * diagnostics, `refusedText` draws the sentence without it, and
+   * `api/client.test.ts` holds it there. So a scenario that measured "did the
+   * screen name the capability" now measures "did the screen say it was
+   * refused, and did the key stay off it".
+   */
+  const REFUSED_COPY = "이 계정에는 이 화면을 볼 권한이 없습니다";
+
   async function armFirstTeardown(page: import("playwright").Page) {
     const trigger = page.locator('button[data-testid^="teardown-"]').first();
     const testId = await trigger.getAttribute("data-testid");
@@ -515,12 +539,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       "the teardown control did not name the identity it would destroy",
     ).toEqual({ control: 1, identity: true });
     await trigger.click();
-    await page.locator("input[type='text']").last().fill(identity);
-    const confirm = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
+    // By the placeholder the dialog sets to the identity, rather than by "the
+    // last text input on the page" — the page behind the dialog has its own.
+    await page.locator(`input[placeholder="${identity}"]`).fill(identity);
+    // `agents.teardown.confirm`, which the console rewrote from
+    // "영구 Teardown 실행" to "영구 삭제" — **the same words as the row control
+    // it opens** (`agents.teardownBtn`). So the confirmation is the last one in
+    // the document, the dialog being rendered after the table, and the check
+    // below is that it is not a row trigger: clicking one of those would open a
+    // second dialog and report a teardown nobody sent.
+    const confirm = page.locator("button:has-text('영구 삭제')").last();
     expect(
-      { confirm: await confirm.count(), enabled: await confirm.isEnabled() },
+      {
+        confirm: await confirm.count(),
+        enabled: await confirm.isEnabled(),
+        isARowControl: (await confirm.getAttribute("data-testid")) !== null,
+      },
       "the identity did not arm the destructive confirmation",
-    ).toEqual({ confirm: 1, enabled: true });
+    ).toEqual({ confirm: 1, enabled: true, isARowControl: false });
     return { identity, confirm };
   }
 
@@ -648,16 +684,31 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(mainText).not.toContain("null%");
     expect(mainText).not.toContain("undefined");
     expect(mainText).not.toContain("NaN");
-    expect(mainText).toContain("전체 에이전트 노드");
+    // `dash.pa.nodes`. The console renamed it to what the row actually is —
+    // a registry row — rather than to a node it has never counted.
+    expect(mainText).toContain("등록된 에이전트");
     expect(errors).toEqual([]);
     await context.close();
   });
 
-  // SCR-03 / SC-RENDER-03: Agents List Page Live Render with Table Rows >= 2 (D-31)
+  // SCR-03 / SC-RENDER-03: Agents List Page Live Render with real rows (D-31)
   it("[SC-RENDER-03] renders /creator with real agent table rows", async () => {
     const { page, context, errors } = await createAuthedPage("/creator");
-    const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThanOrEqual(2);
+    // **The agent rows, counted against the registry rather than against a
+    // floor.** This asked for two or more, and the fixture's second row was the
+    // signed-in operator — a person, which this screen stopped listing as an
+    // agent. A floor of 2 was measuring how many accounts the harness happens
+    // to seed; comparing with the route measures whether the screen drops a row
+    // the registry answered.
+    const rows = await page.locator("table tbody tr").count();
+    const agents: number = await page.evaluate(async () => {
+      const res = await fetch("/api/v1/agents", { credentials: "include" });
+      if (!res.ok) return -1;
+      const body = await res.json();
+      return (body.agents ?? []).filter((a: { type?: string }) => a.type !== "user").length;
+    });
+    expect({ rows, agents }).toEqual({ rows: agents, agents });
+    expect(agents).toBeGreaterThan(0);
     const mainText = await page.locator("#root").innerText();
     expect(mainText).toContain("agent-alpha");
     expect(errors).toEqual([]);
@@ -718,9 +769,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const { page, context, errors } = await createAuthedPage("/platform");
     const mainText = await page.locator("#root").innerText();
     expect(mainText).not.toContain("null%");
-    expect(mainText).toContain("HEALTHY");
-    const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThanOrEqual(2);
+    // **The server's own word, fetched rather than typed.** This asserted
+    // `HEALTHY`, which no route has ever answered — the console was drawing a
+    // constant of its own beside a health check it had read, so the badge said
+    // the same thing whatever `/api/v1/health` replied. It draws `status` now,
+    // and the comparison is against the route rather than against a string in
+    // this file, which cannot drift from it.
+    const health = (await (await fetch(`${mesh.http.url}/api/v1/health`)).json()) as { status: string };
+    expect(health.status).toBeString();
+    expect(mainText).toContain(health.status);
+    // **One row per service the console can name, and it names one.** The floor
+    // was 2, which nothing on this page has ever met once the health row stopped
+    // being padded with invented nodes — and the scenario never reached the
+    // check, because it failed on `HEALTHY` first. What the row has to carry is
+    // the endpoint it read, so the count is a floor of one and the endpoint is
+    // the assertion.
+    const rowCount = await page.locator("table tbody tr").count();
+    expect({ rows: rowCount >= 1, endpoint: mainText.includes("/api/v1/health") })
+      .toEqual({ rows: true, endpoint: true });
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -730,7 +796,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
     const mainText = await page.locator("#root").innerText();
     expect(mainText).not.toContain("null%");
-    expect(mainText).toContain("활성 소켓 연결 수");
+    // `tel.sockets`: the panel counts registry rows whose channel is `web`,
+    // and now says so. "활성 소켓 연결 수" was a live-socket count nothing
+    // measured.
+    expect(mainText).toContain("웹 채널 등록 신원");
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -804,7 +873,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
     const userInputs = page.locator("input");
     expect(await userInputs.count()).toBeGreaterThanOrEqual(2);
-    await userInputs.nth(0).fill("admin");
+    // **The seeded account is `platform-admin`.** T-026 renamed it, and every
+    // form here kept typing `admin` — a login that fails, a redirect that
+    // never happens, and a scenario that reports the console broken. The
+    // password did not move.
+    await userInputs.nth(0).fill(SEED_ADMIN);
     await userInputs.nth(1).fill("admin");
     const submitBtn = page.locator("button[type='submit'], button:has-text('로그인')").first();
     expect(await submitBtn.count()).toBeGreaterThanOrEqual(1);
@@ -846,7 +919,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // SC-ACT-04: Interactive Telemetry Refresh (D-91, D-101, D-112)
   it("[SC-ACT-04] clicks refresh on platform telemetry and triggers live telemetry response", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
-    const refreshBtn = page.locator("button:has-text('실시간 갱신'), button:has-text('갱신')").first();
+    // `telem.refreshBtn`, which is "↻ 새로고침" now. The console stopped
+    // calling a manual re-read "실시간" — nothing on this screen streams.
+    const refreshBtn = page.locator("button:has-text('새로고침')").first();
     expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
 
     const [resp] = await Promise.all([
@@ -956,11 +1031,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         ? await createViewerAuthedPage(cookie, "/creator/playground")
         : await createAuthedPage("/creator/playground");
       try {
+        // **`type !== "user"`, which is the console's one rule and not a filter
+        // this screen invented.** The registry is a unified namespace: a person
+        // and an agent arrive in the same response, and `agentRegistryEntries`
+        // is where every agent-labelled view drops the people. A recipient
+        // picker offering an operator's login as a destination is the defect
+        // that rule exists for, so the invariant here changed from "neither
+        // adds nor removes" to "removes exactly the people, and nothing else".
         const served: string[] = await info.page.evaluate(async () => {
           const res = await fetch("/api/v1/agents", { credentials: "include" });
           if (!res.ok) return [];
           const body = await res.json();
-          return (body.agents ?? []).map((a: { id: string }) => a.id);
+          return (body.agents ?? [])
+            .filter((a: { type?: string }) => a.type !== "user")
+            .map((a: { id: string }) => a.id);
         });
 
         const options = await info.page.locator("select option").allTextContents();
@@ -991,7 +1075,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const said = (await panel.textContent()) ?? "";
       // The six by the names the inventory gives them. Not a count of tiles —
       // six tiles with the wrong labels would pass that.
-      for (const label of ["대기 키", "최고 경과", "서명 거절", "rate limit", "egress 거절", "수락 수"]) {
+      // The six by `tel.m.*`, which the console rewrote from shorthand into
+      // what each number is. Not a count of tiles — six tiles with the wrong
+      // labels would pass that.
+      for (const label of ["등록 대기", "가장 오래 기다린 시간", "서명 확인 실패", "요청 제한", "전송 규칙으로 차단", "수락한 작업"]) {
         expect({ label, drawn: said.includes(label) }).toEqual({ label, drawn: true });
       }
 
@@ -1053,7 +1140,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // that drew every zero as unmeasured would pass the line above and be
       // just as wrong in the other direction.
       const said = (await panel.textContent()) ?? "";
-      expect({ realZeroKept: /수락 수[\s\S]{0,40}0/.test(said) }).toEqual({ realZeroKept: true });
+      expect({ realZeroKept: /수락한 작업[\s\S]{0,40}0/.test(said) }).toEqual({ realZeroKept: true });
       expect({ pendingKept: said.includes("4") }).toEqual({ pendingKept: true });
 
       // With no window the refusal counts cannot be read, and the heading says
@@ -1115,7 +1202,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * proves the screen reads a number, and what is in question is whether the
    * mesh and the screen agree about what this person may do.
    */
-  it("[SC-CAP-10] names the refusal on /platform instead of reporting a communication error", async () => {
+  it("[SC-CAP-10] says /platform was refused instead of reporting a communication error", async () => {
     const viewerCookie = await capabilityViewer(mesh, "audit.read.metadata");
     const { page, context } = await createViewerAuthedPage(viewerCookie, "/platform");
     const refusedBy = new Set<string>();
@@ -1147,12 +1234,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await settled(page);
       const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
 
-      // Every one of them, not one of them: a banner that names the first and
-      // drops the rest leaves a panel blank with no reason given.
-      const unnamed = [...refusedBy].filter((cap) => !text.includes(cap));
+      // **This required the banner to print every capability the server named,
+      // and the console has since decided the opposite** — machine keys stay
+      // off operator copy, because nine screens had `(key.approve)` and
+      // `(group.manage)` typed into their own sentences and every one of them
+      // was a guess about what an operator would do with it. `refusedText`
+      // draws the sentence without the key and `api/client.test.ts` holds it
+      // there; the key stays on the error object for code.
+      //
+      // What survives is the half this scenario is named for and the half that
+      // was actually wrong in production: a refusal is an *answer*, so the page
+      // says it was refused rather than sending somebody to check a network
+      // that is fine.
+      const leaked = [...refusedBy].filter((cap) => text.includes(cap));
       const viewer = {
         serverRefused: sawRefusal,
-        namesCapability: refusedBy.size > 0 && unnamed.length === 0,
+        saysRefused: (await page.locator('[data-testid="overview-refused"]').count()) > 0,
+        keepsMachineKeysOff: leaked.length === 0,
         blamesTheNetwork: /통신 오류|communication error|no answer/.test(text),
       };
 
@@ -1168,8 +1266,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       expect(
         { ...viewer, adminSaysRefused },
-        "the screen blamed the network for a refusal, did not name the capability, or says refused to a session that holds it",
-      ).toEqual({ serverRefused: true, namesCapability: true, blamesTheNetwork: false, adminSaysRefused: false });
+        "the screen blamed the network for a refusal, said nothing about it, put a machine key on screen, or says refused to a session that holds it",
+      ).toEqual({
+        serverRefused: true,
+        saysRefused: true,
+        keepsMachineKeysOff: true,
+        blamesTheNetwork: false,
+        adminSaysRefused: false,
+      });
     } finally {
       await context.close().catch(() => {});
     }
@@ -1389,17 +1493,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
 
       const before = await page.locator("tbody tr").count();
-      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
       expect(
-        { control: await teardownBtn.count(), rows: before > 0 },
-        "the teardown control or the rows were not there, so this scenario measured nothing",
-      ).toEqual({ control: 1, rows: true });
+        { rows: before > 0 },
+        "there were no rows, so this scenario measured nothing",
+      ).toEqual({ rows: true });
 
-      await teardownBtn.click();
-      const confirmInput = page.locator("input[placeholder*='입력'], input[type='text']").last();
-      const identity = ((await page.locator("tbody tr").first().innerText()) ?? "").split("\n")[0]?.trim() ?? "";
-      await confirmInput.fill(identity);
-      await page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first().click();
+      // The shared helper, which reads the identity off the control's own
+      // `data-testid` rather than off the first cell of the first row. This
+      // read the cell, and the cell holds the display name — so the confirmation
+      // was typed with something the dialog does not accept, the button stayed
+      // disabled, and the scenario waited out its timeout instead of failing.
+      const { identity, confirm } = await armFirstTeardown(page);
+      await confirm.click();
       await attemptOver(page);
       await settled(page);
 
@@ -1882,7 +1987,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const listed = await (
         await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { Cookie: `mesh_token=${jwtToken}` } })
       ).json();
-      const rows: Array<{ id?: string; fingerprint?: string | null }> = listed?.agents ?? listed ?? [];
+      // **The agent rows, not every registry row.** The unkeyed half used to be
+      // satisfied by the operator's own account — a person, who has no key and
+      // is not on this screen at all now (`agentRegistryEntries` drops
+      // `type: "user"`). Counting them left the pair claiming a fixture the
+      // page could not show, and the assertion below failed for the fixture
+      // rather than for the screen.
+      const all: Array<{ id?: string; fingerprint?: string | null; type?: string }> =
+        listed?.agents ?? listed ?? [];
+      const rows = all.filter((a) => a.type !== "user");
       const withKey = rows.filter((a) => typeof a.fingerprint === "string" && a.fingerprint);
       const withoutKey = rows.filter((a) => !a.fingerprint);
 
@@ -1968,13 +2081,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const downText = await page.locator("#root").innerText();
     expect(downText).toContain("메일함 처리 현황을 불러오지 못했습니다");
-    expect(downText).toContain("측정 불가");
+    // `common.unmeasured`. "측정 불가" became "— 미측정": the panel is saying
+    // it has no measurement, not that measuring is impossible.
+    expect(downText).toContain("미측정");
 
     await context.close();
   });
 
   // SC-DOWN-02: Disconnected Backend Differentiation on Dashboard (D-114, D-116)
-  it("[SC-DOWN-02] does not claim 0 registered tenants when disconnected on /dashboard", async () => {
+  it("[SC-DOWN-02] does not claim 0 registered agents or groups when disconnected on /dashboard", async () => {
     const context = await newContext();
     const page = await context.newPage();
     await context.addCookies([
@@ -1993,11 +2108,45 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
     await settled(page);
 
-    await shows(page, "조직 정보 불러오지 못함");
+    // `common.errorLoad`. It read "조직 정보 불러오지 못함" here and
+    // "불러오지 못함" elsewhere off the same key — one key with two meanings,
+    // which `test/fe-scenarios.test.ts` now refuses. The subject moved into the
+    // KPI's own label; the sentence says what happened.
+    await shows(page, "불러오지 못함");
 
     const downText = await page.locator("#root").innerText();
-    expect(downText).not.toContain("등록된 테넌트 없음");
-    expect(downText).toContain("조직 정보 불러오지 못함");
+    // **The zero-state copy that actually exists.** This asserted the absence
+    // of "등록된 테넌트 없음", and the dashboard stopped counting tenants: no
+    // string on this screen could have matched, so the assertion passed on
+    // every build and would have passed on a screen that did claim zero. The
+    // copy a disconnected dashboard must not print is the groups card's own
+    // empty caption.
+    expect(downText, "the dashboard reported an empty mesh while it could not read one")
+      .not.toContain("등록된 그룹 없음");
+    expect(downText).toContain("불러오지 못함");
+
+    // **Each card, not the page.** Two KPIs read two different routes, and a
+    // page-wide `toContain` is satisfied by either one of them failing — so a
+    // card that quietly printed `0` while its neighbour showed the error was
+    // invisible here. `KpiCard` labels itself with `data-kpi`, which is what
+    // lets the two be told apart.
+    const kpi = async (label: string) =>
+      await page.locator(`[data-kpi="${label}"]`).innerText();
+    const [agentsCard, groupsCard] = [await kpi("등록된 에이전트"), await kpi("등록된 그룹")];
+    expect(
+      {
+        agentsUnmeasured: agentsCard.includes("—"),
+        agentsSaidWhy: agentsCard.includes("불러오지 못함"),
+        groupsUnmeasured: groupsCard.includes("—"),
+        groupsSaidWhy: groupsCard.includes("그룹 목록을 불러오지 못했습니다"),
+      },
+      "a dashboard KPI printed a number, or printed no reason, while its route was unreachable",
+    ).toEqual({
+      agentsUnmeasured: true,
+      agentsSaidWhy: true,
+      groupsUnmeasured: true,
+      groupsSaidWhy: true,
+    });
 
     await context.close();
   });
@@ -2485,7 +2634,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   it("[SC-AUTH-08] leaves the same session whether you type the password or arrive with a cookie", async () => {
     await withUnauthedPage("/login", async ({ page }) => {
-      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='text'], input[name='username']").first().fill(SEED_ADMIN);
       await page.locator("input[type='password']").first().fill("admin");
       await page.locator("button[type='submit']").first().click();
       await page.waitForURL((u) => !u.pathname.endsWith("/login"), { timeout: 8000 }).catch(() => {});
@@ -2545,7 +2694,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/auth/local", (route) =>
         route.fulfill({ status: 502, contentType: "text/html", body: "<html><body>502 Bad Gateway</body></html>" }),
       );
-      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='text'], input[name='username']").first().fill(SEED_ADMIN);
       await page.locator("input[type='password']").first().fill("admin");
       await page.locator("button[type='submit']").first().click();
       await page.waitForTimeout(600);
@@ -2879,29 +3028,39 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   it("[SC-WRITE-03] handles teardown abort without removing agent row and reports failure", async () => {
     await withPage("/creator", async ({ page }) => {
       const beforeCount = await page.locator("tbody tr").count();
+      const deletes: string[] = [];
       await page.route("**/api/v1/admin/agents/**", (r) => {
-        if (r.request().method() === "DELETE") return r.abort();
+        if (r.request().method() === "DELETE") {
+          deletes.push(r.request().url());
+          return r.abort();
+        }
         return r.continue();
       });
 
-      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
-      if (await teardownBtn.count() > 0) {
-        await teardownBtn.click();
-        const inputPrompt = page.locator("input[placeholder*='입력'], input[type='text']").last();
-        if (await inputPrompt.count() > 0) {
-          await inputPrompt.fill("admin");
-          const confirmBtn = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
-          if (await confirmBtn.count() > 0) {
-            await confirmBtn.click();
-            await attemptOver(page);
-          }
-        }
-      }
+      // **Three nested `if`s used to stand here**, each skipping quietly when
+      // its locator matched nothing — so when the control's label moved this
+      // sent no DELETE at all, changed nothing, and then demanded a failure
+      // sentence from a screen that had been asked to do nothing. The helper
+      // asserts instead of skipping, and it typed a fixed `admin` into a
+      // confirmation that wants the target's identity.
+      const { confirm } = await armFirstTeardown(page);
+      await confirm.click();
+      const sent = await eventually(async () => deletes.length, (n) => n > 0);
+      expect({ sent }, "the confirmation was clicked and no teardown left the screen").toEqual({ sent: 1 });
+      await attemptOver(page);
 
+      // **The failure's own result place, not any word on the page.** Waiting
+      // on `networkidle` and then matching /실패|오류|통신/ across `#root` read
+      // the screen with the dialog still open and matched furniture; the page
+      // gives each teardown outcome its own `data-testid`, and the aborted
+      // write is the one that has to appear.
+      const failed = page.locator('[data-testid="teardown-result-failed"]');
+      const said = await eventually(async () => await failed.count(), (n) => n > 0);
       const afterCount = await page.locator("tbody tr").count();
-      expect(afterCount).toBe(beforeCount);
-      const rootText = await page.locator("#root").innerText();
-      expect(rootText).toMatch(/실패|오류|통신/);
+      expect(
+        { said, rows: afterCount },
+        "the screen dropped the row the server never deleted, or said nothing about the failure",
+      ).toEqual({ said: 1, rows: beforeCount });
     });
   });
 
@@ -3164,39 +3323,70 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await capabilityViewer(mesh, "usage.read");
 
     await withPage("/tenant/rbac", async ({ page }) => {
-      await page.locator('[data-testid$="-usage.read"]').first().waitFor({ state: "visible" });
+      await page.locator(`[data-testid="rbac-subject-${capabilityViewerName("usage.read")}"]`)
+        .waitFor({ state: "visible" });
 
       // Only the write. The read has to succeed or there are no chips to click.
+      //
+      // **Counted, because a click that writes nothing is the failure this
+      // scenario cannot otherwise see.** Waiting for a toast reports a screen
+      // that silently declined to write as "said nothing about a failure",
+      // which reads as a copy problem and is not one.
+      const writes: string[] = [];
       await page.route("**/api/v1/admin/grants", (route) => {
         const method = route.request().method();
-        if (method === "POST" || method === "DELETE") return route.abort();
+        if (method === "POST" || method === "DELETE") {
+          writes.push(method);
+          return route.abort();
+        }
         return route.continue();
       });
 
-      // By the title only the chips carry. Their visible text is prefixed
-      // (`✓ usage.read`), so an anchored match on the capability name finds
-      // nothing — which the first version of this did, and reported as
-      // inconclusive rather than as a wrong selector.
-      const chip = page.locator('button[title*="권한"]').first();
-      const chipCount = await chip.count();
-      if (chipCount === 0) {
-        // No chips means no subject is listed, and clicking nothing proves
-        // nothing. Say so rather than pass.
-        cannotMeasure("SC-WRITE-07", "no capability chip is rendered, so no write was attempted");
-        return;
-      }
+      // **The viewer's own chip, by name.** This took "the first chip on the
+      // page", and the first row is the seeded administrator — whose chips are
+      // fixed by `rbac.fixedAdmin` and do not move. Clicking one sent no
+      // request, the wait for a toast ran its full thirty seconds, and bun
+      // killed the browser and the vite server with it: forty-seven scenarios
+      // after this one failed with `browser has been closed`, none of them
+      // about anything. One wrong target, and the suite reported forty-eight
+      // defects.
+      //
+      // Named from the same helper that creates the account, so a change to
+      // that naming moves both.
+      const subject = capabilityViewerName("usage.read");
+      const chip = page.locator(`[data-testid="rbac-cap-${subject}-usage.read"]`);
+      expect(
+        { chip: await chip.count(), enabled: await chip.isEnabled() },
+        "the viewer's own capability chip was not there, or was not clickable — nothing would have been written",
+      ).toEqual({ chip: 1, enabled: true });
 
       const before = await page.locator("#root").innerText();
       await chip.click();
+      const attempted = await eventually(async () => writes.length, (n) => n > 0);
+      expect({ attempted }, "the chip was clicked and no grant write left the screen").toEqual({ attempted: 1 });
       // Either outcome, for the reason spelled out in SC-WRITE-08: waiting only
       // for the failure lets a wrongly-claimed success expire unread.
-      await showsMatch(page, /권한 변경 실패|권한이 부여되었습니다|권한이 회수되었습니다/);
+      // `rbac.toast.*`: the console shortened these to "권한 부여" and
+      // "권한 회수" — the failure kept its wording. Waiting on all three, for
+      // the reason spelled out in SC-WRITE-08: a wait that only knows the
+      // failure lets a wrongly-claimed success expire unread.
+      //
+      // **With the colon, because the bare words are on the screen already.**
+      // The sidebar carries this screen's own description — "계정별 권한 부여
+      // 및 회수" — so `/권한 부여|권한 회수/` matched the navigation
+      // before the click and this wait returned at once, every time. The
+      // assertion then read the screen a few milliseconds after `abort()`,
+      // before React had rendered anything, and reported the console as silent
+      // about a failure it does announce. Every toast here is
+      // `<문구>: <상세>`, and no menu item has the colon — which is also what
+      // the two `not.toContain` assertions below already match on.
+      await showsMatch(page, /권한 변경 실패:|권한 부여:|권한 회수:/);
       const after = await page.locator("#root").innerText();
 
       expect(after, "the screen announced a grant the server refused")
-        .not.toContain("권한이 부여되었습니다");
+        .not.toContain("권한 부여:");
       expect(after, "the screen announced a revocation the server refused")
-        .not.toContain("권한이 회수되었습니다");
+        .not.toContain("권한 회수:");
       expect(after, "the screen said nothing about a write that failed").toContain("권한 변경 실패");
 
       // And the chips are unchanged: the failure must not leave the screen
@@ -3410,7 +3600,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // The screen's own sentence, not any word containing 실패 — the first
         // version matched `/실패|failed/i` across the whole body and was true on
         // a page that said nothing about this write.
-        return { cellThere, buttonThere, before, after, saysFailed: /이그레스 정책 변경 실패|Egress policy change failed/.test(text) };
+        return { cellThere, buttonThere, before, after, // `egress.toast.failed`, which the console rewrote from "이그레스 정책" to
+        // the words this screen uses for the same thing everywhere else.
+        saysFailed: /전송 규칙 변경 실패|Could not change the delivery rule/.test(text) };
       } finally {
         await context.close().catch(() => {});
       }
@@ -3517,7 +3709,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       // And it still signs in — the half that a "no select on the page" check
       // cannot see on its own.
-      await page.locator("input[type='text'], input[name='username']").first().fill("admin");
+      await page.locator("input[type='text'], input[name='username']").first().fill(SEED_ADMIN);
       await page.locator("input[type='password']").first().fill("admin");
       await page.locator("button[type='submit']").first().click();
       await page.waitForURL("**/dashboard", { timeout: 8000 }).catch(() => {});
@@ -3732,7 +3924,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const passInput = page.locator("input[name='password'], input[type='password']").first();
       const submitBtn = page.locator("button[type='submit']").first();
 
-      await userInput.fill("admin");
+      await userInput.fill(SEED_ADMIN);
       await passInput.fill("admin");
       await submitBtn.click();
       await page.waitForURL("**/dashboard", { timeout: 5000 });
@@ -4067,10 +4259,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, { headers: { cookie: `mesh_token=${jwtToken}` } })
     ).json()) as any;
     const depth = (wire.mailboxes ?? []).reduce((n: number, m: any) => n + (m.pending ?? 0), 0);
+    // **This mailbox's own count, beside the total.** The row and the KPI are
+    // two different numbers and this asserted both against the total — which
+    // held only while nothing else in the file had left a message queued. Two
+    // scenarios now do, so the row read 3 against a total of 5 and the failure
+    // said "the screen counted its rows", which it had not.
+    const mine = (wire.mailboxes ?? [])
+      .filter((m: any) => (m.identity ?? m.id) === identity)
+      .reduce((n: number, m: any) => n + (m.pending ?? 0), 0);
 
     // If nothing queued, this scenario would be comparing 0 against 0.
-    expect({ sent: [...new Set(sent)], depth: depth > 1 }, "nothing was queued, so the comparison below cannot fail")
-      .toEqual({ sent: [201], depth: true });
+    expect(
+      { sent: [...new Set(sent)], mine: mine > 1, depth: depth >= mine },
+      "nothing was queued for this mailbox, so the comparison below cannot fail",
+    ).toEqual({ sent: [201], mine: true, depth: true });
 
     await withPage("/creator/lease-queue", async ({ page }) => {
       const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
@@ -4081,7 +4283,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       expect(
         { rowDepth: Number(rowDepth), kpi: Number(kpi), inventsIds: /msg_mb_/.test(text) },
         "the screen counted its rows, or drew a message id the server never sent",
-      ).toEqual({ rowDepth: depth, kpi: depth, inventsIds: false });
+      ).toEqual({ rowDepth: mine, kpi: depth, inventsIds: false });
     });
   }, 30000);
 
@@ -4164,7 +4366,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await settled(page);
         const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
         return {
-          namesCapability: text.includes("key.approve"),
+          saysRefused: text.includes(REFUSED_COPY),
+          leaksMachineKey: text.includes("key.approve"),
           claimsSilence: /did not answer|서버가 답하지|연결 실패/.test(text),
         };
       } finally {
@@ -4180,7 +4383,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       withheldCells: held.withheldCells,
       bodyCells: 0,
       blamedPermission: false,
-      namesCapability: true,
+      saysRefused: true,
+      leaksMachineKey: false,
       claimsSilence: false,
     });
   }, 40000);
@@ -4237,6 +4441,30 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const stamp = Date.now().toString(36).slice(-5);
     const withCapability = await admitAndSignIn(`cap8-yes-${stamp}`, "agent.teardown");
     const withNothing = await admitAndSignIn(`cap8-no-${stamp}`);
+
+    // **Both sides have to see a row, or neither side has a control to count.**
+    // `GET /api/v1/agents` narrows for anyone who is not an administrator: an
+    // account sees itself, what it owns, its group, and whoever it has
+    // exchanged messages with. These two were admitted a moment ago and own
+    // nothing, so the only row either of them could see is their own — and this
+    // console stopped drawing people in the agent table, so the page was empty
+    // for both. The scenario then read "the granted session sees no teardown
+    // control" and called it a defect, when what it had measured was an empty
+    // table.
+    //
+    // So both are given the same agent. The one difference left between them is
+    // the capability, which is the whole subject.
+    const owners = openTestDb(path.join(mesh.stateDir, "agents.db"));
+    try {
+      const own = owners.prepare(
+        `INSERT INTO agent_owners (tenant, identity, owner, granted_by)
+         VALUES ('default', 'agent-alpha', ?, 'fe-render') ON CONFLICT DO NOTHING`,
+      );
+      own.run(`cap8-yes-${stamp}`);
+      own.run(`cap8-no-${stamp}`);
+    } finally {
+      owners.close();
+    }
 
     const count = async (cookie: string) => {
       const { page, context } = await createViewerAuthedPage(cookie, "/creator");
@@ -4346,9 +4574,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await context.close().catch(() => {});
       }
     })();
-    // The name comes off the wire: the fulfilled body below says `key.approve`
-    // and the screen has to repeat that, not a word typed into its own copy.
-    const saysCapability = (t: string) => t.includes("key.approve");
+    // **Refused, and the key stays off the screen.** This required the screen to
+    // repeat `key.approve` off the wire. The console's rule reversed: the
+    // sentence says the account may not read this, and the machine key stays on
+    // the error object where code reads it. Both halves are still measured —
+    // that it said *refused* rather than nothing, and that the key did not leak.
+    const saysRefused = (t: string) => t.includes(REFUSED_COPY);
+    const leaksMachineKey = (t: string) => t.includes("key.approve");
     const saysSilent = (t: string) => /서버 연결 실패|서버가 답하지|did not answer|연결 실패/i.test(t);
     // The panel's own heading said `(unreachable)` while the body underneath it
     // named the capability — one screen, two answers about the same request.
@@ -4375,9 +4607,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     expect(
       {
-        refusedSaysCapability: saysCapability(refused),
+        refusedSaysRefused: saysRefused(refused),
+        refusedLeaksMachineKey: leaksMachineKey(refused),
         refusedSaysSilent: saysSilent(refused),
-        unreachableSaysCapability: saysCapability(unreachable),
+        unreachableSaysRefused: saysRefused(unreachable),
         unreachableSaysSilent: saysSilent(unreachable),
         refusedHeadingContradicts: headingContradicts(refused),
         usersBlamesPermission: /권한이 없습니다|may not read this screen/i.test(usersUnreachable),
@@ -4385,9 +4618,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       },
       "a refusal was drawn as silence, or silence was drawn as a permission problem",
     ).toEqual({
-      refusedSaysCapability: true,
+      refusedSaysRefused: true,
+      refusedLeaksMachineKey: false,
       refusedSaysSilent: false,
-      unreachableSaysCapability: false,
+      unreachableSaysRefused: false,
       unreachableSaysSilent: true,
       refusedHeadingContradicts: false,
       usersBlamesPermission: false,
@@ -4434,6 +4668,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
     const cookie = await signIn(`${me}-chosen`);
 
+    // **Something to answer with.** `GET /api/v1/agents` narrows for anyone who
+    // is not an administrator, and this account was admitted a moment ago: it
+    // owns nothing, is in no group, and has spoken to nobody, so the honest
+    // answer is an empty list — and then "the panel answered after the wait"
+    // cannot be told from "the panel never answered". One owned agent gives the
+    // second half of this scenario something to see.
+    const owners = openTestDb(path.join(mesh.stateDir, "agents.db"));
+    try {
+      owners
+        .prepare(`INSERT INTO agent_owners (tenant, identity, owner, granted_by)
+                  VALUES ('default', 'agent-alpha', ?, 'fe-render') ON CONFLICT DO NOTHING`)
+        .run(me);
+    } finally {
+      owners.close();
+    }
+
     const { page, context } = await createViewerAuthedPage(cookie, "/dashboard");
     try {
       await page.route("**/api/v1/agents", async (route) => {
@@ -4476,19 +4726,25 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * draws a plausible number for a question it could not ask.
    */
   it("[SC-INVENT-05] leaves the count unmeasured rather than answering it from another table", async () => {
-    const read = async (blockHealth: boolean) => {
-      const { page, context } = await createAuthedPage("/platform/telemetry");
+    // **The subject moved with the console, and the rule did not.** This read
+    // `total_agents=` off `/platform/telemetry`, where the count came from
+    // `/api/v1/health` and fell back to the registry when health did not
+    // answer — two tables under one label. The console removed the fallback and
+    // the label: the dashboard's agent card now counts registry rows and
+    // nothing else, and says so in its own subtitle.
+    //
+    // So the rule is measured where it still lives: block the card's one source
+    // and the card has to go unmeasured rather than fill itself from the other
+    // count that is sitting right there in the same page's telemetry.
+    const read = async (blockRegistry: boolean) => {
+      const { page, context } = await createAuthedPage("/dashboard");
       try {
-        if (blockHealth) {
-          await page.route("**/api/v1/health", (route) =>
-            route.fulfill({ status: 502, contentType: "text/html", body: "<html>502</html>" }),
-          );
+        if (blockRegistry) {
+          await page.route("**/api/v1/agents**", (route) => route.abort());
           await page.reload({ waitUntil: "networkidle" });
           await settled(page);
         }
-        const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
-        const m = text.match(/total_agents=(\S+)/);
-        return m?.[1] ?? "";
+        return ((await page.locator("[data-kpi='등록된 에이전트']").first().innerText()) ?? "").replace(/\s+/g, " ");
       } finally {
         await context.close().catch(() => {});
       }
@@ -4497,19 +4753,28 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // What each source actually says, asked of the server rather than assumed.
     const health = (await (await fetch(`${mesh.http.url}/api/v1/health`, { headers: { cookie: `mesh_token=${jwtToken}` } })).json()) as any;
     const registry = (await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie: `mesh_token=${jwtToken}` } })).json()) as any;
-    const registryCount = (Array.isArray(registry) ? registry : registry.agents ?? []).length;
+    const rows: any[] = Array.isArray(registry) ? registry : registry.agents ?? [];
+    // The card's own subject: agent rows, people excluded.
+    const registryCount = rows.filter((a) => String(a.type ?? "") !== "user").length;
 
     const healthy = await read(false);
     const refused = await read(true);
 
+    // The two counts have to differ, or "it answered from the other table" is
+    // indistinguishable from "it answered correctly".
+    expect(
+      { differ: String(health.agent_count) !== String(registryCount) },
+      `health says ${health.agent_count} and the registry ${registryCount}; with one number this scenario cannot fail`,
+    ).toEqual({ differ: true });
+
     expect(
       {
-        healthy,
-        refusedIsRegistryCount: refused === String(registryCount),
-        refusedSaysUnmeasured: refused.startsWith("—"),
+        healthyDrewItsOwnSource: healthy.includes(String(registryCount)),
+        refusedIsHealthCount: refused.includes(String(health.agent_count)),
+        refusedSaysUnmeasured: refused.includes("—"),
       },
       "the count answered from another table when its own source did not answer",
-    ).toEqual({ healthy: String(health.agent_count), refusedIsRegistryCount: false, refusedSaysUnmeasured: true });
+    ).toEqual({ healthyDrewItsOwnSource: true, refusedIsHealthCount: false, refusedSaysUnmeasured: true });
   }, 30000);
 
   /**
@@ -4590,20 +4855,36 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       body: JSON.stringify({ to: spoke, text: `cap6 ${me}` }),
     });
 
+    // **And one to an agent, because the screen only draws agents.** The
+    // correspondent above is a person, which is exactly what this console
+    // stopped listing in the agent table — so the page drew nobody else and the
+    // scenario read that as the scoping having dropped somebody. The route's
+    // answer is still the thing being checked for scope; the *page* needs a
+    // visible row that is not the viewer's own, and only an agent can be one.
+    const met = await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ to: "agent-alpha", text: `cap6 agent ${me}` }),
+    });
+
     const rows = (await (await fetch(`${mesh.http.url}/api/v1/agents`, { headers: { cookie } })).json()) as any;
     const list: any[] = Array.isArray(rows) ? rows : rows.agents ?? [];
     const names = list.map((a) => String(a.identity ?? a.id ?? ""));
-    const others = list.filter((a) => String(a.identity ?? a.id ?? "") !== me);
+    // The rows this screen can draw: people are not on it.
+    const others = list
+      .filter((a) => String(a.identity ?? a.id ?? "") !== me)
+      .filter((a) => String(a.type ?? "") !== "user");
 
     expect(
       {
         wrote: sent.ok,
+        metAnAgent: met.ok,
         correspondent: names.includes(spoke),
         stranger: names.includes(stranger),
         notMine: others.length > 0,
       },
       "the correspondence this scenario needs was not made, the scoping dropped somebody it should show, or it showed somebody it should not",
-    ).toEqual({ wrote: true, correspondent: true, stranger: false, notMine: true });
+    ).toEqual({ wrote: true, metAnAgent: true, correspondent: true, stranger: false, notMine: true });
 
     const { page, context } = await createViewerAuthedPage(cookie, "/creator");
     try {
@@ -4984,9 +5265,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
         if (reading === "loading") expect(result.text).toBe("Loading…");
         if (reading === "refused") {
-          const named = panel.refusalCapability ? ` (${panel.refusalCapability})` : "";
-          expect(result.text).toBe(`This account may not read this screen${named}.`);
+          // **The sentence, without the capability.** It used to end
+          // ` (group.manage).` — the console now keeps machine keys out of
+          // operator copy entirely (`refusedText`, held by
+          // `api/client.test.ts`), so the name is gone from every panel and the
+          // check is that the refusal is still *said*, and said as a refusal
+          // rather than as a failed read.
+          expect(result.text).toBe("This account may not read this screen.");
           expect(result.text).not.toContain("Could not load");
+          if (panel.refusalCapability) expect(result.text).not.toContain(panel.refusalCapability);
         }
         if (reading === "unreachable") {
           expect(result.text).toBe(panel.resource === "groups"
@@ -5648,7 +5935,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       expect({ ok: wire.ok, reported: typeof reported === "number" && reported > 0 }, "the route did not report the message it had just accepted")
         .toEqual({ ok: true, reported: true });
 
-      const card = page.locator("[data-kpi='미수신 메일함']");
+      // **Either panel's label for the same number.** `data-kpi` is the rendered
+      // label, and which of the two dashboards a session gets depends on its
+      // role — `dash.kpi.inbox` ("대기 중 메시지") for the operator panel and
+      // `dash.ga.lease` ("메일함 큐 적체") for the group-admin one. Both bind
+      // `mailbox.total_queued`, so the card is named by either. It was pinned to
+      // "미수신 메일함", which is neither of them any more.
+      const card = page.locator("[data-kpi='대기 중 메시지'], [data-kpi='메일함 큐 적체']").first();
       await card.waitFor({ timeout: 5000 });
       expect(await card.innerText()).toContain(String(reported));
     });
@@ -5661,7 +5954,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/admin/mailbox", (r) => r.abort());
       await page.reload({ waitUntil: "domcontentloaded" });
 
-      const card = page.locator("[data-kpi='미수신 메일함']");
+      // **Either panel's label for the same number.** `data-kpi` is the rendered
+      // label, and which of the two dashboards a session gets depends on its
+      // role — `dash.kpi.inbox` ("대기 중 메시지") for the operator panel and
+      // `dash.ga.lease` ("메일함 큐 적체") for the group-admin one. Both bind
+      // `mailbox.total_queued`, so the card is named by either. It was pinned to
+      // "미수신 메일함", which is neither of them any more.
+      const card = page.locator("[data-kpi='대기 중 메시지'], [data-kpi='메일함 큐 적체']").first();
       await card.waitFor({ timeout: 5000 });
       const text = await card.innerText();
       expect(

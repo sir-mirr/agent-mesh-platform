@@ -3283,8 +3283,8 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
     from: "          {canTeardown && item.id !== user?.name && (",
     to: "          {true && item.id !== user?.name && (",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-08", "offered to a session that cannot use it"],
+    suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
+    expect: ["does not open teardown to a session holding some other capability"],
   },
   {
     id: "teardown-hidden-from-everybody",
@@ -3293,8 +3293,8 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
     from: "          {canTeardown && item.id !== user?.name && (",
     to: "          {false && item.id !== user?.name && (",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-08", "or to nobody at all"],
+    suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
+    expect: ["offers it to the session the server gave `agent.teardown`"],
   },
   {
     id: "admission-route-points-somewhere-unchecked",
@@ -3608,8 +3608,8 @@ const MUTATIONS: Mutation[] = [
     // reproduces the same defect and quotes nothing that looks like a call.
     from: "export async function createGroupApi(\n  name: string,\n  description?: string,\n  tenant?: string,\n): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {",
     to: "export async function createGroupApi(\n  name: string,\n  description?: string,\n  tenant?: string,\n): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {\n  if (name) return { ok: true };",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-WRITE-12", "drawn without being created"],
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["says the group was created, and shows what the server then listed"],
   },
   {
     id: "teardown-reported-but-never-sent",
@@ -3638,8 +3638,8 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
     from: "              : `${t(\"overview.partial\", \"\uc774 \uacc4\uc815\uc774 \ubcfc \uc218 \uc5c6\ub294 \ud56d\ubaa9\uc774 \uc788\uc2b5\ub2c8\ub2e4\")} (${telemetry?.refused.length ?? 0})`}",
     to: "              : `\ud1b5\uc2e0 \uc624\ub958 (${telemetry?.refused.length ?? 0})`}",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-11", "reported silence about a backend that answered 403"],
+    suite: "packages/platform-web/src/pages/platform/PlatformOverviewPage.test.tsx",
+    expect: ["reports how many reads were refused without exposing machine keys"],
   },
   {
     id: "overview-blames-the-network-for-a-refusal",
