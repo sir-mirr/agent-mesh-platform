@@ -318,6 +318,42 @@ function sendViaHub(to: string, content: string, from: string, replyTo?: string)
 }
 
 /**
+ * Send through the hub, and tell a refusal apart from a link that broke.
+ *
+ * `sendViaHub` resolves `null` when the socket is down or the hub says no —
+ * but it *rejects* when `send` itself throws, because that call sits inside
+ * the promise's executor. The route swallowed that with `.catch(() => null)`
+ * and then logged `hub_refused`, which names the wrong repair: an entitlement
+ * refusal is a grant to fix, and a socket that throws is a link to bring back.
+ *
+ * Both still answer `null`, because the message is written locally and marked
+ * failed either way. The difference is what the operator is told.
+ *
+ * `send` is a parameter because a live socket cannot be made to throw on
+ * demand from inside a test.
+ */
+export async function sendViaHubOrSay(
+  to: string,
+  content: string,
+  from: string,
+  replyTo?: string,
+  send: (to: string, content: string, from: string, replyTo?: string) => Promise<string | null> = sendViaHub,
+): Promise<string | null> {
+  try {
+    return await send(to, content, from, replyTo)
+  } catch (err) {
+    log.warn(`the hub link threw while sending from ${from} to ${to}`, 'send_link_threw', {
+      actor: from,
+      to,
+      outcome: 'failed',
+      reason: 'hub_link_threw',
+      detail: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
+/**
  * Re-declare `proxy_for` on the live socket.
  *
  * The list is fixed at connect (§ 8.1), so a person approved afterwards could
@@ -1785,7 +1821,7 @@ app.post('/api/v1/messages', async (c) => {
   // the hub refused — an unentitled sender, a torn-down recipient — was still
   // written locally and rendered in the UI as though it had been routed. The
   // person saw a sent message that no one would ever receive.
-  const hubMessageId = await sendViaHub(to, wireContent, from, replyTo).catch(() => null)
+  const hubMessageId = await sendViaHubOrSay(to, wireContent, from, replyTo)
   if (!hubMessageId) {
     log.warn(`the hub did not accept a message from ${from} to ${to}`, 'send_not_accepted', {
       actor: from,

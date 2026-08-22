@@ -2623,3 +2623,60 @@ describe("re-declaring after a change", () => {
     ).toEqual({ ok: false, level: "warn", reason: "hub_refused", detail: "socket is closed", names: true });
   });
 });
+
+/**
+ * A hub that says no, and a link that broke.
+ *
+ * `sendViaHub` resolves `null` for a refusal and *rejects* when the socket's
+ * own `send` throws — that call is inside the promise's executor. The route
+ * swallowed the second with `.catch(() => null)` and then logged
+ * `hub_refused`, which names the wrong repair: one is a grant to fix, the
+ * other is a link to bring back.
+ */
+describe("sending through the hub", () => {
+  const linesFor = (lines: string[], event: string) =>
+    lines
+      .filter((l) => l.includes(`"event":"${event}"`))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  test("a refusal answers null and says nothing extra", async () => {
+    const capture = captureConsole();
+    let id: string | null;
+    try {
+      id = await mod.sendViaHubOrSay("agent-beta", "hello", "admin", undefined, async () => null);
+    } finally {
+      capture.restore();
+    }
+    expect({ id, threw: linesFor(capture.lines, "send_link_threw").length })
+      .toEqual({ id: null, threw: 0 });
+  });
+
+  test("a link that threw is reported as a link, with what it said", async () => {
+    const capture = captureConsole();
+    let id: string | null;
+    try {
+      id = await mod.sendViaHubOrSay("agent-beta", "hello", "admin", undefined, async () => {
+        throw new Error("socket is closed");
+      });
+    } finally {
+      capture.restore();
+    }
+    const [broke] = linesFor(capture.lines, "send_link_threw");
+    expect(
+      { id, level: broke?.level, reason: broke?.reason, detail: broke?.detail, actor: broke?.actor, to: broke?.to },
+      "a socket that threw was reported as a hub refusal, which sends an operator to fix a grant instead of a link",
+    ).toEqual({
+      id: null,
+      level: "warn",
+      reason: "hub_link_threw",
+      detail: "socket is closed",
+      actor: "admin",
+      to: "agent-beta",
+    });
+  });
+
+  test("an accepted send answers the id the hub gave", async () => {
+    expect(await mod.sendViaHubOrSay("agent-beta", "hello", "admin", undefined, async () => "msg-7"))
+      .toBe("msg-7");
+  });
+});

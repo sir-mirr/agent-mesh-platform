@@ -5923,6 +5923,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "a-broken-link-is-reported-as-a-refusal",
+    defect:
+      "A socket that threw on send was reported as a hub refusal. The two need opposite repairs \u2014 a refusal is an entitlement to grant, a throw is a link to bring back \u2014 and the operator reading `hub_refused` goes to look at grants for a mesh whose connection is down.\n\nThe route swallowed the throw with `.catch(() => null)` and fell through to the refusal line, so the wrong sentence was the only sentence.",
+    file: "packages/http/src/main.ts",
+    from: "      reason: 'hub_link_threw',",
+    to: "      reason: 'hub_refused',",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a socket that threw was reported as a hub refusal"],
+  },
+  {
     id: "a-refused-redeclare-goes-unsaid",
     defect:
       "The hub refusing to let this server speak for the people it proxies went unreported. Both callers wrote `.catch(() => {})`, so an operator approved an account in the console, the person could not send, and no line anywhere connected the two \u2014 the console said it worked and the mesh disagreed silently.",
