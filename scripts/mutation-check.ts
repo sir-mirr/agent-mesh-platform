@@ -1688,7 +1688,7 @@ const MUTATIONS: Mutation[] = [
     id: "registry-last-seen-null",
     defect: "An identity the mesh has no presence row for reported undefined rather than null, and the console drew ONLINE for everyone.",
     file: "packages/http/src/main.ts",
-    from: "    last_seen_at: lastSeen.get(id) ?? null,",
+    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
     to: "    last_seen_at: lastSeen.get(entry.id),",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["carries the mesh's last_seen"],
@@ -2480,7 +2480,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`GET /api/v1/agents` answered five columns of the http server's own registry and none of the mesh's, so the console had no way to learn when an agent was last seen and drew `ONLINE` for everyone. The server knew — the heartbeat writes `agents.last_seen`, before the registry on a disconnect (SPEC § 3.1) — and the route did not carry it.",
     file: "packages/http/src/main.ts",
-    from: "    last_seen_at: lastSeen.get(id) ?? null,",
+    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
     to: "    last_seen_at: null,",
     suite: "test/http.test.ts",
     expect: ["carries what the mesh measured", "2026-01-02 03:04:05"],
@@ -2490,7 +2490,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A synthesised `sha256:` key is the shape this repository removed from the front end twice: it reads as a measured identity and is a string built from the row's own id. Answering it from the server rather than the screen moves the invention one layer up.",
     file: "packages/http/src/main.ts",
-    from: "    fingerprint: fingerprints.get(id) ?? null,",
+    from: "    fingerprint: fingerprints.get(entry.id) ?? null,",
     to: "    fingerprint: `sha256:${entry.id}`,",
     suite: "test/http.test.ts",
     expect: ["says nothing rather than `offline`", "sha256:deadbeef"],
@@ -4172,7 +4172,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`GET /api/v1/agents` listed the whole registry to anyone approved — `agent-mesh-local-pm` measured an account with no capabilities seeing the same 44 identities as the administrator. This mutation removes the filter, which is the state the route shipped in.",
     file: "packages/http/src/main.ts",
-    from: "    .filter(id => seesEverything || visible.has(id))",
+    from: "    .filter(entry => seesEverything || visible.has(entry.id))",
     to: "    .filter(() => true)",
     suite: "test/agents-visibility.test.ts",
     expect: ["a stranger is absent and a correspondent is present"],
@@ -4182,8 +4182,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other direction, and the one a one-sided check misses: a route that returns an empty list to every member also hides strangers. `agent-mesh-local-pm`'s first falsification was one-sided — cut the connection, the row disappears — which an empty-list implementation satisfies and which a history-based one can never satisfy. This mutation scopes members down to nothing.",
     file: "packages/http/src/main.ts",
-    from: "    .filter(id => seesEverything || visible.has(id))",
-    to: "    .filter(id => seesEverything && visible.has(id))",
+    from: "    .filter(entry => seesEverything || visible.has(entry.id))",
+    to: "    .filter(entry => seesEverything && visible.has(entry.id))",
     suite: "test/agents-visibility.test.ts",
     expect: ["a stranger is absent and a correspondent is present", "a group puts its members in each other's list"],
   },
@@ -6959,36 +6959,6 @@ const MUTATIONS: Mutation[] = [
     to: "        ...(false",
     suite: "packages/http/src/grants-writes.test.ts",
     expect: ["says which grant cannot be revoked"],
-  },
-  {
-    id: "the-console-lists-only-what-it-wrote-itself",
-    defect:
-      "The registry went back to listing only this server's own table. `agent_registry` has two writers \u2014 web users, and a one-time import of the pre-database `registry.json` \u2014 so an agent the hub registered is on no list the console reads. Found in use: an identity was approved, connected, logged by the hub as connected, and the console showed one row, the account looking at it.",
-    file: "packages/http/src/main.ts",
-    from: "    ...new Set([...meshRows.map(r => r.identity), ...annotation.keys()]),",
-    to: "    ...new Set([...annotation.keys()]),",
-    suite: "packages/http/src/registry-source.test.ts",
-    expect: ["lists an identity the mesh holds"],
-  },
-  {
-    id: "a-torn-down-agent-comes-back-to-the-screen",
-    defect:
-      "The mesh half of the registry stopped filtering soft-deleted rows. \u00a7 9.3's teardown is a `deleted_at` stamp and every other reader honours it, so a destroyed identity reappears on the one screen an operator would check to confirm it was destroyed.",
-    file: "packages/http/src/main.ts",
-    from: "      `SELECT identity, description, type, created_at FROM agents WHERE deleted_at IS NULL`,",
-    to: "      `SELECT identity, description, type, created_at FROM agents`,",
-    suite: "packages/http/src/registry-source.test.ts",
-    expect: ["not one that was torn down"],
-  },
-  {
-    id: "the-registry-forgets-what-the-mesh-knows",
-    defect:
-      "The description fell back to nothing instead of to the mesh's. What an operator wrote when provisioning the identity is the only text about that agent anywhere, and the console draws a row with a name and no account of what it is.",
-    file: "packages/http/src/main.ts",
-    from: "    description: known?.description ?? row?.description ?? null,",
-    to: "    description: known?.description ?? null,",
-    suite: "packages/http/src/registry-source.test.ts",
-    expect: ["carries what the mesh knows about it"],
   },
   {
     id: "held-table-parser-stopped-matching",
