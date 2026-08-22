@@ -25,8 +25,8 @@ import { describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "grants-writes-probe";
 
-const { app, revokeStrandsTheTenant } = await import("./main.ts");
-const { upsertUser, approveUser, createPendingApproval } = await import("./db");
+const { app, revokeStrandsTheTenant, protectedSubjects } = await import("./main.ts");
+const { upsertUser, approveUser, createPendingApproval, getDb } = await import("./db");
 const { signJwt } = await import("./auth");
 const { STORE_FILES, agentsSchema, grants, keys, ownership, openAt, stateDir } =
   await import("@agent-mesh/store");
@@ -508,5 +508,105 @@ describe("the last grantor", () => {
       expect((await res.json()).action).toBe("deleted");
       expect(grants.has(db, second.login, CAPABILITY.ROLE_GRANT, SCOPE_TENANT)).toBe(false);
     });
+  });
+});
+
+/**
+ * A protected account's row, whole (D-746).
+ *
+ * **Protected because it cannot be taken away, not the other way round.**
+ * `seedLegacyAdminGrants` re-seeds every legacy admin capability for accounts
+ * whose row says `role = 'admin'`, on every startup. Revoking one is a control
+ * that appears to work, does nothing lasting, and says neither — which is the
+ * worst of the three possible behaviours, and the reason the console greys the
+ * whole row rather than the cells it happens to hold.
+ *
+ * Enforced here as well as drawn there, because the API is reachable without
+ * the screen and a rule enforced in one of two places is a rule the other can
+ * be talked out of.
+ */
+describe("a protected account", () => {
+  /** An account this deployment restores grants for: `role = 'admin'`. */
+  async function protectedOperator() {
+    const login = uniq("fixed");
+    const user = upsertUser(1_060_000 + n, login);
+    createPendingApproval(login, user.github_id);
+    approveUser(login);
+    getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(login);
+    grants.grant(db, { subject: login, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test" });
+    return login;
+  }
+
+  test("is named in the response, and every one of its rows is locked", async () => {
+    const fixed = await protectedOperator();
+    const op = await operator(CAPABILITY.ROLE_GRANT);
+
+    const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+    expect(body.immutable_subjects).toContain(fixed);
+
+    const rows = (body.grants as Array<{
+      subject: string; capability: string; revocable: boolean; immutable_reason?: string;
+    }>).filter((r) => r.subject === fixed);
+    expect(rows.length).toBeGreaterThan(0);
+    // Every row, not the one that happens to be `role.grant` — the console
+    // locks the account, and a row half-locked is a row somebody will try.
+    expect(rows.every((r) => r.revocable === false && r.immutable_reason === "protected_account"))
+      .toBe(true);
+  });
+
+  test("and the route refuses the revoke the screen will not offer", async () => {
+    const fixed = await protectedOperator();
+    const op = await operator(CAPABILITY.ROLE_GRANT);
+
+    const res = await del(op.cookie, { subject: fixed, capability: CAPABILITY.USAGE_READ });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe("PROTECTED_ACCOUNT");
+    expect(grants.has(db, fixed, CAPABILITY.USAGE_READ, SCOPE_TENANT)).toBe(true);
+  });
+
+  /**
+   * The set comes from the same query the seed uses. A name compiled into
+   * either half would belong to one installation — which is the thing the
+   * console asked the server for rather than hard-coding.
+   */
+  /**
+   * The seeded administrator is a **local** account, not a GitHub one, and it
+   * is the account D-746 is about. A protected set read from `users` alone
+   * would leave the one row it exists for unprotected while every test that
+   * uses a GitHub admin still passes.
+   */
+  test("counts the local seeded administrator too", async () => {
+    const local = uniq("local-admin");
+    // Put back afterwards, whatever happens. One state directory holds for the
+    // whole run and `seedLocalUsers` seeds the documented `admin` only into an
+    // *empty* `local_users`, so a row left here is a sign-in another file's
+    // `beforeAll` never gets — `main.in-process.test.ts` fails with a `401`
+    // that says nothing about this file.
+    getDb()
+      .prepare(`INSERT INTO local_users (username, password_hash, role) VALUES (?, 'x', 'admin')`)
+      .run(local);
+    try {
+      grants.grant(db, { subject: local, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test" });
+      expect(protectedSubjects()).toContain(local);
+
+      const op = await operator(CAPABILITY.ROLE_GRANT);
+      const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+      expect(body.immutable_subjects).toContain(local);
+
+      const res = await del(op.cookie, { subject: local, capability: CAPABILITY.USAGE_READ });
+      expect(res.status).toBe(409);
+    } finally {
+      getDb().prepare(`DELETE FROM local_users WHERE username = ?`).run(local);
+      grants.revoke(db, { subject: local, capability: CAPABILITY.USAGE_READ });
+    }
+  });
+
+  test("is whoever this deployment's rows say it is", async () => {
+    const fixed = await protectedOperator();
+    expect(protectedSubjects()).toContain(fixed);
+
+    const ordinary = await operator(CAPABILITY.ROLE_GRANT);
+    expect(protectedSubjects()).not.toContain(ordinary.login);
   });
 });

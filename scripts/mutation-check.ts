@@ -6955,10 +6955,50 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The grants map reported every row as revocable. The screen then offers a control the server refuses \u2014 the operator clicks, gets a 409, and the two halves disagree about a rule only one of them is checking.",
     file: "packages/http/src/main.ts",
-    from: "        ...(cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, s)",
-    to: "        ...(false",
+    from: "    if (cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, row)) return 'last_grantor'",
+    to: "    if (false) return 'last_grantor'",
     suite: "packages/http/src/grants-writes.test.ts",
     expect: ["says which grant cannot be revoked"],
+  },
+  {
+    id: "a-protected-account-chip-looks-clickable",
+    defect:
+      "The grants map stopped marking a protected account's rows. Every one of them is re-seeded on the next start, so the console offers a revoke that appears to work, does nothing lasting, and says neither \u2014 the failure D-746 is about, moved from the screen into the payload.",
+    file: "packages/http/src/main.ts",
+    from: "    if (protectedAccounts.has(row.subject)) return 'protected_account'",
+    to: "    if (false) return 'protected_account'",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["every one of its rows is locked"],
+  },
+  {
+    id: "the-locked-row-list-names-nobody",
+    defect:
+      "`immutable_subjects` went out empty. The console locks a **row**, including the chips a protected account does not hold yet, and an empty list leaves every unassigned chip offered \u2014 a grant written there is then removed by the next revoke the operator is refused.",
+    file: "packages/http/src/main.ts",
+    from: "    immutable_subjects: [...protectedAccounts],",
+    to: "    immutable_subjects: [],",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["is named in the response"],
+  },
+  {
+    id: "a-protected-account-can-be-stripped",
+    defect:
+      "The `DELETE` guard went away, leaving the rule on the screen alone. The API is reachable without the screen, so the revoke succeeds, the operator sees the chip clear, and the next restart puts it back \u2014 the state that reads as a control working right up until it is relied on.",
+    file: "packages/http/src/main.ts",
+    from: "  if (protectedSubjects().includes(subject)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["refuses the revoke the screen will not offer"],
+  },
+  {
+    id: "only-github-admins-are-protected",
+    defect:
+      "The protected set stopped reading `local_users`. The seeded administrator is a local account and is the one this exists for, so the single row that must be locked is the one left open while every GitHub-admin case still passes.",
+    file: "packages/http/src/main.ts",
+    from: "  return [...new Set([...admins, ...local].map(r => r.github_login))].sort()",
+    to: "  return [...new Set(admins.map(r => r.github_login))].sort()",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["counts the local seeded administrator too"],
   },
   {
     id: "approval-is-not-admission",

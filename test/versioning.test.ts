@@ -164,6 +164,8 @@ const HTTP_ADMIN_ONLY = new Set([
   "TYPE_IN_USE",                // DELETE the same, § 10.3
   "AUDIT_AGENTS_UNAVAILABLE",   // GET /api/v1/admin/chat-audits/agents, D-736
   "AUDIT_READ_UNRECORDABLE",    // any content read whose record failed, § 11.0.1
+  "LAST_GRANTOR",               // DELETE /api/v1/admin/grants, § 11.3
+  "PROTECTED_ACCOUNT",          // DELETE the same, D-746
 ]);
 
 /**

@@ -2126,17 +2126,35 @@ async function requireCapabilityAnyScope(
  * compares the string. Deliberately the full set — narrowing it here would be
  * a silent permission change dressed as a refactor.
  */
-export function seedLegacyAdminGrants(): void {
-  const db = agentsDb()
-  grants.migrate(db)
-  ownership.migrate(db)
+/**
+ * The accounts whose grants this deployment restores for itself (D-746).
+ *
+ * **Protected because they cannot be taken away, not the other way round.**
+ * `seedLegacyAdminGrants` re-seeds every `LEGACY_ADMIN_CAPABILITIES` row for
+ * these accounts on every startup, so revoking one is undone by the next
+ * restart — a control that appears to work, does nothing lasting, and says
+ * neither. The console greys those chips out; this is where that is decided,
+ * so the screen and the server read one answer instead of each holding a copy.
+ *
+ * Derived from the same query the seed uses rather than from a list of names.
+ * A deployment's administrator is whoever its rows say, and an account name
+ * compiled into either half would belong to one installation.
+ */
+export function protectedSubjects(): string[] {
   const admins = getDb()
     .prepare(`SELECT github_login FROM users WHERE role = 'admin'`)
     .all() as Array<{ github_login: string }>
   const local = getDb()
     .prepare(`SELECT username AS github_login FROM local_users WHERE role = 'admin'`)
     .all() as Array<{ github_login: string }>
-  for (const { github_login } of [...admins, ...local]) {
+  return [...new Set([...admins, ...local].map(r => r.github_login))].sort()
+}
+
+export function seedLegacyAdminGrants(): void {
+  const db = agentsDb()
+  grants.migrate(db)
+  ownership.migrate(db)
+  for (const github_login of protectedSubjects()) {
     for (const capability of LEGACY_ADMIN_CAPABILITIES) {
       grants.grant(db, { subject: github_login, capability, grantedBy: 'legacy-admin-role' })
     }
@@ -2793,17 +2811,29 @@ app.get('/api/v1/admin/grants', async (c) => {
   // the `DELETE` refuses with — the chip is disabled exactly where the revoke
   // would be refused, rather than by a second copy of the rule that can drift.
   const roleGrantHolders = grants.subjectsWith(agentsDb(), CAPABILITY.ROLE_GRANT)
+  const protectedAccounts = new Set(protectedSubjects())
+  const why = (cap: string, row: { subject: string; scope: string }) => {
+    // The account first: every row of a protected subject is restored on the
+    // next start whatever this route does with it, so `last_grantor` would be
+    // the narrower and less true of the two answers.
+    if (protectedAccounts.has(row.subject)) return 'protected_account'
+    if (cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, row)) return 'last_grantor'
+    return null
+  }
   return c.json({
     ok: true,
     capabilities: ALL_CAPABILITIES,
+    // The whole set, top level, because the console locks a **row** rather than
+    // a cell: a protected account's chips are all of them, including the ones
+    // it does not hold yet.
+    immutable_subjects: [...protectedAccounts],
     grants: ALL_CAPABILITIES.flatMap((cap) =>
-      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => ({
-        capability: cap,
-        ...s,
-        ...(cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, s)
-          ? { revocable: false, immutable_reason: 'last_grantor' }
-          : { revocable: true }),
-      })),
+      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => {
+        const reason = why(cap, s)
+        return reason === null
+          ? { capability: cap, ...s, revocable: true }
+          : { capability: cap, ...s, revocable: false, immutable_reason: reason }
+      }),
     ),
   })
 })
@@ -2863,6 +2893,25 @@ app.delete('/api/v1/admin/grants', async (c) => {
   const { subject, capability, scope } = body ?? {}
   if (typeof subject !== 'string' || typeof capability !== 'string') {
     return c.json({ ok: false, error: 'subject and capability are required' }, 400)
+  }
+
+  // **A protected account's grants are restored on the next start** (D-746), so
+  // revoking one is a control that appears to work, does nothing lasting, and
+  // says neither. Refused here rather than only greyed out on the screen: the
+  // API is reachable without the screen, and a rule enforced in one of the two
+  // places is a rule the other one can be talked out of.
+  if (protectedSubjects().includes(subject)) {
+    log.warn(
+      `refused to revoke ${capability} from ${subject}: a protected account's grants are re-seeded at startup`,
+      'grant_revoke_refused',
+      { actor, id: subject, capability, outcome: 'refused', reason: 'protected_account' },
+    )
+    return c.json({
+      ok: false,
+      error: `${subject} is a protected account; its capabilities are restored at startup and cannot be revoked here`,
+      code: 'PROTECTED_ACCOUNT',
+      capability,
+    }, 409)
   }
 
   // **Refused before it happens, not repaired afterwards.** A restart re-seeds

@@ -151,7 +151,7 @@ Smaller items, same theme:
 
 ## 8. Where the http admin surface's refusal codes are named
 
-Four codes leave this repository in REST bodies and are named nowhere in
+Six codes leave this repository in REST bodies and are named nowhere in
 `agent-mesh-contracts`:
 
 | code | route | since |
@@ -160,6 +160,8 @@ Four codes leave this repository in REST bodies and are named nowhere in
 | `TYPE_IN_USE` | `DELETE /api/v1/admin/agent-types/:type` | § 10.3 |
 | `AUDIT_AGENTS_UNAVAILABLE` | `GET /api/v1/admin/chat-audits/agents` | D-736 |
 | `AUDIT_READ_UNRECORDABLE` | any content read whose record failed | § 11.0.1 |
+| `LAST_GRANTOR` | `DELETE /api/v1/admin/grants` | § 11.3 |
+| `PROTECTED_ACCOUNT` | `DELETE` the same | D-746 |
 
 They are not JSON-RPC `error.data.code`. Nothing on the mesh wire carries
 them, so a client pinning a contracts tag never sees one — but an operator
@@ -173,8 +175,15 @@ as the codes have existed, and it was green over all four: it grepped
 `code: "X"` and `main.ts` writes `code: 'X'`. The rule was right and the reader
 could only see half the file. It surfaced because a refactor moved two of them
 into a file that happens to use double quotes — luck, not process. The scan
-reads both quote styles now, and the four are carved out by name in
-`HTTP_ADMIN_ONLY` so a fifth cannot join them quietly.
+reads both quote styles now, and the six are carved out by name in
+`HTTP_ADMIN_ONLY` so a seventh cannot join them quietly.
+
+**A fifth joined anyway, and the carve-out is not what let it.** `LAST_GRANTOR`
+reached `main` with `test/versioning.test.ts` red: the commit that added it ran
+`bun test packages/` and not `bun test test/`, so the check that exists for
+exactly this caught it and nobody read the answer. It surfaced when D-746 added
+`PROTECTED_ACCOUNT` beside it and the suite was run in full. The list is doing
+its job; the run is the part that has to happen.
 
 **Settled for now (D-740): no tag.** Measured on 2026-08-21, no repository
 reads any of the four as a string — `packages/platform-web` references none of
@@ -188,6 +197,18 @@ of these code *strings* — the likeliest trigger being the front end teaching
 `ApiError` to keep `code` — they follow `PROVISION_ERROR` into contracts under
 their own constant and a tag gets cut. Written here so the next person finds a
 condition rather than an open question.
+
+**Close to that condition, and worth stating precisely (2026-08-22).** D-746
+gave the grants matrix a second string vocabulary — `immutable_reason`, values
+`last_grantor` and `protected_account` — and the console on
+`origin/fe-wa-wb-honesty` asserts `data-immutable-reason` is exactly
+`"last_grantor"`. That is a second repository depending on a spelling this one
+chooses, which is the shape D-740 said would trigger promotion. It is not yet
+the trigger as written: `immutable_reason` is a *field of a `200` body*, not an
+`error.data.code`, and the console still discards `code` on the `409`. Two
+vocabularies with one question between them; whether they go into contracts
+together, separately, or not at all is the PM's, since a tag moves three
+repositories.
 
 ## 9. What the audit console's search box means — ~~closed~~
 
