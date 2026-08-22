@@ -5921,6 +5921,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "a-named-refusal-nothing-answers-with",
+    defect:
+      "A code the contract names went out of this repository and nothing objected. The direction beside it \u2014 a code emitted that the contract does not name \u2014 has been checked since `-32000`; this one could not be, because the eleven http-admin codes were written out by hand in the checker itself and a list copied from the code agrees with the code by construction. `HTTP_ADMIN_ERROR` (contracts v0.30.0, D-748) made them readable from one place, and the cost of that is a new way to be wrong: a console keeps branching on a refusal this repository stopped answering with, and the dead branch looks live from where it is written.",
+    file: "packages/http/src/main.ts",
+    from: "      code: 'TENANT_EXISTS',",
+    to: "",
+    suite: "test/versioning.test.ts",
+    expect: ["no name in the http admin vocabulary is one nothing answers with", "TENANT_EXISTS"],
+  },
+  {
     id: "one-unclosable-store-costs-every-other-one",
     defect:
       "The closers went back to running in a row with nothing catching them, so the first failure skipped every close after it and the exit too. A process asked to stop then stays up until systemd `SIGKILL`s it \u2014 the ungraceful ending the closers exist to avoid, reached by way of the closers.",
