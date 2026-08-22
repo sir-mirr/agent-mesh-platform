@@ -5921,6 +5921,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "the-service-answers-before-it-is-ready",
+    defect:
+      "The listen moved ahead of `startup()`, so the port was open while the seed, the migrations and the audit poller had not run. A caller that arrives in that window gets an answer from a service that has not read its own state \u2014 the failure mode is not an error, it is a *wrong answer*, which is why it needs a test rather than a smoke check.\n\nThis block ran only in a spawned process until `startHttpServer` took its dangerous pieces as parameters, so nothing counted it and nothing could mutate it.",
+    file: "packages/http/src/main.ts",
+    from: "  await begin()",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["the service answered before `startup()` ran"],
+  },
+  {
+    id: "one-signal-gets-a-shutdown-the-other-does-not",
+    defect:
+      "`SIGINT` and `SIGTERM` were wired to two different shutdowns. Whichever one the tests send is the one that works, and the other is discovered by an operator: `systemctl stop` sends `SIGTERM`, a terminal sends `SIGINT`, and a service that only drains cleanly under one of them loses writes under the other.",
+    file: "packages/http/src/main.ts",
+    from: "  onSignal('SIGINT', shutdown)",
+    to: "  onSignal('SIGINT', () => {})",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["SIGINT and SIGTERM were wired to different shutdowns"],
+  },
+  {
+    id: "shutdown-closes-everything-except-the-server",
+    defect:
+      "Shutdown ran every closer and left the server listening. The log says it is going down, the closers say they closed, and the port stays held by a process that has already said goodbye \u2014 the next start fails to bind and the reason is three lines of *successful* shutdown away.",
+    file: "packages/http/src/main.ts",
+    from: "    stop: () => server.stop(),",
+    to: "    stop: () => {},",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a shutdown that does not stop the server leaves the port held"],
+  },
+  {
     id: "a-named-refusal-nothing-answers-with",
     defect:
       "A code the contract names went out of this repository and nothing objected. The direction beside it \u2014 a code emitted that the contract does not name \u2014 has been checked since `-32000`; this one could not be, because the eleven http-admin codes were written out by hand in the checker itself and a list copied from the code agrees with the code by construction. `HTTP_ADMIN_ERROR` (contracts v0.30.0, D-748) made them readable from one place, and the cost of that is a new way to be wrong: a console keeps branching on a refusal this repository stopped answering with, and the dead branch looks live from where it is written.",

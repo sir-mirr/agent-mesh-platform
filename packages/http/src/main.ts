@@ -4687,6 +4687,19 @@ export async function startup(): Promise<void> {
 //
 // It used to run on import, so importing this module bound port 3000 and
 // seeded a database — which is why `test/harness.ts` spawns the service as a
+/**
+ * What this file asks of a server: the port it settled on, and a way to stop it.
+ *
+ * Narrower than `Bun.serve`'s own type on purpose — a fake that satisfies the
+ * whole of it would be most of a web server, and the two lines below are all
+ * this function touches.
+ */
+type HttpServeFn = (options: {
+  port: number
+  fetch: typeof app.fetch
+  idleTimeout: number
+}) => { port: number; stop: () => void }
+
 // process rather than importing it, and why no coverage instrument has ever
 // seen a line of the three thousand above: they execute in a child process.
 // Behind this guard the routes can be exercised in-process with
@@ -4694,15 +4707,43 @@ export async function startup(): Promise<void> {
 // that only a real process has — ports, signals, restart.
 //
 // Nothing imported this module before, so the guard changes no caller.
-if (import.meta.main) {
+/**
+ * Bring the service up, and arrange for it to go down cleanly.
+ *
+ * **This was the body of the `import.meta.main` guard, and no instrument had
+ * ever seen it.** Coverage watches the process it runs in; every suite that
+ * exercises a real server *spawns* one, so these lines — the listen, the
+ * heartbeat, the shutdown wiring, the two signal handlers — were the largest
+ * uncovered block in the repository while being the part that decides whether
+ * an operator's `systemctl stop` loses a write.
+ *
+ * The seams are parameters with the production value as the default, so the
+ * guard below reads exactly as it did and a test can hand in a server that
+ * does not bind a port. `serve` and `onSignal` are the two that matter: a test
+ * calling this without them would take the machine's SIGTERM handler away from
+ * whatever is actually running.
+ */
+export async function startHttpServer({
+  serve = Bun.serve as unknown as HttpServeFn,
+  begin = startup,
+  heartbeat = startCounterHeartbeat,
+  onSignal = (signal, handler) => { process.on(signal, handler) },
+  exit = (code: number) => process.exit(code),
+}: {
+  serve?: HttpServeFn
+  begin?: () => Promise<void>
+  heartbeat?: typeof startCounterHeartbeat
+  onSignal?: (signal: 'SIGTERM' | 'SIGINT', handler: () => void) => void
+  exit?: (code: number) => void
+} = {}): Promise<{ port: number; shutdown: () => void }> {
   log.info(`agent-mesh-http: starting on port ${PORT}`, 'http_starting', {
     port: PORT,
     state_dir: STATE_DIR,
   })
 
-  await startup()
+  await begin()
 
-  const server = Bun.serve({
+  const server = serve({
     port: PORT,
     fetch: app.fetch,
     idleTimeout: 255, // max value, prevents SSE connection drops
@@ -4715,7 +4756,7 @@ if (import.meta.main) {
   // The counters, into the same record as the lines. There is no metrics
   // endpoint here and journald is the record, so `journalctl -u agent-mesh-http
   // | grep counter_snapshot` is how an operator asks whether a path ran at all.
-  const stopCounterSnapshots = startCounterHeartbeat(log, {
+  const stopCounterSnapshots = heartbeat(log, {
     intervalMs: Number(process.env.AGENT_MESH_COUNTER_SNAPSHOT_MS ?? 900_000),
   })
 
@@ -4730,9 +4771,15 @@ if (import.meta.main) {
       ...SHUTDOWN_CLOSERS,
     ],
     stop: () => server.stop(),
-    exit: (code) => process.exit(code),
+    exit,
   })
 
-  process.on('SIGTERM', shutdown)
-  process.on('SIGINT', shutdown)
+  onSignal('SIGTERM', shutdown)
+  onSignal('SIGINT', shutdown)
+
+  return { port: server.port, shutdown }
+}
+
+if (import.meta.main) {
+  await startHttpServer()
 }

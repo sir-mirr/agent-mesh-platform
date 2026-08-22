@@ -2439,3 +2439,89 @@ describe("telling an admin somebody is waiting", () => {
     expect(failed?.reason).toBe("hub_send_threw");
   });
 });
+
+/**
+ * Coming up, and going back down.
+ *
+ * The block behind `import.meta.main` is the one part of this file that only a
+ * *served* process ran, so no instrument ever counted it — thirty-one lines
+ * deciding whether `systemctl stop` loses a write. `startHttpServer` takes the
+ * two dangerous pieces as parameters, which is what lets them be watched here:
+ * a `serve` that binds nothing, and an `onSignal` that does not take SIGTERM
+ * away from whoever is running this suite.
+ */
+describe("bringing the service up", () => {
+  /** A server that answers the two questions this file asks of one. */
+  function fakeServer() {
+    const stops: number[] = [];
+    return {
+      stops,
+      serve: (options: { port: number; idleTimeout: number }) => {
+        served.push(options);
+        return { port: 51999, stop: () => { stops.push(1); } };
+      },
+    };
+  }
+  let served: { port: number; idleTimeout: number }[] = [];
+
+  /** Signal handlers, captured rather than installed. */
+  function signals() {
+    const handlers = new Map<string, () => void>();
+    return {
+      handlers,
+      onSignal: (signal: "SIGTERM" | "SIGINT", handler: () => void) => { handlers.set(signal, handler); },
+    };
+  }
+
+  const boot = async (over: Record<string, unknown> = {}) => {
+    served = [];
+    const server = fakeServer();
+    const signal = signals();
+    const begun: number[] = [];
+    const stopped: string[] = [];
+    const exits: number[] = [];
+    const started = await mod.startHttpServer({
+      serve: server.serve,
+      begin: async () => { begun.push(1); },
+      // The heartbeat's own timer would outlive this test; what is asserted is
+      // that shutdown calls whatever it returned.
+      heartbeat: () => () => { stopped.push("counter snapshots"); },
+      onSignal: signal.onSignal,
+      exit: (code: number) => { exits.push(code); },
+      ...over,
+    } as Parameters<typeof mod.startHttpServer>[0]);
+    return { started, server, signal, begun, stopped, exits };
+  };
+
+  test("seeds before it listens, and listens on the port it was configured with", async () => {
+    const { started, begun } = await boot();
+    expect(
+      { begun: begun.length, listening: started.port, idle: served[0]?.idleTimeout },
+      "the service answered before `startup()` ran, or bound something other than what it logged",
+    ).toEqual({ begun: 1, listening: 51999, idle: 255 });
+  });
+
+  test("both signals reach the same shutdown", async () => {
+    const { signal } = await boot();
+    expect([...signal.handlers.keys()].sort()).toEqual(["SIGINT", "SIGTERM"]);
+    expect(
+      signal.handlers.get("SIGTERM"),
+      "SIGINT and SIGTERM were wired to different shutdowns — one of them would be the untested one",
+    ).toBe(signal.handlers.get("SIGINT"));
+  });
+
+  /**
+   * The omission this wiring exists for. `closeAuditAccessLog` was imported and
+   * never called, and the shape of that defect is a closer that is *present in
+   * the list* and never reached — so what is checked is that the signal
+   * actually runs the list, stops the server, and exits.
+   */
+  test("a signal closes what it was given, stops the server, and exits", async () => {
+    const { signal, server, stopped, exits } = await boot();
+    signal.handlers.get("SIGTERM")!();
+    expect(
+      { counters: stopped.includes("counter snapshots"), stops: server.stops.length, exits },
+      "a shutdown that does not stop the server leaves the port held by a process that has already said goodbye",
+    ).toEqual({ counters: true, stops: 1, exits: [0] });
+  });
+});
