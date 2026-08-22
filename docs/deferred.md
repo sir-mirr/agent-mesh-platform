@@ -763,6 +763,16 @@ It had been invisible because the one-time `registry.json` import filled the
 table once, deep. The state directory was retired and re-seeded, the import had
 nothing to import, and what was left was the people.
 
+**And the approvals that predate the rule (T-026).** D-747 changed what
+approving means, which left the approvals already recorded meaning the old
+thing: an identity approved after the change is addressable, one approved
+before it answers `404` from `POST /api/v1/messages`, and the difference is a
+date — nothing an operator can see and nothing they can fix from a screen.
+`soak-claude` was the live case. `admitApprovedIdentities` applies the rule to
+the rows it was made about, on boot, once. It is not an auto-import: an
+approved key is a decision an operator made against a fingerprint they
+compared, and an identity nobody has decided about is still left where it is.
+
 ### A deployment's directory is compiled into the file route
 
 **Why deferred:** it is a real defect and the fix is not the one line it looks

@@ -23,7 +23,7 @@ process.env.JWT_SECRET ||= "registry-source-probe";
 const { app } = await import("./main.ts");
 const { upsertApprovedWebUser, upsertUser, approveUser, createPendingApproval, getDb, getRegistryAgent } =
   await import("./db");
-const { agentsDb, decide } = await import("./keys-admin");
+const { agentsDb, decide, admitApprovedIdentities } = await import("./keys-admin");
 const { signJwt } = await import("./auth");
 const { STORE_FILES, agentsSchema, keys, openAt, stateDir } = await import("@agent-mesh/store");
 const { join } = await import("node:path");
@@ -207,5 +207,102 @@ describe("the agent list", () => {
     const row = (await rows()).find((a) => a.id === person);
     expect(row).toBeDefined();
     expect(row!.tenant).toBe("default");
+  });
+});
+
+/**
+ * The approvals that happened before D-747 (T-026).
+ *
+ * The rule landed after identities had already been approved, so an identity
+ * approved on Tuesday is addressable and one approved on Monday answers `404`
+ * from `POST /api/v1/messages`. The difference is a date — nothing an operator
+ * can see, and nothing they can fix from a screen. `soak-claude` was the live
+ * case: connected, approved, on the mesh, absent from this server's list.
+ */
+describe("a boot after the rule landed", () => {
+  /** An identity whose key was approved without the admission D-747 now does. */
+  function approvedTheOldWay(): string {
+    const { identity, fingerprint } = pendingAgent();
+    keys.approveKey(agentsDb(), fingerprint, "operator");
+    return identity;
+  }
+
+  test("admits the identities an operator had already approved", async () => {
+    const old = approvedTheOldWay();
+    expect(await listed()).not.toContain(old);
+
+    expect(admitApprovedIdentities()).toContain(old);
+    expect(await listed()).toContain(old);
+  });
+
+  test("is quiet on the next boot, having nothing left to do", () => {
+    approvedTheOldWay();
+    expect(admitApprovedIdentities().length).toBeGreaterThan(0);
+    // Idempotent, and the emptiness is the point: the log line only appears on
+    // a boot that changed something, so a line saying nothing happened would be
+    // one an operator learns to skip.
+    expect(admitApprovedIdentities()).toEqual([]);
+  });
+
+  test("does not admit an identity whose key was denied or revoked", async () => {
+    const denied = pendingAgent();
+    keys.denyKey(agentsDb(), denied.fingerprint, "operator", "not this one");
+
+    admitApprovedIdentities();
+    expect(await listed()).not.toContain(denied.identity);
+  });
+
+  /**
+   * § 9.3's soft delete survives the backfill rather than being undone by it:
+   * a torn-down identity keeps whatever approved key history it had.
+   */
+  test("does not bring back an identity that was torn down", async () => {
+    const gone = approvedTheOldWay();
+    agentsDb()
+      .prepare(`UPDATE agents SET deleted_at = CURRENT_TIMESTAMP WHERE identity = ?`)
+      .run(gone);
+
+    expect(admitApprovedIdentities()).not.toContain(gone);
+    expect(await listed()).not.toContain(gone);
+  });
+
+  /**
+   * The whole point, end to end: `POST /api/v1/messages` answers `404` for an
+   * identity that is not on this server's list, whatever the mesh knows about
+   * it. That is the symptom the P1 was reported as, and the backfill is what
+   * closes it for the approvals that predate the rule.
+   */
+  test("makes an identity addressable that the send route was answering 404 for", async () => {
+    const old = approvedTheOldWay();
+    const send = () =>
+      app.fetch(new Request("http://rs-probe/api/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: adminCookie },
+        body: JSON.stringify({ to: old, text: "are you there" }),
+      }));
+
+    const before = await send();
+    expect(before.status).toBe(404);
+    expect((await before.json()).error).toContain(old);
+
+    admitApprovedIdentities();
+
+    // No hub in this process, so the send is recorded and not accepted — the
+    // status this asserts is *not 404*, which is the whole of what admission
+    // changes here.
+    expect((await send()).status).not.toBe(404);
+  });
+
+  /**
+   * **Not "every identity the hub knows".** That is what D-747 refused to
+   * decide by fiat, and the reason has not changed: a route that admits any hub
+   * identity has to say whose registry it is adding to. An approved key is a
+   * decision an operator already made and this repository already recorded.
+   */
+  test("leaves an identity nobody has decided about where it is", async () => {
+    const undecided = pendingAgent();
+
+    admitApprovedIdentities();
+    expect(await listed()).not.toContain(undecided.identity);
   });
 });

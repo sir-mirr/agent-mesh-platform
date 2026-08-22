@@ -7171,6 +7171,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["leaves the message history under the name that sent it"],
   },
   {
+    id: "the-backfill-admits-every-identity-the-hub-knows",
+    defect:
+      "The backfill stopped asking whether a key was approved and admitted whatever the mesh had a row for. That is the thing D-747 refused to decide by fiat \u2014 a route that admits any hub identity has to say whose registry it is adding to \u2014 and it arrives here as a silent widening of somebody else's decision.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        WHERE k.status = 'approved' AND a.deleted_at IS NULL",
+    to: "        WHERE a.deleted_at IS NULL",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["leaves an identity nobody has decided about where it is"],
+  },
+  {
+    id: "the-backfill-undoes-a-teardown",
+    defect:
+      "The backfill stopped reading `deleted_at`, so an identity an operator tore down under \u00a7 9.3 is put back on the list by the next restart \u2014 a removal that works until the process restarts is the class of control this repository keeps finding behind its own screens.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "    .prepare(`SELECT description, type FROM agents WHERE identity = ? AND deleted_at IS NULL`)",
+    to: "    .prepare(`SELECT description, type FROM agents WHERE identity = ?`)",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["does not bring back an identity that was torn down"],
+  },
+  {
+    id: "the-backfill-re-admits-on-every-boot",
+    defect:
+      "The backfill stopped skipping identities already on the list, so it reports work on every boot. The log line then appears whether or not anything changed, which is the line an operator learns to skip \u2014 and the one time it means something is the time it is skipped.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "    if (isRegistryAgentApproved(identity)) continue",
+    to: "    if (false) continue",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["is quiet on the next boot"],
+  },
+  {
     id: "only-github-admins-are-protected",
     defect:
       "The protected set stopped reading `local_users`. The seeded administrator is a local account and is the one this exists for, so the single row that must be locked is the one left open while every GitHub-admin case still passes.",

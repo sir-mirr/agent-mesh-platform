@@ -24,7 +24,7 @@ import { checkpointForShutdown, openAt, stateDir, STORE_FILES, keys, KeyTransiti
 import { join } from 'node:path'
 import type { Database } from 'bun:sqlite'
 
-import { admitRegistryAgent } from './db'
+import { admitRegistryAgent, isRegistryAgentApproved } from './db'
 
 let _agentsDb: Database | null = null
 
@@ -124,6 +124,55 @@ export function admitApprovedIdentity(identity: string, db: Database = agentsDb(
     .get(identity) as { description: string | null; type: string | null } | undefined
   if (!row) return
   admitRegistryAgent({ id: identity, description: row.description, type: row.type })
+}
+
+/**
+ * Admit every identity whose key an operator already approved (T-026, D-747).
+ *
+ * **The rule applied backwards, not a new decision.** D-747 says approving a
+ * key admits its identity, and the approvals that happened before that landed
+ * were the same operator act — they compared a fingerprint and said this
+ * identity is one the console deals with. What is missing is only the row the
+ * rule now writes, so the identities approved on Tuesday are addressable and
+ * the ones approved on Monday answer `404` from `POST /api/v1/messages`. That
+ * difference is a date, and nothing an operator can see or fix.
+ *
+ * `soak-claude` is the live case: connected, approved, on the mesh, and absent
+ * from this server's list.
+ *
+ * **Not "every identity the hub knows".** That was the thing D-747 refused to
+ * decide by fiat, and the reason is unchanged: a route that adds any hub
+ * identity has to say *whose* registry. An approved key is the operator's
+ * decision, already made and recorded, which is why this can run without one.
+ *
+ * A torn-down identity is not admitted — `admitApprovedIdentity` reads
+ * `deleted_at IS NULL`, so § 9.3's soft delete survives the backfill rather
+ * than being undone by it.
+ *
+ * Returns how many rows it wrote, so the caller logs what happened rather than
+ * that something did.
+ */
+export function admitApprovedIdentities(
+  db: Database = agentsDb(),
+  admit: (identity: string, db?: Database) => void = admitApprovedIdentity,
+): string[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT k.identity
+         FROM agent_keys k
+         JOIN agents a ON a.identity = k.identity
+        WHERE k.status = 'approved' AND a.deleted_at IS NULL
+        ORDER BY k.identity`,
+    )
+    .all() as Array<{ identity: string }>
+
+  const admitted: string[] = []
+  for (const { identity } of rows) {
+    if (isRegistryAgentApproved(identity)) continue
+    admit(identity, db)
+    admitted.push(identity)
+  }
+  return admitted
 }
 
 /**

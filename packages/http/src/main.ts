@@ -44,7 +44,7 @@ import {
 } from '@agent-mesh/contracts'
 import { renameLocalAccount } from './rename-account'
 import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestBase } from './provision'
-import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
+import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb, admitApprovedIdentities } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
 import { getEvent as getAuditEvent, listEvents as listAuditEvents, closeAuditDb } from './audit-query'
 import { recordContentReadOrRefuse, closeAuditAccessLog } from './audit-access-log'
@@ -4571,6 +4571,23 @@ export function renameSeededAdmin(): void {
 }
 
 /**
+ * Apply D-747 to the approvals that happened before it (T-026).
+ *
+ * Quiet when there is nothing to do, which is every boot after the first: a
+ * line per boot saying *0 identities admitted* is a line an operator learns to
+ * skip, and the one time it says 1 is the time it mattered.
+ */
+export function admitApprovedIdentitiesOnBoot(): void {
+  const admitted = admitApprovedIdentities()
+  if (admitted.length === 0) return
+  log.warn(
+    `admitted ${admitted.length} identit${admitted.length === 1 ? 'y' : 'ies'} whose key was already approved`,
+    'registry_backfilled',
+    { outcome: 'admitted', reason: 'approved_before_d747', count: admitted.length, ids: admitted },
+  )
+}
+
+/**
  * What a served process does before it answers anything, exported so a test
  * calling `app.fetch` can put the database in the same state.
  *
@@ -4589,6 +4606,11 @@ export async function startup(): Promise<void> {
   renameSeededAdmin()
   await seedLocalUsers()
   seedLegacyAdminGrants()
+  // **The identities an operator already approved** (T-026, D-747). After the
+  // grants seed, because the log line below is the first thing an operator
+  // reads about a boot that changed the registry, and a boot that failed to
+  // seed grants has a worse thing to say first.
+  admitApprovedIdentitiesOnBoot()
   await redeclareProxies().catch(() => {})
   // hub.db audit poller (1.5 s), so Chat Audits SSE carries every agent-mesh
   // conversation rather than only the sir-mirr proxy channel.
