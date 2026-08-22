@@ -42,6 +42,10 @@ interface OrgMember {
   name: string;
   email: string;
   capabilities: string[];
+  /** `true` only when a server response marks this subject's grants immutable. */
+  fixedAdmin: boolean | null;
+  /** Existing cells the grant route says its DELETE endpoint will refuse. */
+  immutableReasons: Record<string, string>;
 }
 
 export function RbacManagementPage() {
@@ -70,22 +74,34 @@ export function RbacManagementPage() {
       setFailure(null);
       const res = await fetchGrants();
       const caps = res.capabilities || [];
+      const immutableSubjects = Array.isArray(res.immutable_subjects)
+        ? new Set(res.immutable_subjects)
+        : null;
       setAvailableCaps(caps);
 
       // Asked separately and allowed to fail: a viewer who may read grants but
       // not accounts still gets the table, with the role column saying it does
       // not know rather than filling itself in.
-      const roles = await fetchLocalUsers()
-        .then((r) => Object.fromEntries((r.users ?? []).map((u) => [u.username, u.role])))
+      const accounts = await fetchLocalUsers()
+        .then((r) => r.users ?? [])
         .catch(() => null);
+      const roles = accounts === null
+        ? null
+        : Object.fromEntries(accounts.map((u) => [u.username, u.role]));
       setRolesBySubject(roles);
 
       // Group grants by subject strictly from server response
       const subjectMap = new Map<string, string[]>();
+      const immutableReasonMap = new Map<string, Record<string, string>>();
       (res.grants || []).forEach((g: GrantItem) => {
         const list = subjectMap.get(g.subject) || [];
         list.push(g.capability);
         subjectMap.set(g.subject, list);
+        if (g.revocable === false) {
+          const fixed = immutableReasonMap.get(g.subject) || {};
+          fixed[g.capability] = g.immutable_reason ?? "not_revocable";
+          immutableReasonMap.set(g.subject, fixed);
+        }
       });
 
       // **A person with no grants is exactly who this screen is for.**
@@ -99,6 +115,11 @@ export function RbacManagementPage() {
       // Only when that list was readable. If it was refused or unreachable,
       // the rows stay as they were rather than this screen deciding the mesh
       // has no members — the role column already says it could not ask.
+      if (immutableSubjects !== null) {
+        for (const subject of immutableSubjects) {
+          if (!subjectMap.has(subject)) subjectMap.set(subject, []);
+        }
+      }
       if (roles) {
         for (const username of Object.keys(roles)) {
           if (!subjectMap.has(username)) subjectMap.set(username, []);
@@ -110,6 +131,15 @@ export function RbacManagementPage() {
         name: subj,
         email: subj,
         capabilities: assignedCaps,
+        // The account name is deliberately irrelevant. New servers publish the
+        // protected subject set beside the grants. The local-user role remains
+        // only as a rollout fallback for an older response without that field.
+        fixedAdmin: immutableSubjects !== null
+          ? immutableSubjects.has(subj)
+          : accounts === null
+          ? null
+          : accounts.some((account) => account.username === subj && account.role === "admin"),
+        immutableReasons: immutableReasonMap.get(subj) ?? {},
       }));
 
       setMembers(orgMembers);
@@ -117,7 +147,7 @@ export function RbacManagementPage() {
       console.warn("[RBAC] fetchGrants error:", err.message);
       setIsError(true);
       setFailure(failureKind(err));
-        setMissing(refusedCapability(err));
+      setMissing(refusedCapability(err));
       setMembers([]);
       setAvailableCaps([]);
       setRolesBySubject(null);
@@ -133,7 +163,15 @@ export function RbacManagementPage() {
   const handleToggleCapability = async (subject: string, capId: string) => {
     if (!canGrant) return;
     const member = members.find((m) => m.id === subject);
-    const hasCap = member?.capabilities.includes(capId);
+    // Guard the action as well as the button. A style or `disabled` regression
+    // must not turn a fixed administrator into a writable grant row, and an
+    // unanswered account read is not evidence that the subject is mutable.
+    if (!member || member.fixedAdmin !== false) return;
+    const hasCap = member.capabilities.includes(capId);
+    // A grant may be immutable even on an ordinary member (for example, the
+    // last tenant-wide role.grant holder). Additions remain possible; only the
+    // existing cell whose DELETE the server refuses is locked.
+    if (hasCap && member.immutableReasons[capId] !== undefined) return;
 
     try {
       if (hasCap) {
@@ -184,31 +222,52 @@ export function RbacManagementPage() {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {availableCaps.map((capId) => {
             const isAssigned = item.capabilities.includes(capId);
+            const isFixedAdmin = item.fixedAdmin === true;
+            const immutableReason = isAssigned ? item.immutableReasons[capId] : undefined;
+            const isFixedGrant = immutableReason !== undefined;
+            const isImmutable = isFixedAdmin || isFixedGrant;
+            const canChange = canGrant && item.fixedAdmin === false && !isFixedGrant;
 
             return (
               <button
                 key={capId}
                 type="button"
                 data-testid={`rbac-cap-${item.id}-${capId}`}
-                disabled={!canGrant}
+                data-fixed-admin={isFixedAdmin ? "true" : undefined}
+                data-immutable-reason={immutableReason}
+                disabled={!canChange}
                 onClick={() => handleToggleCapability(item.id, capId)}
                 style={{
                   padding: "4px 9px",
                   borderRadius: "var(--radius-full)",
-                  border: isAssigned ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
+                  border: isImmutable
+                    ? "1px solid var(--color-border)"
+                    : isAssigned ? "1px solid var(--color-primary)" : "1px solid var(--color-border)",
                   fontSize: "0.72rem",
                   fontWeight: 700,
-                  cursor: canGrant ? "pointer" : "not-allowed",
-                  opacity: canGrant ? 1 : 0.55,
-                  background: isAssigned
+                  cursor: canChange ? "pointer" : "not-allowed",
+                  opacity: isImmutable ? 0.45 : canChange ? 1 : 0.55,
+                  background: isImmutable
+                    ? "var(--color-bg-surface-sub)"
+                    : isAssigned
                     ? "var(--color-primary-light)"
                     : "var(--color-bg-surface-sub)",
-                  color: isAssigned
+                  color: isImmutable
+                    ? "var(--color-text-muted)"
+                    : isAssigned
                     ? "var(--color-primary)"
                     : "var(--color-text-muted)",
                   transition: "all 0.15s ease",
                 }}
-                title={canGrant ? (isAssigned ? t("rbac.toast.revoked", "권한 회수") : t("rbac.toast.granted", "권한 부여")) : t("rbac.needs.grant", "이 계정에는 권한을 변경할 수 있는 권한이 없습니다")}
+                title={isFixedAdmin
+                  ? t("rbac.fixedAdmin", "고정 관리자의 권한은 변경할 수 없습니다")
+                  : isFixedGrant
+                  ? t("rbac.fixedGrant", "안전상 이 권한은 회수할 수 없습니다")
+                  : item.fixedAdmin === null
+                  ? t("rbac.accountsUnavailable", "계정 정보를 확인할 수 없어 권한을 변경할 수 없습니다")
+                  : canGrant
+                  ? (isAssigned ? t("rbac.toast.revoked", "권한 회수") : t("rbac.toast.granted", "권한 부여"))
+                  : t("rbac.needs.grant", "이 계정에는 권한을 변경할 수 있는 권한이 없습니다")}
               >
                 {isAssigned ? "✓ " : "+ "}
                 {capabilityLabel(t, capId)}

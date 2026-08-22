@@ -402,6 +402,48 @@ describe("empty is what the server said, and only that", () => {
 });
 
 describe("the heading counts what is actually on the canvas", () => {
+  it("does not draw or count a person that shares the unified registry and group namespace", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "default", name: "Default", members: ["admin", "svc-alpha-1"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
+        AGENT_ROWS[0],
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-agent")).toBe(1);
+    expect(clusterLabels()).toEqual(["Default (1)"]);
+    expect(subtitle()).toBe(
+      say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "1"),
+    );
+    expect(hudText()).toContain(`${say("topo.hud.agents")}: 1`);
+    expect(document.body.textContent ?? "").not.toContain("Local account");
+  });
+
+  it("reports zero agents when the only registry row is a person", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "default", name: "Default", members: ["admin"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-agent")).toBe(0);
+    expect(clusterLabels()).toEqual(["Default (0)"]);
+    expect(subtitle()).toBe(
+      say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "0"),
+    );
+    expect(hudText()).toContain(`${say("topo.hud.agents")}: 0`);
+  });
+
   it("states the same number of agents the canvas drew, and does not fold gateways into it", async () => {
     healthy();
     await mount();

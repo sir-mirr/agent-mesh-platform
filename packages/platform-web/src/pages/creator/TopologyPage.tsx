@@ -4,7 +4,7 @@ import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi } from "@/api/messages.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
-import { fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
+import { agentRegistryEntries, fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
 
 interface ClusterConfig {
   id: string;
@@ -95,7 +95,7 @@ export function TopologyPage() {
     Promise.all([fetchGroups(), fetchAgents()])
       .then(([groups, agents]) => {
         setLiveGroups(groups || []);
-        setLiveAgents(agents || []);
+        setLiveAgents(agentRegistryEntries(agents || []));
       })
       .catch((err) => {
         console.warn("[Topology] API load error:", err);
@@ -172,8 +172,15 @@ export function TopologyPage() {
       };
     }
 
+    const agentIds = new Set(liveAgents.map((agent) => agent.identity));
     const effectiveGroups: GroupItem[] = liveGroups.length > 0
-      ? liveGroups
+      ? liveGroups.map((group) => ({
+          ...group,
+          // Group membership shares the unified identity namespace. Only an
+          // identity that the filtered agent registry confirms may become an
+          // agent node or contribute to an agent-labelled cluster count.
+          members: (group.members ?? []).filter((identity) => agentIds.has(identity)),
+        }))
       : [
           {
             id: "default",
@@ -257,9 +264,7 @@ export function TopologyPage() {
       maxY = Math.max(maxY, cfg.gw.y + 40);
 
       const groupData = effectiveGroups.find((g) => g.id === cfg.id);
-      const memberList: string[] = (groupData && groupData.members && groupData.members.length > 0)
-        ? groupData.members
-        : liveAgents.filter((a) => a.type === cfg.id || a.type === cfg.name).map((a) => a.identity);
+      const memberList: string[] = groupData?.members ?? [];
 
       // **An empty membership is an empty membership**, which the cluster sizing
       // above already says in those words. What stood here contradicted it

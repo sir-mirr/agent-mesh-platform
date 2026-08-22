@@ -296,6 +296,17 @@ const drawsCard = (): boolean => screen.queryByTestId("receipt-card") !== null;
 const drawsNoReceipt = (): boolean => screen.queryByTestId("receipt-error") !== null;
 
 describe("four readings of the registry, and only ever one of them", () => {
+  it("offers no sender or recipient when the unified registry contains only a person", async () => {
+    readAgents = () => json(200, { agents: [
+      { id: "operator-1", name: "operator-1", description: "Local account", channel: "web", type: "user" },
+    ] });
+    await mount();
+
+    expect(statusLine()).toBe(EMPTY);
+    expect(optionTexts(senderSelect())).toEqual([]);
+    expect(optionTexts(recipientSelect())).toEqual([]);
+  });
+
   it("says it is still asking, and does not answer for the route", async () => {
     // The window between mount and the first reply. "Nothing is registered"
     // here is a claim about an answer that has not arrived, and it is the one

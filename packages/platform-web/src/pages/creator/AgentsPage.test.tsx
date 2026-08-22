@@ -293,6 +293,16 @@ const beta = () => ({
   last_seen_at: twoHoursAgo(),
   fingerprint: "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
 });
+const PERSON = {
+  id: "operator-1",
+  name: "operator-1",
+  description: "Local account",
+  channel: "web",
+  type: "user",
+  created_at: "2026-08-01T00:00:00Z",
+  last_seen_at: null,
+  fingerprint: null,
+};
 
 describe("the four things the table can be saying", () => {
   it("says it is still asking, and claims nothing about the fleet yet", async () => {
@@ -392,6 +402,26 @@ describe("the four things the table can be saying", () => {
 });
 
 describe("a row says only what the server sent", () => {
+  it("keeps people out of the agent registry while retaining agent and service rows", async () => {
+    readAgents = () => json(200, { agents: [PERSON, ALPHA, beta()] });
+    await mount();
+
+    expect(rows()).toHaveLength(2);
+    expect(rows().some((row) => (row.textContent ?? "").includes(PERSON.id))).toBe(false);
+    expect(rowFor(ALPHA.id)).toBeDefined();
+    expect(rowFor(beta().id)).toBeDefined();
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
+  it("treats a unified registry containing only a person as an empty agent list", async () => {
+    readAgents = () => json(200, { agents: [PERSON] });
+    await mount();
+
+    expect(rows()).toHaveLength(0);
+    expect(status()).toContain(EMPTY);
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
   it("puts each field in its own column and reports the two it was not given", async () => {
     readAgents = () => json(200, { agents: [ALPHA, beta()] });
     await mount();
@@ -496,6 +526,18 @@ describe("a row says only what the server sent", () => {
 });
 
 describe("teardown is offered only where the server granted it", () => {
+  it("never offers teardown for the signed-in identity, even if its row is mistyped as an agent", async () => {
+    held = [TEARDOWN_CAP];
+    readAgents = () => json(200, { agents: [{ ...PERSON, type: "worker" }] });
+    await mount();
+
+    // This second guard is deliberately independent of the `type: user`
+    // filter: migrated or malformed data must not expose a self-destroy action.
+    expect(rows()).toHaveLength(1);
+    expect(rowFor(PERSON.id)).toBeDefined();
+    expect(screen.queryByTestId(`teardown-${PERSON.id}`)).toBe(null);
+  });
+
   it("draws no teardown control for a session holding nothing", async () => {
     held = [];
     readAgents = () => json(200, { agents: [ALPHA] });

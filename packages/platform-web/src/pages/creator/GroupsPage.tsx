@@ -8,6 +8,7 @@ import {
   Modal,
   Input,
   Toast,
+  type ToastType,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
@@ -23,13 +24,15 @@ interface AgentGroup {
   createdAt: string | null;
 }
 
-import { fetchGroups, createGroupApi, type GroupItem } from "@/api/groups.ts";
+import { fetchGroups, createGroupApi } from "@/api/groups.ts";
+import { agentMemberIdentities, fetchAgents } from "@/api/agents.ts";
 
 export function GroupsPage() {
   const { t } = useI18n();
   const { hasCapability } = useRbac();
   const canManage = hasCapability("group.manage");
   const [groups, setGroups] = useState<AgentGroup[]>([]);
+  const [knownAgentIds, setKnownAgentIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
@@ -44,34 +47,45 @@ export function GroupsPage() {
   const [newGroupDesc, setNewGroupDesc] = useState("");
   const [assignAgentId, setAssignAgentId] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<ToastType>("success");
 
   const loadGroups = async () => {
     setIsLoading(true);
     setIsError(false);
-      setFailure(null);
+    setFailure(null);
     try {
-      const list = await fetchGroups();
+      const [list, registry] = await Promise.all([fetchGroups(), fetchAgents()]);
+      setKnownAgentIds(new Set(agentMemberIdentities(
+        registry.map((entry) => entry.identity),
+        registry,
+      )));
       setGroups(
-        (list || []).map((g) => ({
-          id: g.id,
-          name: g.name,
-          description: g.description ?? "",
-          // **`??`, not `||`.** A group with a real zero answered `member_count: 0`
-          // and fell through to the next fallback anyway, so *unknown* and
-          // *nobody* took the same road out of here.
-          memberCount: g.member_count ?? g.members?.length ?? null,
-          members: g.members || [],
-          // **A date nobody sent is not a date.** This filled it with a fixed
-          // timestamp, and a plausible one: a name can be doubted on sight and
-          // `2026-08-17 12:00:00` cannot. `api/groups.ts` keeps `created_at`
-          // as `null` on purpose; the screen said otherwise in one line.
-          createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : null,
-        }))
+        (list || []).map((g) => {
+          // `members` is a unified identity list. This page labels both the
+          // count and the chips as agents, so a web user in the same policy
+          // group must not appear in either place.
+          const members = agentMemberIdentities(g.members ?? [], registry);
+          return {
+            id: g.id,
+            name: g.name,
+            description: g.description ?? "",
+            // `null` still means the route never supplied a member list. Once
+            // it did, the count is the filtered agent list rather than every
+            // identity in the policy group.
+            memberCount: g.member_count === null ? null : members.length,
+            members,
+            // **A date nobody sent is not a date.** This filled it with a fixed
+            // timestamp, and a plausible one: a name can be doubted on sight and
+            // `2026-08-17 12:00:00` cannot. `api/groups.ts` keeps `created_at`
+            // as `null` on purpose; the screen said otherwise in one line.
+            createdAt: g.created_at ? new Date(g.created_at).toLocaleString() : null,
+          };
+        })
       );
     } catch (err: unknown) {
       setIsError(true);
       setFailure(failureKind(err));
-        setMissing(refusedCapability(err));
+      setMissing(refusedCapability(err));
       setGroups([]);
     } finally {
       setIsLoading(false);
@@ -94,12 +108,15 @@ export function GroupsPage() {
       setNewGroupName("");
       setNewGroupDesc("");
       if (res.created) {
+        setToastType("success");
         setToastMessage(`${t("groups.created", "그룹 생성")}: ${targetName}`);
       } else {
+        setToastType("success");
         setToastMessage(`${t("groups.exists", "이미 있는 그룹")}: ${targetName}`);
       }
       await loadGroups();
     } catch (err: any) {
+      setToastType("error");
       setToastMessage(`${t("groups.createFailed", "그룹 생성 실패")}: ${err.message ?? ""}`);
     }
   };
@@ -107,6 +124,15 @@ export function GroupsPage() {
   const handleAssignAgent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGroup || !assignAgentId) return;
+
+    // Typing an arbitrary identity is not authority to turn a person from the
+    // unified registry into an agent row. Only a server-confirmed agent may be
+    // added to this agent-labelled list.
+    if (!knownAgentIds.has(assignAgentId)) {
+      setToastType("error");
+      setToastMessage(`${t("groups.assignUnknown", "등록된 에이전트만 배속할 수 있습니다")}: ${assignAgentId}`);
+      return;
+    }
 
     const updated = groups.map((g) => {
       if (g.id === selectedGroup.id) {
@@ -119,6 +145,7 @@ export function GroupsPage() {
     setGroups(updated);
     setIsAssignOpen(false);
     setAssignAgentId("");
+    setToastType("success");
     setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assignAgentId} → ${selectedGroup.name}`);
   };
 
@@ -247,7 +274,7 @@ export function GroupsPage() {
 
       {toastMessage && (
         <Toast
-          type="success"
+          type={toastType}
           message={toastMessage}
           onClose={() => setToastMessage(null)}
         />

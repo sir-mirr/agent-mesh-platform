@@ -9,7 +9,7 @@ import {
 } from "@/components/index.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchAgents, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+import { agentRegistryEntries, fetchAgents, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { sendMessageApi, NO_RECEIPT, type MessageReceipt } from "@/api/messages.ts";
 
 interface RegisteredAgent {
@@ -79,7 +79,7 @@ export function PlaygroundPage() {
     setIsError(false);
       setFailure(null);
     fetchAgents().then((list) => {
-      const mapped = (list || []).map((a) => ({
+      const mapped = agentRegistryEntries(list || []).map((a) => ({
         id: a.identity,
         name: a.description || a.identity,
         // `type` is the kind of agent, not a membership. See AgentsPage.

@@ -7,12 +7,18 @@ export interface GrantItem {
   scope?: string;
   granted_by?: string;
   granted_at?: string;
+  /** Whether this existing grant may be removed under the server's rules. */
+  revocable?: boolean;
+  /** Machine-readable reason paired with `revocable: false`. */
+  immutable_reason?: string;
 }
 
 export interface GrantsResponse {
   ok: boolean;
   capabilities?: string[];
   grants: GrantItem[];
+  /** Subjects whose fixed grants are not individual switches on this screen. */
+  immutable_subjects?: string[];
 }
 
 export async function fetchGrants(): Promise<GrantsResponse> {

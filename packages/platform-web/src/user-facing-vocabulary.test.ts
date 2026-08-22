@@ -42,6 +42,22 @@ function displayStrings(line: string): string[] {
 }
 
 describe("operator-facing vocabulary", () => {
+  it("applies the unified-registry person filter in every page that fetches agents", () => {
+    const pages = runtimeUiFiles(join(WEB, "pages"));
+    const consumers = pages
+      .map((file) => ({ file, source: readFileSync(file, "utf8") }))
+      .filter(({ source }) => /\bfetchAgents\s*\(/u.test(source));
+    const missing = consumers
+      .filter(({ source }) => !/\b(?:agentRegistryEntries|agentMemberIdentities)\s*\(/u.test(source))
+      .map(({ file }) => file.slice(WEB.length + 1));
+
+    // This is a screen-boundary rule, not a change to `/api/v1/agents`: every
+    // page drawing an agent count, row, node, or picker must make the unified
+    // response's `type: user` rows cross the shared filter first.
+    expect(consumers.length).toBeGreaterThanOrEqual(5);
+    expect(missing).toEqual([]);
+  });
+
   it("contains no specification citations, machine keys, tokens, or unimplemented concepts", () => {
     const leaks: string[] = [];
     for (const [language, dictionary] of Object.entries(DICTIONARY)) {

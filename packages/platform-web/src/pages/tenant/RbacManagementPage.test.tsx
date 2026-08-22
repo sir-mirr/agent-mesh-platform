@@ -142,11 +142,19 @@ const session = (capabilities: string[]) => ({
 });
 
 /** One cell of the map, in the shape the route flattens its rows into. */
-const cell = (subject: string, capability: string) => ({ subject, capability, scope: "*" });
+const cell = (
+  subject: string,
+  capability: string,
+  policy: { revocable?: boolean; immutable_reason?: string } = {},
+) => ({ subject, capability, scope: "*", ...policy });
 
 /** The whole answer: the cells, and the columns to draw them under. */
-const mapOf = (grants: ReturnType<typeof cell>[]) =>
-  ({ ok: true, capabilities: VOCABULARY, grants });
+const mapOf = (grants: ReturnType<typeof cell>[], immutableSubjects?: string[]) => ({
+  ok: true,
+  capabilities: VOCABULARY,
+  grants,
+  ...(immutableSubjects === undefined ? {} : { immutable_subjects: immutableSubjects }),
+});
 
 /** `ada` holds one thing; `svc-runner` holds another and has no account. */
 const CELLS = [cell("ada", GRANT), cell("svc-runner", PROVISION)];
@@ -473,6 +481,31 @@ describe("the vocabulary comes from the server with the map", () => {
 });
 
 describe("the role column, and the second read that fills it", () => {
+  it("uses the grants map's immutable subjects when the separate accounts route is refused", async () => {
+    mapReads = [answers(200, mapOf(CELLS, ["ada"]))];
+    readAccounts = answers(403, { ok: false, error: "not allowed", capability: ADMIT });
+    await mount();
+
+    expect(chip("ada", GRANT)!.disabled).toBe(true);
+    expect(chip("ada", GRANT)!.getAttribute("data-fixed-admin")).toBe("true");
+    // A non-immutable subject stays writable even though its role is unknown.
+    expect(chip("svc-runner", META)!.disabled).toBe(false);
+    fireEvent.click(chip("svc-runner", META)!);
+    await settle();
+    expect(grantWrites()).toHaveLength(1);
+    expect(bodyOf(grantWrites()[0])).toEqual({ subject: "svc-runner", capability: META, scope: "*" });
+  });
+
+  it("keeps a protected subject visible even when it currently has no grant cells", async () => {
+    mapReads = [answers(200, mapOf([], ["fixed-with-no-cell"]))];
+    readAccounts = answers(403, { ok: false, error: "not allowed", capability: ADMIT });
+    await mount();
+
+    expect(subjects()).toContain("fixed-with-no-cell");
+    expect(VOCABULARY.map((capability) => chip("fixed-with-no-cell", capability)?.disabled))
+      .toEqual(VOCABULARY.map(() => true));
+  });
+
   it("shows the role the accounts route gave, for the account it gave it for", async () => {
     await mount();
     expect(roleOf("ada")).toBe("admin");
@@ -530,12 +563,71 @@ describe("the role column, and the second read that fills it", () => {
 });
 
 describe("giving a capability and taking it back", () => {
+  it("tones down and locks the server-declared fixed admin without sending a write", async () => {
+    mapReads = [answers(200, mapOf(CELLS, ["ada"]))];
+    // The subject-level grants contract is the authority. A role lookup is
+    // presentation data and must not be able to unlock a protected account.
+    readAccounts = answers(200, { ok: true, users: [
+      { username: "ada", display_name: "Ada L", role: "member" },
+      { username: "grace", role: "member" },
+    ] });
+    await mount();
+    const fixed = chip("ada", GRANT)!;
+
+    // The whole row, including capabilities it does not currently hold. The
+    // fixed administrator rule is subject-wide rather than one special cell.
+    for (const capId of VOCABULARY) {
+      const cap = chip("ada", capId)!;
+      expect(cap.disabled).toBe(true);
+      expect(cap.getAttribute("data-fixed-admin")).toBe("true");
+      expect(cap.style.opacity).toBe("0.45");
+      expect(cap.style.color).toBe("var(--color-text-muted)");
+    }
+
+    // Reach the action guard independently of the native disabled attribute.
+    // If a later style refactor drops `disabled`, the handler must still refuse
+    // the protected subject rather than turning the visual regression into a
+    // server write.
+    fixed.disabled = false;
+    fireEvent.click(fixed);
+    await settle();
+    expect(grantWrites()).toHaveLength(0);
+    expect(grantRemovals()).toHaveLength(0);
+    expect(mapReadCount).toBe(1);
+    expect(toastMessage()).toBe("");
+  });
+
+  it("locks a server-declared non-revocable cell without locking the ordinary member's other cells", async () => {
+    mapReads = [answers(200, mapOf([
+      cell("grace", GRANT, { revocable: false, immutable_reason: "last_grantor" }),
+      cell("grace", META, { revocable: true }),
+    ], []))];
+    await mount();
+
+    const lastGrantor = chip("grace", GRANT)!;
+    const ordinary = chip("grace", META)!;
+    expect(lastGrantor.disabled).toBe(true);
+    expect(lastGrantor.getAttribute("data-fixed-admin")).toBe(null);
+    expect(lastGrantor.getAttribute("data-immutable-reason")).toBe("last_grantor");
+    expect(lastGrantor.style.opacity).toBe("0.45");
+    expect(ordinary.disabled).toBe(false);
+
+    // Same independent action guard for a cell-level server rule.
+    lastGrantor.disabled = false;
+    fireEvent.click(lastGrantor);
+    await settle();
+    expect(grantRemovals()).toHaveLength(0);
+    expect(mapReadCount).toBe(1);
+  });
+
   it("writes the grant the server's own vocabulary named, over the whole tenant", async () => {
     mapReads = [
       answers(200, mapOf(CELLS)),
       answers(200, mapOf([...CELLS, cell("grace", META)])),
     ];
     await mount();
+    expect(chip("grace", META)!.disabled).toBe(false);
+    expect(chip("grace", META)!.getAttribute("data-fixed-admin")).toBe(null);
     fireEvent.click(chip("grace", META)!);
     await settle();
     expect(grantWrites().length).toBe(1);
@@ -552,18 +644,20 @@ describe("giving a capability and taking it back", () => {
     // `DELETE` answers `200` whether or not the grant was there and says which
     // in `action`. `not-found` means the cell on screen disagreed with the
     // server, so what the operator must end up looking at is the server's map.
+    const withGrace = [...CELLS, cell("grace", GRANT)];
+    mapReads = [answers(200, mapOf(withGrace)), answers(200, mapOf(withGrace))];
     removeGrant = answers(200, { ok: true, action: "not-found" });
     await mount();
-    expect(holds("ada", GRANT)).toBe(true);
-    fireEvent.click(chip("ada", GRANT)!);
+    expect(holds("grace", GRANT)).toBe(true);
+    fireEvent.click(chip("grace", GRANT)!);
     await settle();
     expect(grantRemovals().length).toBe(1);
-    expect(bodyOf(grantRemovals()[0])).toEqual({ subject: "ada", capability: GRANT, scope: "*" });
+    expect(bodyOf(grantRemovals()[0])).toEqual({ subject: "grace", capability: GRANT, scope: "*" });
     expect(mapReadCount).toBe(2);
-    // A screen that turned the cell off locally would now say `ada` holds
+    // A screen that turned the cell off locally would now say `grace` holds
     // nothing, about a server that still says she does.
-    expect(holds("ada", GRANT)).toBe(true);
-    expect(toastMessage()).toBe(`${REVOKED}: ada ${DOT} ${friendly(GRANT)}`);
+    expect(holds("grace", GRANT)).toBe(true);
+    expect(toastMessage()).toBe(`${REVOKED}: grace ${DOT} ${friendly(GRANT)}`);
   });
 
   it("does not say the grant changed when the server refused the write", async () => {

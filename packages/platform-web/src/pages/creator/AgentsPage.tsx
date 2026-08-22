@@ -12,6 +12,7 @@ import {
   Toast,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentItem {
@@ -47,9 +48,10 @@ interface TeardownNotice {
   message: string;
 }
 
-import { fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
+import { agentRegistryEntries, fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
 
 export function AgentsPage() {
+  const { user } = useAuth();
   const { hasCapability } = useRbac();
   const canTeardown = hasCapability("agent.teardown");
   const { t } = useI18n();
@@ -70,7 +72,7 @@ export function AgentsPage() {
     setIsError(false);
       setFailure(null);
     try {
-      const list = await fetchAgents();
+      const list = agentRegistryEntries(await fetchAgents());
       setAgents(
         (list || []).map((a) => {
           const seen = lastSeen(a.last_seen_at);
@@ -278,7 +280,11 @@ export function AgentsPage() {
 
             `hasCapability` reads what `/auth/me` granted, not a role.
           */}
-          {canTeardown && (
+          {/* Filtering `type: user` removes the normal self row. Keep identity
+              equality as a second, independent guard: a malformed or migrated
+              registry row must never offer the signed-in person a control that
+              destroys their own identity from an agent-management screen. */}
+          {canTeardown && item.id !== user?.name && (
             <Button
               variant="danger"
               size="sm"
@@ -302,7 +308,7 @@ export function AgentsPage() {
 
       <PageHeader
         title={t("agents.title", "소유 에이전트 운영 스튜디오")}
-        subtitle={t("agents.subtitle", "등록된 신원, 공개키 지문, 마지막 접속 기록을 서버 목록 그대로 보여줍니다")}
+        subtitle={t("agents.subtitle", "등록된 에이전트의 공개키 지문과 마지막 접속 기록을 보여줍니다. 사람 계정은 로컬 계정에서 관리합니다")}
         actions={
           <Link to="/creator/register">
             <Button variant="primary" size="sm">

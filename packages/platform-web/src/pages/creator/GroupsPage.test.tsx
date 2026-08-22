@@ -50,6 +50,7 @@ const { GroupsPage } = await import("./GroupsPage.tsx");
 
 const ME = "/auth/me";
 const GROUPS = "/api/v1/admin/groups";
+const AGENTS = "/api/v1/agents";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while groups fails. */
 const BELL = "/api/v1/admin/keys/pending";
 
@@ -66,6 +67,7 @@ const CREATED = DICTIONARY.en["groups.created"]!;
 const EXISTS = DICTIONARY.en["groups.exists"]!;
 const CREATE_FAILED = DICTIONARY.en["groups.createFailed"]!;
 const ASSIGNED = DICTIONARY.en["groups.assigned"]!;
+const ASSIGN_UNKNOWN = DICTIONARY.en["groups.assignUnknown"]!;
 const CREATE_BTN = DICTIONARY.en["groups.createBtn"]!;
 const ASSIGN_BTN = DICTIONARY.en["groups.assignBtn"]!;
 const NAME_LABEL = DICTIONARY.en["groups.modal.nameLabel"]!;
@@ -88,6 +90,8 @@ const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
 let held: string[] = [MANAGE];
 /** What `GET /api/v1/admin/groups` does. */
 let readGroups: Reply = () => json(200, { groups: [] });
+/** The unified registry used to decide which group members are agents. */
+let readAgents: Reply = () => json(200, { agents: [] });
 /** What `POST /api/v1/admin/groups` does. */
 let writeGroup: Reply = () => json(200, { ok: true, group_id: "grp_new", created: true });
 
@@ -105,6 +109,12 @@ beforeEach(() => {
   calls.length = 0;
   held = [MANAGE];
   readGroups = () => json(200, { groups: [] });
+  readAgents = () => json(200, { agents: [
+    { id: "operator-1", type: "user" },
+    { id: "agt_alpha", type: "agent" },
+    { id: "agt_beta", type: "agent" },
+    { id: "agt_gamma", type: "agent" },
+  ] });
   writeGroup = () => json(200, { ok: true, group_id: "grp_new", created: true });
   // `AuthProvider` hydrates from storage and `I18nProvider` reads a saved
   // language out of it; happy-dom's storage belongs to the process, so a
@@ -115,6 +125,7 @@ beforeEach(() => {
     calls.push({ url, init });
     if (url.endsWith(ME)) return json(200, session(held));
     if (url.endsWith(BELL)) return json(200, { ok: true, keys: [] });
+    if (url.endsWith(AGENTS)) return await readAgents(init);
     if (url.endsWith(GROUPS)) {
       return (init?.method ?? "GET") === "GET" ? await readGroups(init) : await writeGroup(init);
     }
@@ -408,6 +419,19 @@ describe("what a row says about a group", () => {
     expect(cellsOf(rowFor(BILLING.group_id))[4])
       .toBe(new Date(BILLING.created_at).toLocaleString());
   });
+
+  it("does not count or list a person from a mixed policy group as an agent", async () => {
+    readGroups = () => json(200, { groups: [{
+      ...SUPPORT,
+      members: ["operator-1", "agt_alpha"],
+    }] });
+    await mount();
+
+    const row = cellsOf(rowFor(SUPPORT.group_id));
+    expect(row[2]).toBe("1");
+    expect(row[3]).toBe("agt_alpha");
+    expect(row[3]).not.toContain("operator-1");
+  });
 });
 
 describe("the control offered to a session that may not use it", () => {
@@ -563,6 +587,21 @@ describe("assigning an agent to a group", () => {
     expect(toast()).toContain(ASSIGNED);
     expect(toast()).toContain("agt_gamma");
     expect(toast()).toContain(BILLING.name);
+  });
+
+  it("does not turn a typed web-user identity into an assigned agent", async () => {
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    openAssignFor(BILLING.group_id);
+    typeInto(AGENT_LABEL, "operator-1");
+    submitForm();
+    await settle();
+
+    expect(cellsOf(rowFor(BILLING.group_id))[2]).toBe("0");
+    expect(cellsOf(rowFor(BILLING.group_id))[3]).toBe("-");
+    expect(toast()).not.toContain(ASSIGNED);
+    expect(toast()).toContain(ASSIGN_UNKNOWN);
+    expect(toast()).toContain("operator-1");
   });
 
   it("ignores a submission with no agent named", async () => {

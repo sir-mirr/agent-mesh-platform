@@ -22,6 +22,38 @@ export interface RegistryAgent {
   fingerprint: string | null;
 }
 
+/**
+ * The identities that belong on a screen labelled "agents".
+ *
+ * `GET /api/v1/agents` is deliberately a unified registry: approved web
+ * accounts are rows with `type: "user"`, beside agent and service identities.
+ * The route must stay unified, but an agent count or agent picker must not turn
+ * a person into an agent merely because both came from the same response.
+ *
+ * This helper is opt-in at the view boundary rather than inside `fetchAgents`:
+ * callers that genuinely present people can still receive the server's full
+ * answer, while every agent-labelled view applies one shared rule.
+ */
+export function agentRegistryEntries<T extends Pick<RegistryAgent, "type">>(entries: readonly T[]): T[] {
+  return entries.filter((entry) => entry.type !== "user");
+}
+
+/**
+ * The members of a group that the same registry confirms are agents.
+ *
+ * Group membership uses the unified identity namespace too, so a person can
+ * legitimately be a member for policy purposes. A card headed "agents" must
+ * intersect that membership with the agent rows instead of counting every
+ * identity in the group.
+ */
+export function agentMemberIdentities<T extends Pick<RegistryAgent, "identity" | "type">>(
+  members: readonly string[],
+  entries: readonly T[],
+): string[] {
+  const agentIds = new Set(agentRegistryEntries(entries).map((entry) => entry.identity));
+  return members.filter((identity) => agentIds.has(identity));
+}
+
 export interface KeyProposal {
   identity: string;
   fingerprint: string | null;

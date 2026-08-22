@@ -13,9 +13,13 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
-import { fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+import { agentMemberIdentities, agentRegistryEntries, fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
+
+/** One stable loader for every dashboard panel labelled "agents". */
+const fetchDashboardAgents = async (): Promise<RegistryAgent[]> =>
+  agentRegistryEntries(await fetchAgents());
 
 /**
  * The queue card's three states, in one place because two panels draw it.
@@ -328,7 +332,7 @@ function PlatformAdminDashboard() {
     setIsError(false);
     Promise.all([
       fetchGroups().then(setGroups),
-      fetchAgents().then(setAgents),
+      fetchDashboardAgents().then(setAgents),
     ]).catch((err: unknown) => {
       setIsError(true);
       setFailure(failureKind(err));
@@ -337,8 +341,10 @@ function PlatformAdminDashboard() {
     });
   }, []);
 
-  // This card's own subtitle says "live registry", so it counts the registry —
-  // one source, named. It used to prefer the registry and fall back to
+  // This card's own subtitle names the agent rows in the unified registry, so
+  // it counts the filtered answer — one source and one subject. `type: user`
+  // rows are people and belong on the local-accounts screen, not under this
+  // agent label. It used to prefer the registry and fall back to
   // telemetry's `total_agents`, which counts mesh identities, and then to `0`;
   // three different answers under one label, and `||` meant an empty registry
   // took the second of them.
@@ -348,9 +354,9 @@ function PlatformAdminDashboard() {
       {/* Top Global KPI Metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
-          label={t("dash.pa.nodes", "등록된 신원")}
+          label={t("dash.pa.nodes", "등록된 에이전트")}
           value={isLoading ? "..." : isError ? "—" : String(totalAgents)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "신원 목록 응답")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "신원 목록의 에이전트 행")}
           color="var(--color-primary)"
           icon="🌐"
         />
@@ -430,7 +436,9 @@ function PlatformAdminDashboard() {
                       them, with a comment saying that drawing a group as
                       "allowed to reach nothing" is a claim. `?? 0` here made
                       exactly that claim, one line apart, for both fields. */}
-                  <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count ?? g.members?.length ?? t("common.unknownValue", "—")}</strong></span>
+                  <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count == null
+                    ? t("common.unknownValue", "—")
+                    : agentMemberIdentities(g.members ?? [], agents).length}</strong></span>
                   <span>{t("dash.pa.egressLabel", "전송 허용 대상")}: <strong>{g.egress_allowed?.length ?? t("common.unknownValue", "—")}</strong></span>
                 </div>
               </div>
@@ -449,7 +457,7 @@ function TenantAdminDashboard() {
   const { t } = useI18n();
   const groupsRead = useDashboardGroups();
   const groups = groupsRead.groups;
-  const agentsRead = useDashboardList<RegistryAgent>(fetchAgents);
+  const agentsRead = useDashboardList<RegistryAgent>(fetchDashboardAgents);
   const agents = agentsRead.items;
   const pendingKeysRead = useDashboardList<KeyProposal>(fetchPendingKeys);
   const pendingKeys = pendingKeysRead.items;
@@ -565,8 +573,12 @@ function TenantAdminDashboard() {
                     color: "var(--color-primary)",
                   }}
                 >
-                  {/* The same claim as the panel above, on the tenant card. */}
-                  {g.member_count ?? t("common.unknownValue", "—")} {t("dash.ta.agentsUnit", "에이전트")}
+                  {/* Group membership is a unified identity list. A number
+                      labelled agents is its intersection with the filtered
+                      registry, and stays unknown while either source is. */}
+                  {g.member_count == null
+                    ? t("common.unknownValue", "—")
+                    : measuredListValue(agentsRead, agentMemberIdentities(g.members ?? [], agents).length)} {t("dash.ta.agentsUnit", "에이전트")}
                 </span>
               </div>
             ))}
@@ -639,7 +651,7 @@ function GroupAdminDashboard() {
   const { t } = useI18n();
   const groupsRead = useDashboardGroups();
   const groups = groupsRead.groups;
-  const agentsRead = useDashboardList<RegistryAgent>(fetchAgents);
+  const agentsRead = useDashboardList<RegistryAgent>(fetchDashboardAgents);
   const agents = agentsRead.items;
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
@@ -709,41 +721,55 @@ React.useEffect(() => {
             testIdPrefix="group-groups"
             emptyMessage={t("dash.ga.groupsEmpty", "등록된 관리 그룹이 없습니다.")}
           >
-            {groups.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  background: "var(--color-bg-surface-sub)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "16px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
-                  <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
-                    {t("dash.ga.members", "구성원")} ({item.members?.length || 0})
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  {(item.members || []).map((id) => (
-                    <span
-                      key={id}
-                      style={{
-                        fontSize: "0.72rem",
-                        fontFamily: "var(--font-mono)",
-                        background: "#FFFFFF",
-                        padding: "2px 6px",
-                        borderRadius: "var(--radius-sm)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                    >
-                      {id}
+            {groups.map((item) => {
+              const memberIds = agentMemberIdentities(item.members ?? [], agents);
+              const membersKnown = item.member_count != null;
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    background: "var(--color-bg-surface-sub)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-lg)",
+                    padding: "16px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
+                      {t("dash.ga.members", "구성원")} ({membersKnown
+                        ? measuredListValue(agentsRead, memberIds.length)
+                        : t("common.unknownValue", "—")})
                     </span>
-                  ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {!membersKnown ? (
+                      <span style={{ color: "var(--color-text-muted)" }}>{t("common.unknownValue", "—")}</span>
+                    ) : agentsRead.kind === "ready" ? (
+                      memberIds.length > 0 ? memberIds.map((id) => (
+                        <span
+                          key={id}
+                          style={{
+                            fontSize: "0.72rem",
+                            fontFamily: "var(--font-mono)",
+                            background: "#FFFFFF",
+                            padding: "2px 6px",
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--color-border)",
+                          }}
+                        >
+                          {id}
+                        </span>
+                      )) : <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                    ) : (
+                      <span style={{ color: "var(--color-text-muted)" }}>
+                        {listReadCaption(t, agentsRead, "")}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </DashboardGroupReadState>
         </div>
       </div>
@@ -781,7 +807,7 @@ function AgentOperatorDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
-    fetchAgents()
+    fetchDashboardAgents()
       .then(setAgents)
       .catch((err: unknown) => {
         setAgents([]);

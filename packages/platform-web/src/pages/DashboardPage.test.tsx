@@ -241,6 +241,10 @@ const UNSEEN_ROW = {
   id: "agent-unseen", name: "agent-unseen", description: "Report writer",
   channel: "grpc", type: "worker",
 };
+const USER_ROW = {
+  id: "admin", name: "admin", description: "Local account",
+  channel: "web", type: "user",
+};
 
 describe("the operator panel, while the registry has not answered", () => {
   it("says the question is still out, and does not answer it with zero", async () => {
@@ -264,6 +268,15 @@ describe("the operator panel, while the registry has not answered", () => {
 });
 
 describe("the operator panel, on an answer", () => {
+  it("does not count or list a person as an agent", async () => {
+    routes = [[ME, NO_SESSION], [AGENTS, answers({ agents: [USER_ROW] })], [MAILBOX, answers({ mailboxes: [], total_queued: 0 })]];
+    await mount();
+
+    expect(kpiValue(en("dash.kpi.agents"))).toBe("0");
+    expect(screen.queryByTestId("operator-agents-empty")).not.toBe(null);
+    expect(document.querySelectorAll("[data-testid^='operator-agent-']")).toHaveLength(0);
+  });
+
   it("invites a first agent only because the registry said there are none", async () => {
     routes = [[ME, NO_SESSION], [AGENTS, answers({ agents: [] })], [MAILBOX, answers({ mailboxes: [], total_queued: 0 })]];
     await mount();
@@ -432,6 +445,23 @@ describe("the two role panels that exist below today's browser gate", () => {
     expect(bodyText()).toContain("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
   });
 
+  it("does not count a person in a mixed group card as an agent", async () => {
+    remember("TENANT_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{
+        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+      }] })],
+      [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
+      [KEYS_PENDING, answers({ keys: [] })],
+    ];
+    await mount();
+
+    const card = screen.getByTestId("tenant-groups-present").textContent ?? "";
+    expect(card).toContain(`1 ${en("dash.ta.agentsUnit")}`);
+    expect(card).not.toContain(`2 ${en("dash.ta.agentsUnit")}`);
+  });
+
   it("renders the tenant component's answered-and-empty branches as empty", async () => {
     remember("TENANT_ADMIN");
     routes = [
@@ -487,6 +517,24 @@ describe("the two role panels that exist below today's browser gate", () => {
     expect(document.querySelector(`[data-kpi="${en("dash.ga.health")}"]`)).toBe(null);
     expect(bodyText()).toContain(SEEN_ROW.id);
     expect(bodyText()).toContain(UNSEEN_ROW.id);
+  });
+
+  it("keeps a person out of the group panel's agent count and member chips", async () => {
+    remember("GROUP_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{
+        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+      }] })],
+      [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    const panel = screen.getByTestId("group-groups-present").textContent ?? "";
+    expect(panel).toContain(`${en("dash.ga.members")} (1)`);
+    expect(panel).toContain(SEEN_ROW.id);
+    expect(panel).not.toContain(USER_ROW.id);
   });
 
   it("keeps the tenant group read's pending, refused, and unreachable states out of empty", async () => {
@@ -756,6 +804,39 @@ describe("the platform panel, while nothing has answered", () => {
 });
 
 describe("the platform panel, on an answer", () => {
+  it("reports zero registered agents when the unified registry contains only admin", async () => {
+    remember("PLATFORM_ADMIN");
+    routes = [
+      [ME, ADMIN_ME],
+      [AGENTS, answers({ agents: [USER_ROW] })],
+      [GROUPS, answers({ groups: [] })],
+      [HEALTH, answers({ status: "ok", agent_count: 0, uptime: 900, version: "0.2.0" })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.pa.nodes"))).toBe("0");
+    expect(kpiSub(en("dash.pa.nodes"))).toBe(en("dash.pa.nodesSub"));
+  });
+
+  it("does not count a person in the platform group card's agent total", async () => {
+    remember("PLATFORM_ADMIN");
+    routes = [
+      [ME, ADMIN_ME],
+      [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
+      [GROUPS, answers({ groups: [{
+        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+      }] })],
+      [HEALTH, answers({ status: "ok", agent_count: 1, uptime: 900, version: "0.2.0" })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    const panel = bodyText();
+    expect(panel).toContain(`${en("dash.pa.agentsLabel")}: 1`);
+    expect(panel).not.toContain(`${en("dash.pa.agentsLabel")}: 2`);
+  });
+
   it("counts the registry it names, and says no tenants only because the route said so", async () => {
     remember("PLATFORM_ADMIN");
     routes = [
