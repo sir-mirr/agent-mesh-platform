@@ -2525,3 +2525,33 @@ describe("bringing the service up", () => {
     ).toEqual({ counters: true, stops: 1, exits: [0] });
   });
 });
+
+/**
+ * The row this deployment keeps, and the shape the push service expects.
+ *
+ * Never counted before, and not because it is trivial: it is reached only when
+ * a deployment holds VAPID keys, the person has a device registered, and they
+ * are not already looking at the conversation. No test arranges all three, so
+ * the one translation between two vocabularies went out unchecked — and a
+ * subscription assembled wrongly fails at somebody else's service, in a log
+ * nobody here reads.
+ */
+describe("handing one notification to the push service", () => {
+  test("carries the endpoint and both keys, and nothing else", async () => {
+    const sent: unknown[] = [];
+    await mod.webpushDelivery(
+      { endpoint: "https://push.example/abc", p256dh: "public-key", auth: "auth-secret" },
+      JSON.stringify({ title: "a message" }),
+      async (subscription: unknown, payload: unknown) => { sent.push({ subscription, payload }); return null; },
+    );
+    expect(sent, "the subscription reached the service in a shape it does not read").toEqual([
+      {
+        subscription: {
+          endpoint: "https://push.example/abc",
+          keys: { p256dh: "public-key", auth: "auth-secret" },
+        },
+        payload: JSON.stringify({ title: "a message" }),
+      },
+    ]);
+  });
+});

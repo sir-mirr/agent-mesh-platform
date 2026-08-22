@@ -738,17 +738,39 @@ function broadcastAiUsage(snapshot: AiUsageSnapshot): void {
  * first place. What stays here is the wiring: this deployment's keys, its
  * subscription table, and `webpush`'s idea of what a subscription looks like.
  */
+/**
+ * One subscription row, in the shape `web-push` wants it.
+ *
+ * Two reasons this is a named function rather than the arrow it was. It is the
+ * translation between *this deployment's* table and somebody else's library —
+ * three field names, and a row assembled wrongly fails at the push service
+ * where nobody reads the error. And an arrow inside a deps object is only
+ * reached when a deployment holds VAPID keys and somebody has a device
+ * registered and is not already looking at the conversation, which no test can
+ * arrange and no instrument had ever counted.
+ *
+ * `send` is a parameter for that last reason: the mapping can be checked
+ * without a push service, which is the only part of this that can be wrong here
+ * rather than over there.
+ */
+export function webpushDelivery(
+  target: { endpoint: string; p256dh: string; auth: string },
+  payload: string,
+  send: (
+    subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+    payload: string,
+  ) => Promise<unknown> = webpush.sendNotification.bind(webpush),
+): Promise<unknown> {
+  return send({ endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } }, payload)
+}
+
 function sendPushNotificationForMessage(toUser: string, fromAgent: string, content: string): void {
   sendPushForMessage(
     {
       configured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
       watching: hasActiveSSE,
       devices: getPushSubscriptions,
-      send: (target, payload) =>
-        webpush.sendNotification(
-          { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
-          payload,
-        ),
+      send: webpushDelivery,
       drop: deletePushSubscription,
     },
     toUser,
@@ -4727,8 +4749,11 @@ export async function startHttpServer({
   serve = Bun.serve as unknown as HttpServeFn,
   begin = startup,
   heartbeat = startCounterHeartbeat,
-  onSignal = (signal, handler) => { process.on(signal, handler) },
-  exit = (code: number) => process.exit(code),
+  // Bound rather than wrapped: an arrow that only forwards is a function in
+  // its own right, uncounted by every test that hands in a fake — which is how
+  // seams *add* to what nothing exercises.
+  onSignal = process.on.bind(process) as (signal: 'SIGTERM' | 'SIGINT', handler: () => void) => void,
+  exit = process.exit.bind(process) as (code: number) => void,
 }: {
   serve?: HttpServeFn
   begin?: () => Promise<void>

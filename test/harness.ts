@@ -293,17 +293,7 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
       httpDb.prepare(`UPDATE local_users SET must_change_password = 0`).run();
       httpDb.close();
     } else {
-      http = {
-        port: 0,
-        url: "",
-        pid: 0,
-        died: () => null,
-        output: () => "",
-        // Already gone, so a caller ordering cleanup behind the exits is not
-        // left waiting on a service this mesh never started.
-        exited: Promise.resolve(0),
-        stop: () => {},
-      };
+      http = absentService();
     }
   } catch (err) {
     // Surface what the process said; a bare timeout tells you nothing.
@@ -451,6 +441,34 @@ export function bootRetryable(said: string): boolean {
  * it was a parameter, the only way to see a retry happen was to lose the race
  * it exists for.
  */
+/**
+ * The `http` a hub-only mesh carries.
+ *
+ * `withHttp: false` still hands callers a `Service`, because the alternative is
+ * every consumer of `mesh.http` learning that it might be absent — and the
+ * suites that use it (`bootstrap.test.ts`) are about the hub coming up alone,
+ * not about optional fields.
+ *
+ * **It answers like a service that has already stopped**, which is the whole
+ * contract: `died()` says nothing died, `output()` has nothing to show,
+ * `exited` is already resolved so a caller ordering cleanup behind the exits is
+ * not left waiting on a process that never started, and `stop()` is a no-op
+ * rather than a throw. Extracted so those four answers can be checked without
+ * spawning a hub to reach them — as an object literal inside the boot they were
+ * built by every hub-only suite and called by none.
+ */
+export function absentService(): Service {
+  return {
+    port: 0,
+    url: "",
+    pid: 0,
+    died: () => null,
+    output: () => "",
+    exited: Promise.resolve(0),
+    stop: () => {},
+  };
+}
+
 export async function startMesh(
   opts: StartOptions = {},
   boot: (o: StartOptions) => Promise<Mesh> = startMeshOnce,

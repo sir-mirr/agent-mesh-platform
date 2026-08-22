@@ -200,9 +200,12 @@ export function runLint(options?: {
 export function reportLint(
   result: ReturnType<typeof runLint>,
   {
-    say = (line: string) => { console.log(line); },
-    complain = (line: string) => { console.error(line); },
-    exit = (code: number): void => { process.exit(code); },
+    // Bound, not wrapped. A forwarding arrow is a function of its own, and
+    // every test that hands in a fake leaves it uncalled — a seam that adds to
+    // the count of things nothing runs is the opposite of the point.
+    say = console.log.bind(console),
+    complain = console.error.bind(console),
+    exit = process.exit.bind(process) as (code: number) => void,
   }: {
     say?: (line: string) => void;
     complain?: (line: string) => void;

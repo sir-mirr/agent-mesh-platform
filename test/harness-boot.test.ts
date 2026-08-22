@@ -15,6 +15,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  absentService,
   bootFailureMessage,
   bootRetryable,
   freePort,
@@ -314,5 +315,28 @@ describe("a route that did not answer JSON", () => {
     })();
 
     expect(err!.message.length).toBeLessThan(400);
+  });
+});
+
+/**
+ * The `http` a hub-only mesh carries.
+ *
+ * Built by every `withHttp: false` suite and called by none of them — an object
+ * literal inside the boot, so its four answers were compiled, shipped and never
+ * asked. What they promise is that a caller can treat it like a service that
+ * has already stopped, and the one that matters is `exited`: a teardown that
+ * orders cleanup behind the exits waits on it, and a pending promise there
+ * hangs a suite that never started an http server in the first place.
+ */
+describe("a mesh with no http", () => {
+  test("answers like a service that has already stopped", async () => {
+    const absent = absentService();
+    expect(
+      { died: absent.died(), output: absent.output(), exited: await absent.exited, port: absent.port },
+      "the placeholder claimed a death, a log, or a port it does not have",
+    ).toEqual({ died: null, output: "", exited: 0, port: 0 });
+    // Not a throw: `teardown` stops what a mesh holds without asking which
+    // half of it was real.
+    expect(() => absent.stop()).not.toThrow();
   });
 });

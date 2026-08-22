@@ -5921,6 +5921,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "a-notification-goes-out-half-keyed",
+    defect:
+      "The subscription handed to the push service carried one key twice. `web-push` encrypts to `p256dh` and authenticates with `auth`; a row assembled with the same value in both fails at somebody else's service, in a log nobody here reads, and the person is simply not notified.\n\nThis translation was an arrow inside a deps object and no instrument had ever counted it: it is reached only when a deployment holds VAPID keys, the person has a device registered, and they are not already looking at the conversation.",
+    file: "packages/http/src/main.ts",
+    from: "  return send({ endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } }, payload)",
+    to: "  return send({ endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.p256dh } }, payload)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["the subscription reached the service in a shape it does not read"],
+  },
+  {
+    id: "a-mesh-with-no-http-reports-a-death",
+    defect:
+      "The placeholder a hub-only mesh carries started claiming its absent http service had died. Every assertion that reads `died()` to explain a failure would then blame a process that was never started \u2014 and the harness prints that epitaph in place of whatever actually went wrong.",
+    file: "test/harness.ts",
+    from: "    died: () => null,\n    output: () => \"\",",
+    to: "    died: () => \"exited on its own\",\n    output: () => \"\",",
+    suite: "test/harness-boot.test.ts",
+    expect: ["the placeholder claimed a death, a log, or a port it does not have"],
+  },
+  {
     id: "a-manifest-entry-with-no-file-costs-nothing",
     defect:
       "The linter stopped checking that the sixty deliverables it lists are on disk. The manifest is the deliverable \u2014 `docs/deliverables.md` is what says the screens exist \u2014 so a missing file passing here means the document and the tree disagree and nothing says so.\n\nThis rule was unreachable from a test until the existence check became a seam: it read `!options?.mockDeliverables && !existsSync(f)`, so every caller that handed in a manifest also turned the rule off.",
