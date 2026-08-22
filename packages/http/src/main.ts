@@ -445,6 +445,13 @@ const auditSseClients = new Set<AuditSseClient>()
  * and none of the three had ever run under an instrument, because reaching the
  * body means waiting twenty seconds.
  *
+ * There was a fourth, on `keys/stream`, which this did not collect because
+ * nobody was looking for a copy that had already been written. A coverage run
+ * found it: it was the only keepalive in the file with uncovered lines, which
+ * is what a hand-written copy looks like from the outside. `keyProposalStream`
+ * calls this now, and had drifted -- it also stopped the proposal watcher when
+ * the stream went, and none of the three others has a watcher to stop.
+ *
  * The write throwing is the *normal* ending here, not an error: it is how a
  * closed stream announces itself to a timer nobody has cancelled yet. Silence
  * is right, and the timer clearing itself is the whole behaviour.
@@ -2526,30 +2533,35 @@ app.get('/api/v1/admin/agents/:identity/owners', async (c) => {
   return c.json({ ok: true, identity, owners: ownership.owners(agentsDb(), identity) })
 })
 
-// **Before `keys/:identity`**, which matches `stream` as an identity and
-// answered this route's first request with a key history for an agent that
-// does not exist. Route order is the kind of coupling nothing declares.
 /**
- * New key proposals, pushed (SPEC § 10.2.1).
+ * The frames `/api/v1/admin/keys/stream` sends, and the two ways it stops.
  *
- * The event an operator's dashboard waits on: an agent has asked to join and
- * nobody has compared its fingerprint yet. Before this the only way to know was
- * to poll `keys/pending` from a screen somebody had already opened.
+ * Split out of the route for the reason `startStreamKeepalive` was split out
+ * of three others: what matters here is a reader that has gone away and a
+ * twenty-second timer, and a request reaches neither. Both arrive as
+ * parameters instead, so a test can hand this a watcher it can fire and a
+ * clock it can wind.
  *
- * **`key.approve`, not the admin role.** Whoever is told about a decision is
- * whoever can make it — § 11 replaced the role check everywhere else, and a
- * notification that reaches people who cannot act on it is a notification they
- * learn to close.
+ * **This was the fourth copy of the keepalive rule**, and the only one still
+ * writing its own `setInterval` — a coverage run is what found it, because the
+ * copy had never run under an instrument. `push` answers `false` where the
+ * other three throw, so a closed stream is turned back into the throw that
+ * seam is written around, and the proposal watcher is stopped with it. That
+ * last part is what a fourth copy is free to forget: a watcher left running on
+ * a stream nobody is reading polls the database every 500ms for the life of
+ * the process.
  */
-app.get('/api/v1/admin/keys/stream', async (c) => {
-  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
-  if (typeof actor !== 'string') return actor
-
+export function keyProposalStream(
+  db: Database,
+  watch: typeof keyProposals.watchProposals = keyProposals.watchProposals,
+  setTimer: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+  clearTimer: (timer: ReturnType<typeof setInterval>) => void = clearInterval,
+): ReadableStream {
   const encoder = new TextEncoder()
   let stop: (() => void) | null = null
-  let heartbeat: ReturnType<typeof setInterval> | null = null
+  let stopHeartbeat: (() => void) | null = null
 
-  const stream = new ReadableStream({
+  return new ReadableStream({
     start(controller) {
       const push = (event: string, data: unknown) => {
         try {
@@ -2571,26 +2583,45 @@ app.get('/api/v1/admin/keys/stream', async (c) => {
       // clause said they were the same without saying what either one sends.
       // The rename moved the list and left the stream, so the bell read `keys`
       // from one channel and `proposals` from the other.
-      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })
+      push('snapshot', { keys: keyProposals.pendingSince(db) })
 
-      stop = keyProposals.watchProposals(agentsDb(), (p) => {
+      stop = watch(db, (p) => {
         if (!push('key-proposed', p)) stop?.()
       })
 
-      heartbeat = setInterval(() => {
-        if (!push('ping', {})) {
-          if (heartbeat) clearInterval(heartbeat)
-          stop?.()
-        }
-      }, 20000)
+      stopHeartbeat = startStreamKeepalive(() => {
+        if (push('ping', {})) return
+        stop?.()
+        throw new Error('the key stream is closed')
+      }, 20000, setTimer, clearTimer)
     },
     cancel() {
-      if (heartbeat) clearInterval(heartbeat)
+      stopHeartbeat?.()
       stop?.()
     },
   })
+}
 
-  return new Response(stream, {
+// **Before `keys/:identity`**, which matches `stream` as an identity and
+// answered this route's first request with a key history for an agent that
+// does not exist. Route order is the kind of coupling nothing declares.
+/**
+ * New key proposals, pushed (SPEC § 10.2.1).
+ *
+ * The event an operator's dashboard waits on: an agent has asked to join and
+ * nobody has compared its fingerprint yet. Before this the only way to know was
+ * to poll `keys/pending` from a screen somebody had already opened.
+ *
+ * **`key.approve`, not the admin role.** Whoever is told about a decision is
+ * whoever can make it — § 11 replaced the role check everywhere else, and a
+ * notification that reaches people who cannot act on it is a notification they
+ * learn to close.
+ */
+app.get('/api/v1/admin/keys/stream', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.KEY_APPROVE)
+  if (typeof actor !== 'string') return actor
+
+  return new Response(keyProposalStream(agentsDb()), {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',

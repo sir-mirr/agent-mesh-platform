@@ -1401,8 +1401,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The key-proposal stream was served as text, so no browser would treat it as SSE and the operator bell went silent.",
     file: "packages/http/src/main.ts",
-    from: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n",
-    to: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/plain',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n",
+    from: "  return new Response(keyProposalStream(agentsDb()), {\n    headers: {\n      'Content-Type': 'text/event-stream',",
+    to: "  return new Response(keyProposalStream(agentsDb()), {\n    headers: {\n      'Content-Type': 'text/plain',",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["answers as a stream"],
   },
@@ -1411,8 +1411,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The stream stopped telling a proxy not to buffer it, so behind nginx the operator saw nothing until the connection closed \u2014 which for a stream is never.",
     file: "packages/http/src/main.ts",
-    from: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n    },\n  })\n})",
-    to: "    cancel() {\n      if (heartbeat) clearInterval(heartbeat)\n      stop?.()\n    },\n  })\n\n  return new Response(stream, {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n    },\n  })\n})",
+    from: "  return new Response(keyProposalStream(agentsDb()), {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n      'X-Accel-Buffering': 'no',\n    },\n  })",
+    to: "  return new Response(keyProposalStream(agentsDb()), {\n    headers: {\n      'Content-Type': 'text/event-stream',\n      'Cache-Control': 'no-cache, no-transform',\n      'Connection': 'keep-alive',\n    },\n  })",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["tells a proxy not to hold it"],
   },
@@ -1421,8 +1421,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The stream called the queue something the list route does not, so the bell read `keys` from one channel and `proposals` from the other (\u00a7 9.2).",
     file: "packages/http/src/main.ts",
-    from: "      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })",
-    to: "      push('snapshot', { proposals: keyProposals.pendingSince(agentsDb()) })",
+    from: "      push('snapshot', { keys: keyProposals.pendingSince(db) })",
+    to: "      push('snapshot', { proposals: keyProposals.pendingSince(db) })",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["calls the queue `keys`"],
   },
@@ -1431,8 +1431,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A backlog was replayed as arrivals, announcing keys that had been waiting for a day as though they had just landed.",
     file: "packages/http/src/main.ts",
-    from: "      push('snapshot', { keys: keyProposals.pendingSince(agentsDb()) })",
-    to: "      for (const p of keyProposals.pendingSince(agentsDb())) push('key-proposed', p)",
+    from: "      push('snapshot', { keys: keyProposals.pendingSince(db) })",
+    to: "      for (const p of keyProposals.pendingSince(db)) push('key-proposed', p)",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["as a snapshot, not as arrivals"],
   },
@@ -1831,6 +1831,46 @@ const MUTATIONS: Mutation[] = [
     to: "        if (true) continue",
     suite: "test/key-proposals.test.ts",
     expect: ["nothing was pushed"],
+  },
+  {
+    id: "key-stream-ping-leaves-the-watcher-running",
+    defect:
+      "The keepalive on `keys/stream` was a fourth hand-written copy of a rule the other three streams share, and it cleared its own timer while leaving the proposal watcher polling `agent_keys` every 500ms — for the life of the process, against a stream nobody is reading. The other three have no watcher to forget, which is why collecting them did not collect this.",
+    file: "packages/http/src/main.ts",
+    from: "      stopHeartbeat = startStreamKeepalive(() => {\n        if (push('ping', {})) return\n        stop?.()",
+    to: "      stopHeartbeat = startStreamKeepalive(() => {\n        if (push('ping', {})) return",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["stops the watcher too, not only the timer"],
+  },
+  {
+    id: "key-stream-proposal-into-a-reader-that-left",
+    defect:
+      "A proposal arriving after the reader went away was pushed into a closed controller and the watcher kept running, so the poll outlived every stream that ended without a `cancel`. The enqueue failing is how a gone reader announces itself here — `push` answers `false` rather than throwing, and dropping the answer drops the only notice there is.",
+    file: "packages/http/src/main.ts",
+    from: "        if (!push('key-proposed', p)) stop?.()",
+    to: "        push('key-proposed', p)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["stops the watcher, rather than pushing into nothing"],
+  },
+  {
+    id: "key-stream-cancel-keeps-polling",
+    defect:
+      "Cancelling the stream stopped the keepalive and left the proposal watcher running. This is the ordinary ending — a dashboard tab closing — so the leak needed no failure at all to happen, only a browser.",
+    file: "packages/http/src/main.ts",
+    from: "    cancel() {\n      stopHeartbeat?.()\n      stop?.()\n    },",
+    to: "    cancel() {\n      stopHeartbeat?.()\n    },",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a reader that leaves takes the watcher with it"],
+  },
+  {
+    id: "key-stream-push-claims-a-closed-write",
+    defect:
+      "`push` reported success for an enqueue that threw, so every caller that asks whether the stream is still there was told yes by a stream that is gone — and both endings that depend on the answer stopped happening.",
+    file: "packages/http/src/main.ts",
+    from: "          return true\n        } catch {\n          return false\n        }",
+    to: "          return true\n        } catch {\n          return true\n        }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["stops the watcher"],
   },
   {
     id: "tenant-attribution",

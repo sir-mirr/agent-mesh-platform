@@ -2107,6 +2107,24 @@ describe("a stream carrying more clients than anybody expected", () => {
   });
 });
 
+/** A timer the test fires by hand, shared by everything here that waits. */
+function timers() {
+  const running = new Map<number, () => void>();
+  let next = 1;
+  const asked: number[] = [];
+  return {
+    asked,
+    running,
+    set: (fn: () => void, ms: number) => {
+      asked.push(ms);
+      running.set(next, fn);
+      return next++ as unknown as ReturnType<typeof setInterval>;
+    },
+    clear: (timer: ReturnType<typeof setInterval>) => { running.delete(timer as unknown as number); },
+    fire: () => [...running.values()].forEach((fn) => fn()),
+  };
+}
+
 /**
  * The keepalive on a stream nobody is writing to.
  *
@@ -2118,24 +2136,6 @@ describe("a stream carrying more clients than anybody expected", () => {
  * closing a stream, minutes later, on somebody else's screen.
  */
 describe("keeping a stream open", () => {
-  /** A timer the test fires by hand. */
-  function timers() {
-    const running = new Map<number, () => void>();
-    let next = 1;
-    const asked: number[] = [];
-    return {
-      asked,
-      running,
-      set: (fn: () => void, ms: number) => {
-        asked.push(ms);
-        running.set(next, fn);
-        return next++ as unknown as ReturnType<typeof setInterval>;
-      },
-      clear: (timer: ReturnType<typeof setInterval>) => { running.delete(timer as unknown as number); },
-      fire: () => [...running.values()].forEach((fn) => fn()),
-    };
-  }
-
   test("writes on every tick, for as long as the stream takes it", () => {
     const t = timers();
     let written = 0;
@@ -2188,6 +2188,137 @@ describe("keeping a stream open", () => {
     expect(() => stop()).not.toThrow();
   });
 });
+
+/**
+ * The key-proposal stream, and the two ways it ends.
+ *
+ * Both endings are a reader that has gone away: one found by a proposal
+ * arriving, one found by the twenty-second ping. A request reaches neither —
+ * the first needs a proposal to land after the reader left, the second needs
+ * twenty seconds — so the watcher and the timer arrive as parameters and this
+ * fires both by hand.
+ *
+ * **What is actually being checked is that the watcher stops.** The stream
+ * polls `agent_keys` every 500ms for as long as it is watching, and a copy of
+ * the keepalive that clears its own timer and forgets the watcher leaves that
+ * poll running for the life of the process, against a database nobody is
+ * reading the answers from. The frames are the visible half; the stop is the
+ * half that used to be a fourth hand-written `setInterval`.
+ */
+describe("the key-proposal stream", () => {
+  const decoder = new TextDecoder();
+
+  /** A watcher the test fires, which counts how often it was stopped. */
+  function watcher() {
+    const state = { stopped: 0, push: null as ((p: unknown) => void) | null };
+    const watch = (_db: unknown, onProposal: (p: any) => void) => {
+      state.push = onProposal as (p: unknown) => void;
+      return () => { state.stopped += 1; };
+    };
+    return { state, watch: watch as unknown as Parameters<typeof mod.keyProposalStream>[1] };
+  }
+
+  /** The frames already queued. Reading past them would wait for a timer. */
+  async function drain(reader: ReadableStreamDefaultReader<Uint8Array>, n: number): Promise<string[]> {
+    const out: string[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const { value } = await reader.read();
+      if (value) out.push(decoder.decode(value));
+    }
+    return out;
+  }
+
+  const PENDING = "kps-fingerprint";
+
+  function open() {
+    const t = timers();
+    const w = watcher();
+    const stream = mod.keyProposalStream(agentsDb(), w.watch, t.set, t.clear);
+    return { t, w, reader: stream.getReader() };
+  }
+
+  beforeAll(() => {
+    agentsDb()
+      .prepare(`INSERT OR REPLACE INTO agent_keys (fingerprint, identity, public_key, status)
+                VALUES (?, 'kps-agent', 'kps-key', 'pending')`)
+      .run(PENDING);
+  });
+
+  afterAll(() => {
+    // Left in place, every later file in this run sees a pending proposal
+    // nobody asked for — including the ones that count what is waiting.
+    agentsDb().prepare(`DELETE FROM agent_keys WHERE fingerprint = ?`).run(PENDING);
+  });
+
+  test("opens with what is already waiting, and pings for as long as it is read", async () => {
+    const { t, w, reader } = open();
+    const [connected, snapshot] = await drain(reader, 2);
+
+    expect(connected).toBe(`event: connected\ndata: {"ok":true}\n\n`);
+    expect(snapshot).toContain(PENDING);
+    // The interval the other three keepalives ask for, asked for once.
+    expect(t.asked).toEqual([20_000]);
+
+    t.fire();
+    expect(await drain(reader, 1)).toEqual([`event: ping\ndata: {}\n\n`]);
+    expect({ stopped: w.state.stopped, running: t.running.size }).toEqual({ stopped: 0, running: 1 });
+
+    await reader.cancel();
+  });
+
+  test("a proposal is pushed as it arrives, rather than on the next snapshot", async () => {
+    const { w, reader } = open();
+    await drain(reader, 2);
+
+    w.state.push!({ identity: "kps-late", fingerprint: "kps-late-fp", type: null, proposed_at: "2026-01-01 00:00:00" });
+    expect(await drain(reader, 1)).toEqual([
+      `event: key-proposed\ndata: ${JSON.stringify({ identity: "kps-late", fingerprint: "kps-late-fp", type: null, proposed_at: "2026-01-01 00:00:00" })}\n\n`,
+    ]);
+
+    await reader.cancel();
+  });
+
+  test("a reader that leaves takes the watcher with it", async () => {
+    const { t, w, reader } = open();
+    await drain(reader, 2);
+
+    await reader.cancel();
+    expect({ stopped: w.state.stopped, running: t.running.size }).toEqual({ stopped: 1, running: 0 });
+  });
+
+  test("a proposal arriving after the reader left stops the watcher, rather than pushing into nothing", async () => {
+    const { w, reader } = open();
+    await drain(reader, 2);
+    await reader.cancel();
+
+    // The poll had already read the row when the reader went; the push it
+    // makes is into a controller that is gone.
+    w.state.push!({ identity: "kps-gone", fingerprint: "kps-gone-fp", type: null, proposed_at: "2026-01-01 00:00:00" });
+    expect(w.state.stopped).toBe(2);
+  });
+
+  /**
+   * The branch a fourth copy of the keepalive is free to get wrong: the timer
+   * clears itself, and the watcher is left polling.
+   *
+   * The tick is taken before the cancel because that is the race it stands
+   * for — an interval that has already fired against a stream that has already
+   * gone. Cancelling first and firing after cannot happen through the fake
+   * timer, which cancel empties.
+   */
+  test("a ping after the reader left stops the watcher too, not only the timer", async () => {
+    const { t, w, reader } = open();
+    await drain(reader, 2);
+    const tick = [...t.running.values()][0]!;
+
+    await reader.cancel();
+    expect(w.state.stopped).toBe(1);
+
+    expect(() => tick()).not.toThrow();
+    expect(w.state.stopped).toBe(2);
+  });
+});
+
 
 /**
  * Whether somebody is already looking at the conversation.
