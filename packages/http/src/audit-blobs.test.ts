@@ -23,7 +23,7 @@ import { formatUploadAuthorization, uploadSignaturePreimage } from "@agent-mesh/
 import { STORE_FILES, agentsSchema, keys, nonces, openAt, stateDir } from "@agent-mesh/store";
 import { join } from "node:path";
 
-import { MAX_BLOB_BYTES, closeBlobDb, putBlob } from "./audit-blobs";
+import { MAX_BLOB_BYTES, abandonStalledUpload, closeBlobDb, putBlob } from "./audit-blobs";
 
 /**
  * The same file `audit-blobs.ts` opens, opened here as well.
@@ -335,5 +335,25 @@ describe("closeBlobDb", () => {
 
     expect(r.status).toBe(201);
     expect(r.body).toMatchObject({ ok: true, sha256: p.sha256, size: p.size });
+  });
+});
+
+/**
+ * An upload that stops arriving.
+ *
+ * The timer that gives up on one is set for longer than any suite waits, so its
+ * callback had never run — and what it carries is the sentence the uploader is
+ * told, because the `catch` around the stream reports `err.message`. Destroying
+ * the sink without a reason leaves a stalled client with whatever the stream
+ * decides to say, which on a stall is nothing.
+ */
+describe("giving up on a stalled upload", () => {
+  test("destroys the sink with a reason a caller can be told", () => {
+    const reasons: Array<Error | undefined> = [];
+    abandonStalledUpload({ destroy: (err?: Error) => { reasons.push(err); } });
+    expect(
+      { destroyed: reasons.length, said: reasons[0]?.message },
+      "the sink was dropped without saying why, and the uploader is told nothing",
+    ).toEqual({ destroyed: 1, said: "upload timed out" });
   });
 });

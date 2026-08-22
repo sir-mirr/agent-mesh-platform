@@ -14,6 +14,7 @@ import { requestSignaturePreimage } from "@agent-mesh/contracts";
 import { REQUEST_SIGNATURE_FIXTURES } from "@agent-mesh/contracts/fixtures";
 
 import { rawParams } from "./raw-params";
+import { sweepExpiredNonces, startNonceSweep } from "./signature";
 
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -400,5 +401,35 @@ describe("verifying a request", () => {
       // different diagnosis.
       expect(new Set(counted).size).toBe(7);
     });
+  });
+});
+
+/**
+ * The replay window is swept on a timer, and the timer was the untested half.
+ *
+ * What a sweep *does* — drops what has left the window, keeps what has not —
+ * belongs to `NonceWindow` and is asserted in `packages/store`. What belongs
+ * here is the wiring: a minute, and the function that sweeps. It was an arrow
+ * inside `setInterval`, which no suite waits sixty seconds to run, so a timer
+ * pointed at the wrong thing would have looked exactly like this one.
+ */
+describe("sweeping the replay window", () => {
+  test("hands the sweep itself to the timer, once a minute", () => {
+    const scheduled: Array<{ fn: () => void; ms: number }> = [];
+    startNonceSweep(60_000, (fn, ms) => {
+      scheduled.push({ fn, ms });
+      return 0 as unknown as ReturnType<typeof setInterval>;
+    });
+    expect(
+      { ms: scheduled[0]?.ms, sweeps: scheduled[0]?.fn === sweepExpiredNonces, scheduled: scheduled.length },
+      "the timer was given a different function, or a different interval",
+    ).toEqual({ ms: 60_000, sweeps: true, scheduled: 1 });
+  });
+
+  test("a sweep with no clock of its own takes now", () => {
+    // The default argument is what `setInterval` calls it with — no arguments —
+    // so a sweep that needed one would throw here rather than in an hour.
+    expect(() => sweepExpiredNonces()).not.toThrow();
+    expect(() => sweepExpiredNonces(0)).not.toThrow();
   });
 });

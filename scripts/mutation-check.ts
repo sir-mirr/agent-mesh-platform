@@ -5921,6 +5921,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "the-replay-window-is-never-swept",
+    defect:
+      "The nonce sweep was scheduled with something other than the sweep. Nothing fails: signatures keep verifying and replays keep being refused, because `claim` is what refuses them \u2014 the map simply grows for as long as the hub runs, and the first symptom is memory on a long-lived process.\n\nIt was an arrow inside `setInterval` with a minute on it, which is a function no suite waits to run.",
+    file: "packages/hub/src/signature.ts",
+    from: "  return setTimer(sweepExpiredNonces, everyMs);",
+    to: "  return setTimer(() => {}, everyMs);",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["the timer was given a different function, or a different interval"],
+  },
+  {
+    id: "a-stalled-upload-is-dropped-without-a-reason",
+    defect:
+      "An upload that stopped arriving had its sink destroyed with no error. The `catch` around the stream reports `err.message` to the uploader, so a bare destroy tells a stalled client whatever the stream decides \u2014 which on a stall is nothing, and the request ends without a sentence anybody can act on.",
+    file: "packages/http/src/audit-blobs.ts",
+    from: "  sink.destroy(new Error('upload timed out'))",
+    to: "  sink.destroy()",
+    suite: "packages/http/src/audit-blobs.test.ts",
+    expect: ["the sink was dropped without saying why, and the uploader is told nothing"],
+  },
+  {
     id: "a-notification-goes-out-half-keyed",
     defect:
       "The subscription handed to the push service carried one key twice. `web-push` encrypts to `p256dh` and authenticates with `auth`; a row assembled with the same value in both fails at somebody else's service, in a log nobody here reads, and the person is simply not notified.\n\nThis translation was an arrow inside a deps object and no instrument had ever counted it: it is reached only when a deployment holds VAPID keys, the person has a device registered, and they are not already looking at the conversation.",

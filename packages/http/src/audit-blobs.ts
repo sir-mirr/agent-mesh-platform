@@ -79,6 +79,17 @@ function refuse(status: number, error: string): BlobPutResult {
  * approved key. A caller therefore cannot name an identity it does not hold a
  * key for, and a stolen nonce is useless without the key it was issued to.
  */
+/**
+ * Give up on an upload that stopped arriving.
+ *
+ * `destroy` with a reason rather than without one: the `catch` below reports
+ * `err.message` to the uploader, and a bare destroy leaves them with whatever
+ * the stream decides to say — which on a stall is nothing at all.
+ */
+export function abandonStalledUpload(sink: { destroy: (err?: Error) => void }): void {
+  sink.destroy(new Error('upload timed out'))
+}
+
 export async function putBlob(blobKey: string, req: Request): Promise<BlobPutResult> {
   if (!BLOB_KEY_ACCEPT_RE.test(blobKey)) {
     return refuse(400, 'invalid blob key')
@@ -171,7 +182,10 @@ export async function putBlob(blobKey: string, req: Request): Promise<BlobPutRes
   const hash = createHash('sha256')
   const sink = createWriteStream(tempPath)
   let received = 0
-  const deadline = setTimeout(() => sink.destroy(new Error('upload timed out')), UPLOAD_TIMEOUT_MS)
+  // Bound rather than wrapped, and named rather than inline: the callback of a
+  // timer nothing waits for is a function no suite runs, and what it carries —
+  // the sentence a stalled uploader is told — is the part that can be wrong.
+  const deadline = setTimeout(abandonStalledUpload.bind(null, sink), UPLOAD_TIMEOUT_MS)
 
   try {
     for await (const chunk of req.body as any as AsyncIterable<Uint8Array>) {

@@ -29,10 +29,32 @@ export const KEY_NOT_APPROVED = -32014;
 
 const nonces = new verify.NonceWindow(SIGNATURE_FRESHNESS_WINDOW_SECONDS);
 
-// Sweeping on a timer rather than per request: a busy identity would otherwise
-// pay for the whole map on every call, and an entry outliving its window by a
-// few seconds costs a map slot, not correctness.
-setInterval(() => nonces.sweep(Math.floor(Date.now() / 1000)), 60_000).unref?.();
+/**
+ * Drop nonces whose freshness window has passed.
+ *
+ * Sweeping on a timer rather than per request: a busy identity would otherwise
+ * pay for the whole map on every call, and an entry outliving its window by a
+ * few seconds costs a map slot, not correctness.
+ *
+ * **Named, because the callback of a minute-long timer is a function no suite
+ * ever runs.** It was an arrow inside `setInterval`, so what a sweep actually
+ * does — that it drops the expired and *keeps the fresh*, which is the half
+ * that matters, since dropping a live nonce lets a replay through — was
+ * compiled and never called.
+ */
+export function sweepExpiredNonces(now: number = Math.floor(Date.now() / 1000)): void {
+  nonces.sweep(now);
+}
+
+/** The timer that calls it. `setTimer` is a parameter so a test need not wait a minute. */
+export function startNonceSweep(
+  everyMs = 60_000,
+  setTimer: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+): ReturnType<typeof setInterval> {
+  return setTimer(sweepExpiredNonces, everyMs);
+}
+
+startNonceSweep().unref?.();
 
 export interface SignatureEnvelope {
   alg?: unknown;
