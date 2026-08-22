@@ -118,12 +118,13 @@ type Decision = 'approve' | 'deny' | 'revoke'
  * admitted: § 9.3's delete is a `deleted_at` stamp, and admitting past it would
  * put a destroyed name back on the screen.
  */
-export function admitApprovedIdentity(identity: string, db: Database = agentsDb()): void {
+export function admitApprovedIdentity(identity: string, db: Database = agentsDb()): boolean {
   const row = db
     .prepare(`SELECT description, type FROM agents WHERE identity = ? AND deleted_at IS NULL`)
     .get(identity) as { description: string | null; type: string | null } | undefined
-  if (!row) return
+  if (!row) return false
   admitRegistryAgent({ id: identity, description: row.description, type: row.type })
+  return true
 }
 
 /**
@@ -154,23 +155,25 @@ export function admitApprovedIdentity(identity: string, db: Database = agentsDb(
  */
 export function admitApprovedIdentities(
   db: Database = agentsDb(),
-  admit: (identity: string, db?: Database) => void = admitApprovedIdentity,
+  admit: (identity: string, db?: Database) => boolean = admitApprovedIdentity,
 ): string[] {
+  // **No `deleted_at` clause here.** § 9.3's soft delete is `admitApprovedIdentity`'s
+  // to enforce, and a second copy of the rule in this query is a second thing
+  // that can drift — the shape D-746 found four times over in one session. What
+  // this asks for is the operator decisions; what may still be acted on is the
+  // other function's answer.
   const rows = db
     .prepare(
-      `SELECT DISTINCT k.identity
-         FROM agent_keys k
-         JOIN agents a ON a.identity = k.identity
-        WHERE k.status = 'approved' AND a.deleted_at IS NULL
-        ORDER BY k.identity`,
+      `SELECT DISTINCT identity FROM agent_keys WHERE status = 'approved' ORDER BY identity`,
     )
     .all() as Array<{ identity: string }>
 
   const admitted: string[] = []
   for (const { identity } of rows) {
     if (isRegistryAgentApproved(identity)) continue
-    admit(identity, db)
-    admitted.push(identity)
+    // Only what was actually written. Counting the attempt would report a
+    // torn-down identity as admitted and put its name in the log line.
+    if (admit(identity, db)) admitted.push(identity)
   }
   return admitted
 }
