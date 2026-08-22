@@ -7175,8 +7175,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The backfill stopped asking whether a key was approved and admitted whatever the mesh had a row for. That is the thing D-747 refused to decide by fiat \u2014 a route that admits any hub identity has to say whose registry it is adding to \u2014 and it arrives here as a silent widening of somebody else's decision.",
     file: "packages/http/src/keys-admin.ts",
-    from: "        WHERE k.status = 'approved' AND a.deleted_at IS NULL",
-    to: "        WHERE a.deleted_at IS NULL",
+    from: "      `SELECT DISTINCT identity FROM agent_keys WHERE status = 'approved' ORDER BY identity`,",
+    to: "      `SELECT identity FROM agents ORDER BY identity`,",
     suite: "packages/http/src/registry-source.test.ts",
     expect: ["leaves an identity nobody has decided about where it is"],
   },
