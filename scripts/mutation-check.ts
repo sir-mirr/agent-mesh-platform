@@ -7231,6 +7231,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["comes up anyway when the rename cannot run"],
   },
   {
+    id: "a-refused-write-is-reported-as-a-rename",
+    defect:
+      "The `catch` around the writes started answering `ok`. A rename the database refused is then logged as one that happened \u2014 `moved` names tables nothing moved in \u2014 and the operator is told to sign in under a name that does not exist.",
+    file: "packages/http/src/rename-account.ts",
+    from: "    return { ok: false, reason: 'write_failed' }",
+    to: "    return { ok: true, moved }",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["answers write_failed rather than throwing"],
+  },
+  {
     id: "only-github-admins-are-protected",
     defect:
       "The protected set stopped reading `local_users`. The seeded administrator is a local account and is the one this exists for, so the single row that must be locked is the one left open while every GitHub-admin case still passes.",

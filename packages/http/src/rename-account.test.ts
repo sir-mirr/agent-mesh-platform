@@ -194,6 +194,30 @@ describe("renaming an account", () => {
   });
 
   /**
+   * The constraint nobody predicted.
+   *
+   * The refusals above are the collisions this knows how to name; a database
+   * saying no for another reason is still a database saying no, and the answer
+   * has to be an account keeping its name rather than a process that fails to
+   * start — which is how the first version reached a running deployment. The
+   * handle is a parameter so the throw can be produced here without leaving a
+   * real database in the shape the throw describes.
+   */
+  test("answers write_failed rather than throwing when a write is refused", async () => {
+    const from = await account();
+    const refuses = {
+      prepare: (sql: string) => mesh.prepare(sql),
+      transaction: () => () => { throw new Error("database is locked"); },
+    } as unknown as typeof mesh;
+
+    expect(renameLocalAccount(from, uniq("free"), getDb(), refuses))
+      .toEqual({ ok: false, reason: "write_failed" });
+    // The account is where it was: the transaction rolled back on the way out,
+    // so half-renamed is not one of the outcomes.
+    expect(getLocalUser(from)).not.toBeNull();
+  });
+
+  /**
    * **A half-finished rename is resumed, not refused.**
    *
    * The two databases cannot share a transaction, so a process that dies
