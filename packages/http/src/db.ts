@@ -259,6 +259,36 @@ export function isRegistryAgentApproved(id: string): boolean {
   return entry !== null && entry.approved === 1
 }
 
+/**
+ * Admit a mesh identity to this server's registry (D-747).
+ *
+ * **Approval is admission.** An operator who approves an agent's key has said
+ * the identity is one this console deals with — the owner reported *"I
+ * approved it and it is not in the web console"* as a defect, which is a
+ * statement about what approving means. Before this, nothing wrote an agent
+ * row at all: the writers were the one-time `registry.json` import and the
+ * web-user path, so an identity could exist on the mesh, connect, hold an
+ * approved key, and still be unaddressable here (SPEC § 9.1,
+ * `docs/deferred.md`).
+ *
+ * **Re-approval does not re-write the row.** A name or description an operator
+ * has since edited is theirs; a second approval of a rotated key must not
+ * reset it. Only `approved` and the stamp move, which is exactly what
+ * `upsertApprovedWebUser` does for a person and for the same reason.
+ */
+export function admitRegistryAgent(agent: {
+  id: string
+  description?: string | null
+  type?: string | null
+}): void {
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO agent_registry (id, name, description, channel, type, approved)
+    VALUES (?, ?, ?, 'native', ?, 1)
+    ON CONFLICT(id) DO UPDATE SET approved = 1, updated_at = CURRENT_TIMESTAMP
+  `).run(agent.id, agent.id, agent.description ?? null, agent.type ?? 'agent')
+}
+
 /** Register an approved web user, or approve one that already exists. */
 export function upsertApprovedWebUser(githubLogin: string): void {
   const db = getDb()

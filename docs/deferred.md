@@ -745,38 +745,23 @@ on the harness defect in the same cycle: making an operation do more turns
 everything that raced with it harmlessly into something that races with it for
 real.
 
-### Nothing puts an agent in the http registry
+### ~~Nothing puts an agent in the http registry~~
 
-`POST /api/v1/messages` refuses a recipient that is not in `agent_registry`, the
-http server's own table, with `Agent "<id>" not found in registry`. Two things
-write that table: the one-time `registry.json` import on first boot after the
-upgrade, and `upsertApprovedWebUser`, which runs when a web user is approved and
-when local accounts are admitted or seeded.
+**Closed by D-747: approving a key admits the identity.** Found in use rather
+than argued — the owner approved an agent in the console, it connected, the hub
+logged it connected, and `GET /api/v1/agents` answered one row. The report was
+*"I approved it and it is not in the web console"*, which is a statement about
+what approving means: they were never two decisions.
 
-Neither is an agent. An identity provisioned on the hub — the documented route,
-§ 10.1 — is on the mesh, can connect, can hold an approved key, and is not
-addressable through http at all. `GET /api/v1/agents` says so already ("an
-identity provisioned on the hub and never added here is not listed"), which
-reads as a statement about listing and is in fact a statement about reachability.
+The curation this entry wanted stays explicit, because approving a key is
+already an operator act performed against a fingerprint they have compared
+(§ 10.2). Nothing auto-imports, and the question this entry said had to be
+answered first — *whose* registry — is answered the same way: whoever holds
+`key.approve` for that identity.
 
-`agent-mesh-local-pm` met the 404 three times while seeding a stack (mail #1147),
-each time reading it as a mistake in what they had sent.
-
-**Why deferred:** it is not obviously a defect, and the fix cannot be designed yet. Two
-registries on one namespace is a deliberate split: the hub brokers, http decides
-who its users may address, and an admin-curated list is a plausible thing to
-want. What is missing is not necessarily an auto-import — it might be a route
-that adds an existing hub identity to this server's registry, under
-`agent.register` or `user.admit`, so the curation stays explicit and stops being
-impossible.
-
-Deciding needs the answer to the same question as `I-093`/`I-094`: what separates
-a platform administrator from a tenant administrator. A route that adds any hub
-identity to the registry is a route that needs to say whose registry.
-
-Until then the workaround is the fixture path — `bun run fixtures:screens` seeds
-through the product, and a hand-written row is the alternative anybody reaching
-for it should know is a hand-written row.
+It had been invisible because the one-time `registry.json` import filled the
+table once, deep. The state directory was retired and re-seeded, the import had
+nothing to import, and what was left was the people.
 
 ### A deployment's directory is compiled into the file route
 

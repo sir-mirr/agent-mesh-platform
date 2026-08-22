@@ -6961,6 +6961,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["says which grant cannot be revoked"],
   },
   {
+    id: "approval-is-not-admission",
+    defect:
+      "Approving a key stopped admitting the identity, which is the state the P1 was reported in. The operator compares a fingerprint, approves it, and the console still does not list the agent \u2014 and `POST /api/v1/messages` still answers `404` for it, so the identity is on the mesh, connected, holding an approved key, and unreachable from here.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        admit(row.identity, db)",
+    to: "        void row.identity",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["puts the identity on this server's list"],
+  },
+  {
+    id: "denying-a-key-admits-the-identity",
+    defect:
+      "A denial admitted too. The one decision that says *not ours* would put the identity on the list of identities this console deals with, and an operator refusing a key would be adding its owner to the registry by doing so.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "        row = keys.denyKey(db, fingerprint, actor, reason)\n        break",
+    to: "        row = keys.denyKey(db, fingerprint, actor, reason)\n        admit(row.identity, db)\n        break",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["denying one does not"],
+  },
+  {
+    id: "a-torn-down-identity-is-admitted-again",
+    defect:
+      "Admission stopped honouring the soft delete. \u00a7 9.3's teardown is a `deleted_at` stamp, so approving a key that was pending when the identity was destroyed puts a destroyed name back on the one screen an operator would check to confirm it was destroyed.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "    .prepare(`SELECT description, type FROM agents WHERE identity = ? AND deleted_at IS NULL`)",
+    to: "    .prepare(`SELECT description, type FROM agents WHERE identity = ?`)",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["torn-down identity is not admitted"],
+  },
+  {
+    id: "re-approval-overwrites-what-an-operator-wrote",
+    defect:
+      "A second approval rewrote the registry row. A rotated key then resets a name and description an operator has since edited \u2014 the console forgetting somebody's work as a side effect of a routine key rotation, with nothing anywhere saying it happened.",
+    file: "packages/http/src/db.ts",
+    from: "    VALUES (?, ?, ?, 'native', ?, 1)\n    ON CONFLICT(id) DO UPDATE SET approved = 1, updated_at = CURRENT_TIMESTAMP",
+    to: "    VALUES (?, ?, ?, 'native', ?, 1)\n    ON CONFLICT(id) DO UPDATE SET approved = 1, name = excluded.name, description = excluded.description, updated_at = CURRENT_TIMESTAMP",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["leaves the row an operator has edited alone"],
+  },
+  {
     id: "held-table-parser-stopped-matching",
     swept: true,
     defect:

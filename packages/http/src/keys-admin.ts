@@ -24,6 +24,8 @@ import { checkpointForShutdown, openAt, stateDir, STORE_FILES, keys, KeyTransiti
 import { join } from 'node:path'
 import type { Database } from 'bun:sqlite'
 
+import { admitRegistryAgent } from './db'
+
 let _agentsDb: Database | null = null
 
 /**
@@ -108,6 +110,23 @@ export function keyHistory(identity: string): KeyDecisionResult {
 type Decision = 'approve' | 'deny' | 'revoke'
 
 /**
+ * Put an approved identity on this server's own list (D-747).
+ *
+ * The description and type come from the mesh's row, because that is where an
+ * operator wrote them when the identity was provisioned (§ 10.1) and this
+ * server has no other account of what an agent is. A torn-down identity is not
+ * admitted: § 9.3's delete is a `deleted_at` stamp, and admitting past it would
+ * put a destroyed name back on the screen.
+ */
+export function admitApprovedIdentity(identity: string, db: Database = agentsDb()): void {
+  const row = db
+    .prepare(`SELECT description, type FROM agents WHERE identity = ? AND deleted_at IS NULL`)
+    .get(identity) as { description: string | null; type: string | null } | undefined
+  if (!row) return
+  admitRegistryAgent({ id: identity, description: row.description, type: row.type })
+}
+
+/**
  * Apply an operator's decision to one key.
  *
  * `actor` is the admin's login, recorded on the row and in the event. An
@@ -119,12 +138,17 @@ export function decide(
   actor: string,
   reason: string | null,
   db: Database = agentsDb(),
+  /** D-747. A parameter so the admission can be watched without a second store. */
+  admit: (identity: string, db?: Database) => void = admitApprovedIdentity,
 ): KeyDecisionResult {
   try {
     let row
     switch (decision) {
       case 'approve':
         row = keys.approveKey(db, fingerprint, actor)
+        // **Approval is admission** (D-747). After the key transition, so an
+        // approval that could not be applied admits nobody.
+        admit(row.identity, db)
         break
       case 'deny':
         row = keys.denyKey(db, fingerprint, actor, reason)
