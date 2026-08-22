@@ -4545,16 +4545,51 @@ app.onError(answerUnhandled)
  * uses. The refusal is logged, because a silent one leaves the console showing
  * an account the quickstart no longer names.
  */
-export function renameSeededAdmin(): void {
-  const legacy = getLocalUser(LEGACY_SEED_ADMIN_USERNAME)
-  if (!legacy || legacy.role !== 'admin') return
+export function renameSeededAdmin(
+  /**
+   * How the legacy row is read. A parameter for the reason the rest of this
+   * file uses one: the failure being guarded against is *the database throwing*,
+   * and there is no way to make a real one throw on demand from inside a test
+   * without leaving the state directory in the shape the throw describes.
+   */
+  read: (username: string) => { role: string } | null = getLocalUser,
+): void {
+  // **Nothing in here may stop the server coming up.** The first version threw
+  // `UNIQUE constraint failed: agents.identity` from inside `startup` on a
+  // deployment that already had a mesh row under the new name, and the http
+  // service did not start at all — a migration that takes the service down is
+  // worse than the name it was fixing. `renameLocalAccount` refuses rather than
+  // throwing now; this is the second layer, for the throw nobody predicted.
+  let outcome: ReturnType<typeof renameLocalAccount>
+  try {
+    const legacy = read(LEGACY_SEED_ADMIN_USERNAME)
+    if (!legacy || legacy.role !== 'admin') return
+    outcome = renameLocalAccount(LEGACY_SEED_ADMIN_USERNAME, SEED_ADMIN_USERNAME)
+  } catch (err) {
+    log.error(
+      `could not rename '${LEGACY_SEED_ADMIN_USERNAME}'; it keeps its name and the server is starting`,
+      'seed_admin_rename_failed',
+      {
+        actor: LEGACY_SEED_ADMIN_USERNAME,
+        outcome: 'failed',
+        reason: 'threw',
+        error: err instanceof Error ? err.message : String(err),
+      },
+    )
+    return
+  }
 
-  const outcome = renameLocalAccount(LEGACY_SEED_ADMIN_USERNAME, SEED_ADMIN_USERNAME)
   if (!outcome.ok) {
     log.warn(
-      `left '${LEGACY_SEED_ADMIN_USERNAME}' alone: '${SEED_ADMIN_USERNAME}' is already taken`,
+      `left '${LEGACY_SEED_ADMIN_USERNAME}' alone: '${SEED_ADMIN_USERNAME}' is already taken` +
+        (outcome.blocked_by ? ` (${outcome.blocked_by})` : ''),
       'seed_admin_rename_refused',
-      { actor: LEGACY_SEED_ADMIN_USERNAME, outcome: 'refused', reason: outcome.reason },
+      {
+        actor: LEGACY_SEED_ADMIN_USERNAME,
+        outcome: 'refused',
+        reason: outcome.reason,
+        ...(outcome.blocked_by ? { blocked_by: outcome.blocked_by } : {}),
+      },
     )
     return
   }

@@ -147,9 +147,78 @@ describe("renaming an account", () => {
     // cannot fail is one the next refactor deletes without noticing.
     getDb().prepare(`DELETE FROM agent_registry WHERE id = ?`).run(taken);
 
-    expect(renameLocalAccount(from, taken)).toEqual({ ok: false, reason: "name_taken" });
+    expect(renameLocalAccount(from, taken))
+      .toMatchObject({ ok: false, reason: "name_taken", blocked_by: "local_users.username" });
     // Nothing half-happened: the refusal is before the first write.
     expect(getLocalUser(from)).not.toBeNull();
+  });
+
+  /**
+   * **The P0.** `agents.identity` is a primary key, so a deployment that
+   * already had a mesh row under the new name met
+   * `UNIQUE constraint failed: agents.identity` from inside `startup` — and the
+   * http service did not come up at all. Reproduced on the running stack by
+   * `agent-mesh-local-pm`.
+   */
+  test("refuses when both names hold a mesh identity, rather than throwing", async () => {
+    const from = await account();
+    const to = uniq("occupied");
+    for (const identity of [from, to]) {
+      mesh.prepare(`INSERT INTO agents (identity, description) VALUES (?, 'here')`).run(identity);
+    }
+    try {
+      const outcome = renameLocalAccount(from, to);
+      expect(outcome).toMatchObject({ ok: false, reason: "name_taken", blocked_by: "agents.identity" });
+      // The refusal is before the first write, in either database.
+      expect(getLocalUser(from)).not.toBeNull();
+    } finally {
+      mesh.prepare(`DELETE FROM agents WHERE identity IN (?, ?)`).run(from, to);
+    }
+  });
+
+  test("refuses when a grant, an ownership row or a membership is held under both", async () => {
+    const from = await account();
+    // Each of these is part of a composite primary key, so two rows meeting
+    // under one name is what made the `UPDATE` throw instead of skipping.
+    grants.grant(mesh, { subject: from, capability: CAPABILITY.USAGE_READ, grantedBy: "t" });
+    grants.grant(mesh, { subject: "rn-taken-subject", capability: CAPABILITY.USAGE_READ, grantedBy: "t" });
+    ownership.assign(mesh, { identity: "rn-some-agent", owner: from, grantedBy: "t" });
+    ownership.assign(mesh, { identity: "rn-some-agent", owner: "rn-taken-owner", grantedBy: "t" });
+    groups.moveTo(mesh, { identity: from, groupId: "default", movedBy: "t" });
+    groups.moveTo(mesh, { identity: "rn-taken-member", groupId: "default", movedBy: "t" });
+
+    for (const taken of ["rn-taken-subject", "rn-taken-owner", "rn-taken-member"]) {
+      expect(renameLocalAccount(from, taken), taken).toMatchObject({ ok: false, reason: "name_taken" });
+    }
+    expect(getLocalUser(from)).not.toBeNull();
+  });
+
+  /**
+   * **A half-finished rename is resumed, not refused.**
+   *
+   * The two databases cannot share a transaction, so a process that dies
+   * between them — or a second process racing the same migration — leaves the
+   * mesh rows moved and the account not. From here that looks exactly like a
+   * name clash and is the opposite of one: the new name holds rows the old name
+   * no longer has, which is this rename already applied. Refusing would strand
+   * the deployment on a boot that can never finish what an earlier boot began.
+   */
+  test("finishes a rename an earlier boot left half done", async () => {
+    const from = await account();
+    const to = uniq("halfway");
+    written.push(to);
+    grants.grant(mesh, { subject: from, capability: CAPABILITY.USAGE_READ, grantedBy: "t" });
+    // The mesh half, as a crashed boot would have left it.
+    mesh.prepare(`UPDATE role_grants SET subject = ? WHERE subject = ?`).run(to, from);
+
+    const outcome = renameLocalAccount(from, to);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    // The table that was already moved is not reported as moved again.
+    expect(outcome.moved).not.toHaveProperty("role_grants.subject");
+    expect(outcome.moved["local_users.username"]).toBe(1);
+    expect(getLocalUser(to)).not.toBeNull();
+    expect(grants.listFor(mesh, to).length).toBeGreaterThan(0);
   });
 
   test("refuses a name only the registry holds, because that is the same namespace", async () => {
@@ -159,7 +228,8 @@ describe("renaming an account", () => {
       .prepare(`INSERT INTO agent_registry (id, name, channel, approved) VALUES (?, ?, 'native', 1)`)
       .run(to, to);
     try {
-      expect(renameLocalAccount(from, to)).toEqual({ ok: false, reason: "name_taken" });
+      expect(renameLocalAccount(from, to))
+        .toMatchObject({ ok: false, reason: "name_taken", blocked_by: "agent_registry.id" });
     } finally {
       getDb().prepare(`DELETE FROM agent_registry WHERE id = ?`).run(to);
     }
@@ -199,6 +269,21 @@ describe("the seeded administrator's rename", () => {
 
     expect(getLocalUser(LEGACY_SEED_ADMIN_USERNAME)).not.toBeNull();
     expect(getLocalUser(SEED_ADMIN_USERNAME)).toBeNull();
+  });
+
+  /**
+   * **A migration must not take the service down.** The first version threw
+   * `UNIQUE constraint failed: agents.identity` out of `startup` and the http
+   * service did not start — every screen and every agent, for a name.
+   */
+  test("comes up anyway when the rename cannot run", async () => {
+    await legacyAdmin();
+    const boom = (): never => { throw new Error("the database said no"); };
+
+    expect(() => renameSeededAdmin(boom)).not.toThrow();
+    // The account keeps its name, which is the survivable half: an operator
+    // signs in under the old one and the server is answering.
+    expect(getLocalUser(LEGACY_SEED_ADMIN_USERNAME)).not.toBeNull();
   });
 
   test("refuses rather than merging when both names are taken", async () => {

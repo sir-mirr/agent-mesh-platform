@@ -64,7 +64,7 @@ const LOCAL_REFERENCES: ReadonlyArray<readonly [string, string]> = [
  */
 export type RenameOutcome =
   | { ok: true; moved: Record<string, number> }
-  | { ok: false; reason: 'no_such_account' | 'name_taken' }
+  | { ok: false; reason: 'no_such_account' | 'name_taken' | 'write_failed'; blocked_by?: string }
 
 /**
  * Move `from` to `to` everywhere the name is a live reference.
@@ -82,17 +82,53 @@ export function renameLocalAccount(
   mesh: Database = agentsDb(),
 ): RenameOutcome {
   if (!getLocalUser(from)) return { ok: false, reason: 'no_such_account' }
-  // Taken by an account or by a registry row. Both are the same namespace: a
-  // registry id is what a message is addressed to, and two rows answering to
-  // one name is the state this whole module exists to avoid creating.
-  if (getLocalUser(to)) return { ok: false, reason: 'name_taken' }
-  const takenInRegistry = db.prepare(`SELECT 1 FROM agent_registry WHERE id = ?`).get(to)
-  if (takenInRegistry) return { ok: false, reason: 'name_taken' }
+
+  /** Whether `column` in `table` holds any row under `name`. */
+  const present = (handle: Database, table: string, column: string, name: string): boolean => {
+    // `PRAGMA table_info` answers nothing for a table that is not there, which
+    // is the check: this service opens databases other processes own the DDL of.
+    const columns = handle.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+    if (!columns.some((c) => c.name === column)) return false
+    return handle.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(name) !== null
+  }
+
+  /**
+   * **Every table, not the two obvious ones — and the difference between a
+   * clash and a resumption.**
+   *
+   * The first version checked `local_users` and `agent_registry` (the two
+   * places a *person* is) and left the rest to the `UPDATE`s. `agents.identity`
+   * is a primary key, so a deployment that already held a mesh row under the
+   * new name met `UNIQUE constraint failed: agents.identity` from inside
+   * `startup` and the http service **did not come up at all**.
+   * `agent-mesh-local-pm` reproduced it on the running stack.
+   * `role_grants`, `agent_owners` and `agent_group_members` are the same shape:
+   * the name is part of a composite primary key.
+   *
+   * The two databases cannot share a transaction, so a rename can also stop
+   * half-done — the mesh rows moved, the account not. That state looks exactly
+   * like a clash from here and is the opposite of one: **the new name holding
+   * rows the old name no longer has is this rename, already applied.** Skipping
+   * those tables resumes it; refusing would strand the deployment on a boot
+   * that can never finish what an earlier boot began.
+   *
+   * So, per table: both names present is a clash and refuses; only the new name
+   * is a table already moved; only the old name is work to do.
+   */
+  const alreadyMoved = new Set<string>()
+  for (const [handle, references] of [[mesh, MESH_REFERENCES], [db, LOCAL_REFERENCES]] as const) {
+    for (const [table, column] of references) {
+      if (!present(handle, table, column, to)) continue
+      if (present(handle, table, column, from)) {
+        return { ok: false, reason: 'name_taken', blocked_by: `${table}.${column}` }
+      }
+      alreadyMoved.add(`${table}.${column}`)
+    }
+  }
 
   const moved: Record<string, number> = {}
   const move = (handle: Database, table: string, column: string) => {
-    // `PRAGMA table_info` answers nothing for a table that is not there, which
-    // is the check: this service opens databases other processes own the DDL of.
+    if (alreadyMoved.has(`${table}.${column}`)) return
     const columns = handle.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
     if (!columns.some((c) => c.name === column)) return
     const { changes } = handle
@@ -101,12 +137,22 @@ export function renameLocalAccount(
     if (changes > 0) moved[`${table}.${column}`] = changes
   }
 
-  mesh.transaction(() => {
-    for (const [table, column] of MESH_REFERENCES) move(mesh, table, column)
-  })()
-  db.transaction(() => {
-    for (const [table, column] of LOCAL_REFERENCES) move(db, table, column)
-  })()
+  // **A migration must not take the service down.** The refusals above are the
+  // collisions this knows how to name; a constraint nobody anticipated is still
+  // a database saying no, and the answer to that is an account keeping its old
+  // name and a log line — not a process that fails to start, which is how this
+  // reached a running deployment. The transaction rolls back on the way out, so
+  // a half-renamed account is not one of the outcomes.
+  try {
+    mesh.transaction(() => {
+      for (const [table, column] of MESH_REFERENCES) move(mesh, table, column)
+    })()
+    db.transaction(() => {
+      for (const [table, column] of LOCAL_REFERENCES) move(db, table, column)
+    })()
+  } catch {
+    return { ok: false, reason: 'write_failed' }
+  }
 
   return { ok: true, moved }
 }

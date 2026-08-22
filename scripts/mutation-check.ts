@@ -7135,8 +7135,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The rename stopped carrying the mesh-side rows. The account signs in under its new name holding none of its grants, owning none of its agents and in no group \u2014 every screen answering 403 with nothing anywhere saying why, which is the failure a rename of an *address* is.",
     file: "packages/http/src/rename-account.ts",
-    from: "  mesh.transaction(() => {\n    for (const [table, column] of MESH_REFERENCES) move(mesh, table, column)\n  })()",
-    to: "  void MESH_REFERENCES",
+    from: "    mesh.transaction(() => {\n      for (const [table, column] of MESH_REFERENCES) move(mesh, table, column)\n    })()",
+    to: "    void MESH_REFERENCES",
     suite: "packages/http/src/rename-account.test.ts",
     expect: ["moves the login, the registry row, and the grants"],
   },
@@ -7145,8 +7145,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The taken-name check went away. Two accounts answer to one name \u2014 or an account takes the name of a registry row a message is addressed to \u2014 which is the state this module exists to avoid creating, and the one it cannot undo.",
     file: "packages/http/src/rename-account.ts",
-    from: "  if (getLocalUser(to)) return { ok: false, reason: 'name_taken' }",
-    to: "  if (false) return { ok: false, reason: 'name_taken' }",
+    from: "      if (present(handle, table, column, from)) {\n        return { ok: false, reason: 'name_taken', blocked_by: `${table}.${column}` }",
+    to: "      if (present(handle, table, column, from) && table !== 'local_users') {\n        return { ok: false, reason: 'name_taken', blocked_by: `${table}.${column}` }",
     suite: "packages/http/src/rename-account.test.ts",
     expect: ["refuses a name nobody has, and a name somebody does"],
   },
@@ -7199,6 +7199,36 @@ const MUTATIONS: Mutation[] = [
     to: "    if (false) continue",
     suite: "packages/http/src/registry-source.test.ts",
     expect: ["is quiet on the next boot"],
+  },
+  {
+    id: "a-rename-writes-into-a-name-that-is-taken",
+    defect:
+      "The collision check went away, so the rename ran its `UPDATE`s into a name another row already holds. `agents.identity` is a primary key: it throws `UNIQUE constraint failed` from inside `startup`, and the http service does not come up at all \u2014 which is how this reached a running deployment (reported as a P0 by agent-mesh-local-pm).",
+    file: "packages/http/src/rename-account.ts",
+    from: "      if (present(handle, table, column, from)) {",
+    to: "      if (false) {",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["refuses when both names hold a mesh identity"],
+  },
+  {
+    id: "a-half-finished-rename-is-read-as-a-clash",
+    defect:
+      "A table the new name already holds and the old one does not was treated as a collision. The two databases cannot share a transaction, so that state is this rename half applied \u2014 refusing strands the deployment on a boot that can never finish what an earlier boot began.",
+    file: "packages/http/src/rename-account.ts",
+    from: "      if (!present(handle, table, column, to)) continue",
+    to: "      if (!present(handle, table, column, to)) continue\n      return { ok: false, reason: 'name_taken', blocked_by: `${table}.${column}` }",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["finishes a rename an earlier boot left half done"],
+  },
+  {
+    id: "a-failed-rename-takes-the-server-down",
+    defect:
+      "The rename threw out of `startup` again. A migration that cannot run is an account keeping its old name; a migration that takes the service down is every screen and every agent, and it is the failure this whole guard was added for.",
+    file: "packages/http/src/main.ts",
+    from: "  } catch (err) {\n    log.error(\n      `could not rename '${LEGACY_SEED_ADMIN_USERNAME}'; it keeps its name and the server is starting`,",
+    to: "  } catch (err) {\n    throw err\n    log.error(\n      `could not rename '${LEGACY_SEED_ADMIN_USERNAME}'; it keeps its name and the server is starting`,",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["comes up anyway when the rename cannot run"],
   },
   {
     id: "only-github-admins-are-protected",
