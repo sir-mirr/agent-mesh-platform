@@ -18,7 +18,13 @@
  * sent `members` and `name` for four months and read the answer as success.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { fetchGroups, createGroupApi, addEgressRuleApi, deleteEgressRuleApi } from "./groups.ts";
+import {
+  assignGroupMemberApi,
+  fetchGroups,
+  createGroupApi,
+  addEgressRuleApi,
+  deleteEgressRuleApi,
+} from "./groups.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -39,10 +45,10 @@ afterEach(() => { globalThis.fetch = realFetch; });
 describe("fetchGroups", () => {
   it("names every field it keeps, and keeps nothing else the row carried", async () => {
     // The store's `Group` is tenant/group_id/description/created_at/created_by,
-    // and two of those five are deliberately not selected here — so the fixture
-    // carries them and `toEqual` is exact. A `...g` spread, which is the
-    // shortest way to write "just pass the row on", fails here instead of
-    // putting a tenant column on a screen nobody decided to show one on.
+    // and `created_by` is deliberately not selected here — so the fixture
+    // carries it and `toEqual` is exact. A `...g` spread, which is the shortest
+    // way to write "just pass the row on", fails here instead of leaking a
+    // store-only field into every screen.
     //
     // `name` is `group_id`: that row has no display name at all, so the id is
     // the name on this platform.
@@ -61,6 +67,7 @@ describe("fetchGroups", () => {
     expect((await fetchGroups())[0]).toEqual({
       id: "ops",
       name: "ops",
+      tenant: "acme",
       description: "on call",
       member_count: 2,
       members: ["a-1", "a-2"],
@@ -103,6 +110,38 @@ describe("fetchGroups", () => {
     const rows = await fetchGroups();
     expect(rows[0]!.egress_allowed).toEqual(["billing"]);
     expect(rows[1]!.egress_allowed).toEqual([]);
+  });
+
+  it("does not join equal group ids across different tenants", async () => {
+    spyOn({
+      ok: true,
+      groups: [
+        { group_id: "ops", tenant: "acme" },
+        { group_id: "ops", tenant: "beta" },
+      ],
+      egress: [
+        { tenant: "acme", from_group: "ops", to_group: "acme-target" },
+        { tenant: "beta", from_group: "ops", to_group: "beta-target" },
+      ],
+    });
+
+    const [acme, beta] = await fetchGroups();
+    expect(acme!.egress_allowed).toEqual(["acme-target"]);
+    expect(beta!.egress_allowed).toEqual(["beta-target"]);
+  });
+
+  it("does not guess a tenant for an old-shaped rule in a multi-tenant response", async () => {
+    spyOn({
+      ok: true,
+      groups: [
+        { group_id: "ops", tenant: "acme" },
+        { group_id: "ops", tenant: "beta" },
+      ],
+      egress: [{ from_group: "ops", to_group: "unknown-tenant" }],
+    });
+
+    const rows = await fetchGroups();
+    expect(rows.map((row) => row.egress_allowed)).toEqual([null, null]);
   });
 
   it("reads a rule from a group to itself, and seeds no such rule where there is none", async () => {
@@ -153,6 +192,7 @@ describe("fetchGroups", () => {
     const [row] = await fetchGroups();
     expect(row!.description).toBe(null);
     expect(row!.created_at).toBe(null);
+    expect(row!.tenant).toBe(null);
   });
 
   it("prefers the route's own group_id over any other id on the row", async () => {
@@ -194,7 +234,7 @@ describe("fetchGroups", () => {
 
 describe("createGroupApi", () => {
   it("sends group_id and nothing the route would refuse", async () => {
-    // The route rejects any field outside { group_id, description } with a
+    // The route rejects any field outside { group_id, description, tenant } with a
     // `400` — `name` and `members` included. An extra key here does not get
     // dropped, it fails the whole creation.
     const spy = spyOn({ ok: true, group_id: "ops", created: true }, 201);
@@ -218,12 +258,50 @@ describe("createGroupApi", () => {
       .toEqual({ group_id: "ops", description: "on call rotation" });
   });
 
+  it("sends a tenant only when the platform administrator selected one", async () => {
+    let spy = spyOn({ ok: true, group_id: "ops", tenant: "acme", created: true }, 201);
+    await createGroupApi("ops", undefined, "acme");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)))
+      .toEqual({ group_id: "ops", tenant: "acme" });
+
+    spy = spyOn({ ok: true, group_id: "ops", tenant: "default", created: true }, 201);
+    await createGroupApi("ops");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)))
+      .toEqual({ group_id: "ops" });
+  });
+
   it("carries `created` back, because 200 and 201 are different answers", async () => {
     // The route answers `200` with `created: false` when the group was already
     // there. A screen that reads only `ok` reports a creation that did not
     // happen.
     spyOn({ ok: true, group_id: "ops", created: false });
     expect((await createGroupApi("ops")).created).toBe(false);
+  });
+});
+
+describe("assignGroupMemberApi", () => {
+  it("posts one identity and its selected group tenant", async () => {
+    const spy = spyOn({
+      ok: true,
+      identity: "agt-1",
+      tenant: "acme",
+      from_group: "default",
+      to_group: "ops",
+    });
+    await assignGroupMemberApi("ops", "agt-1", "acme");
+
+    expect(String(spy.mock.calls[0]![0])).toMatch(/\/api\/v1\/admin\/groups\/ops\/members$/);
+    expect(spy.mock.calls[0]![1]!.method).toBe("POST");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)))
+      .toEqual({ identity: "agt-1", tenant: "acme" });
+  });
+
+  it("escapes the group id and omits an unknown tenant", async () => {
+    const spy = spyOn({ ok: true });
+    await assignGroupMemberApi("lane/a b", "agt-1");
+
+    expect(String(spy.mock.calls[0]![0])).toContain("/groups/lane%2Fa%20b/members");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body))).toEqual({ identity: "agt-1" });
   });
 });
 

@@ -11,11 +11,13 @@ import {
   type ToastType,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentGroup {
   id: string;
   name: string;
+  tenant: string | null;
   description: string;
   /** `null` when the route did not report one, which is not the same as none. */
   memberCount: number | null;
@@ -24,15 +26,37 @@ interface AgentGroup {
   createdAt: string | null;
 }
 
-import { fetchGroups, createGroupApi } from "@/api/groups.ts";
-import { agentMemberIdentities, fetchAgents } from "@/api/agents.ts";
+import { assignGroupMemberApi, fetchGroups, createGroupApi } from "@/api/groups.ts";
+import {
+  agentMemberIdentities,
+  agentRegistryEntries,
+  fetchAgents,
+  type RegistryAgent,
+} from "@/api/agents.ts";
+import { fetchTenantDirectory, type TenantDirectoryItem } from "@/api/tenants.ts";
+
+type TenantReadState = "idle" | "loading" | "ready" | "refused" | "unreachable";
+type AssignCandidateState =
+  | { kind: "idle" | "loading" | "tenant-unknown" }
+  | { kind: "ready"; agents: RegistryAgent[] }
+  | { kind: "failed"; failure: FailureKind; missing: string | null };
+
+const selectStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "9px 10px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--color-border)",
+  background: "var(--color-bg-surface)",
+  color: "var(--color-text-primary)",
+};
 
 export function GroupsPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
   const { hasCapability } = useRbac();
   const canManage = hasCapability("group.manage");
+  const isPlatformAdmin = user?.role === "PLATFORM_ADMIN";
   const [groups, setGroups] = useState<AgentGroup[]>([]);
-  const [knownAgentIds, setKnownAgentIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
@@ -41,10 +65,18 @@ export function GroupsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<AgentGroup | null>(null);
+  const [tenants, setTenants] = useState<TenantDirectoryItem[]>([]);
+  const [tenantReadState, setTenantReadState] = useState<TenantReadState>("idle");
+  const [tenantFailureName, setTenantFailureName] = useState<string | null>(null);
+  const [assignCandidates, setAssignCandidates] = useState<AssignCandidateState>({ kind: "idle" });
+  const [isAssigning, setIsAssigning] = useState(false);
+  const assignRequest = React.useRef(0);
+  const assignInFlight = React.useRef(false);
 
   // Form states
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newGroupTenant, setNewGroupTenant] = useState("");
   const [assignAgentId, setAssignAgentId] = useState("");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<ToastType>("success");
@@ -55,10 +87,6 @@ export function GroupsPage() {
     setFailure(null);
     try {
       const [list, registry] = await Promise.all([fetchGroups(), fetchAgents()]);
-      setKnownAgentIds(new Set(agentMemberIdentities(
-        registry.map((entry) => entry.identity),
-        registry,
-      )));
       setGroups(
         (list || []).map((g) => {
           // `members` is a unified identity list. This page labels both the
@@ -68,6 +96,7 @@ export function GroupsPage() {
           return {
             id: g.id,
             name: g.name,
+            tenant: g.tenant ?? null,
             description: g.description ?? "",
             // `null` still means the route never supplied a member list. Once
             // it did, the count is the filtered agent list rather than every
@@ -97,12 +126,53 @@ export function GroupsPage() {
     loadGroups();
   }, []);
 
+  React.useEffect(() => {
+    if (!isPlatformAdmin) {
+      setTenants([]);
+      setTenantReadState("idle");
+      setTenantFailureName(null);
+      setNewGroupTenant("");
+      return;
+    }
+
+    let cancelled = false;
+    setTenantReadState("loading");
+    setTenantFailureName(null);
+    fetchTenantDirectory().then(
+      (directory) => {
+        if (cancelled) return;
+        const active = directory.tenants.filter((tenant) => tenant.deleted_at === null);
+        setTenants(active);
+        setNewGroupTenant((current) =>
+          active.some((tenant) => tenant.id === current)
+            ? current
+            : active.find((tenant) => tenant.id === directory.tenant)?.id ?? active[0]?.id ?? "",
+        );
+        setTenantReadState("ready");
+      },
+      (err: unknown) => {
+        if (cancelled) return;
+        const kind = failureKind(err);
+        setTenants([]);
+        setNewGroupTenant("");
+        setTenantReadState(kind);
+        setTenantFailureName(refusedCapability(err));
+      },
+    );
+    return () => { cancelled = true; };
+  }, [isPlatformAdmin]);
+
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName) return;
 
     try {
-      const res = await createGroupApi(newGroupName, newGroupDesc);
+      if (isPlatformAdmin && !newGroupTenant) return;
+      const res = await createGroupApi(
+        newGroupName,
+        newGroupDesc,
+        isPlatformAdmin ? newGroupTenant : undefined,
+      );
       setIsCreateOpen(false);
       const targetName = res.group_id || newGroupName;
       setNewGroupName("");
@@ -121,32 +191,81 @@ export function GroupsPage() {
     }
   };
 
-  const handleAssignAgent = (e: React.FormEvent) => {
+  const openAssignModal = async (group: AgentGroup) => {
+    const request = ++assignRequest.current;
+    setSelectedGroup(group);
+    setAssignAgentId("");
+    setIsAssignOpen(true);
+    setAssignCandidates({ kind: "loading" });
+
+    if (group.tenant === null) {
+      setAssignCandidates({ kind: "tenant-unknown" });
+      return;
+    }
+
+    try {
+      const registry = await fetchAgents(group.tenant);
+      if (request !== assignRequest.current) return;
+      const agents = agentRegistryEntries(registry).filter(
+        (agent) => agent.tenant === group.tenant && !group.members.includes(agent.identity),
+      );
+      setAssignCandidates({ kind: "ready", agents });
+    } catch (err: unknown) {
+      if (request !== assignRequest.current) return;
+      setAssignCandidates({
+        kind: "failed",
+        failure: failureKind(err),
+        missing: refusedCapability(err),
+      });
+    }
+  };
+
+  const closeAssignModal = (force = false) => {
+    if (assignInFlight.current && !force) return;
+    assignRequest.current += 1;
+    setIsAssignOpen(false);
+    setAssignAgentId("");
+    setAssignCandidates({ kind: "idle" });
+  };
+
+  const handleAssignAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGroup || !assignAgentId) return;
+    if (assignInFlight.current) return;
 
-    // Typing an arbitrary identity is not authority to turn a person from the
-    // unified registry into an agent row. Only a server-confirmed agent may be
-    // added to this agent-labelled list.
-    if (!knownAgentIds.has(assignAgentId)) {
+    // The select is not the security boundary. Keep the exact selected row in
+    // the handler too, so removing `disabled` in the DOM cannot submit a person
+    // or a row the tenant-filtered response never offered.
+    if (
+      assignCandidates.kind !== "ready"
+      || !assignCandidates.agents.some((agent) => agent.identity === assignAgentId)
+    ) {
       setToastType("error");
       setToastMessage(`${t("groups.assignUnknown", "등록된 에이전트만 배속할 수 있습니다")}: ${assignAgentId}`);
       return;
     }
 
-    const updated = groups.map((g) => {
-      if (g.id === selectedGroup.id) {
-        const nextMembers = Array.from(new Set([...g.members, assignAgentId]));
-        return { ...g, members: nextMembers, memberCount: nextMembers.length };
-      }
-      return g;
-    });
-
-    setGroups(updated);
-    setIsAssignOpen(false);
-    setAssignAgentId("");
-    setToastType("success");
-    setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assignAgentId} → ${selectedGroup.name}`);
+    assignInFlight.current = true;
+    setIsAssigning(true);
+    try {
+      await assignGroupMemberApi(
+        selectedGroup.id,
+        assignAgentId,
+        selectedGroup.tenant ?? undefined,
+      );
+      const assigned = assignAgentId;
+      const groupName = selectedGroup.name;
+      closeAssignModal(true);
+      setToastType("success");
+      setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assigned} → ${groupName}`);
+      await loadGroups();
+    } catch (err: any) {
+      setToastType("error");
+      setToastMessage(`${t("groups.assignFailed", "에이전트 배속 실패")}: ${err.message ?? ""}`);
+    } finally {
+      assignInFlight.current = false;
+      setIsAssigning(false);
+    }
   };
 
   const columns = [
@@ -236,6 +355,15 @@ export function GroupsPage() {
       ),
     },
     {
+      key: "tenant",
+      header: t("groups.col.tenant", "소속 테넌트"),
+      render: (item: AgentGroup) => (
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+          {item.tenant ?? t("common.unknownValue", "—")}
+        </span>
+      ),
+    },
+    {
       key: "actions",
       header: t("groups.col.actions", "작업"),
       align: "right" as const,
@@ -245,8 +373,7 @@ export function GroupsPage() {
             variant="secondary"
             size="sm"
             onClick={() => {
-              setSelectedGroup(item);
-              setIsAssignOpen(true);
+              void openAssignModal(item);
             }}
           >
             {t("groups.assignBtn", "에이전트 배속/이동")}
@@ -283,7 +410,7 @@ export function GroupsPage() {
       <DataTable
         columns={columns}
         data={groups}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => `${item.tenant ?? "unknown"}:${item.id}`}
         isLoading={isLoading}
         isError={isError}
         errorMessage={
@@ -314,11 +441,56 @@ export function GroupsPage() {
             value={newGroupDesc}
             onChange={(e) => setNewGroupDesc(e.target.value)}
           />
+          {isPlatformAdmin && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label htmlFor="new-group-tenant" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                {t("groups.modal.tenantLabel", "소속 테넌트")}
+              </label>
+              {tenantReadState === "loading" && (
+                <span data-testid="group-tenant-loading" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                  {t("groups.modal.tenantLoading", "테넌트 목록을 불러오는 중입니다.")}
+                </span>
+              )}
+              {tenantReadState === "refused" && (
+                <span data-testid="group-tenant-refused" style={{ color: "var(--color-danger)", fontSize: "0.82rem" }}>
+                  {refusedText(t, tenantFailureName)}
+                </span>
+              )}
+              {tenantReadState === "unreachable" && (
+                <span data-testid="group-tenant-unreachable" style={{ color: "var(--color-danger)", fontSize: "0.82rem" }}>
+                  {t("groups.modal.tenantUnavailable", "테넌트 목록을 불러오지 못했습니다.")}
+                </span>
+              )}
+              {tenantReadState === "ready" && tenants.length === 0 && (
+                <span data-testid="group-tenant-empty" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                  {t("groups.modal.tenantEmpty", "그룹을 만들 수 있는 활성 테넌트가 없습니다.")}
+                </span>
+              )}
+              {tenantReadState === "ready" && tenants.length > 0 && (
+                <select
+                  id="new-group-tenant"
+                  value={newGroupTenant}
+                  onChange={(event) => setNewGroupTenant(event.target.value)}
+                  required
+                  style={selectStyle}
+                >
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name} ({tenant.id})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
             <Button variant="secondary" size="sm" type="button" onClick={() => setIsCreateOpen(false)}>
               {t("common.cancel", "취소")}
             </Button>
-            <Button variant="primary" size="sm" type="submit">
+            <Button
+              variant="primary"
+              size="sm"
+              type="submit"
+              disabled={isPlatformAdmin && (tenantReadState !== "ready" || !newGroupTenant)}
+            >
               {t("common.create", "생성하기")}
             </Button>
           </div>
@@ -329,26 +501,72 @@ export function GroupsPage() {
       {selectedGroup && (
         <Modal
           isOpen={isAssignOpen}
-          onClose={() => setIsAssignOpen(false)}
+          onClose={() => closeAssignModal()}
           title={`${t("groups.modal.assignTitle", "에이전트 배속 및 이동")} - ${selectedGroup.name}`}
         >
           <form onSubmit={handleAssignAgent} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>
-              {t("groups.modal.assignDesc", "배속할 에이전트 ID를 입력하거나 선택하세요. 에이전트 이동 시 기존 그룹에서 자동으로 탈퇴되고 신규 그룹으로 이전됩니다.")}
+              {t("groups.modal.assignDesc", "이 테넌트에서 배속할 에이전트를 선택하세요. 이동 시 기존 그룹에서 자동으로 탈퇴됩니다.")}
             </p>
-            <Input
-              label={t("groups.modal.agentIdLabel", "배속할 에이전트 ID (agt_*)")}
-              placeholder={t("groups.agentPh", "예: agt_support_01")}
-              value={assignAgentId}
-              onChange={(e) => setAssignAgentId(e.target.value)}
-              required
-            />
+            {assignCandidates.kind === "loading" && (
+              <p data-testid="assign-candidates-loading" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                {t("groups.modal.assignLoading", "배속 가능한 에이전트를 확인하는 중입니다.")}
+              </p>
+            )}
+            {assignCandidates.kind === "tenant-unknown" && (
+              <p data-testid="assign-candidates-tenant-unknown" style={{ color: "var(--color-danger)", fontSize: "0.82rem" }}>
+                {t("groups.modal.assignTenantUnknown", "그룹의 테넌트를 알 수 없어 배속 후보를 확인할 수 없습니다.")}
+              </p>
+            )}
+            {assignCandidates.kind === "failed" && (
+              <p data-testid={`assign-candidates-${assignCandidates.failure}`} style={{ color: "var(--color-danger)", fontSize: "0.82rem" }}>
+                {assignCandidates.failure === "refused"
+                  ? refusedText(t, assignCandidates.missing)
+                  : t("groups.modal.assignUnavailable", "배속 가능한 에이전트를 불러오지 못했습니다.")}
+              </p>
+            )}
+            {assignCandidates.kind === "ready" && assignCandidates.agents.length === 0 && (
+              <p data-testid="assign-candidates-empty" style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                {t("groups.modal.assignEmpty", "이 테넌트에 배속 가능한 에이전트가 없습니다.")}
+              </p>
+            )}
+            {assignCandidates.kind === "ready" && assignCandidates.agents.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label htmlFor="assign-agent" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                  {t("groups.modal.agentIdLabel", "배속할 에이전트")}
+                </label>
+                <select
+                  id="assign-agent"
+                  value={assignAgentId}
+                  onChange={(event) => setAssignAgentId(event.target.value)}
+                  required
+                  disabled={isAssigning}
+                  style={selectStyle}
+                >
+                  <option value="">{t("groups.modal.agentPlaceholder", "에이전트를 선택하세요")}</option>
+                  {assignCandidates.agents.map((agent) => (
+                    <option key={agent.identity} value={agent.identity}>{agent.identity}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-              <Button variant="secondary" size="sm" type="button" onClick={() => setIsAssignOpen(false)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={() => closeAssignModal()}
+                disabled={isAssigning}
+              >
                 {t("common.cancel", "취소")}
               </Button>
-              <Button variant="primary" size="sm" type="submit">
-                {t("common.save", "배속 완료")}
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                disabled={assignCandidates.kind !== "ready" || !assignAgentId || isAssigning}
+              >
+                {isAssigning ? t("groups.modal.assignSaving", "저장 중...") : t("common.save", "배속 완료")}
               </Button>
             </div>
           </form>

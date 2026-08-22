@@ -3,8 +3,8 @@ import { apiClient } from "./client.ts";
 /**
  * A row as `GET /api/v1/agents` actually sends it.
  *
- * That route returns `{id, name, description, channel, type}` and nothing else
- * — `main.ts:932`. Every other field here is absent, and every one of them used
+ * That route returns identity metadata plus the tenant named by the platform.
+ * Presence and key fields remain independently optional, and they used
  * to be filled in on arrival: `status` collapsed to `"active"`, `created_at` to
  * `new Date()`, `last_seen_at` to the same, `fingerprint` to a constant. The
  * screen then reported every agent as online, just created, recently seen and
@@ -16,6 +16,7 @@ import { apiClient } from "./client.ts";
 export interface RegistryAgent {
   identity: string;
   type: string;
+  tenant: string | null;
   description: string | null;
   created_at: string | null;
   last_seen_at: string | null;
@@ -81,12 +82,14 @@ export interface TeardownResponse {
   deleted_at?: string | null;
 }
 
-export async function fetchAgents(): Promise<RegistryAgent[]> {
-  const data = await apiClient<any>("/api/v1/agents");
+export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
+  const query = tenant === undefined ? "" : `?tenant=${encodeURIComponent(tenant)}`;
+  const data = await apiClient<any>(`/api/v1/agents${query}`);
   const list: any[] = Array.isArray(data) ? data : data.agents ?? [];
   return list.map((a: any) => ({
     identity: a.identity || a.id || a.name || "unknown",
     type: a.type || a.channel || "agent",
+    tenant: typeof a.tenant === "string" ? a.tenant : null,
     description: a.description || a.name || a.identity || null,
       // **No `status`.** SPEC § 9.1 says this route deliberately has no such
       // field: whether silence means `inactive` is an operating policy, not

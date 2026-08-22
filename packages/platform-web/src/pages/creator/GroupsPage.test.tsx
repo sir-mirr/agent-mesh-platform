@@ -51,6 +51,7 @@ const { GroupsPage } = await import("./GroupsPage.tsx");
 const ME = "/auth/me";
 const GROUPS = "/api/v1/admin/groups";
 const AGENTS = "/api/v1/agents";
+const TENANTS = "/api/v1/admin/tenants/directory";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while groups fails. */
 const BELL = "/api/v1/admin/keys/pending";
 
@@ -68,12 +69,16 @@ const EXISTS = DICTIONARY.en["groups.exists"]!;
 const CREATE_FAILED = DICTIONARY.en["groups.createFailed"]!;
 const ASSIGNED = DICTIONARY.en["groups.assigned"]!;
 const ASSIGN_UNKNOWN = DICTIONARY.en["groups.assignUnknown"]!;
+const ASSIGN_FAILED = DICTIONARY.en["groups.assignFailed"]!;
 const CREATE_BTN = DICTIONARY.en["groups.createBtn"]!;
 const ASSIGN_BTN = DICTIONARY.en["groups.assignBtn"]!;
 const NAME_LABEL = DICTIONARY.en["groups.modal.nameLabel"]!;
 const DESC_LABEL = DICTIONARY.en["groups.modal.descLabel"]!;
 const AGENT_LABEL = DICTIONARY.en["groups.modal.agentIdLabel"]!;
+const TENANT_LABEL = DICTIONARY.en["groups.modal.tenantLabel"]!;
 const ASSIGN_TITLE = DICTIONARY.en["groups.modal.assignTitle"]!;
+const ASSIGN_EMPTY = DICTIONARY.en["groups.modal.assignEmpty"]!;
+const ASSIGN_UNAVAILABLE = DICTIONARY.en["groups.modal.assignUnavailable"]!;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -88,19 +93,35 @@ const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
 
 /** What `/auth/me` says this session holds. */
 let held: string[] = [MANAGE];
+let sessionRole = "member";
+let sessionTenant = "default";
 /** What `GET /api/v1/admin/groups` does. */
 let readGroups: Reply = () => json(200, { groups: [] });
 /** The unified registry used to decide which group members are agents. */
 let readAgents: Reply = () => json(200, { agents: [] });
+/** What the platform-only tenant directory does. */
+let readTenants: Reply = () => json(200, {
+  ok: true,
+  tenant: "default",
+  tenants: [{ id: "default", name: "Platform", created_at: "2026-01-01T00:00:00Z", deleted_at: null }],
+});
 /** What `POST /api/v1/admin/groups` does. */
 let writeGroup: Reply = () => json(200, { ok: true, group_id: "grp_new", created: true });
+/** What the singular group-member move does. */
+let writeMember: Reply = () => json(200, {
+  ok: true,
+  identity: "agt_gamma",
+  tenant: "default",
+  from_group: null,
+  to_group: "grp_billing",
+});
 
 const session = (capabilities: string[]) => ({
   github_id: 3,
   github_login: "operator-1",
-  role: "member",
+  role: sessionRole,
   approved: true,
-  tenant: "tenant_default",
+  tenant: sessionTenant,
   capabilities,
   created_at: "2026-01-01T00:00:00Z",
 });
@@ -108,14 +129,32 @@ const session = (capabilities: string[]) => ({
 beforeEach(() => {
   calls.length = 0;
   held = [MANAGE];
+  sessionRole = "member";
+  sessionTenant = "default";
   readGroups = () => json(200, { groups: [] });
   readAgents = () => json(200, { agents: [
-    { id: "operator-1", type: "user" },
-    { id: "agt_alpha", type: "agent" },
-    { id: "agt_beta", type: "agent" },
-    { id: "agt_gamma", type: "agent" },
+    { id: "operator-1", type: "user", tenant: "default" },
+    { id: "agt_alpha", type: "agent", tenant: "default" },
+    { id: "agt_beta", type: "agent", tenant: "default" },
+    { id: "agt_gamma", type: "agent", tenant: "default" },
   ] });
+  readTenants = () => json(200, {
+    ok: true,
+    tenant: "default",
+    tenants: [
+      { id: "default", name: "Platform", created_at: "2026-01-01T00:00:00Z", deleted_at: null },
+      { id: "acme", name: "Acme", created_at: "2026-02-01T00:00:00Z", deleted_at: null },
+      { id: "retired", name: "Retired", created_at: "2026-03-01T00:00:00Z", deleted_at: "2026-08-01T00:00:00Z" },
+    ],
+  });
   writeGroup = () => json(200, { ok: true, group_id: "grp_new", created: true });
+  writeMember = () => json(200, {
+    ok: true,
+    identity: "agt_gamma",
+    tenant: "default",
+    from_group: null,
+    to_group: "grp_billing",
+  });
   // `AuthProvider` hydrates from storage and `I18nProvider` reads a saved
   // language out of it; happy-dom's storage belongs to the process, so a
   // leftover from another file would be a signed-in user or a second language.
@@ -125,7 +164,9 @@ beforeEach(() => {
     calls.push({ url, init });
     if (url.endsWith(ME)) return json(200, session(held));
     if (url.endsWith(BELL)) return json(200, { ok: true, keys: [] });
-    if (url.endsWith(AGENTS)) return await readAgents(init);
+    if (url.endsWith(TENANTS)) return await readTenants(init);
+    if (url.endsWith(AGENTS) || url.includes(`${AGENTS}?`)) return await readAgents(init);
+    if (/\/api\/v1\/admin\/groups\/[^/]+\/members$/.test(url)) return await writeMember(init);
     if (url.endsWith(GROUPS)) {
       return (init?.method ?? "GET") === "GET" ? await readGroups(init) : await writeGroup(init);
     }
@@ -220,6 +261,8 @@ const groupReads = () =>
   calls.filter((c) => c.url.endsWith(GROUPS) && (c.init?.method ?? "GET") === "GET");
 const groupWrites = () =>
   calls.filter((c) => c.url.endsWith(GROUPS) && (c.init?.method ?? "GET") === "POST");
+const memberWrites = () =>
+  calls.filter((c) => /\/api\/v1\/admin\/groups\/[^/]+\/members$/.test(c.url));
 
 const openForm = (): HTMLFormElement => {
   const form = document.querySelector("form");
@@ -249,6 +292,7 @@ const submitFormUnvalidated = () => { fireEvent.submit(openForm()); };
 const SUPPORT = {
   group_id: "grp_support",
   name: "Support Group",
+  tenant: "default",
   description: "front line",
   members: ["agt_alpha", "agt_beta"],
   created_at: "2026-08-01T10:00:00Z",
@@ -256,6 +300,7 @@ const SUPPORT = {
 const BILLING = {
   group_id: "grp_billing",
   name: "Billing Group",
+  tenant: "default",
   description: "invoices",
   members: [],
   created_at: "2026-08-02T11:30:00Z",
@@ -397,6 +442,7 @@ describe("what a row says about a group", () => {
     expect(support[1]).toBe(SUPPORT.description);
     expect(support[2]).toBe(String(SUPPORT.members.length));
     expect(support[3]).toBe(SUPPORT.members.join(""));
+    expect(support[5]).toBe(SUPPORT.tenant);
 
     const billing = cellsOf(rowFor(BILLING.group_id));
     expect(billing[1]).toBe(BILLING.description);
@@ -432,6 +478,19 @@ describe("what a row says about a group", () => {
     expect(row[3]).toBe("agt_alpha");
     expect(row[3]).not.toContain("operator-1");
   });
+
+  it("keeps equal group ids in different tenants as two visible rows", async () => {
+    readGroups = () => json(200, { groups: [
+      { ...BILLING, tenant: "acme", description: "acme row" },
+      { ...BILLING, tenant: "beta", description: "beta row" },
+    ] });
+    await mount();
+
+    expect(rows()).toHaveLength(2);
+    const rendered = rows().map(cellsOf);
+    expect(rendered.find((cells) => cells[1] === "acme row")?.[5]).toBe("acme");
+    expect(rendered.find((cells) => cells[1] === "beta row")?.[5]).toBe("beta");
+  });
 });
 
 describe("the control offered to a session that may not use it", () => {
@@ -455,9 +514,11 @@ describe("the control offered to a session that may not use it", () => {
 });
 
 describe("creating a group", () => {
-  it("sends the name and description the operator typed", async () => {
+  it("a tenant-scoped session sends the typed fields but no tenant override", async () => {
     await mount();
     fireEvent.click(buttonSaying(CREATE_BTN)!);
+    expect(screen.queryByLabelText(TENANT_LABEL)).toBeNull();
+    expect(calls.some((call) => call.url.endsWith(TENANTS))).toBe(false);
     typeInto(NAME_LABEL, "Analytics Group");
     typeInto(DESC_LABEL, "reporting only");
     submitForm();
@@ -468,7 +529,26 @@ describe("creating a group", () => {
     // The dialog has two fields and the route takes two; sending the
     // description as the name is the kind of swap that only ever shows up on
     // the server.
-    expect(sent).toMatchObject({ group_id: "Analytics Group", description: "reporting only" });
+    expect(sent).toEqual({ group_id: "Analytics Group", description: "reporting only" });
+  });
+
+  it("a platform administrator selects the tenant sent with the new group", async () => {
+    sessionRole = "admin";
+    await mount();
+    fireEvent.click(buttonSaying(CREATE_BTN)!);
+
+    const picker = screen.getByLabelText(TENANT_LABEL) as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.value)).toEqual(["default", "acme"]);
+    expect([...picker.options].map((option) => option.value)).not.toContain("retired");
+    expect(picker.value).toBe("default");
+    fireEvent.change(picker, { target: { value: "acme" } });
+    typeInto(NAME_LABEL, "Analytics Group");
+    submitForm();
+    await settle();
+
+    expect(groupWrites()).toHaveLength(1);
+    expect(JSON.parse(String(groupWrites()[0]!.init!.body)))
+      .toEqual({ group_id: "Analytics Group", description: "", tenant: "acme" });
   });
 
   it("says the group was created, and shows what the server then listed", async () => {
@@ -542,17 +622,18 @@ describe("creating a group", () => {
 });
 
 describe("assigning an agent to a group", () => {
-  const openAssignFor = (groupId: string) => {
+  const openAssignFor = async (groupId: string) => {
     const button = [...rowFor(groupId).querySelectorAll("button")]
       .find((b) => (b.textContent ?? "").includes(ASSIGN_BTN));
     if (!button) throw new Error(`the row for ${groupId} offers no assign control`);
     fireEvent.click(button);
+    await settle();
   };
 
   it("names the group whose row was clicked, not the first one listed", async () => {
     readGroups = () => json(200, { groups: [SUPPORT, BILLING] });
     await mount();
-    openAssignFor(BILLING.group_id);
+    await openAssignFor(BILLING.group_id);
 
     // The dialog is the only place the operator sees which group they are about
     // to change. A dialog that always names the first row would put the agent
@@ -562,13 +643,31 @@ describe("assigning an agent to a group", () => {
     expect(title).not.toContain(SUPPORT.name);
   });
 
-  it("adds the agent to the group it was assigned to and leaves the others alone", async () => {
-    readGroups = () => json(200, { groups: [SUPPORT, BILLING] });
+  it("posts the selected agent with the group tenant, then shows the server's reread", async () => {
+    let moved = false;
+    readGroups = () => json(200, {
+      groups: [SUPPORT, { ...BILLING, members: moved ? ["agt_gamma"] : [] }],
+    });
+    writeMember = (init) => {
+      moved = true;
+      return json(200, {
+        ok: true,
+        identity: "agt_gamma",
+        tenant: "default",
+        from_group: null,
+        to_group: BILLING.group_id,
+      });
+    };
     await mount();
-    openAssignFor(BILLING.group_id);
+    await openAssignFor(BILLING.group_id);
     typeInto(AGENT_LABEL, "agt_gamma");
     submitForm();
     await settle();
+
+    expect(memberWrites()).toHaveLength(1);
+    expect(memberWrites()[0]!.url).toMatch(/\/groups\/grp_billing\/members$/);
+    expect(JSON.parse(String(memberWrites()[0]!.init!.body)))
+      .toEqual({ identity: "agt_gamma", tenant: "default" });
 
     const billing = cellsOf(rowFor(BILLING.group_id));
     expect(billing[3]).toBe("agt_gamma");
@@ -576,9 +675,7 @@ describe("assigning an agent to a group", () => {
     // follow the list is the number an operator reads without opening the row.
     expect(billing[2]).toBe("1");
 
-    // The group nobody named is untouched — both the list and its count. An
-    // assignment applied to every row would put an agent in groups the operator
-    // never opened.
+    // The group nobody named is untouched in the server's reread.
     const support = cellsOf(rowFor(SUPPORT.group_id));
     expect(support[3]).toBe(SUPPORT.members.join(""));
     expect(support[2]).toBe(String(SUPPORT.members.length));
@@ -589,25 +686,117 @@ describe("assigning an agent to a group", () => {
     expect(toast()).toContain(BILLING.name);
   });
 
-  it("does not turn a typed web-user identity into an assigned agent", async () => {
+  it("offers only non-user agents from the selected group's tenant", async () => {
+    readAgents = () => json(200, { agents: [
+      { id: "operator-1", type: "user", tenant: "default" },
+      { id: "agt_same", type: "agent", tenant: "default" },
+      { id: "agt_other", type: "agent", tenant: "acme" },
+    ] });
     readGroups = () => json(200, { groups: [BILLING] });
     await mount();
-    openAssignFor(BILLING.group_id);
-    typeInto(AGENT_LABEL, "operator-1");
+    await openAssignFor(BILLING.group_id);
+
+    const select = screen.getByLabelText(AGENT_LABEL) as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    const offered = [...select.options].map((option) => option.value).filter(Boolean);
+    expect(offered).toEqual(["agt_same"]);
+    expect(offered).not.toContain("operator-1");
+    expect(offered).not.toContain("agt_other");
+    expect(calls.map((call) => call.url)).toContain(`${AGENTS}?tenant=default`);
+  });
+
+  it("keeps the tenant guard in the handler if the DOM select is tampered with", async () => {
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+
+    const select = screen.getByLabelText(AGENT_LABEL) as HTMLSelectElement;
+    const forged = document.createElement("option");
+    forged.value = "operator-1";
+    forged.textContent = "operator-1";
+    select.appendChild(forged);
+    fireEvent.change(select, { target: { value: "operator-1" } });
     submitForm();
     await settle();
 
+    expect(memberWrites()).toHaveLength(0);
+    expect(toast()).toContain(ASSIGN_UNKNOWN);
+    expect(toast()).not.toContain(ASSIGNED);
+  });
+
+  it("explicitly says when this tenant has no assignable agents", async () => {
+    readAgents = () => json(200, { agents: [
+      { id: "operator-1", type: "user", tenant: "default" },
+      { id: "agt_other", type: "agent", tenant: "acme" },
+    ] });
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+
+    expect(screen.getByTestId("assign-candidates-empty").textContent).toContain(ASSIGN_EMPTY);
+    expect(screen.queryByLabelText(AGENT_LABEL)).toBeNull();
+    expect(memberWrites()).toHaveLength(0);
+  });
+
+  it("keeps an unreachable candidate read distinct from an empty tenant", async () => {
+    let reads = 0;
+    readAgents = () => {
+      if (reads++ === 0) return json(200, { agents: [] });
+      throw new TypeError("Failed to fetch");
+    };
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+
+    expect(screen.getByTestId("assign-candidates-unreachable").textContent)
+      .toContain(ASSIGN_UNAVAILABLE);
+    expect(document.body.textContent).not.toContain(ASSIGN_EMPTY);
+    expect(screen.queryByLabelText(AGENT_LABEL)).toBeNull();
+  });
+
+  it("does not report or draw a move the server refused", async () => {
+    writeMember = () => json(403, { error: "not allowed", capability: MANAGE });
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+    typeInto(AGENT_LABEL, "agt_gamma");
+    submitForm();
+    await settle();
+
+    expect(memberWrites()).toHaveLength(1);
     expect(cellsOf(rowFor(BILLING.group_id))[2]).toBe("0");
     expect(cellsOf(rowFor(BILLING.group_id))[3]).toBe("-");
+    expect(toast()).toContain(ASSIGN_FAILED);
     expect(toast()).not.toContain(ASSIGNED);
-    expect(toast()).toContain(ASSIGN_UNKNOWN);
-    expect(toast()).toContain("operator-1");
+  });
+
+  it("sends only one move while the first request is still in flight", async () => {
+    let finish!: (response: Response) => void;
+    writeMember = () => new Promise<Response>((resolve) => { finish = resolve; });
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+    typeInto(AGENT_LABEL, "agt_gamma");
+
+    fireEvent.submit(openForm());
+    fireEvent.submit(openForm());
+    await settle();
+    expect(memberWrites()).toHaveLength(1);
+
+    finish(json(200, {
+      ok: true,
+      identity: "agt_gamma",
+      tenant: "default",
+      from_group: null,
+      to_group: BILLING.group_id,
+    }));
+    await settle();
   });
 
   it("ignores a submission with no agent named", async () => {
     readGroups = () => json(200, { groups: [SUPPORT, BILLING] });
     await mount();
-    openAssignFor(BILLING.group_id);
+    await openAssignFor(BILLING.group_id);
     submitFormUnvalidated();
     await settle();
 
@@ -623,6 +812,21 @@ describe("assigning an agent to a group", () => {
 
 describe("a field the route did not send", () => {
   const ABSENT = DICTIONARY.en["common.unknownValue"]!;
+
+  /**
+   * Anchor the assertion to the count column. The row also contains absent
+   * values in other columns, so a row-wide dash assertion cannot prove what
+   * the member count says. This mirrors the stronger check from main/90f0f4c.
+   */
+  const memberCountCell = (): HTMLElement => {
+    const row = [...tableEl().querySelectorAll("tbody tr")]
+      .find((tr) => (tr.textContent ?? "").includes("ops"));
+    expect(row).toBeDefined();
+    const headers = [...tableEl().querySelectorAll("thead th")].map((th) => th.textContent ?? "");
+    const column = headers.findIndex((header) => header.includes(DICTIONARY.en["groups.col.agents"]!));
+    expect(column, "the member-count column is no longer in the header").toBeGreaterThanOrEqual(0);
+    return [...row!.querySelectorAll("td")][column] as HTMLElement;
+  };
 
   it("draws no creation time rather than a plausible one", async () => {
     // **This filled it with `2026-08-17 12:00:00`.** A fixed timestamp, and a
@@ -644,9 +848,7 @@ describe("a field the route did not send", () => {
     // measurement, and this column made it out of an absence.
     readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: null }] });
     await mount();
-    const row = [...tableEl().querySelectorAll("tbody tr")]
-      .find((tr) => (tr.textContent ?? "").includes("ops"));
-    expect(row!.textContent).toContain(ABSENT);
+    expect(memberCountCell().textContent).toContain(ABSENT);
   });
 
   it("still draws a real zero as a zero", async () => {
@@ -656,8 +858,6 @@ describe("a field the route did not send", () => {
     // mapping by the same road.
     readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: 0, members: [] }] });
     await mount();
-    const row = [...tableEl().querySelectorAll("tbody tr")]
-      .find((tr) => (tr.textContent ?? "").includes("ops"));
-    expect(row!.textContent).toContain("0");
+    expect(memberCountCell().textContent).toContain("0");
   });
 });
