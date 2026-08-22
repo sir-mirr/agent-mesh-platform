@@ -158,6 +158,34 @@ reason no longer describes anything and the row is stale.
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password — a live route answering something other than 200, which needs the mesh. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
+## The functions this table cannot name
+
+Lines and functions are two numbers, and only one of them can be pointed at.
+Bun's lcov writes `FNF` and `FNH` per file — how many functions there are and
+how many ran — and **no `FN` or `FNDA` records at all**, so an uncovered
+function has no name, no line, and no way to be found except by reading the
+file and asking which callback cannot run. A single-line arrow makes it worse:
+`x.map(v => f(v))` is one covered line whether or not the array had anything in
+it, so a function can be uncovered inside a file at 100% of lines.
+
+Measured on 2026-08-22 at `0e4b9da`: **99.03% of functions, 99.88% of lines**,
+denominator A. Fourteen functions were left, and what chasing them turned up is
+the argument for having chased them — every one was a place a test could not
+call, which is the same thing as a place nobody had looked: two signal handlers
+that could have been wired to different shutdowns, a push subscription that
+could have carried one key twice, a sweep timer aimed at nothing, an upload
+abandoned without a sentence, a re-declare whose failure left an approved
+account unable to send, and a broken link reported as a refusal.
+
+**The method has a failure mode, and it fired.** Reasoning from *"main.ts has
+nine uncovered functions and its service-worker template holds about ten
+arrows"* gave a confident, wrong answer: moving that source into a file left
+the nine untouched and raised the file's function count, because a template
+literal's arrows were never being counted. Two numbers being close is not
+evidence. What remains after that correction — four files with one uncovered
+function each, and `test/harness.ts` with four — is not being guessed at again:
+whoever picks it up should expect to read code rather than a report.
+
 ## What this table cannot check
 
 That it is complete. Deciding whether a file has uncovered lines takes a
