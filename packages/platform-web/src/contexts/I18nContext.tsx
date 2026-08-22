@@ -159,6 +159,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "agents.unit.minute": "분",
     "agents.unit.hour": "시간",
     "agents.unit.day": "일",
+    "agents.unit.lessThanSecond": "1초 미만",
     "agents.notReported": "— 미보고",
     "lease.error": "메일함 처리 현황을 불러오지 못했습니다 (서버가 답하지 않았습니다).",
     "lease.down": "서버 연결 불가",
@@ -562,6 +563,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
 
     // Register Page
     "reg.title": "신규 에이전트 신원 등록 & 키 제안",
+    "reg.fingerprint": "키 지문",
 
     // Egress ACL Page
     "egress.title": "그룹 간 메시지 전송 규칙",
@@ -597,6 +599,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "server.kpi.throughput": "대기 중 메시지",
     "server.kpi.throughputSub": "메일함 전체 적체",
     "server.col.node": "서비스",
+    "server.healthRow": "서버 상태 확인 응답",
     "server.col.status": "서버 응답 상태",
     "server.col.sockets": "웹 채널 등록 신원",
     "server.col.uptime": "가동 시간 (Uptime)",
@@ -764,6 +767,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "agents.unit.minute": "m",
     "agents.unit.hour": "h",
     "agents.unit.day": "d",
+    "agents.unit.lessThanSecond": "less than 1s",
     "agents.notReported": "— not reported",
     "lease.error": "Could not read mailbox processing status (the server did not answer).",
     "lease.down": "Server unreachable",
@@ -1166,6 +1170,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
 
     // Register Page
     "reg.title": "Register New Agent Identity & Propose Key",
+    "reg.fingerprint": "Key fingerprint",
 
     // Egress ACL Page
     "egress.title": "Inter-group message delivery rules",
@@ -1201,6 +1206,7 @@ export const DICTIONARY: Record<Language, Record<string, string>> = {
     "server.kpi.throughput": "Messages waiting",
     "server.kpi.throughputSub": "total mailbox backlog",
     "server.col.node": "Service",
+    "server.healthRow": "Server health response",
     "server.col.status": "Server response",
     "server.col.sockets": "Web-channel registry entries",
     "server.col.uptime": "Uptime",

@@ -13,12 +13,44 @@ import { CAPABILITY } from "@/types/auth.ts";
  * guard was introduced. Keeping that provenance matters: a guessed blacklist
  * would both miss the real leak and reject ordinary language by accident.
  */
+const fromCodePoints = (...points: number[]): string => String.fromCodePoint(...points);
+const withTerms = (pattern: RegExp, ...terms: string[]): RegExp =>
+  new RegExp(`${pattern.source}|${terms.join("|")}`, pattern.flags);
+const DELIVERY_PROTOCOL_TERMS = [fromCodePoints(0xb9ac, 0xc2a4)];
+const INFRASTRUCTURE_TERMS = [
+  fromCodePoints(0xae00, 0xb85c, 0xbc8c, 0x20, 0xbd84, 0xc0b0),
+  fromCodePoints(0xd14c, 0xb10c, 0xd2b8, 0x20, 0xd2b8, 0xb798, 0xd53d, 0x20, 0xaca9, 0xb9ac),
+  fromCodePoints(0xc815, 0xc0c1, 0x20, 0xbc84, 0xd37c),
+];
+const MISNAMED_SCREEN_TERMS = [
+  fromCodePoints(0xb178, 0xb4dc, 0x20, 0xd154, 0xb808, 0xba54, 0xd2b8, 0xb9ac),
+  fromCodePoints(0xd14c, 0xb10c, 0xd2b8, 0x20, 0xb77c, 0xc6b0, 0xd305),
+];
+
 const FORBIDDEN_COPY = [
   { name: "specification section", pattern: /\bSPEC\s*§|§\s*\d/iu },
   { name: "server redaction token", pattern: /\[content withheld[^\]]*\]/iu },
-  { name: "delivery protocol term", pattern: /\b(?:TTL|ACK|NACK|Ed25519|At-Least-Once|Available|Leased|Acked|lease|leases)\b|리스/iu },
-  { name: "unimplemented infrastructure claim", pattern: /mTLS|CPU\s*[,/&·]\s*(?:RAM|Memory)|글로벌 분산|테넌트 트래픽 격리|tenant traffic isolation|Buffer Normal|정상 버퍼/iu },
-  { name: "misnamed screen", pattern: /Node Telemetry|노드 텔레메트리|Tenant Routing|테넌트 라우팅/iu },
+  {
+    name: "delivery protocol term",
+    pattern: withTerms(
+      /\b(?:TTL|ACK|NACK|Ed25519|At-Least-Once|Available|Leased|Acked|lease|leases)\b/iu,
+      ...DELIVERY_PROTOCOL_TERMS,
+    ),
+  },
+  {
+    name: "unimplemented infrastructure claim",
+    pattern: withTerms(
+      /mTLS|CPU\s*[,/&·]\s*(?:RAM|Memory)|tenant traffic isolation|Buffer Normal/iu,
+      ...INFRASTRUCTURE_TERMS,
+    ),
+  },
+  {
+    name: "misnamed screen",
+    pattern: withTerms(
+      /Node Telemetry|Tenant Routing/iu,
+      ...MISNAMED_SCREEN_TERMS,
+    ),
+  },
 ] as const;
 
 const WEB = import.meta.dir;
@@ -42,6 +74,19 @@ function displayStrings(line: string): string[] {
 }
 
 describe("operator-facing vocabulary", () => {
+  it("keeps every non-English forbidden term live in its guard", () => {
+    const terms = [
+      ["delivery protocol term", DELIVERY_PROTOCOL_TERMS],
+      ["unimplemented infrastructure claim", INFRASTRUCTURE_TERMS],
+      ["misnamed screen", MISNAMED_SCREEN_TERMS],
+    ] as const;
+    for (const [name, values] of terms) {
+      const pattern = FORBIDDEN_COPY.find((entry) => entry.name === name)?.pattern;
+      expect(pattern).toBeDefined();
+      expect(values.filter((value) => !pattern!.test(value))).toEqual([]);
+    }
+  });
+
   it("applies the unified-registry person filter in every page that fetches agents", () => {
     const pages = runtimeUiFiles(join(WEB, "pages"));
     const consumers = pages

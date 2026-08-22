@@ -6,31 +6,32 @@ import {
   KpiCard,
   Button,
 } from "@/components/index.ts";
-import { useI18n } from "@/contexts/I18nContext.tsx";
+import { DICTIONARY, useI18n } from "@/contexts/I18nContext.tsx";
 
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 
 export function formatElapsed(milliseconds: number, language: "ko" | "en"): string {
+  const words = DICTIONARY[language];
+  const second = words["agents.unit.second"]!;
+  const minute = words["agents.unit.minute"]!;
+  const hour = words["agents.unit.hour"]!;
+  const day = words["agents.unit.day"]!;
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-  if (seconds < 1) return language === "ko" ? "1초 미만" : "less than 1s";
-  if (seconds < 60) return language === "ko" ? `${seconds}초` : `${seconds}s`;
+  if (seconds < 1) return words["agents.unit.lessThanSecond"]!;
+  if (seconds < 60) return `${seconds}${second}`;
 
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return language === "ko" ? `${minutes}분` : `${minutes}m`;
+  if (minutes < 60) return `${minutes}${minute}`;
 
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   if (hours < 24) {
-    return language === "ko"
-      ? `${hours}시간${remainingMinutes ? ` ${remainingMinutes}분` : ""}`
-      : `${hours}h${remainingMinutes ? ` ${remainingMinutes}m` : ""}`;
+    return `${hours}${hour}${remainingMinutes ? ` ${remainingMinutes}${minute}` : ""}`;
   }
 
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
-  return language === "ko"
-    ? `${days}일${remainingHours ? ` ${remainingHours}시간` : ""}`
-    : `${days}d${remainingHours ? ` ${remainingHours}h` : ""}`;
+  return `${days}${day}${remainingHours ? ` ${remainingHours}${hour}` : ""}`;
 }
 
 export function TelemetryPage() {

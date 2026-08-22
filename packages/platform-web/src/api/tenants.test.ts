@@ -119,7 +119,12 @@ describe("the tenant directory contract", () => {
     const body = {
       ok: true,
       tenant: "default",
-      tenants: [{ id: "default", name: "플랫폼", created_at: "now", deleted_at: null }],
+      tenants: [{
+        id: "default",
+        name: String.fromCodePoint(0xd50c, 0xb7ab, 0xd3fc),
+        created_at: "now",
+        deleted_at: null,
+      }],
     };
     const spy = spyOn(body);
     expect(await fetchTenantDirectory()).toEqual(body);

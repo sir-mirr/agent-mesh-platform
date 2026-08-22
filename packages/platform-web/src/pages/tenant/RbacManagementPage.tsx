@@ -13,27 +13,27 @@ import { fetchLocalUsers } from "@/api/users.ts";
 import { fetchGrants, addGrantApi, deleteGrantApi, type GrantItem } from "@/api/grants.ts";
 import { CAPABILITY } from "@/types/auth.ts";
 
-const CAPABILITY_COPY: Record<string, [key: string, fallback: string]> = {
-  [CAPABILITY.KEY_APPROVE]: ["rbac.cap.keyApprove", "등록 키 승인"],
-  [CAPABILITY.AGENT_TEARDOWN]: ["rbac.cap.agentRemove", "에이전트 제거"],
-  [CAPABILITY.AGENT_PROVISION]: ["rbac.cap.agentRegister", "에이전트 등록"],
-  [CAPABILITY.GROUP_MANAGE]: ["rbac.cap.groupManage", "그룹 관리"],
-  [CAPABILITY.ROLE_GRANT]: ["rbac.cap.permissionManage", "계정 권한 변경"],
-  [CAPABILITY.AUDIT_READ_METADATA]: ["rbac.cap.auditDetails", "감사 기록의 시간·경로·길이 보기"],
-  [CAPABILITY.AUDIT_READ_CONTENT]: ["rbac.cap.auditContent", "감사 기록의 메시지 본문 보기"],
-  [CAPABILITY.MAILBOX_READ_DEPTH]: ["rbac.cap.mailboxBacklog", "메일함 적체 보기"],
-  [CAPABILITY.TENANT_READ_STATS]: ["rbac.cap.groupStats", "그룹 메시지 통계 보기"],
-  [CAPABILITY.SOURCE_READ]: ["rbac.cap.sourceRead", "허용된 발신처 보기"],
-  [CAPABILITY.USER_ADMIT]: ["rbac.cap.userAdmit", "사용자 승인"],
-  [CAPABILITY.USAGE_READ]: ["rbac.cap.activityRead", "운영 동작 지표 보기"],
+const CAPABILITY_COPY: Record<string, string> = {
+  [CAPABILITY.KEY_APPROVE]: "rbac.cap.keyApprove",
+  [CAPABILITY.AGENT_TEARDOWN]: "rbac.cap.agentRemove",
+  [CAPABILITY.AGENT_PROVISION]: "rbac.cap.agentRegister",
+  [CAPABILITY.GROUP_MANAGE]: "rbac.cap.groupManage",
+  [CAPABILITY.ROLE_GRANT]: "rbac.cap.permissionManage",
+  [CAPABILITY.AUDIT_READ_METADATA]: "rbac.cap.auditDetails",
+  [CAPABILITY.AUDIT_READ_CONTENT]: "rbac.cap.auditContent",
+  [CAPABILITY.MAILBOX_READ_DEPTH]: "rbac.cap.mailboxBacklog",
+  [CAPABILITY.TENANT_READ_STATS]: "rbac.cap.groupStats",
+  [CAPABILITY.SOURCE_READ]: "rbac.cap.sourceRead",
+  [CAPABILITY.USER_ADMIT]: "rbac.cap.userAdmit",
+  [CAPABILITY.USAGE_READ]: "rbac.cap.activityRead",
 };
 
 export function capabilityLabel(
-  t: (key: string, fallback: string) => string,
+  t: (key: string, fallback?: string) => string,
   capabilityId: string,
 ): string {
   const copy = CAPABILITY_COPY[capabilityId];
-  if (copy) return t(copy[0], copy[1]);
+  if (copy) return t(copy);
   return capabilityId.replace(/[._]+/g, " ");
 }
 

@@ -103,7 +103,7 @@ const HELD_MARK = "✓";
 /** The separator the toast puts between subject and capability. */
 const DOT = "·";
 const friendly = (capability: string): string =>
-  capabilityLabel((key, fallback) => DICTIONARY.en[key] ?? fallback, capability);
+  capabilityLabel((key, fallback) => DICTIONARY.en[key] ?? fallback ?? key, capability);
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });

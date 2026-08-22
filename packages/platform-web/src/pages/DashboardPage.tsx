@@ -363,7 +363,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.tenants", "등록된 그룹")}
           value={isLoading ? "..." : isError ? "—" : String(groups.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("groups.error", "그룹 목록을 불러오지 못했습니다.") : (groups.length > 0 ? `${groups.length} ${t("dash.pa.tenantsUnit", "개 그룹 등록")}` : t("dash.pa.tenantsNone", "등록된 그룹 없음"))}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("groups.error", "그룹 목록을 불러오지 못했습니다 (서버가 답하지 않았습니다).") : (groups.length > 0 ? `${groups.length} ${t("dash.pa.tenantsUnit", "개 그룹 등록")}` : t("dash.pa.tenantsNone", "등록된 그룹 없음"))}
           color="#6366F1"
           icon="🏢"
         />
