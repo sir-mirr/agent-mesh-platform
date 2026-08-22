@@ -294,6 +294,39 @@ describe("a boot after the rule landed", () => {
   });
 
   /**
+   * The line an operator greps for after a restart that changed the console
+   * (`docs/LOGGING-OPS.md`), and its absence the rest of the time.
+   */
+  test("says what it admitted, and says nothing when it admitted nothing", async () => {
+    const { captureConsole } = await import("@agent-mesh/log");
+    const { renameSeededAdmin: _unused, admitApprovedIdentitiesOnBoot } = await import("./main.ts");
+    void _unused;
+    const identity = approvedTheOldWay();
+
+    let { lines, restore } = captureConsole();
+    try {
+      admitApprovedIdentitiesOnBoot();
+    } finally {
+      restore();
+    }
+    const said = lines.join("\n");
+    expect(said).toContain("registry_backfilled");
+    // The names, not just the count: an operator reading this line is deciding
+    // whether the identity they are looking for is one of them.
+    expect(said).toContain(identity);
+
+    ({ lines, restore } = captureConsole());
+    try {
+      admitApprovedIdentitiesOnBoot();
+    } finally {
+      restore();
+    }
+    // Nothing to do, nothing said. A line per boot reporting nought is one an
+    // operator learns to skip, and the boot that reports one is then skipped.
+    expect(lines.join("\n")).not.toContain("registry_backfilled");
+  });
+
+  /**
    * **Not "every identity the hub knows".** That is what D-747 refused to
    * decide by fiat, and the reason has not changed: a route that admits any hub
    * identity has to say whose registry it is adding to. An approved key is a
