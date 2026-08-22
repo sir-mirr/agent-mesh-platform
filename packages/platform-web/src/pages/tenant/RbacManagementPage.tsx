@@ -45,7 +45,7 @@ interface OrgMember {
   /** `true` only when a server response marks this subject's grants immutable. */
   fixedAdmin: boolean | null;
   /** Existing cells the grant route says its DELETE endpoint will refuse. */
-  immutableReasons: Record<string, string>;
+  immutableReasons: Record<string, NonNullable<GrantItem["immutable_reason"]> | "not_revocable">;
 }
 
 export function RbacManagementPage() {
@@ -92,7 +92,10 @@ export function RbacManagementPage() {
 
       // Group grants by subject strictly from server response
       const subjectMap = new Map<string, string[]>();
-      const immutableReasonMap = new Map<string, Record<string, string>>();
+      const immutableReasonMap = new Map<
+        string,
+        Record<string, NonNullable<GrantItem["immutable_reason"]> | "not_revocable">
+      >();
       (res.grants || []).forEach((g: GrantItem) => {
         const list = subjectMap.get(g.subject) || [];
         list.push(g.capability);

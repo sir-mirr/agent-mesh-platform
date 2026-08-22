@@ -45,6 +45,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import type { ImmutableReason } from "@agent-mesh/contracts";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before it runs any test, so a register/unregister pair swaps
@@ -60,6 +61,7 @@ const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { CAPABILITY, ALL_CAPABILITIES } = await import("@/types/auth.ts");
+const { IMMUTABLE_REASON } = await import("@agent-mesh/contracts");
 const { RbacManagementPage, capabilityLabel } = await import("./RbacManagementPage.tsx");
 
 const ME = "/auth/me";
@@ -145,7 +147,7 @@ const session = (capabilities: string[]) => ({
 const cell = (
   subject: string,
   capability: string,
-  policy: { revocable?: boolean; immutable_reason?: string } = {},
+  policy: { revocable?: boolean; immutable_reason?: ImmutableReason } = {},
 ) => ({ subject, capability, scope: "*", ...policy });
 
 /** The whole answer: the cells, and the columns to draw them under. */
@@ -599,7 +601,7 @@ describe("giving a capability and taking it back", () => {
 
   it("locks a server-declared non-revocable cell without locking the ordinary member's other cells", async () => {
     mapReads = [answers(200, mapOf([
-      cell("grace", GRANT, { revocable: false, immutable_reason: "last_grantor" }),
+      cell("grace", GRANT, { revocable: false, immutable_reason: IMMUTABLE_REASON.LAST_GRANTOR }),
       cell("grace", META, { revocable: true }),
     ], []))];
     await mount();
@@ -608,7 +610,7 @@ describe("giving a capability and taking it back", () => {
     const ordinary = chip("grace", META)!;
     expect(lastGrantor.disabled).toBe(true);
     expect(lastGrantor.getAttribute("data-fixed-admin")).toBe(null);
-    expect(lastGrantor.getAttribute("data-immutable-reason")).toBe("last_grantor");
+    expect(lastGrantor.getAttribute("data-immutable-reason")).toBe(IMMUTABLE_REASON.LAST_GRANTOR);
     expect(lastGrantor.style.opacity).toBe("0.45");
     expect(ordinary.disabled).toBe(false);
 
