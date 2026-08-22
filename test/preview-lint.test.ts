@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { runLint } from "../scripts/lint-preview";
+import { reportLint, runLint } from "../scripts/lint-preview";
 
 /**
  * What a check printed, without importing one.
@@ -185,5 +185,83 @@ describe("where the capability vocabulary comes from", () => {
     });
 
     expect(r.capabilityCount).toBe(2);
+  });
+});
+
+/**
+ * A manifest entry pointing at a file that is not there.
+ *
+ * The oldest rule in this linter and the last one to be executed: the check was
+ * written as "not mocked, and not on disk", so handing in a manifest turned it
+ * off, and every test that had a manifest to give was a test that could not
+ * reach it. The seam is `exists`.
+ */
+describe("a manifest that names a file nobody shipped", () => {
+  /** One manifest, one entry, and everything else held still. */
+  const lintWith = (exists: () => boolean, silent = true) =>
+    runLint({
+      mockDeliverables: "- [`preview/one-screen.html`] a screen\n",
+      exists,
+      mockSpec: "# SPEC\n### 9.1 Routes\n| `/dashboard` |\n",
+      mockHtmlFiles: {},
+      minFloorOverride: 0,
+      silent,
+    });
+
+  /**
+   * **The difference, not the count.** These mock inputs fail other rules of
+   * this linter too, so asserting "some error happened" would pass with the
+   * missing-file rule deleted. What is measured is the one error that appears
+   * when the file stops existing and nothing else changes.
+   */
+  test("costs exactly one error, and the complaint names the file", () => {
+    const c = capture();
+    let missing: number;
+    try {
+      missing = lintWith(() => false, false).errors;
+    } finally {
+      c.restore();
+    }
+    const present = lintWith(() => true).errors;
+    expect(
+      { extra: missing - present, named: c.lines.join("\n").includes("preview/one-screen.html") },
+      "a manifest entry with no file behind it cost nothing, or the complaint did not say which",
+    ).toEqual({ extra: 1, named: true });
+  });
+});
+
+/**
+ * What the shell gets back.
+ *
+ * `reportLint` was the body of `import.meta.main` — the four lines a person
+ * reads and the exit code CI branches on, reachable only by typing the path.
+ * The failing branch is the one that matters and the one nobody looks at while
+ * things are green.
+ */
+describe("reporting a lint run", () => {
+  const run = (errors: number) => {
+    const said: string[] = [];
+    const complained: string[] = [];
+    const codes: number[] = [];
+    reportLint(
+      { errors, totalRoutesFound: 61, totalAllowedRoutes: 60, capabilityCount: 12 },
+      { say: (l) => said.push(l), complain: (l) => complained.push(l), exit: (c) => codes.push(c) },
+    );
+    return { said: said.join("\n"), complained: complained.join("\n"), codes };
+  };
+
+  test("a clean run says what it verified and exits 0", () => {
+    const out = run(0);
+    expect({ passed: out.said.includes("ALL LINT & CONTRACT CHECKS PASSED"), codes: out.codes })
+      .toEqual({ passed: true, codes: [0] });
+    expect(out.said, "the count a reader checks the floor against was dropped").toContain("61 route references");
+  });
+
+  test("a failing run exits 1 and says how many", () => {
+    const out = run(3);
+    expect(
+      { complained: out.complained.includes("Total Lint Errors: 3"), codes: out.codes, quiet: out.said },
+      "a run with errors exited 0, or announced a pass beside them",
+    ).toEqual({ complained: true, codes: [1], quiet: "" });
   });
 });

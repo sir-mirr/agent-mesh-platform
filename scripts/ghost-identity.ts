@@ -2,8 +2,9 @@
 /**
  * What a name still holds, and removing a mesh row that holds nothing.
  *
- *   bun scripts/ghost-identity.ts platform-admin            # report only
- *   bun scripts/ghost-identity.ts platform-admin --remove   # remove, if it is empty
+ *   AGENT_MESH_STATE_DIR=/var/lib/agent-mesh bun scripts/ghost-identity.ts platform-admin
+ *   … --remove                                   # remove it, if it is empty
+ *   … --mesh agents.db --local agent-mesh.db     # or name the two files outright
  *
  * **The state this exists for.** `renameSeededAdmin` moves `admin` to
  * `platform-admin` once at boot, and `renameLocalAccount` refuses when both
@@ -28,8 +29,7 @@
 
 import { join } from "node:path";
 
-import { openAt, openStore, stateDir } from "@agent-mesh/store";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 
 /** Where a name can appear, and which database holds it. */
 export const MESH_TABLES: ReadonlyArray<readonly [string, string]> = [
@@ -100,6 +100,43 @@ export function inspectGhost(
   return { meshRow, attachments, removed: false };
 }
 
+/**
+ * The two files, named outright or derived from the state directory.
+ *
+ * **It does not reach for `@agent-mesh/store`, and does not spell a default
+ * either.** A repair that guesses which deployment it is pointed at is one that
+ * can be run against the wrong one, and this deletes a row: either the
+ * environment says where the state directory is, the way every service here is
+ * told, or the two paths are given. Returns `null` when it has neither, having
+ * said so.
+ */
+function openDatabases(
+  argv: string[],
+  say: (line: string) => void,
+): { mesh: Database; local: Database } | null {
+  const flag = (name: string): string | undefined => {
+    const at = argv.indexOf(`--${name}`);
+    return at >= 0 ? argv[at + 1] : undefined;
+  };
+  const dir = process.env.AGENT_MESH_STATE_DIR;
+  const meshPath = flag("mesh") ?? (dir ? join(dir, "agents.db") : undefined);
+  const localPath = flag("local") ?? (dir ? join(dir, "agent-mesh.db") : undefined);
+  if (!meshPath || !localPath) {
+    say("set AGENT_MESH_STATE_DIR, or pass --mesh <agents.db> --local <agent-mesh.db>");
+    return null;
+  }
+  // The same wait `@agent-mesh/store` opens with. This runs against a stopped
+  // service, so a lock here means something else is holding one — waiting is a
+  // better answer than an immediate `SQLITE_BUSY` on a repair somebody is
+  // watching.
+  const open = (path: string) => {
+    const db = new Database(path, { readwrite: true });
+    db.exec("PRAGMA busy_timeout = 5000;");
+    return db;
+  };
+  return { mesh: open(meshPath), local: open(localPath) };
+}
+
 /** The command, with its output as a value so a test can read it. */
 export function runGhostIdentity(argv: string[], databases?: { mesh: Database; local: Database }): {
   code: number;
@@ -109,16 +146,26 @@ export function runGhostIdentity(argv: string[], databases?: { mesh: Database; l
   const say = (line: string) => { lines.push(line); };
 
   const remove = argv.includes("--remove");
-  const name = argv.find((a) => !a.startsWith("--"));
+  // The flag values are not the identity: `--mesh agents.db` puts a bare word
+  // in `argv` that is not a name to look for.
+  const flagValues = new Set(
+    ["--mesh", "--local"]
+      .map((f) => argv.indexOf(f))
+      // `indexOf` answers -1 for a flag nobody passed, and `argv[-1 + 1]` is
+      // the identity itself — which made every call without flags report its
+      // own usage. Present, then the value after it.
+      .filter((at) => at >= 0)
+      .map((at) => argv[at + 1])
+      .filter((v): v is string => !!v),
+  );
+  const name = argv.find((a) => !a.startsWith("--") && !flagValues.has(a));
   if (!name) {
     say("usage: bun scripts/ghost-identity.ts <identity> [--remove]");
     return { code: 2, lines };
   }
 
-  const opened = databases ?? {
-    mesh: openStore("agents"),
-    local: openAt(join(stateDir(), "agent-mesh.db")),
-  };
+  const opened = databases ?? openDatabases(argv, say);
+  if (!opened) return { code: 2, lines };
   const report = inspectGhost(name, opened.mesh, opened.local, { remove });
 
   if (!report.meshRow) {

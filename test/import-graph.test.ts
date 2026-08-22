@@ -286,17 +286,17 @@ describe("the repository's import graph", () => {
   });
 
   /**
-   * Everything outside `packages/` that reaches in — the ops scripts, through
-   * the barrel. `test/` is not among them and is the reason the list stays
-   * short: it drives the services as processes rather than importing them.
+   * Everything outside `packages/` that reaches in. One, through the barrel —
+   * `test/` drives the services as processes rather than importing them, which
+   * is what keeps that number at one.
    *
-   * Both entries are repairs an operator runs with the services stopped, and
-   * both need the same thing from `@agent-mesh/store`: where the state
-   * directory is and how to open a database in it. That is exactly what the
-   * front door is for — the alternative is each script spelling the path and
-   * the `busy_timeout` again, which is the drift this file exists to catch.
+   * `scripts/ghost-identity.ts` was nearly the second and is not, for a reason
+   * worth leaving here: a project compiles what it imports, so listing that
+   * script in `test/tsconfig.json` — which its test needs — would have pulled
+   * `packages/store` in behind it, one `TS6307` per file. It is told where the
+   * state directory is instead.
    */
-  test("the consumers outside the packages use the front door", () => {
+  test("one consumer outside the packages, and it uses the front door", () => {
     const outside = ["scripts", "test", ".claude/hooks"]
       .flatMap((dir) => sources(join(ROOT, dir)))
       .flatMap((file) =>
@@ -307,10 +307,7 @@ describe("the repository's import graph", () => {
       )
       .sort();
 
-    expect(outside).toEqual([
-      "scripts/collect-orphan-blobs.ts :: @agent-mesh/store",
-      "scripts/ghost-identity.ts :: @agent-mesh/store",
-    ]);
+    expect(outside).toEqual(["scripts/collect-orphan-blobs.ts :: @agent-mesh/store"]);
   });
 
   /**

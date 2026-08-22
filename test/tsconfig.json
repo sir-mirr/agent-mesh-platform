@@ -21,6 +21,11 @@
     "**/*.tsx",
     "../scripts/mutation-verdict.ts",
     "../scripts/lint-preview.ts",
+    // The ghost-row repair. It imports nothing from `packages/` on purpose:
+    // listing a file that does costs this project everything that file
+    // imports, one `TS6307` at a time, which is why the repair is told where
+    // the state directory is rather than asking the store.
+    "../scripts/ghost-identity.ts",
     // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
     // it rather than restating it, for the same reason the hooks do: a second
     // copy is a second thing that can disagree.

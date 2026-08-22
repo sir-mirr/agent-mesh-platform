@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { openTestDb } from "./harness.ts";
 import { inspectGhost, runGhostIdentity } from "../scripts/ghost-identity";
 
@@ -90,6 +94,46 @@ describe("a name that holds nothing but a mesh row", () => {
     const out = runGhostIdentity(["nobody", "--remove"], { mesh, local });
     expect(out.code).toBe(0);
     expect(out.lines.join("\n")).toContain("nothing here is blocking a rename");
+  });
+
+  /**
+   * Where the two files come from when nobody hands them in.
+   *
+   * This is the half a test can skip forever — every case above passes its own
+   * databases, so the paths the *operator* gets were the one part of a
+   * destructive tool nothing exercised.
+   */
+  test("names the files it was pointed at, and refuses to guess", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ghost-"));
+    const mesh = openTestDb(join(dir, "agents.db"), { create: true });
+    mesh.run(`CREATE TABLE agents (identity TEXT PRIMARY KEY)`);
+    mesh.prepare(`INSERT INTO agents (identity) VALUES (?)`).run("platform-admin");
+    mesh.close();
+    const local = openTestDb(join(dir, "agent-mesh.db"), { create: true });
+    local.run(`CREATE TABLE local_users (username TEXT PRIMARY KEY)`);
+    local.close();
+
+    const named = runGhostIdentity([
+      "platform-admin",
+      "--mesh", join(dir, "agents.db"),
+      "--local", join(dir, "agent-mesh.db"),
+    ]);
+    expect(
+      { code: named.code, said: named.lines.join("\n") },
+      "the identity was read out of a flag's value, or the files were not opened",
+    ).toEqual({ code: 0, said: expect.stringContaining("a ghost") });
+
+    const was = process.env.AGENT_MESH_STATE_DIR;
+    delete process.env.AGENT_MESH_STATE_DIR;
+    try {
+      const guessed = runGhostIdentity(["platform-admin"]);
+      expect(
+        { code: guessed.code, said: guessed.lines[0] },
+        "a tool that deletes a row guessed which deployment it was pointed at",
+      ).toEqual({ code: 2, said: "set AGENT_MESH_STATE_DIR, or pass --mesh <agents.db> --local <agent-mesh.db>" });
+    } finally {
+      if (was !== undefined) process.env.AGENT_MESH_STATE_DIR = was;
+    }
   });
 
   test("without a name it says how to call it, and touches nothing", () => {

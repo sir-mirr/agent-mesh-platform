@@ -5921,6 +5921,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "a-manifest-entry-with-no-file-costs-nothing",
+    defect:
+      "The linter stopped checking that the sixty deliverables it lists are on disk. The manifest is the deliverable \u2014 `docs/deliverables.md` is what says the screens exist \u2014 so a missing file passing here means the document and the tree disagree and nothing says so.\n\nThis rule was unreachable from a test until the existence check became a seam: it read `!options?.mockDeliverables && !existsSync(f)`, so every caller that handed in a manifest also turned the rule off.",
+    file: "scripts/lint-preview.ts",
+    from: "    if (!exists(f)) {",
+    to: "    if (false) {",
+    suite: "test/preview-lint.test.ts",
+    expect: ["a manifest entry with no file behind it cost nothing"],
+  },
+  {
+    id: "a-failing-lint-reports-a-pass",
+    defect:
+      "The linter counted errors and exited 0. CI branches on that code, so the run goes green with the errors printed above it \u2014 the failure mode is not a missed defect, it is a *reported pass*, which is worse because nobody reads the log of a green run.",
+    file: "scripts/lint-preview.ts",
+    from: "  complain(`\\n\\u274c Total Lint Errors: ${result.errors}`);\n  exit(1);",
+    to: "  complain(`\\n\\u274c Total Lint Errors: ${result.errors}`);\n  exit(0);",
+    suite: "test/preview-lint.test.ts",
+    expect: ["a run with errors exited 0, or announced a pass beside them"],
+  },
+  {
     id: "a-ghost-sweep-that-takes-an-identity-with-it",
     defect:
       "The repair for a crashed boot's leftover row stopped checking whether anything pointed at the name, so `--remove` deleted an `agents.identity` row that still held keys, ownership or grants. The rename it unblocks exists because two accounts under one meaning is worse than an old name \u2014 a repair that removes the wrong one of them is that same defect with a script behind it.",

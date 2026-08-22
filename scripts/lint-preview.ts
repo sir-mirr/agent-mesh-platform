@@ -8,6 +8,17 @@ const MIN_ROUTE_REFERENCES_FLOOR = 60;
 
 export function runLint(options?: {
   mockDeliverables?: string;
+  /**
+   * How a manifest entry is checked for existence.
+   *
+   * **The mock used to turn this rule off.** The check read
+   * `!options?.mockDeliverables && !existsSync(f)`, so every caller that handed
+   * in a manifest also silently disabled the only rule that manifest is about —
+   * and the missing-file branch was unreachable from a test, which is why
+   * nothing had ever executed it. A seam instead: the real answer by default,
+   * and a test can say a file is not there without deleting one.
+   */
+  exists?: (path: string) => boolean;
   mockSpec?: string;
   mockHtmlFiles?: Record<string, string>;
   mockRbac?: string;
@@ -31,8 +42,9 @@ export function runLint(options?: {
     .map(m => m[1])
     .filter((f): f is string => typeof f === 'string');
 
+  const exists = options?.exists ?? existsSync;
   fileMatches.forEach(f => {
-    if (!options?.mockDeliverables && !existsSync(f)) {
+    if (!exists(f)) {
       if (!silent) console.error(`❌ Missing file in manifest: ${f}`);
       errors++;
     }
@@ -171,21 +183,46 @@ export function runLint(options?: {
 // is the shape this file's own tests were written to end. They are cases in
 // `test/preview-lint.test.ts` now, so a linter that stops catching an invented
 // route fails the suite rather than waiting to be asked.
-if (import.meta.main) {
-  // Normal Linter Execution
-  console.log('--- Running Allowlist-Based Preview & Contract Linter ---');
-  const result = runLint();
-
+/**
+ * What a person sees when they run this, and what the shell gets back.
+ *
+ * **This was the body of `import.meta.main` and nothing counted it.** The
+ * linter's own rules are tested; the paragraph that *reports* them was
+ * reachable only by typing the path, which is the same gap this file was
+ * written to close one level down — a check that only runs when somebody
+ * remembers is one that does not run. Both branches matter: the failing one
+ * decides whether CI stops, and it is the one nobody looks at while things
+ * are green.
+ *
+ * `out` and `exit` are parameters so a test can read the lines instead of the
+ * terminal, and so calling this does not end the suite.
+ */
+export function reportLint(
+  result: ReturnType<typeof runLint>,
+  {
+    say = (line: string) => { console.log(line); },
+    complain = (line: string) => { console.error(line); },
+    exit = (code: number): void => { process.exit(code); },
+  }: {
+    say?: (line: string) => void;
+    complain?: (line: string) => void;
+    exit?: (code: number) => void;
+  } = {},
+): void {
   if (result.errors === 0) {
-    console.log(`✓ Verified 60 files in deliverables manifest exist.`);
-    console.log(`✓ Parsed ${result.totalAllowedRoutes} authoritative routes from SPEC.md (§ 9.1, § 9.2, § 9.2.1).`);
-    console.log(`✓ Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files (Floor: >= ${MIN_ROUTE_REFERENCES_FLOOR}).`);
-    console.log(`✓ Verified all ${result.capabilityCount} capabilities from @agent-mesh/contracts exist in RBAC.`);
-    console.log(`\n✅ ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${result.totalRoutesFound} routes verified)`);
-    process.exit(0);
-  } else {
-    console.error(`\n❌ Total Lint Errors: ${result.errors}`);
-    process.exit(1);
+    say(`\u2713 Verified 60 files in deliverables manifest exist.`);
+    say(`\u2713 Parsed ${result.totalAllowedRoutes} authoritative routes from SPEC.md (\u00a7 9.1, \u00a7 9.2, \u00a7 9.2.1).`);
+    say(`\u2713 Extracted and verified ${result.totalRoutesFound} route references across 61 HTML files (Floor: >= ${MIN_ROUTE_REFERENCES_FLOOR}).`);
+    say(`\u2713 Verified all ${result.capabilityCount} capabilities from @agent-mesh/contracts exist in RBAC.`);
+    say(`\n\u2705 ALL LINT & CONTRACT CHECKS PASSED (0 errors, ${result.totalRoutesFound} routes verified)`);
+    exit(0);
+    return;
   }
+  complain(`\n\u274c Total Lint Errors: ${result.errors}`);
+  exit(1);
+}
 
+if (import.meta.main) {
+  console.log('--- Running Allowlist-Based Preview & Contract Linter ---');
+  reportLint(runLint());
 }
