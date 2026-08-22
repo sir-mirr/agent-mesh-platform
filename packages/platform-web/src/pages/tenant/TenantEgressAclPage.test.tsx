@@ -212,7 +212,8 @@ describe("the four things the matrix can be saying", () => {
     // The server answered. Reporting that as "the server did not answer" sends
     // an operator to check a network that is fine, for a permission they simply
     // do not hold.
-    expect(panelText()).toContain(`${REFUSED} (${MANAGE}).`);
+    expect(panelText()).toContain(`${REFUSED}.`);
+    expect(panelText()).not.toContain(MANAGE);
     expect(panelText()).not.toContain(UNREACHABLE);
     expect(panelText()).not.toContain(EMPTY);
     // A panel still saying "loading" after the read is over is a fourth wrong

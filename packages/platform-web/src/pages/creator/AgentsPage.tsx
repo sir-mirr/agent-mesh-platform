@@ -224,7 +224,7 @@ export function AgentsPage() {
     },
     {
       key: "fingerprint",
-      header: t("agents.col.fingerprint", "Ed25519 공개키 지문"),
+      header: t("agents.col.fingerprint", "공개키 지문"),
       render: (item: AgentItem) => (
         <FingerprintBox fingerprint={item.fingerprint} showCopy={true} />
       ),
@@ -301,11 +301,8 @@ export function AgentsPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="37"
         title={t("agents.title", "소유 에이전트 운영 스튜디오")}
-        subtitle={t("agents.subtitle", "등록된 자율 에이전트 플릿 관리, 실시간 온라인 웹소켓 상태 및 암호학적 지문 검증")}
+        subtitle={t("agents.subtitle", "등록된 신원, 공개키 지문, 마지막 접속 기록을 서버 목록 그대로 보여줍니다")}
         actions={
           <Link to="/creator/register">
             <Button variant="primary" size="sm">
@@ -334,9 +331,9 @@ export function AgentsPage() {
           isOpen={isTeardownOpen}
           onClose={() => setIsTeardownOpen(false)}
           onConfirm={handleTeardownConfirm}
-          title={t("agents.teardown.title", "에이전트 영구 Teardown (§ 9.3)")}
+          title={t("agents.teardown.title", "에이전트 영구 삭제")}
           description={`${teardownTarget.name} (${teardownTarget.id}) — ${t("agents.teardown.body", "이 신원을 영구히 파괴합니다. 승인된 공개키는 침해 보관소로 옮겨지고, 같은 ID 로는 다시 등록할 수 없습니다 (409).")}`}
-          confirmLabel={t("agents.teardown.confirm", "영구 Teardown 실행")}
+          confirmLabel={t("agents.teardown.confirm", "영구 삭제")}
           isDestructive={true}
           isLoading={isTeardownPending}
           confirmPromptMatch={teardownTarget.id}

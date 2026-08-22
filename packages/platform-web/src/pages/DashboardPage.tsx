@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import {
   PageHeader,
   KpiCard,
-  TelemetryCard,
   StatusBadge,
   FingerprintBox,
   DataTable,
@@ -16,7 +15,6 @@ import type { UserRole } from "@/types/auth.ts";
 
 import { fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
-import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 
 /**
@@ -247,34 +245,23 @@ export function DashboardPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* 1. Header with Role Indicator & Quick Switcher for Testing */}
       <PageHeader
-        suiteTag={
-          currentRole === "PLATFORM_ADMIN"
-            ? "PLATFORM SUITE · ADMIN MASTER"
-            : currentRole === "TENANT_ADMIN"
-            ? "TENANT SUITE · GOVERNANCE"
-            : currentRole === "GROUP_ADMIN"
-            ? "STUDIO SUITE · GROUP MANAGER"
-            : "STUDIO SUITE · OPERATOR"
-        }
-        suiteBadgeColor="leased"
-        screenId="DASH-01"
         title={
           currentRole === "PLATFORM_ADMIN"
-            ? t("dash.platform.title", "플랫폼 인프라 & 글로벌 허브 대시보드")
+            ? t("dash.platform.title", "플랫폼 운영 현황")
             : currentRole === "TENANT_ADMIN"
-            ? t("dash.tenant.title", "테넌트 조직 거버넌스 & 플릿 대시보드")
+            ? t("dash.tenant.title", "조직 운영 대시보드")
             : currentRole === "GROUP_ADMIN"
             ? t("dash.group.title", "에이전트 그룹 운영 관리 대시보드")
             : t("dash.operator.title", "소유 에이전트 운영 대시보드")
         }
         subtitle={
           currentRole === "PLATFORM_ADMIN"
-            ? t("dash.platform.sub", "글로벌 분산 노드 토폴로지, 실시간 CPU/RAM 부하 및 테넌트 트래픽 격리 상태")
+            ? t("dash.platform.sub", "등록 신원, 그룹, 메시지 대기 현황")
             : currentRole === "TENANT_ADMIN"
-            ? t("dash.tenant.sub", "조직 소속 에이전트 그룹, 그룹 간 Egress 통신 정책 및 보안 감사 현황")
+            ? t("dash.tenant.sub", "조직 소속 에이전트 그룹, 그룹 간 전송 규칙 및 감사 현황")
             : currentRole === "GROUP_ADMIN"
             ? t("dash.group.sub", "담당 그룹별 에이전트 멤버십 이동, 메일함 큐 적체 및 그룹 간 통신 모니터링")
-            : t("dash.operator.sub", "소유한 Ed25519 에이전트 연결 상태, 메일함 큐 및 메시지 테스트")
+            : t("dash.operator.sub", "메시에 등록된 신원, 메일함 대기 수, 메시지 테스트")
         }
         actions={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -302,7 +289,7 @@ export function DashboardPage() {
             {currentRole === "TENANT_ADMIN" && (
               <Link to="/tenant/egress-acl">
                 <Button variant="primary" size="sm">
-                  {t("dash.egressLink", "🛡️ Egress ACL settings")}
+                  {t("dash.egressLink", "🛡️ 그룹 간 전송 규칙")}
                 </Button>
               </Link>
             )}
@@ -331,26 +318,20 @@ export function DashboardPage() {
    ========================================================================= */
 function PlatformAdminDashboard() {
   const { t } = useI18n();
-  const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [agents, setAgents] = useState<RegistryAgent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
   const [failure, setFailure] = useState<FailureKind | null>(null);
-  /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
-  const [missing, setMissing] = useState<string | null>(null);
-
   React.useEffect(() => {
     setIsLoading(true);
     setIsError(false);
     Promise.all([
-      fetchTelemetry().then(setTelemetry),
       fetchGroups().then(setGroups),
       fetchAgents().then(setAgents),
     ]).catch((err: unknown) => {
       setIsError(true);
       setFailure(failureKind(err));
-        setMissing(refusedCapability(err));
     }).finally(() => {
       setIsLoading(false);
     });
@@ -362,57 +343,27 @@ function PlatformAdminDashboard() {
   // three different answers under one label, and `||` meant an empty registry
   // took the second of them.
   const totalAgents = agents.length;
-  // **No fallback that counts a status the route does not send.** When telemetry
-  // has not answered, the socket count is unknown, and an agent list cannot
-  // stand in for it — `last_seen_at` says when the mesh last saw someone, not
-  // whether a socket is open now.
-  const activeSockets = telemetry?.active_sockets ?? null;
-
   return (
     <>
       {/* Top Global KPI Metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
-          label={t("dash.pa.nodes", "전체 에이전트 노드")}
+          label={t("dash.pa.nodes", "등록된 신원")}
           value={isLoading ? "..." : isError ? "—" : String(totalAgents)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "실시간 레지스트리")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "신원 목록 응답")}
           color="var(--color-primary)"
           icon="🌐"
         />
         <KpiCard
-          label={t("dash.pa.sockets", "활성 웹소켓 풀")}
-          value={isLoading ? "..." : isError ? "—" : String(activeSockets)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.disconnected", "통신 불가") : t("dash.pa.socketsSub", "mTLS 연결")}
-          color="var(--color-success)"
-          icon="⚡"
-        />
-        <KpiCard
-          label={t("dash.pa.tenants", "활성 테넌트 조직")}
+          label={t("dash.pa.tenants", "등록된 그룹")}
           value={isLoading ? "..." : isError ? "—" : String(groups.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("dash.tenants.errorLoad", "Could not load tenants") : (groups.length > 0 ? `${groups.length} ${t("dash.pa.tenantsUnit", "개 조직 등록")}` : t("dash.pa.tenantsNone", "등록된 테넌트 없음"))}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("groups.error", "그룹 목록을 불러오지 못했습니다.") : (groups.length > 0 ? `${groups.length} ${t("dash.pa.tenantsUnit", "개 그룹 등록")}` : t("dash.pa.tenantsNone", "등록된 그룹 없음"))}
           color="#6366F1"
           icon="🏢"
         />
       </div>
 
-      {/* Live Server Telemetry */}
-      {!isLoading && !isError && telemetry && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-            {/* CPU / RAM / p99 removed: `/api/v1/admin/ai-usage` answers AI account
-                usage and no producer writes machine telemetry, so those guards were
-                dead and each card drew `—` at 0% under a healthy-sounding caption. */}
-          <TelemetryCard
-            label={t("dash.pa.hub", "허브 활성 세션")}
-            currentValue={`${telemetry.active_sockets} sessions`}
-            maxLabel="500"
-            percentage={(telemetry.active_sockets / 500) * 100}
-            barColor="var(--color-leased)"
-            statusText={t("dash.pa.hubOk", "정상 수신 대기")}
-          />
-        </div>
-      )}
-
-      {/* Tenant Resource & Traffic Breakdown */}
+      {/* Group membership breakdown */}
       <div
         style={{
           background: "var(--color-bg-surface)",
@@ -424,10 +375,10 @@ function PlatformAdminDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-              {t("dash.pa.tenantTrafficTitle", "테넌트 조직별 트래픽 및 그룹 할당 현황")}
+              {t("dash.pa.tenantTrafficTitle", "그룹별 에이전트 구성")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              {t("dash.pa.tenantSub", "SPEC § 8.11 테넌트별 Egress 격리 및 처리량 모니터링")}
+              {t("dash.pa.tenantSub", "등록된 그룹과 그룹별 에이전트 수")}
             </p>
           </div>
           <Link to="/platform/tenants">
@@ -439,15 +390,15 @@ function PlatformAdminDashboard() {
 
         {isLoading ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-            {t("dash.pa.tenantLoading", "테넌트 조직 데이터를 불러오는 중입니다...")}
+            {t("dash.pa.tenantLoading", "그룹 목록을 불러오는 중입니다...")}
           </div>
         ) : isError ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-danger)", fontSize: "0.85rem" }}>
-            {t("dash.pa.tenantError", "테넌트 조직 정보를 불러오지 못했습니다 (서버 통신 실패).")}
+            {t("dash.pa.tenantError", "그룹 정보를 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
           </div>
         ) : groups.length === 0 ? (
           <div style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.85rem" }}>
-            {t("dash.pa.tenantEmpty", "현재 등록된 테넌트 조직 데이터가 없습니다.")}
+            {t("dash.pa.tenantEmpty", "현재 등록된 그룹이 없습니다.")}
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
@@ -469,7 +420,7 @@ function PlatformAdminDashboard() {
                     {g.name}
                   </span>
                   <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--color-primary)", fontWeight: 700 }}>
-                    Active Tenant
+                    {t("dash.pa.group", "등록된 그룹")}
                   </span>
                 </div>
                 <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "flex", gap: 12 }}>
@@ -480,7 +431,7 @@ function PlatformAdminDashboard() {
                       "allowed to reach nothing" is a claim. `?? 0` here made
                       exactly that claim, one line apart, for both fields. */}
                   <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count ?? g.members?.length ?? t("common.unknownValue", "—")}</strong></span>
-                  <span>{t("dash.pa.egressLabel", "Egress 허용")}: <strong>{g.egress_allowed?.length ?? t("common.unknownValue", "—")}</strong></span>
+                  <span>{t("dash.pa.egressLabel", "전송 허용 대상")}: <strong>{g.egress_allowed?.length ?? t("common.unknownValue", "—")}</strong></span>
                 </div>
               </div>
             ))}
@@ -503,7 +454,9 @@ function TenantAdminDashboard() {
   const pendingKeysRead = useDashboardList<KeyProposal>(fetchPendingKeys);
   const pendingKeys = pendingKeysRead.items;
 
-  const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);
+  const totalEgressRules = groups.every((group) => Array.isArray(group.egress_allowed))
+    ? groups.reduce((total, group) => total + group.egress_allowed!.length, 0)
+    : null;
 
   return (
     <>
@@ -529,10 +482,12 @@ function TenantAdminDashboard() {
           icon="🤖"
         />
         <KpiCard
-          label={t("dash.ta.egress", "Egress 허용 규칙")}
-          value={measuredGroupValue(groupsRead, totalEgressRules)}
+          label={t("dash.ta.egress", "허용된 전송 대상")}
+          value={groupsRead.kind === "ready" && totalEgressRules === null
+            ? t("common.unmeasured", "— 미측정")
+            : measuredGroupValue(groupsRead, totalEgressRules ?? 0)}
           valueTestId="tenant-egress-count"
-          subValue={groupReadCaption(t, groupsRead, t("dash.ta.egressSub", "Deny-by-default"))}
+          subValue={groupReadCaption(t, groupsRead, t("dash.ta.egressSub", "명시적으로 허용하지 않은 전송은 차단"))}
           color="#6366F1"
           icon="🛡️"
         />
@@ -662,11 +617,11 @@ function TenantAdminDashboard() {
                     🔑 {p.identity} ({t("dash.ta.agentsUnit", "에이전트")})
                   </span>
                   <span style={{ fontSize: "0.72rem", background: "#FEF3C7", color: "#B45309", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
-                    Pending Review
+                    {t("dash.ta.review", "검토 필요")}
                   </span>
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "#B45309", fontFamily: "var(--font-mono)" }}>
-                  Fingerprint: {p.fingerprint}
+                  {t("reg.fingerprint", "키 지문")}: {p.fingerprint}
                 </div>
               </div>
             ))}
@@ -718,19 +673,9 @@ React.useEffect(() => {
         <KpiCard
           label={t("dash.ga.lease", "메일함 큐 적체")}
           value={queueValue(t, mailbox?.total_queued)}
-          subValue={t("dash.ga.leaseSub", "300s TTL 관리")}
+          subValue={t("dash.ga.leaseSub", "현재 대기 중인 메시지")}
           color="var(--color-warning)"
           icon="📥"
-        />
-        <KpiCard
-          label={t("dash.ga.health", "온라인 에이전트 비율")}
-          value={measuredListValue(
-            agentsRead,
-            agents.length > 0 ? `${Math.round((agents.filter(hasBeenSeen).length / agents.length) * 100)}%` : "—",
-          )}
-          subValue={listReadCaption(t, agentsRead, t("dash.ga.socketBasis", "소켓 연결 기준"))}
-          color="#6366F1"
-          icon="💚"
         />
       </div>
 
@@ -748,7 +693,7 @@ React.useEffect(() => {
               {t("dash.ga.membershipTitle", "그룹별 에이전트 멤버십 & 상태")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              {t("dash.ga.membershipSub", "그룹 내 에이전트 이동 및 배속 관리 (SPEC § 11.3 group.manage)")}
+              {t("dash.ga.membershipSub", "그룹에 속한 에이전트를 확인하고 이동합니다")}
             </p>
           </div>
           <Link to="/creator/groups">
@@ -777,7 +722,7 @@ React.useEffect(() => {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <span style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>{item.name}</span>
                   <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
-                    Online ({item.members?.length || 0})
+                    {t("dash.ga.members", "구성원")} ({item.members?.length || 0})
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -860,28 +805,11 @@ function AgentOperatorDashboard() {
           icon="🤖"
         />
         <KpiCard
-          label={t("dash.kpi.sockets", "온라인 소켓")}
-          value={isLoading ? "..." : isError ? "—" : String(agents.filter(hasBeenSeen).length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.socketsSub", "연결 활성")}
-          color="var(--color-success)"
-          icon="⚡"
-        />
-        <KpiCard
           label={t("dash.kpi.inbox", "미수신 메일함")}
           value={queueValue(t, mailbox?.total_queued)}
           subValue={t("dash.kpi.inboxSub", "메일함 대기")}
           color="var(--color-warning)"
           icon="📥"
-        />
-        <KpiCard
-          label={t("dash.kpi.latency", "오늘의 전송량")}
-          // A literal `0`, on a card whose number no request ever asked for.
-          // There is no route behind it, so it cannot become anything else —
-          // and a number that cannot change is not a measurement.
-          value={queueValue(t, null)}
-          subValue={t("dash.kpi.latencySub", "건 완료")}
-          color="#6366F1"
-          icon="🔄"
         />
       </div>
 
@@ -897,10 +825,10 @@ function AgentOperatorDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-              {t("dash.op.fleetTitle", "소유 에이전트 플릿 상태 요약")}
+              {t("dash.op.fleetTitle", "등록 에이전트 요약")}
             </h3>
             <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)" }}>
-              {t("dash.op.fleetSub", "SPEC § 8.11 관측 출처 및 실시간 프레임 상태")}
+              {t("dash.op.fleetSub", "신원 목록이 알려 준 등록 정보와 마지막 접속 기록")}
             </p>
           </div>
           <Link to="/creator">

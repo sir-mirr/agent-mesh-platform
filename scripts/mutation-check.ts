@@ -3126,12 +3126,12 @@ const MUTATIONS: Mutation[] = [
   {
     id: "one-key-two-meanings",
     defect:
-      "Seven keys were called with different fallbacks at different call sites — `common.errorLoad` meant both `불러오지 못함` and `조직 정보 불러오지 못함`. Defining such a key makes one of them win everywhere, so adding the missing entries changed wording on screens nobody was touching and timed out a scenario waiting for the older text. A key whose meaning depends on the call site is not a translation key.",
+      "A translation key is called with two different fallbacks. Seven were, and defining the key made one of them win everywhere \u2014 wording changed on screens nobody had touched, because a key whose meaning depends on the call site is not a key and the dictionary cannot be right for both.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: 't("dash.tenants.errorLoad", "Could not load tenants")',
-    to: 't("common.errorLoad", "조직 정보 불러오지 못함")',
+    from: '    ? t("common.errorLoad", "\ubd88\ub7ec\uc624\uc9c0 \ubabb\ud568")',
+    to: '    ? t("common.errorLoad", "\uc870\uc9c1 \uc815\ubcf4 \ubd88\ub7ec\uc624\uc9c0 \ubabb\ud568")',
     suite: "test/fe-scenarios.test.ts",
-    expect: ["one key is asked to mean two things", "common.errorLoad"],
+    expect: ["one key is asked to mean two things"],
   },
   {
     id: "key-defined-nowhere-falls-back-to-korean",
@@ -3217,14 +3217,14 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-06", "drew a message id the server never sent"],
   },
   {
-    id: "refusal-drops-the-capability-on-the-screen-that-lacks-it",
+    id: "a-refusal-leaks-the-permission-key",
     defect:
-      "The refusal without the name, seen by the session that actually lacks the capability. `SC-CAP-07` fulfills a 403 to test this; here the server issues it, so the screen and the mesh have to agree about which capability is missing.",
+      "The refusal put the capability name back on the screen. This entry used to say the opposite \u2014 that dropping the name left a reader with nothing to ask for \u2014 and the W campaign reversed the rule deliberately: `usage.read` is server vocabulary, and a person who cannot read a screen needs to be told so in words they can take to an operator, not handed a key to quote. The count is what survives.",
     file: "packages/platform-web/src/api/client.ts",
-    from: "  return capability ? `${base} (${capability}).` : `${base}.`;",
-    to: "  return `${base}.`;",
+    from: "  return `${base}.`;",
+    to: "  return _capability ? `${base} (${_capability}).` : `${base}.`;",
     suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-09", "told silence where the server refused"],
+    expect: ["SC-CAP-04"],
   },
   {
     id: "audit-screen-shows-bodies-to-a-metadata-holder",
@@ -3594,10 +3594,10 @@ const MUTATIONS: Mutation[] = [
   {
     id: "a-refusal-drawn-as-silence",
     defect:
-      "A screen that was refused says the backend went quiet. `I-061` was this on `/platform/telemetry` and `I-111` was the same thing one screen over, both found one at a time \u2014 a refusal is an answer, and telling somebody the server did not respond sends them to check a network that is fine for a permission nobody named.",
+      "A partial refusal is drawn as a communication error. The server answered `403`; telling somebody the backend went quiet sends them to check a network that is fine, for a permission nobody has named to them. `I-061` was this on one screen and `I-111` was the same thing on the screen next door.",
     file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
-    from: "`${t(\"overview.partial\", \"일부는 볼 권한이 없습니다\")} — ",
-    to: "`통신 오류 — ",
+    from: '              : `${t("overview.partial", "\uc774 \uacc4\uc815\uc774 \ubcfc \uc218 \uc5c6\ub294 \ud56d\ubaa9\uc774 \uc788\uc2b5\ub2c8\ub2e4")} (${telemetry?.refused.length ?? 0})`}',
+    to: '              : `\ud1b5\uc2e0 \uc624\ub958 (${telemetry?.refused.length ?? 0})`}',
     suite: "test/fe-render.test.ts",
     expect: ["SC-CAP-11", "reported silence about a backend that answered 403"],
   },
@@ -3644,12 +3644,12 @@ const MUTATIONS: Mutation[] = [
   {
     id: "korean-hidden-behind-a-glob",
     defect:
-      "Korean text between tags in `PlatformOverviewPage`, below `endpoint: \"/api/v1/*\"`. That string opened a block comment for the regex this check used to strip comments with, and the next `*/` was 113 lines later \u2014 so a hundred lines of that file, this one among them, were not in the denominator. The count read zero while a browser with the language set to English drew `개` on `/platform`.",
+      "A label went into the source as Korean with no key. It renders in Korean with the language set to English, and neither of the key-based checks has anything to say about it \u2014 which is how `/creator/register` measured 21.7% Korean characters in English mode.",
     file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
-    from: "          {item.activeSockets}",
-    to: "          {item.activeSockets}개",
+    from: '          label={t("server.kpi.sockets", "\uc6f9 \ucc44\ub110 \ub4f1\ub85d \uc2e0\uc6d0")}',
+    to: '          label={"\uc6f9 \ucc44\ub110 \ub4f1\ub85d \uc2e0\uc6d0"}',
     suite: "test/fe-scenarios.test.ts",
-    expect: ["SC-I18N-04", "untranslated strings or lines, up from"],
+    expect: ["SC-I18N-04", "untranslated"],
   },
   {
     id: "korean-jsx-outside-the-flow",
@@ -4108,14 +4108,14 @@ const MUTATIONS: Mutation[] = [
     expect: ["the scan reaches every screen file, and the three it was built on"],
   },
   {
-    id: "prose-reaches-past-the-old-three",
+    id: "a-permission-key-in-prose-a-person-reads",
     defect:
-      "The other half, and the one that matters: a wrong capability name on a page **outside** the three the check was built against. `GroupsPage.tsx` writes `group.manage` into a subtitle a person reads; yesterday that file was not scanned at all, so this mutation would have passed green. It is here rather than on an anchor file because an anchor proves the rule works, not that the scope does.",
+      "A permission identifier went back into a sentence on screen. It used to be enough that the name was one the contract defines \u2014 the W campaign made the rule stricter, because `group.manage` is internal vocabulary either way and a subtitle is not where a person learns it.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
-    from: "\u00a7 12 group.manage)",
-    to: "\u00a7 12 policy.manage)",
+    from: '        subtitle={t("groups.subtitle", "\uadf8\ub8f9\uc744 \ub9cc\ub4e4\uace0 \uc5d0\uc774\uc804\ud2b8\uc758 \uc18c\uc18d \uadf8\ub8f9\uc744 \uc62e\uae41\ub2c8\ub2e4")}',
+    to: '        subtitle={t("groups.subtitle", "\uadf8\ub8f9 \uad00\ub9ac (\u00a7 12 group.manage)")}',
     suite: "test/capability-prose.test.ts",
-    expect: ["every namespaced name shown to a user is in the contract"],
+    expect: ["no namespaced permission identifier is shown to a user"],
   },
   {
     id: "versioning-walk-finds-packages",
@@ -4820,10 +4820,10 @@ const MUTATIONS: Mutation[] = [
   {
     id: "the-tenant-dashboard-invents-its-egress-total",
     defect:
-      "The dashboard stopped summing the egress rules the route returned and drew a total of its own. A number on a dashboard is read as measured; one the screen computed from nothing reads identically to one the mesh reported, and an operator sizing a tenant's exposure by it is sizing it by a constant.",
+      "The dashboard's egress total stopped counting the rules it was given. A tile reading 0 where rules exist is the one answer an operator cannot check, because it is what a correctly wired mesh with no rules looks like.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: "  const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);",
-    to: "  const totalEgressRules = groups.reduce((acc, g) => acc + 0, 0);",
+    from: "    ? groups.reduce((total, group) => total + group.egress_allowed!.length, 0)",
+    to: "    ? groups.reduce((total, group) => total + 0, 0)",
     suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
     expect: ["without inventing its egress total"],
   },

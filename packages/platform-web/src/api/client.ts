@@ -109,15 +109,14 @@ export function refusedCapability(err: unknown): string | null {
 }
 
 /**
- * The sentence a screen shows when the server refused, with the server's own
- * word for what is missing.
+ * The sentence a screen shows when the server refused.
  *
  * Nine screens had the capability typed into their copy — `(key.approve)`,
  * `(group.manage)`, `(mailbox.read.depth)` — nine guesses that were right on
- * the day they were written. § 11.3's refusal carries the name; this repeats it
- * and says only "not allowed" when the server did not name one.
+ * the day they were written. The machine key still stays on the error for code
+ * and diagnostics, but it is not operator-facing language.
  */
-export function refusedText(t: (key: string, fallback: string) => string, capability: string | null): string {
+export function refusedText(t: (key: string, fallback: string) => string, _capability: string | null): string {
   const base = t("common.refusedRead", "이 계정에는 이 화면을 볼 권한이 없습니다");
-  return capability ? `${base} (${capability}).` : `${base}.`;
+  return `${base}.`;
 }

@@ -6,7 +6,7 @@ export interface JsonViewerProps {
   title?: string;
 }
 
-export function JsonViewer({ data, title = "JSON Payload" }: JsonViewerProps) {
+export function JsonViewer({ data, title = "JSON message body" }: JsonViewerProps) {
   const jsonString = React.useMemo(() => {
     try {
       return typeof data === "string" ? data : JSON.stringify(data, null, 2);

@@ -3,15 +3,38 @@ import { failureKind, type FailureKind, refusedCapability, refusedText } from "@
 import {
   PageHeader,
   Breadcrumbs,
-  TelemetryCard,
+  KpiCard,
   Button,
 } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
 import { fetchTelemetry, type SystemTelemetry } from "@/api/telemetry.ts";
 
+export function formatElapsed(milliseconds: number, language: "ko" | "en"): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 1) return language === "ko" ? "1초 미만" : "less than 1s";
+  if (seconds < 60) return language === "ko" ? `${seconds}초` : `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return language === "ko" ? `${minutes}분` : `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) {
+    return language === "ko"
+      ? `${hours}시간${remainingMinutes ? ` ${remainingMinutes}분` : ""}`
+      : `${hours}h${remainingMinutes ? ` ${remainingMinutes}m` : ""}`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return language === "ko"
+    ? `${days}일${remainingHours ? ` ${remainingHours}시간` : ""}`
+    : `${days}d${remainingHours ? ` ${remainingHours}h` : ""}`;
+}
+
 export function TelemetryPage() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isError, setIsError] = useState<boolean>(false);
@@ -46,11 +69,8 @@ export function TelemetryPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="PLATFORM OPERATOR"
-        suiteBadgeColor="leased"
-        screenId="13"
-        title={t("telem.title", "노드 텔레메트리 모니터링")}
-        subtitle={t("telem.subtitle", "서버 프로세스 CPU, RAM, 이벤트 루프 지연율 및 실시간 웹소켓 연결 헬스 메트릭")}
+        title={t("telem.title", "운영 동작 지표")}
+        subtitle={t("telem.subtitle", "등록 대기, 거절, 수락, 메시지 적체와 서버 가동 상태를 보여줍니다")}
         actions={
           <Button variant="secondary" size="sm" onClick={loadTelemetry}>
             {t("telem.refreshBtn", "↻ 실시간 갱신")}
@@ -60,11 +80,11 @@ export function TelemetryPage() {
 
       {isLoading ? (
         <div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-muted)" }}>
-          {t("tel.loading", "텔레메트리를 모으는 중입니다...")}
+          {t("tel.loading", "운영 지표를 불러오는 중입니다...")}
         </div>
       ) : isError || !telemetry ? (
         <div style={{ padding: "30px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
-          ⚠️ {failure === "refused" ? refusedText(t, missing) : t("tel.error", "텔레메트리를 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
+          ⚠️ {failure === "refused" ? refusedText(t, missing) : t("tel.error", "운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
         </div>
       ) : (
         <>
@@ -81,9 +101,8 @@ export function TelemetryPage() {
               data-testid="telemetry-refused"
               style={{ padding: "14px 18px", marginBottom: 16, background: "var(--color-bg-surface)", border: "1px solid var(--color-warning, var(--color-danger))", borderRadius: "var(--radius-lg)", color: "var(--color-text-secondary)" }}
             >
-              {t("tel.partial", "일부 지표는 볼 권한이 없습니다")} —{" "}
-              {telemetry.refused.map((r) => `${r.panel} (${r.capability})`).join(" · ")}
-              . {t("tel.partial.note", "아래가 비어 있는 것은 데이터가 없어서가 아닙니다.")}
+              {t("tel.partial", "일부 지표는 볼 권한이 없습니다")} ({telemetry.refused.length}).{" "}
+              {t("tel.partial.note", "아래가 비어 있는 것은 데이터가 없어서가 아닙니다.")}
             </div>
           )}
 
@@ -117,19 +136,19 @@ export function TelemetryPage() {
                 <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{t("tel.behaviour", "행동 지표")}</span>
                 <span data-testid="counting-since" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
                   {telemetry.behaviour.counting_since
-                    ? `${t("tel.since", "거절 집계 시작")}: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} (${t("tel.since.note", "허브가 재기동하면 0 부터")})`
+                    ? `${t("tel.since", "거절 집계 시작")}: ${new Date(telemetry.behaviour.counting_since).toLocaleString()} (${t("tel.since.note", "서버가 다시 시작되면 0부터")})`
                     : t("tel.since.unknown", "집계 시작 시각을 모른다 — 아래 거절 수치는 읽을 수 없다")}
                 </span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
                 {([
-                  [t("tel.m.pending", "대기 키"), telemetry.behaviour.pending_keys, ""],
-                  [t("tel.m.oldest", "최고 경과"), telemetry.behaviour.oldest_pending_ms, "ms"],
-                  [t("tel.m.sig", "서명 거절"), telemetry.behaviour.signature_refusals, ""],
-                  ["rate limit", telemetry.behaviour.rate_limited, ""],
-                  [t("tel.m.egress", "egress 거절"), telemetry.behaviour.egress_refusals, ""],
-                  [t("tel.m.accepted", "수락 수"), telemetry.behaviour.accepted, ""],
-                ] as const).map(([label, metric, unit]) => (
+                  [t("tel.m.pending", "등록 대기"), telemetry.behaviour.pending_keys, false],
+                  [t("tel.m.oldest", "가장 오래 기다린 시간"), telemetry.behaviour.oldest_pending_ms, true],
+                  [t("tel.m.sig", "서명 확인 실패"), telemetry.behaviour.signature_refusals, false],
+                  [t("tel.m.rate", "요청 제한"), telemetry.behaviour.rate_limited, false],
+                  [t("tel.m.egress", "전송 규칙으로 차단"), telemetry.behaviour.egress_refusals, false],
+                  [t("tel.m.accepted", "수락한 작업"), telemetry.behaviour.accepted, false],
+                ] as const).map(([label, metric, isElapsed]) => (
                   <div
                     key={label}
                     style={{ padding: "12px 14px", background: "var(--color-bg-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}
@@ -141,8 +160,7 @@ export function TelemetryPage() {
                       </div>
                     ) : (
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.15rem", fontWeight: 700 }}>
-                        {metric.value}
-                        {unit && <span style={{ fontSize: "0.75rem", fontWeight: 400 }}> {unit}</span>}
+                        {isElapsed ? formatElapsed(metric.value, language) : metric.value}
                       </div>
                     )}
                   </div>
@@ -159,47 +177,15 @@ export function TelemetryPage() {
 
                 What is measured sits below: the behavioural metrics, where every
                 value is `{value, unavailable}` and an unknown says so. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-              <TelemetryCard
-                label={t("tel.sockets", "활성 소켓 연결 수")}
-                currentValue={`${telemetry.active_sockets}`}
-                maxLabel="Max 500"
-                percentage={(telemetry.active_sockets / 500) * 100}
-                barColor="var(--color-success)"
-                statusText={t("tel.sockets.ok", "웹소켓 정상")}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+              <KpiCard
+                label={t("tel.sockets", "웹 채널 등록 신원")}
+                value={telemetry.web_channel_identities != null ? String(telemetry.web_channel_identities) : t("common.unmeasured", "— 미측정")}
+                subValue={t("tel.sockets.ok", "신원 목록에서 web 채널")}
+                color="var(--color-success)"
+                icon="🌐"
               />
             </div>
-
-          <div
-            style={{
-              background: "var(--color-bg-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-xl)",
-              padding: 24,
-              marginTop: 8,
-            }}
-          >
-            <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 8 }}>
-              {t("telem.logTitle", "📊 텔레메트리 진단 로그")}
-            </h3>
-            <p style={{ fontSize: "0.82rem", color: "var(--color-text-secondary)", marginBottom: 16 }}>
-              {t("telem.logSub", "서버가 수집하는 핵심 런타임 지표 스트림")}
-            </p>
-
-            <div
-              style={{
-                background: "#0F172A",
-                color: "#38BDF8",
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.8rem",
-                padding: 16,
-                borderRadius: "var(--radius-md)",
-                lineHeight: 1.6,
-              }}
-            >
-              <div>[INFO telemetry.tick] active_sockets={telemetry.active_sockets} total_agents={telemetry.total_agents ?? t("common.unmeasured", "— 미측정")}</div>
-            </div>
-          </div>
         </>
       )}
     </div>

@@ -79,7 +79,7 @@ const stillReading: Answer = () => new Promise<Response>(() => {});
  * not be reading this one.
  */
 const HEALTH_OK = { status: "ok", version: "0.2.0", agent_count: 12, uptime: 125 };
-/** Two of these three are what `active_sockets` counts — `active`, or `web`. */
+/** Only the explicit web channel is counted; a status field is not a socket. */
 const AGENT_ROWS = [
   { identity: "hub-worker-1", status: "active" },
   { identity: "console-operator", channel: "web" },
@@ -293,7 +293,6 @@ const K_COMMON_REFUSEDREAD = "common.refusedRead";
 const K_OVERVIEW_ERROR = "overview.error";
 const K_OVERVIEW_PARTIAL = "overview.partial";
 const K_SERVER_COL_ENDPOINT = "server.col.endpoint";
-const K_SERVER_COL_SOCKETS = "server.col.sockets";
 const K_SERVER_COL_STATUS = "server.col.status";
 const K_SERVER_COL_UPTIME = "server.col.uptime";
 const K_SERVER_KPI_HEALTH = "server.kpi.health";
@@ -362,7 +361,7 @@ describe("no answer is not an idle mesh", () => {
     expect(kpiSub(en(K_SERVER_KPI_SOCKETS))).toBe(en(K_COMMON_DISCONNECTED));
     expect(kpiSub(en(K_SERVER_KPI_THROUGHPUT))).toBe(en(K_COMMON_DISCONNECTED));
     // And the healthcheck tile does not report a status line no server sent.
-    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).not.toBe("200 OK");
+    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).not.toBe("ok");
   });
 
   it("does not tell an operator with every capability that they lack one", async () => {
@@ -385,7 +384,7 @@ describe("refused is a different sentence from unanswered", () => {
     mailboxRoute = answers(403, { error: "insufficient scope", capability: QUEUE_DEPTH });
   };
 
-  it("names the panels it was refused and the capability the server named", async () => {
+  it("reports how many reads were refused without exposing machine keys", async () => {
     narrowSession();
     await mount();
     // None of the three sentences says "forbidden", "permission" or
@@ -394,12 +393,12 @@ describe("refused is a different sentence from unanswered", () => {
     // backend being down.
     expect(readState().refused).toBe(true);
     expect(refusalText()).toContain(en(K_OVERVIEW_PARTIAL));
-    expect(refusalText()).toContain(QUEUE_DEPTH);
-    expect(refusalText()).toContain(USAGE_READ);
+    expect(refusalText()).not.toContain(QUEUE_DEPTH);
+    expect(refusalText()).not.toContain(USAGE_READ);
     // The two ungated panels answered, so the mesh is not down and must not be
     // drawn as down: the registry and the healthcheck were read.
     expect(readState().unreachable).toBe(false);
-    expect(readState().rows).toBe(2);
+    expect(readState().rows).toBe(1);
   });
 
   it("still draws what the ungated panels did answer", async () => {
@@ -409,8 +408,8 @@ describe("refused is a different sentence from unanswered", () => {
     // count came from the registry, which nobody was refused, and dropping it
     // because a neighbour was refused would be the same collapse in the other
     // direction.
-    expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("2");
-    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["HEALTHY", "HEALTHY"]);
+    expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("1");
+    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["ok"]);
   });
 
   it("does not read a 5xx as a refusal, whatever the body says", async () => {
@@ -441,23 +440,22 @@ describe("refused is a different sentence from unanswered", () => {
     expect(readState().loading).toBe(false);
     expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("—");
     expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("—");
-    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).not.toBe("200 OK");
+    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).not.toBe("ok");
   });
 });
 
 describe("a number the server did answer", () => {
-  it("counts sockets from the registry, not from the healthcheck's identity count", async () => {
+  it("counts only registry rows whose channel is explicitly web", async () => {
     await mount();
     // Two different quantities: `/api/v1/health` counts mesh identities that
     // are alive, the registry counts connections this server holds. Measured on
     // the standing stack the day the comment in `api/telemetry.ts` was written,
     // 12 against 13 — one substituted for the other puts a different number
     // under the same label and nothing on screen says it changed.
-    expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("2");
+    expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("1");
     expect(kpiSub(en(K_SERVER_KPI_SOCKETS))).toBe(en(K_SERVER_KPI_SOCKETSSUB));
     expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).not.toBe(String(HEALTH_OK.agent_count));
-    // The same count reaches the rows, so the tile and the table are one read.
-    expect(cellsUnder(en(K_SERVER_COL_SOCKETS))).toEqual(["2", "2"]);
+    expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).not.toBe(String(AGENT_ROWS.length));
   });
 
   it("shows the queue total the route counted, not one re-derived from the rows", async () => {
@@ -466,7 +464,7 @@ describe("a number the server did answer", () => {
     // column the route has never emitted, so the tile read `0` whether the mesh
     // was idle or backed up. The fixture's rows sum to 4 and its own total is
     // 7 — a re-derived total cannot pass, and neither can a `0`.
-    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("7 msg");
+    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("7");
   });
 
   it("says zero when the server said zero, and says it in the healthy voice", async () => {
@@ -477,10 +475,10 @@ describe("a number the server did answer", () => {
     // legible as a *different* screen from the unanswered one above — same two
     // tiles, `0` against `—` — or the em dash means nothing.
     expect(kpiValue(en(K_SERVER_KPI_SOCKETS))).toBe("0");
-    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("0 msg");
-    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).toBe("200 OK");
+    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("0");
+    expect(kpiValue(en(K_SERVER_KPI_HEALTH))).toBe("ok");
     expect(readState()).toEqual({
-      loading: false, unreachable: false, empty: false, refused: false, rows: 2,
+      loading: false, unreachable: false, empty: false, refused: false, rows: 1,
     });
   });
 
@@ -501,14 +499,13 @@ describe("a number the server did answer", () => {
 describe("what a node row says about a process", () => {
   it("reports the health the healthcheck reported", async () => {
     await mount();
-    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["HEALTHY", "HEALTHY"]);
+    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["ok"]);
     // Formatted from the seconds `/health` sent, in the dictionary's units: a
     // row printing the raw seconds, or minutes alone, is a different claim
     // about how long the process has been up.
     expect(cellsUnder(en(K_SERVER_COL_UPTIME)))
-      .toEqual([`2${en(K_AGENTS_UNIT_MINUTE)} 5${en(K_AGENTS_UNIT_SECOND)}`,
-                `2${en(K_AGENTS_UNIT_MINUTE)} 5${en(K_AGENTS_UNIT_SECOND)}`]);
-    expect(cellsUnder(en(K_SERVER_COL_ENDPOINT))).toEqual(["/api/v1/*", "/ws"]);
+      .toEqual([`2${en(K_AGENTS_UNIT_MINUTE)} 5${en(K_AGENTS_UNIT_SECOND)}`]);
+    expect(cellsUnder(en(K_SERVER_COL_ENDPOINT))).toEqual(["/api/v1/health"]);
   });
 
   it("does not call a degraded hub healthy", async () => {
@@ -516,8 +513,8 @@ describe("what a node row says about a process", () => {
     await mount();
     // The one thing on this row that is a real reading rather than a constant.
     // A row hardcoded to HEALTHY would pass every other assertion in this file.
-    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["DEGRADED", "DEGRADED"]);
-    expect(tableText()).not.toContain("HEALTHY");
+    expect(cellsUnder(en(K_SERVER_COL_STATUS))).toEqual(["degraded"]);
+    expect(tableText()).not.toContain("ok");
   });
 });
 
@@ -533,13 +530,12 @@ describe("the refresh button", () => {
     expect(panelReads(HEALTH)).toBe(2);
     expect(panelReads(MAILBOX)).toBe(2);
     expect(panelReads(AGENTS)).toBe(2);
-    expect(panelReads(USAGE)).toBe(2);
     expect(panelReads(BEHAVIOUR)).toBe(2);
   });
 
   it("drops the rows it can no longer vouch for when the refresh finds nothing", async () => {
     await mount();
-    expect(readState().rows).toBe(2);
+    expect(readState().rows).toBe(1);
     everyPanel(noAnswer);
     fireEvent.click(refreshButton()!);
     await settle();
@@ -569,6 +565,6 @@ describe("the refresh button", () => {
     // A refusal banner that outlives the refusal is one an operator learns to
     // ignore, which costs the banner that matters.
     expect(readState().refused).toBe(false);
-    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("7 msg");
+    expect(kpiValue(en(K_SERVER_KPI_THROUGHPUT))).toBe("7");
   });
 });

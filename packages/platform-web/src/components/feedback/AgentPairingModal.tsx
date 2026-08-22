@@ -74,7 +74,7 @@ export function AgentPairingModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={t("pairing.modal.title", "🤖 AI 에이전트 등록 요청 & 페어링 인증")}
+      title={t("pairing.modal.title", "🤖 에이전트 등록 요청과 연결 확인")}
       maxWidth={580}
       footer={
         <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
@@ -166,7 +166,7 @@ export function AgentPairingModal({
           }}
         >
           <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6 }}>
-            🔑 {t("pair.codeTitle", "1회용 에이전트 인증/페어링 코드 (SPEC § 11.3)")}
+            🔑 {t("pair.codeTitle", "1회용 에이전트 연결 코드")}
           </div>
 
           <div

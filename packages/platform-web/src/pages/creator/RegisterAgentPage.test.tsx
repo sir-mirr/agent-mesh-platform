@@ -270,7 +270,8 @@ describe("the four things the queue read can say", () => {
     queueAnswers({ error: "not allowed", capability: CAPABILITY.GROUP_MANAGE }, 403);
     await mount();
     expect(queueHeading()).toContain(`(${en("common.refused")})`);
-    expect(queueNotice()).toContain(`${en("common.refusedRead")} (${CAPABILITY.GROUP_MANAGE}).`);
+    expect(queueNotice()).toContain(`${en("common.refusedRead")}.`);
+    expect(queueNotice()).not.toContain(CAPABILITY.GROUP_MANAGE);
     expect(queueNotice()).not.toContain(CAPABILITY.KEY_APPROVE);
     // The server answered. Saying the network is down sends an operator to
     // check a connection over a permission they simply do not hold.

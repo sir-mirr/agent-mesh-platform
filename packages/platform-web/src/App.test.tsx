@@ -28,6 +28,7 @@ if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register
 
 const { render, cleanup, act } = await import("@testing-library/react");
 const { App } = await import("./App.tsx");
+const { DICTIONARY } = await import("./contexts/I18nContext.tsx");
 
 const realFetch = globalThis.fetch;
 
@@ -97,6 +98,25 @@ describe("where the route table sends a person", () => {
     // looks like a broken screen rather than a wrong link.
     expect(await land("/in-process-no-such-page")).toBe("/login");
   });
+
+  it("keeps the requested screen and explains a deployed-style HTML 502 in default English", async () => {
+    globalThis.fetch = mock(async () => new Response("<html><body>502 Bad Gateway</body></html>", {
+      status: 502,
+      headers: { "content-type": "text/html" },
+    })) as unknown as typeof globalThis.fetch;
+    goTo("/dashboard");
+
+    await act(async () => {
+      render(<App />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const unavailable = document.querySelector('[data-testid="auth-unreachable"]');
+    expect(unavailable?.textContent).toContain(DICTIONARY.en["guard.unreachable"]);
+    expect(unavailable?.textContent).toContain(DICTIONARY.en["guard.unreachableWhy"]);
+    expect(window.location.pathname).toBe("/dashboard");
+    expect(window.location.pathname).not.toBe("/login");
+  });
 });
 
 describe("the two lists of paths", () => {
@@ -160,10 +180,10 @@ describe("what a remembered session may paint before the server answers", () => 
 
     const drawn = document.body.textContent ?? "";
     expect({
-      tenantPanel: drawn.includes("TENANT SUITE"),
-      groupPanel: drawn.includes("STUDIO SUITE · GROUP MANAGER"),
-      operatorPanel: drawn.includes("STUDIO SUITE · OPERATOR"),
-      platformPanel: drawn.includes("PLATFORM SUITE"),
+      tenantPanel: drawn.includes(DICTIONARY.en["dash.tenant.title"]!),
+      groupPanel: drawn.includes(DICTIONARY.en["dash.group.title"]!),
+      operatorPanel: drawn.includes(DICTIONARY.en["dash.operator.title"]!),
+      platformPanel: drawn.includes(DICTIONARY.en["dash.platform.title"]!),
     }).toEqual({ tenantPanel: false, groupPanel: false, operatorPanel: false, platformPanel: false });
   });
 
@@ -174,6 +194,6 @@ describe("what a remembered session may paint before the server answers", () => 
     rememberRole("TENANT_ADMIN");
     goTo("/dashboard");
     expect(await land("/dashboard")).toBe("/login");
-    expect(document.body.textContent ?? "").not.toContain("TENANT SUITE");
+    expect(document.body.textContent ?? "").not.toContain(DICTIONARY.en["dash.tenant.title"]!);
   });
 });

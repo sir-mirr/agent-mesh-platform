@@ -234,11 +234,8 @@ export function GroupsPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="25"
         title={t("groups.title", "그룹 관리 & 에이전트 배속")}
-        subtitle={t("groups.subtitle", "그룹 생성 및 소유 에이전트 멤버십 이동·배치 (SPEC § 11.3 / § 12 group.manage)")}
+        subtitle={t("groups.subtitle", "그룹을 만들고 에이전트의 소속 그룹을 옮깁니다")}
         actions={
           canManage ? (
             <Button variant="primary" size="sm" onClick={() => setIsCreateOpen(true)}>

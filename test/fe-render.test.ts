@@ -496,7 +496,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     ).toEqual({ control: 1, identity: true });
     await trigger.click();
     await page.locator("input[type='text']").last().fill(identity);
-    const confirm = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
+    // **Not by text alone.** The row's control and the dialog's confirmation
+    // now say the same thing, and `.first()` is the row's — which sits behind
+    // the modal overlay, so the click is intercepted and the scenario times out
+    // thirty seconds later saying nothing about why. The row control carries a
+    // `data-testid`; the dialog's button does not.
+    const confirm = page.locator("button:not([data-testid]):has-text('영구 삭제'), button:not([data-testid]):has-text('실행')").first();
     expect(
       { confirm: await confirm.count(), enabled: await confirm.isEnabled() },
       "the identity did not arm the destructive confirmation",
@@ -628,7 +633,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(mainText).not.toContain("null%");
     expect(mainText).not.toContain("undefined");
     expect(mainText).not.toContain("NaN");
-    expect(mainText).toContain("전체 에이전트 노드");
+    expect(mainText).toContain("등록된 신원");
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -698,9 +703,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const { page, context, errors } = await createAuthedPage("/platform");
     const mainText = await page.locator("#root").innerText();
     expect(mainText).not.toContain("null%");
-    expect(mainText).toContain("HEALTHY");
+    // What the health route answered, drawn as the server said it. It used to
+    // read `HEALTHY` — the console's own word, in English, on a Korean screen.
+    expect(mainText).toContain("서버 응답 상태");
+    expect(mainText).toContain("ok");
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
-    expect(rowCount).toBeGreaterThanOrEqual(2);
+    // One row, not two. The second was `node_hub_primary`, a node this table
+    // invented and never measured; the honesty campaign deleted it. The floor
+    // is here so a table that stops drawing rows at all still fails.
+    expect(rowCount).toBeGreaterThanOrEqual(1);
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -710,7 +721,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
     const mainText = await page.locator("#root").innerText();
     expect(mainText).not.toContain("null%");
-    expect(mainText).toContain("활성 소켓 연결 수");
+    expect(mainText).toContain("웹 채널 등록 신원");
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -826,7 +837,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // SC-ACT-04: Interactive Telemetry Refresh (D-91, D-101, D-112)
   it("[SC-ACT-04] clicks refresh on platform telemetry and triggers live telemetry response", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/telemetry");
-    const refreshBtn = page.locator("button:has-text('실시간 갱신'), button:has-text('갱신')").first();
+    const refreshBtn = page.locator("button:has-text('새로고침')").first();
     expect(await refreshBtn.count()).toBeGreaterThanOrEqual(1);
 
     const [resp] = await Promise.all([
@@ -880,10 +891,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const bodyCells = await page.locator("tbody tr td:nth-child(4)").allInnerTexts();
     expect(bodyCells.length).toBeGreaterThanOrEqual(4);
-    expect(bodyCells.every((c) => c.includes("content withheld"))).toBe(true);
+    expect(await page.locator("tbody tr td:nth-child(4) [data-testid='audit-withheld']").count())
+      .toBe(bodyCells.length);
 
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("[content withheld — requires audit.read.content]");
+    expect(mainText).toContain("본문을 볼 권한이 없어 숨겼습니다");
+    expect(mainText).not.toContain("[content withheld");
+    expect(mainText).not.toContain("audit.read.content");
     expect(mainText).not.toContain("hello security via proxy");
 
     await context.close();
@@ -968,7 +982,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const said = (await panel.textContent()) ?? "";
       // The six by the names the inventory gives them. Not a count of tiles —
       // six tiles with the wrong labels would pass that.
-      for (const label of ["대기 키", "최고 경과", "서명 거절", "rate limit", "egress 거절", "수락 수"]) {
+      for (const label of ["등록 대기", "가장 오래 기다린 시간", "서명 확인 실패", "요청 제한", "전송 규칙으로 차단", "수락한 작업"]) {
         expect({ label, drawn: said.includes(label) }).toEqual({ label, drawn: true });
       }
 
@@ -1030,7 +1044,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // that drew every zero as unmeasured would pass the line above and be
       // just as wrong in the other direction.
       const said = (await panel.textContent()) ?? "";
-      expect({ realZeroKept: /수락 수[\s\S]{0,40}0/.test(said) }).toEqual({ realZeroKept: true });
+      expect({ realZeroKept: /수락한 작업[\s\S]{0,40}0/.test(said) }).toEqual({ realZeroKept: true });
       expect({ pendingKept: said.includes("4") }).toEqual({ pendingKept: true });
 
       // With no window the refusal counts cannot be read, and the heading says
@@ -1061,11 +1075,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const banner = page.locator("[data-testid='telemetry-refused']");
     await banner.waitFor({ state: "visible", timeout: 5000 });
 
-    // The capability, not just "an error" — the reader has to know what to ask
-    // for, and "something went wrong" sends them to the wrong person.
+    // Operator language explains the withheld reads without leaking server keys.
     const said = (await banner.textContent()) ?? "";
-    expect({ names: said.includes("usage.read") && said.includes("mailbox.read.depth") })
-      .toEqual({ names: true });
+    expect({ count: said.includes("(2)"), leaksKeys: said.includes("usage.read") || said.includes("mailbox.read.depth") })
+      .toEqual({ count: true, leaksKeys: false });
 
     // And it is genuinely different from what an admin sees.
     const admin = await createAuthedPage("/platform/telemetry");
@@ -1125,12 +1138,19 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await settled(page);
       const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
 
-      // Every one of them, not one of them: a banner that names the first and
-      // drops the rest leaves a panel blank with no reason given.
-      const unnamed = [...refusedBy].filter((cap) => !text.includes(cap));
+      // **This used to require the banner to name every refused capability.**
+      // The honesty campaign reversed that rule and updated `SC-CAP-04` for it:
+      // `usage.read` is server vocabulary, and a person who cannot read a panel
+      // needs to be told so in words they can take to an operator rather than
+      // handed a key to quote. `SC-CAP-04` was the only scenario updated, so
+      // this one stayed on the old rule and failed. The rule is asserted here
+      // in its new direction; what never changed is that a refusal is not
+      // silence, and that half is still the point of the scenario.
+      const leaked = [...refusedBy].filter((cap) => text.includes(cap));
       const viewer = {
         serverRefused: sawRefusal,
-        namesCapability: refusedBy.size > 0 && unnamed.length === 0,
+        saysRefused: (await page.locator('[data-testid="overview-refused"]').count()) > 0,
+        leaksAKey: leaked.length > 0,
         blamesTheNetwork: /통신 오류|communication error|no answer/.test(text),
       };
 
@@ -1146,8 +1166,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       expect(
         { ...viewer, adminSaysRefused },
-        "the screen blamed the network for a refusal, did not name the capability, or says refused to a session that holds it",
-      ).toEqual({ serverRefused: true, namesCapability: true, blamesTheNetwork: false, adminSaysRefused: false });
+        "the screen blamed the network for a refusal, said nothing about it, quoted a permission key at the reader, or says refused to a session that holds it",
+      ).toEqual({
+        serverRefused: true,
+        saysRefused: true,
+        leaksAKey: false,
+        blamesTheNetwork: false,
+        adminSaysRefused: false,
+      });
     } finally {
       await context.close().catch(() => {});
     }
@@ -1367,7 +1393,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
 
       const before = await page.locator("tbody tr").count();
-      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
+      // By its `data-testid`, not by its words: the label is user-facing copy
+      // and moved twice while this scenario is about the request the button
+      // issues. The testid names the identity it would destroy, which is the
+      // part that must not drift.
+      const teardownBtn = page.locator('button[data-testid^="teardown-"]').first();
       expect(
         { control: await teardownBtn.count(), rows: before > 0 },
         "the teardown control or the rows were not there, so this scenario measured nothing",
@@ -1377,7 +1407,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const confirmInput = page.locator("input[placeholder*='입력'], input[type='text']").last();
       const identity = ((await page.locator("tbody tr").first().innerText()) ?? "").split("\n")[0]?.trim() ?? "";
       await confirmInput.fill(identity);
-      await page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first().click();
+      await page.locator("button:not([data-testid]):has-text('영구 삭제'), button:not([data-testid]):has-text('실행')").first().click();
       await attemptOver(page);
       await settled(page);
 
@@ -1939,10 +1969,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
     await settled(page);
 
-    await shows(page, "메일함 리스 큐를 불러오지 못했습니다");
+    await shows(page, "메일함 처리 현황을 불러오지 못했습니다");
 
     const downText = await page.locator("#root").innerText();
-    expect(downText).toContain("메일함 리스 큐를 불러오지 못했습니다");
+    expect(downText).toContain("메일함 처리 현황을 불러오지 못했습니다");
     expect(downText).toContain("측정 불가");
 
     await context.close();
@@ -1971,7 +2001,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await shows(page, "조직 정보 불러오지 못함");
 
     const downText = await page.locator("#root").innerText();
-    expect(downText).not.toContain("등록된 테넌트 없음");
+    expect(downText).not.toContain("등록된 그룹 없음");
     expect(downText).toContain("조직 정보 불러오지 못함");
 
     await context.close();
@@ -2067,7 +2097,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("조회 중");
-    expect(loadText).not.toContain("등록된 테넌트 없음");
+    expect(loadText).not.toContain("등록된 그룹 없음");
 
     await context.close();
   });
@@ -2810,13 +2840,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         return r.continue();
       });
 
-      const teardownBtn = page.locator("button:has-text('영구 Teardown'), button:has-text('Teardown')").first();
+      // By its `data-testid`, not by its words: the label is user-facing copy
+      // and moved twice while this scenario is about the request the button
+      // issues. The testid names the identity it would destroy, which is the
+      // part that must not drift.
+      const teardownBtn = page.locator('button[data-testid^="teardown-"]').first();
       if (await teardownBtn.count() > 0) {
         await teardownBtn.click();
         const inputPrompt = page.locator("input[placeholder*='입력'], input[type='text']").last();
         if (await inputPrompt.count() > 0) {
           await inputPrompt.fill("admin");
-          const confirmBtn = page.locator("button:has-text('영구 Teardown 실행'), button:has-text('실행')").first();
+          const confirmBtn = page.locator("button:not([data-testid]):has-text('영구 삭제'), button:not([data-testid]):has-text('실행')").first();
           if (await confirmBtn.count() > 0) {
             await confirmBtn.click();
             await attemptOver(page);
@@ -2911,7 +2945,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // saw a toast: the scenario stayed green with the page's catch rewritten
       // to announce success. Same shape as the probe that matched "에이전트" in
       // the sidebar.
-      const FAILED = "페어링 코드 발급 실패";
+      const FAILED = "연결 코드 발급 실패";
       const CLAIMED = "페어링 코드가 발급되었습니다";
       await showsMatch(page, new RegExp(`${FAILED}|${CLAIMED}`));
 
@@ -3083,7 +3117,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await capabilityViewer(mesh, "usage.read");
 
     await withPage("/tenant/rbac", async ({ page }) => {
-      await shows(page, "usage.read");
+      await page.locator('[data-testid$="-usage.read"]').first().waitFor({ state: "visible" });
 
       // Only the write. The read has to succeed or there are no chips to click.
       await page.route("**/api/v1/admin/grants", (route) => {
@@ -3329,7 +3363,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         // The screen's own sentence, not any word containing 실패 — the first
         // version matched `/실패|failed/i` across the whole body and was true on
         // a page that said nothing about this write.
-        return { cellThere, buttonThere, before, after, saysFailed: /이그레스 정책 변경 실패|Egress policy change failed/.test(text) };
+        return { cellThere, buttonThere, before, after, saysFailed: /전송 규칙 변경 실패|Could not change the delivery rule/.test(text) };
       } finally {
         await context.close().catch(() => {});
       }
@@ -5567,7 +5601,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       expect({ ok: wire.ok, reported: typeof reported === "number" && reported > 0 }, "the route did not report the message it had just accepted")
         .toEqual({ ok: true, reported: true });
 
-      const card = page.locator("[data-kpi='미수신 메일함']");
+      const card = page.locator("[data-kpi='대기 중 메시지']");
       await card.waitFor({ timeout: 5000 });
       expect(await card.innerText()).toContain(String(reported));
     });
@@ -5580,7 +5614,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.route("**/api/v1/admin/mailbox", (r) => r.abort());
       await page.reload({ waitUntil: "domcontentloaded" });
 
-      const card = page.locator("[data-kpi='미수신 메일함']");
+      const card = page.locator("[data-kpi='대기 중 메시지']");
       await card.waitFor({ timeout: 5000 });
       const text = await card.innerText();
       expect(

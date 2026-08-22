@@ -677,7 +677,7 @@ export function LoginPage() {
               marginTop: 4,
             }}
           >
-            {t("login.subtitle", "Single sign-on and RBAC administration gateway")}
+            {t("login.subtitle", "운영 콘솔 로그인")}
           </p>
         </div>
 

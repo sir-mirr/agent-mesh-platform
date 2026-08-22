@@ -340,7 +340,7 @@ describe("the admission queue, in the four states it can be in", () => {
     // The server answered. Saying it did not sends the operator to check a
     // network for a permission they simply do not hold.
     expect(queueState()).toEqual({ loading: false, refused: true, unreachable: false, empty: false, rows: [] });
-    expect(textOf("admission-queue-refused")).toBe(`${en("common.refusedRead")} (${ADMIT}).`);
+    expect(textOf("admission-queue-refused")).toBe(`${en("common.refusedRead")}.`);
     expect(queueText()).not.toContain(en("users.queue.unreachable"));
     expect(queueText()).not.toContain(en("users.queue.empty"));
   });
@@ -431,7 +431,8 @@ describe("the roster of local accounts tells the same four apart", () => {
     // one sentence about the server not answering, at a server that had
     // answered `403`.
     expect(rosterState()).toEqual({ loading: false, refused: true, unreachable: false, empty: false, rows: [] });
-    expect(rosterText()).toContain(`${en("common.refusedRead")} (${ADMIT}).`);
+    expect(rosterText()).toContain(`${en("common.refusedRead")}.`);
+    expect(rosterText()).not.toContain(ADMIT);
   });
 
   it("does not call a broken proxy a refused roster", async () => {

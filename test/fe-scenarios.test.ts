@@ -148,7 +148,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(data.ok).toBe(true);
   });
 
-  // SCR-12 / SC-SCR12-01: Egress ACL Matrix & Directional Policy
+  // SCR-12 / SC-SCR12-01: Group delivery rules & Directional Policy
   it("[SC-SCR12-01] adds and deletes directional egress rule between groups", async () => {
     const srcGroup = "default";
     const targetGroup = `target-${Date.now()}`;

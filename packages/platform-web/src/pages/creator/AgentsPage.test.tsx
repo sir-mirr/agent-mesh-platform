@@ -318,7 +318,8 @@ describe("the four things the table can be saying", () => {
     // The server answered. Reporting that as "the server did not answer" sends
     // an operator to check a network that is fine, for a permission they simply
     // do not hold — measured on this console with a member session.
-    expect(status()).toContain(`${REFUSED} (${PROVISION}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(PROVISION);
     expect(status()).not.toContain(UNREACHABLE);
     expect(status()).not.toContain(EMPTY);
     // A panel that never leaves the loading state is a third wrong sentence:
@@ -763,7 +764,8 @@ describe("what an irreversible teardown destroys", () => {
     // current: one of these identities was just destroyed, and the screen no
     // longer knows anything about the rest.
     expect(rows()).toHaveLength(0);
-    expect(status()).toContain(`${REFUSED} (${PROVISION}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(PROVISION);
     expect(status()).not.toContain(EMPTY);
     expect(status()).not.toContain(UNREACHABLE);
   });

@@ -1,5 +1,5 @@
 /**
- * A capability name shown to a person is one the contract defines.
+ * A capability name is never shown directly to a person.
  *
  * Two things already guard the *guards*: `requiredCapability` is typed
  * `Capability`, so an invented name does not compile, and
@@ -8,11 +8,9 @@
  * `"audit.read_content 기반 열람"` was shown to the user for as long as the
  * screen existed. `t()` takes a `string`, so nothing objected.
  *
- * The scan is by namespace rather than by exact name: `server.` and `policy.`
- * are not prefixes the contract uses at all, so their appearance is the signal.
- * A false positive here fails loudly and is added to the list below with a
- * reason, which is a cost worth paying — the alternative is a check that reads
- * prose and finds nothing in it.
+ * The scan is by namespace rather than by exact name: both current contract
+ * keys and plausible-but-invented keys are internal vocabulary. Friendly
+ * labels belong on screen instead.
  *
  * The allow-list starts non-empty on purpose. An empty one is the shape that
  * passes because it excludes nothing and looks like it excludes something.
@@ -45,13 +43,14 @@ function screenFiles(dir: string): string[] {
     const full = join(dir, entry);
     return statSync(full).isDirectory()
       ? screenFiles(full)
-      : /\.tsx?$/.test(full)
+      : /\.tsx?$/.test(full) && !/\.test\.tsx?$/.test(full)
         ? [full.slice(WEB.length + 1)]
         : [];
   });
 }
 
 const FILES = screenFiles(WEB);
+const DISPLAY_FILES = FILES.filter((file) => !file.startsWith("api/"));
 
 /**
  * The three the check was built against, kept as a tripwire.
@@ -125,9 +124,9 @@ describe("capability names in text a person reads", () => {
     }
   });
 
-  test("every namespaced name shown to a user is in the contract", () => {
+  test("no namespaced permission identifier is shown to a user", () => {
     const offenders: string[] = [];
-    for (const f of FILES) {
+    for (const f of DISPLAY_FILES) {
       const source = readFileSync(join(WEB, f), "utf8");
       for (const line of source.split("\n")) {
         // Comments explain names, including wrong ones deliberately.
@@ -135,21 +134,23 @@ describe("capability names in text a person reads", () => {
         for (const match of displayStrings(line).join(" ").matchAll(NAMESPACED)) {
           const token = match[0];
           if (NOT_CAPABILITIES.has(token)) continue;
-          if ((ALL_CAPABILITIES as readonly string[]).includes(token)) continue;
           offenders.push(`${f}: ${token}`);
         }
       }
     }
-    expect(offenders, "a name the contract does not define is being shown to a person").toEqual([]);
+    expect(offenders, "an internal permission identifier is being shown to a person").toEqual([]);
   });
 
-  test("the scan can see a name at all", () => {
-    // Otherwise the assertion above is satisfied by a regex that matches
-    // nothing — the same green as a file with no problems in it.
-    const source = readFileSync(join(WEB, "contexts/I18nContext.tsx"), "utf8");
-    const found = source.split("\n").flatMap((l) => [...displayStrings(l).join(" ").matchAll(NAMESPACED)].map((m) => m[0]));
-    expect(found.length, "the scan found no namespaced names anywhere, so it proves nothing")
-      .toBeGreaterThan(0);
+  test("the scan recognises a real capability in representative display copy", () => {
+    // A clean product tree should contribute zero hits, so prove the scanner
+    // itself is alive with a synthetic user-facing sentence.
+    const capability = (ALL_CAPABILITIES as readonly string[]).find((name) =>
+      /^(audit|role|tenant|group|agent|key|mailbox|source|user|usage)\./.test(name),
+    );
+    expect(capability, "the contract has no namespaced capability for the tripwire").toBeString();
+    const found = [...displayStrings(`subtitle="Requires ${capability}"`).join(" ").matchAll(NAMESPACED)]
+      .map((m) => m[0]);
+    expect(found).toContain(capability!);
   });
 });
 

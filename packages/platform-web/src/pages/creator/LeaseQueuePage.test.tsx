@@ -154,19 +154,18 @@ const tableNote = (): string => {
   return last === table ? "" : (last.textContent ?? "");
 };
 
-/** The card a label names — `<span>label</span>` inside the card's header row. */
+/** The KPI card named by its operator-facing label. */
 const kpiCard = (label: string): HTMLElement => {
-  const labelEl = [...document.querySelectorAll("span")].find((s) => s.textContent === label);
-  const card = labelEl?.parentElement?.parentElement;
-  if (!card) throw new Error(`no telemetry card is labelled ${label}`);
+  const card = document.querySelector(`[data-kpi="${label}"]`);
+  if (!card) throw new Error(`no KPI card is labelled ${label}`);
   return card as HTMLElement;
 };
 /** The number (or the refusal to give one) the card puts beside its label. */
 const kpiValue = (label: string): string =>
-  kpiCard(label).firstElementChild?.children[1]?.firstElementChild?.textContent ?? "";
-/** The line under the bar, which is the card's own sentence about the read. */
+  kpiCard(label).children[1]?.children[0]?.textContent ?? "";
+/** The caption beside the value. */
 const kpiStatus = (label: string): string =>
-  kpiCard(label).lastElementChild?.firstElementChild?.textContent ?? "";
+  kpiCard(label).children[1]?.children[1]?.textContent ?? "";
 
 const LEASED_KPI = en("lease.kpi.leased");
 const WAITING_KPI = en("lease.kpi.available");
@@ -208,7 +207,7 @@ describe("a read that has not come back yet", () => {
 });
 
 describe("the server refused, which is not the server being gone", () => {
-  it("repeats the capability the refusal named instead of the one written into the copy", async () => {
+  it("explains the refusal without exposing its machine capability key", async () => {
     // § 11.3's refusal carries `capability` as a field so a client does not have
     // to remember what a route requires. The name used here is deliberately not
     // the one this screen's dictionary entry has hardcoded: with the expected
@@ -217,7 +216,8 @@ describe("the server refused, which is not the server being gone", () => {
     // indistinguishable.
     mailboxAnswers({ error: "not allowed", capability: META }, 403);
     await mount();
-    expect(tableNote()).toContain(`${REFUSED_BASE} (${META}).`);
+    expect(tableNote()).toContain(`${REFUSED_BASE}.`);
+    expect(tableNote()).not.toContain(META);
     expect(tableNote()).not.toContain(DEPTH);
   });
 
@@ -278,8 +278,8 @@ describe("nothing answered", () => {
     // A `0` here is a measurement, and the operator has no way to tell it from
     // a mesh with nothing queued. "Cannot measure" is the only honest value for
     // a sum over rows that never arrived.
-    expect(kpiValue(LEASED_KPI)).toBe(en("common.unmeasurable"));
-    expect(kpiValue(WAITING_KPI)).toBe(en("common.unmeasurable"));
+    expect(kpiValue(LEASED_KPI)).toBe(en("common.unmeasured"));
+    expect(kpiValue(WAITING_KPI)).toBe(en("common.unmeasured"));
     expect(kpiValue(LEASED_KPI)).not.toBe("0");
     expect(kpiValue(WAITING_KPI)).not.toBe("0");
   });

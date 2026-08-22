@@ -18,7 +18,8 @@ import { apiClient, failureKind, refusedCapability } from "./client.ts";
  * every metric is `{value, unavailable}`.
  */
 export interface SystemTelemetry {
-  active_sockets: number;
+  /** Identities whose registry row explicitly reports the `web` channel. */
+  web_channel_identities: number | null;
   /** `null` when `/api/v1/health` did not answer. Not the registry's length. */
   total_agents: number | null;
   total_messages: number | null;
@@ -70,7 +71,6 @@ export interface BehaviourMetrics {
 }
 
 const PANELS = [
-  { key: "usage", path: "/api/v1/admin/ai-usage", panel: "CPU · memory · p99", capability: "usage.read" },
   { key: "agents", path: "/api/v1/agents", panel: "agents", capability: "" },
   { key: "mailbox", path: "/api/v1/admin/mailbox", panel: "queue depth", capability: "mailbox.read.depth" },
   { key: "health", path: "/api/v1/health", panel: "health", capability: "" },
@@ -98,7 +98,7 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
       }),
     ),
   );
-  const [usage, agents, mailbox, health, behaviour] = results;
+  const [agents, mailbox, health, behaviour] = results;
 
   if (results.every((r) => r === null)) {
     throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
@@ -113,10 +113,12 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   // label and nothing says it changed. Measured on the standing stack the day
   // this was written: 12 against 13.
   const totalAgents = health?.agent_count ?? null;
-  const activeSockets = agentList.filter((a: any) => a.status === "active" || a.channel === "web").length;
+  const webChannelIdentities = agents === null
+    ? null
+    : agentList.filter((a: any) => a.channel === "web").length;
 
   return {
-    active_sockets: activeSockets,
+    web_channel_identities: webChannelIdentities,
     total_agents: totalAgents,
     // `fetchAdminMailbox` has already summed the route's own `pending`
     // column and left `null` for "the route did not answer with a list".
