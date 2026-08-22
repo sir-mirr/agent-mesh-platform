@@ -6881,6 +6881,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["drops its attributes"],
   },
   {
+    id: "an-agent-that-never-signs-looks-like-an-attack",
+    defect:
+      "The unsigned refusal is counted as `invalid`, which is the state this was found in \u2014 the label was recovered by matching a message that never matched. The two readings are opposite: `invalid` says signatures are arriving and failing to verify, which is what somebody trying keys looks like; `unsigned` says a client is not signing at all and its operator has to load a key. The second was reported as the first.",
+    file: "packages/hub/src/signature.ts",
+    from: '      reason: "unsigned",',
+    to: '      reason: "invalid",',
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["each refusal is counted under its own name"],
+  },
+  {
+    id: "every-signature-refusal-is-the-same-refusal",
+    defect:
+      "The counter stopped taking the label off the verdict and wrote one constant. Every signature refusal then reads alike, so the metric can say something is failing to get in and never which thing \u2014 a replayed nonce, an expired clock and a stolen key all arrive as one number.",
+    file: "packages/hub/src/signature.ts",
+    from: '  if (!verdict.ok) recordRefusal("signature", verdict.reason);',
+    to: '  if (!verdict.ok) recordRefusal("signature", "invalid");',
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["each refusal is counted under its own name"],
+  },
+  {
+    id: "a-stolen-key-counts-as-a-bad-signature",
+    defect:
+      "A signature made with a key that is not this identity's approved one stopped being named. `wrong-key` is the one refusal in this list that means a key exists, verifies, and belongs to somebody else \u2014 counting it as `invalid` hides the only signal that separates a broken client from a borrowed credential.",
+    file: "packages/hub/src/signature.ts",
+    from: '    reason: outcome.reason === "wrong-key" ? "wrong-key" : "invalid",',
+    to: '    reason: "invalid",',
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["each refusal is counted under its own name"],
+  },
+  {
     id: "held-table-parser-stopped-matching",
     swept: true,
     defect:

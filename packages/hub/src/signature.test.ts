@@ -153,6 +153,7 @@ const { SIGNATURE_FRESHNESS_WINDOW_SECONDS, requestSignaturePreimage: preimageOf
 const { keys } = await import("@agent-mesh/store");
 const { agentsDb } = await import("./db");
 const { KEY_NOT_APPROVED, SIGNATURE_INVALID, verifyRequest, nonceWindow } = await import("./signature");
+const { refusalCounts } = await import("./refusals");
 
 describe("verifying a request", () => {
   let n = 0;
@@ -331,5 +332,73 @@ describe("verifying a request", () => {
 
   test("the nonce window is reachable, which is why it is exported", () => {
     expect(typeof nonceWindow.sweep).toBe("function");
+  });
+
+  /**
+   * **What an operator actually reads, driven from what actually happens.**
+   *
+   * `refusals.test.ts` proves the counter counts; it makes its reasons up. This
+   * asks the other half — that the labels the hub produces are the ones a
+   * person sees — and it is the half that was wrong. The label used to be
+   * recovered by matching the message this file had just written, and the
+   * unsigned case looked for `signature required` against a message reading
+   * *identity 'x' requires a signature on every request*. It never matched. So
+   * every request from an agent that is not signing at all was counted as
+   * `invalid`, which is what an attack looks like, rather than as `unsigned`,
+   * which is a client whose operator has not loaded a key.
+   *
+   * Both are one line in a metric an operator reads to decide whether somebody
+   * is trying to get in.
+   */
+  describe("what gets counted", () => {
+    /** How many times this exact label has been counted so far. */
+    const seen = (reason: string) =>
+      refusalCounts().find((r) => r.kind === "signature" && r.reason === reason)?.count ?? 0;
+
+    /** The label the counter moved on, when one refusal is made to happen. */
+    function labelFor(refuse: () => void, expected: string): string {
+      const before = seen(expected);
+      refuse();
+      return seen(expected) > before ? expected : `not ${expected}`;
+    }
+
+    test("each refusal is counted under its own name, and no name is unreachable", () => {
+      const identity = agent(SIGNING);
+      const kp = approve(identity);
+      const replayed = signed(kp, "mesh.send", RAW);
+      verifyRequest(identity, "mesh.send", replayed, RAW);
+
+      const stranger = keypair();
+      const strangerFp = keys.proposeKey(agentsDb, agent(SIGNING), stranger.raw, "in-process-test").fingerprint;
+
+      const unapproved = agent(SIGNING);
+      const pending = keypair();
+      const pendingFp = keys.proposeKey(agentsDb, unapproved, pending.raw, "in-process-test").fingerprint;
+
+      const cases: Array<[string, () => void]> = [
+        // No envelope at all — the case that was counted as `invalid`.
+        ["unsigned", () => verifyRequest(agent(SIGNING), "mesh.send", undefined, RAW)],
+        ["malformed", () => verifyRequest(identity, "mesh.send", { alg: "rsa" } as any, RAW)],
+        ["stale", () => verifyRequest(identity, "mesh.send", signed(kp, "mesh.send", RAW, { iat: 1 }), RAW)],
+        // The same envelope twice: the second spends nothing and is replay.
+        ["replayed-nonce", () => verifyRequest(identity, "mesh.send", replayed, RAW)],
+        ["key-not-approved", () =>
+          verifyRequest(unapproved, "mesh.send", signed({ ...pending, fingerprint: pendingFp }, "mesh.send", RAW), RAW)],
+        ["wrong-key", () =>
+          verifyRequest(identity, "mesh.send", signed({ ...stranger, fingerprint: strangerFp }, "mesh.send", RAW), RAW)],
+        // A body altered after signing: the envelope is well formed, fresh,
+        // unspent and made with the right key, and still does not verify.
+        ["invalid", () =>
+          verifyRequest(identity, "mesh.send", signed(kp, "mesh.send", RAW),
+            `{"method":"mesh.send","params":{"to":"mallory","content":"hi"}}`)],
+      ];
+
+      const counted = cases.map(([expected, refuse]) => labelFor(refuse, expected));
+      expect(counted).toEqual(cases.map(([expected]) => expected));
+      // Seven refusals, seven names. A label nothing can produce is a label an
+      // operator will never see, and the one it would have shown instead is a
+      // different diagnosis.
+      expect(new Set(counted).size).toBe(7);
+    });
   });
 });

@@ -42,9 +42,33 @@ export interface SignatureEnvelope {
   value?: unknown;
 }
 
+/**
+ * The bounded label a refusal is counted under.
+ *
+ * **A field, not a sentence to be read back.** It was derived by matching the
+ * message this file had just written — and one of the seven never matched:
+ * the unsigned case says *identity 'x' requires a signature on every request*
+ * while the map looked for `signature required`, so every request from an agent
+ * that is not signing at all was counted as `invalid`. Those are opposite
+ * diagnoses. `invalid` says somebody is sending signatures that do not verify,
+ * which is what an attack looks like; `unsigned` says a client is misconfigured
+ * and its operator has to load a key. The first was the one an operator saw.
+ *
+ * Naming the reason where the refusal is decided cannot drift, because there is
+ * no second copy of the message to keep in step.
+ */
+export type SignatureRefusal =
+  | "unsigned"
+  | "malformed"
+  | "stale"
+  | "replayed-nonce"
+  | "key-not-approved"
+  | "wrong-key"
+  | "invalid";
+
 export type SignatureVerdict =
   | { ok: true; signed: boolean }
-  | { ok: false; code: number; message: string; data?: Record<string, unknown> };
+  | { ok: false; code: number; message: string; reason: SignatureRefusal; data?: Record<string, unknown> };
 
 const OK_UNSIGNED: SignatureVerdict = { ok: true, signed: false };
 const OK_SIGNED: SignatureVerdict = { ok: true, signed: true };
@@ -74,25 +98,11 @@ export function verifyRequest(
   // six `ok: false` returns below and a seventh added next year would be
   // missed silently — a counter that undercounts reads as calm, which is the
   // failure this exists to prevent. Wrapping cannot drift.
-  if (!verdict.ok) recordRefusal("signature", refusalReason(verdict));
+  //
+  // The label travels on the verdict rather than being read back off the
+  // message; `SignatureRefusal` says what that cost.
+  if (!verdict.ok) recordRefusal("signature", verdict.reason);
   return verdict;
-}
-
-/**
- * A stable, bounded label for what went wrong.
- *
- * Derived from the numeric code and the fixed messages this file produces —
- * never from anything a caller supplied, because a counter keyed on caller
- * input is a memory leak whose rate the caller chooses.
- */
-function refusalReason(verdict: SignatureVerdict & { ok: false }): string {
-  if (verdict.code === KEY_NOT_APPROVED) return "key-not-approved";
-  if (verdict.message.startsWith("iat outside")) return "stale";
-  if (verdict.message.startsWith("nonce already")) return "replayed-nonce";
-  if (verdict.message === "malformed sig") return "malformed";
-  if (verdict.message.startsWith("signed with a key")) return "wrong-key";
-  if (verdict.message.startsWith("signature required")) return "unsigned";
-  return "invalid";
 }
 
 function verifyRequestInner(
@@ -109,6 +119,7 @@ function verifyRequestInner(
       ok: false,
       code: SIGNATURE_INVALID,
       message: `identity '${identity}' requires a signature on every request`,
+      reason: "unsigned",
     };
   }
 
@@ -121,7 +132,7 @@ function verifyRequestInner(
     typeof value !== "string" ||
     !Number.isInteger(iat)
   ) {
-    return { ok: false, code: SIGNATURE_INVALID, message: "malformed sig" };
+    return { ok: false, code: SIGNATURE_INVALID, message: "malformed sig", reason: "malformed" };
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -130,6 +141,7 @@ function verifyRequestInner(
       ok: false,
       code: SIGNATURE_INVALID,
       message: `iat outside the ±${SIGNATURE_FRESHNESS_WINDOW_SECONDS}s freshness window`,
+      reason: "stale",
     };
   }
 
@@ -144,7 +156,12 @@ function verifyRequestInner(
   // unboundedly against a hub whose key state had changed, because each
   // attempt would fail verification and leave the nonce spendable.
   if (!nonces.claim(identity, nonce, iat)) {
-    return { ok: false, code: SIGNATURE_INVALID, message: "nonce already seen in this window" };
+    return {
+      ok: false,
+      code: SIGNATURE_INVALID,
+      message: "nonce already seen in this window",
+      reason: "replayed-nonce",
+    };
   }
 
   const preimage = requestSignaturePreimage({
@@ -175,6 +192,7 @@ function verifyRequestInner(
       ok: false,
       code: KEY_NOT_APPROVED,
       message: `identity '${identity}' has no approved signing key`,
+      reason: "key-not-approved",
       data: { code: "KEY_NOT_APPROVED", identity, key_status: outcome.keyStatus },
     };
   }
@@ -192,6 +210,7 @@ function verifyRequestInner(
       outcome.reason === "wrong-key"
         ? "signed with a key that is not this identity's approved key"
         : "signature does not verify",
+    reason: outcome.reason === "wrong-key" ? "wrong-key" : "invalid",
   };
 }
 
