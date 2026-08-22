@@ -1579,15 +1579,52 @@ app.get('/api/v1/agents', async (c) => {
     }
   }
 
-  const agents = listRegistryAgents()
-    .filter(entry => seesEverything || visible.has(entry.id))
-    .map(entry => ({
-    id: entry.id,
-    name: entry.name,
-    description: entry.description,
-    channel: entry.channel,
-    type: entry.type,
-    created_at: entry.created_at,
+  /**
+   * **Both lists, joined on the identity.**
+   *
+   * `agent_registry` is this server's own table and has exactly two writers:
+   * `upsertApprovedWebUser`, which inserts a *web user*, and a one-time import
+   * of the pre-database `registry.json`. Nothing has ever written a row for an
+   * identity the hub registered — so an agent approved in the console, and
+   * connected, and logged by the hub as connected, was not on this list. It
+   * looked like it worked because the legacy import had filled the table once;
+   * the state directory was re-seeded, the import had nothing to import, and
+   * what was left was the people.
+   *
+   * The mesh's `agents` table is where an identity exists (§ 10.1). This route
+   * already read it twice — for `last_seen` and for fingerprints — without
+   * listing from it.
+   *
+   * The registry still decides how an identity is *presented*: a web user's
+   * name and `channel: web` live only here, and the hub has no column for
+   * either. So the mesh says who exists and the registry says how to draw them.
+   */
+  const meshRows = mesh
+    .prepare(
+      `SELECT identity, description, type, created_at FROM agents WHERE deleted_at IS NULL`,
+    )
+    .all() as Array<{ identity: string; description: string | null; type: string | null; created_at: string }>
+  const annotation = new Map(listRegistryAgents().map(entry => [entry.id, entry] as const))
+  const everyIdentity = [
+    ...new Set([...meshRows.map(r => r.identity), ...annotation.keys()]),
+  ].sort()
+  const meshById = new Map(meshRows.map(r => [r.identity, r] as const))
+
+  const agents = everyIdentity
+    .filter(id => seesEverything || visible.has(id))
+    .map(id => {
+      const known = annotation.get(id)
+      const row = meshById.get(id)
+      return {
+    id,
+    name: known?.name ?? id,
+    description: known?.description ?? row?.description ?? null,
+    // `native` is what the pre-database registry defaulted to on read, kept so
+    // an identity the console has never annotated is drawn the same way it was
+    // before this route learned to see it.
+    channel: known?.channel ?? 'native',
+    type: known?.type ?? row?.type ?? 'agent',
+    created_at: known?.created_at ?? row?.created_at ?? null,
     // `null` means the mesh holds no presence record for this identity — a web
     // user who has never connected has none — and it does not mean offline.
     //
@@ -1596,9 +1633,10 @@ app.get('/api/v1/agents', async (c) => {
     // ship a judgement dressed as a measurement. That is the defect the screens
     // were fixed for in `71afcdb` and `189f4ab`; putting it in the server moves
     // the invention one layer up rather than removing it.
-    last_seen_at: lastSeen.get(entry.id) ?? null,
-    fingerprint: fingerprints.get(entry.id) ?? null,
-  }))
+    last_seen_at: lastSeen.get(id) ?? null,
+    fingerprint: fingerprints.get(id) ?? null,
+      }
+    })
 
   return c.json({ agents })
 })
