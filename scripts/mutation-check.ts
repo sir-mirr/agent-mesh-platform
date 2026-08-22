@@ -7447,8 +7447,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A document naming code is a copy of it. A row whose anchor has been renamed or deleted still reads as a decision somebody made about the code that is there now — which is worse than no document, because the reason is stated with confidence and points at nothing.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `webpush.sendNotification(` |",
-    to: "| `packages/http/src/main.ts` | `webpush.deliverNotification(` |",
+    from: "| `packages/http/src/main.ts` | `webpush.sendNotification.bind(webpush)` |",
+    to: "| `packages/http/src/main.ts` | `webpush.deliverNotification.bind(webpush)` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every anchor is still in the file it names"],
   },
@@ -7470,7 +7470,7 @@ const MUTATIONS: Mutation[] = [
       "A row that says where and not why survives every other check and tells the next reader nothing. The failure this table was written against is not an uncovered line — it is an unexplained one.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
     from:
-      "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | The CLI block. Its checks are cases in `test/preview-lint.test.ts`; this is the printing. |",
+      "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | Two lines: the banner, and a call to `reportLint`. Both of that function's branches \u2014 including the exit code CI stops on \u2014 are cases in `test/preview-lint.test.ts`. |",
     to: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | CLI. |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row says why, rather than only where"],
