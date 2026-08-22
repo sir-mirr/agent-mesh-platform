@@ -233,8 +233,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The server's own role string reached the session, so a name the client has a screen for but no route, capability or test would light up a panel nobody can reach.",
     file: "packages/platform-web/src/contexts/AuthContext.tsx",
-    from: "        ? \"PLATFORM_ADMIN\"\n        : \"AGENT_OPERATOR\",",
-    to: "        ? \"PLATFORM_ADMIN\"\n        : (me.role as UserRole) ?? \"AGENT_OPERATOR\",",
+    from: "    role: me.role === \"admin\" ? \"PLATFORM_ADMIN\" : \"AGENT_OPERATOR\",",
+    to: "    role: (me.role as UserRole) ?? \"AGENT_OPERATOR\",",
     suite: "packages/platform-web/src/contexts/AuthContext.test.tsx",
     expect: ["resolves every role the server could send to one of two"],
   },
@@ -243,8 +243,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A role the server does not issue was promoted to platform administrator by the mapping.",
     file: "packages/platform-web/src/contexts/AuthContext.tsx",
-    from: "      (me.role === \"admin\" || me.github_login === \"admin\" || me.github_login === \"platform-admin\")",
-    to: "      (me.role === \"admin\" || me.role === \"TENANT_ADMIN\" || me.github_login === \"admin\" || me.github_login === \"platform-admin\")",
+    from: "    role: me.role === \"admin\" ? \"PLATFORM_ADMIN\" : \"AGENT_OPERATOR\",",
+    to: "    role: me.role === \"admin\" || me.role === \"TENANT_ADMIN\" ? \"PLATFORM_ADMIN\" : \"AGENT_OPERATOR\",",
     suite: "packages/platform-web/src/contexts/AuthContext.test.tsx",
     expect: ["never resolves to a role the dashboard has a panel for"],
   },
@@ -3168,8 +3168,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Seven keys were called with different fallbacks at different call sites — `common.errorLoad` meant both `불러오지 못함` and `조직 정보 불러오지 못함`. Defining such a key makes one of them win everywhere, so adding the missing entries changed wording on screens nobody was touching and timed out a scenario waiting for the older text. A key whose meaning depends on the call site is not a translation key.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: 't("dash.tenants.errorLoad", "Could not load tenants")',
-    to: 't("common.errorLoad", "조직 정보 불러오지 못함")',
+    from: "    ? t(\"common.errorLoad\", \"\ubd88\ub7ec\uc624\uc9c0 \ubabb\ud568\")\n    : emptyMessage;",
+    to: "    ? t(\"common.errorLoad\", \"\uc870\uc9c1 \uc815\ubcf4 \ubd88\ub7ec\uc624\uc9c0 \ubabb\ud568\")\n    : emptyMessage;",
     suite: "test/fe-scenarios.test.ts",
     expect: ["one key is asked to mean two things", "common.errorLoad"],
   },
@@ -3259,12 +3259,12 @@ const MUTATIONS: Mutation[] = [
   {
     id: "refusal-drops-the-capability-on-the-screen-that-lacks-it",
     defect:
-      "The refusal without the name, seen by the session that actually lacks the capability. `SC-CAP-07` fulfills a 403 to test this; here the server issues it, so the screen and the mesh have to agree about which capability is missing.",
+      "A refusal drawn as silence: the server answered `403` naming the capability it wanted, and the screen said nothing about either. The rule then reversed \u2014 nine screens had the machine key typed into their own copy (`(key.approve)`, `(group.manage)`, `(mailbox.read.depth)`), nine guesses that were right on the day they were written and operator-facing language on none of them. So what is planted now is that habit returning: the sentence naming the capability again. The key stays on the error object for code and diagnostics, which is where a machine name belongs.",
     file: "packages/platform-web/src/api/client.ts",
-    from: "  return capability ? `${base} (${capability}).` : `${base}.`;",
-    to: "  return `${base}.`;",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-09", "told silence where the server refused"],
+    from: "  return `${base}.`;",
+    to: "  return _capability ? `${base} (${_capability}).` : `${base}.`;",
+    suite: "packages/platform-web/src/api/client.test.ts",
+    expect: ["keeps the server's machine key out of operator copy"],
   },
   {
     id: "audit-screen-shows-bodies-to-a-metadata-holder",
@@ -3281,8 +3281,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
-    from: "          {canTeardown && (",
-    to: "          {true && (",
+    from: "          {canTeardown && item.id !== user?.name && (",
+    to: "          {true && item.id !== user?.name && (",
     suite: "test/fe-render.test.ts",
     expect: ["SC-CAP-08", "offered to a session that cannot use it"],
   },
@@ -3291,8 +3291,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way to pass: hide it from every session, including the one the server gave `agent.teardown`. A console where nothing dangerous is possible also cannot do the job.",
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
-    from: "          {canTeardown && (",
-    to: "          {false && (",
+    from: "          {canTeardown && item.id !== user?.name && (",
+    to: "          {false && item.id !== user?.name && (",
     suite: "test/fe-render.test.ts",
     expect: ["SC-CAP-08", "or to nobody at all"],
   },
@@ -3606,8 +3606,8 @@ const MUTATIONS: Mutation[] = [
     // manifest as a caller sending `description, group_id` to
     // `POST /api/v1/messages`. The mutation is an early return instead, which
     // reproduces the same defect and quotes nothing that looks like a call.
-    from: "export async function createGroupApi(name: string, description?: string): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {",
-    to: "export async function createGroupApi(name: string, description?: string): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {\n  if (name) return { ok: true };",
+    from: "export async function createGroupApi(\n  name: string,\n  description?: string,\n  tenant?: string,\n): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {",
+    to: "export async function createGroupApi(\n  name: string,\n  description?: string,\n  tenant?: string,\n): Promise<{ ok: boolean; group_id?: string; created?: boolean; group?: any }> {\n  if (name) return { ok: true };",
     suite: "test/fe-render.test.ts",
     expect: ["SC-WRITE-12", "drawn without being created"],
   },
@@ -3636,8 +3636,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A screen that was refused says the backend went quiet. `I-061` was this on `/platform/telemetry` and `I-111` was the same thing one screen over, both found one at a time \u2014 a refusal is an answer, and telling somebody the server did not respond sends them to check a network that is fine for a permission nobody named.",
     file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
-    from: "`${t(\"overview.partial\", \"일부는 볼 권한이 없습니다\")} — ",
-    to: "`통신 오류 — ",
+    from: "              : `${t(\"overview.partial\", \"\uc774 \uacc4\uc815\uc774 \ubcfc \uc218 \uc5c6\ub294 \ud56d\ubaa9\uc774 \uc788\uc2b5\ub2c8\ub2e4\")} (${telemetry?.refused.length ?? 0})`}",
+    to: "              : `\ud1b5\uc2e0 \uc624\ub958 (${telemetry?.refused.length ?? 0})`}",
     suite: "test/fe-render.test.ts",
     expect: ["SC-CAP-11", "reported silence about a backend that answered 403"],
   },
@@ -3686,8 +3686,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Korean text between tags in `PlatformOverviewPage`, below `endpoint: \"/api/v1/*\"`. That string opened a block comment for the regex this check used to strip comments with, and the next `*/` was 113 lines later \u2014 so a hundred lines of that file, this one among them, were not in the denominator. The count read zero while a browser with the language set to English drew `개` on `/platform`.",
     file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
-    from: "          {item.activeSockets}",
-    to: "          {item.activeSockets}개",
+    from: "          {item.uptime}",
+    to: "          {item.uptime}\uac1c",
     suite: "test/fe-scenarios.test.ts",
     expect: ["SC-I18N-04", "untranslated strings or lines, up from"],
   },
@@ -4152,8 +4152,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other half, and the one that matters: a wrong capability name on a page **outside** the three the check was built against. `GroupsPage.tsx` writes `group.manage` into a subtitle a person reads; yesterday that file was not scanned at all, so this mutation would have passed green. It is here rather than on an anchor file because an anchor proves the rule works, not that the scope does.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
-    from: "\u00a7 12 group.manage)",
-    to: "\u00a7 12 policy.manage)",
+    from: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID\"),",
+    to: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID (\u00a7 12 policy.manage)\"),",
     suite: "test/capability-prose.test.ts",
     expect: ["every namespaced name shown to a user is in the contract"],
   },
@@ -4342,8 +4342,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`member_count || g.members?.length || 0` sends a group that really holds nobody down the same road as one the route said nothing about: `0` is falsy, so the real measurement falls through to the fallback. `??` keeps them apart, and `null` then draws as absent rather than as nought.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
-    from: "          memberCount: g.member_count ?? null,",
-    to: "          memberCount: g.member_count ?? g.members?.length ?? 0,",
+    from: "          const counted = g.member_count ?? null;",
+    to: "          const counted = g.member_count ?? 0;",
     suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
     expect: ["draws no member count rather than nought"],
   },
@@ -4862,8 +4862,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The dashboard stopped summing the egress rules the route returned and drew a total of its own. A number on a dashboard is read as measured; one the screen computed from nothing reads identically to one the mesh reported, and an operator sizing a tenant's exposure by it is sizing it by a constant.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: "  const totalEgressRules = groups.reduce((acc, g) => acc + (g.egress_allowed?.length || 0), 0);",
-    to: "  const totalEgressRules = groups.reduce((acc, g) => acc + 0, 0);",
+    from: "  const totalEgressRules = groups.every((group) => Array.isArray(group.egress_allowed))\n    ? groups.reduce((total, group) => total + group.egress_allowed!.length, 0)\n    : null;",
+    to: "  const totalEgressRules = groups.reduce((total, group) => total + (group.egress_allowed?.length ?? 0), 0);",
     suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
     expect: ["without inventing its egress total"],
   },
