@@ -337,6 +337,39 @@ export async function redeclareProxies(): Promise<void> {
   }))
 }
 
+/**
+ * Re-declare, and say so when it does not work.
+ *
+ * **Both callers swallowed this**: `await redeclareProxies().catch(() => {})`,
+ * at boot and after approving a person. What the swallow hides is not small —
+ * until this server re-declares, the hub will not let it speak for the people
+ * it proxies, so an operator sees an account approved in the console and the
+ * person cannot send. That failure had no line anywhere.
+ *
+ * Swallowing is still the *behaviour*: neither caller can do anything about a
+ * hub that is not listening, and failing an approval because a re-declare
+ * failed would leave the account half-made. Saying so is what was missing.
+ *
+ * `run` is a parameter because the failure is a hub that is unreachable, and
+ * there is no way to make a live one unreachable on demand from inside a test.
+ */
+export async function redeclareProxiesOrSay(
+  after: string,
+  run: () => Promise<void> = redeclareProxies,
+): Promise<boolean> {
+  try {
+    await run()
+    return true
+  } catch (err) {
+    log.warn(`could not re-declare the identities this server speaks for, after ${after}`, 'proxy_redeclare_failed', {
+      outcome: 'failed',
+      reason: 'hub_refused',
+      detail: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
 // **Dialling the hub is startup, not module loading.** On import this opened a
 // socket and re-dialled every 5 s forever, so a test that only wanted to call a
 // route held a reconnect loop against whatever hub happened to be running.
@@ -3727,7 +3760,7 @@ app.post('/api/v1/admin/approve', async (c) => {
   }
   // Without this the person could not be spoken for until this server next
   // reconnected — approved in the UI and unable to send.
-  await redeclareProxies().catch(() => {})
+  await redeclareProxiesOrSay('approving a person')
 
   // Grant wildcard messaging policy
   const db = getDb()
@@ -4659,7 +4692,7 @@ export async function startup(): Promise<void> {
   // reads about a boot that changed the registry, and a boot that failed to
   // seed grants has a worse thing to say first.
   admitApprovedIdentitiesOnBoot()
-  await redeclareProxies().catch(() => {})
+  await redeclareProxiesOrSay('startup')
   // hub.db audit poller (1.5 s), so Chat Audits SSE carries every agent-mesh
   // conversation rather than only the sir-mirr proxy channel.
   startAuditPoller()

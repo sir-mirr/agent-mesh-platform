@@ -2572,3 +2572,54 @@ describe("handing one notification to the push service", () => {
     ]);
   });
 });
+
+/**
+ * Re-declaring the identities this server speaks for.
+ *
+ * Both callers wrote `.catch(() => {})`, and what that hid is not small: until
+ * this server re-declares, the hub refuses to let it speak for the people it
+ * proxies — so an operator sees an account approved in the console while the
+ * person cannot send, and nothing anywhere had a line about it.
+ *
+ * Swallowing is still the behaviour. Neither caller can mend a hub that is not
+ * listening, and failing an approval over it would leave the account half-made.
+ * What is asserted is that it is *said*.
+ */
+describe("re-declaring after a change", () => {
+  const linesFor = (lines: string[], event: string) =>
+    lines
+      .filter((l) => l.includes(`"event":"${event}"`))
+      .map((l) => JSON.parse(l.slice(l.lastIndexOf(' {"ts":"') + 1)));
+
+  test("says nothing when it worked, and reports true", async () => {
+    const capture = captureConsole();
+    let ok: boolean;
+    try {
+      ok = await mod.redeclareProxiesOrSay("a test", async () => {});
+    } finally {
+      capture.restore();
+    }
+    expect({ ok, complained: linesFor(capture.lines, "proxy_redeclare_failed").length })
+      .toEqual({ ok: true, complained: 0 });
+  });
+
+  test("a hub that refuses is reported, with what it said", async () => {
+    const capture = captureConsole();
+    let ok: boolean;
+    try {
+      ok = await mod.redeclareProxiesOrSay("approving a person", async () => {
+        throw new Error("socket is closed");
+      });
+    } finally {
+      capture.restore();
+    }
+    const [failed] = linesFor(capture.lines, "proxy_redeclare_failed");
+    // The sentence is the line's prose half, not a field of the record — which
+    // is why this reads the captured line rather than the parsed object.
+    const names = capture.lines.some((l) => l.includes("after approving a person"));
+    expect(
+      { ok, level: failed?.level, reason: failed?.reason, detail: failed?.detail, names },
+      "a re-declare the hub refused passed for one it accepted, or said so without saying which change or why",
+    ).toEqual({ ok: false, level: "warn", reason: "hub_refused", detail: "socket is closed", names: true });
+  });
+});

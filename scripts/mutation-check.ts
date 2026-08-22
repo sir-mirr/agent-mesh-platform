@@ -5135,8 +5135,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The line dropped what the socket constructor actually said. `hub_dial_failed` on its own does not separate a typo in the hub URL from a hub that is not listening, and those are not the same repair.",
     file: "packages/http/src/main.ts",
-    from: "      detail: err instanceof Error ? err.message : String(err),",
-    to: "      detail: 'dial failed',",
+    // Both halves, because a second failure line now carries the same
+    // `detail:` expression and `String.replace` takes the first match.
+    from: "      reason: 'dial_threw',\n      detail: err instanceof Error ? err.message : String(err),",
+    to: "      reason: 'dial_threw',\n      detail: 'dial failed',",
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["reported as a dial, not as a disconnect"],
   },
@@ -5919,6 +5921,16 @@ const MUTATIONS: Mutation[] = [
     to: "        code: \"AUDIT_NOBODY_NAMED_THIS\",",
     suite: "test/versioning.test.ts",
     expect: ["every data.code the services emit has a name in contracts"],
+  },
+  {
+    id: "a-refused-redeclare-goes-unsaid",
+    defect:
+      "The hub refusing to let this server speak for the people it proxies went unreported. Both callers wrote `.catch(() => {})`, so an operator approved an account in the console, the person could not send, and no line anywhere connected the two \u2014 the console said it worked and the mesh disagreed silently.",
+    file: "packages/http/src/main.ts",
+    from: "    log.warn(`could not re-declare the identities this server speaks for, after ${after}`, 'proxy_redeclare_failed', {",
+    to: "    if (false) log.warn(`could not re-declare the identities this server speaks for, after ${after}`, 'proxy_redeclare_failed', {",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["a re-declare the hub refused passed for one it accepted"],
   },
   {
     id: "the-service-worker-ships-its-placeholder",
