@@ -5322,8 +5322,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.waitForURL("**/login", { timeout: 8000 }).catch(() => {});
       await settled(page);
 
-      const after = (await context.cookies()).filter((c) => c.name === "mesh_token").length;
-      const meAfter = await page.evaluate(async () => (await fetch("/auth/me", { credentials: "include" })).status);
+      // **Waited for, not read once.** The click fires a request; the redirect
+      // it triggers can land before that request has finished clearing the
+      // cookie, and this scenario then reports a session that "stayed usable"
+      // for a logout that was still in flight. It did exactly that once, under
+      // the load of a full measurement run, and passed alone seconds later.
+      //
+      // The wait cannot hide a real failure: a logout that never clears the
+      // cookie spends the tries and answers 1, which is the same red with four
+      // seconds on it.
+      const after = await eventually(
+        async () => (await context.cookies()).filter((c) => c.name === "mesh_token").length,
+        (n) => n === 0,
+      );
+      const meAfter = await eventually(
+        async () => await page.evaluate(async () => (await fetch("/auth/me", { credentials: "include" })).status),
+        (status) => status === 401,
+      );
 
       // The half that the redirect hides: going back to a guarded route.
       await page.goto(`${viteBaseUrl}/dashboard`, { waitUntil: "networkidle" });
