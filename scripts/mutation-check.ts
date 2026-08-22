@@ -5921,6 +5921,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["every data.code the services emit has a name in contracts"],
   },
   {
+    id: "a-ghost-sweep-that-takes-an-identity-with-it",
+    defect:
+      "The repair for a crashed boot's leftover row stopped checking whether anything pointed at the name, so `--remove` deleted an `agents.identity` row that still held keys, ownership or grants. The rename it unblocks exists because two accounts under one meaning is worse than an old name \u2014 a repair that removes the wrong one of them is that same defect with a script behind it.",
+    file: "scripts/ghost-identity.ts",
+    from: "  const removable = meshRow && Object.keys(attachments).length === 0;",
+    to: "  const removable = meshRow;",
+    suite: "test/ghost-identity.test.ts",
+    expect: ["a row with a key was deleted, or the refusal did not name what stopped it"],
+  },
+  {
+    id: "looking-at-a-ghost-deletes-it",
+    defect:
+      "Reporting became removing. An operator asked what was blocking the rename and the answer changed the database \u2014 the one shape of destructive command nobody guards against, because the command they ran was the safe one.",
+    file: "scripts/ghost-identity.ts",
+    from: "  if (options.remove && removable) {",
+    to: "  if (removable) {",
+    suite: "test/ghost-identity.test.ts",
+    expect: ["reporting deleted a row \u2014 the default verb is looking"],
+  },
+  {
     id: "the-service-answers-before-it-is-ready",
     defect:
       "The listen moved ahead of `startup()`, so the port was open while the seed, the migrations and the audit poller had not run. A caller that arrives in that window gets an answer from a service that has not read its own state \u2014 the failure mode is not an error, it is a *wrong answer*, which is why it needs a test rather than a smoke check.\n\nThis block ran only in a spawned process until `startHttpServer` took its dangerous pieces as parameters, so nothing counted it and nothing could mutate it.",
