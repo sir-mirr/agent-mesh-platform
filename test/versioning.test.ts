@@ -143,35 +143,26 @@ function emittedCodes(): Set<string> {
 }
 
 /**
- * Codes this repository's **http admin surface** emits that the contract does
- * not name, listed one by one rather than matched by a pattern.
+ * Codes this repository's **http admin surface** emits, which the contract now
+ * names — `HTTP_ADMIN_ERROR`, `agent-mesh-contracts` v0.30.0, D-748.
  *
  * They are not JSON-RPC `error.data.code`: nothing on the mesh wire carries
  * them, and a client pinning a contracts tag never sees one. They are REST
- * refusals an operator console switches on — which is the same shape
- * `PROVISION_ERROR` (§ 10.1) already has its own constant for, and the reason
- * that carve-out exists.
+ * refusals an operator console switches on — the same shape `PROVISION_ERROR`
+ * (§ 10.1) has, and they are read out of the contract for the same reason.
  *
- * **This is a gap, not a decision.** Whether they belong in
- * `agent-mesh-contracts` under a third constant is open — see
- * `docs/open-questions.md` — and answering it means cutting a contracts tag,
- * which is not this repository's to do alone. Written out by name so a fifth
- * one cannot join them quietly: adding a code here is a line in a diff with
- * this comment above it.
+ * **This was eleven strings written out here by hand,** because the contract
+ * did not name them and the alternative was a pattern that would swallow a
+ * twelfth silently. That list is the thing this file exists to make impossible:
+ * a vocabulary spelled in two repositories is not wrong on the day it is
+ * written, it is wrong on the day the two spellings disagree, and by then both
+ * sides are shipping. The names come from one place now, and a code added here
+ * without one fails below rather than being added to a list beside it.
  */
-const HTTP_ADMIN_ONLY = new Set([
-  "TYPE_EXISTS",                // POST /api/v1/admin/agent-types, § 10.3
-  "TYPE_IN_USE",                // DELETE the same, § 10.3
-  "AUDIT_AGENTS_UNAVAILABLE",   // GET /api/v1/admin/chat-audits/agents, D-736
-  "AUDIT_READ_UNRECORDABLE",    // any content read whose record failed, § 11.0.1
-  "LAST_GRANTOR",               // DELETE /api/v1/admin/grants, § 11.3
-  "PROTECTED_ACCOUNT",          // DELETE the same, D-746
-  "PLATFORM_ADMIN_ONLY",        // the tenant routes, T-026
-  "TENANT_EXISTS",              // POST /api/v1/admin/tenants, T-026
-  "DEFAULT_TENANT",             // DELETE /api/v1/admin/tenants/:id, T-026
-  "TENANT_NOT_YOURS",           // POST /api/v1/admin/users, T-026
-  "NO_SUCH_TENANT",             // the same, T-026
-]);
+async function httpAdminCodes(): Promise<Set<string>> {
+  const { HTTP_ADMIN_ERROR } = await import("@agent-mesh/contracts");
+  return new Set(Object.values(HTTP_ADMIN_ERROR as Record<string, string>));
+}
 
 /**
  * The build table's own summary, counted rather than asserted in prose.
@@ -241,13 +232,24 @@ describe("the error vocabulary is complete", () => {
     const { PROVISION_ERROR } = await import("@agent-mesh/contracts");
     const elsewhere = new Set(Object.values(PROVISION_ERROR as Record<string, string>));
 
+    const httpAdmin = await httpAdminCodes();
     const unnamed = [...emitted].filter(
       (code) =>
         !Object.hasOwn(ERROR_DATA_CODE, code) &&
         !elsewhere.has(code) &&
-        !HTTP_ADMIN_ONLY.has(code),
+        !httpAdmin.has(code),
     );
     expect(unnamed).toEqual([]);
+  });
+
+  test("no name in the http admin vocabulary is one nothing answers with", async () => {
+    // The direction the carve-out could not check, because a hand-written list
+    // is written from the code and agrees with it by construction. Now that the
+    // names live in the contract, they can be wrong in the other direction: a
+    // console can branch on a refusal this repository stopped answering with,
+    // and nothing about that branch looks dead from where it is written.
+    const stale = [...(await httpAdminCodes())].filter((code) => !emittedCodes().has(code));
+    expect(stale).toEqual([]);
   });
 
   test("no name in the vocabulary is one nothing emits", () => {
