@@ -4153,9 +4153,9 @@ const MUTATIONS: Mutation[] = [
       "The other half, and the one that matters: a wrong capability name on a page **outside** the three the check was built against. `GroupsPage.tsx` writes `group.manage` into a subtitle a person reads; yesterday that file was not scanned at all, so this mutation would have passed green. It is here rather than on an anchor file because an anchor proves the rule works, not that the scope does.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
     from: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID\"),",
-    to: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID (\u00a7 12 policy.manage)\"),",
+    to: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID (group.manage \ud544\uc694)\"),",
     suite: "test/capability-prose.test.ts",
-    expect: ["every namespaced name shown to a user is in the contract"],
+    expect: ["an internal permission identifier is being shown to a person"],
   },
   {
     id: "versioning-walk-finds-packages",
@@ -4865,7 +4865,7 @@ const MUTATIONS: Mutation[] = [
     from: "  const totalEgressRules = groups.every((group) => Array.isArray(group.egress_allowed))\n    ? groups.reduce((total, group) => total + group.egress_allowed!.length, 0)\n    : null;",
     to: "  const totalEgressRules = groups.reduce((total, group) => total + (group.egress_allowed?.length ?? 0), 0);",
     suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
-    expect: ["without inventing its egress total"],
+    expect: ["does not turn an omitted delivery-rule list into zero allowed destinations"],
   },
   {
     id: "the-login-canvas-never-starts",
