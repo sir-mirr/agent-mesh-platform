@@ -141,6 +141,12 @@ describe("renaming an account", () => {
 
     const from = await account();
     const taken = await account();
+    // **The account, with no registry row of its own.** Admission writes one
+    // for every local account, so the registry check below would answer this
+    // case too and the account check would be doing nothing — a guard that
+    // cannot fail is one the next refactor deletes without noticing.
+    getDb().prepare(`DELETE FROM agent_registry WHERE id = ?`).run(taken);
+
     expect(renameLocalAccount(from, taken)).toEqual({ ok: false, reason: "name_taken" });
     // Nothing half-happened: the refusal is before the first write.
     expect(getLocalUser(from)).not.toBeNull();
