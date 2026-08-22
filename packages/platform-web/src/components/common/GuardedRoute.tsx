@@ -3,20 +3,22 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import type { Capability } from "@/types/auth.ts";
+import type { Capability, UserRole } from "@/types/auth.ts";
 
 export interface GuardedRouteProps {
   children: React.ReactNode;
   requiredCapability?: Capability;
+  requiredRole?: UserRole;
   redirectTo?: string;
 }
 
 export function GuardedRoute({
   children,
   requiredCapability,
+  requiredRole,
   redirectTo = "/dashboard",
 }: GuardedRouteProps) {
-  const { isAuthenticated, isLoading, authFailure, mustChangePassword } = useAuth();
+  const { user, isAuthenticated, isLoading, authFailure, mustChangePassword } = useAuth();
   const { hasCapability } = useRbac();
   const { t } = useI18n();
 
@@ -77,6 +79,14 @@ export function GuardedRoute({
   }
 
   if (requiredCapability && !hasCapability(requiredCapability)) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  // T-026 temporarily defines platform-wide tenant administration by the
+  // account row's role because the capability vocabulary has no
+  // `tenant.manage`. This mirrors that explicit server stand-in; it is not a
+  // replacement for the server's own check on every write route.
+  if (requiredRole && user?.role !== requiredRole) {
     return <Navigate to={redirectTo} replace />;
   }
 

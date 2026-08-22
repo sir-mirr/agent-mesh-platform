@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import type { Capability } from "@/types/auth.ts";
+import type { Capability, UserRole } from "@/types/auth.ts";
 
 export interface NavItemDef {
   label: string;
@@ -22,6 +22,8 @@ export interface NavItemDef {
    * kept its own copy of the vocabulary and drifted alone.
    */
   requiredCapability?: Capability;
+  /** Used only where the server contract itself uses a role stand-in. */
+  requiredRole?: UserRole;
   badge?: string;
 }
 
@@ -170,6 +172,13 @@ export function Sidebar({
     {
       title: t("nav.sec.tenant", "테넌트 관리 콘솔"),
       items: [
+        {
+          label: t("nav.tenantDirectory", "테넌트 관리"),
+          description: t("nav.tenantDirectory.desc", "테넌트 생성·이름수정·soft 삭제"),
+          href: "/platform/tenant-directory",
+          icon: "🏬",
+          requiredRole: "PLATFORM_ADMIN",
+        },
         {
           label: t("nav.egress", "그룹 간 전송 규칙"),
           description: t("nav.egress.desc", "그룹 간 통신 허용/차단 제어"),
@@ -351,6 +360,7 @@ export function Sidebar({
       >
         {sections.map((section) => {
           const visibleItems = section.items.filter((item) => {
+            if (item.requiredRole && userRole !== item.requiredRole) return false;
             if (!item.requiredCapability) return true;
             // No `admin.all` fallback. It is not in the contract and must not
             // come back: § 11 exists because "is an administrator" is not a

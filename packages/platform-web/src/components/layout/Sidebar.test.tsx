@@ -86,6 +86,7 @@ const GATED: ReadonlyArray<readonly [string, string]> = [
   ["/platform/users", "user.admit"],
   ["/tenant/rbac", "role.grant"],
 ];
+const ROLE_GATED = "/platform/tenant-directory";
 
 beforeEach(() => {
   localStorage.removeItem(COLLAPSED_KEY);
@@ -160,6 +161,15 @@ describe("Sidebar capability filter", () => {
     expect(hrefs()).toEqual(UNGATED);
   });
 
+  it("offers tenant management only for the role the server uses as its T-026 stand-in", () => {
+    show({ userName: "platform-admin", userRole: "AGENT_OPERATOR", userCapabilities: [] });
+    expect(hrefs()).not.toContain(ROLE_GATED);
+    cleanup();
+
+    show({ userName: "somebody-else", userRole: "PLATFORM_ADMIN", userCapabilities: [] });
+    expect(hrefs()).toContain(ROLE_GATED);
+  });
+
   it("compares capability names whole rather than by prefix", () => {
     // `audit.read` is not `audit.read.content`, and the difference between them
     // is § 11's privacy boundary: seeing that mail exists is a different
@@ -225,15 +235,15 @@ describe("Sidebar viewer identity", () => {
     // the tree must be *character for character* the tree drawn for a viewer
     // whose role is unknown. A decoration on either side moves that equality,
     // and `toContain` would not have noticed either one.
-    show({ userName: "kim", userRole: "PLATFORM_ADMIN" });
+    show({ userName: "kim", userRole: "AGENT_OPERATOR" });
     const withRole = aside().textContent ?? "";
     cleanup();
 
     show({ userName: "kim" });
     const withoutRole = aside().textContent ?? "";
 
-    expect(withRole).toContain("PLATFORM_ADMIN");
-    expect(withRole.replace("PLATFORM_ADMIN", "")).toBe(withoutRole);
+    expect(withRole).toContain("AGENT_OPERATOR");
+    expect(withRole.replace("AGENT_OPERATOR", "")).toBe(withoutRole);
   });
 
   it("leaves the role blank when there is none rather than guessing one", () => {

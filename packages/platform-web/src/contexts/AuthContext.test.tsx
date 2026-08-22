@@ -412,6 +412,21 @@ describe("what the server said this session may do", () => {
     expect(auth().user?.role).toBe("PLATFORM_ADMIN");
   });
 
+  it("does not turn an administrator-looking account name into an administrator role", async () => {
+    meAnswers({
+      ...SESSION,
+      github_login: "platform-admin",
+      role: "member",
+      capabilities: [],
+    });
+    await mount();
+    // T-026 renames the seeded account, but the durable rule is still the role
+    // field. A member can be named either the old or new seed spelling and must
+    // not gain the platform-only tenant screen from that string.
+    expect(auth().user?.name).toBe("platform-admin");
+    expect(auth().user?.role).toBe("AGENT_OPERATOR");
+  });
+
   it("hands a member every name in the table when that is what the server sent", async () => {
     // The other end point, and the one that says the client keeps no table of
     // its own to check the answer against. A member the server has granted

@@ -162,6 +162,7 @@ const ROUTES: Array<[string, Array<[string, string | null]>]> = [
   ["/platform", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.server", null]]],
   ["/platform/telemetry", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.telemetry", null]]],
   ["/platform/tenants", [["bc.home", "/"], ["bc.governance", "/platform/tenants"], ["bc.tenants", null]]],
+  ["/platform/tenant-directory", [["bc.home", "/"], ["bc.governance", "/platform/tenant-directory"], ["bc.tenantDirectory", null]]],
   ["/platform/users", [["bc.home", "/"], ["bc.governance", "/platform/users"], ["bc.users", null]]],
   ["/tenant/egress-acl", [["bc.home", "/"], ["bc.governance", "/tenant/egress-acl"], ["bc.egress", null]]],
   ["/tenant/audits", [["bc.home", "/"], ["bc.governance", "/tenant/audits"], ["bc.audit", null]]],

@@ -95,10 +95,11 @@ function sessionFrom(me: AuthMeResponse): User {
     // sidebar say "admin (운영자)" in English mode, and made the client the
     // author of a title nobody granted.
     name: me.github_login,
-    role:
-      (me.role === "admin" || me.github_login === "admin" || me.github_login === "platform-admin")
-        ? "PLATFORM_ADMIN"
-        : "AGENT_OPERATOR",
+    // The role is the server's field, never an account-name convention. The
+    // seeded login changed from `admin` to `platform-admin` under T-026; a
+    // name-based branch would either break on that rename or grant a member
+    // account called `admin` platform-only UI.
+    role: me.role === "admin" ? "PLATFORM_ADMIN" : "AGENT_OPERATOR",
     capabilities: capabilitiesFrom(me.capabilities),
     // `me.tenant` when the route names one; the constant is what this console
     // used before the field existed, and is still the answer for a deployment

@@ -77,6 +77,12 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           { label: t("bc.governance", "플랫폼 설정"), href: "/platform/tenants" },
           { label: t("bc.tenants", "그룹 메시지 현황") },
         ];
+      case "/platform/tenant-directory":
+        return [
+          { label: t("bc.home", "홈"), href: "/" },
+          { label: t("bc.governance", "플랫폼 설정"), href: "/platform/tenant-directory" },
+          { label: t("bc.tenantDirectory", "테넌트 관리") },
+        ];
       case "/tenant/egress-acl":
       case "/tenant/egress":
         return [

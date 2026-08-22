@@ -59,6 +59,16 @@ describe("admitLocalUserApi", () => {
     expect(JSON.parse(String(spy.mock.calls[0]![1]!.body)).display_name).toBe("New Comer");
   });
 
+  it("passes the selected tenant and does not derive one from the account name", async () => {
+    const spy = spyOn({ ok: true, user: {}, temporary_password: "x" });
+    await admitLocalUserApi("newcomer", "New Comer", "tenant-b");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body))).toEqual({
+      username: "newcomer",
+      display_name: "New Comer",
+      tenant: "tenant-b",
+    });
+  });
+
   it("carries the one-time password back to the caller", async () => {
     spyOn({ ok: true, user: { github_login: "newcomer" }, temporary_password: "shown-once" });
     expect((await admitLocalUserApi("newcomer")).temporary_password).toBe("shown-once");
