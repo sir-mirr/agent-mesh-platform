@@ -24,9 +24,9 @@ import { describe, expect, test } from "bun:test";
 process.env.JWT_SECRET ||= "groups-probe";
 
 const { app } = await import("./main.ts");
-const { upsertUser, approveUser, createPendingApproval } = await import("./db");
+const { upsertUser, approveUser, createPendingApproval, getDb } = await import("./db");
 const { signJwt } = await import("./auth");
-const { STORE_FILES, agentsSchema, grants, groups, openAt, ownership, stateDir } =
+const { STORE_FILES, agentsSchema, grants, groups, openAt, ownership, stateDir, tenants } =
   await import("@agent-mesh/store");
 const { CAPABILITY } = await import("@agent-mesh/contracts");
 const { join } = await import("node:path");
@@ -121,7 +121,7 @@ describe("making a group", () => {
     const { error } = await res.json();
     expect(error).toContain("name");
     expect(error).toContain("colour");
-    expect(error).toContain("group_id and description");
+    expect(error).toContain("group_id, description and tenant");
   });
 
   /** `members` gets the sentence that says where membership actually goes. */
@@ -141,11 +141,11 @@ describe("making a group", () => {
     const first = await post("/api/v1/admin/groups", op.cookie,
       { group_id: groupId, description: "the reporting side" });
     expect(first.status).toBe(201);
-    expect(await first.json()).toEqual({ ok: true, group_id: groupId, created: true });
+    expect(await first.json()).toEqual({ ok: true, group_id: groupId, tenant: "default", created: true });
 
     const again = await post("/api/v1/admin/groups", op.cookie, { group_id: groupId });
     expect(again.status).toBe(200);
-    expect(await again.json()).toEqual({ ok: true, group_id: groupId, created: false });
+    expect(await again.json()).toEqual({ ok: true, group_id: groupId, tenant: "default", created: false });
 
     // And the second call did not overwrite the description with nothing.
     const listed = (await (await get("/api/v1/admin/groups", op.cookie)).json())
@@ -242,12 +242,12 @@ describe("moving somebody into one", () => {
 
     const into = await post(`/api/v1/admin/groups/${first}/members`, op.cookie, { identity });
     expect(await into.json()).toEqual({
-      ok: true, identity, from_group: "default", to_group: first,
+      ok: true, identity, tenant: "default", from_group: "default", to_group: first,
     });
 
     const moved = await post(`/api/v1/admin/groups/${second}/members`, op.cookie, { identity });
     expect(await moved.json()).toEqual({
-      ok: true, identity, from_group: first, to_group: second,
+      ok: true, identity, tenant: "default", from_group: first, to_group: second,
     });
     expect(groups.membersOf(db, first)).not.toContain(identity);
     expect(groups.groupOf(db, identity)).toBe(second);
@@ -283,7 +283,7 @@ describe("what a group may send", () => {
     const res = await post(`/api/v1/admin/groups/${reporters}/egress`, op.cookie,
       { to_group: aggregator });
     expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ ok: true, from_group: reporters, to_group: aggregator });
+    expect(await res.json()).toEqual({ ok: true, tenant: "default", from_group: reporters, to_group: aggregator });
 
     expect(groups.maySend(db, reporter, collector).ok).toBe(true);
     expect(groups.maySend(db, collector, reporter).ok).toBe(false);
@@ -368,5 +368,124 @@ describe("who is answerable for an identity", () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const body = await (await get(`/api/v1/admin/agents/${uniq("unclaimed")}/owners`, op.cookie)).json();
     expect(body.owners).toEqual([]);
+  });
+});
+
+/**
+ * Which tenant a group is in (T-026).
+ *
+ * `(tenant, group_id)` has been the primary key since groups existed, and every
+ * store function has taken a tenant argument with a default — while the routes
+ * passed none. So every group this service made went into `default`, the
+ * listing read `default`, and the column was carried by four tables without one
+ * route ever writing anything but the same value into it.
+ *
+ * `group.manage` is held **inside** a tenant, so which tenant a write lands in
+ * is not the body's to decide alone.
+ */
+describe("a group belongs to a tenant", () => {
+  /** An operator whose `role = 'admin'`: the platform-administrator stand-in. */
+  async function platformAdmin(...caps: string[]) {
+    const op = await holder(...caps);
+    getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(op.login);
+    return op;
+  }
+
+  test("is the operator's own unless they administer the installation", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    tenants.createTenant(db, { id: "grp-elsewhere", name: "Elsewhere" });
+
+    const groupId = uniq("team");
+    const res = await post("/api/v1/admin/groups", op.cookie,
+      { group_id: groupId, tenant: "grp-elsewhere" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TENANT_NOT_YOURS");
+    // Nothing written, in either tenant: a refusal that half-happened is worse
+    // than one that did not.
+    expect(groups.listGroups(db, "grp-elsewhere").map((g) => g.group_id)).not.toContain(groupId);
+    expect(groups.listGroups(db).map((g) => g.group_id)).not.toContain(groupId);
+  });
+
+  test("refuses a tenant nobody created, even from the platform administrator", async () => {
+    const op = await platformAdmin(CAPABILITY.GROUP_MANAGE);
+    const res = await post("/api/v1/admin/groups", op.cookie,
+      { group_id: uniq("team"), tenant: "grp-not-a-tenant" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("NO_SUCH_TENANT");
+  });
+
+  test("lands in the tenant the platform administrator names, and is listed there", async () => {
+    const op = await platformAdmin(CAPABILITY.GROUP_MANAGE);
+    tenants.createTenant(db, { id: "grp-branch", name: "Branch" });
+    const groupId = uniq("team");
+
+    expect((await post("/api/v1/admin/groups", op.cookie,
+      { group_id: groupId, tenant: "grp-branch" })).status).toBe(201);
+    expect(groups.listGroups(db, "grp-branch").map((g) => g.group_id)).toContain(groupId);
+    expect(groups.listGroups(db).map((g) => g.group_id)).not.toContain(groupId);
+  });
+
+  /**
+   * The listing read `default` and only `default`, so a group in another tenant
+   * was written, was real, and was invisible to the one screen that would have
+   * shown it.
+   */
+  test("is invisible to an operator in another tenant, and visible to the administrator", async () => {
+    const admin = await platformAdmin(CAPABILITY.GROUP_MANAGE);
+    tenants.createTenant(db, { id: "grp-far", name: "Far" });
+    const groupId = uniq("team");
+    await post("/api/v1/admin/groups", admin.cookie, { group_id: groupId, tenant: "grp-far" });
+
+    const ordinary = await holder(CAPABILITY.GROUP_MANAGE);
+    const theirs = await (await get("/api/v1/admin/groups", ordinary.cookie)).json();
+    expect(theirs.tenant).toBe("default");
+    expect(theirs.groups.map((g: any) => g.group_id)).not.toContain(groupId);
+
+    const all = await (await get("/api/v1/admin/groups", admin.cookie)).json();
+    const row = all.groups.find((g: any) => g.group_id === groupId);
+    expect(row).toBeDefined();
+    expect(row.tenant).toBe("grp-far");
+  });
+
+  test("a move names the group in its own tenant, and 404s in another", async () => {
+    const admin = await platformAdmin(CAPABILITY.GROUP_MANAGE);
+    tenants.createTenant(db, { id: "grp-moving", name: "Moving" });
+    const groupId = uniq("team");
+    await post("/api/v1/admin/groups", admin.cookie, { group_id: groupId, tenant: "grp-moving" });
+    const identity = uniq("agent");
+
+    // The same name, in the tenant the caller is in: a different group, and
+    // there is nothing there.
+    const wrong = await post(`/api/v1/admin/groups/${groupId}/members`, admin.cookie, { identity });
+    expect(wrong.status).toBe(404);
+    expect((await wrong.json()).error).toContain("default");
+
+    const right = await post(`/api/v1/admin/groups/${groupId}/members`, admin.cookie,
+      { identity, tenant: "grp-moving" });
+    expect(right.status).toBe(200);
+    expect(groups.membersOf(db, groupId, "grp-moving")).toContain(identity);
+    expect(groups.groupOf(db, identity)).toBe("default");
+  });
+
+  test("egress is granted and withdrawn inside one tenant", async () => {
+    const admin = await platformAdmin(CAPABILITY.GROUP_MANAGE);
+    tenants.createTenant(db, { id: "grp-egress", name: "Egress" });
+    const from = uniq("reporters");
+    const to = uniq("aggregator");
+    for (const group_id of [from, to]) {
+      await post("/api/v1/admin/groups", admin.cookie, { group_id, tenant: "grp-egress" });
+    }
+
+    expect((await post(`/api/v1/admin/groups/${from}/egress`, admin.cookie,
+      { to_group: to, tenant: "grp-egress" })).status).toBe(201);
+    expect(groups.listEgress(db, "grp-egress").some((e) => e.from_group === from)).toBe(true);
+    // Not in `default`, where the same two names would be two other groups.
+    expect(groups.listEgress(db).some((e) => e.from_group === from)).toBe(false);
+
+    // The delete carries its tenant in the query: the target is in the path,
+    // and a body on a delete is a second place to look for what it acts on.
+    const removed = await del(`/api/v1/admin/groups/${from}/egress/${to}?tenant=grp-egress`, admin.cookie);
+    expect(await removed.json()).toMatchObject({ action: "deleted" });
+    expect(groups.listEgress(db, "grp-egress").some((e) => e.from_group === from)).toBe(false);
   });
 });

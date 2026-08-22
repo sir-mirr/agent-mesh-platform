@@ -149,3 +149,63 @@ describe("approving a key", () => {
     expect(getRegistryAgent(identity)).toBeNull();
   });
 });
+
+/**
+ * Which tenant each listed agent is in (T-026).
+ *
+ * § 11.4 has put an identity in a tenant since `agents.tenant` existed, and no
+ * route said which. A screen choosing agents for a group of tenant X had the
+ * group's tenant and a list of everything it could see, with nothing to join
+ * them on — so it offered agents belonging to somebody else, and the operator
+ * had no way to tell from the screen.
+ */
+describe("the agent list", () => {
+  /** An approved agent the mesh has placed in `tenant`. */
+  async function agentIn(tenant: string): Promise<string> {
+    const { identity, fingerprint } = pendingAgent();
+    agentsDb().prepare(`UPDATE agents SET tenant = ? WHERE identity = ?`).run(tenant, identity);
+    expect(decide("approve", fingerprint, "operator", null).status).toBe(200);
+    return identity;
+  }
+
+  const rows = async (query = ""): Promise<Array<{ id: string; tenant: string }>> => {
+    const res = await call(`/api/v1/agents${query}`, adminCookie);
+    expect(res.status).toBe(200);
+    return (await res.json()).agents;
+  };
+
+  test("says which tenant each agent is in", async () => {
+    const here = await agentIn("rs-here");
+    const there = await agentIn("rs-there");
+
+    const all = await rows();
+    expect(all.find((a) => a.id === here)!.tenant).toBe("rs-here");
+    // Two tenants rather than one: a route answering a constant passes a
+    // single-tenant check, and `default` is the constant on offer.
+    expect(all.find((a) => a.id === there)!.tenant).toBe("rs-there");
+  });
+
+  test("narrows to one tenant when asked, and to nothing for a tenant with no agents", async () => {
+    const here = await agentIn("rs-narrow");
+    const elsewhere = await agentIn("rs-wide");
+
+    const narrowed = (await rows("?tenant=rs-narrow")).map((a) => a.id);
+    expect(narrowed).toContain(here);
+    expect(narrowed).not.toContain(elsewhere);
+    expect(await rows("?tenant=rs-nobody-is-here")).toEqual([]);
+  });
+
+  /**
+   * `default`, not `null`. § 11.4's rule is that every identity has a tenant,
+   * and a web user who has never connected has no row in the mesh's `agents`
+   * table at all — the tenant it has until somebody moves it is the default.
+   */
+  test("answers the default tenant for an identity the mesh has never seen", async () => {
+    const person = uniq("person");
+    upsertApprovedWebUser(person);
+
+    const row = (await rows()).find((a) => a.id === person);
+    expect(row).toBeDefined();
+    expect(row!.tenant).toBe("default");
+  });
+});

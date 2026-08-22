@@ -2733,8 +2733,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Widening the accepted set restores the same silence with an allow-list in front of it: with `members` back in the set the body is accepted, nothing is written from it, and the caller is told 201 again.",
     file: "packages/http/src/main.ts",
-    from: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description'])",
-    to: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description', 'members', 'name'])",
+    from: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description', 'tenant'])",
+    to: "const GROUP_CREATE_FIELDS = new Set(['group_id', 'description', 'tenant', 'members', 'name'])",
     suite: "test/group-create-fields.test.ts",
     expect: ["refuses `members`, and says where membership is written instead", "refuses `name`"],
   },
@@ -5675,8 +5675,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Creating a group seeded a rule letting it send to itself. That guesses the single thing the operator created the group in order to say, and a guessed rule is indistinguishable from a stated one afterwards.",
     file: "packages/http/src/main.ts",
-    from: "  const created = groupsStore.createGroup(db_(), {\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })",
-    to: "  const created = groupsStore.createGroup(db_(), {\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })\n  groupsStore.allowEgress(db_(), { fromGroup: groupId, toGroup: groupId, grantedBy: actor })",
+    from: "  const created = groupsStore.createGroup(db_(), {\n    tenant,\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })",
+    to: "  const created = groupsStore.createGroup(db_(), {\n    tenant,\n    groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,\n  })\n  groupsStore.allowEgress(db_(), { tenant, fromGroup: groupId, toGroup: groupId, grantedBy: actor })",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["grants the new group nothing, not even to itself"],
   },
@@ -5695,7 +5695,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The membership route stopped checking that the group exists. The identity lands somewhere no egress rule can ever name, which is silence rather than an error \u2014 it can send nowhere and nothing says why.",
     file: "packages/http/src/main.ts",
-    from: "  if (!groupsStore.listGroups(db).some((g) => g.group_id === groupId)) {",
+    from: "  if (!groupsStore.listGroups(db, tenant).some((g) => g.group_id === groupId)) {",
     to: "  if (false) {",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["refuses a group that does not exist"],
@@ -5705,8 +5705,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The previous group was read after the move instead of before, so `from_group` and `to_group` were always the same. An operator is then told nothing about what the identity stopped being able to do.",
     file: "packages/http/src/main.ts",
-    from: "  const from = groupsStore.groupOf(db, identity)\n  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })",
-    to: "  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })\n  const from = groupsStore.groupOf(db, identity)",
+    from: "  const from = groupsStore.groupOf(db, identity, tenant)\n  groupsStore.moveTo(db, { tenant, identity, groupId, movedBy: actor })",
+    to: "  groupsStore.moveTo(db, { tenant, identity, groupId, movedBy: actor })\n  const from = groupsStore.groupOf(db, identity, tenant)",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["reports where the identity came from"],
   },
@@ -5715,8 +5715,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Granting egress opened the reverse direction too. Agents allowed to report into an aggregator became agents it may command, and the narrower grant is no longer expressible at all.",
     file: "packages/http/src/main.ts",
-    from: "  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })",
-    to: "  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })\n  groupsStore.allowEgress(db_(), { fromGroup: toGroup, toGroup: c.req.param('group_id'), grantedBy: actor })",
+    from: "  groupsStore.allowEgress(db_(), { tenant, fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })",
+    to: "  groupsStore.allowEgress(db_(), { tenant, fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })\n  groupsStore.allowEgress(db_(), { tenant, fromGroup: toGroup, toGroup: c.req.param('group_id'), grantedBy: actor })",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["grants one direction and not the other"],
   },
@@ -5735,8 +5735,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Revoking one direction removed the other as well, so withdrawing a reply path silently withdrew the reporting path it was answering.",
     file: "packages/http/src/main.ts",
-    from: "  const removed = groupsStore.revokeEgress(db_(), {\n    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })",
-    to: "  const removed = groupsStore.revokeEgress(db_(), {\n    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })\n  groupsStore.revokeEgress(db_(), { fromGroup: c.req.param('to_group'), toGroup: c.req.param('group_id') })",
+    from: "  const removed = groupsStore.revokeEgress(db_(), {\n    tenant, fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })",
+    to: "  const removed = groupsStore.revokeEgress(db_(), {\n    tenant, fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),\n  })\n  groupsStore.revokeEgress(db_(), { tenant, fromGroup: c.req.param('to_group'), toGroup: c.req.param('group_id') })",
     suite: "packages/http/src/groups-routes.test.ts",
     expect: ["takes back only the direction it names"],
   },
@@ -7053,7 +7053,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "an-account-is-admitted-into-any-tenant-the-body-names",
     defect:
-      "The tenant on `POST /api/v1/admin/users` went back to being whatever the body said. `user.admit` is held inside a tenant, so an operator could create accounts \u2014 including administrators \u2014 in tenants they cannot see, which is the screen deciding a rule the route answers without.",
+      "`tenantForWrite` stopped checking whose tenant was named, so the tenant on a write went back to being whatever the body said. It gates four routes \u2014 admission, group creation, moves and egress \u2014 and the capability in front of each is held *inside* a tenant, so an operator could create accounts and groups in tenants they cannot see.",
     file: "packages/http/src/main.ts",
     from: "  if (tenant !== mine && !administratorLogins().includes(actor)) {",
     to: "  if (false) {",
@@ -7063,12 +7063,72 @@ const MUTATIONS: Mutation[] = [
   {
     id: "an-account-is-admitted-into-a-tenant-nobody-created",
     defect:
-      "The tenant on admission stopped being checked against the list. `local_users.tenant` is a plain string with nothing pointing back, so an account admitted into a typo sits in a tenant no screen will ever show and no picker can move it out of.",
+      "The tenant on a write stopped being checked against the list. Every table holding a tenant holds it as a plain string with nothing pointing back, so an account or a group written into a typo sits in a tenant no screen will ever show and no picker can move it out of.",
     file: "packages/http/src/main.ts",
     from: "  if (!tenantsStore.tenantIsOpen(agentsDb(), tenant)) {",
     to: "  if (false) {",
     suite: "packages/http/src/admin-users-types.test.ts",
     expect: ["it has to exist"],
+  },
+  {
+    id: "the-group-listing-reads-one-tenant",
+    defect:
+      "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
+    file: "packages/http/src/main.ts",
+    from: "  const tenants = administratorLogins().includes(actor)",
+    to: "  const tenants = [] as string[] || administratorLogins().includes(actor)",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["visible to the administrator"],
+  },
+  {
+    id: "a-move-looks-the-group-up-in-the-wrong-tenant",
+    defect:
+      "The existence check for the group being moved into stopped naming a tenant. `(tenant, group_id)` is the key, so a group of that name in *another* tenant satisfied the check \u2014 and the move then wrote a membership row into a tenant whose group list does not contain the group.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!groupsStore.listGroups(db, tenant).some((g) => g.group_id === groupId)) {",
+    to: "  if (!groupsStore.listGroups(db).some((g) => g.group_id === groupId)) {",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["404s in another"],
+  },
+  {
+    id: "a-move-lands-in-the-default-tenant",
+    defect:
+      "The move itself stopped carrying the tenant. `moveTo` defaults to `default`, so an operator moving an identity into a group of another tenant is answered `200` naming that group, and the membership row lands somewhere the group does not exist.",
+    file: "packages/http/src/main.ts",
+    from: "  groupsStore.moveTo(db, { tenant, identity, groupId, movedBy: actor })",
+    to: "  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["404s in another"],
+  },
+  {
+    id: "egress-is-granted-in-the-default-tenant",
+    defect:
+      "The egress grant stopped carrying the tenant, so a rule written for one tenant's groups landed in `default` \u2014 where the same two group names are two different groups. The route answers `201` and the send it was meant to allow is still refused.",
+    file: "packages/http/src/main.ts",
+    from: "  groupsStore.allowEgress(db_(), { tenant, fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })",
+    to: "  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["granted and withdrawn inside one tenant"],
+  },
+  {
+    id: "the-agent-list-says-everybody-is-in-the-default-tenant",
+    defect:
+      "`GET /api/v1/agents` answered a constant for `tenant`. A screen choosing agents for a group then has the group's tenant and a list with nothing to join it on, which is the state that made it offer agents belonging to somebody else.",
+    file: "packages/http/src/main.ts",
+    from: "    tenant: tenantOfIdentity.get(entry.id) ?? tenantsStore.DEFAULT_TENANT,",
+    to: "    tenant: tenantsStore.DEFAULT_TENANT,",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["says which tenant each agent is in"],
+  },
+  {
+    id: "the-agent-list-ignores-the-tenant-it-was-asked-for",
+    defect:
+      "The `?tenant=` filter stopped narrowing. The caller asked for one tenant's agents and was handed every agent it may see \u2014 a superset answered to a narrowing question, which reads as \u201cthat tenant has all of these\u201d.",
+    file: "packages/http/src/main.ts",
+    from: "      (tenantOfIdentity.get(entry.id) ?? tenantsStore.DEFAULT_TENANT) === wanted,",
+    to: "      true,",
+    suite: "packages/http/src/registry-source.test.ts",
+    expect: ["narrows to one tenant when asked"],
   },
   {
     id: "only-github-admins-are-protected",

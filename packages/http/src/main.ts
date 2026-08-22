@@ -1469,13 +1469,16 @@ app.get('/api/v1/agents', async (c) => {
   // way to learn when an agent was last seen and drew `ONLINE` for everyone
   // instead. The server knew; the route did not carry it.
   const mesh = agentsDb()
-  const lastSeen = new Map(
-    (
-      mesh.prepare(`SELECT identity, last_seen FROM agents WHERE deleted_at IS NULL`).all() as Array<{
-        identity: string
-        last_seen: string | null
-      }>
-    ).map(row => [row.identity, row.last_seen] as const),
+  const presence = mesh
+    .prepare(`SELECT identity, last_seen, tenant FROM agents WHERE deleted_at IS NULL`)
+    .all() as Array<{ identity: string; last_seen: string | null; tenant: string | null }>
+  const lastSeen = new Map(presence.map(row => [row.identity, row.last_seen] as const))
+  // § 11.4 puts an identity in a tenant, and until now no route said which. A
+  // screen picking agents for a group of tenant X had the group's tenant and a
+  // list of every agent it could see, with nothing to join them on — so it
+  // offered agents that belong to somebody else.
+  const tenantOfIdentity = new Map(
+    presence.map(row => [row.identity, row.tenant ?? tenantsStore.DEFAULT_TENANT] as const),
   )
   const fingerprints = new Map(
     (
@@ -1579,8 +1582,17 @@ app.get('/api/v1/agents', async (c) => {
     }
   }
 
+  // **A filter, not a second visibility rule.** It narrows a list this route has
+  // already scoped to what the caller may see, so asking for another tenant
+  // answers what they could already read of it rather than more.
+  const wanted = c.req.query('tenant')
+
   const agents = listRegistryAgents()
     .filter(entry => seesEverything || visible.has(entry.id))
+    .filter(entry =>
+      wanted === undefined ||
+      (tenantOfIdentity.get(entry.id) ?? tenantsStore.DEFAULT_TENANT) === wanted,
+    )
     .map(entry => ({
     id: entry.id,
     name: entry.name,
@@ -1598,6 +1610,10 @@ app.get('/api/v1/agents', async (c) => {
     // the invention one layer up rather than removing it.
     last_seen_at: lastSeen.get(entry.id) ?? null,
     fingerprint: fingerprints.get(entry.id) ?? null,
+    // `default` for an identity the mesh has no row for — a web user who has
+    // never connected. Not `null`: § 11.4's rule is that every identity has a
+    // tenant, and `default` is the one it has until somebody moves it.
+    tenant: tenantOfIdentity.get(entry.id) ?? tenantsStore.DEFAULT_TENANT,
   }))
 
   return c.json({ agents })
@@ -2357,10 +2373,27 @@ app.get('/api/v1/admin/groups', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
   if (typeof actor !== 'string') return actor
   const db = agentsDb()
+  // **The caller's tenant, or every tenant for the platform administrator.**
+  // This listed `default` and only `default` for as long as the store has taken
+  // a tenant argument, so a group created in another tenant was written, was
+  // real, and was invisible here — including to the screen that would have been
+  // the only way to notice. Deleted tenants are included: their groups still
+  // exist and their egress rules still decide sends.
+  const tenants = administratorLogins().includes(actor)
+    ? tenantsStore.listTenants(db, true).map((t) => t.id)
+    : [tenantOfSession(actor)]
   return c.json({
     ok: true,
-    groups: groupsStore.listGroups(db).map((g) => ({ ...g, members: groupsStore.membersOf(db, g.group_id) })),
-    egress: groupsStore.listEgress(db),
+    tenant: tenantOfSession(actor),
+    groups: tenants.flatMap((tenant) =>
+      groupsStore.listGroups(db, tenant).map((g) => ({
+        ...g,
+        members: groupsStore.membersOf(db, g.group_id, tenant),
+      })),
+    ),
+    egress: tenants.flatMap((tenant) =>
+      groupsStore.listEgress(db, tenant).map((e) => ({ tenant, ...e })),
+    ),
   })
 })
 
@@ -2368,7 +2401,7 @@ app.get('/api/v1/admin/groups', async (c) => {
  * What `POST /api/v1/admin/groups` implements. A body may say only this much,
  * and a field outside it is refused rather than dropped — see the route.
  */
-const GROUP_CREATE_FIELDS = new Set(['group_id', 'description'])
+const GROUP_CREATE_FIELDS = new Set(['group_id', 'description', 'tenant'])
 
 app.post('/api/v1/admin/groups', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
@@ -2392,16 +2425,23 @@ app.post('/api/v1/admin/groups', async (c) => {
       : ''
     return c.json({
       ok: false,
-      error: `unsupported field(s): ${unsupported.join(', ')}. This route accepts group_id and description.${hint}`,
+      error: `unsupported field(s): ${unsupported.join(', ')}. This route accepts group_id, description and tenant.${hint}`,
     }, 400)
   }
+  // `group.manage` is held inside a tenant, so which tenant this group lands in
+  // is not the body's to decide on its own (T-026).
+  const resolved = tenantForWrite(c, actor, body?.tenant)
+  if (!('tenant' in resolved)) return resolved
+  const { tenant } = resolved
+
   const created = groupsStore.createGroup(db_(), {
+    tenant,
     groupId, description: typeof body?.description === 'string' ? body.description : null, createdBy: actor,
   })
   // A new group can send nowhere, including to itself, until someone says so.
   // Seeding a self-rule here would guess the one thing the operator created it
   // to state.
-  return c.json({ ok: true, group_id: groupId, created }, created ? 201 : 200)
+  return c.json({ ok: true, group_id: groupId, tenant, created }, created ? 201 : 200)
 })
 
 app.post('/api/v1/admin/groups/:group_id/members', async (c) => {
@@ -2414,21 +2454,28 @@ app.post('/api/v1/admin/groups/:group_id/members', async (c) => {
   if (typeof identity !== 'string' || !IDENTITY_RE.test(identity)) {
     return c.json({ ok: false, error: 'identity is required' }, 400)
   }
+  const resolved = tenantForWrite(c, actor, body?.tenant)
+  if (!('tenant' in resolved)) return resolved
+  const { tenant } = resolved
+
   const db = db_()
-  if (!groupsStore.listGroups(db).some((g) => g.group_id === groupId)) {
+  if (!groupsStore.listGroups(db, tenant).some((g) => g.group_id === groupId)) {
     // Moving into a group that does not exist would put the identity somewhere
-    // no rule can ever name, which is silence rather than an error.
-    return c.json({ ok: false, error: `no group '${groupId}'` }, 404)
+    // no rule can ever name, which is silence rather than an error. Looked up
+    // in the tenant the move is landing in: `(tenant, group_id)` is the key, so
+    // a group of that name in another tenant is a different group.
+    return c.json({ ok: false, error: `no group '${groupId}' in tenant '${tenant}'` }, 404)
   }
-  const from = groupsStore.groupOf(db, identity)
-  groupsStore.moveTo(db, { identity, groupId, movedBy: actor })
+  const from = groupsStore.groupOf(db, identity, tenant)
+  groupsStore.moveTo(db, { tenant, identity, groupId, movedBy: actor })
   log.info(`${actor} moved ${identity} from ${from} to ${groupId}`, 'group_moved', {
     id: identity,
     actor,
+    tenant,
     from_group: from,
     to_group: groupId,
   })
-  return c.json({ ok: true, identity, from_group: from, to_group: groupId })
+  return c.json({ ok: true, identity, tenant, from_group: from, to_group: groupId })
 })
 
 app.post('/api/v1/admin/groups/:group_id/egress', async (c) => {
@@ -2443,15 +2490,25 @@ app.post('/api/v1/admin/groups/:group_id/egress', async (c) => {
   // Directional, and the route shape says so: this grants `{group_id} -> to`
   // and nothing in the other direction. Agents allowed to report into an
   // aggregator are not agents it may command.
-  groupsStore.allowEgress(db_(), { fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })
-  return c.json({ ok: true, from_group: c.req.param('group_id'), to_group: toGroup }, 201)
+  const resolved = tenantForWrite(c, actor, body?.tenant)
+  if (!('tenant' in resolved)) return resolved
+  const { tenant } = resolved
+
+  groupsStore.allowEgress(db_(), { tenant, fromGroup: c.req.param('group_id'), toGroup, grantedBy: actor })
+  return c.json({ ok: true, tenant, from_group: c.req.param('group_id'), to_group: toGroup }, 201)
 })
 
 app.delete('/api/v1/admin/groups/:group_id/egress/:to_group', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.GROUP_MANAGE)
   if (typeof actor !== 'string') return actor
+  // In the query rather than a body: a `DELETE` names its target in the path
+  // here, and a body on a delete is a second place to look for what it acts on.
+  const resolved = tenantForWrite(c, actor, c.req.query('tenant'))
+  if (!('tenant' in resolved)) return resolved
+  const { tenant } = resolved
+
   const removed = groupsStore.revokeEgress(db_(), {
-    fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),
+    tenant, fromGroup: c.req.param('group_id'), toGroup: c.req.param('to_group'),
   })
   // `200` either way, and `action` says which happened — SPEC § 9.2a. This
   // answered `404` with `ok: true`, a status and a body saying opposite things
@@ -2828,6 +2885,39 @@ async function requirePlatformAdmin(c: any): Promise<string | Response> {
 /** The tenant a session belongs to, or `default` for a login with no local row. */
 function tenantOfSession(actor: string): string {
   return getLocalUser(actor)?.tenant ?? tenantsStore.DEFAULT_TENANT
+}
+
+/**
+ * Which tenant a write lands in (T-026): the caller's, unless they administer
+ * the installation and name another.
+ *
+ * **One copy of the rule, called by every route that writes a tenant.** The
+ * capability that gates these routes — `group.manage`, `user.admit` — is held
+ * *inside* a tenant, so a body naming one is a body deciding scope. Four routes
+ * each answering that for themselves is how D-746's session rule came to exist
+ * in four drifted copies, and the copies disagreed.
+ *
+ * Returns the tenant or the refusal to send back, so a caller writes
+ * `if ('tenant' in resolved)` and cannot forget the refusal.
+ */
+function tenantForWrite(c: any, actor: string, named: unknown): { tenant: string } | Response {
+  const mine = tenantOfSession(actor)
+  const tenant = typeof named === 'string' ? named : mine
+  if (tenant !== mine && !administratorLogins().includes(actor)) {
+    return c.json({
+      ok: false,
+      error: `that is not your tenant; yours is '${mine}'`,
+      code: 'TENANT_NOT_YOURS',
+      tenant: mine,
+    }, 403)
+  }
+  // A tenant nobody created, or one nobody may pick any more. Every table that
+  // holds a tenant holds it as a plain string with nothing pointing back at the
+  // list, so a typo written here is a row no screen will ever show.
+  if (!tenantsStore.tenantIsOpen(agentsDb(), tenant)) {
+    return c.json({ ok: false, error: `no such tenant: ${tenant}`, code: 'NO_SUCH_TENANT' }, 400)
+  }
+  return { tenant }
 }
 
 /**
@@ -3293,34 +3383,14 @@ app.post('/api/v1/admin/users', async (c) => {
   // The admitting operator's own tenant unless they name one. A tenant admin
   // creating people can only put them where they are, and that is enforced by
   // what this reads rather than by what the screen sends.
-  const mine = tenantOfSession(actor)
-  const tenant = typeof body?.tenant === 'string' ? body.tenant : mine
-
   // **Naming somebody else's tenant is the platform administrator's move**
   // (T-026). `user.admit` is held inside a tenant, and a tenant admin who could
   // put an account anywhere would be creating administrators in tenants they
-  // cannot see — enforced here rather than by the screen offering one option,
-  // because the route answers without the screen.
-  if (tenant !== mine && !administratorLogins().includes(actor)) {
-    return c.json({
-      ok: false,
-      error: `accounts can only be admitted into your own tenant ('${mine}')`,
-      code: 'TENANT_NOT_YOURS',
-      tenant: mine,
-    }, 403)
-  }
-
-  // A tenant that does not exist, or one nobody may pick any more. Refused
-  // rather than written: `local_users.tenant` is a plain string with nothing
-  // pointing back at the list, so an account admitted into a typo stays in a
-  // tenant no screen will ever show.
-  if (!tenantsStore.tenantIsOpen(agentsDb(), tenant)) {
-    return c.json({
-      ok: false,
-      error: `no such tenant: ${tenant}`,
-      code: 'NO_SUCH_TENANT',
-    }, 400)
-  }
+  // cannot see — decided by `tenantForWrite`, which every route that writes a
+  // tenant asks, rather than by the screen offering one option.
+  const resolved = tenantForWrite(c, actor, body?.tenant)
+  if (!('tenant' in resolved)) return resolved
+  const { tenant } = resolved
 
   const { user, temporaryPassword } = await admitLocalUser({
     username,
