@@ -131,6 +131,104 @@ describe("the logging operations document", () => {
     expect(redirected, "a unit sends its output somewhere other than the journal").toEqual([]);
   });
 
+  /**
+   * **Every `reason` a service writes is a key a counter can hold.**
+   *
+   * The map is keyed on `(component, event, reason)`, so a reason assembled
+   * from a request — a database's error text, an address, a filename — is a map
+   * that grows at whatever rate the caller chooses. The logger's answer is to
+   * count anything unbounded as `other` while still printing it in full, which
+   * keeps the memory safe and makes the counter useless in exactly the case
+   * somebody is reading it. Better to know at the source.
+   *
+   * Only `reason:` inside a `log.*(...)` call. The word is also a field on
+   * ordinary domain objects here — `ProvisionOutcome.reason` is a sentence for
+   * a person, `PushFailure.reason` names a status — and those are right to be
+   * prose. `push.ts` shows the shape this checks for: `reason: "endpoint_gone"`
+   * for the counter, and the sentence beside it in `detail`.
+   */
+  test("every reason a service logs is one a counter can key on", () => {
+    const bound = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
+    const offenders: string[] = [];
+
+    /**
+     * One interpolated reason is allowed, because its interpolation is a
+     * union of three words. Named rather than pattern-matched: a list of one
+     * is honest about how special it is, and the next one has to be argued.
+     */
+    const BOUNDED_TEMPLATE = "key_${outcome.keyStatus}";
+
+    for (const file of serviceSources(join(ROOT, "packages"))) {
+      const src = readFileSync(file, "utf8");
+      for (const call of [...src.matchAll(/\blog\.(error|warn|info)\(/g)]) {
+        // The call's own arguments and not the next call's: balanced from the
+        // opening paren, minding strings so a `)` inside one does not close it.
+        let depth = 1;
+        let i = call.index! + call[0].length;
+        let quote: string | null = null;
+        while (i < src.length && depth > 0) {
+          const c = src[i]!;
+          if (quote) {
+            if (c === "\\") { i += 2; continue; }
+            if (c === quote) quote = null;
+          } else if (c === '"' || c === "'" || c === "`") quote = c;
+          else if (c === "(" || c === "[" || c === "{") depth++;
+          else if (c === ")" || c === "]" || c === "}") depth--;
+          i++;
+        }
+        const args = src.slice(call.index! + call[0].length, i - 1);
+
+        // **The whole value, not the first quote after the colon.** A first
+        // version required `reason:` to be followed immediately by a string
+        // and so read nothing at all in `reason: drop ? "a" : "b"` — the exact
+        // line the mutation for this test changes. It passed by not looking.
+        for (const m of args.matchAll(/\breason:\s*/g)) {
+          const rest = args.slice(m.index! + m[0].length);
+          let end = 0, d = 0, q: string | null = null;
+          while (end < rest.length) {
+            const c = rest[end]!;
+            if (q) {
+              if (c === "\\") { end += 2; continue; }
+              if (c === q) q = null;
+            } else if (c === '"' || c === "'" || c === "`") q = c;
+            else if (c === "(" || c === "[" || c === "{") d++;
+            else if (c === ")" || c === "]" || c === "}") { if (d === 0) break; d--; }
+            else if (c === "," && d === 0) break;
+            end++;
+          }
+          const value = rest.slice(0, end).trim();
+          const where = file.slice(ROOT.length + 1);
+
+          const literals = [...value.matchAll(/(["'])((?:\\.|(?!\1)[^\\])*)\1/g)].map((x) => x[2]!);
+          for (const lit of literals) {
+            if (!bound.test(lit)) offenders.push(`${where} logs reason ${JSON.stringify(lit)}`);
+          }
+          for (const t of [...value.matchAll(/`([^`]*)`/g)].map((x) => x[1]!)) {
+            if (t.includes("${") && t !== BOUNDED_TEMPLATE) {
+              offenders.push(`${where} builds reason \`${t}\`, which the caller can grow`);
+            } else if (!t.includes("${") && !bound.test(t)) {
+              offenders.push(`${where} logs reason \`${t}\``);
+            }
+          }
+          // A bare identifier — `reason: verdict.reason` — is checked where it
+          // is produced, not here. `SignatureRefusal` is the example: a union
+          // of seven words, named at the refusal rather than read back off a
+          // message, which is how one of the seven came to be unreachable.
+          if (literals.length === 0 && !value.includes("`") && !value) {
+            offenders.push(`${where} logs an empty reason`);
+          }
+        }
+      }
+    }
+
+    // The scan itself has to be finding something, or it agrees with anything.
+    const counted = [...SOURCE.matchAll(/\blog\.(?:error|warn|info)\(/g)].length;
+    expect(counted, "no log calls were found — the pattern went stale").toBeGreaterThan(50);
+    // And it has to be reading the values, not just finding the word.
+    expect(SOURCE).toContain('reason: drop ? "endpoint_gone" : "push_service_error"');
+    expect(offenders, "a logged reason cannot be a counter key, so it is counted as `other`").toEqual([]);
+  });
+
   test("the environment variable it names is the one the services read", () => {
     expect(DOC).toContain("AGENT_MESH_COUNTER_SNAPSHOT_MS");
     expect(SOURCE).toContain("AGENT_MESH_COUNTER_SNAPSHOT_MS");

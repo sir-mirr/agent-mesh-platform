@@ -6911,6 +6911,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["each refusal is counted under its own name"],
   },
   {
+    id: "a-counter-key-written-as-a-sentence",
+    defect:
+      "A logged `reason` became prose. The counter map is keyed on it, so the logger files it under `other` \u2014 the line still says what happened and the metric stops being able to. `push_failed` is then a number with no breakdown, which is the state it was in before it had one.",
+    file: "packages/http/src/push.ts",
+    from: '            reason: drop ? "endpoint_gone" : "push_service_error",',
+    to: '            reason: drop ? "endpoint is gone" : "push_service_error",',
+    suite: "test/logging-ops.test.ts",
+    expect: ["every reason a service logs is one a counter can key on"],
+  },
+  {
     id: "held-table-parser-stopped-matching",
     swept: true,
     defect:

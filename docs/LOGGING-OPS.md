@@ -116,6 +116,13 @@ anything assembled from a request, or lifted from a database's error message —
 is counted as `other` while the line still carries it in full. A counter map
 keyed on caller input is a memory leak whose rate the caller chooses.
 
+That answer keeps the memory safe and makes the counter useless in exactly the
+case somebody is reading it, so it is a fallback rather than a licence:
+`test/logging-ops.test.ts` reads every `reason:` written inside a `log.*` call
+and fails on one the bound would reject. The sentence belongs in `detail`
+beside it — `push_failed` carries `reason: endpoint_gone` for the counter and
+`detail: endpoint is gone (410)` for the person.
+
 ### The six worth naming
 
 | Counter | Where | What it says |
