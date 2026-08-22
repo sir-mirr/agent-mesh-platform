@@ -82,7 +82,7 @@ export function TenantEgressAclPage() {
       const targetName = groups.find((g) => g.id === targetId)?.name || targetId;
 
       setToastMessage(
-        `${t("egress.toast.updated", "이그레스 통신 정책 갱신")}: [${sourceName}] → [${targetName}] : ${nextAllowed ? t("acl.allow", "ALLOW (허용)") : t("acl.deny", "DENY (차단)")}`
+        `${t("egress.toast.updated", "전송 규칙 갱신")}: [${sourceName}] → [${targetName}] : ${nextAllowed ? t("acl.allow", "ALLOW (허용)") : t("acl.deny", "DENY (차단)")}`
       );
     } catch (err: any) {
       console.warn("[Egress] Rule toggle error:", err.message);
@@ -93,7 +93,7 @@ export function TenantEgressAclPage() {
           [targetId]: currentAllowed,
         },
       }));
-      setToastMessage(`${t("egress.toast.failed", "이그레스 정책 변경 실패")}: ${err.message || t("overview.down", "통신 불가")}`);
+      setToastMessage(`${t("egress.toast.failed", "전송 규칙 변경 실패")}: ${err.message || t("overview.down", "통신 불가")}`);
     }
   };
 
@@ -102,11 +102,8 @@ export function TenantEgressAclPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="TENANT ADMIN"
-        suiteBadgeColor="leased"
-        screenId="27"
-        title={t("egress.title", "그룹 간 이그레스 ACL 행렬")}
-        subtitle={t("egress.subtitle", "Deny-by-default 기반 그룹 간 방향성(A→B != B→A) 통신 제어 (SPEC § 12 / -32018 EGRESS_DENIED)")}
+        title={t("egress.title", "그룹 간 메시지 전송 규칙")}
+        subtitle={t("egress.subtitle", "그룹 사이의 한 방향 메시지 전송을 허용하거나 차단합니다")}
       />
 
       {toastMessage && (
@@ -119,23 +116,23 @@ export function TenantEgressAclPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
-          {t("egress.desc", "각 버튼을 클릭하여 출발 그룹(Source)에서 도착 그룹(Target)으로의 단방향 메시지 발송 허용/차단을 실시간 전환할 수 있습니다.")}
+          {t("egress.desc", "셀을 클릭하여 출발 그룹에서 도착 그룹으로 보내는 한 방향 메시지를 허용하거나 차단합니다.")}
         </p>
 
         {isLoading ? (
           <div style={{ padding: "30px", textAlign: "center", color: "var(--color-text-muted)" }}>
-            {t("egress.loading", "이그레스 ACL 그룹 정책을 불러오는 중입니다...")}
+            {t("egress.loading", "그룹 간 전송 규칙을 불러오는 중입니다...")}
           </div>
         ) : isError ? (
           <div style={{ padding: "24px", background: "var(--color-bg-surface)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-lg)", color: "var(--color-danger)", textAlign: "center" }}>
             ⚠️{" "}
             {failure === "refused"
               ? refusedText(t, missing)
-              : t("egress.error", "이그레스 그룹을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
+              : t("egress.error", "그룹 간 전송 규칙을 불러오지 못했습니다 (서버가 답하지 않았습니다).")}
           </div>
         ) : groups.length === 0 ? (
           <div style={{ padding: "30px", textAlign: "center", color: "var(--color-text-muted)", background: "var(--color-bg-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-            {t("egress.noGroups", "현재 등록된 그룹이 없어 이그레스 ACL 행렬을 표시할 수 없습니다.")}
+            {t("egress.noGroups", "현재 등록된 그룹이 없어 전송 규칙 표를 표시할 수 없습니다.")}
           </div>
         ) : (
           <AclMatrix

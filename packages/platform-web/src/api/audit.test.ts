@@ -32,7 +32,17 @@ describe("fetchAuditEvents", () => {
     // when it is not the sender — otherwise every row claims a proxy.
     expect(row!.sentBy).toBe("carrier");
     expect(row!.rawContent).toBe("hello");
+    expect(row!.redacted).toBe(false);
     expect(row!.contentLength).toBe(5);
+  });
+
+  it("marks a server redaction token as data, not operator-facing content", async () => {
+    answer({ events: [{ event_id: "e1", payload: { message: {
+      from: "a", to: "b", content: "[content withheld — requires audit.read.content]", content_length: 4096,
+    } } }] });
+    const [row] = await fetchAuditEvents();
+    expect(row!.redacted).toBe(true);
+    expect(row!.contentLength).toBe(4096);
   });
 
   it("does not call the sender its own carrier", async () => {

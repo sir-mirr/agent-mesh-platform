@@ -256,7 +256,7 @@ describe("the operator panel, while the registry has not answered", () => {
 
     expect(kpiValue(en("dash.kpi.agents"))).not.toBe("0");
     expect(kpiSub(en("dash.kpi.agents"))).toBe(en("common.loading"));
-    expect(kpiSub(en("dash.kpi.sockets"))).toBe(en("common.loading"));
+    expect(document.querySelector(`[data-kpi="${en("dash.kpi.sockets")}"]`)).toBe(null);
     // Neither of the two sentences about an answer, because there is no answer.
     expect(bodyText()).not.toContain(en("dash.op.empty"));
     expect(bodyText()).not.toContain(en("common.errorLoad"));
@@ -296,7 +296,7 @@ describe("the operator panel, on an answer", () => {
     // `last_seen_at` is the only presence this route carries. A socket count
     // equal to the row count is the invented `status: "active"` this console
     // removed from the api layer, arriving instead from the screen.
-    expect(kpiValue(en("dash.kpi.sockets"))).toBe("1");
+    expect(document.querySelector(`[data-kpi="${en("dash.kpi.sockets")}"]`)).toBe(null);
 
     // Per row rather than over the body: both words are on the page either way,
     // and a row that swaps them is the same defect as counting them wrong.
@@ -322,11 +322,8 @@ describe("the operator panel, on a read that did not come back", () => {
     expect(bodyText()).not.toContain(en("dash.op.empty"));
     // The invitation is the sentence this panel used to draw at a `403`.
     expect(screen.queryByText(en("dash.op.register"))).toBe(null);
-    // `0` owned agents and `0` online sockets are two claims about a mesh that
-    // said nothing. This is the defect the panel's comment records being
-    // measured with a member account and only `/api/v1/agents` failing.
+    // `0` owned agents is a claim about a mesh that said nothing.
     expect(kpiValue(en("dash.kpi.agents"))).not.toBe("0");
-    expect(kpiValue(en("dash.kpi.sockets"))).not.toBe("0");
     expect(kpiSub(en("dash.kpi.agents"))).toBe(en("common.errorLoad"));
   };
 
@@ -361,7 +358,7 @@ describe("the queue card, which two panels draw", () => {
     expect(kpiValue(en("dash.kpi.inbox"))).toBe(en("common.unmeasured"));
   });
 
-  it("reports the total the route sent, and leaves the card with no route unmeasured", async () => {
+  it("reports the total_queued value the route sent and draws no invented dispatch card", async () => {
     routes = [
       [ME, NO_SESSION],
       [AGENTS, answers({ agents: [SEEN_ROW] })],
@@ -370,11 +367,7 @@ describe("the queue card, which two panels draw", () => {
     await mount();
 
     expect(kpiValue(en("dash.kpi.inbox"))).toBe("7");
-    // No request asks for today's dispatch count, so the card cannot become
-    // anything — and a number that cannot change is not a measurement. It must
-    // not borrow the queue's, which is the value sitting next to it.
-    expect(kpiValue(en("dash.kpi.latency"))).toBe(en("common.unmeasured"));
-    expect(kpiValue(en("dash.kpi.latency"))).not.toBe("7");
+    expect(document.querySelector(`[data-kpi="${en("dash.kpi.latency")}"]`)).toBe(null);
   });
 
   it("says the same thing on the group panel's copy of the card", async () => {
@@ -458,6 +451,18 @@ describe("the two role panels that exist below today's browser gate", () => {
     expect(bodyText()).toContain(en("dash.ta.keysEmpty"));
   });
 
+  it("does not turn an omitted delivery-rule list into zero allowed destinations", async () => {
+    remember("TENANT_ADMIN");
+    routes = [
+      [ME, stillOut],
+      [GROUPS, answers({ groups: [{ group_id: "grp_alpha", name: "Alpha", members: [] }] })],
+      [AGENTS, answers({ agents: [] })],
+      [KEYS_PENDING, answers({ keys: [] })],
+    ];
+    await mount();
+    expect(kpiValue(en("dash.ta.egress"))).toBe(en("common.unmeasured"));
+  });
+
   it("renders the group component's groups, members, sightings, and measured queue", async () => {
     // Same reach boundary as the tenant case above: this is below the browser
     // guard, because no current server session can carry GROUP_ADMIN.
@@ -479,7 +484,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     expectDashboardListState("group-agents", "present");
     expect(kpiValue(en("dash.ga.agents"))).toBe("2");
     expect(kpiValue(en("dash.ga.lease"))).toBe("4");
-    expect(kpiValue(en("dash.ga.health"))).toBe("50%");
+    expect(document.querySelector(`[data-kpi="${en("dash.ga.health")}"]`)).toBe(null);
     expect(bodyText()).toContain(SEEN_ROW.id);
     expect(bodyText()).toContain(UNSEEN_ROW.id);
   });
@@ -512,7 +517,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     await check(
       refusal(CAPABILITY.GROUP_MANAGE),
       "refused",
-      `${en("common.refusedRead")} (${CAPABILITY.GROUP_MANAGE}).`,
+      `${en("common.refusedRead")}.`,
     );
     expect(bodyText()).not.toContain(en("groups.error"));
 
@@ -547,7 +552,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     await check(
       refusal(CAPABILITY.GROUP_MANAGE),
       "refused",
-      `${en("common.refusedRead")} (${CAPABILITY.GROUP_MANAGE}).`,
+      `${en("common.refusedRead")}.`,
     );
     expect(bodyText()).not.toContain(en("groups.error"));
 
@@ -633,7 +638,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     await check(
       refusal(CAPABILITY.KEY_APPROVE),
       "refused",
-      `${en("common.refusedRead")} (${CAPABILITY.KEY_APPROVE}).`,
+      `${en("common.refusedRead")}.`,
     );
     expect(screen.getByTestId("tenant-pending-keys-refused").textContent).not.toBe(en("common.errorLoad"));
 
@@ -661,7 +666,7 @@ describe("the two role panels that exist below today's browser gate", () => {
       expectDashboardListState("group-agents", state);
       expect(screen.getByTestId(`group-agents-${state}`).textContent).not.toBe("0");
       expect(kpiSub(en("dash.ga.agents"))).toBe(sentence);
-      expect(kpiSub(en("dash.ga.health"))).toBe(sentence);
+      expect(document.querySelector(`[data-kpi="${en("dash.ga.health")}"]`)).toBe(null);
       expectDashboardGroupState("group-groups", "present");
     };
 
@@ -738,7 +743,6 @@ describe("the platform panel, while nothing has answered", () => {
     await mount();
 
     expect(kpiSub(en("dash.pa.nodes"))).toBe(en("common.loading"));
-    expect(kpiSub(en("dash.pa.sockets"))).toBe(en("common.loading"));
     expect(kpiSub(en("dash.pa.tenants"))).toBe(en("common.loading"));
     expect(kpiValue(en("dash.pa.nodes"))).not.toBe("0");
     expect(kpiValue(en("dash.pa.tenants"))).not.toBe("0");
@@ -769,9 +773,7 @@ describe("the platform panel, on an answer", () => {
     expect(kpiValue(en("dash.pa.nodes"))).toBe("2");
     expect(kpiValue(en("dash.pa.nodes"))).not.toBe("13");
     expect(kpiSub(en("dash.pa.nodes"))).toBe(en("dash.pa.nodesSub"));
-    // One row carries `channel: "web"`, which is what the socket count reads.
-    // Equal to the node count it would be the row count under another label.
-    expect(kpiValue(en("dash.pa.sockets"))).toBe("1");
+    expect(document.querySelector(`[data-kpi="${en("dash.pa.sockets")}"]`)).toBe(null);
 
     expect(kpiValue(en("dash.pa.tenants"))).toBe("0");
     expect(kpiSub(en("dash.pa.tenants"))).toBe(en("dash.pa.tenantsNone"));
@@ -848,7 +850,6 @@ describe("the platform panel, on a read that did not come back", () => {
     await mount();
 
     expect(kpiSub(en("dash.pa.nodes"))).not.toBe(en("common.errorLoad"));
-    expect(kpiSub(en("dash.pa.sockets"))).not.toBe(en("common.disconnected"));
     expect(bodyText()).not.toContain(en("dash.pa.tenantError"));
     // The panel that did answer keeps its answer. A refusal on one read
     // erasing a list another read returned is the same collapse in reverse.

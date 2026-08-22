@@ -60,7 +60,7 @@ const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { CAPABILITY, ALL_CAPABILITIES } = await import("@/types/auth.ts");
-const { RbacManagementPage } = await import("./RbacManagementPage.tsx");
+const { RbacManagementPage, capabilityLabel } = await import("./RbacManagementPage.tsx");
 
 const ME = "/auth/me";
 const GRANTS = "/api/v1/admin/grants";
@@ -102,6 +102,8 @@ const NO_ROLE = "—";
 const HELD_MARK = "✓";
 /** The separator the toast puts between subject and capability. */
 const DOT = "·";
+const friendly = (capability: string): string =>
+  capabilityLabel((key, fallback) => DICTIONARY.en[key] ?? fallback, capability);
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -339,7 +341,7 @@ describe("the four things an empty matrix can mean", () => {
     });
   });
 
-  it("says the account may not read the map, in the server's own word for what is missing", async () => {
+  it("says the account may not read the map without exposing the machine key", async () => {
     // § 11.3's refusal carries `capability` as a field precisely so a client
     // does not parse it out of the sentence — and the sentence here does not
     // carry it, so a screen regexing the message cannot pass this.
@@ -348,7 +350,8 @@ describe("the four things an empty matrix can mean", () => {
     expect(matrix()).toEqual({
       loading: false, refused: true, unreachable: false, empty: false, subjects: [],
     });
-    expect(statusLine()).toContain(`${REFUSED} (${GRANT}).`);
+    expect(statusLine()).toContain(`${REFUSED}.`);
+    expect(statusLine()).not.toContain(GRANT);
   });
 
   it("names no capability when the server named none", async () => {
@@ -424,6 +427,10 @@ describe("the vocabulary comes from the server with the map", () => {
     // reading the response — which is the defect the route's own comment names.
     expect(ALL_CAPABILITIES.length).toBeGreaterThan(VOCABULARY.length);
     expect(chip("ada", CONTENT)).toBe(null);
+    for (const capability of VOCABULARY) {
+      expect(chip("ada", capability)?.textContent).toContain(friendly(capability));
+      expect(document.body.textContent ?? "").not.toContain(capability);
+    }
   });
 
   it("offers nothing to toggle when the answer carried no vocabulary at all", async () => {
@@ -535,7 +542,7 @@ describe("giving a capability and taking it back", () => {
     expect(bodyOf(grantWrites()[0])).toEqual({ subject: "grace", capability: META, scope: "*" });
     // Subject and capability both land in the toast, so the two being exchanged
     // fails here rather than reading as a sentence made of the server's words.
-    expect(toastMessage()).toBe(`${GRANTED}: grace ${DOT} ${META}`);
+    expect(toastMessage()).toBe(`${GRANTED}: grace ${DOT} ${friendly(META)}`);
     // And the matrix redraws from a second read of the map.
     expect(mapReadCount).toBe(2);
     expect(holds("grace", META)).toBe(true);
@@ -556,7 +563,7 @@ describe("giving a capability and taking it back", () => {
     // A screen that turned the cell off locally would now say `ada` holds
     // nothing, about a server that still says she does.
     expect(holds("ada", GRANT)).toBe(true);
-    expect(toastMessage()).toBe(`${REVOKED}: ada ${DOT} ${GRANT}`);
+    expect(toastMessage()).toBe(`${REVOKED}: ada ${DOT} ${friendly(GRANT)}`);
   });
 
   it("does not say the grant changed when the server refused the write", async () => {

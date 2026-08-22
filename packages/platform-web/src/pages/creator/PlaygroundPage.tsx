@@ -190,9 +190,6 @@ export function PlaygroundPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="40"
         title={t("play.title", "메시지 라우팅 플레이그라운드")}
         subtitle={t("play.subtitle", "RFC 7519 JWT 토큰 기반 프록시 메시지 전송 및 전자서명 배달 영수증 검증 테스트")}
       />
@@ -305,7 +302,7 @@ export function PlaygroundPage() {
             {/* Preset Payload Buttons */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
-                {t("play.templates", "페이로드 템플릿")}:
+                {t("play.templates", "메시지 본문 예시")}:
               </label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {PAYLOAD_PRESETS.map((preset) => (
@@ -333,7 +330,7 @@ export function PlaygroundPage() {
             {/* JSON Payload Input */}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                {t("play.payload", "메시지 페이로드 (JSON)")}
+                {t("play.payload", "메시지 본문 (JSON)")}
               </label>
               <textarea
                 value={payloadText}

@@ -80,14 +80,14 @@ export function RegisterAgentPage() {
       setToastNotice({
         type: "success",
         testId: "pairing-code-issued",
-        message: `${t("reg.toast.issued", "페어링 코드 발급")}: ${targetIdentity} · ${selectedTtl / 60}${t("reg.minutes", "분")}`,
+        message: `${t("reg.toast.issued", "연결 코드 발급")}: ${targetIdentity} · ${selectedTtl / 60}${t("reg.minutes", "분")}`,
       });
     } catch (err: any) {
       setGeneratedCode(null);
       setToastNotice({
         type: "error",
         testId: "pairing-code-issue-failed",
-        message: `${t("reg.toast.failed", "페어링 코드 발급 실패")}: ${err.message}`,
+        message: `${t("reg.toast.failed", "연결 코드 발급 실패")}: ${err.message}`,
       });
     }
   };
@@ -118,7 +118,7 @@ export function RegisterAgentPage() {
     setToastNotice({
       type: "success",
       testId: "registration-approved",
-      message: `${t("reg.toast.approved", "승인 및 페어링 완료")}: ${identity} · ${code}`,
+      message: `${t("reg.toast.approved", "승인 및 연결 완료")}: ${identity} · ${code}`,
     });
   };
 
@@ -166,7 +166,7 @@ export function RegisterAgentPage() {
     },
     {
       key: "fingerprint",
-      header: t("reg.col.fingerprint", "제안된 Ed25519 공개키 지문"),
+      header: t("reg.col.fingerprint", "제안된 공개키 지문"),
       render: (item: PendingAgentRequest) => (
         <code style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)" }}>
           {item.fingerprint}
@@ -196,7 +196,7 @@ export function RegisterAgentPage() {
               size="sm"
               onClick={() => setModalRequest(item)}
             >
-              🔑 {t("reg.action.pair", "페어링 코드 발급 & 승인")}
+              🔑 {t("reg.action.pair", "연결 코드 발급 및 승인")}
             </Button>
           ) : (
             <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", fontStyle: "italic" }}>
@@ -213,11 +213,8 @@ export function RegisterAgentPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="STUDIO SUITE"
-        suiteBadgeColor="leased"
-        screenId="46"
-        title={t("reg.title", "에이전트 신원 등록 & 페어링 허브")}
-        subtitle={t("reg.subtitle", "클라이언트 AI 에이전트의 자동 등록 요청 수신, 1회용 페어링 코드(Pairing Code) 발급 및 소유권 승인 (SPEC § 11.3)")}
+        title={t("reg.title", "신규 에이전트 신원 등록과 키 제안")}
+        subtitle={t("reg.subtitle", "새 에이전트의 등록 요청을 검토하고 연결 코드를 발급합니다")}
       />
 
       {toastNotice && (
@@ -240,7 +237,7 @@ export function RegisterAgentPage() {
         }}
       >
         <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: 12 }}>
-          🔄 {t("reg.flow.title", "클라이언트 주도 에이전트 등록 & 페어링 프로세스 (SPEC § 11.3)")}
+          🔄 {t("reg.flow.title", "에이전트 등록과 연결 절차")}
         </h3>
         <div
           style={{
@@ -264,7 +261,7 @@ export function RegisterAgentPage() {
           </div>
 
           <div style={{ background: "var(--color-bg-surface-sub)", padding: 14, borderRadius: "var(--radius-lg)" }}>
-            <div style={{ fontSize: "1.2rem", marginBottom: 6 }}>3️⃣ {t("reg.flow.3", "페어링 모달 & 코드 발급")}</div>
+            <div style={{ fontSize: "1.2rem", marginBottom: 6 }}>3️⃣ {t("reg.flow.3", "연결 확인과 코드 발급")}</div>
             <p style={{ fontSize: "0.78rem", color: "var(--color-text-secondary)", lineHeight: 1.4 }}>
               {t("reg.flow.3.body", "알림을 클릭하면 1회용 인증코드(PAIR-XXXX)를 발급받아 에이전트에 전달합니다.")}
             </p>
@@ -294,7 +291,7 @@ export function RegisterAgentPage() {
         >
           <div>
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-              🔑 {t("reg.gen.title", "즉시 페어링 코드(Pairing Code) 생성기")}
+              🔑 {t("reg.gen.title", "1회용 연결 코드 만들기")}
             </h3>
             <p style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", marginTop: 4 }}>
               {t("reg.gen.body", "특정 에이전트에 전달할 1회용 인증 토큰을 만듭니다 (POST /api/v1/admin/pairing-codes).")}
@@ -313,7 +310,7 @@ export function RegisterAgentPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
-                ⏱️ {t("reg.ttl.label", "페어링 코드 유효기간 (TTL, 최대 1시간)")}
+                ⏱️ {t("reg.ttl.label", "연결 코드를 사용할 수 있는 시간 (최대 1시간)")}
               </label>
               <select
                 value={selectedTtl}
@@ -335,7 +332,7 @@ export function RegisterAgentPage() {
             </div>
 
             <Button variant="primary" size="md" type="submit">
-              ⚡ {t("reg.gen.submit", "1회용 페어링 코드 발급")}
+              ⚡ {t("reg.gen.submit", "1회용 연결 코드 발급")}
             </Button>
           </form>
 
@@ -393,7 +390,7 @@ export function RegisterAgentPage() {
           <CodeBlock
             title={t("reg.cmd.terminal", "에이전트 터미널 실행")}
             language="bash"
-            code={`# ${t("reg.cmd.comment", "발급받은 페어링 코드로 소유권 바인딩")}
+            code={`# ${t("reg.cmd.comment", "발급받은 연결 코드로 소유권 확인")}
 curl -X POST ${publicApiOrigin()}/api/v1/pairing-codes/redeem -H 'Content-Type: application/json' -d '{"code": "${generatedCode || "PAIR-9412-SETTLEMENT"}", "owner": "admin"}'`}
           />
         </div>

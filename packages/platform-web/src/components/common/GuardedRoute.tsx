@@ -56,8 +56,8 @@ export function GuardedRoute({
         }}
       >
         <span style={{ fontSize: "2rem" }}>🔌</span>
-        <strong>{t("guard.unreachable", "백엔드에 연결할 수 없습니다")}</strong>
-        <span>{t("guard.unreachableWhy", "세션이 만료된 것이 아니라 서버가 응답하지 않습니다. 서버가 돌아오면 새로고침하십시오.")}</span>
+        <strong>{t("guard.unreachable", "서버에 연결할 수 없습니다")}</strong>
+        <span>{t("guard.unreachableWhy", "지금은 로그인 상태를 확인할 수 없습니다. 서버가 돌아오면 새로고침하십시오.")}</span>
       </div>
     );
   }

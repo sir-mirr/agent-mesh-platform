@@ -11,6 +11,31 @@ import { useI18n } from "@/contexts/I18nContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { fetchLocalUsers } from "@/api/users.ts";
 import { fetchGrants, addGrantApi, deleteGrantApi, type GrantItem } from "@/api/grants.ts";
+import { CAPABILITY } from "@/types/auth.ts";
+
+const CAPABILITY_COPY: Record<string, [key: string, fallback: string]> = {
+  [CAPABILITY.KEY_APPROVE]: ["rbac.cap.keyApprove", "등록 키 승인"],
+  [CAPABILITY.AGENT_TEARDOWN]: ["rbac.cap.agentRemove", "에이전트 제거"],
+  [CAPABILITY.AGENT_PROVISION]: ["rbac.cap.agentRegister", "에이전트 등록"],
+  [CAPABILITY.GROUP_MANAGE]: ["rbac.cap.groupManage", "그룹 관리"],
+  [CAPABILITY.ROLE_GRANT]: ["rbac.cap.permissionManage", "계정 권한 변경"],
+  [CAPABILITY.AUDIT_READ_METADATA]: ["rbac.cap.auditDetails", "감사 기록의 시간·경로·길이 보기"],
+  [CAPABILITY.AUDIT_READ_CONTENT]: ["rbac.cap.auditContent", "감사 기록의 메시지 본문 보기"],
+  [CAPABILITY.MAILBOX_READ_DEPTH]: ["rbac.cap.mailboxBacklog", "메일함 적체 보기"],
+  [CAPABILITY.TENANT_READ_STATS]: ["rbac.cap.groupStats", "그룹 메시지 통계 보기"],
+  [CAPABILITY.SOURCE_READ]: ["rbac.cap.sourceRead", "허용된 발신처 보기"],
+  [CAPABILITY.USER_ADMIT]: ["rbac.cap.userAdmit", "사용자 승인"],
+  [CAPABILITY.USAGE_READ]: ["rbac.cap.activityRead", "운영 동작 지표 보기"],
+};
+
+export function capabilityLabel(
+  t: (key: string, fallback: string) => string,
+  capabilityId: string,
+): string {
+  const copy = CAPABILITY_COPY[capabilityId];
+  if (copy) return t(copy[0], copy[1]);
+  return capabilityId.replace(/[._]+/g, " ");
+}
 
 interface OrgMember {
   id: string;
@@ -113,10 +138,10 @@ export function RbacManagementPage() {
     try {
       if (hasCap) {
         await deleteGrantApi(subject, capId);
-        setToastMessage(`${t("rbac.toast.revoked", "권한 회수")}: ${subject} · ${capId}`);
+        setToastMessage(`${t("rbac.toast.revoked", "권한 회수")}: ${subject} · ${capabilityLabel(t, capId)}`);
       } else {
         await addGrantApi(subject, capId);
-        setToastMessage(`${t("rbac.toast.granted", "권한 부여")}: ${subject} · ${capId}`);
+        setToastMessage(`${t("rbac.toast.granted", "권한 부여")}: ${subject} · ${capabilityLabel(t, capId)}`);
       }
       await loadGrantsAndMembers();
     } catch (err: any) {
@@ -154,7 +179,7 @@ export function RbacManagementPage() {
     },
     {
       key: "capabilities",
-      header: t("rbac.col.caps", "부여된 Capability (클릭하여 토글)"),
+      header: t("rbac.col.caps", "부여된 권한 (클릭하여 변경)"),
       render: (item: OrgMember) => (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {availableCaps.map((capId) => {
@@ -183,10 +208,10 @@ export function RbacManagementPage() {
                     : "var(--color-text-muted)",
                   transition: "all 0.15s ease",
                 }}
-                title={canGrant ? (isAssigned ? t("rbac.toast.revoked", "권한 회수") : t("rbac.toast.granted", "권한 부여")) : t("rbac.needs.grant", "role.grant 권한이 필요합니다")}
+                title={canGrant ? (isAssigned ? t("rbac.toast.revoked", "권한 회수") : t("rbac.toast.granted", "권한 부여")) : t("rbac.needs.grant", "이 계정에는 권한을 변경할 수 있는 권한이 없습니다")}
               >
                 {isAssigned ? "✓ " : "+ "}
-                {capId}
+                {capabilityLabel(t, capId)}
               </button>
             );
           })}
@@ -200,11 +225,8 @@ export function RbacManagementPage() {
       <Breadcrumbs />
 
       <PageHeader
-        suiteTag="TENANT ADMIN"
-        suiteBadgeColor="leased"
-        screenId="36"
-        title={t("rbac.title", "조직 멤버 RBAC 권한 & Capability 관리")}
-        subtitle={t("rbac.subtitle", "SPEC § 11.3 / § 12: 계정별 Capability(권한) 세분화 부여 및 회수 (role.grant 인가 전용)")}
+        title={t("rbac.title", "계정 권한 관리")}
+        subtitle={t("rbac.subtitle", "계정마다 화면과 작업 권한을 부여하거나 회수합니다")}
       />
 
       {toastMessage && (
@@ -218,7 +240,7 @@ export function RbacManagementPage() {
       {/* Capability Matrix Section */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          🛡️ {t("rbac.matrix", "활성 조직원 및 Capability 권한 할당 매트릭스")}{" "}
+          🛡️ {t("rbac.matrix", "계정별 권한 표")}{" "}
           {isLoading ? `(${t("common.loading", "조회 중...")})` : isError ? t("common.unreachable", "(통신 불가)") : `(${members.length})`}
         </h3>
         <DataTable
@@ -238,4 +260,3 @@ export function RbacManagementPage() {
     </div>
   );
 }
-

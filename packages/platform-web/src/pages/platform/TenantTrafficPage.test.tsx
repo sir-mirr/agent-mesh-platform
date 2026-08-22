@@ -271,7 +271,8 @@ describe("the four things an empty tenant table can mean", () => {
     // The bell's queue answered 200 in this run, so the refusal on screen is
     // this route's and could not have come from the console being unreachable.
     expect(readsOf(KEY_QUEUE)).toBe(1);
-    expect(note()).toContain(`${en("common.refusedRead")} (${STATS}).`);
+    expect(note()).toContain(`${en("common.refusedRead")}.`);
+    expect(note()).not.toContain(STATS);
     // Walked with a session holding no `tenant.read.stats`, a screen with one
     // error branch says the server did not answer — and sends the operator to
     // check a backend that is running, about a permission they do not hold.
@@ -281,14 +282,15 @@ describe("the four things an empty tenant table can mean", () => {
     expect(rows()).toHaveLength(0);
   });
 
-  it("repeats the capability the server named rather than the one this route usually wants", async () => {
+  it("does not expose a different machine key in the refusal sentence", async () => {
     // § 11.3 carries the name in a field so a client never has to guess, and a
     // guess is right until the route's requirement changes. A refusal naming a
     // different real capability is the only fixture that can tell a screen
     // reading the field from a screen printing a constant.
     tenantsRoute = refuses(OTHER);
     await mount();
-    expect(note()).toContain(`(${OTHER})`);
+    expect(note()).toContain(`${en("common.refusedRead")}.`);
+    expect(note()).not.toContain(OTHER);
     expect(note()).not.toContain(STATS);
   });
 

@@ -370,24 +370,26 @@ describe("the four things the screen can say about the log", () => {
     expect(first).not.toContain(UNREACHABLE);
   });
 
-  it("calls a refusal a refusal, in the server's own word for what is missing", async () => {
+  it("calls a refusal a refusal without exposing the server's machine key", async () => {
     // § 11.3's refusal carries the name in a field. The message here deliberately
     // does not repeat it, so a screen regexing the sentence — or reciting a
     // capability typed into its own copy — cannot pass this.
     auditRoute = answers(403, { error: "not allowed", capability: METADATA });
     await mount();
     expect(logState()).toEqual({ ...quiet, refused: true, rows: 0 });
-    expect(tableStateText()).toContain(METADATA);
+    expect(tableStateText()).toContain(`${REFUSED}.`);
+    expect(tableStateText()).not.toContain(METADATA);
   });
 
-  it("repeats the capability the server named rather than the one this route used to want", async () => {
+  it("keeps a different refusal key out of the same operator sentence", async () => {
     // The same read refused for a different grant. A screen holding its own
     // copy of the requirement was right on the day it was written and says the
     // wrong name the day the route changes.
     auditRoute = answers(403, { error: "not allowed", capability: CONTENT });
     await mount();
     const text = tableStateText();
-    expect(text).toContain(CONTENT);
+    expect(text).toContain(`${REFUSED}.`);
+    expect(text).not.toContain(CONTENT);
     expect(text).not.toContain(METADATA);
   });
 
@@ -603,6 +605,14 @@ describe("SPEC § 11.0's content boundary", () => {
     expect(screen.getByTestId("audit-body").textContent).toBe(SECRET);
     expect(screen.queryByTestId("audit-withheld")).toBe(null);
     expect(bodyText()).toContain(BANNER_HELD);
+  });
+
+  it("maps the server's redaction token to operator language even for a content reader", async () => {
+    meRoute = session([METADATA, CONTENT]);
+    auditRoute = answers(200, { ok: true, events: [withBody("sender-a", "[content withheld]")] });
+    await mount();
+    expect(screen.queryByTestId("audit-withheld")?.textContent).toBe(en("audit.held"));
+    expect(bodyText()).not.toContain("[content withheld]");
   });
 
   it("withholds it when the session's capability list says nothing is held", async () => {

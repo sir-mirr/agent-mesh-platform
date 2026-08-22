@@ -274,7 +274,8 @@ describe("the four things the list can be saying", () => {
     // The server answered. Reporting that as "the server did not answer" sends
     // an operator to check a network that is fine, for a permission they simply
     // do not hold — measured on this console with a member session.
-    expect(status()).toContain(`${REFUSED} (${MANAGE}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(MANAGE);
     expect(status()).not.toContain(UNREACHABLE);
     expect(status()).not.toContain(EMPTY);
     // A panel that never leaves the loading state is a third wrong sentence:
@@ -354,7 +355,8 @@ describe("the four things the list can be saying", () => {
     // current. The group may since have been deleted, or belong to a tenant
     // this session may no longer see; the screen no longer knows.
     expect(rows()).toHaveLength(0);
-    expect(status()).toContain(`${REFUSED} (${MANAGE}).`);
+    expect(status()).toContain(`${REFUSED}.`);
+    expect(status()).not.toContain(MANAGE);
     expect(status()).not.toContain(EMPTY);
   });
 
@@ -620,4 +622,3 @@ describe("a field the route did not send", () => {
     expect(row!.textContent).toContain("0");
   });
 });
-

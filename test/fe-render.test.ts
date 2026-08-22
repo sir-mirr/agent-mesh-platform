@@ -880,10 +880,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const bodyCells = await page.locator("tbody tr td:nth-child(4)").allInnerTexts();
     expect(bodyCells.length).toBeGreaterThanOrEqual(4);
-    expect(bodyCells.every((c) => c.includes("content withheld"))).toBe(true);
+    expect(await page.locator("tbody tr td:nth-child(4) [data-testid='audit-withheld']").count())
+      .toBe(bodyCells.length);
 
     const mainText = await page.locator("#root").innerText();
-    expect(mainText).toContain("[content withheld — requires audit.read.content]");
+    expect(mainText).toContain("본문을 볼 권한이 없어 숨겼습니다");
+    expect(mainText).not.toContain("[content withheld");
+    expect(mainText).not.toContain("audit.read.content");
     expect(mainText).not.toContain("hello security via proxy");
 
     await context.close();
@@ -1061,11 +1064,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const banner = page.locator("[data-testid='telemetry-refused']");
     await banner.waitFor({ state: "visible", timeout: 5000 });
 
-    // The capability, not just "an error" — the reader has to know what to ask
-    // for, and "something went wrong" sends them to the wrong person.
+    // Operator language explains the withheld reads without leaking server keys.
     const said = (await banner.textContent()) ?? "";
-    expect({ names: said.includes("usage.read") && said.includes("mailbox.read.depth") })
-      .toEqual({ names: true });
+    expect({ count: said.includes("(2)"), leaksKeys: said.includes("usage.read") || said.includes("mailbox.read.depth") })
+      .toEqual({ count: true, leaksKeys: false });
 
     // And it is genuinely different from what an admin sees.
     const admin = await createAuthedPage("/platform/telemetry");
@@ -3083,7 +3085,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await capabilityViewer(mesh, "usage.read");
 
     await withPage("/tenant/rbac", async ({ page }) => {
-      await shows(page, "usage.read");
+      await page.locator('[data-testid$="-usage.read"]').first().waitFor({ state: "visible" });
 
       // Only the write. The read has to succeed or there are no chips to click.
       await page.route("**/api/v1/admin/grants", (route) => {

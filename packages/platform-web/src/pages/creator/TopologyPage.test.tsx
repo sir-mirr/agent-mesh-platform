@@ -241,11 +241,10 @@ describe("a read that never finished is not an empty mesh", () => {
 });
 
 describe("a refusal is the server answering, and says so", () => {
-  it("repeats the capability the server named instead of one it read out of the sentence", async () => {
-    // The message names a *different* capability from the field. A screen
-    // regexing the prose gets `OTHER`; one reading § 11.3's field gets `NAMED`.
-    // Nine screens on this console had the name typed into their own copy, and
-    // every one of them went stale the day a route's requirement moved.
+  it("summarises the refusal without exposing internal permission identifiers", async () => {
+    // The message and field intentionally name different internal permissions.
+    // Neither belongs in operator-facing copy; the refusal state is enough to
+    // explain why the protected section is unavailable.
     serve({
       [GROUPS]: () => json(403, { error: `missing capability ${OTHER}`, capability: NAMED }),
       [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
@@ -254,7 +253,7 @@ describe("a refusal is the server answering, and says so", () => {
     await mount();
 
     expect(overlayText()).toContain(REFUSED);
-    expect(overlayText()).toContain(`(${NAMED})`);
+    expect(overlayText()).not.toContain(NAMED);
     expect(overlayText()).not.toContain(OTHER);
   });
 

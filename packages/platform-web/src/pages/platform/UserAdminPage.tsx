@@ -147,9 +147,6 @@ export function UserAdminPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-testid="user-admin">
       <Breadcrumbs />
       <PageHeader
-        suiteTag="PLATFORM ADMIN"
-        suiteBadgeColor="leased"
-        screenId="37"
         title={t("users.title", "Local accounts")}
         subtitle={t(
           "users.subtitle",

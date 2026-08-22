@@ -239,7 +239,7 @@ export function TopologyPage() {
         groupName: `${cfg.name} (Gateway)`,
         type: "gateway-bridge",
         status: "Gateway",
-        desc: `${cfg.name} — ${t("topo.gateway", "그룹 간 라우팅과 Egress ACL 을 맡는 게이트웨이")}`,
+        desc: `${cfg.name} — ${t("topo.gateway", "그룹 사이의 메시지 전송 규칙을 적용하는 서버")}`,
         // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
         // put a synthesised node in the same list as real agents wearing the
         // same kind of value.
@@ -1054,8 +1054,8 @@ export function TopologyPage() {
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
               <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
-              <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title={t("topo.egressTitle", "SPEC § 12: 그룹 간 아웃바운드 메시지 전송 ACL 통제 규칙이 활성화되어 있습니다")}>
-                {t("topo.hud.egress", "Egress")}: Active
+              <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title={t("topo.egressTitle", "그룹 간 메시지 전송 규칙이 적용 중입니다")}>
+                {t("topo.hud.egress", "그룹 간 전송 규칙")}: {t("topo.hud.active", "적용 중")}
               </span>
             </>
           )}
