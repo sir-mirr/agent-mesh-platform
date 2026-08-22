@@ -6851,6 +6851,17 @@ const MUTATIONS: Mutation[] = [
     expect: ["waiting for a close the hub never makes answers null, and a real one answers its code"],
   },
   {
+    id: "held-table-parser-stopped-matching",
+    swept: true,
+    defect:
+      "The row parser stopped matching, and every check in this file went vacuous \u2014 no rows means no stale anchors, no untracked files and nothing to disagree with. A guard that reads its own subject fails open, and the floor that used to notice was a number somebody had to lower each time the table shrank.",
+    file: "test/held-uncovered.test.ts",
+    from: '  .filter((line) => line.startsWith("| `"))',
+    to: '  .filter((line) => line.startsWith("| ``"))',
+    suite: "test/held-uncovered.test.ts",
+    expect: ["the table is still a table"],
+  },
+  {
     id: "held-table-anchor-stale",
     swept: true,
     defect:

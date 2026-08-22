@@ -71,15 +71,27 @@ describe("what the coverage number leaves out", () => {
    * what this document is for: every row here is a line somebody could go and
    * cover, and the good ending for one is to leave.
    *
-   * It moved twice more for the same reason, and the second time it was the
-   * *file* count that caught: retiring `provenance.ts` and the linter's
-   * capability refusal took the table from six files to four, and this was
-   * asserting more than four. A guard that fails because the thing it watches
-   * improved is a guard aimed at the wrong number.
+   * It moved three times, each time because the table shrank past it, and
+   * chasing it down per commit is the wrong shape: a number that must be
+   * lowered whenever the work goes well is not measuring the parser. So the
+   * live check is against the document instead — every line that *looks* like a
+   * row must have parsed into one, which catches a pattern that stopped
+   * matching without caring how many rows there are. The floor stays only as
+   * the case that check cannot see: a table with no rows at all, where nothing
+   * looks like a row either.
    */
   test("the table is still a table", () => {
-    expect(ROWS.length).toBeGreaterThan(8);
-    expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(2);
+    // Every table line in the document, counted without the row parser: the
+    // pipes, minus the header and its separator.
+    const tableLines = text
+      .split("\n")
+      .filter((line) => line.startsWith("|"))
+      .filter((line) => !line.startsWith("| File |") && !line.startsWith("|---"));
+
+    expect(ROWS.length).toBe(tableLines.length);
+    expect(ROWS.length).toBeGreaterThan(3);
+    // A row that lost a cell parses into something, and it is not a row.
+    expect(ROWS.filter((r) => !r.file || !r.anchor || !r.why)).toEqual([]);
   });
 
   test("every row names a tracked file", () => {
