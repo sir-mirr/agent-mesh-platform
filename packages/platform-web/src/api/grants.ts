@@ -1,3 +1,4 @@
+import type { ImmutableReason } from "@agent-mesh/contracts";
 import { apiClient } from "./client.ts";
 
 export interface GrantItem {
@@ -10,7 +11,7 @@ export interface GrantItem {
   /** Whether this existing grant may be removed under the server's rules. */
   revocable?: boolean;
   /** Machine-readable reason paired with `revocable: false`. */
-  immutable_reason?: string;
+  immutable_reason?: ImmutableReason;
 }
 
 export interface GrantsResponse {
