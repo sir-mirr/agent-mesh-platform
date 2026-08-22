@@ -149,6 +149,33 @@ Smaller items, same theme:
   ai-usage ingest, and the same shape in the lane components). Timing-safe
   comparison is cheap; the practical risk here is low.
 
+## 7a. Why this host has periods where everything runs ten times slower
+
+**Open, and deliberately not chased.** On 2026-08-22 the same commit measured
+`bun test packages/` at 24 s and at 262 s within the hour, and
+`test/fe-render.test.ts` — 30 s in the morning — took 1154 s in the afternoon
+with its timeout raised. Between them, `bun test packages/http/src/db-store.test.ts`
+ran 22 tests in 1.07 s with a load average of 2.7, so the machine is not slow
+*as a rule*; it has periods.
+
+What it costs is measurement. A browser scenario that exceeds bun's five-second
+default has its async work cut, the playwright pipe goes with it, and **every
+scenario after it fails with `browser has been closed`** — a hundred failures
+naming nothing, from one slow navigation. That is a red suite produced by a
+machine and indistinguishable, from the report, from one produced by a defect.
+
+`test/fe-render.test.ts` raises its timeout to twenty seconds so a red there
+means a defect (`agent-mesh-local-pm`, 2026-08-22). That is a decision about
+what to call a failure, not an answer to this question. The question — thermal
+throttling, a background process, the sleep/wake cycle the machine went through
+at 12:45, or something else — is left here rather than pursued, because the
+time it would take is time the work costs more than the answer is worth today.
+
+**What would settle it** is a measurement nobody has taken yet: the same suite,
+same commit, on an otherwise idle host, sampled across a day with `powermetrics`
+or equivalent beside it. Written down so the next person finds a method rather
+than a mood.
+
 ## 8. Where the http admin surface's refusal codes are named
 
 Eleven codes leave this repository in REST bodies and are named nowhere in

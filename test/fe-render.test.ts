@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, setDefaultTimeout } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { readFileSync } from "node:fs";
@@ -9,6 +9,26 @@ import { openTestDb, sessionCookie } from "./harness";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, freePort } from "./harness.ts";
+
+/**
+ * **Twenty seconds, so a red here means a defect rather than a slow machine.**
+ *
+ * Every scenario below drives a real browser against a real mesh, and bun's
+ * default is five seconds. That is comfortably enough on an idle host and not
+ * enough on this one during the periods where everything runs an order of
+ * magnitude slower: the first `goto` exceeds it, bun cuts the test's async work,
+ * the playwright pipe goes with it, and **every scenario after that fails with
+ * `browser has been closed`** — 120 failures naming nothing, from one slow
+ * navigation. Measured: at five seconds the suite was 8/134, at twenty it was
+ * 45/134 in the same conditions, and single scenarios passed either way.
+ *
+ * This raises the bar for calling something a failure; it does not make the
+ * machine faster. **Why the host has slow periods at all is unanswered** and is
+ * written down as such in `docs/open-questions.md` — the number here is a
+ * decision to stop paying for that question in this suite's results
+ * (`agent-mesh-local-pm`, 2026-08-22).
+ */
+setDefaultTimeout(20_000);
 
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
   /** What the setup's own writes answered, when they did not answer OK.
