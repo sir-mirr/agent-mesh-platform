@@ -6991,6 +6991,86 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses the revoke the screen will not offer"],
   },
   {
+    id: "the-tenant-seed-overwrites-a-rename",
+    defect:
+      "The default tenant's seed stopped conceding to what is there. Every start runs `migrate`, so an operator renames the tenant, watches it work, and finds it back the following morning with nothing in the log about it.",
+    file: "packages/store/src/tenants.ts",
+    from: "    `INSERT INTO tenants (id, name) VALUES (?, ?) ON CONFLICT DO NOTHING`,",
+    to: "    `INSERT INTO tenants (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name`,",
+    suite: "packages/store/src/tenants.test.ts",
+    expect: ["keeps a rename across the next migration"],
+  },
+  {
+    id: "deleting-a-tenant-removes-the-row",
+    defect:
+      "The soft delete became a real one. A tenant id is a plain string in `agents`, `local_users`, `agent_groups` and `message_stats` with nothing pointing back at the list \u2014 removing the row leaves last month's traffic attributed to an id that resolves to nothing, and \u00a7 11.4's answer for it becomes blank rather than a name.",
+    file: "packages/store/src/tenants.ts",
+    from: "      .prepare(`UPDATE tenants SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`)",
+    to: "      .prepare(`DELETE FROM tenants WHERE id = ? AND deleted_at IS NULL`)",
+    suite: "packages/store/src/tenants.test.ts",
+    expect: ["keeps the row the other tables point at"],
+  },
+  {
+    id: "the-default-tenant-can-be-deleted",
+    defect:
+      "The guard on the default tenant went away. Every row whose tenant nobody stated is in it \u2014 including the seeded administrator's \u2014 so deleting it removes the only tenant the installation is guaranteed to have while everything still points there.",
+    file: "packages/store/src/tenants.ts",
+    from: "  if (id === DEFAULT_TENANT) return false;",
+    to: "  if (false) return false;",
+    suite: "packages/store/src/tenants.test.ts",
+    expect: ["cannot be deleted"],
+  },
+  {
+    id: "anybody-can-manage-the-tenant-list",
+    defect:
+      "The platform-administrator stand-in stopped being checked. Any approved session could then create, rename and retire tenants \u2014 including tenants it cannot see \u2014 which is the whole of what T-026 reserved to the installation's administrator while the capability for it does not exist.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!administratorLogins().includes(actor)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/tenants-admin.test.ts",
+    expect: ["refuses an ordinary session"],
+  },
+  {
+    id: "the-tenant-directory-shows-everybody-everything",
+    defect:
+      "The directory stopped filtering. An ordinary session then reads the name of every tenant in the installation from a route that exists so a screen can show *its own* tenant's name instead of an id.",
+    file: "packages/http/src/main.ts",
+    from: "  const visible = isPlatformAdmin ? all : all.filter((t) => t.id === mine)",
+    to: "  const visible = all",
+    suite: "packages/http/src/tenants-admin.test.ts",
+    expect: ["its own tenant and nothing else"],
+  },
+  {
+    id: "a-pending-session-reads-the-tenant-directory",
+    defect:
+      "The approval check went away from the one admin route that holds no capability of its own. \u00a7 9.1's three states collapse to two: a person still waiting in `GET /api/v1/admin/pending` reads the tenant list.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!isUserApproved(actor, payload.role as string)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/tenants-admin.test.ts",
+    expect: ["refuses a session nobody has approved"],
+  },
+  {
+    id: "an-account-is-admitted-into-any-tenant-the-body-names",
+    defect:
+      "The tenant on `POST /api/v1/admin/users` went back to being whatever the body said. `user.admit` is held inside a tenant, so an operator could create accounts \u2014 including administrators \u2014 in tenants they cannot see, which is the screen deciding a rule the route answers without.",
+    file: "packages/http/src/main.ts",
+    from: "  if (tenant !== mine && !administratorLogins().includes(actor)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses a tenant that is not the operator's own"],
+  },
+  {
+    id: "an-account-is-admitted-into-a-tenant-nobody-created",
+    defect:
+      "The tenant on admission stopped being checked against the list. `local_users.tenant` is a plain string with nothing pointing back, so an account admitted into a typo sits in a tenant no screen will ever show and no picker can move it out of.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!tenantsStore.tenantIsOpen(agentsDb(), tenant)) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["it has to exist"],
+  },
+  {
     id: "only-github-admins-are-protected",
     defect:
       "The protected set stopped reading `local_users`. The seeded administrator is a local account and is the one this exists for, so the single row that must be locked is the one left open while every GitHub-admin case still passes.",

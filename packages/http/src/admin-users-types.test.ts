@@ -26,15 +26,16 @@ import { describe, expect, test } from "bun:test";
 process.env.JWT_SECRET ||= "admin-users-probe";
 
 const { app } = await import("./main.ts");
-const { upsertUser, approveUser, createPendingApproval, getLocalUser } = await import("./db");
+const { upsertUser, approveUser, createPendingApproval, getLocalUser, getDb } = await import("./db");
 const { signJwt } = await import("./auth");
-const { STORE_FILES, agentsSchema, grants, openAt, stateDir } = await import("@agent-mesh/store");
+const { STORE_FILES, agentsSchema, grants, openAt, stateDir, tenants } = await import("@agent-mesh/store");
 const { CAPABILITY } = await import("@agent-mesh/contracts");
 const { join } = await import("node:path");
 
 const db = openAt(join(stateDir(), STORE_FILES.agents), { create: true });
 agentsSchema.migrate(db);
 grants.migrate(db);
+tenants.migrate(db);
 
 let n = 0;
 const uniq = (p: string) => `aut-${p}-${++n}-${process.pid}`;
@@ -140,18 +141,64 @@ describe("admitting a person", () => {
 
   /**
    * The tenant comes from what this reads, not from what the screen sends: an
-   * operator naming one is taken at their word, and one who names nothing puts
-   * the account where they are.
+   * operator who names nothing puts the account where they are, and one who
+   * names a tenant has to be allowed to (T-026).
    */
-  test("takes a named tenant, and otherwise the default", async () => {
+  test("puts the account in the admitting operator's tenant by default", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
-    const named = uniq("elsewhere");
-    await post("/api/v1/admin/users", op.cookie, { username: named, tenant: "other-tenant" });
-    expect(getLocalUser(named)?.tenant).toBe("other-tenant");
-
     const here = uniq("here");
     await post("/api/v1/admin/users", op.cookie, { username: here });
     expect(getLocalUser(here)?.tenant).toBe("default");
+  });
+
+  /**
+   * **Naming another tenant is the platform administrator's move.**
+   * `user.admit` is held *inside* a tenant, so an operator who could name any
+   * tenant would be creating accounts — including administrators — in tenants
+   * they cannot see. Refused by the route rather than by a screen offering one
+   * option, because the route answers without the screen.
+   */
+  test("refuses a tenant that is not the operator's own", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    tenants.createTenant(db, { id: "aut-elsewhere", name: "Elsewhere" });
+
+    const named = uniq("elsewhere");
+    const res = await post("/api/v1/admin/users", op.cookie, { username: named, tenant: "aut-elsewhere" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("TENANT_NOT_YOURS");
+    expect(getLocalUser(named)).toBeNull();
+  });
+
+  test("a platform administrator may name one, and it has to exist", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(op.login);
+    tenants.createTenant(db, { id: "aut-branch", name: "Branch" });
+
+    const named = uniq("posted");
+    expect((await post("/api/v1/admin/users", op.cookie, { username: named, tenant: "aut-branch" })).status)
+      .toBe(201);
+    expect(getLocalUser(named)?.tenant).toBe("aut-branch");
+
+    // A tenant nobody created is a typo, and `local_users.tenant` is a plain
+    // string with nothing pointing back at the list — an account admitted into
+    // one stays in a tenant no screen will ever show.
+    const nowhere = uniq("nowhere");
+    const res = await post("/api/v1/admin/users", op.cookie, { username: nowhere, tenant: "aut-not-a-tenant" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("NO_SUCH_TENANT");
+    expect(getLocalUser(nowhere)).toBeNull();
+  });
+
+  test("and a deleted tenant is not one that can be picked", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(op.login);
+    tenants.createTenant(db, { id: "aut-closed", name: "Closed" });
+    tenants.deleteTenant(db, "aut-closed");
+
+    const res = await post("/api/v1/admin/users", op.cookie,
+      { username: uniq("late"), tenant: "aut-closed" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("NO_SUCH_TENANT");
   });
 
   test("ignores a display_name or role that is not a string", async () => {

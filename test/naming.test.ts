@@ -62,7 +62,7 @@ const QUERY_PREFIX =
  * the check cannot judge whether a name says "write", only that somebody did.
  */
 const WRITE_VERB =
-  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|recall|withdraw|handle|grant|redeem|assign|unassign|move|allow|on[A-Z])/i;
+  /^(insert|update|delete|remove|drop|write|save|store|record|mark|set|add|create|put|append|claim|reserve|issue|revoke|approve|deny|propose|teardown|migrate|seed|advance|schedule|cancel|clear|purge|collect|sweep|register|provision|upsert|touch|apply|commit|init|import|recall|withdraw|handle|grant|redeem|assign|unassign|move|allow|rename|restore|on[A-Z])/i;
 
 /**
  * Names that write and do not say so, accepted with a reason.

@@ -26,4 +26,6 @@ export type { KeyEventAction, NoKeyReason, ProposeResult } from "./keys";
 export type { TeardownAction, TeardownResult } from "./teardown";
 export type { RecallableMessage, RecallOutcome } from "./outbox";
 export { KeyTransitionError } from "./keys";
+export * as tenants from "./tenants";
 export { tenantOf } from "./tenants";
+export type { Tenant } from "./tenants";

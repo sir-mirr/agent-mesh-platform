@@ -15,6 +15,8 @@
 
 import type { Database } from "bun:sqlite";
 
+import { migrate as migrateTenants } from "../tenants";
+
 /**
  * Seeded types, and whether an identity of that type may exist without a
  * signing key.
@@ -63,6 +65,13 @@ const SEEDED_TYPES: ReadonlyArray<[type: string, description: string, requiresKe
 ];
 
 export function migrate(db: Database): void {
+  // The tenant list, before the table whose `tenant` column names a row in it.
+  // Here rather than at a caller because that column and this list are one
+  // decision: every service that opens this file for `agents` needs to be able
+  // to resolve the id it reads, and a migration a caller has to remember is one
+  // a caller forgets — `POST /api/v1/admin/users` answered `500 no such table:
+  // tenants` in exactly that way.
+  migrateTenants(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS agents (
       identity    TEXT PRIMARY KEY,

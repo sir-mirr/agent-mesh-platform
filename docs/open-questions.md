@@ -151,7 +151,7 @@ Smaller items, same theme:
 
 ## 8. Where the http admin surface's refusal codes are named
 
-Six codes leave this repository in REST bodies and are named nowhere in
+Eleven codes leave this repository in REST bodies and are named nowhere in
 `agent-mesh-contracts`:
 
 | code | route | since |
@@ -162,6 +162,11 @@ Six codes leave this repository in REST bodies and are named nowhere in
 | `AUDIT_READ_UNRECORDABLE` | any content read whose record failed | § 11.0.1 |
 | `LAST_GRANTOR` | `DELETE /api/v1/admin/grants` | § 11.3 |
 | `PROTECTED_ACCOUNT` | `DELETE` the same | D-746 |
+| `PLATFORM_ADMIN_ONLY` | the four `/api/v1/admin/tenants` routes | T-026 |
+| `TENANT_EXISTS` | `POST /api/v1/admin/tenants` | T-026 |
+| `DEFAULT_TENANT` | `DELETE /api/v1/admin/tenants/{id}` | T-026 |
+| `TENANT_NOT_YOURS` | `POST /api/v1/admin/users` | T-026 |
+| `NO_SUCH_TENANT` | the same | T-026 |
 
 They are not JSON-RPC `error.data.code`. Nothing on the mesh wire carries
 them, so a client pinning a contracts tag never sees one — but an operator
@@ -175,8 +180,8 @@ as the codes have existed, and it was green over all four: it grepped
 `code: "X"` and `main.ts` writes `code: 'X'`. The rule was right and the reader
 could only see half the file. It surfaced because a refactor moved two of them
 into a file that happens to use double quotes — luck, not process. The scan
-reads both quote styles now, and the six are carved out by name in
-`HTTP_ADMIN_ONLY` so a seventh cannot join them quietly.
+reads both quote styles now, and the eleven are carved out by name in
+`HTTP_ADMIN_ONLY` so a twelfth cannot join them quietly.
 
 **A fifth joined anyway, and the carve-out is not what let it.** `LAST_GRANTOR`
 reached `main` with `test/versioning.test.ts` red: the commit that added it ran

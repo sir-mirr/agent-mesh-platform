@@ -166,6 +166,11 @@ const HTTP_ADMIN_ONLY = new Set([
   "AUDIT_READ_UNRECORDABLE",    // any content read whose record failed, § 11.0.1
   "LAST_GRANTOR",               // DELETE /api/v1/admin/grants, § 11.3
   "PROTECTED_ACCOUNT",          // DELETE the same, D-746
+  "PLATFORM_ADMIN_ONLY",        // the tenant routes, T-026
+  "TENANT_EXISTS",              // POST /api/v1/admin/tenants, T-026
+  "DEFAULT_TENANT",             // DELETE /api/v1/admin/tenants/:id, T-026
+  "TENANT_NOT_YOURS",           // POST /api/v1/admin/users, T-026
+  "NO_SUCH_TENANT",             // the same, T-026
 ]);
 
 /**

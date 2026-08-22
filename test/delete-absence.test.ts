@@ -51,6 +51,9 @@ const ABSENT: Record<string, { path: string; body?: unknown }> = {
   "/api/v1/admin/agents/:identity": {
     path: "/api/v1/admin/agents/absence-probe-agent",
   },
+  "/api/v1/admin/tenants/:id": {
+    path: "/api/v1/admin/tenants/absence-probe-tenant",
+  },
 };
 
 let mesh: Mesh;

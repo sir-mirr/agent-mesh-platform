@@ -29,7 +29,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
-import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, verify, type MessageRow } from '@agent-mesh/store'
+import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, tenants as tenantsStore, verify, type MessageRow } from '@agent-mesh/store'
 import { shapeMetrics } from './behaviour-metrics.ts'
 import {
   CAPABILITY,
@@ -2120,13 +2120,6 @@ async function requireCapabilityAnyScope(
 }
 
 /**
- * What `admin` meant, written down as grants.
- *
- * Deployments seeded before § 11 keep working, and nothing anywhere still
- * compares the string. Deliberately the full set — narrowing it here would be
- * a silent permission change dressed as a refactor.
- */
-/**
  * The accounts whose grants this deployment restores for itself (D-746).
  *
  * **Protected because they cannot be taken away, not the other way round.**
@@ -2141,6 +2134,23 @@ async function requireCapabilityAnyScope(
  * compiled into either half would belong to one installation.
  */
 export function protectedSubjects(): string[] {
+  return administratorLogins()
+}
+
+/**
+ * Every account this installation calls an administrator: `role = 'admin'` in
+ * `users` or in `local_users`.
+ *
+ * **Two questions share this set, and they are not the same question.** D-746
+ * asks *whose grants come back on the next start* — the seed above re-seeds
+ * exactly these. T-026 asks *who administers the installation rather than a
+ * tenant* — the stand-in for a `tenant.manage` capability that the vocabulary
+ * of twelve has no name for. Today both answers are `role = 'admin'`, and the
+ * day one of them stops being that, it is the caller that changes rather than
+ * this query: two names on one function say which of the two a reader is
+ * looking at, where one name would hide that there were ever two.
+ */
+export function administratorLogins(): string[] {
   const admins = getDb()
     .prepare(`SELECT github_login FROM users WHERE role = 'admin'`)
     .all() as Array<{ github_login: string }>
@@ -2150,6 +2160,13 @@ export function protectedSubjects(): string[] {
   return [...new Set([...admins, ...local].map(r => r.github_login))].sort()
 }
 
+/**
+ * What `admin` meant, written down as grants.
+ *
+ * Deployments seeded before § 11 keep working, and nothing anywhere still
+ * compares the string. Deliberately the full set — narrowing it here would be
+ * a silent permission change dressed as a refactor.
+ */
 export function seedLegacyAdminGrants(): void {
   const db = agentsDb()
   grants.migrate(db)
@@ -2777,6 +2794,170 @@ app.get('/api/v1/admin/tenants', async (c) => {
   return c.json({ ok: true, hours, tenants: rows })
 })
 
+/**
+ * Whether this session administers the **installation** rather than a tenant.
+ *
+ * **A stand-in, and this comment is the record of it.** § 11 decides on
+ * capabilities, and the vocabulary of twelve has no name for *manages the list
+ * of tenants* — `tenant.read.stats` reads traffic and grants nothing. Adding
+ * `tenant.manage` is an `agent-mesh-contracts` tag, which moves three
+ * repositories, so it is the owner's call and not this route's. Until that name
+ * exists, `role = 'admin'` stands in, exactly as it already does for *sees the
+ * whole registry* on `GET /api/v1/agents`.
+ *
+ * One function rather than the string compared at four routes: when the
+ * capability exists, this body is what changes, and the routes do not.
+ *
+ * **Read from the row, not from the token**, for the same reason the registry
+ * one is: a JWT is a copy of what the row said when the session began.
+ */
+async function requirePlatformAdmin(c: any): Promise<string | Response> {
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  const actor = payload.github_login as string
+  if (!administratorLogins().includes(actor)) {
+    return c.json({
+      ok: false,
+      error: 'managing tenants is reserved to the platform administrator',
+      code: 'PLATFORM_ADMIN_ONLY',
+    }, 403)
+  }
+  return actor
+}
+
+/** The tenant a session belongs to, or `default` for a login with no local row. */
+function tenantOfSession(actor: string): string {
+  return getLocalUser(actor)?.tenant ?? tenantsStore.DEFAULT_TENANT
+}
+
+/**
+ * The tenants themselves — id, name, and whether they are still offered.
+ *
+ * **Separate from the route above, which counts traffic.** Both are "tenants",
+ * and they answer different questions: § 11.4 asks how much a tenant received,
+ * this asks which tenants there are. Merging them would tie a picker to
+ * `tenant.read.stats` and, worse, build it from `SELECT DISTINCT tenant` over
+ * message rows — a list that offers every tenant except the one just created.
+ *
+ * **Readable by any approved session, filtered to what they may see.** A tenant
+ * admin creating an account needs the name of their own tenant, and refusing
+ * them here would leave the screen showing an id. A platform administrator sees
+ * all of them because that is what administering the installation is.
+ */
+app.get('/api/v1/admin/tenants/directory', async (c) => {
+  const payload = await extractJwt(c)
+  if (!payload) return c.json({ error: 'Unauthorized' }, 401)
+  const actor = payload.github_login as string
+  // § 9.1's three states. A `JWT` route separates *no session* from *a session
+  // nobody has approved*, and this one holds no capability of its own — so
+  // without this line it would be the one admin route a pending user can read.
+  if (!isUserApproved(actor, payload.role as string)) {
+    return c.json({ ok: false, error: 'Your access is pending approval', approved: false }, 403)
+  }
+  const db = agentsDb()
+
+  const isPlatformAdmin = administratorLogins().includes(actor)
+  const mine = tenantOfSession(actor)
+  // Deleted ones are included for a platform administrator only, and marked.
+  // Somebody who has to explain last month's traffic needs the name of a tenant
+  // nobody may pick any more; a picker filters on `deleted_at`.
+  const all = tenantsStore.listTenants(db, isPlatformAdmin)
+  const visible = isPlatformAdmin ? all : all.filter((t) => t.id === mine)
+
+  return c.json({ ok: true, tenant: mine, tenants: visible })
+})
+
+app.post('/api/v1/admin/tenants', async (c) => {
+  const actor = await requirePlatformAdmin(c)
+  if (typeof actor !== 'string') return actor
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+
+  const id = body?.id
+  if (typeof id !== 'string' || !IDENTITY_RE.test(id)) {
+    return c.json({ ok: false, error: 'id must match ^[A-Za-z0-9][A-Za-z0-9-]*$' }, 400)
+  }
+  const name = body?.name
+  if (typeof name !== 'string' || name.trim() === '') {
+    return c.json({ ok: false, error: 'name is required' }, 400)
+  }
+
+  const db = agentsDb()
+  if (!tenantsStore.createTenant(db, { id, name: name.trim() })) {
+    // Including a deleted one. Its id is still written into traffic and
+    // accounts, and handing it to somebody else would attribute those rows to
+    // them — so the refusal says which of the two it is.
+    const existing = tenantsStore.getTenant(db, id)!
+    return c.json({
+      ok: false,
+      error: existing.deleted_at
+        ? `tenant '${id}' was deleted; its id stays taken because other rows still name it`
+        : `tenant '${id}' already exists`,
+      code: 'TENANT_EXISTS',
+    }, 409)
+  }
+  log.info(`${actor} created tenant ${id}`, 'tenant_created', { actor, id, outcome: 'created' })
+  return c.json({ ok: true, tenant: tenantsStore.getTenant(db, id) }, 201)
+})
+
+/**
+ * Rename one. The id is never rewritten — see `renameTenant`.
+ */
+app.patch('/api/v1/admin/tenants/:id', async (c) => {
+  const actor = await requirePlatformAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const id = c.req.param('id')
+  let body: any
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid JSON body' }, 400) }
+  const name = body?.name
+  if (typeof name !== 'string' || name.trim() === '') {
+    return c.json({ ok: false, error: 'name is required' }, 400)
+  }
+
+  const db = agentsDb()
+  if (!tenantsStore.renameTenant(db, id, name.trim())) {
+    return c.json({ ok: false, error: `no such tenant: ${id}` }, 404)
+  }
+  log.info(`${actor} renamed tenant ${id}`, 'tenant_renamed', { actor, id, outcome: 'renamed' })
+  return c.json({ ok: true, tenant: tenantsStore.getTenant(db, id) })
+})
+
+/**
+ * Stop offering one.
+ *
+ * A soft delete, and the rows other tables hold stay pointing at a name that
+ * still resolves. `409` for the default tenant: everything whose tenant nobody
+ * stated is in it, so removing it would take away the only tenant the
+ * installation is guaranteed to have.
+ */
+app.delete('/api/v1/admin/tenants/:id', async (c) => {
+  const actor = await requirePlatformAdmin(c)
+  if (typeof actor !== 'string') return actor
+  const id = c.req.param('id')
+  const db = agentsDb()
+
+  if (id === tenantsStore.DEFAULT_TENANT) {
+    return c.json({
+      ok: false,
+      error: 'the default tenant cannot be deleted: every row whose tenant nobody stated is in it',
+      code: 'DEFAULT_TENANT',
+    }, 409)
+  }
+  // **`200` with what happened, like every other delete here.** A target that
+  // is not there is not an error: the caller wanted an end state and has it,
+  // and `action` says which of the three cases produced it. `404` was the first
+  // draft and disagreed with the other four delete routes, which
+  // `test/delete-absence.test.ts` reads out of this file precisely so that a
+  // fifth cannot quietly answer differently.
+  const before = tenantsStore.getTenant(db, id)
+  if (!before) return c.json({ ok: true, action: 'not-found', tenant: null })
+  if (before.deleted_at) return c.json({ ok: true, action: 'already-deleted', tenant: before })
+
+  tenantsStore.deleteTenant(db, id)
+  log.info(`${actor} deleted tenant ${id}`, 'tenant_deleted', { actor, id, outcome: 'deleted' })
+  return c.json({ ok: true, action: 'deleted', tenant: tenantsStore.getTenant(db, id) })
+})
+
 app.get('/api/v1/admin/grants', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
   if (typeof actor !== 'string') return actor
@@ -3112,8 +3293,34 @@ app.post('/api/v1/admin/users', async (c) => {
   // The admitting operator's own tenant unless they name one. A tenant admin
   // creating people can only put them where they are, and that is enforced by
   // what this reads rather than by what the screen sends.
-  const actorRow = getLocalUser(actor)
-  const tenant = typeof body?.tenant === 'string' ? body.tenant : (actorRow?.tenant ?? 'default')
+  const mine = tenantOfSession(actor)
+  const tenant = typeof body?.tenant === 'string' ? body.tenant : mine
+
+  // **Naming somebody else's tenant is the platform administrator's move**
+  // (T-026). `user.admit` is held inside a tenant, and a tenant admin who could
+  // put an account anywhere would be creating administrators in tenants they
+  // cannot see — enforced here rather than by the screen offering one option,
+  // because the route answers without the screen.
+  if (tenant !== mine && !administratorLogins().includes(actor)) {
+    return c.json({
+      ok: false,
+      error: `accounts can only be admitted into your own tenant ('${mine}')`,
+      code: 'TENANT_NOT_YOURS',
+      tenant: mine,
+    }, 403)
+  }
+
+  // A tenant that does not exist, or one nobody may pick any more. Refused
+  // rather than written: `local_users.tenant` is a plain string with nothing
+  // pointing back at the list, so an account admitted into a typo stays in a
+  // tenant no screen will ever show.
+  if (!tenantsStore.tenantIsOpen(agentsDb(), tenant)) {
+    return c.json({
+      ok: false,
+      error: `no such tenant: ${tenant}`,
+      code: 'NO_SUCH_TENANT',
+    }, 400)
+  }
 
   const { user, temporaryPassword } = await admitLocalUser({
     username,

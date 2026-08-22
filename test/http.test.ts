@@ -239,6 +239,19 @@ describe("admitting a person", () => {
       { username: "tenant-says-one", tenant: "acme" },
       { username: "tenant-says-two", tenant: "globex" },
     ];
+    // Created first, through the route (T-026). A tenant is a row now rather
+    // than any string an admission body happens to carry, and admitting into
+    // one nobody created is refused — `local_users.tenant` has nothing pointing
+    // back at the list, so a typo would be an account in a tenant no screen
+    // shows.
+    for (const { tenant } of pairs) {
+      const made = await fetch(`${mesh.http.url}/api/v1/admin/tenants`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: adminCookie },
+        body: JSON.stringify({ id: tenant, name: tenant.toUpperCase() }),
+      });
+      expect([201, 409], `creating tenant ${tenant}`).toContain(made.status);
+    }
     const seen: string[] = [];
     for (const { username, tenant } of pairs) {
       const created = await admit({ username, tenant });
