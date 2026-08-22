@@ -547,6 +547,22 @@ describe("Sidebar language control", () => {
       mousedown.restore();
     }
   });
+
+  it("opens and closes the same language popover from the collapsed footer", () => {
+    show();
+    fireEvent.click(aside().querySelector<HTMLButtonElement>(
+      `button[title="${DICTIONARY.en["nav.collapse"]!}"]`,
+    )!);
+
+    const trigger = aside().querySelector<HTMLButtonElement>(
+      `button[title="${DICTIONARY.en["nav.lang"]!}"]`,
+    );
+    if (!trigger) throw new Error("the collapsed footer has no language control");
+    fireEvent.click(trigger);
+    expect(popoverIsOpen()).toBe(true);
+    fireEvent.click(trigger);
+    expect(popoverIsOpen()).toBe(false);
+  });
 });
 
 describe("Sidebar sign-out", () => {

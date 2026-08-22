@@ -525,6 +525,14 @@ describe("issuing a pairing code", () => {
     expect(curlLine()).toContain(ISSUED.code);
     expect(curlLine()).toContain(REDEEM);
     expect(bodyText()).toContain(en("reg.toast.issued"));
+
+    const notice = screen.getByTestId("pairing-code-issued");
+    const close = notice.querySelector("button");
+    if (!close) throw new Error("the issued-code notice has no close control");
+    fireEvent.click(close);
+    expect(screen.queryByTestId("pairing-code-issued")).toBeNull();
+    // Dismissing the transient result does not revoke the code the server minted.
+    expect(issuedCode()).toBe(ISSUED.code);
   });
 
   it("asks nothing at all when no identity was typed", async () => {

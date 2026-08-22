@@ -95,6 +95,7 @@ const FP_ABSENT = DICTIONARY.en["fp.absent"]!;
 const PLAYGROUND = DICTIONARY.en["nav.playground"]!;
 const TEARDOWN_BTN = DICTIONARY.en["agents.teardownBtn"]!;
 const TEARDOWN_CONFIRM = DICTIONARY.en["agents.teardown.confirm"]!;
+const CANCEL = DICTIONARY.en["common.cancel"]!;
 const TORN_DOWN = DICTIONARY.en["agents.teardown.done"]!;
 const ALREADY_TORN_DOWN = DICTIONARY.en["agents.teardown.alreadyDeleted"]!;
 const NOT_FOUND = DICTIONARY.en["agents.teardown.notFound"]!;
@@ -589,6 +590,19 @@ describe("what an irreversible teardown destroys", () => {
     fireEvent.change(confirmField(), { target: { value: text } });
   };
 
+  it("cancels the confirmation without sending a teardown", async () => {
+    readAgents = () => json(200, { agents: [ALPHA, beta()] });
+    await mount();
+    openTeardownFor(beta().id);
+    const cancel = [...(dialog()?.querySelectorAll("button") ?? [])]
+      .find((button) => button.textContent === CANCEL);
+    if (!cancel) throw new Error("the teardown dialog has no cancel control");
+    fireEvent.click(cancel);
+
+    expect(dialog()).toBeNull();
+    expect(teardownWrites()).toHaveLength(0);
+  });
+
   it("names the row the operator clicked, and no other", async () => {
     readAgents = () => json(200, { agents: [ALPHA, beta()] });
     await mount();
@@ -667,6 +681,12 @@ describe("what an irreversible teardown destroys", () => {
     // The dialog closed on the way through; leaving it open over a fresh list
     // invites the same confirmation being submitted twice.
     expect(dialog()).toBe(null);
+
+    const result = screen.getByTestId("teardown-result-soft-deleted");
+    const closeToast = result.querySelector("button");
+    if (!closeToast) throw new Error("the teardown result has no close control");
+    fireEvent.click(closeToast);
+    expect(screen.queryByTestId("teardown-result-soft-deleted")).toBeNull();
   });
 
   for (const outcome of [

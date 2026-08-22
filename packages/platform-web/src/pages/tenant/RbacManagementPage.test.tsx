@@ -638,6 +638,12 @@ describe("giving a capability and taking it back", () => {
     // And the matrix redraws from a second read of the map.
     expect(mapReadCount).toBe(2);
     expect(holds("grace", META)).toBe(true);
+
+    const close = toastEl()?.querySelector("button");
+    if (!close) throw new Error("the grant result toast has no close control");
+    fireEvent.click(close);
+    expect(toastEl()).toBeNull();
+    expect(holds("grace", META)).toBe(true);
   });
 
   it("re-reads after a revoke rather than trusting its own copy of the cell", async () => {

@@ -445,6 +445,9 @@ describe("a counter that was not read is not a counter reading zero", () => {
     expect(formatElapsed(rawWait, "ko")).toBe(
       `2${DICTIONARY.ko["agents.unit.day"]} 2${DICTIONARY.ko["agents.unit.hour"]}`,
     );
+    expect(formatElapsed(90 * 60 * 1000, "en")).toBe(
+      `1${DICTIONARY.en["agents.unit.hour"]} 30${DICTIONARY.en["agents.unit.minute"]}`,
+    );
   });
 
   it("carries each unread counter's own reason rather than one shared sentence", async () => {

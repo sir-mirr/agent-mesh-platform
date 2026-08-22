@@ -36,6 +36,7 @@ const json = (status: number, body: unknown) =>
 
 let rows: Row[];
 let directoryAnswer: (() => Response | Promise<Response>) | null;
+let writeAnswer: (() => Response | Promise<Response>) | null;
 const calls: Array<{ url: string; method: string; body: string | null }> = [];
 
 beforeEach(() => {
@@ -43,6 +44,7 @@ beforeEach(() => {
   calls.length = 0;
   rows = [{ ...DEFAULT_ROW }, { ...ACME_ROW }, { ...DELETED_ROW }];
   directoryAnswer = null;
+  writeAnswer = null;
   window.confirm = () => true;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -54,6 +56,7 @@ beforeEach(() => {
       if (directoryAnswer) return await directoryAnswer();
       return json(200, { ok: true, tenant: "default", tenants: rows });
     }
+    if (method !== "GET" && writeAnswer) return await writeAnswer();
     if (url.endsWith(TENANTS) && method === "POST") {
       const parsed = JSON.parse(body ?? "null");
       const tenant: Row = { id: parsed.id, name: parsed.name, created_at: "2026-08-22T03:00:00Z", deleted_at: null };
@@ -146,6 +149,17 @@ describe("tenant management", () => {
     expect(screen.getByTestId("tenant-id-default").textContent).toBe("default");
   });
 
+  it("cancels a rename without changing the row or sending a write", async () => {
+    await mount();
+    fireEvent.click(screen.getByTestId("tenant-rename-acme"));
+    input("tenant-rename-input-acme", "A name not saved");
+    fireEvent.click(screen.getByTestId("tenant-rename-cancel-acme"));
+
+    expect(screen.queryByTestId("tenant-rename-input-acme")).toBeNull();
+    expect(screen.getByTestId("tenant-name-acme").textContent).toBe(ACME_ROW.name);
+    expect(writes("PATCH")).toHaveLength(0);
+  });
+
   it("creates a tenant and re-reads it into the directory", async () => {
     await mount();
     input("tenant-create-id", "tenant-b");
@@ -157,6 +171,43 @@ describe("tenant management", () => {
     expect(JSON.parse(writes("POST")[0]!.body ?? "null")).toEqual({ id: "tenant-b", name: "Tenant B" });
     expect(screen.getByTestId("tenant-name-tenant-b").textContent).toBe("Tenant B");
     expect(calls.filter((call) => call.method === "GET" && call.url.endsWith(DIRECTORY))).toHaveLength(2);
+  });
+
+  it("calls an unanswered create unknown instead of reporting success", async () => {
+    writeAnswer = () => { throw new TypeError("Failed to fetch"); };
+    await mount();
+    input("tenant-create-id", "tenant-b");
+    input("tenant-create-name", "Tenant B");
+    fireEvent.submit(screen.getByTestId("tenant-create-form"));
+    await settle();
+
+    expect(writes("POST")).toHaveLength(1);
+    expect(screen.getByTestId("tenant-mutation-error").textContent)
+      .toBe(en("tenantDirectory.writeUnreachable"));
+    expect(screen.queryByTestId("tenant-mutation-notice")).toBeNull();
+    expect((screen.getByTestId("tenant-create-id") as HTMLInputElement).value).toBe("tenant-b");
+  });
+
+  it("keeps failed rename and delete writes on screen as failures", async () => {
+    writeAnswer = () => { throw new TypeError("Failed to fetch"); };
+    await mount();
+
+    fireEvent.click(screen.getByTestId("tenant-rename-default"));
+    input("tenant-rename-input-default", "Not renamed");
+    fireEvent.click(screen.getByTestId("tenant-rename-save-default"));
+    await settle();
+    expect(writes("PATCH")).toHaveLength(1);
+    expect(screen.getByTestId("tenant-mutation-error").textContent)
+      .toBe(en("tenantDirectory.writeUnreachable"));
+    expect(screen.getByTestId("tenant-rename-input-default")).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId("tenant-delete-acme"));
+    await settle();
+    expect(writes("DELETE")).toHaveLength(1);
+    expect(screen.getByTestId("tenant-mutation-error").textContent)
+      .toBe(en("tenantDirectory.writeUnreachable"));
+    expect(screen.getByTestId("tenant-status-acme").dataset.deleted).toBe("false");
+    expect(screen.queryByTestId("tenant-mutation-notice")).toBeNull();
   });
 
   it("soft-deletes without making the row disappear", async () => {
@@ -182,6 +233,14 @@ describe("tenant management", () => {
 
   it("does not call an unanswered directory an empty one", async () => {
     directoryAnswer = () => { throw new TypeError("Failed to fetch"); };
+    await mount();
+    const page = screen.getByTestId("tenant-management").textContent ?? "";
+    expect(page).toContain(en("tenantDirectory.error"));
+    expect(page).not.toContain(en("tenantDirectory.empty"));
+  });
+
+  it("does not call a malformed directory response an empty directory", async () => {
+    directoryAnswer = () => json(200, { ok: true, tenant: "default" });
     await mount();
     const page = screen.getByTestId("tenant-management").textContent ?? "";
     expect(page).toContain(en("tenantDirectory.error"));

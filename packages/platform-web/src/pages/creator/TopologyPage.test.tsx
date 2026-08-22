@@ -184,8 +184,10 @@ const clusterLabels = (): string[] =>
   screen.queryAllByTestId("topology-cluster").map((g) => g.querySelector("text")?.textContent ?? "");
 
 /** The banner a send raises. `Toast` is the one `inline-flex` div on the page. */
+const toastBox = (): HTMLElement | null =>
+  [...document.querySelectorAll("div")].find((d) => d.style.display === "inline-flex") ?? null;
 const toastText = (): string => {
-  const el = [...document.querySelectorAll("div")].find((d) => d.style.display === "inline-flex");
+  const el = toastBox();
   if (!el) throw new Error("the send raised no toast");
   return el.textContent ?? "";
 };
@@ -332,6 +334,20 @@ describe("no answer at all is a third thing", () => {
     // A read that failed is one the operator can try again; an empty mesh is
     // not. The control belongs to both failures and to neither of the others.
     expect(overlayText()).toContain(say("common.retry"));
+
+    const locationPrototype = Object.getPrototypeOf(window.location) as { reload: () => void };
+    const realReload = locationPrototype.reload;
+    let reloads = 0;
+    locationPrototype.reload = () => { reloads += 1; };
+    try {
+      const retry = [...document.querySelectorAll("button")]
+        .find((button) => (button.textContent ?? "").includes(say("common.retry")));
+      if (!retry) throw new Error("the unreachable topology has no retry control");
+      fireEvent.click(retry);
+      expect(reloads).toBe(1);
+    } finally {
+      locationPrototype.reload = realReload;
+    }
   });
 
   it("does not read a broken proxy as the server saying no", async () => {
@@ -580,6 +596,10 @@ describe("a receipt is read, not assumed", () => {
     // the test above on its own.
     expect(toastText()).toContain(say("topo.send.accepted"));
     expect(toastText()).not.toContain(say("topo.send.refused"));
+    const close = toastBox()?.querySelector("button");
+    if (!close) throw new Error("the send result toast has no close control");
+    fireEvent.click(close);
+    expect(toastBox()).toBeNull();
   });
 
   it("does not report a send the server never took", async () => {
@@ -729,6 +749,8 @@ describe("the populated canvas controls", () => {
       expect(resultsOpen()).toBe(true);
       fireEvent.keyDown(search, { key: "Escape" });
       expect(resultsOpen()).toBe(false);
+      fireEvent.focus(search);
+      expect(resultsOpen()).toBe(true);
       fireEvent.change(search, { target: { value: "Alpha" } });
       fireEvent.mouseDown(document.body);
       expect(resultsOpen()).toBe(false);
@@ -757,12 +779,41 @@ describe("the populated canvas controls", () => {
       fireEvent.click(closeDrawer);
       if (panel()) throw new Error("the topology drawer stayed open after its close control was used");
 
+      const gateway = screen.queryAllByTestId("topology-gateway")[0];
+      const gatewayLabel = gateway?.querySelectorAll("text")[1]?.textContent;
+      if (!gateway || !gatewayLabel) throw new Error("the topology canvas did not draw a named gateway");
+      fireEvent.click(gateway);
+      await finishAnimations();
+      expect(panelText()).toContain(gatewayLabel);
+
       const alphaOneNode = screen.queryAllByTestId("topology-agent")
         .find((node) => [...node.querySelectorAll("text")].some((label) => label.textContent === "Alpha One"));
       if (!alphaOneNode) throw new Error("the topology canvas did not draw Alpha One");
       fireEvent.click(alphaOneNode);
       await finishAnimations();
       expectValidCamera("node navigation");
+
+      const drawer = panel();
+      if (!drawer) throw new Error("node navigation did not open the drawer");
+      let escapedPointerDown = 0;
+      let escapedMouseDown = 0;
+      const onPointerDown = () => { escapedPointerDown += 1; };
+      const onMouseDown = () => { escapedMouseDown += 1; };
+      document.addEventListener("pointerdown", onPointerDown);
+      document.addEventListener("mousedown", onMouseDown);
+      try {
+        fireEvent.pointerDown(drawer, { pointerId: 3, clientX: 1, clientY: 1 });
+        fireEvent.mouseDown(drawer, { clientX: 1, clientY: 1 });
+      } finally {
+        document.removeEventListener("pointerdown", onPointerDown);
+        document.removeEventListener("mousedown", onMouseDown);
+      }
+      expect({ escapedPointerDown, escapedMouseDown }).toEqual({ escapedPointerDown: 0, escapedMouseDown: 0 });
+
+      const quickMessage = drawer.querySelector('input[type="text"]') as HTMLInputElement | null;
+      if (!quickMessage) throw new Error("the selected node drawer has no quick-message field");
+      fireEvent.change(quickMessage, { target: { value: "health check" } });
+      expect(quickMessage.value).toBe("health check");
 
       const filter = document.querySelector("select") as HTMLSelectElement | null;
       if (!filter) throw new Error("the topology canvas has no group filter");

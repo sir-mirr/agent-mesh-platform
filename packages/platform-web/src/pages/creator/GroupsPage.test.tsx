@@ -79,6 +79,7 @@ const TENANT_LABEL = DICTIONARY.en["groups.modal.tenantLabel"]!;
 const ASSIGN_TITLE = DICTIONARY.en["groups.modal.assignTitle"]!;
 const ASSIGN_EMPTY = DICTIONARY.en["groups.modal.assignEmpty"]!;
 const ASSIGN_UNAVAILABLE = DICTIONARY.en["groups.modal.assignUnavailable"]!;
+const CANCEL = DICTIONARY.en["common.cancel"]!;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -247,15 +248,16 @@ const buttonSaying = (word: string): HTMLButtonElement | undefined =>
  * success and the failure icon are accepted: which one this page uses is a
  * separate question from what it says.
  */
-const toast = (): string => {
+const toastBox = (): HTMLElement | null => {
   for (const el of [...document.querySelectorAll("span")]) {
     const icon = el.textContent ?? "";
     if (icon !== "✓" && icon !== "✕") continue;
     const box = el.parentElement;
-    if (box && (box.textContent ?? "").length > icon.length) return box.textContent ?? "";
+    if (box && (box.textContent ?? "").length > icon.length) return box;
   }
-  return "";
+  return null;
 };
+const toast = (): string => toastBox()?.textContent ?? "";
 
 const groupReads = () =>
   calls.filter((c) => c.url.endsWith(GROUPS) && (c.init?.method ?? "GET") === "GET");
@@ -514,6 +516,24 @@ describe("the control offered to a session that may not use it", () => {
 });
 
 describe("creating a group", () => {
+  it("dismisses the create dialog from both its close and cancel controls", async () => {
+    await mount();
+    fireEvent.click(buttonSaying(CREATE_BTN)!);
+    const close = document.querySelector("h2")?.parentElement?.querySelector("button");
+    if (!close) throw new Error("the create dialog has no close control");
+    fireEvent.click(close);
+    expect(document.querySelector("form")).toBeNull();
+
+    fireEvent.click(buttonSaying(CREATE_BTN)!);
+    typeInto(NAME_LABEL, "Not submitted");
+    const cancel = [...openForm().querySelectorAll("button")]
+      .find((button) => button.textContent === CANCEL);
+    if (!cancel) throw new Error("the create dialog has no cancel control");
+    fireEvent.click(cancel);
+    expect(document.querySelector("form")).toBeNull();
+    expect(groupWrites()).toHaveLength(0);
+  });
+
   it("a tenant-scoped session sends the typed fields but no tenant override", async () => {
     await mount();
     fireEvent.click(buttonSaying(CREATE_BTN)!);
@@ -551,6 +571,19 @@ describe("creating a group", () => {
       .toEqual({ group_id: "Analytics Group", description: "", tenant: "acme" });
   });
 
+  it("keeps an unanswered platform tenant directory distinct from no active tenants", async () => {
+    sessionRole = "admin";
+    readTenants = () => { throw new TypeError("Failed to fetch"); };
+    await mount();
+    fireEvent.click(buttonSaying(CREATE_BTN)!);
+
+    expect(screen.getByTestId("group-tenant-unreachable").textContent)
+      .toContain(DICTIONARY.en["groups.modal.tenantUnavailable"]!);
+    expect(screen.queryByTestId("group-tenant-empty")).toBeNull();
+    const submit = [...openForm().querySelectorAll("button")].find((button) => button.type === "submit");
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("says the group was created, and shows what the server then listed", async () => {
     let reads = 0;
     readGroups = () => (reads++ === 0
@@ -577,6 +610,11 @@ describe("creating a group", () => {
     // element makes the runner serialise a DOM tree that refers back to itself,
     // and the report never arrives.
     expect(document.querySelectorAll("form").length).toBe(0);
+
+    const closeToast = toastBox()?.querySelector("button");
+    if (!closeToast) throw new Error("the group result toast has no close control");
+    fireEvent.click(closeToast);
+    expect(toast()).toBe("");
   });
 
   it("says the group already existed when the server says it created nothing", async () => {
@@ -629,6 +667,24 @@ describe("assigning an agent to a group", () => {
     fireEvent.click(button);
     await settle();
   };
+
+  it("dismisses the assignment dialog from both its close and cancel controls", async () => {
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+    const close = document.querySelector("h2")?.parentElement?.querySelector("button");
+    if (!close) throw new Error("the assignment dialog has no close control");
+    fireEvent.click(close);
+    expect(document.querySelector("form")).toBeNull();
+
+    await openAssignFor(BILLING.group_id);
+    const cancel = [...openForm().querySelectorAll("button")]
+      .find((button) => button.textContent === CANCEL);
+    if (!cancel) throw new Error("the assignment dialog has no cancel control");
+    fireEvent.click(cancel);
+    expect(document.querySelector("form")).toBeNull();
+    expect(memberWrites()).toHaveLength(0);
+  });
 
   it("names the group whose row was clicked, not the first one listed", async () => {
     readGroups = () => json(200, { groups: [SUPPORT, BILLING] });
@@ -752,6 +808,18 @@ describe("assigning an agent to a group", () => {
       .toContain(ASSIGN_UNAVAILABLE);
     expect(document.body.textContent).not.toContain(ASSIGN_EMPTY);
     expect(screen.queryByLabelText(AGENT_LABEL)).toBeNull();
+  });
+
+  it("does not ask for candidates when the group has no tenant to scope them to", async () => {
+    readGroups = () => json(200, { groups: [{ ...BILLING, tenant: null }] });
+    await mount();
+    const readsBeforeOpen = calls.filter((call) => call.url.includes(AGENTS)).length;
+    await openAssignFor(BILLING.group_id);
+
+    expect(screen.getByTestId("assign-candidates-tenant-unknown").textContent)
+      .toContain(DICTIONARY.en["groups.modal.assignTenantUnknown"]!);
+    expect(screen.queryByLabelText(AGENT_LABEL)).toBeNull();
+    expect(calls.filter((call) => call.url.includes(AGENTS))).toHaveLength(readsBeforeOpen);
   });
 
   it("does not report or draw a move the server refused", async () => {

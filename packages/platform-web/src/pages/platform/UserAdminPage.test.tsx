@@ -506,6 +506,16 @@ describe("the one temporary password", () => {
     expect(posts()).toHaveLength(0);
   });
 
+  it("does not guess a tenant from a malformed directory response", async () => {
+    tenantRoute = answers(200, { ok: true, tenant: "default" });
+    await mount();
+    expect(screen.queryByTestId("admit-tenants-unreachable")).not.toBeNull();
+    expect((screen.getByTestId("admit-tenant") as HTMLSelectElement).disabled).toBe(true);
+    expect(submitButton().disabled).toBe(true);
+    await admit("newbie");
+    expect(posts()).toHaveLength(0);
+  });
+
   it("loses the password on a reload, and never puts it in storage", async () => {
     admitRoute = answers(201, ISSUED);
     usersRoute = answers(200, { ok: true, users: [{ username: "newbie", role: "member", must_change_password: 1 }] });
