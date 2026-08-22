@@ -3816,7 +3816,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "§ 5 quoted `[db] seeded default admin local user` after `651597e` replaced it with two lines that say *which password was used*. Quoted output is the part of a document a reader compares against their own terminal, so a reader who does not see it has no way to tell a defect from a version skew — and here the line they would miss is the warning that the deployment is running on the published default.",
     file: "docs/running-locally.md",
-    from: "info [http] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD",
+    from: "info [http] seeded the platform-admin local user with AGENT_MESH_ADMIN_PASSWORD",
     to: "info [http] seeded default admin local user",
     suite: "test/readme.test.ts",
     expect: ["the document quotes a log line this source does not print", "seeded default admin local user"],
@@ -4222,8 +4222,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other half: a reissue that leaves `must_change_password` at 0 hands the holder a password an operator has read out loud and lets them keep it. Everything else about the route still looks right — the old password stops working, the new one signs in — so only an assertion about the gate catches it.",
     file: "packages/http/src/db.ts",
-    from: "must_change_password = 1 WHERE username = ?",
-    to: "must_change_password = 0 WHERE username = ?",
+    from: "  db.prepare('UPDATE local_users SET password_hash = ?, must_change_password = 1 WHERE username = ?')",
+    to: "  db.prepare('UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = ?')",
     suite: "test/http.test.ts",
     expect: ["can be given a new temporary password, which puts them back at the gate"],
   },
@@ -6312,7 +6312,7 @@ const MUTATIONS: Mutation[] = [
       "The owner's decision is that the first login always lands on the change screen. Without the mark, a stated password becomes the permanent one and nothing ever says so.",
     file: "packages/http/src/db.ts",
     from: `    // leave every deployment's first password permanent.
-    db.prepare(\`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'\`).run()`,
+    db.prepare(\`UPDATE local_users SET must_change_password = 1 WHERE username = ?\`).run(SEED_ADMIN_USERNAME)`,
     to: `    // leave every deployment's first password permanent.
     void db`,
     suite: "packages/http/src/db-store.test.ts",
@@ -7129,6 +7129,46 @@ const MUTATIONS: Mutation[] = [
     to: "      true,",
     suite: "packages/http/src/registry-source.test.ts",
     expect: ["narrows to one tenant when asked"],
+  },
+  {
+    id: "a-rename-moves-the-login-and-leaves-the-grants",
+    defect:
+      "The rename stopped carrying the mesh-side rows. The account signs in under its new name holding none of its grants, owning none of its agents and in no group \u2014 every screen answering 403 with nothing anywhere saying why, which is the failure a rename of an *address* is.",
+    file: "packages/http/src/rename-account.ts",
+    from: "  mesh.transaction(() => {\n    for (const [table, column] of MESH_REFERENCES) move(mesh, table, column)\n  })()",
+    to: "  void MESH_REFERENCES",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["moves the login, the registry row, and the grants"],
+  },
+  {
+    id: "a-rename-takes-a-name-somebody-is-already-using",
+    defect:
+      "The taken-name check went away. Two accounts answer to one name \u2014 or an account takes the name of a registry row a message is addressed to \u2014 which is the state this module exists to avoid creating, and the one it cannot undo.",
+    file: "packages/http/src/rename-account.ts",
+    from: "  if (getLocalUser(to)) return { ok: false, reason: 'name_taken' }",
+    to: "  if (false) return { ok: false, reason: 'name_taken' }",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["refuses a name nobody has, and a name somebody does"],
+  },
+  {
+    id: "the-seed-rename-touches-an-ordinary-account-called-admin",
+    defect:
+      "The rename stopped asking whether the `admin` it found is the seeded administrator. An account somebody was admitted under that name is renamed out from under them at the next restart, and their login stops working with a log line about a migration they were never part of.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!legacy || legacy.role !== 'admin') return",
+    to: "  if (!legacy) return",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["leaves an ordinary account called `admin` where it is"],
+  },
+  {
+    id: "the-message-history-is-rewritten-by-a-rename",
+    defect:
+      "The rename reached into `messages`. What happened is that the old name sent that message, and rewriting the record makes it say something nobody did \u2014 in the one place on this server whose value is that nobody edited it afterwards.",
+    file: "packages/http/src/rename-account.ts",
+    from: "  ['agent_registry', 'id'],",
+    to: "  ['agent_registry', 'id'],\n  ['messages', 'from_agent'],",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["leaves the message history under the name that sent it"],
   },
   {
     id: "only-github-admins-are-protected",

@@ -569,6 +569,32 @@ export async function verifyLocalUser(username: string, password: string): Promi
   return valid ? user : null
 }
 
+/**
+ * The seeded administrator's username (T-026).
+ *
+ * **`platform-admin`, not `admin`.** The account administers the installation
+ * — every tenant, the tenant list itself — and `admin` reads as *the admin of
+ * whatever you are looking at*, which on a screen scoped to one tenant is the
+ * wrong account entirely. The name is the only thing on the screen that says
+ * which of the two it is.
+ *
+ * A constant rather than a literal in four places: the seed writes it, the
+ * first-login check reads it, the harness signs in with it, and the quickstart
+ * documents it. Those four disagreeing is how a deployment ends up with an
+ * account nobody can name.
+ */
+export const SEED_ADMIN_USERNAME = 'platform-admin'
+//
+// **The two seed log sentences below spell the name rather than interpolating
+// it.** `docs/running-locally.md` quotes those lines and
+// `test/readme.test.ts` checks the quotes against this source verbatim — a
+// template literal makes every quoted line read as one nothing prints, which
+// is a false red from the reader. The drift that re-opens is closed from the
+// other side: `db-store.test.ts` asserts the sentence names this constant.
+
+/** What it was called before, and what an upgraded deployment still has. */
+export const LEGACY_SEED_ADMIN_USERNAME = 'admin'
+
 export async function seedLocalUsers(): Promise<void> {
   const db = getDb()
   const row = db.prepare('SELECT COUNT(*) as cnt FROM local_users').get() as { cnt: number }
@@ -587,23 +613,23 @@ export async function seedLocalUsers(): Promise<void> {
     // which would only be printed once and lost.
     const supplied = process.env.AGENT_MESH_ADMIN_PASSWORD
     const hash = await Bun.password.hash(supplied ?? 'admin', { algorithm: 'bcrypt' })
-    createLocalUser('admin', hash, 'Admin', 'admin')
+    createLocalUser(SEED_ADMIN_USERNAME, hash, 'Platform Admin', 'admin')
     // **Whatever password was used.** The owner's decision is that the first
     // login always lands on the change screen; a stated password is an
     // *initial* one, not a final one. Marking it only for the default would
     // leave every deployment's first password permanent.
-    db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
+    db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = ?`).run(SEED_ADMIN_USERNAME)
     if (supplied) {
-      log.info('seeded admin local user with AGENT_MESH_ADMIN_PASSWORD', 'db_admin_seeded', {
-        actor: 'admin',
+      log.info('seeded the platform-admin local user with AGENT_MESH_ADMIN_PASSWORD', 'db_admin_seeded', {
+        actor: SEED_ADMIN_USERNAME,
         reason: 'from_environment',
       })
     } else {
       log.warn(
-        'seeded admin local user with the default password `admin`. ' +
+        'seeded the platform-admin local user with the default password `admin`. ' +
           'Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach.',
         'db_admin_seeded',
-        { actor: 'admin', reason: 'default_password' },
+        { actor: SEED_ADMIN_USERNAME, reason: 'default_password' },
       )
     }
   } else {
@@ -628,15 +654,15 @@ export async function seedLocalUsers(): Promise<void> {
      * one somebody already set, and is left alone. Nobody is locked out who
      * made a choice, and nobody keeps the default by accident.
      */
-    const admin = getLocalUser('admin')
+    const admin = getLocalUser(SEED_ADMIN_USERNAME)
     if (admin && admin.must_change_password !== 1) {
       const initial = process.env.AGENT_MESH_ADMIN_PASSWORD ?? 'admin'
       if (await Bun.password.verify(initial, admin.password_hash)) {
-        db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run()
+        db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = ?`).run(SEED_ADMIN_USERNAME)
         log.warn(
           'the admin account still has its initial password; it must be changed at the next login',
           'db_admin_must_change_password',
-          { actor: 'admin', reason: 'initial_password_unchanged' },
+          { actor: SEED_ADMIN_USERNAME, reason: 'initial_password_unchanged' },
         )
       }
     }

@@ -13,7 +13,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, teardown, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, openTestDb, provision, SEED_ADMIN, startMesh, teardown, type Mesh } from "./harness";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
@@ -101,7 +101,7 @@ describe("a session that must change its password", () => {
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=admin",
+      body: `username=${SEED_ADMIN}&password=admin`,
       redirect: "manual",
     });
     return (res.headers.get("set-cookie") ?? "").split(";")[0]!;
@@ -120,7 +120,7 @@ describe("a session that must change its password", () => {
         // `accept`, not `content-type`: the handler picks its shape from what
         // the caller says it will read, which is what the console sends.
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ username: "admin", password: "admin" }),
+        body: JSON.stringify({ username: SEED_ADMIN, password: "admin" }),
       });
       expect((await res.json()).must_change_password, "the login response did not say the account is flagged").toBe(true);
     } finally {
@@ -207,6 +207,24 @@ describe("a session that must change its password", () => {
         .run(await Bun.password.hash("admin", { algorithm: "bcrypt" }));
       db.close();
     }
+  });
+});
+
+describe("the seeded administrator's name", () => {
+  /**
+   * The harness spells `platform-admin` rather than importing it: `test/`
+   * reaches into `packages/` through the barrel exactly once
+   * (`test/import-graph.test.ts`), and one login name is not worth a second
+   * edge. What a second copy costs is drift, so the copies are compared here —
+   * against the source rather than against a running process, because a suite
+   * whose harness signs in with the wrong name never gets far enough to ask a
+   * process anything.
+   */
+  test("is the one the service seeds, not a second copy of it", () => {
+    const source = readFileSync(join(import.meta.dir, "..", "packages", "http", "src", "db.ts"), "utf8");
+    const declared = /export const SEED_ADMIN_USERNAME = '([^']+)'/.exec(source);
+    expect(declared, "the service no longer declares SEED_ADMIN_USERNAME").not.toBeNull();
+    expect(declared![1]).toBe(SEED_ADMIN);
   });
 });
 
@@ -399,7 +417,7 @@ describe("the session cookie", () => {
     fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
-      body: "username=admin&password=admin",
+      body: `username=${SEED_ADMIN}&password=admin`,
       redirect: "manual",
     });
 
@@ -442,14 +460,14 @@ describe("authentication gates", () => {
 
   test("local login issues a session that /auth/me accepts", async () => {
     const me = await (await get("/auth/me", adminCookie)).json();
-    expect(me).toMatchObject({ github_login: "admin", role: "admin" });
+    expect(me).toMatchObject({ github_login: SEED_ADMIN, role: "admin" });
   });
 
   test("a bad password does not issue one", async () => {
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=wrong",
+      body: `username=${SEED_ADMIN}&password=wrong`,
       redirect: "manual",
     });
     expect(res.headers.get("set-cookie")).toBeNull();
@@ -529,21 +547,21 @@ describe("agent registry", () => {
     const agents = openTestDb(join(mesh.stateDir, "agents.db"), { readwrite: true });
     agents
       .prepare(
-        `INSERT INTO agents (identity, last_seen) VALUES ('admin', '2026-01-02 03:04:05')
+        `INSERT INTO agents (identity, last_seen) VALUES (?, '2026-01-02 03:04:05')
            ON CONFLICT(identity) DO UPDATE SET last_seen = excluded.last_seen`,
       )
-      .run();
+      .run(SEED_ADMIN);
     agents
       .prepare(
         `INSERT INTO agent_keys (fingerprint, identity, public_key, status)
-         VALUES ('sha256:deadbeef', 'admin', 'pk', 'approved')
+         VALUES ('sha256:deadbeef', ?, 'pk', 'approved')
            ON CONFLICT(fingerprint) DO UPDATE SET status = 'approved'`,
       )
-      .run();
+      .run(SEED_ADMIN);
     agents.close();
 
     const body = await (await get("/api/v1/agents", adminCookie)).json();
-    const entry = body.agents.find((a: any) => a.id === "admin");
+    const entry = body.agents.find((a: any) => a.id === SEED_ADMIN);
 
     expect(entry.last_seen_at).toBe("2026-01-02 03:04:05");
     expect(entry.fingerprint).toBe("sha256:deadbeef");
@@ -655,7 +673,7 @@ describe("attachment metadata (§ 15.2)", () => {
     await fetch(`${mesh.http.url}/api/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: adminCookie },
-      body: JSON.stringify({ to: "admin", text: "x", attachments: [{ id: body.id, download_url: body.download_url }] }),
+      body: JSON.stringify({ to: SEED_ADMIN, text: "x", attachments: [{ id: body.id, download_url: body.download_url }] }),
     });
     const fetched = await fetch(body.download_url, { headers: { cookie: adminCookie } });
     expect(fetched.status).toBe(200);
@@ -724,7 +742,7 @@ describe("attachment download", () => {
   // (`/api/v1/messages` refuses an unknown one), and the only seeded person is
   // the admin — which is enough, because § 15.3 asks whether the caller is
   // *either* end and does not care that both ends are the same one here.
-  const sendCarrying = async (attachmentId: string, to = "admin") => {
+  const sendCarrying = async (attachmentId: string, to = SEED_ADMIN) => {
     await fetch(`${mesh.http.url}/api/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: adminCookie },
@@ -976,7 +994,7 @@ describe("§ 15.2 — uploads are bounded before they are read", () => {
   beforeAll(async () => {
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=admin", redirect: "manual",
+      body: `username=${SEED_ADMIN}&password=admin`, redirect: "manual",
     });
     cookie = res.headers.get("set-cookie")!.split(";")[0]!;
   });
@@ -1075,7 +1093,7 @@ describe("§ 9.1 — the event stream takes no credential in its URL", () => {
   test("the session cookie is accepted", async () => {
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=admin", redirect: "manual",
+      body: `username=${SEED_ADMIN}&password=admin`, redirect: "manual",
     });
     const cookie = res.headers.get("set-cookie")!.split(";")[0]!;
     const ctrl = new AbortController();
@@ -1097,7 +1115,7 @@ describe("§ 9.1 — the event stream takes no credential in its URL", () => {
     // being documented.
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=admin", redirect: "manual",
+      body: `username=${SEED_ADMIN}&password=admin`, redirect: "manual",
     });
     const jwt = res.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
     const withQuery = await fetch(

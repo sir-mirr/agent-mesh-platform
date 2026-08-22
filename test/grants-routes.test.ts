@@ -10,7 +10,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { loginAsAdmin, startMesh, type Mesh } from "./harness";
+import { loginAsAdmin, SEED_ADMIN, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let cookie: string;
@@ -36,15 +36,15 @@ describe("reading grants", () => {
     // front end compiles its own copy of the capability list, and a capability
     // added here never appears there.
     expect(body.capabilities).toContain("role.grant");
-    expect(body.grants.some((g: any) => g.subject === "admin")).toBe(true);
+    expect(body.grants.some((g: any) => g.subject === SEED_ADMIN)).toBe(true);
   });
 
   test("filters by subject and by capability", async () => {
     const bySubject = await (await call("GET", "/api/v1/admin/grants?subject=admin")).json();
-    expect(bySubject.grants.every((g: any) => g.subject === undefined || g.subject === "admin")).toBe(true);
+    expect(bySubject.grants.every((g: any) => g.subject === undefined || g.subject === SEED_ADMIN)).toBe(true);
 
     const byCap = await (await call("GET", "/api/v1/admin/grants?capability=key.approve")).json();
-    expect(byCap.subjects.some((s: any) => s.subject === "admin")).toBe(true);
+    expect(byCap.subjects.some((s: any) => s.subject === SEED_ADMIN)).toBe(true);
   });
 
   test("an unknown capability is refused, and says what the real ones are", async () => {
@@ -90,7 +90,7 @@ describe("granting and revoking", () => {
 
     const body = await (await call("GET", "/api/v1/admin/grants?subject=author-probe")).json();
     const row = body.grants.find((g: any) => g.capability === "key.approve");
-    expect(row?.granted_by, "the caller's claim was recorded as the author").toBe("admin");
+    expect(row?.granted_by, "the caller's claim was recorded as the author").toBe(SEED_ADMIN);
   });
 
   test("revoking what is not there is not an error", async () => {

@@ -26,6 +26,7 @@ import {
   insertMessage,
   listApprovedWebUserIds,
   listRegistryAgents,
+  SEED_ADMIN_USERNAME,
   seedLocalUsers,
   upsertApprovedWebUser,
 } from "./db";
@@ -147,10 +148,22 @@ describe("seedLocalUsers", () => {
     delete process.env.AGENT_MESH_ADMIN_PASSWORD;
   });
 
+  /**
+   * The two seed sentences spell `platform-admin` rather than interpolating the
+   * constant, because `docs/running-locally.md` quotes them and
+   * `test/readme.test.ts` compares the quotes against this source verbatim.
+   * That is the drift this closes from the other side: a constant renamed
+   * without the sentence would otherwise say the old name to the operator.
+   */
+  test("says the name of the account it seeded", async () => {
+    await seedLocalUsers();
+    expect(logged.join("\n")).toContain(SEED_ADMIN_USERNAME);
+  });
+
   test("with no password stated, seeds the documented default and says so", async () => {
     await seedLocalUsers();
 
-    const admin = getLocalUser("admin");
+    const admin = getLocalUser(SEED_ADMIN_USERNAME);
     expect(admin).not.toBeNull();
     expect(await Bun.password.verify("admin", admin!.password_hash)).toBe(true);
     expect(admin!.must_change_password).toBe(1);
@@ -162,7 +175,7 @@ describe("seedLocalUsers", () => {
     process.env.AGENT_MESH_ADMIN_PASSWORD = "a-stated-one";
     await seedLocalUsers();
 
-    const admin = getLocalUser("admin");
+    const admin = getLocalUser(SEED_ADMIN_USERNAME);
     expect(await Bun.password.verify("a-stated-one", admin!.password_hash)).toBe(true);
     expect(await Bun.password.verify("admin", admin!.password_hash)).toBe(false);
     expect(logged.join("\n")).toContain("AGENT_MESH_ADMIN_PASSWORD");
@@ -173,47 +186,47 @@ describe("seedLocalUsers", () => {
     process.env.AGENT_MESH_ADMIN_PASSWORD = "a-stated-one";
     await seedLocalUsers();
 
-    expect(getLocalUser("admin")!.must_change_password).toBe(1);
+    expect(getLocalUser(SEED_ADMIN_USERNAME)!.must_change_password).toBe(1);
   });
 
   test("the seeded account is a mesh participant, not only a login", async () => {
     await seedLocalUsers();
 
-    expect(listApprovedWebUserIds()).toContain("admin");
+    expect(listApprovedWebUserIds()).toContain(SEED_ADMIN_USERNAME);
   });
 
   test("an existing admin still on the initial password is marked on the next boot", async () => {
     await seedLocalUsers();
-    getDb().prepare("UPDATE local_users SET must_change_password = 0 WHERE username = 'admin'").run();
+    getDb().prepare("UPDATE local_users SET must_change_password = 0 WHERE username = 'platform-admin'").run();
     logged.length = 0;
 
     await seedLocalUsers();
 
-    expect(getLocalUser("admin")!.must_change_password).toBe(1);
+    expect(getLocalUser(SEED_ADMIN_USERNAME)!.must_change_password).toBe(1);
     expect(logged.join("\n")).toContain("initial password");
   });
 
   test("the initial password it checks against is the stated one", async () => {
     process.env.AGENT_MESH_ADMIN_PASSWORD = "a-stated-one";
     await seedLocalUsers();
-    getDb().prepare("UPDATE local_users SET must_change_password = 0 WHERE username = 'admin'").run();
+    getDb().prepare("UPDATE local_users SET must_change_password = 0 WHERE username = 'platform-admin'").run();
 
     await seedLocalUsers();
 
-    expect(getLocalUser("admin")!.must_change_password).toBe(1);
+    expect(getLocalUser(SEED_ADMIN_USERNAME)!.must_change_password).toBe(1);
   });
 
   test("an admin who chose a password is left alone", async () => {
     await seedLocalUsers();
     const chosen = await Bun.password.hash("something-nobody-published", { algorithm: "bcrypt" });
     getDb()
-      .prepare("UPDATE local_users SET must_change_password = 0, password_hash = ? WHERE username = 'admin'")
+      .prepare("UPDATE local_users SET must_change_password = 0, password_hash = ? WHERE username = 'platform-admin'")
       .run(chosen);
     logged.length = 0;
 
     await seedLocalUsers();
 
-    expect(getLocalUser("admin")!.must_change_password).toBe(0);
+    expect(getLocalUser(SEED_ADMIN_USERNAME)!.must_change_password).toBe(0);
     expect(logged.join("\n")).not.toContain("initial password");
   });
 
@@ -223,7 +236,7 @@ describe("seedLocalUsers", () => {
 
     await seedLocalUsers();
 
-    expect(getLocalUser("admin")!.must_change_password).toBe(1);
+    expect(getLocalUser(SEED_ADMIN_USERNAME)!.must_change_password).toBe(1);
     expect(logged).toEqual([]);
   });
 

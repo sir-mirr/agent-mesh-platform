@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { keyFingerprint } from "@agent-mesh/contracts";
 
-import { callHttp, connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, teardown, type Mesh } from "./harness";
+import { callHttp, connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, SEED_ADMIN, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let adminCookie: string;
@@ -221,7 +221,7 @@ describe("approval is gated, and the hub cannot do it", () => {
     await register("attributed", "ai-codex", k.publicKey);
     const body = await (await decide("approve", k.fingerprint)).json();
     // An approval nobody is named for is one nobody can be asked about.
-    expect(body.decided_by).toBe("admin");
+    expect(body.decided_by).toBe(SEED_ADMIN);
     expect(body.decided_at).not.toBeNull();
   });
 
@@ -733,7 +733,7 @@ describe("capabilities gate the routes", () => {
     fetch(`${mesh.http.url}${path}`, { headers: { cookie: adminCookie } });
 
   test("the legacy admin role was seeded as grants, not left as a string", () => {
-    const caps = held("admin");
+    const caps = held(SEED_ADMIN);
     expect(caps).toContain("key.approve");
     expect(caps).toContain("agent.teardown");
     expect(caps).toContain("audit.read.metadata");
@@ -748,14 +748,14 @@ describe("capabilities gate the routes", () => {
     // and the one moment revocation matters is an incident.
     expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
 
-    revoke("admin", "key.approve");
+    revoke(SEED_ADMIN, "key.approve");
     const after = await asAdmin("/api/v1/admin/keys/pending");
     expect(after.status).toBe(403);
     // Names the missing grant. An operator told which one can ask for that
     // one; an operator told "forbidden" asks for everything.
     expect((await after.json()).capability).toBe("key.approve");
 
-    grant("admin", "key.approve");
+    grant(SEED_ADMIN, "key.approve");
     expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
   });
 
@@ -763,10 +763,10 @@ describe("capabilities gate the routes", () => {
     // § 11's privacy boundary is exactly this: the platform operator holds
     // metadata and not content. If the routes shared one check, that split
     // could not exist.
-    revoke("admin", "mailbox.read.depth");
+    revoke(SEED_ADMIN, "mailbox.read.depth");
     expect((await asAdmin("/api/v1/admin/mailbox")).status).toBe(403);
     expect((await asAdmin("/api/v1/admin/keys/pending")).status).toBe(200);
-    grant("admin", "mailbox.read.depth");
+    grant(SEED_ADMIN, "mailbox.read.depth");
   });
 
   test("no session is still 401, not 403", async () => {
@@ -819,7 +819,7 @@ describe("the observed sources are readable by an operator", () => {
   test("it has its own capability, not audit.read.metadata", async () => {
     // Where every agent runs is a network fact about someone's hosts. An
     // operator entitled to a trail is not automatically entitled to that.
-    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='source.read'`).run());
+    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability='source.read'`).run());
     const refused = await asAdmin("/api/v1/admin/agent-sources");
     expect(refused.status).toBe(403);
     expect((await refused.json()).capability).toBe("source.read");
@@ -827,7 +827,7 @@ describe("the observed sources are readable by an operator", () => {
     expect((await asAdmin("/api/v1/audit/events")).status).toBe(200);
     withDb((db) => db.prepare(
       `INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-       VALUES ('default','admin','source.read','*','test') ON CONFLICT DO NOTHING`).run());
+       VALUES ('default','platform-admin','source.read','*','test') ON CONFLICT DO NOTHING`).run());
   });
 
   test("a malformed identity is refused rather than matched", async () => {
@@ -876,7 +876,7 @@ describe("ownership scopes what an operator sees", () => {
     // holds no human session. The code is the credential.
     const redeemed = await fetch(`${mesh.http.url}/api/v1/pairing-codes/redeem`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code, owner: "admin" }),
+      body: JSON.stringify({ code, owner: SEED_ADMIN }),
     });
     expect(redeemed.status).toBe(200);
     expect((await redeemed.json()).identity).toBe("own-lane");
@@ -891,7 +891,7 @@ describe("ownership scopes what an operator sees", () => {
     const listed = await (await fetch(`${mesh.http.url}/api/v1/admin/agents/own-lane/owners`, {
       headers: { cookie: adminCookie },
     })).json();
-    expect(listed.owners.map((o: any) => o.owner)).toEqual(["admin"]);
+    expect(listed.owners.map((o: any) => o.owner)).toEqual([SEED_ADMIN]);
     // How the claim was made is part of the record.
     expect(listed.owners[0].granted_by).toContain("pairing:");
   });
@@ -923,12 +923,12 @@ describe("ownership scopes what an operator sees", () => {
     await provision(mesh.hub, "own-theirs", "ai-claude", null, notOwned.publicKey);
     withDb((db) => db.prepare(
       `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
-       VALUES ('default','own-mine','admin','test') ON CONFLICT DO NOTHING`).run());
+       VALUES ('default','own-mine','platform-admin','test') ON CONFLICT DO NOTHING`).run());
 
     // Narrow the grant: `admin` now holds key.approve on one identity only.
     withDb((db) => db.prepare(
-      `DELETE FROM role_grants WHERE subject='admin' AND scope='*' AND capability='key.approve'`).run());
-    grantTo("admin", "key.approve", "own-mine");
+      `DELETE FROM role_grants WHERE subject='platform-admin' AND scope='*' AND capability='key.approve'`).run());
+    grantTo(SEED_ADMIN, "key.approve", "own-mine");
 
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: adminCookie } });
     // Not 403. Gating this at tenant scope would refuse every operator who
@@ -938,7 +938,7 @@ describe("ownership scopes what an operator sees", () => {
     expect(identities).toContain("own-mine");
     expect(identities).not.toContain("own-theirs");
 
-    grantTo("admin", "key.approve", "*");
+    grantTo(SEED_ADMIN, "key.approve", "*");
   });
 
   test("what I own answers about me, and a tenant-wide grant does not widen it", async () => {
@@ -948,7 +948,7 @@ describe("ownership scopes what an operator sees", () => {
     // actions.
     withDb((db) => db.prepare(
       `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
-       VALUES ('default','owned-a','admin','test') ON CONFLICT DO NOTHING`).run());
+       VALUES ('default','owned-a','platform-admin','test') ON CONFLICT DO NOTHING`).run());
     withDb((db) => db.prepare(
       `INSERT INTO agent_owners (tenant,identity,owner,granted_by)
        VALUES ('default','owned-b','someone-else','test') ON CONFLICT DO NOTHING`).run());
@@ -956,7 +956,7 @@ describe("ownership scopes what an operator sees", () => {
     const body = await (await fetch(`${mesh.http.url}/api/v1/admin/agents/owned`, {
       headers: { cookie: adminCookie },
     })).json();
-    expect(body.owner).toBe("admin");
+    expect(body.owner).toBe(SEED_ADMIN);
     expect(body.identities).toContain("owned-a");
     // `admin` holds key.approve at `*`, and still must not be told it owns
     // someone else's agent.
@@ -966,11 +966,11 @@ describe("ownership scopes what an operator sees", () => {
   test("holding the capability at no scope at all is still 403", async () => {
     // The other side of the line. Filtered-to-empty and not-permitted are
     // different answers and must not collapse into one.
-    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='key.approve'`).run());
+    withDb((db) => db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability='key.approve'`).run());
     const res = await fetch(`${mesh.http.url}/api/v1/admin/keys/pending`, { headers: { cookie: adminCookie } });
     expect(res.status).toBe(403);
     expect((await res.json()).capability).toBe("key.approve");
-    grantTo("admin", "key.approve", "*");
+    grantTo(SEED_ADMIN, "key.approve", "*");
   });
 });
 
@@ -987,10 +987,10 @@ describe("teardown is scoped", () => {
     try { return fn(db); } finally { db.close(); }
   };
   const setGrant = (capability: string, scope: string | null) => withDb((db) => {
-    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability=?`).run(capability);
+    db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability=?`).run(capability);
     if (scope) {
       db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-                  VALUES ('default','admin',?,?,'test')`).run(capability, scope);
+                  VALUES ('default','platform-admin',?,?,'test')`).run(capability, scope);
     }
   });
   const own = (identity: string, owner = "admin") => withDb((db) =>
@@ -1164,10 +1164,10 @@ describe("teardown by the group manager", () => {
     try { return fn(db); } finally { db.close(); }
   };
   const setGrant = (capability: string, scope: string | null) => withDb((db) => {
-    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability=?`).run(capability);
+    db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability=?`).run(capability);
     if (scope) {
       db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-                  VALUES ('default','admin',?,?,'test')`).run(capability, scope);
+                  VALUES ('default','platform-admin',?,?,'test')`).run(capability, scope);
     }
   });
   const placeIn = (identity: string, groupId: string) => withDb((db) => {

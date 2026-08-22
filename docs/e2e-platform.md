@@ -119,7 +119,7 @@ in the ready file because this script is the thing that knows the ephemeral port
 
 ```
 POST {login_url}  content-type: application/x-www-form-urlencoded
-                  username=admin&password=admin
+                  username=platform-admin&password=admin
 ```
 
 **It answers `302` and the session cookie is on that response.** A client that

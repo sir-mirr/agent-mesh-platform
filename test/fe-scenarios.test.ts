@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { createHmac } from "node:crypto";
-import { startMesh, loginAsAdmin, newKeyPair, connectRpc, type Mesh } from "./harness.ts";
+import { startMesh, loginAsAdmin, newKeyPair, connectRpc, SEED_ADMIN, type Mesh } from "./harness.ts";
 
 function hs256(payload: object, secret: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -334,7 +334,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const res = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "username=admin&password=definitely_wrong_password_12345",
+      body: `username=${SEED_ADMIN}&password=definitely_wrong_password_12345`,
       redirect: "manual",
     });
     // On auth failure, redirects to error or returns non-200 status without auth cookie

@@ -12,7 +12,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, newPublicKey, openTestDb, provision, provisionProxy, startMesh, teardown, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, newPublicKey, openTestDb, provision, provisionProxy, SEED_ADMIN, startMesh, teardown, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -514,7 +514,7 @@ describe("teardown requires an admin (§ 9.3)", () => {
         `SELECT actor, reason FROM agent_key_events
           WHERE identity = 'admin-torn' AND action = 'revoked'`,
       ).get(),
-    ).toMatchObject({ actor: "admin", reason: "teardown" });
+    ).toMatchObject({ actor: SEED_ADMIN, reason: "teardown" });
     db.close();
   });
 });

@@ -18,7 +18,7 @@ import {
   formatUploadAuthorization, uploadSignaturePreimage,
 } from "@agent-mesh/contracts";
 
-import { connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, startMesh, type KeyPair, type Mesh, type RpcClient } from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, openTestDb, provision, SEED_ADMIN, startMesh, type KeyPair, type Mesh, type RpcClient } from "./harness";
 
 let mesh: Mesh;
 let kp: KeyPair;
@@ -483,9 +483,9 @@ describe("§ 11 — content is a separate grant from metadata", () => {
   const setContentGrant = (on: boolean) =>
     withDb((db) => on
       ? db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-                    VALUES ('default','admin','audit.read.content','*','test')
+                    VALUES ('default','platform-admin','audit.read.content','*','test')
                     ON CONFLICT DO NOTHING`).run()
-      : db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run());
+      : db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability='audit.read.content'`).run());
 
   const events = async () =>
     (await (await fetch(`${mesh.http.url}/api/v1/audit/events?limit=50`, {
@@ -562,7 +562,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
 
     const p = JSON.parse(after.at(-1)!.payload);
     expect(p.event_type).toBe("mesh.identity.audit_read");
-    expect(p.actor).toBe("admin");
+    expect(p.actor).toBe(SEED_ADMIN);
     expect(p.change.read).toBe("list");
     // What was asked for, never what came back. A log that quoted the content
     // would be a second copy of the thing being protected.
@@ -574,7 +574,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
     // Nothing to protect, so nothing to record — and gating it would take the
     // mesh's diagnostics down with its audit store.
     const db = openTestDb(join(mesh.stateDir, "agents.db"));
-    db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run();
+    db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability='audit.read.content'`).run();
     db.close();
 
     const before = readEvents().length;
@@ -584,7 +584,7 @@ describe("§ 11.0.1 — reading content leaves a trace", () => {
 
     const db2 = openTestDb(join(mesh.stateDir, "agents.db"));
     db2.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-                 VALUES ('default','admin','audit.read.content','*','test') ON CONFLICT DO NOTHING`).run();
+                 VALUES ('default','platform-admin','audit.read.content','*','test') ON CONFLICT DO NOTHING`).run();
     db2.close();
   });
 
@@ -617,10 +617,10 @@ describe("§ 11.0.1 — a read that cannot be recorded does not happen", () => {
     try {
       if (on) {
         db.prepare(`INSERT INTO role_grants (tenant,subject,capability,scope,granted_by)
-                    VALUES ('default','admin','audit.read.content','*','test')
+                    VALUES ('default','platform-admin','audit.read.content','*','test')
                     ON CONFLICT DO NOTHING`).run();
       } else {
-        db.prepare(`DELETE FROM role_grants WHERE subject='admin' AND capability='audit.read.content'`).run();
+        db.prepare(`DELETE FROM role_grants WHERE subject='platform-admin' AND capability='audit.read.content'`).run();
       }
     } finally { db.close(); }
   };

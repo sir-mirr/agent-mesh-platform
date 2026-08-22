@@ -42,6 +42,7 @@ import {
   SCOPE_TENANT,
   type Capability,
 } from '@agent-mesh/contracts'
+import { renameLocalAccount } from './rename-account'
 import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestBase } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb } from './keys-admin'
 import { putBlob, closeBlobDb } from './audit-blobs'
@@ -56,7 +57,7 @@ import { auditAgents } from './audit-agents'
 import { listChatAudits } from './chat-audits'
 import { parseSqliteUtc, readBehaviour } from './telemetry-behaviour'
 import { runShutdown } from './shutdown'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, type DbMessage } from './db'
+import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, SEED_ADMIN_USERNAME, LEGACY_SEED_ADMIN_USERNAME, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -4526,6 +4527,50 @@ app.onError(answerUnhandled)
 // --- Start server ---
 
 /**
+ * Move a deployment's seeded `admin` to `platform-admin` (T-026).
+ *
+ * **Once, at startup, and a no-op every time after.** The account administers
+ * the installation rather than a tenant, and `admin` reads as *the admin of
+ * whatever you are looking at* — on a screen scoped to one tenant, the wrong
+ * account entirely. A fresh deployment is seeded under the new name; this is
+ * for the ones that already exist, including the stack running while this was
+ * written.
+ *
+ * Renaming an account is not an `UPDATE` on one column — `renameLocalAccount`
+ * carries every live reference, and the reasoning about which ones is there.
+ *
+ * **Refuses rather than merges.** A deployment that already has a
+ * `platform-admin` gets nothing done to it: two accounts under one meaning is
+ * worse than an old name, and this cannot know which of them the operator
+ * uses. The refusal is logged, because a silent one leaves the console showing
+ * an account the quickstart no longer names.
+ */
+export function renameSeededAdmin(): void {
+  const legacy = getLocalUser(LEGACY_SEED_ADMIN_USERNAME)
+  if (!legacy || legacy.role !== 'admin') return
+
+  const outcome = renameLocalAccount(LEGACY_SEED_ADMIN_USERNAME, SEED_ADMIN_USERNAME)
+  if (!outcome.ok) {
+    log.warn(
+      `left '${LEGACY_SEED_ADMIN_USERNAME}' alone: '${SEED_ADMIN_USERNAME}' is already taken`,
+      'seed_admin_rename_refused',
+      { actor: LEGACY_SEED_ADMIN_USERNAME, outcome: 'refused', reason: outcome.reason },
+    )
+    return
+  }
+  log.warn(
+    `renamed '${LEGACY_SEED_ADMIN_USERNAME}' to '${SEED_ADMIN_USERNAME}'; sign in with the new name`,
+    'seed_admin_renamed',
+    {
+      actor: SEED_ADMIN_USERNAME,
+      outcome: 'renamed',
+      reason: 'platform_admin',
+      moved: outcome.moved,
+    },
+  )
+}
+
+/**
  * What a served process does before it answers anything, exported so a test
  * calling `app.fetch` can put the database in the same state.
  *
@@ -4537,6 +4582,11 @@ app.onError(answerUnhandled)
  * every route answering 403 with the cause three hundred lines away.
  */
 export async function startup(): Promise<void> {
+  // Before the seed reads `local_users`, not after: the seed's other branch
+  // asks whether the seeded administrator still has its initial password, and
+  // it asks by name. Running it first would leave that check looking for an
+  // account this line is about to rename.
+  renameSeededAdmin()
   await seedLocalUsers()
   seedLegacyAdminGrants()
   await redeclareProxies().catch(() => {})

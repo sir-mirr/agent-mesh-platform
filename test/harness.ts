@@ -802,15 +802,31 @@ export function sessionCookie(who: string, status: number, setCookie: string | n
   return cookie;
 }
 
+/**
+ * The seeded administrator's username (T-026).
+ *
+ * `platform-admin`, because the account administers the installation rather
+ * than a tenant.
+ *
+ * **Spelled here rather than imported**, and checked rather than trusted.
+ * `test/` reaches into `packages/` through the barrel exactly once
+ * (`test/import-graph.test.ts`), so importing `packages/http/src/db` for one
+ * string would be a second edge across that boundary. `http.test.ts` reads
+ * `SEED_ADMIN_USERNAME` out of the source and asserts it is this — which is
+ * the drift a second copy would otherwise cause, caught at the one place the
+ * two can be compared.
+ */
+export const SEED_ADMIN = "platform-admin";
+
 /** Log in as the seeded local admin and return the session cookie. */
 export async function loginAsAdmin(http: Service): Promise<string> {
   const res = await fetch(`${http.url}/auth/local`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: "username=admin&password=admin",
+    body: `username=${encodeURIComponent(SEED_ADMIN)}&password=admin`,
     redirect: "manual",
   });
-  return sessionCookie("admin", res.status, res.headers.get("set-cookie"));
+  return sessionCookie(SEED_ADMIN, res.status, res.headers.get("set-cookie"));
 }
 
 /** Tear down an identity the way an operator does — § 9.3, admin session. */

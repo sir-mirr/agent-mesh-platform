@@ -60,7 +60,8 @@ process.env.PORT = "3998";
 const mod = await import("./main.ts");
 // The chat page needs a user row for the session behind it; nothing else here
 // writes one.
-const { upsertUser, upsertApprovedWebUser, insertMessage, getDb } = await import("./db.ts");
+const { upsertUser, upsertApprovedWebUser, insertMessage, getDb, SEED_ADMIN_USERNAME: SEED_ADMIN } =
+  await import("./db.ts");
 // The mesh database, opened by the same accessor the routes use, so a row
 // written here is the row they read rather than a second handle onto the file.
 const { agentsDb } = await import("./keys-admin.ts");
@@ -83,7 +84,7 @@ beforeAll(async () => {
   const login = await app.fetch(new Request("http://in-process/auth/local", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body: new URLSearchParams({ username: "admin", password: "admin" }).toString(),
+    body: new URLSearchParams({ username: SEED_ADMIN, password: "admin" }).toString(),
   }));
   if (login.status !== 200) throw new Error(`sign-in failed: ${login.status} ${await login.text()}`);
   cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
@@ -131,7 +132,7 @@ describe("the http service, imported", () => {
     const res = await call("/auth/local", {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({ username: "admin", password: "admin" }).toString(),
+      body: new URLSearchParams({ username: SEED_ADMIN, password: "admin" }).toString(),
     });
     // Either it signs the seeded admin in or it refuses; what matters here is
     // that the body was parsed at all rather than read as an empty username.
@@ -1868,13 +1869,13 @@ describe("a refused sign-in, in the record", () => {
   });
 
   test("a wrong password is another, and names who tried", async () => {
-    const [refused] = refusals(await signIn({ username: "admin", password: "not-the-password" }));
-    expect(refused).toMatchObject({ level: "warn", actor: "admin", reason: "bad_credentials" });
+    const [refused] = refusals(await signIn({ username: SEED_ADMIN, password: "not-the-password" }));
+    expect(refused).toMatchObject({ level: "warn", actor: SEED_ADMIN, reason: "bad_credentials" });
   });
 
   test("does not say whether the account exists", async () => {
     const missing = refusals(await signIn({ username: "nobody-here", password: "x" }));
-    const wrong = refusals(await signIn({ username: "admin", password: "x" }));
+    const wrong = refusals(await signIn({ username: SEED_ADMIN, password: "x" }));
     // The route refuses both identically on purpose — distinguishing them is
     // account enumeration, and a reason in a log somebody can read is the same
     // enumeration one step later.
@@ -1899,7 +1900,7 @@ describe("a refused sign-in, in the record", () => {
   });
 
   test("a sign-in that works says nothing", async () => {
-    const lines = await signIn({ username: "admin", password: "in-process-password" });
+    const lines = await signIn({ username: SEED_ADMIN, password: "in-process-password" });
     expect(refusals(lines)).toEqual([]);
   });
 });

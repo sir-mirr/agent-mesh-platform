@@ -238,7 +238,7 @@ test("the seeded admin takes the deployment's password when it states one", asyn
         fetch(`${url}/auth/local`, {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: `username=admin&password=${password}`,
+          body: `username=platform-admin&password=${password}`,
           redirect: "manual",
         });
 
@@ -282,14 +282,18 @@ test("an account seeded before the flag existed is marked only if its password i
   };
   const flag = () => {
     const db = openTestDb(dbPath, { readonly: true });
-    const row = db.prepare(`SELECT must_change_password AS f FROM local_users WHERE username = 'admin'`)
+    const row = db.prepare(`SELECT must_change_password AS f FROM local_users WHERE username = 'platform-admin'`)
       .get() as { f: number } | undefined;
     db.close();
     return row?.f;
   };
   const setRow = async (password: string) => {
     const db = openTestDb(dbPath, { readwrite: true });
-    db.prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = 'admin'`)
+    // The seeded account, under the name it now has (T-026): the first boot
+    // above created `platform-admin`, and an `UPDATE` naming `admin` matches
+    // nothing — a no-op that leaves the next assertion reading the row the
+    // *previous* step wrote, so both halves pass whatever the boot did.
+    db.prepare(`UPDATE local_users SET password_hash = ?, must_change_password = 0 WHERE username = 'platform-admin'`)
       .run(await Bun.password.hash(password, { algorithm: "bcrypt" }));
     db.close();
   };

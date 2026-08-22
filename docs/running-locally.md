@@ -181,8 +181,15 @@ AGENT_MESH_ALLOWED_ORIGINS=http://localhost:3005
 The first start seeds one local account. There is no OAuth app involved and no
 approval step for this one.
 
+**It is called `platform-admin`** (T-026). The account administers the
+installation — every tenant, and the list of tenants itself — and `admin` read
+as *the admin of whatever you are looking at*, which on a screen scoped to one
+tenant is the wrong account. A deployment that predates the change is renamed
+on its next start, with every live reference to the name carried across; the
+log line is `seed_admin_renamed`.
+
 ```
-username: admin
+username: platform-admin
 password: $AGENT_MESH_ADMIN_PASSWORD, or `admin` when that is unset
 ```
 
@@ -229,7 +236,7 @@ test in this repository signs in with.
 ```bash
 curl -s -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
   -H 'accept: application/json' -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"admin"}' -i | grep -i set-cookie
+  -d '{"username":"platform-admin","password":"admin"}' -i | grep -i set-cookie
 ```
 
 ```
@@ -240,8 +247,8 @@ And in the http server's own log, one of these — **which one tells you whether
 this deployment stated a password**:
 
 ```
-2026-08-22T05:00:00.000Z info [http] seeded admin local user with AGENT_MESH_ADMIN_PASSWORD {"ts":...,"event":"db_admin_seeded","actor":"admin","reason":"from_environment"}
-2026-08-22T05:00:00.000Z warn [http] seeded admin local user with the default password `admin`. Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach. {"ts":...,"event":"db_admin_seeded","actor":"admin","reason":"default_password"}
+2026-08-22T05:00:00.000Z info [http] seeded the platform-admin local user with AGENT_MESH_ADMIN_PASSWORD {"ts":...,"event":"db_admin_seeded","actor":"platform-admin","reason":"from_environment"}
+2026-08-22T05:00:00.000Z warn [http] seeded the platform-admin local user with the default password `admin`. Set AGENT_MESH_ADMIN_PASSWORD before first boot on any host others can reach. {"ts":...,"event":"db_admin_seeded","actor":"platform-admin","reason":"default_password"}
 ```
 
 Keep it, if you are going to call an admin route:
@@ -249,7 +256,7 @@ Keep it, if you are going to call an admin route:
 ```bash
 COOKIE=$(curl -s -i -X POST "http://127.0.0.1:$HTTP_PORT/auth/local" \
   -H 'accept: application/json' -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"admin"}' \
+  -d '{"username":"platform-admin","password":"admin"}' \
   | grep -i '^set-cookie' | grep -o 'mesh_token=[^;]*')
 ```
 
@@ -724,7 +731,7 @@ failure this document is about, one layer up.
 ```bash
 curl -si -X POST "https://mesh.example.internal/auth/local" \
   -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"admin"}' | grep -i '^set-cookie'
+  -d '{"username":"platform-admin","password":"admin"}' | grep -i '^set-cookie'
 ```
 
 ```

@@ -56,7 +56,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const authRes = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ username: "admin", password: "admin" }),
+      body: JSON.stringify({ username: "platform-admin", password: "admin" }),
     });
     const setCookie = authRes.headers.get("set-cookie") || "";
     const match = setCookie.match(/mesh_token=([^;]+)/);

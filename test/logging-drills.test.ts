@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { join } from "node:path";
 
-import { connectRpc, loginAsAdmin, openTestDb, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, openTestDb, provision, SEED_ADMIN, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 
@@ -113,8 +113,8 @@ describe("complaint B — I cannot sign in", () => {
   test("tells a wrong password from a malformed request from a locked account", async () => {
     const before = mesh.http.output().length;
 
-    await signIn({ username: "admin" });                       // planted: no password
-    await signIn({ username: "admin", password: "wrong" });     // planted: wrong password
+    await signIn({ username: SEED_ADMIN });                       // planted: no password
+    await signIn({ username: SEED_ADMIN, password: "wrong" });     // planted: wrong password
 
     // Planted: an account that has not changed its seeded password. The
     // session is real; every other route refuses it until the password moves.
@@ -127,11 +127,11 @@ describe("complaint B — I cannot sign in", () => {
     const cookie = await loginAsAdmin(mesh.http);
     const db = openTestDb(join(mesh.stateDir, "agent-mesh.db"));
     try {
-      db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'admin'`).run();
+      db.prepare(`UPDATE local_users SET must_change_password = 1 WHERE username = 'platform-admin'`).run();
       const refused = await fetch(`${mesh.http.url}/api/v1/admin/pending`, { headers: { cookie } });
       expect({ status: refused.status }).toEqual({ status: 403 });
     } finally {
-      db.prepare(`UPDATE local_users SET must_change_password = 0 WHERE username = 'admin'`).run();
+      db.prepare(`UPDATE local_users SET must_change_password = 0 WHERE username = 'platform-admin'`).run();
       db.close();
     }
 
@@ -174,7 +174,7 @@ describe("complaint C — I got no notification", () => {
     // `admin` is a person: the http server provisions its web users as mesh
     // identities at boot and proxies for them, so this lands on its socket and
     // runs the notification path.
-    const sent = await notifier.call("mesh.send", { to: "admin", content: "a message for a person" });
+    const sent = await notifier.call("mesh.send", { to: SEED_ADMIN, content: "a message for a person" });
     notifier.close();
 
     // The frame has to cross a process boundary before the push path runs.
@@ -197,7 +197,7 @@ describe("complaint C — I got no notification", () => {
       planted: "not_configured",
       read: "not_configured",
     });
-    expect(skipped[0]!.actor).toBe("admin");
+    expect(skipped[0]!.actor).toBe(SEED_ADMIN);
   }, 20_000);
 });
 
