@@ -25,7 +25,7 @@ import { describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "grants-writes-probe";
 
-const { app } = await import("./main.ts");
+const { app, revokeStrandsTheTenant } = await import("./main.ts");
 const { upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 const { STORE_FILES, agentsSchema, grants, keys, ownership, openAt, stateDir } =
@@ -342,5 +342,171 @@ describe("the pending-key stream", () => {
     expect(proposed).not.toHaveProperty("public_key");
 
     await s.close();
+  });
+});
+
+/**
+ * The one capability that can undo itself.
+ *
+ * Revoke the last tenant-wide `role.grant` and there is no way back: granting
+ * requires holding it, so the person who could restore it is the person who no
+ * longer has it. Every other capability is recoverable by whoever still holds
+ * this one.
+ *
+ * Not unrecoverable in the end — a restart re-seeds these from `role = 'admin'`
+ * — but the recovery is a restart, wanted by somebody who is looking at a 403
+ * and has no way to know that is what they need. The screen makes the fixed
+ * admin's chips unclickable; this is the same rule where it cannot be clicked
+ * past, and the two read the same answer rather than each holding a copy.
+ */
+describe("the last grantor", () => {
+  const T = SCOPE_TENANT;
+
+  describe("the arithmetic, without a database", () => {
+    test("the only tenant-wide holder cannot be revoked", () => {
+      expect(revokeStrandsTheTenant([{ subject: "ada", scope: T }], { subject: "ada", scope: T }))
+        .toBe(true);
+    });
+
+    test("one of two can", () => {
+      expect(revokeStrandsTheTenant(
+        [{ subject: "ada", scope: T }, { subject: "grace", scope: T }],
+        { subject: "ada", scope: T },
+      )).toBe(false);
+    });
+
+    /**
+     * **Scope is the whole of it.** `requireCapability` widens a tenant-wide
+     * grant to any narrower scope and never the other way, so a subject left
+     * holding `role.grant` on one agent is not somebody who can put this back.
+     */
+    test("a holder scoped to one agent is not somebody who can grant", () => {
+      expect(revokeStrandsTheTenant(
+        [{ subject: "ada", scope: T }, { subject: "grace", scope: "agent-7" }],
+        { subject: "ada", scope: T },
+      )).toBe(true);
+    });
+
+    test("and revoking that narrow one strands nobody", () => {
+      expect(revokeStrandsTheTenant(
+        [{ subject: "ada", scope: T }, { subject: "grace", scope: "agent-7" }],
+        { subject: "grace", scope: "agent-7" },
+      )).toBe(false);
+    });
+
+    /** The same subject twice: removing one row leaves the other. */
+    test("a subject holding both scopes keeps the tenant one", () => {
+      expect(revokeStrandsTheTenant(
+        [{ subject: "ada", scope: T }, { subject: "ada", scope: "agent-7" }],
+        { subject: "ada", scope: "agent-7" },
+      )).toBe(false);
+    });
+
+    test("an empty tenant is already stranded", () => {
+      expect(revokeStrandsTheTenant([], { subject: "ada", scope: T })).toBe(true);
+    });
+  });
+
+  /**
+   * Through the route, which means arranging a tenant with exactly one holder.
+   * Every other test in this file leaves an operator holding `role.grant` in
+   * the shared store, so the rows are moved aside and put back — the same
+   * shape as breaking a store to reach a `catch`, and for the same reason:
+   * the state this asks about cannot be produced any other way.
+   */
+  describe("through the route", () => {
+    async function withOnlyOneGrantor<T>(fn: (op: { login: string; cookie: string }) => Promise<T>): Promise<T> {
+      const op = await operator(CAPABILITY.ROLE_GRANT);
+      const others = grants
+        .subjectsWith(db, CAPABILITY.ROLE_GRANT)
+        .filter((h) => h.subject !== op.login);
+      for (const h of others) {
+        grants.revoke(db, { subject: h.subject, capability: CAPABILITY.ROLE_GRANT, scope: h.scope });
+      }
+      try {
+        return await fn(op);
+      } finally {
+        for (const h of others) {
+          grants.grant(db, {
+            subject: h.subject, capability: CAPABILITY.ROLE_GRANT,
+            scope: h.scope, grantedBy: "grants-writes-test",
+          });
+        }
+      }
+    }
+
+    test("refuses to revoke itself, and says which grant it is", async () => {
+      await withOnlyOneGrantor(async (op) => {
+        const res = await del(op.cookie, { subject: op.login, capability: CAPABILITY.ROLE_GRANT });
+        expect(res.status).toBe(409);
+        const body = await res.json();
+        expect(body.code).toBe("LAST_GRANTOR");
+        expect(body.error).toContain(op.login);
+        // Still there: a refusal that removed the row anyway would be worse
+        // than no refusal, because the message says otherwise.
+        expect(grants.has(db, op.login, CAPABILITY.ROLE_GRANT, SCOPE_TENANT)).toBe(true);
+      });
+    });
+
+    /** Narrow: the guard is about `role.grant`, not about being the last anything. */
+    test("and lets the same operator give up any other capability", async () => {
+      await withOnlyOneGrantor(async (op) => {
+        grants.grant(db, {
+          subject: op.login, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test",
+        });
+        const res = await del(op.cookie, { subject: op.login, capability: CAPABILITY.USAGE_READ });
+        expect(res.status).toBe(200);
+        expect((await res.json()).action).toBe("deleted");
+      });
+    });
+
+    /**
+     * **The screen reads the same answer the route acts on.** The RBAC matrix
+     * greys out a chip it cannot turn off, and the two ways to work that out
+     * from the outside are both wrong: an account name hard-coded into the
+     * bundle belongs to one deployment, and `role = 'admin'` lives behind
+     * `user.admit`, which the operator looking at this screen need not hold.
+     */
+    test("says which grant cannot be revoked, in the map the screen reads", async () => {
+      await withOnlyOneGrantor(async (op) => {
+        grants.grant(db, {
+          subject: op.login, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test",
+        });
+        const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+        const rows = body.grants as Array<{
+          subject: string; capability: string; revocable: boolean; immutable_reason?: string;
+        }>;
+
+        const last = rows.find((r) => r.subject === op.login && r.capability === CAPABILITY.ROLE_GRANT);
+        expect(last).toBeDefined();
+        expect({ revocable: last!.revocable, why: last!.immutable_reason })
+          .toEqual({ revocable: false, why: "last_grantor" });
+
+        // Everything else about the same person stays clickable — the rule is
+        // about this one capability, not about this one operator.
+        const other = rows.find((r) => r.subject === op.login && r.capability === CAPABILITY.USAGE_READ);
+        expect(other!.revocable).toBe(true);
+      });
+    });
+
+    test("and every grant is revocable again once somebody else holds it", async () => {
+      const first = await operator(CAPABILITY.ROLE_GRANT);
+      const second = await operator(CAPABILITY.ROLE_GRANT);
+      const body = await (await get("/api/v1/admin/grants", first.cookie)).json();
+      const rows = (body.grants as Array<{ subject: string; capability: string; revocable: boolean }>)
+        .filter((r) => r.capability === CAPABILITY.ROLE_GRANT
+          && (r.subject === first.login || r.subject === second.login));
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.revocable)).toBe(true);
+    });
+
+    test("with a second holder, the revoke goes through", async () => {
+      const first = await operator(CAPABILITY.ROLE_GRANT);
+      const second = await operator(CAPABILITY.ROLE_GRANT);
+      const res = await del(first.cookie, { subject: second.login, capability: CAPABILITY.ROLE_GRANT });
+      expect(res.status).toBe(200);
+      expect((await res.json()).action).toBe("deleted");
+      expect(grants.has(db, second.login, CAPABILITY.ROLE_GRANT, SCOPE_TENANT)).toBe(false);
+    });
   });
 });

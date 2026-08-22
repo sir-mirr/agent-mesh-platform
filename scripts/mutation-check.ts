@@ -6921,6 +6921,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["every reason a service logs is one a counter can key on"],
   },
   {
+    id: "the-last-grantor-can-revoke-itself",
+    defect:
+      "The guard on the last `role.grant` went away. It is the one capability that can undo itself \u2014 granting requires holding it \u2014 so the tenant is left with nobody able to grant anything, and the person who could put it back is the person who cannot. A restart re-seeds it, which is a repair asked for by somebody looking at a 403 with no way to know a restart is what they need.",
+    file: "packages/http/src/main.ts",
+    from: "  if (capability === CAPABILITY.ROLE_GRANT) {",
+    to: "  if (false) {",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["refuses to revoke itself"],
+  },
+  {
+    id: "a-narrow-grant-counts-as-somebody-who-can-grant",
+    defect:
+      "The last-grantor arithmetic stopped looking at scope. `requireCapability` widens a tenant-wide grant to any narrower scope and never the other way, so a subject left holding `role.grant` on one agent cannot use the grant routes at all \u2014 counting them as a holder allows exactly the revoke that strands the tenant.",
+    file: "packages/http/src/main.ts",
+    from: "  return !left.some((h) => h.scope === SCOPE_TENANT)",
+    to: "  return left.length === 0",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["not somebody who can grant"],
+  },
+  {
+    id: "removing-one-row-removes-the-subject",
+    defect:
+      "The row being removed was matched by subject alone. A subject holding `role.grant` both tenant-wide and on one agent then looks like they are losing everything when they give up the narrow one, and a legitimate revoke is refused \u2014 the guard turning into an obstacle is how a guard gets deleted.",
+    file: "packages/http/src/main.ts",
+    from: "    (h) => !(h.subject === removing.subject && h.scope === removing.scope),",
+    to: "    (h) => h.subject !== removing.subject,",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["keeps the tenant one"],
+  },
+  {
+    id: "the-matrix-says-every-chip-is-clickable",
+    defect:
+      "The grants map reported every row as revocable. The screen then offers a control the server refuses \u2014 the operator clicks, gets a 409, and the two halves disagree about a rule only one of them is checking.",
+    file: "packages/http/src/main.ts",
+    from: "        ...(cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, s)",
+    to: "        ...(false",
+    suite: "packages/http/src/grants-writes.test.ts",
+    expect: ["says which grant cannot be revoked"],
+  },
+  {
     id: "held-table-parser-stopped-matching",
     swept: true,
     defect:

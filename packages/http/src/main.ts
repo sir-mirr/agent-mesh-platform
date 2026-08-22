@@ -2783,11 +2783,27 @@ app.get('/api/v1/admin/grants', async (c) => {
   // matrix needs the columns as much as the cells, and reading them from a
   // response beats a copy of the list compiled into the front end — which is
   // how a capability added here would quietly never appear there.
+  //
+  // **And whether each cell can be turned off**, for the same reason. A screen
+  // that greys out a chip needs to know which one, and the two ways to work it
+  // out from the outside are both wrong: hard-coding an account name puts a
+  // deployment's admin in the bundle, and reading `role = 'admin'` from
+  // `/api/v1/admin/users` asks for `user.admit`, which the operator looking at
+  // this screen need not hold. So the server answers it, from the same function
+  // the `DELETE` refuses with — the chip is disabled exactly where the revoke
+  // would be refused, rather than by a second copy of the rule that can drift.
+  const roleGrantHolders = grants.subjectsWith(agentsDb(), CAPABILITY.ROLE_GRANT)
   return c.json({
     ok: true,
     capabilities: ALL_CAPABILITIES,
     grants: ALL_CAPABILITIES.flatMap((cap) =>
-      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => ({ capability: cap, ...s })),
+      grants.subjectsWith(agentsDb(), cap as Capability).map((s) => ({
+        capability: cap,
+        ...s,
+        ...(cap === CAPABILITY.ROLE_GRANT && revokeStrandsTheTenant(roleGrantHolders, s)
+          ? { revocable: false, immutable_reason: 'last_grantor' }
+          : { revocable: true }),
+      })),
     ),
   })
 })
@@ -2812,6 +2828,32 @@ app.post('/api/v1/admin/grants', async (c) => {
   return c.json({ ok: true, subject, capability, scope: scope ?? SCOPE_TENANT }, 201)
 })
 
+/**
+ * Whether removing this grant leaves nobody able to grant anything.
+ *
+ * **`role.grant` is the one capability that can undo itself.** Revoke the last
+ * one and the tenant has no way back: granting requires holding it, so the
+ * person who could restore it is the person who no longer has it. Every other
+ * capability is recoverable by whoever still holds this one.
+ *
+ * Scope is the whole of the arithmetic. `requireCapability` widens a
+ * tenant-wide grant to any narrower scope and never the other way, so only a
+ * holder at `*` can use the grant routes at all — a subject left holding
+ * `role.grant` on one agent is not somebody who can put this back.
+ *
+ * A pure function over the rows, so the question can be asked without a
+ * database and the answer is the same one the route acts on.
+ */
+export function revokeStrandsTheTenant(
+  holders: ReadonlyArray<{ subject: string; scope: string }>,
+  removing: { subject: string; scope: string },
+): boolean {
+  const left = holders.filter(
+    (h) => !(h.subject === removing.subject && h.scope === removing.scope),
+  )
+  return !left.some((h) => h.scope === SCOPE_TENANT)
+}
+
 app.delete('/api/v1/admin/grants', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.ROLE_GRANT)
   if (typeof actor !== 'string') return actor
@@ -2821,6 +2863,28 @@ app.delete('/api/v1/admin/grants', async (c) => {
   const { subject, capability, scope } = body ?? {}
   if (typeof subject !== 'string' || typeof capability !== 'string') {
     return c.json({ ok: false, error: 'subject and capability are required' }, 400)
+  }
+
+  // **Refused before it happens, not repaired afterwards.** A restart re-seeds
+  // this from `role = 'admin'`, so the mesh is not lost — but the recovery is a
+  // restart, asked for by somebody who is looking at a 403 and has no way to
+  // tell that a restart is what they need. The screen makes the fixed admin's
+  // grants unchangeable; this is the same rule where it cannot be clicked past.
+  if (capability === CAPABILITY.ROLE_GRANT) {
+    const holders = grants.subjectsWith(agentsDb(), CAPABILITY.ROLE_GRANT)
+    if (revokeStrandsTheTenant(holders, { subject, scope: scope ?? SCOPE_TENANT })) {
+      log.warn(
+        `refused to revoke ${CAPABILITY.ROLE_GRANT} from ${subject}: nobody would be left who can grant`,
+        'grant_revoke_refused',
+        { actor, id: subject, capability, outcome: 'refused', reason: 'last_grantor' },
+      )
+      return c.json({
+        ok: false,
+        error: `${subject} is the only tenant-wide holder of ${CAPABILITY.ROLE_GRANT}; grant it to somebody else first`,
+        code: 'LAST_GRANTOR',
+        capability,
+      }, 409)
+    }
   }
 
   const removed = grants.revoke(agentsDb(), { subject, capability, scope })
