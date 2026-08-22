@@ -1200,7 +1200,7 @@ const MUTATIONS: Mutation[] = [
     id: "sw-source-syntax-error",
     defect:
       "The service worker source stopped parsing, so no browser would register it and the app quietly stopped being installable \u2014 nothing on the server notices, because it is a string.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/pwa/service-worker.js",
     from: "  e.waitUntil(\n    self.registration.showNotification(data.title, {",
     to: "  e.waitUntil((\n    self.registration.showNotification(data.title, {",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -1210,7 +1210,7 @@ const MUTATIONS: Mutation[] = [
     id: "sw-notification-opens-404",
     defect:
       "Tapping a notification navigated to a route this server does not answer.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/pwa/service-worker.js",
     from: "  const url = agent ? '/chat/' + encodeURIComponent(agent) : '/chat';",
     to: "  const url = agent ? '/chats/' + encodeURIComponent(agent) : '/chats';",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -1220,7 +1220,7 @@ const MUTATIONS: Mutation[] = [
     id: "sw-notification-icon-404",
     defect:
       "The notification asked for an icon file this server does not serve.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/pwa/service-worker.js",
     from: "      icon: '/icon-192.svg',",
     to: "      icon: '/icon-192.png',",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -1230,7 +1230,7 @@ const MUTATIONS: Mutation[] = [
     id: "sw-notification-tag-collapses",
     defect:
       "Every message shared one notification tag, so the second agent to write to you silently replaced the first.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/pwa/service-worker.js",
     from: "      tag: 'mesh-' + (data.data?.agent || 'default'),",
     to: "      tag: 'mesh-default',",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -1240,7 +1240,7 @@ const MUTATIONS: Mutation[] = [
     id: "sw-empty-push-throws",
     defect:
       "A push whose payload the browser dropped threw inside the handler, so the user was shown nothing at all.",
-    file: "packages/http/src/main.ts",
+    file: "packages/http/src/pwa/service-worker.js",
     from: "  const data = e.data ? e.data.json() : { title: 'Agent Mesh', body: 'New message' };",
     to: "  const data = e.data.json();",
     suite: "packages/http/src/main.in-process.test.ts",
@@ -1608,8 +1608,8 @@ const MUTATIONS: Mutation[] = [
     id: "sw-cache-version-pinned",
     defect:
       "The cache name stopped following the build, so `activate` never deleted the old cache and a new build served the old one.",
-    file: "packages/http/src/main.ts",
-    from: "const CACHE_VERSION = '${BUILD_VERSION}';",
+    file: "packages/http/src/pwa/service-worker.js",
+    from: "const CACHE_VERSION = '__BUILD_VERSION__';",
     to: "const CACHE_VERSION = 'v1';",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["names its cache after the version"],
@@ -5919,6 +5919,16 @@ const MUTATIONS: Mutation[] = [
     to: "        code: \"AUDIT_NOBODY_NAMED_THIS\",",
     suite: "test/versioning.test.ts",
     expect: ["every data.code the services emit has a name in contracts"],
+  },
+  {
+    id: "the-service-worker-ships-its-placeholder",
+    defect:
+      "The service worker went out with `__BUILD_VERSION__` still in it. It parses, it registers, and it caches under a name that never changes \u2014 so every deployment after the first serves the first one's assets, no screen looks wrong, and nothing anywhere says so.\n\nThe placeholder exists because this file stopped being a template literal: a hundred lines of browser JavaScript inside `main.ts` were checked by no compiler and counted as functions of a server file that could never call them.",
+    file: "packages/http/src/main.ts",
+    from: "    .replaceAll('__BUILD_VERSION__', version)",
+    to: "",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["the placeholder reached a browser, which would then cache under a name that never changes"],
   },
   {
     id: "the-replay-window-is-never-swept",

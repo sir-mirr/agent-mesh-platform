@@ -1326,6 +1326,23 @@ describe("what a reconnecting audit stream replays", () => {
 describe("the service worker's own source", () => {
   const source = async () => (await call("/sw.js")).text();
 
+  /**
+   * It is a file now, and a file has a placeholder where a template had an
+   * interpolation. A worker served with `__BUILD_VERSION__` still parses, still
+   * registers, and caches under a name that never changes — so every deployment
+   * after the first serves the first one's assets and no screen looks wrong.
+   */
+  test("is served with the build version substituted into it", async () => {
+    const sw = await source();
+    // The shape rather than the value: `BUILD_VERSION` is the boot's own
+    // timestamp, and a test that recomputed it would be asserting its own
+    // arithmetic. Fourteen digits is what that stamp is.
+    expect(
+      { placeholder: sw.includes("__BUILD_VERSION__"), stamped: /const CACHE_VERSION = '\d{14}';/.test(sw) },
+      "the placeholder reached a browser, which would then cache under a name that never changes",
+    ).toEqual({ placeholder: false, stamped: true });
+  });
+
   test("parses as JavaScript", async () => {
     const sw = await source();
     // `new Function` compiles without running: `self`, `caches` and `clients`

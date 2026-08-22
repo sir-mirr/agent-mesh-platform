@@ -4369,66 +4369,26 @@ app.get('/api/v1/attachments/:id', async (c) => {
 
 // --- PWA support ---
 
+/**
+ * The service worker, read from a file rather than held in a string.
+ *
+ * **It was a template literal, and that cost more than it looked.** A hundred
+ * lines of browser JavaScript inside `main.ts` are checked by nothing — no
+ * syntax pass, no formatter, no editor that knows what it is looking at — and
+ * every function in it counted as a function of this file that no test in this
+ * process could call, because in this process it is text. That was most of
+ * `main.ts`'s uncovered functions, and none of them were reachable.
+ *
+ * `__BUILD_VERSION__` is substituted here. A placeholder rather than `${...}`
+ * so the file on disk is JavaScript a tool can read.
+ */
+export function serviceWorkerSource(version: string = BUILD_VERSION): string {
+  return readFileSync(join(import.meta.dir, 'pwa', 'service-worker.js'), 'utf8')
+    .replaceAll('__BUILD_VERSION__', version)
+}
+
 app.get('/sw.js', (c) => {
-  const sw = `
-const CACHE_VERSION = '${BUILD_VERSION}';
-const CACHE_NAME = 'mesh-' + CACHE_VERSION;
-
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  // Network-first strategy — always get fresh content
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
-  );
-});
-
-self.addEventListener('push', (e) => {
-  const data = e.data ? e.data.json() : { title: 'Agent Mesh', body: 'New message' };
-  e.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/icon-192.svg',
-      badge: '/icon-192.svg',
-      tag: 'mesh-' + (data.data?.agent || 'default'),
-      renotify: true,
-      data: data.data || {},
-      vibrate: [200, 100, 200],
-    })
-  );
-});
-
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  const agent = e.notification.data?.agent || '';
-  const url = agent ? '/chat/' + encodeURIComponent(agent) : '/chat';
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (list) => {
-      // Try to reuse existing window — use postMessage instead of navigate()
-      // to avoid Chrome Android showing its "URL copy" notification
-      for (const c of list) {
-        try {
-          c.postMessage({ type: 'navigate', url });
-          return c.focus();
-        } catch {}
-      }
-      // No existing window — open new one
-      return clients.openWindow(url);
-    })
-  );
-});
-`
-  return new Response(sw, {
+  return new Response(serviceWorkerSource(), {
     headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' },
   })
 })
