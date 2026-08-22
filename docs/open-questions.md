@@ -242,6 +242,28 @@ vocabularies with one question between them; whether they go into contracts
 together, separately, or not at all is the PM's, since a tag moves three
 repositories.
 
+**Measured again once the console landed (2026-08-22, `863f23a`).** The trigger
+D-740 named — the front end teaching `ApiError` to keep `code` — still has not
+happened: `api/client.ts` reads `error`, `message`, `status` and `capability`
+off a refusal and drops `code`, so no console branches on one of the eleven.
+
+What the merge did add is a *third* string vocabulary this repository chooses
+and another one now depends on, and both arrive the same way `immutable_reason`
+did — as fields of a `200`, not as a refusal code:
+
+- `action`, on `DELETE /api/v1/admin/tenants/{id}`: the console types it as
+  `"deleted" | "already-deleted" | "not-found"`, which is this repository's
+  spelling of three outcomes.
+- the tenant id `"default"`: the screen disables the delete control by
+  comparing against it, because the server answers `409 DEFAULT_TENANT` and a
+  console that offers the button teaches an operator the platform is broken.
+  `DEFAULT_TENANT` — the code — is still not read; the *id* is.
+
+So the count of vocabularies crossing the boundary is three and the count of
+refusal codes anybody reads is nought, which is the same answer D-740 gave with
+more places for it to change. The material is written up for the PM rather than
+decided here.
+
 ## 9. What the audit console's search box means — ~~closed~~
 
 **Settled (D-743): a literal substring.** `search` was built as
