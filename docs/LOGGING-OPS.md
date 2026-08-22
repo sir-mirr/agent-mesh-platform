@@ -134,6 +134,23 @@ beside it — `push_failed` carries `reason: endpoint_gone` for the counter and
 | `wal_recovered` | `store` | a store was opened carrying a write-ahead log the last process did not fold |
 | `hub_disconnected` | `http` | the link to the hub went away; its rate is how often sends are answered with nothing |
 
+### What a boot changed by itself
+
+Two migrations run in `startup` and both are silent unless they did something.
+An operator who restarted onto a new build and found the console different
+greps these before anything else.
+
+| Event | Reading |
+|---|---|
+| `seed_admin_renamed` | the seeded administrator moved from `admin` to `platform-admin` (T-026). `moved` names the tables and row counts, so *what* moved is in the line rather than inferred |
+| `seed_admin_rename_refused` | it did not move: `blocked_by` names the table holding the new name already. The account keeps the old name and the server is up |
+| `seed_admin_rename_failed` | the rename threw. Same outcome for the operator — old name, server up — and `error` carries what the database said |
+| `registry_backfilled` | identities whose key an operator had approved before D-747 were admitted to this server's registry; `ids` names them |
+
+**Absence is the normal case.** These do not print a line saying nothing
+happened, because a line per boot saying nought is one an operator learns to
+skip, and the boot that says `1` is then the boot they skip.
+
 ---
 
 ## Correlation
