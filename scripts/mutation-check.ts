@@ -4302,8 +4302,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "`member_count || g.members?.length || 0` sends a group that really holds nobody down the same road as one the route said nothing about: `0` is falsy, so the real measurement falls through to the fallback. `??` keeps them apart, and `null` then draws as absent rather than as nought.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
-    from: "          memberCount: g.member_count ?? g.members?.length ?? null,",
-    to: "          memberCount: g.member_count || g.members?.length || 0,",
+    from: "          memberCount: g.member_count ?? null,",
+    to: "          memberCount: g.member_count ?? g.members?.length ?? 0,",
     suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
     expect: ["draws no member count rather than nought"],
   },

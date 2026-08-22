@@ -598,14 +598,30 @@ describe("a field the route did not send", () => {
     expect(row!.textContent).not.toContain("2026");
   });
 
+  /**
+   * **The member-count cell, not the row.** The row also holds a created-at and
+   * a description this fixture does not set, and both draw the same dash — so
+   * `row.textContent` contains it whatever this column did, and the check
+   * passed over `member_count || … || 0` for as long as it was written that
+   * way. Found by `scripts/mutation-check.ts`, which is the only reason anybody
+   * looked.
+   */
+  const memberCountCell = (): HTMLElement => {
+    const row = [...tableEl().querySelectorAll("tbody tr")]
+      .find((tr) => (tr.textContent ?? "").includes("ops"));
+    expect(row).toBeDefined();
+    const headers = [...tableEl().querySelectorAll("thead th")].map((th) => th.textContent ?? "");
+    const column = headers.findIndex((h) => h.includes(DICTIONARY.en["groups.col.agents"]!));
+    expect(column, "the member-count column is no longer in the header").toBeGreaterThanOrEqual(0);
+    return [...row!.querySelectorAll("td")][column] as HTMLElement;
+  };
+
   it("draws no member count rather than nought", async () => {
     // `member_count: null` means the route did not report one. Nought is a
     // measurement, and this column made it out of an absence.
     readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: null }] });
     await mount();
-    const row = [...tableEl().querySelectorAll("tbody tr")]
-      .find((tr) => (tr.textContent ?? "").includes("ops"));
-    expect(row!.textContent).toContain(ABSENT);
+    expect(memberCountCell().textContent).toContain(ABSENT);
   });
 
   it("still draws a real zero as a zero", async () => {
@@ -615,9 +631,7 @@ describe("a field the route did not send", () => {
     // mapping by the same road.
     readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: 0, members: [] }] });
     await mount();
-    const row = [...tableEl().querySelectorAll("tbody tr")]
-      .find((tr) => (tr.textContent ?? "").includes("ops"));
-    expect(row!.textContent).toContain("0");
+    expect(memberCountCell().textContent).toContain("0");
   });
 });
 

@@ -59,7 +59,15 @@ export function GroupsPage() {
           // **`??`, not `||`.** A group with a real zero answered `member_count: 0`
           // and fell through to the next fallback anyway, so *unknown* and
           // *nobody* took the same road out of here.
-          memberCount: g.member_count ?? g.members?.length ?? null,
+          //
+          // **And no `g.members?.length` behind it.** `api/groups.ts` already
+          // counts the members when the route sent them, and defaults `members`
+          // to `[]` when it did not — so that fallback read an empty array the
+          // API layer had invented and turned *unknown* back into nought, one
+          // line under the comment saying it must not. Caught by
+          // `scripts/mutation-check.ts`: the test below asserted on the whole
+          // row, which holds a dash from another column whatever this one does.
+          memberCount: g.member_count ?? null,
           members: g.members || [],
           // **A date nobody sent is not a date.** This filled it with a fixed
           // timestamp, and a plausible one: a name can be doubted on sight and
