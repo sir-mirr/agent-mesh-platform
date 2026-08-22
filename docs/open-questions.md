@@ -193,7 +193,7 @@ behaviour from before the merge — which is a drift a scenario is *supposed* to
 catch, reported as a hundred failures because one of them took the browser with
 it.
 
-## 8. Where the http admin surface's refusal codes are named
+## 8. Where the http admin surface's refusal codes are named — ~~closed~~
 
 Eleven codes leave this repository in REST bodies and are named nowhere in
 `agent-mesh-contracts`:
@@ -280,6 +280,27 @@ So the count of vocabularies crossing the boundary is three and the count of
 refusal codes anybody reads is nought, which is the same answer D-740 gave with
 more places for it to change. The material is written up for the PM rather than
 decided here.
+
+**Settled (D-748, 2026-08-22): named, in `v0.30.0`.** The PM took the option
+that writes them down before anybody reads one, on the grounds this section
+kept arriving at: the cost of a vocabulary named in two places is not paid when
+it is written, it is paid the day the two spellings disagree, and by then both
+repositories are shipping.
+
+So `HTTP_ADMIN_ERROR` is in `agent-mesh-contracts` `v0.30.0` with all eleven
+codes and the status each is answered with, and `IMMUTABLE_REASON` is beside it
+holding `last_grantor` and `protected_account` — deliberately *not* in the same
+constant, because a reason a `200` gives for an account it will not remove is
+not a refusal code, and the contracts tests keep the two apart. The third
+vocabulary above, `action` on the tenant delete, is not in the tag: it is a
+field of a `200` whose three values the console already types, and nothing has
+disagreed about it.
+
+D-740's promotion condition is left standing rather than deleted. It asked when
+a *code* becomes something a second repository reads, and the answer is still
+nought — the console drops `code`. What changed is that naming them stopped
+being contingent on that.
+
 
 ## 9. What the audit console's search box means — ~~closed~~
 
