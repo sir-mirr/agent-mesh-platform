@@ -7560,6 +7560,20 @@ const MUTATIONS: Mutation[] = [
     expect: ["every anchor is still in the file it names"],
   },
   {
+    id: "manifest-starts-calling-routes",
+    swept: true,
+    defect:
+      "This file was left out of `dropped-fields.test.ts`'s caller scan because every route path in it is a quotation — the real call is scanned in the file the anchor names. That is sound only while the manifest never makes a request of its own; the day it does, its calls are the ones nothing checks, and the scan goes on reporting that every caller was covered.",
+    file: "scripts/mutation-check.ts",
+    from: 'import { holdTree } from "./tree-lock";',
+    to: 'import { holdTree } from "./tree-lock";\nvoid fetch("http://127.0.0.1:1/api/v1/messages", { method: "POST", body: JSON.stringify({ ok: true }) });',
+    suite: "test/dropped-fields.test.ts",
+    expect: [
+      "the file left out of the scan does not call a route itself",
+      "the mutation manifest makes requests now",
+    ],
+  },
+  {
     id: "held-table-file-moved",
     swept: true,
     defect:

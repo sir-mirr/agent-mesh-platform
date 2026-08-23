@@ -331,11 +331,42 @@ function sourcesUnder(dir: string, out: Array<{ file: string; text: string }> = 
 }
 
 const ROUTES = routesFrom(readFileSync(SERVER, "utf8"));
+/**
+ * **The mutation manifest is not a caller.** Every string in it is a quotation
+ * of code that lives in another file — `scripts/mutation-check.ts --anchors`
+ * refuses any entry whose `from` is not found in the file it names — so the
+ * real call is scanned where it actually is, and the quotation here is a second
+ * copy with no route behind it. Its `to` halves are worse: mutants, code that
+ * exists nowhere, read here as a caller sending a field.
+ *
+ * It arrived as two rows naming `POST /api/v1/messages` and
+ * `POST /api/v1/admin/groups` the day a logout anchor grew long enough to reach
+ * a `{ ok: true }`, which is a fact about where a `from` string happened to
+ * stop rather than about anything this repository sends.
+ */
+const QUOTES_SOURCE = join("scripts", "mutation-check.ts");
+
 const SOURCES = ["test", join("packages", "platform-web", "src"), "scripts", join("packages", "http", "src")]
-  .flatMap((d) => sourcesUnder(join(ROOT, d)));
+  .flatMap((d) => sourcesUnder(join(ROOT, d)))
+  .filter(({ file }) => file !== QUOTES_SOURCE);
 const SENT = bodiesIn(SOURCES, ROUTES);
 
 describe("a request body field the route never reads", () => {
+  /**
+   * The skip above is only sound while the manifest stays a manifest. It runs
+   * `bun test` against a mutated tree and reads exit codes; the day it starts
+   * calling a route itself, its calls stop being scanned and this file goes on
+   * saying every caller was checked.
+   */
+  test("the file left out of the scan does not call a route itself", () => {
+    const manifest = readFileSync(join(ROOT, QUOTES_SOURCE), "utf8");
+
+    expect(
+      manifest.match(/\bfetch\s*\(/g) ?? [],
+      "the mutation manifest makes requests now, so leaving it out of the scan leaves those requests unchecked",
+    ).toEqual([]);
+  });
+
   test("no caller sends one, and no caller writes to a verb this server does not answer", () => {
     const wrong = SENT.flatMap(({ verb, path, file, keys, route }) => {
       if (!route) {
