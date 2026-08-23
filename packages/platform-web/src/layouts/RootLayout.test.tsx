@@ -27,7 +27,7 @@ registerDom();
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
-const { I18nProvider } = await import("@/contexts/I18nContext.tsx");
+const { DICTIONARY, I18nProvider } = await import("@/contexts/I18nContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { RootLayout } = await import("./RootLayout.tsx");
 
@@ -214,7 +214,14 @@ describe("RootLayout", () => {
     expect(c.querySelector("aside")).not.toBe(null);
     expect(whoAmI(c)).toContain("sohee");
     expect(localStorage.getItem("agent_mesh_user")).not.toBe(null);
-    expect(screen.getByTestId("logout-error").textContent).toMatch(/로그아웃|sign out/i);
+    // **The dictionary's own sentence, not a copy of it.** Typing the Korean
+    // here made this file the one place a screen's copy lives outside
+    // `I18nContext` — which is exactly what `SC-I18N-04` counts, and it counted
+    // this. Reading the entry also means a reworded message keeps this test
+    // honest instead of quietly passing on a substring.
+    const failed = [DICTIONARY.ko["auth.logoutFailed"], DICTIONARY.en["auth.logoutFailed"]];
+    expect(failed.every((sentence) => typeof sentence === "string" && sentence.length > 0)).toBe(true);
+    expect(failed).toContain(screen.getByTestId("logout-error").textContent);
   });
 
   it("does not leave before the cookie-expiry response and blocks a second POST while waiting", async () => {

@@ -754,6 +754,27 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
       );
+    // **The carried-fallback rule, in both directions.** It decides which
+    // Korean is the dictionary being used and which is a screen holding copy,
+    // and it is a regex over layout: the trailing comma a formatter adds to a
+    // wrapped call used to put a correct `t("key", "…")` on the offender list.
+    // A rule that answered "carried" to everything would also make this file
+    // green, so both answers are checked on text written for the purpose.
+    const WRAPPED = 'const a = (\n  <p>{t(\n    "auth.logoutFailed",\n    "로그아웃하지 못했습니다.",\n  )}</p>\n);\n';
+    const WRITTEN_IN = "const b = <p>로그아웃하지 못했습니다.</p>;\n";
+    const carriedLines = (source: string): number =>
+      stripComments(source)
+        .replace(
+          /t\(\s*"[^"]+"\s*,\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)\s*,?\s*\)/g,
+          "t()",
+        )
+        .split("\n")
+        .filter((line) => KOREAN.test(line)).length;
+    expect(
+      { wrapped: carriedLines(WRAPPED), writtenIn: carriedLines(WRITTEN_IN) },
+      "the carried-fallback rule reads a wrapped `t(key, fallback)` as copy, or reads copy as carried",
+    ).toEqual({ wrapped: 0, writtenIn: 1 });
+
     const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f) && !f.includes("I18nContext"));
 
     const offendersIn = (file: string, withJsx: boolean): string[] => {
@@ -774,8 +795,16 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
         // this looked for `>…<` per line and a two-line `<strong>` heading
         // walked straight through it. So: delete what the dictionary carries,
         // and nothing Korean may remain anywhere in the file.
+        // **The trailing comma is not a defect.** A call wrapped across lines
+        // gets one from every formatter — `t(\n  "auth.logoutFailed",\n  "…",\n)`
+        // — and without `,?` here that fallback stops being recognised as
+        // carried, so the dictionary being used correctly is reported as Korean
+        // written into a screen. It happened on the merge train for D-750: two
+        // files, both calling a key that exists in `ko` and `en`, both wrapped.
+        // The fix that suggests itself — delete the fallback argument — would
+        // have removed the safety net to satisfy a scanner's idea of layout.
         const carried = text.replace(
-          /t\(\s*"[^"]+"\s*,\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)\s*\)/g,
+          /t\(\s*"[^"]+"\s*,\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)\s*,?\s*\)/g,
           "t()",
         );
         carried.split("\n").forEach((line, i) => {
