@@ -2272,6 +2272,183 @@ describe("keeping a stream open", () => {
 });
 
 /**
+ * What the hub's limits route answers, and the two ways it answers nothing.
+ *
+ * **Which of the three a coverage run saw depended on the machine.** With a hub
+ * listening on this host the fetch resolves and the `catch` never runs; on a
+ * runner with nothing there it always does. Measured on both, with an actual
+ * hub on `3100` here. A branch decided by what else is running is not a covered
+ * branch, so the fetcher is a parameter and the three answers are three cases.
+ */
+describe("asking the hub for its limits", () => {
+  const answering = (status: number, body: unknown) =>
+    () => Promise.resolve(new Response(JSON.stringify(body), { status }));
+
+  test("reads the body when the hub answers", async () => {
+    expect(await mod.hubLimits(answering(200, { counting_since: "2026-01-01" }), "http://hub.invalid/limits"))
+      .toEqual({ counting_since: "2026-01-01" });
+  });
+
+  test("answers nothing when the hub refuses, rather than a shape it did not send", async () => {
+    expect(
+      await mod.hubLimits(answering(503, { error: "unavailable" }), "http://hub.invalid/limits"),
+      "a refusal was read as limits, so a screen draws the hub's error object as counts",
+    ).toBeNull();
+  });
+
+  test("and nothing when the hub is not there at all", async () => {
+    const refused = () => Promise.reject(new Error("connection refused"));
+
+    expect(
+      await mod.hubLimits(refused, "http://hub.invalid/limits"),
+      "an unreachable hub threw out of the route, so the whole panel answers 500 instead of saying it does not know",
+    ).toBeNull();
+  });
+});
+
+/**
+ * The reader `main.ts` hands its env file.
+ *
+ * One line, and no suite could watch it: on a machine with an env file it runs
+ * at import before anything can look, and on a machine without one it never
+ * runs. Both leave it uninstrumented, which is why it is a binding now.
+ */
+describe("reading an env file", () => {
+  test("returns what is in the file, and throws when there is none", () => {
+    const path = join(STATE, "env-probe.env");
+    writeFileSync(path, "PROBE=1\n");
+
+    expect(mod.readEnvFile(path)).toBe("PROBE=1\n");
+    // The throw is the half `loadEnvFile` is built on: an absent file is not an
+    // error there, and it can only decide that if this one says so.
+    expect(() => mod.readEnvFile(join(STATE, "no-such-file.env"))).toThrow();
+  });
+});
+
+/**
+ * The two streams whose keepalive frame never changes.
+ *
+ * The audit stream writes a comment frame and the ai-usage stream a named
+ * `ping`, and both used to build that frame inside an arrow handed to
+ * `startStreamKeepalive`. The arrow is the part nothing ran: reaching it means
+ * waiting out a twenty- or thirty-second timer through a live SSE connection.
+ * `startFrameKeepalive` takes the frame instead, so the writing happens in one
+ * place that a test can wind.
+ */
+describe("keeping a stream open with a fixed frame", () => {
+  const written = () => {
+    const chunks: string[] = [];
+    const decoder = new TextDecoder();
+    return {
+      chunks,
+      controller: { enqueue: (chunk: Uint8Array) => { chunks.push(decoder.decode(chunk)); } },
+    };
+  };
+
+  test("writes the frame it was given, on every tick", () => {
+    const t = timers();
+    const w = written();
+
+    mod.startFrameKeepalive(w.controller, ":keepalive\n\n", 30_000, t.set, t.clear);
+    t.fire();
+    t.fire();
+
+    expect({ chunks: w.chunks, asked: t.asked }).toEqual({
+      chunks: [":keepalive\n\n", ":keepalive\n\n"],
+      asked: [30_000],
+    });
+  });
+
+  test("and stops itself when the stream it writes to has closed", () => {
+    const t = timers();
+    let calls = 0;
+    const closed = {
+      enqueue: () => {
+        calls += 1;
+        throw new Error("the stream is closed");
+      },
+    };
+
+    mod.startFrameKeepalive(closed, "event: ping\ndata: {}\n\n", 20_000, t.set, t.clear);
+    t.fire();
+    t.fire();
+
+    expect(
+      { calls, still_running: t.running.size },
+      "a keepalive that writes to a closed stream keeps its timer for the life of the process",
+    ).toEqual({ calls: 1, still_running: 0 });
+  });
+});
+
+/**
+ * The stream one console holds open for one agent.
+ *
+ * Three things happen here that a request cannot show: the client is put in the
+ * registry the hub pushes through, a ping goes out every thirty seconds, and an
+ * abort takes both back. The suite reached the first through the route and
+ * neither of the others — the ping was one of the six functions in `main.ts`
+ * that no instrument had ever seen.
+ */
+describe("the agent event stream", () => {
+  function open() {
+    const t = timers();
+    const added: string[] = [];
+    const removed: string[] = [];
+    const aborter = new AbortController();
+    const stream = mod.agentEventStream(
+      "sse-agent",
+      "sse-user",
+      aborter.signal,
+      (agentId, login) => { added.push(`${agentId}/${login}`); },
+      (agentId, login) => { removed.push(`${agentId}/${login}`); },
+      () => 1_700_000_000_000,
+      t.set,
+      t.clear,
+    );
+    return { t, added, removed, aborter, reader: stream.getReader() };
+  }
+
+  async function drain(reader: ReadableStreamDefaultReader<Uint8Array>, n: number) {
+    const decoder = new TextDecoder();
+    const out: string[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const { value } = await reader.read();
+      if (value) out.push(decoder.decode(value));
+    }
+    return out;
+  }
+
+  test("opens by naming the agent and registering the client", async () => {
+    const { added, reader } = open();
+
+    expect(await drain(reader, 1)).toEqual([`event: connected\ndata: {"agent":"sse-agent"}\n\n`]);
+    expect(added, "a stream nobody registered receives nothing the hub pushes").toEqual(["sse-agent/sse-user"]);
+  });
+
+  test("pings on the tick, carrying the time it was sent", async () => {
+    const { t, reader } = open();
+    await drain(reader, 1);
+
+    expect(t.asked).toEqual([30_000]);
+    t.fire();
+
+    expect(await drain(reader, 1)).toEqual([`event: ping\ndata: {"ts":1700000000000}\n\n`]);
+  });
+
+  test("an abort takes the client out of the registry and the timer with it", async () => {
+    const { t, removed, aborter, reader } = open();
+    await drain(reader, 1);
+
+    aborter.abort();
+
+    expect(
+      { removed, still_running: t.running.size },
+      "a console that closed its tab is still registered, and still being pinged",
+    ).toEqual({ removed: ["sse-agent/sse-user"], still_running: 0 });
+  });
+});
+
+/**
  * The key-proposal stream, and the two ways it ends.
  *
  * Both endings are a reader that has gone away: one found by a proposal

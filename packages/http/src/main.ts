@@ -17,7 +17,15 @@ import { loadEnvFile } from './env-file'
 // Runs here rather than in `env-file.ts` itself: a module that reads the
 // filesystem on import cannot be imported by a test that wants to ask it a
 // question first.
-loadEnvFile(process.env, (path) => readFs(path, 'utf8'))
+//
+// **Named rather than written inline**, because an arrow passed here is a
+// function whose only caller is an env file existing at import — on a machine
+// that has one it runs before any test can watch, and on a machine that does
+// not it never runs at all. Neither is a state a suite can arrange, and both
+// leave the reader uninstrumented. As a binding it can simply be called.
+export const readEnvFile = (path: string): string => readFs(path, 'utf8')
+
+loadEnvFile(process.env, readEnvFile)
 
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -30,7 +38,7 @@ import {
 import { join } from 'path'
 import { Database } from 'bun:sqlite'
 import { openStore, teardown, agentsSchema, grants, groups as groupsStore, keys, ownership, tenants as tenantsStore, verify, type MessageRow } from '@agent-mesh/store'
-import { shapeMetrics } from './behaviour-metrics.ts'
+import { shapeMetrics, type HubLimits } from './behaviour-metrics.ts'
 import {
   CAPABILITY,
   IDENTITY_RE,
@@ -138,12 +146,21 @@ let hubConnected = false
  * otherwise the hub drops the claims and every message sent on their behalf is
  * refused. Done on connect rather than at startup because the hub is provably
  * reachable at this instant.
+ *
+ * **`dial` is a parameter for the `catch` below.** The constructor refusing —
+ * a URL that is not one — is the one path in here that no test could reach:
+ * `HUB_URL` is read from the environment at import, so a suite that wants a
+ * refused dial would have to re-import the module with a broken one. The redial
+ * it schedules keeps the same dialler, which is also the correct behaviour: a
+ * reconnect that silently fell back to the global constructor would dial
+ * somewhere the caller never asked for.
  */
 export function connectToHub(
   schedule: (fn: () => void, ms: number) => unknown = setTimeout,
+  dial: (url: string) => WebSocket = (url) => new WebSocket(url),
 ): void {
   try {
-    hubWs = new WebSocket(HUB_URL)
+    hubWs = dial(HUB_URL)
     hubWs.onopen = async () => {
       hubConnected = true
       log.info(`connected to the hub at ${HUB_URL}`, 'hub_connected', { url: HUB_URL })
@@ -276,7 +293,7 @@ export function connectToHub(
         reason: 'socket_closed',
         retry_in_ms: HUB_RECONNECT_MS,
       })
-      schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)
+      schedule(() => connectToHub(schedule, dial), HUB_RECONNECT_MS)
     }
     hubWs.onerror = () => { hubConnected = false }
   } catch (err) {
@@ -290,7 +307,7 @@ export function connectToHub(
       reason: 'dial_threw',
       detail: err instanceof Error ? err.message : String(err),
     })
-    schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)
+    schedule(() => connectToHub(schedule, dial), HUB_RECONNECT_MS)
   }
 }
 
@@ -539,6 +556,30 @@ export function startStreamKeepalive(
     }
   }, everyMs)
   return () => clearTimer(timer)
+}
+
+/**
+ * The same keepalive, for a stream whose frame never changes.
+ *
+ * **The frame is bytes, not a callback.** Two streams wrote
+ * `startStreamKeepalive(() => controller.enqueue(encoder.encode(FRAME)), ms)`,
+ * and that arrow is a function nothing runs until a timer twenty seconds away
+ * fires — so it was two of the six functions in this file that no instrument
+ * had ever seen. Passing the frame instead moves the only arrow in the
+ * arrangement here, where a test hands in its own clock and winds it.
+ *
+ * A stream whose frame carries a timestamp cannot use this, and should not: a
+ * constant `ts` is a worse answer than an uncovered line.
+ */
+export function startFrameKeepalive(
+  controller: { enqueue: (chunk: Uint8Array) => void },
+  frame: string,
+  everyMs: number,
+  setTimer: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+  clearTimer: (timer: ReturnType<typeof setInterval>) => void = clearInterval,
+): () => void {
+  const bytes = new TextEncoder().encode(frame)
+  return startStreamKeepalive(() => controller.enqueue(bytes), everyMs, setTimer, clearTimer)
 }
 
 /**
@@ -1980,6 +2021,53 @@ app.get('/api/v1/messages/search', async (c) => {
 
 // --- SSE Event Stream ---
 
+/**
+ * The stream a console holds open for one agent (SPEC § 9.1).
+ *
+ * **A parameter list rather than a request**, for the reason `keyProposalStream`
+ * has one: what happens here is a registration, a thirty-second timer and an
+ * abort, and a request is none of those. The ping that timer writes was one of
+ * the six functions in this file no instrument had ever seen — reaching it
+ * through the route means holding a live SSE connection open for half a minute,
+ * which no suite does and none should.
+ *
+ * `now` is a parameter too, so the ping's `ts` can be asserted rather than
+ * matched loosely. Everything else keeps its production default, so the route
+ * below passes nothing and is the code it was.
+ */
+export function agentEventStream(
+  agentId: string,
+  userLogin: string,
+  signal: AbortSignal,
+  add: (agentId: string, userLogin: string, controller: ReadableStreamDefaultController) => void = addSSEClient,
+  remove: (agentId: string, userLogin: string, controller: ReadableStreamDefaultController) => void = removeSSEClient,
+  now: () => number = Date.now,
+  setTimer: (fn: () => void, ms: number) => ReturnType<typeof setInterval> = setInterval,
+  clearTimer: (timer: ReturnType<typeof setInterval>) => void = clearInterval,
+): ReadableStream {
+  const encoder = new TextEncoder()
+
+  return new ReadableStream({
+    start(controller) {
+      const send = (event: string, data: unknown) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+      }
+
+      send('connected', { agent: agentId })
+      add(agentId, userLogin, controller)
+
+      // Keep the connection alive through anything that would close it idle.
+      const stopHeartbeat = startStreamKeepalive(() => send('ping', { ts: now() }), 30000, setTimer, clearTimer)
+
+      signal.addEventListener('abort', () => {
+        remove(agentId, userLogin, controller)
+        stopHeartbeat()
+      })
+    },
+  })
+}
+
+
 app.get('/api/v1/events/:agentId', async (c) => {
   // **The session cookie, not a query parameter.**
   //
@@ -2002,30 +2090,7 @@ app.get('/api/v1/events/:agentId', async (c) => {
   const agentId = c.req.param('agentId')
   const userLogin = payload.github_login
 
-  const stream = new ReadableStream({
-    start(controller) {
-      const encoder = new TextEncoder()
-
-      function send(event: string, data: unknown) {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-      }
-
-      // Send initial heartbeat
-      send('connected', { agent: agentId })
-
-      // Register this SSE client for hub-driven push
-      addSSEClient(agentId, userLogin, controller)
-
-      // Keep the connection alive through anything that would close it idle.
-      const stopHeartbeat = startStreamKeepalive(() => send('ping', { ts: Date.now() }), 30000)
-
-      // Cleanup on close
-      c.req.raw.signal.addEventListener('abort', () => {
-        removeSSEClient(agentId, userLogin, controller)
-        stopHeartbeat()
-      })
-    }
-  })
+  const stream = agentEventStream(agentId, userLogin, c.req.raw.signal)
 
   return new Response(stream, {
     headers: {
@@ -4017,10 +4082,7 @@ app.get('/api/v1/admin/chat-audits/stream', async (c) => {
       }
 
       // A comment frame, so a proxy counting bytes does not call this idle.
-      stopKeepalive = startStreamKeepalive(
-        () => controller.enqueue(encoder.encode(`:keepalive\n\n`)),
-        30000,
-      )
+      stopKeepalive = startFrameKeepalive(controller, `:keepalive\n\n`, 30000)
     },
     cancel() {
       stopKeepalive?.()
@@ -4126,13 +4188,34 @@ app.post('/api/v1/ingest/ai-usage', async (c) => {
  * `0` when everything is well, so a zero produced by a source that could not be
  * reached is the one wrong number an operator has no reason to question.
  */
+/**
+ * What the hub says about its own limits, or nothing.
+ *
+ * **Three answers and one of them was unreachable here.** The hub answering,
+ * the hub refusing, and the hub not being there are three different numbers on
+ * an operator's screen — and which of the three a coverage run sees depends on
+ * whether a hub happens to be listening on this machine. Measured: with one up
+ * on `3100`, the `catch` never runs; on a runner with nothing there, it always
+ * does. A branch whose coverage is decided by what else is running is not
+ * covered, it is coincidental.
+ *
+ * So the fetcher is a parameter and the three answers are three cases.
+ */
+export function hubLimits(
+  fetcher: (url: string, init: { signal: AbortSignal }) => Promise<Response> = fetch,
+  url: string = `${HUB_HTTP_URL}/api/v1/limits`,
+  timeoutMs = 2000,
+): Promise<HubLimits | null> {
+  return fetcher(url, { signal: AbortSignal.timeout(timeoutMs) })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+}
+
 app.get('/api/v1/admin/telemetry/behaviour', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.USAGE_READ)
   if (typeof actor !== 'string') return actor
 
-  const limits = await fetch(`${HUB_HTTP_URL}/api/v1/limits`, { signal: AbortSignal.timeout(2000) })
-    .then((r) => (r.ok ? r.json() : null))
-    .catch(() => null)
+  const limits = await hubLimits()
 
   const read = readBehaviour({
     pendingKeys: listPendingKeys,
@@ -4180,10 +4263,7 @@ app.get('/api/v1/admin/ai-usage/stream', async (c) => {
       }
 
       // A named `ping`, which this stream's clients read as one.
-      stopHeartbeat = startStreamKeepalive(
-        () => controller.enqueue(encoder.encode(`event: ping\ndata: {}\n\n`)),
-        20000,
-      )
+      stopHeartbeat = startFrameKeepalive(controller, `event: ping\ndata: {}\n\n`, 20000)
     },
     cancel() {
       stopHeartbeat?.()

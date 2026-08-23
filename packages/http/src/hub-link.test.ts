@@ -661,6 +661,42 @@ describe("when the hub goes away", () => {
     };
   }
 
+  /**
+   * **The dial that never opened.** `hub_disconnected` had a link and lost it;
+   * this one never had it, and only the second is fixed by editing config. The
+   * constructor refusing is what a `HUB_URL` that is not a URL does — read from
+   * the environment at import, so the only way into this `catch` is to hand the
+   * function a dialler that refuses.
+   */
+  test("a dial that will not open is said out loud, and asks to be dialled again", () => {
+    const clock = recordingClock();
+    const { lines, restore } = captureConsole();
+    try {
+      connectToHub(clock.schedule, () => { throw new Error("`ws://` is missing"); });
+    } finally {
+      restore();
+    }
+
+    const failed = events(lines).find((e) => e.event === "hub_dial_failed");
+    expect(failed, "a hub that was never reached said nothing about it").toBeDefined();
+    expect({ level: failed.level, reason: failed.reason }).toEqual({ level: "warn", reason: "dial_threw" });
+    expect(clock.due.map((d: { ms: number }) => d.ms)).toEqual([HUB_RECONNECT_MS]);
+
+    // **The retry keeps the dialler it was given.** Firing it asks again on
+    // the same clock; a redial that fell back to the global constructor would
+    // not throw here at all, and `due` would be empty instead.
+    const quiet = captureConsole();
+    try {
+      clock.fire();
+    } finally {
+      quiet.restore();
+    }
+    expect(
+      clock.due.map((d: { ms: number }) => d.ms),
+      "the redial dropped the dialler it was given, so it went somewhere nobody asked for",
+    ).toEqual([HUB_RECONNECT_MS]);
+  });
+
   test("says the link is gone, and asks to be dialled again", async () => {
     hubAccepts();
     const ws = standInSocket();

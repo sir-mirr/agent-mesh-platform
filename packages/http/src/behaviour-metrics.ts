@@ -57,7 +57,7 @@ export interface BehaviourMetrics {
 const unread = (why: string): Metric => ({ value: null, unavailable: why });
 
 /** What the hub's `/api/v1/limits` answers, as much of it as is read here. */
-interface HubLimits {
+export interface HubLimits {
   counting_since?: string;
   limiters?: Array<{ refusals?: number }>;
   refusals?: Array<{ kind: string; count: number }>;
