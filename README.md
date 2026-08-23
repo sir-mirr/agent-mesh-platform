@@ -265,25 +265,29 @@ Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 
 ## Add a lane
 
-Lane components — runtime-adapters and channel-drivers — are built and deployed
-from [`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client).
-This one provides the baseline they attach to, the contract they implement
-(`SPEC.md` §§ 4–6), and the package they consume, `@agent-mesh/contracts`.
+Lane components — runtime-adapters and channel-drivers — live in
+[`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client),
+which is installed once on the host that will run the agent; a lane is then
+configured rather than deployed. This repository provides the baseline those
+lanes attach to, the contract they implement (`SPEC.md` §§ 4–6), and the
+package they consume, `@agent-mesh/contracts`.
 
 What a lane needs from here:
 
 1. **An identity, provisioned on the hub.** `POST /api/v1/agents` on the hub
    listener (`:3100`) is the only sanctioned path — see `SPEC.md` § 10.1.
-   Cross-VM deployments already worked this way.
+   Nothing writes into `hub.db` from outside the hub, whichever machine the
+   lane is on.
 2. **A public key, approved by an operator.** From 0.2 a lane signs every
    request; the key is submitted with the identity and is unusable until
    approved. `SPEC.md` § 10.2, and `docs/decisions/identity-and-authentication.md`
    for why.
-3. **The hub URL.** `ws://<core-vm>:3100/ws`. Peers are discovered through
-   `mesh.list_agents`; nothing else is hard-coded.
+3. **The hub URL.** `ws://<host>:3100/ws` — `localhost` when the mesh and the
+   lane share a machine, the core VM's address in the cross-VM profile. Peers
+   are discovered through `mesh.list_agents`; nothing else is hard-coded.
 
 ```bash
-curl -X POST "http://<core-vm>:3100/api/v1/agents" \
+curl -X POST "http://<host>:3100/api/v1/agents" \
      -H 'content-type: application/json' \
      -d '{ "identity": "my-lane-1", "type": "ai-codex",
            "description": "Production lane 1",

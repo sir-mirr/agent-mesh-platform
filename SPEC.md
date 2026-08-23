@@ -392,6 +392,14 @@ that implementation's own suite**, because it is a statement about a host this
 repository does not run on: a lane whose socket path or port is shared with
 another lane's is a defect neither side can see from the hub.
 
+`agent-mesh-client` checks it in `test/paths.test.ts` — six lane ids yielding
+six distinct socket names, and the lane, app-server and control sockets
+distinct from each other, since all three share a directory (`8f6f7ae`). Worth
+knowing when reading that: **the check did not exist until this clause asked
+for one.** What stood there tested that a lane id maps stably to a name and
+that the name has the right shape, which an implementation returning a
+constant also satisfies.
+
 ### 4.4. Instance data layout
 
 Per-lane data MUST live outside the code repository:
@@ -464,11 +472,20 @@ satisfy.
 
 A runtime-adapter implementation MUST:
 
-1. **Hub registration** — **the lane** MUST hold exactly one hub connection:
-   a JSON-RPC 2.0 WS client that calls `mesh.connect` with
+1. **Hub registration** — **a lane MUST NOT hold more than one hub
+   connection**, and holds exactly one while it is attached to a mesh: a
+   JSON-RPC 2.0 WS client that calls `mesh.connect` with
    `identity = <lane>` (the legacy `mesh.register` alias of § 8.1a is
    accepted but DEPRECATED — new implementations MUST emit `mesh.connect`).
    It MAY pass `proxy_for[]` to claim ownership of derivative identities.
+
+   **A lane with no hub configured holds none, and that is not a violation.**
+   It can exist, answer its channels and fill its outbox before an operator
+   has given it a mesh to join — `agent-mesh-client` creates the connection
+   only once a hub is configured, and keys them by lane, so a lane has at most
+   one. What the rule forbids is one lane speaking with two voices; a
+   quantifier that also forbade *none* would have made an ordinary onboarding
+   state a breach of contract.
 
    **Which component inside the lane opens it is a decomposition, not a
    contract.** This clause named the runtime-adapter, and
