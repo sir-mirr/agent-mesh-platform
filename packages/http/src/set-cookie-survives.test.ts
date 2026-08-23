@@ -263,3 +263,36 @@ describe("what this runtime does with a request cookie", () => {
     ).toBe("mesh_token=probe");
   });
 });
+
+/**
+ * What an in-process request *can* carry, on a runtime that strips the cookie.
+ *
+ * `extractJwt` reads `Authorization: Bearer …` before it looks at the cookie,
+ * so a suite that authenticates that way asks nothing of a forbidden header.
+ * These say whether that is true before forty files are rewritten to rely on
+ * it — and whether a tuple list or a clone smuggles a cookie past the guard,
+ * which would be the smaller change if it worked.
+ */
+describe("what an in-process request can carry instead", () => {
+  test("an Authorization header", () => {
+    const req = new Request("http://probe.invalid/", { headers: { authorization: "Bearer probe-token" } });
+
+    expect(
+      req.headers.get("authorization"),
+      "the session cannot travel as a bearer token either, so in-process routes cannot be authenticated at all here",
+    ).toBe("Bearer probe-token");
+  });
+
+  test("a cookie passed as a tuple list", () => {
+    const req = new Request("http://probe.invalid/", { headers: [["cookie", "mesh_token=probe"]] });
+
+    expect(req.headers.get("cookie")).toBe("mesh_token=probe");
+  });
+
+  test("a cookie carried through a clone", () => {
+    const first = new Request("http://probe.invalid/", { headers: new Headers({ cookie: "mesh_token=probe" }) });
+    const second = new Request(first);
+
+    expect(second.headers.get("cookie")).toBe("mesh_token=probe");
+  });
+});
