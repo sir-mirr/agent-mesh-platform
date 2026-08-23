@@ -26,6 +26,7 @@ import {
   insertMessage,
   listApprovedWebUserIds,
   listRegistryAgents,
+  searchMessages,
   SEED_ADMIN_USERNAME,
   seedLocalUsers,
   upsertApprovedWebUser,
@@ -298,5 +299,47 @@ describe("closeDb", () => {
     closeDb();
     expect(() => closeDb()).not.toThrow();
     expect(countRegistryAgents()).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * **`%` and `_` are characters somebody typed, not wildcards they meant.**
+ *
+ * `searchMessages` escapes both before the `LIKE`, and nothing had ever run
+ * that escape — the callback inside `replace` was the last uncovered function
+ * in this file, which is the same sentence as *nobody has ever searched for a
+ * percent sign*. The query is whatever a person typed into a box, so this is a
+ * branch the outside world makes rather than one a test has to invent.
+ *
+ * Without the escape, `100%` searches for *anything containing 100*, and `a_b`
+ * for *a, any character, b* — a search that quietly answers with more than it
+ * was asked for, which is the failure that does not look like one.
+ */
+describe("searching a conversation", () => {
+  test("treats % and _ in a query as characters rather than wildcards", () => {
+    const person = uniq("searcher");
+    const other = uniq("other");
+    const at = (n: number) => `2026-08-23 10:0${n}:00`;
+    for (const [i, content] of ["100% done", "1000 done", "a_b", "axb"].entries()) {
+      insertMessage({ id: uniq("m"), from: person, to: other, content, status: "sent", ts: at(i) });
+    }
+
+    expect(
+      {
+        percent: searchMessages("100%", person).map((m) => m.content),
+        underscore: searchMessages("a_b", person).map((m) => m.content),
+      },
+      "the query went to LIKE unescaped, so a search answered with rows nobody asked for",
+    ).toEqual({ percent: ["100% done"], underscore: ["a_b"] });
+  });
+
+  test("answers only the searcher's own messages", () => {
+    const person = uniq("searcher");
+    const other = uniq("other");
+    const stranger = uniq("stranger");
+    insertMessage({ id: uniq("m"), from: person, to: other, content: "shared word", status: "sent", ts: "2026-08-23 11:00:00" });
+    insertMessage({ id: uniq("m"), from: stranger, to: uniq("nobody"), content: "shared word", status: "sent", ts: "2026-08-23 11:01:00" });
+
+    expect(searchMessages("shared word", person).length).toBe(1);
   });
 });

@@ -99,11 +99,21 @@ beforeAll(async () => {
     // body says whether this route answered at all (a JSON `ok` versus a page),
     // and `getSetCookie` says whether the header was there and `get` could not
     // see it — which are different repairs and look identical from `""`.
+    // A second sign-in, asked the same way. If the header is there the second
+    // time, the first answer was shaped by whatever ran before this file
+    // rather than by this route.
+    const again = await app.fetch(new Request("http://in-process/auth/local", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ username: SEED_ADMIN, password: "admin" }).toString(),
+    }));
     throw new Error(
       `sign-in answered 200 without a session cookie: get=${JSON.stringify(setCookie)} ` +
       `getSetCookie=${JSON.stringify(login.headers.getSetCookie?.() ?? null)} ` +
+      `headers=${JSON.stringify([...login.headers.keys()])} ` +
       `content-type=${login.headers.get("content-type")} ` +
-      `body=${JSON.stringify((await login.clone().text()).slice(0, 200))}`,
+      `body=${JSON.stringify((await login.clone().text()).slice(0, 200))} ` +
+      `second=${again.status}/${JSON.stringify([...again.headers.keys()])}`,
     );
   }
 
