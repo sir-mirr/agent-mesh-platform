@@ -416,9 +416,22 @@ channels/<lane>/
 
 A lane MUST NOT read or write into another lane's directory.
 
-### 4.5. HTTP control plane (intra-lane)
+### 4.5. The intra-lane hop
 
-For lanes where driver and adapter are both in-tree (e.g. Codex lane),
+**A channel driver reaches its lane over an authenticated, host-local hop.**
+That is the requirement; the transport is the deployment's. Whatever carries
+it MUST NOT be reachable from off the host, and MUST NOT accept a caller the
+lane cannot attribute.
+
+Two transports satisfy it, matching § 4.2's two shapes:
+
+**A unix socket (daemon shape).** The socket is the authentication: it lives
+in a runtime directory the daemon creates with mode `0700` and owns, so the
+kernel refuses everyone else and there is no token to rotate, leak, or keep in
+sync. `agent-mesh-client` does this, one socket per lane.
+
+**HTTP with a bearer token (unit-per-lane shape).** For lanes where driver and
+adapter are separate services on a shared host,
 the two MUST authenticate every HTTP request with a shared secret using
 the `Authorization: Bearer <token>` header per RFC 6750.
 
@@ -451,11 +464,19 @@ satisfy.
 
 A runtime-adapter implementation MUST:
 
-1. **Hub registration** — connect to the hub as a JSON-RPC 2.0 WS client
-   and call `mesh.connect` with `identity = <lane>` (the legacy
-   `mesh.register` alias of § 8.1a is accepted but DEPRECATED — new
-   adapters MUST emit `mesh.connect`). It MAY pass `proxy_for[]` to
-   claim ownership of derivative identities.
+1. **Hub registration** — **the lane** MUST hold exactly one hub connection:
+   a JSON-RPC 2.0 WS client that calls `mesh.connect` with
+   `identity = <lane>` (the legacy `mesh.register` alias of § 8.1a is
+   accepted but DEPRECATED — new implementations MUST emit `mesh.connect`).
+   It MAY pass `proxy_for[]` to claim ownership of derivative identities.
+
+   **Which component inside the lane opens it is a decomposition, not a
+   contract.** This clause named the runtime-adapter, and
+   `agent-mesh-client` gives the connection to the lane controller that owns
+   the adapter instead — the runtime-adapter there owns only how the lane
+   reaches its CLI. What the mesh can observe, and therefore what is required,
+   is one connection per lane and a channel driver that has none of its own
+   (§ 6.1).
 2. **Envelope ingest** — accept incoming envelopes from the hub and
    translate them into runtime-native turns/messages.
 3. **Envelope emit** — translate runtime output into envelopes and
@@ -500,9 +521,10 @@ A channel-driver implementation MUST:
 2. **Access control** — enforce per-channel access lists
    (`access.ts` model). Unknown senders MUST be rejected and never
    silently approved by the driver itself.
-3. **Forwarding** — POST envelopes to the lane's runtime-adapter over the
-   mutually authenticated HTTP control plane of § 4.5. A channel-driver
-   MUST NOT open its own hub connection.
+3. **Forwarding** — hand envelopes to the lane over the authenticated
+   host-local hop of § 4.5 — a unix socket in the daemon shape, the mutually
+   authenticated HTTP control plane in the unit-per-lane shape. A
+   channel-driver MUST NOT open its own hub connection.
 
    0.1 also defined a *hub-direct* mode, in which the driver connected to
    the hub as `HUB_FORWARD_IDENTITY=<lane>` and called `mesh.send` itself.

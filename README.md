@@ -90,8 +90,8 @@ the channel drivers attached to it.
 
 | Lane element      | Role                                  |
 |-------------------|---------------------------------------|
-| runtime-adapter   | Wraps an external runtime; owns the lane's hub connection |
-| channel-driver    | Wraps an external channel; forwards to the adapter        |
+| runtime-adapter   | Wraps an external runtime; owns only how the lane reaches that CLI |
+| channel-driver    | Wraps an external channel; forwards to the lane over a host-local hop |
 
 **A lane is an object, not a service.**
 [`agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client) runs one
@@ -339,8 +339,8 @@ a hub identity of its own, and every lane includes a runtime-adapter
   suite has missed here was a cross-implementation disagreement, because a test
   written against one side can only assert that side agrees with itself.
 - **Lanes** — One runtime-adapter plus zero or more channel-drivers, joined by
-  an intra-lane control plane. The adapter holds the lane's single hub
-  connection. Built and deployed from
+  a host-local hop. The lane holds one hub connection, and the channel driver
+  holds none of its own. Built and deployed from
   [`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client).
 
 ---
