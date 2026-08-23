@@ -113,7 +113,13 @@ beforeAll(async () => {
       `headers=${JSON.stringify([...login.headers.keys()])} ` +
       `content-type=${login.headers.get("content-type")} ` +
       `body=${JSON.stringify((await login.clone().text()).slice(0, 200))} ` +
-      `second=${again.status}/${JSON.stringify([...again.headers.keys()])}`,
+      `second=${again.status}/${JSON.stringify([...again.headers.keys()])} ` +
+      // Which implementation answered. Header names came back capitalised in
+      // CI and lower-cased here, and a `Headers` that keeps the case it was
+      // given is not the one this runtime hands out — so the answer is being
+      // rebuilt by something between the route and this line.
+      `runtime=${Bun.version}/${login.constructor.name}/${Object.getPrototypeOf(login.headers).constructor.name} ` +
+      `entries=${JSON.stringify([...login.headers.entries()].map(([k]) => k))}`,
     );
   }
 
