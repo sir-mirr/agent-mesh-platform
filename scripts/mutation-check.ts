@@ -7843,6 +7843,46 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["a send the hub never took is a failure, not a silence"],
   },
+  {
+    id: "the-floors-own-number-becomes-a-test-filter",
+    defect:
+      "`--floor 99` stopped consuming its argument, so the bare `99` fell through to `bun test` as a *filter*. Nothing is named `99`, so no test runs, the lcov is empty, and a floor over an empty denominator passes. The check written to fail when coverage falls becomes the one that cannot fail at all — and it reports the same green as a real 99.",
+    file: "scripts/coverage.ts",
+    from: "    else if (arg === \"--floor\") floor = Number(argv[++i]);",
+    to: "    else if (arg === \"--floor\") floor = Number(argv[i + 1]);",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["the floor's value stayed in argv, where bun test reads it as a filter and measures nothing"],
+  },
+  {
+    id: "an-empty-report-is-not-full-coverage",
+    defect:
+      "The floor went back to `pct`'s convention, where an empty denominator is 100%. That is right for a file with no functions in it and wrong for a run that measured none: every way this measurement breaks — a filter matching nothing, a report read from the wrong directory, a suite that loaded no source — arrives as an empty set, and each of them would then be reported as full coverage.",
+    file: "scripts/coverage.ts",
+    from: "    .map(([metric, hit, total]) => ({ metric, value: total === 0 ? 0 : (hit / total) * 100 }))",
+    to: "    .map(([metric, hit, total]) => ({ metric, value: total === 0 ? 100 : (hit / total) * 100 }))",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a run that measured nothing passed the floor"],
+  },
+  {
+    id: "the-number-that-closed-the-track-reopens-it",
+    defect:
+      "The floor comparison went strict-below to at-or-below, so a measurement of exactly 99 fails. D-749 closed the track *at* 99 with a reopen condition below it; an off-by-one here reopens it on the number that closed it, and the track then cannot be closed by any achievable measurement.",
+    file: "scripts/coverage.ts",
+    from: "    .filter((s) => shown(s.value) < floor);",
+    to: "    .filter((s) => shown(s.value) <= floor);",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["99 exactly was read as a fall, so the number that closed the track reopens it"],
+  },
+  {
+    id: "a-floor-ci-runs-at-zero",
+    defect:
+      "The workflow still invokes the coverage floor, and invokes it at a number no tree can fall below. From outside — a green check named `Coverage floor` — it is indistinguishable from the real one, which is the exact shape of `lint-preview.ts`: a good check nobody ran, and a manifest that decayed like the documentation it replaced. D-749's condition reopens the track automatically or it does not reopen it, and automatic means CI.",
+    file: ".github/workflows/ci.yml",
+    from: "        run: bun scripts/coverage.ts --floor 99",
+    to: "        run: bun scripts/coverage.ts --floor 0",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["CI does not run the floor at 99, so the reopen condition has nothing to fire it"],
+  },
 ];
 
 /**

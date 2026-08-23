@@ -26,6 +26,9 @@
     // imports, one `TS6307` at a time, which is why the repair is told where
     // the state directory is rather than asking the store.
     "../scripts/ghost-identity.ts",
+    // The coverage floor. It imports node builtins and nothing else, for the
+    // same reason as the line above.
+    "../scripts/coverage.ts",
     // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
     // it rather than restating it, for the same reason the hooks do: a second
     // copy is a second thing that can disagree.

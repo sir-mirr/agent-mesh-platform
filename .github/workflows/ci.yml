@@ -83,3 +83,50 @@ jobs:
       # was reported while the code that prints a failure had never run.
       - name: Mutation check — self-check
         run: bun run mutation-check -- --self-check
+
+  # **D-749's reopen condition, given something that fires it.**
+  #
+  # The coverage track closed on a number with a condition attached: any
+  # measurement below 99 on either metric reopens it, without a new
+  # instruction. Nothing here ran `scripts/coverage.ts`, so the condition could
+  # only be reached by somebody choosing to go looking for it — which is not a
+  # condition, it is a habit, and habits are what the mutation manifest and the
+  # preview lint were both moved into CI to stop relying on.
+  #
+  # Its own job, on `main` only, for two reasons that pull the same way.
+  # Coverage has to run `packages/` and `test/` in *one* process — Bun's report
+  # covers the process it ran in, and the paths a spawned service takes are
+  # uninstrumented rather than uncovered — so this duplicates both suites and
+  # roughly doubles the wall clock. On a pull request that is pure latency
+  # against a number that cannot move until the merge; on `main` it is the
+  # measurement itself. Separate also means a fall is its own red check, rather
+  # than a suite failure with a different cause and the same colour.
+  coverage-floor:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # Both of these are the integration suite's, not the measurement's: the
+      # scenarios drive a real browser against the built frontend, and without
+      # them the run is red before it is anything else.
+      - name: Build web frontend
+        run: bun run build:web
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      # `--floor 99` exits non-zero below the number, naming which metric fell.
+      # The script refuses to report at all on a red tree, so a failure here is
+      # always one of the two: the suite broke, or the number did.
+      - name: Coverage floor
+        run: bun scripts/coverage.ts --floor 99
