@@ -817,8 +817,11 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
         // gets one from every formatter — `t(\n  "auth.logoutFailed",\n  "…",\n)`
         // — and without `,?` here that fallback stops being recognised as
         // carried, so the dictionary being used correctly is reported as Korean
-        // written into a screen. It happened on the merge train for D-750: two
-        // files, both calling a key that exists in `ko` and `en`, both wrapped.
+        // written into a screen. It happened on the train that brought `03232f6`
+        // in: two files, both calling a key that exists in `ko` and `en`, both
+        // wrapped. The commit rather than the ticket — that work is D-750 in one
+        // mail and T-030 in the next, and neither string appears anywhere a
+        // reader of this repository could look up.
         // The fix that suggests itself — delete the fallback argument — would
         // have removed the safety net to satisfy a scanner's idea of layout.
         const carried = text.replace(
