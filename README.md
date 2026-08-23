@@ -29,15 +29,18 @@ into a single shared backbone via well-defined contracts.
                  │  agents.db  hub.db  audit.db  uploads/   │
                  └──────────────────────────────────────────┘
                                   ▲
-                                  │  hub WS  /  HTTP REST
-                  ┌───────────────┼───────────────┐
-                  │               │               │
-            ┌─────┴────┐   ┌──────┴─────┐   ┌─────┴─────┐
-            │ lane A   │   │ lane B     │   │ lane C    │
-            │ codex    │   │ claude     │   │ ...       │
-            │ +discord │   │ +discord   │   │           │
-            └──────────┘   └────────────┘   └───────────┘
-                  Add-ons  =  runtime-adapter + channel-driver
+                                  │  signed hub WS  /  HTTP REST
+                  ┌───────────────┴───────────────┐
+                  │                               │
+        ┌─────────┴──────────┐          ┌─────────┴──────────┐
+        │  agent-mesh-client │          │  agent-mesh-client │  one daemon
+        │  ┌──────┐ ┌──────┐ │          │  ┌──────┐          │  per host
+        │  │lane A│ │lane B│ │          │  │lane C│          │  one lane
+        │  └──┬───┘ └──┬───┘ │          │  └──┬───┘          │  per agent
+        └─────┼────────┼─────┘          └─────┼──────────────┘
+              │        │                      │
+         agent CLI   channel drivers      agent CLI
+                     (unix socket)
 ```
 
 Run the **Baseline** alone and you have a working mesh that accepts
@@ -81,15 +84,24 @@ the same endpoint. See `SPEC.md` § 10 for the normative discovery contract.
 
 ### Add-on — a *lane* (runtime-adapter + channel-driver)
 
-A lane is a systemd-templated instance (`@<lane>`) that joins one external
-runtime to one external channel. Each lane gets its own env, secrets, state,
-and attachments directory. N lanes are supported via systemd template
-instantiation; ports follow a fixed offset rule.
+A lane joins one external runtime to one or more external channels, and owns
+an identity, the hub connection, the runtime session, a durable outbox, and
+the channel drivers attached to it.
 
 | Lane element      | Role                                  |
 |-------------------|---------------------------------------|
 | runtime-adapter   | Wraps an external runtime; owns the lane's hub connection |
 | channel-driver    | Wraps an external channel; forwards to the adapter        |
+
+**A lane is an object, not a service.**
+[`agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client) runs one
+daemon per host — `agent-meshd`, installed as a single launchd or systemd
+*user* service — and holds a lane per agent inside it, added and removed while
+it runs. Endpoints are unix sockets whose paths are derived from the lane id,
+so two lanes on one host cannot collide and nobody allocates anything.
+`SPEC.md` § 4.2 calls this the *daemon* shape and § 14A's cross-VM profile the
+*unit-per-lane* shape, where a lane is a systemd template instance with ports
+on an offset rule; both are conformant and the shipped client is the first.
 
 **Both are built in
 [`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client)**,
@@ -101,6 +113,12 @@ repository holds the baseline it attaches to and the contract it implements
 
 Every lane includes a runtime-adapter. A channel-driver forwards to it and
 does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
+
+**Mesh traffic and channel traffic are not the same path.** A mesh message
+goes through the hub. A channel round-trip is answered by the lane locally,
+and its audit envelope and attachments reach the hub *asynchronously* through
+the lane's durable outbox — so a hub that is down does not stop a channel from
+answering, and the audit record arrives late rather than never.
 
 ---
 
@@ -215,8 +233,9 @@ The two halves talk only over the internal network.
   `agent-mesh-lane@<lane-id>.target` on each lane VM. Docker is not
   required. The lane VM only needs `bun` and a synced copy of the repo
   (e.g. `git clone` or `rsync`).
-- **Ports** — once lanes live on separate VMs, the `i`-offset rule
-  (§ 12 of `SPEC.md`) becomes optional: a lane VM may use the fixed
+- **Ports** — this topology is the *unit-per-lane* shape (`SPEC.md` § 4.2), so
+  the offset rule applies to it. Once lanes live on separate VMs the `i`-offset
+  rule (§ 12 of `SPEC.md`) becomes optional: a lane VM may use the fixed
   base ports `4500` (codex-app-server), `4600` (adapter), `4610`
   (channel-driver) since there is no co-tenant. Only the hub URL is
   externalized via `HUB_URL`.
@@ -270,6 +289,12 @@ curl -X POST "http://<core-vm>:3100/api/v1/agents" \
            "description": "Production lane 1",
            "public_key": "<base64url, 43 chars>" }'
 ```
+
+With the client this is one command — `agent-mesh lane add <name> --runtime
+<claude|codex|agy> --workspace <path>` provisions the identity and submits the
+key. An operator still has to approve that key here before the lane can send;
+until they do, the lane keeps answering its channel and holds its audit in the
+outbox.
 
 Note that 0.2 removed hub-direct forwarding: a channel-driver no longer holds
 a hub identity of its own, and every lane includes a runtime-adapter

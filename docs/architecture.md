@@ -33,7 +33,7 @@ Three processes, on one core VM.
                       │
         ┌─────────────┼─────────────┐
    runtime-adapter  …          self-reminder
-   (lane repository)
+   (agent-mesh-client)
 ```
 
 **http is a client of the hub, not its peer.** A browser talks to http; http
@@ -383,7 +383,9 @@ because it never will be.
 **Channel traffic** does not pass through the hub. A channel-driver forwards to
 its lane's runtime-adapter directly, which keeps the hub out of the real-time
 path; the adapter records it asynchronously from a durable outbox. That is the
-audit design, and it lives in the lane repository.
+audit design, and it lives in
+[`agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client), which
+holds a lane per agent inside one per-host daemon.
 
 ---
 

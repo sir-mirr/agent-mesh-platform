@@ -341,17 +341,41 @@ Claude lane needs that ingress built, in the lane repository.
 Future lanes MAY use any combination of one runtime-adapter and one or
 more channel-drivers.
 
-### 4.2. Systemd templating
+### 4.2. Supervision and instantiation
 
-Each lane MUST be deployed as systemd template instances using the `@`
-suffix. The template's `%i` substitution is the lane name. A single
-deployment MAY run any number of lane instances concurrently, limited
-only by port and resource availability.
+Every lane MUST run under the host's service manager — systemd, launchd, or
+equivalent — so that it returns with the host and can be stopped without
+stopping the others. A host MUST be able to run any number of lanes
+concurrently, limited only by resources, and **adding or removing a lane MUST
+NOT require an operator to hand-write a unit file.**
 
-### 4.3. Port allocation
+Two shapes satisfy this, and a deployment MUST state which one it is:
 
-Ports are derived from a small integer index `i` (1, 2, 3, ...) assigned
-per lane:
+| Shape | What a lane is | Where the rest of this document assumes it |
+|---|---|---|
+| **Daemon** | an object inside one supervised per-host daemon, added and removed while it runs | § 4.3's socket rule |
+| **Unit-per-lane** | a systemd template instance keyed by lane name (`@%i`) | § 4.3's port rule, § 12, § 14 |
+
+`agent-mesh-client` is the daemon shape: one launchd or systemd **user**
+service per host, holding a lane per agent. This section required the
+unit-per-lane shape until 0.2 — it required a mechanism where what it wanted
+was the property above, and the mechanism it named was one no shipped
+implementation uses.
+
+### 4.3. Endpoint allocation
+
+**Two lanes on one host MUST NOT collide.** Each lane's local endpoints MUST
+be unique to that lane, stable across restarts, and derived from the lane's
+identity rather than from bookkeeping an operator maintains. The rule differs
+by shape, and the guarantee does not.
+
+**Sockets (daemon shape).** Each lane's endpoints are paths derived from the
+lane id — `agent-mesh-client` uses `lane-<sha256(lane id)[0:24]>.sock` in the
+runtime directory, with the Codex app-server on a sibling path. A derived path
+cannot collide with another lane's, so this shape needs no manifest.
+
+**Ports (unit-per-lane shape).** Ports come from a small integer index `i`
+(1, 2, 3, …) assigned per lane:
 
 | Component            | Port formula |
 |----------------------|--------------|
@@ -359,8 +383,14 @@ per lane:
 | `codex-adapter@%i`   | `4600 + i`   |
 | `channel-discord@%i` | `4610 + i`   |
 
-A deployment MUST track the `lane → i` mapping in a stable manifest so
-that ports remain consistent across restarts.
+A deployment using ports MUST track the `lane → i` mapping in a stable
+manifest so that ports remain consistent across restarts. § 12 extends this to
+the N-th lane.
+
+**Whichever shape a deployment takes, the non-collision property is checked by
+that implementation's own suite**, because it is a statement about a host this
+repository does not run on: a lane whose socket path or port is shared with
+another lane's is a defect neither side can see from the hub.
 
 ### 4.4. Instance data layout
 
@@ -2718,6 +2748,10 @@ rename to the canonical name on the next deploy cycle.
 
 ## 12. Port offset rule (extending to N lanes)
 
+**This section is the unit-per-lane shape's rule** (§ 4.2). A deployment of the
+daemon shape derives a socket path per lane instead and adds the N-th lane by
+configuration while the daemon runs, so none of the steps below apply to it.
+
 To add an N-th lane:
 
 1. Choose a fresh integer index `i = N`.
@@ -3060,7 +3094,8 @@ This section normalizes the **internal-mesh v0.1** deployment profile,
 in which the baseline runs on one *core VM* and each lane runs on its
 own *lane VM*. It is a production-style alternative to the default
 single-host topology and does not replace it; a conformant deployment
-MAY use either.
+MAY use either. In § 4.2's terms this profile is the **unit-per-lane** shape,
+so § 4.3's port rule and § 12 apply to it and its socket rule does not.
 
 > **Notation.** Throughout this section, `${AGENT_MESH_HUB_PORT}` is
 > the hub WebSocket / HTTP listen port (default `3100`, declared in
