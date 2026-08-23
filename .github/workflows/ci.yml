@@ -193,3 +193,35 @@ jobs:
       # safe on a fresh checkout and refuses outright on a dirty tree.
       - name: Mutation check
         run: bun run mutation-check -- --shard ${{ matrix.shard }}/8
+
+      # **A nightly nobody reads is not a check.** `agent-mesh-local-pm` made
+      # that the condition for moving the pass off the push path, and they are
+      # describing something this repository has already lived: `main` was red
+      # for fifteen consecutive pushes with nobody looking.
+      #
+      # So a red shard files an issue. It is durable, it is in the repository
+      # rather than in a run somebody has to think to open, and `gh issue list
+      # --label nightly-mutation` answers in a second — which is the command
+      # `CLAUDE.md` now tells every session to run before it starts work.
+      #
+      # One issue per shard per night, and the body carries the run URL. A
+      # second failure the next night files a second issue rather than silently
+      # updating one, because "still broken" and "broken again" are different
+      # facts and the count is the visible one.
+      - name: File the failure where somebody will read it
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "nightly mutation shard ${{ matrix.shard }}/8 is red" \
+            --label nightly-mutation \
+            --body "Shard ${{ matrix.shard }} of 8 failed on \`${{ github.sha }}\`.
+
+          A mutation that is not caught means the guard named in the entry no
+          longer holds — the defect it was written against would now reach a
+          release. The run says which entry and what its suite printed:
+
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Reproduce one entry locally with \`bun run mutation-check -- <id>\`."

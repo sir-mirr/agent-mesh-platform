@@ -56,4 +56,27 @@ describe("what CI does with the mutation manifest", () => {
     // 1..n, each once: a matrix missing `3` is a shard nothing runs.
     expect(jobs, "the shards are not 1..n exactly once").toEqual(jobs.map((_, i) => i + 1));
   });
+
+  /**
+   * **A nightly nobody reads is not a check**, which was the condition attached
+   * to moving the pass off the push path. Two halves and both have to be there:
+   * a red shard has to leave something durable, and somebody has to be told
+   * where it lands. The second half is a line in `CLAUDE.md`, which every
+   * session reads — and a label that stops matching on either side is a report
+   * filed where nobody looks.
+   */
+  test("a red shard files a labelled issue, and the label is one somebody is told to read", () => {
+    const claude = readFileSync(join(import.meta.dir, "..", "CLAUDE.md"), "utf8");
+    const filed = /--label (\S+)/.exec(ci.slice(ci.indexOf("if: failure()")));
+    const told = /gh issue list --label (\S+)/.exec(claude);
+
+    expect({ files: filed !== null, tells: told !== null }, "a red nightly goes nowhere, or nobody is told where").toEqual({
+      files: true,
+      tells: true,
+    });
+    expect(
+      { filed: filed![1], told: told![1] },
+      "the workflow files under one label and the instructions read another",
+    ).toEqual({ filed: told![1], told: told![1] });
+  });
 });

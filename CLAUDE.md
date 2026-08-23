@@ -266,12 +266,33 @@ bun test test/
 ```
 
 When the change adds or alters a **checker** — a test, a linter, a scope guard —
-also add its mutation to `scripts/mutation-check.ts` and run it:
+also add its mutation to `scripts/mutation-check.ts` and run that entry:
 
 ```bash
-bun run mutation-check
+bun run mutation-check -- <its-id>
+bun run mutation-check -- --anchors
 bun run mutation-check -- --self-check
 ```
+
+A full pass is one suite per entry, seventy-two of which name the browser suite,
+so it is hours and belongs on a clock rather than in front of a change. CI runs
+`--anchors` and `--self-check` on every push and the whole manifest nightly, in
+eight shards.
+
+### Read the nightly before starting work
+
+```bash
+gh issue list --label nightly-mutation      # a red shard files one, with the run URL
+```
+
+**A nightly nobody reads is not a check.** This is not a hypothetical here: main
+CI was red for fifteen consecutive pushes while three agents worked, because
+nothing made anyone look. An open issue with that label means a guard has
+stopped holding — the defect it was written against would now reach a release —
+and the entry is reproducible in one command:
+`bun run mutation-check -- <id>`.
+
+Close the issue when the entry is caught again, not when it is understood.
 
 The second one is the tool checking its own reporting branch. It was added after
 `18/18 caught` was reported while the code that prints a failure had never run
