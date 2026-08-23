@@ -111,8 +111,9 @@ repository holds the baseline it attaches to and the contract it implements
 (`SPEC.md` §§ 4–6); the wire types both sides consume come from
 `@agent-mesh/contracts`, pinned to the same tag on both.
 
-Every lane includes a runtime-adapter. A channel-driver forwards to it and
-does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
+Every lane includes a runtime-adapter. A channel-driver forwards to **the
+lane** — which component inside it takes delivery is that implementation's
+decomposition — and never connects to the hub itself (`SPEC.md` §§ 4.1, 6.1).
 
 **Mesh traffic and channel traffic are not the same path.** A mesh message
 goes through the hub. A channel round-trip is answered by the lane locally,

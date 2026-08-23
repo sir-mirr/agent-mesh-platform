@@ -392,8 +392,9 @@ that implementation's own suite**, because it is a statement about a host this
 repository does not run on: a lane whose socket path or port is shared with
 another lane's is a defect neither side can see from the hub.
 
-`agent-mesh-client` checks it in `test/paths.test.ts` — six lane ids yielding
-six distinct socket names, and the lane, app-server and control sockets
+`agent-mesh-client` checks it in `test/paths.test.ts`, as *"two lanes on one
+host never land on the same socket"* — six lane ids yielding six distinct
+socket names, and the lane, app-server and control sockets
 distinct from each other, since all three share a directory (`8f6f7ae`). Worth
 knowing when reading that: **the check did not exist until this clause asked
 for one.** What stood there tested that a lane id maps stably to a name and
