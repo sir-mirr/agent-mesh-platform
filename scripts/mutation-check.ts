@@ -3554,8 +3554,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The client clearing its own state and leaving the cookie — the exact shape this repository shipped until now. The redirect makes it look finished, and every check that reads the URL agrees.",
     file: "packages/platform-web/src/contexts/AuthContext.tsx",
-    from: '    void apiClient("/auth/logout", { method: "POST" }).catch(() => {});',
-    to: "    // (nothing)",
+    from: '        await apiClient("/auth/logout", { method: "POST" });',
+    to: "        await Promise.resolve();",
     suite: "test/fe-render.test.ts",
     expect: ["SC-AUTH-07", "signing out left the session usable"],
   },
@@ -7550,12 +7550,12 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "held-table-anchor-stale",
+    retired:
+      "Same table, same emptiness. A stale anchor needs a row to be stale in.",
     swept: true,
     defect:
       "A document naming code is a copy of it. A row whose anchor has been renamed or deleted still reads as a decision somebody made about the code that is there now — which is worse than no document, because the reason is stated with confidence and points at nothing.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` |",
-    to: "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === undefined ?` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every anchor is still in the file it names"],
   },
@@ -7693,24 +7693,23 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "held-table-file-moved",
+    retired:
+      "The table it planted a moved path into is empty — every row was covered or deleted under D-751. What replaced this check is the document saying so in words: `held-uncovered.test.ts` refuses a table that parses as empty without the sentence a person wrote, which is the state a broken parser produces.",
     swept: true,
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null",
-    to: "| `packages/platform-web/src/pages/creator/WhereItUsedToBe.tsx` | `item.inboxDepth === null ?` | The non-null",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },
   {
     id: "held-table-reason-dropped",
+    retired:
+      "Same table. The reason column cannot be dropped from a row that no longer exists; the check that survives is the one holding the document's own claim of emptiness against the rows under it.",
     swept: true,
     defect:
       "A row that says where and not why survives every other check and tells the next reader nothing. The failure this table was written against is not an uncovered line — it is an unexplained one.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from:
-      "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `\u2014 \ubbf8\ubcf4\uace0` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |",
-    to: "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | FE. |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row says why, rather than only where"],
   },

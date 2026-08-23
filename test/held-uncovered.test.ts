@@ -80,11 +80,13 @@ describe("what the coverage number leaves out", () => {
    * the case that check cannot see: a table with no rows at all, where nothing
    * looks like a row either.
    *
-   * It is `> 0` now, which is where it stops moving. Under D-751 the table is
-   * meant to empty — every row is either covered, deleted, or shown to be
-   * unreachable by any input, failure or timing — and the day the last row
-   * leaves, this file has no subject and should go with it rather than be
-   * lowered again.
+   * The floor is gone, and what replaced it is the sentence: under D-751 the
+   * table was meant to empty, and it has — so *zero rows* is now the expected
+   * state and no longer distinguishable from a parser that stopped matching by
+   * counting alone. A person writes **The table is empty.** into the document;
+   * a broken parser cannot. Both directions are held, because a document
+   * claiming emptiness while rows sit under it is the same lie the other way
+   * round.
    */
   test("the table is still a table", () => {
     // Every table line in the document, counted without the row parser: the
@@ -95,7 +97,21 @@ describe("what the coverage number leaves out", () => {
       .filter((line) => !line.startsWith("| File |") && !line.startsWith("|---"));
 
     expect(ROWS.length).toBe(tableLines.length);
-    expect(ROWS.length).toBeGreaterThan(0);
+    // **An empty table has to say so in words.** Zero rows is the ending this
+    // document wants and also what a broken parser produces, and the two are
+    // indistinguishable from a count. The sentence is written by a person; the
+    // rows are not.
+    if (ROWS.length === 0) {
+      expect(
+        text,
+        "the table parsed as empty and the document does not say it is — which is what a parser that stopped matching looks like",
+      ).toContain("**The table is empty.**");
+      return;
+    }
+    expect(
+      text.includes("**The table is empty.**"),
+      "the document says the table is empty while rows are still in it",
+    ).toBe(false);
     // A row that lost a cell parses into something, and it is not a row.
     expect(ROWS.filter((r) => !r.file || !r.anchor || !r.why)).toEqual([]);
   });

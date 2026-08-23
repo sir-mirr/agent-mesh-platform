@@ -150,7 +150,31 @@ reason no longer describes anything and the row is stale.
 
 | File | Anchor | Why it is left |
 |---|---|---|
-| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
+
+**The table is empty.** Every row that was in it has left, which is the ending
+this document says a row should have. Under D-751 the criterion narrowed until
+almost nothing could stay: a state the outside world can produce — a refusal, a
+disconnection, a malformed input, a timer — is a state a test is obliged to
+produce, and *expensive to reach* became a case not yet written rather than a
+reason to hold one. What that left was reached by taking the dependency as a
+parameter, or by deleting code nothing could call:
+
+- The three `if (import.meta.main)` blocks became `runHttpEntrypoint`,
+  `runLintEntrypoint` and `runGhostEntrypoint`, called unconditionally, both
+  answers a case.
+- The two `webpush` bindings are reached with a generated key pair and a closed
+  port — a library call and a refused delivery, neither of which needs a
+  deployment.
+- `test/harness.ts`'s refusals — an admission that is not `409`, a password gate
+  that will not open, a socket that never opens, a call nobody answers, a boot
+  that cannot happen — are decisions with their own names now.
+- `freePort` bound a `Bun.serve` whose `fetch` handler no caller could reach;
+  it binds with `node:net` instead, and the function is gone rather than held.
+- The front end's `inboxDepth` non-null half draws a measured queue, including
+  a real zero, from the producer it is allowed to read (`2d25de7`).
+
+The row that returns here should be a new decision, not a re-entry: what could
+not be covered, with the input, failure or timing that cannot produce it.
 
 ## The functions this table cannot name
 
