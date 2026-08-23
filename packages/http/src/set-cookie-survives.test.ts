@@ -51,6 +51,52 @@ describe("the session cookie", () => {
   });
 });
 
+/**
+ * **Which layer eats it — three shapes, one variable.**
+ *
+ * Appending to a bare `Response` keeps the cookie on both platforms, and the
+ * same append through Hono's chain loses it on Linux. So the loss is in what
+ * Hono does to the answer on the way out, and the thing that makes Hono rebuild
+ * the answer is a header prepared *before* the route runs. These three hold
+ * that variable and nothing else: no middleware, a middleware that writes after
+ * the route, and a middleware that prepares before it.
+ */
+describe("where the cookie is lost", () => {
+  const answer = () => {
+    const res = new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+    res.headers.append("Set-Cookie", COOKIE);
+    return res;
+  };
+  const ask = (app: Hono) => app.fetch(new Request("http://probe.invalid/sign-in", { method: "POST" }));
+
+  test("with no middleware at all", async () => {
+    const app = new Hono();
+    app.post("/sign-in", answer);
+
+    expect((await ask(app)).headers.getSetCookie(), "Hono loses it with nothing else in the way").toEqual([COOKIE]);
+  });
+
+  test("with a middleware that writes its header after the route", async () => {
+    const app = new Hono();
+    app.use("*", async (c, next) => { await next(); c.res.headers.set("x-request-id", "probe-id"); });
+    app.post("/sign-in", answer);
+
+    const res = await ask(app);
+    expect(
+      { cookies: res.headers.getSetCookie(), correlated: res.headers.get("x-request-id") },
+      "writing the correlation header after the route is not the repair either",
+    ).toEqual({ cookies: [COOKIE], correlated: "probe-id" });
+  });
+
+  test("with a middleware that prepares its header before the route", async () => {
+    const app = new Hono();
+    app.use("*", async (c, next) => { c.header("x-request-id", "probe-id"); await next(); });
+    app.post("/sign-in", answer);
+
+    expect((await ask(app)).headers.getSetCookie(), "a header prepared before the route costs the cookie").toEqual([COOKIE]);
+  });
+});
+
 describe("what this runtime does with Set-Cookie", () => {
   test("keeps it in a Headers built from a record", () => {
     expect(new Headers({ "Set-Cookie": COOKIE }).getSetCookie()).toEqual([COOKIE]);
