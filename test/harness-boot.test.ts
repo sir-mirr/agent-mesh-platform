@@ -18,6 +18,7 @@ import {
   absentService,
   bootFailureMessage,
   bootRetryable,
+  connectRpc,
   freePort,
   rpcAnswer,
   sessionCookie,
@@ -338,5 +339,47 @@ describe("a mesh with no http", () => {
     // Not a throw: `teardown` stops what a mesh holds without asking which
     // half of it was real.
     expect(() => absent.stop()).not.toThrow();
+  });
+});
+
+
+/**
+ * The socket half of the harness, and its two ways of giving up.
+ *
+ * Both are what a test reads when a run goes wrong at three in the morning —
+ * one says the hub never accepted the connection, the other says it accepted
+ * and answered nothing — and neither had ever run. Reaching the second through
+ * a real hub means waiting out five seconds of silence, so the wait is a
+ * parameter now and this hands it twenty milliseconds.
+ */
+describe("talking to a hub over the socket", () => {
+  test("a socket that will not open is refused, not left hanging", async () => {
+    // Bound and released, so nothing is listening there.
+    const port = await freePort();
+
+    await expect(connectRpc({ port })).rejects.toThrow("websocket failed to open");
+  });
+
+  test("a call nobody answers gives up, naming the method and the wait", async () => {
+    const heard: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response("not a socket", { status: 400 })),
+      websocket: { message: (_ws, text) => { heard.push(String(text)); } },
+    });
+
+    try {
+      const port = server.port;
+      if (port == null) throw new Error("the stand-in hub bound no port");
+      const rpc = await connectRpc({ port }, undefined, 20);
+
+      await expect(rpc.call("mesh.silence", {})).rejects.toThrow("no response to mesh.silence within 20ms");
+      // The frame did go out: giving up on a request nobody sent would be a
+      // different defect wearing the same message.
+      expect(heard.map((text) => JSON.parse(text).method)).toEqual(["mesh.silence"]);
+    } finally {
+      server.stop(true);
+    }
   });
 });

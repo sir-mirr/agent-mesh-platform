@@ -7626,6 +7626,28 @@ const MUTATIONS: Mutation[] = [
     expect: ["returns what is in the file, and throws when there is none"],
   },
   {
+    id: "rpc-open-failure-says-nothing-useful",
+    swept: true,
+    defect:
+      "The refusal a test reads when the hub never accepted the socket stopped naming what happened. Both endings of `connectRpc` are sentences somebody reads at three in the morning, and `Error` with no subject sends them to the wrong half of the system.",
+    file: "test/harness.ts",
+    from: '    ws.onerror = () => reject(new Error("websocket failed to open"));',
+    to: '    ws.onerror = () => reject(new Error("failed"));',
+    suite: "test/harness-boot.test.ts",
+    expect: ["a socket that will not open is refused, not left hanging"],
+  },
+  {
+    id: "rpc-timeout-drops-the-method",
+    swept: true,
+    defect:
+      "Giving up on a call stopped saying which call it was. A suite of forty RPCs answers `no response` and the person reading it has no way to tell which frame went unanswered — the same shape as the boot message that said a service died without saying which.",
+    file: "test/harness.ts",
+    from: "          () => reject(new Error(`no response to ${method} within ${timeoutMs}ms`)),",
+    to: "          () => reject(new Error(`no response`)),",
+    suite: "test/harness-boot.test.ts",
+    expect: ["a call nobody answers gives up, naming the method and the wait"],
+  },
+  {
     id: "held-table-file-moved",
     swept: true,
     defect:

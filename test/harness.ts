@@ -16,6 +16,7 @@
 import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer as createNetServer } from "node:net";
 import { generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
 import { keyFingerprint, requestSignaturePreimage } from "@agent-mesh/contracts";
 import { join } from "node:path";
@@ -97,12 +98,24 @@ export interface Mesh {
  * scenario after it failed to reach a server. A red run from two people testing
  * at once is indistinguishable from a red run from a defect.
  */
-export async function freePort(): Promise<number> {
-  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("") });
-  const port = server.port;
-  server.stop(true);
-  if (port == null) throw new Error("could not obtain an ephemeral port");
-  return port;
+export function freePort(): Promise<number> {
+  // **A listener, not a server.** `Bun.serve` needs a `fetch` handler, and that
+  // handler is a function nothing can ever call: the port is bound to learn its
+  // number and released in the next statement. It sat here as an uncovered
+  // function with no way to reach it — which is the shape D-751 says to delete
+  // rather than to hold. `node:net` binds without asking for one.
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address !== null ? address.port : null;
+      server.close(() => {
+        if (port == null) reject(new Error("could not obtain an ephemeral port"));
+        else resolve(port);
+      });
+    });
+  });
 }
 
 /**
@@ -693,7 +706,19 @@ export interface Signer {
   privateKey: import("node:crypto").KeyObject;
 }
 
-export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClient> {
+export async function connectRpc(
+  hub: Pick<Service, "port">,
+  signer?: Signer,
+  /**
+   * How long a call waits before giving up.
+   *
+   * A parameter so the giving-up can be watched. Reaching it otherwise means a
+   * hub that accepts a socket and answers nothing for five seconds, which is a
+   * five-second test — so nothing ever ran the line, and "no response" is
+   * exactly the sentence somebody reads when a suite goes red at 3am.
+   */
+  timeoutMs = 5_000,
+): Promise<RpcClient> {
   const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/ws`);
   await new Promise<void>((resolve, reject) => {
     ws.onopen = () => resolve();
@@ -766,8 +791,8 @@ export async function connectRpc(hub: Service, signer?: Signer): Promise<RpcClie
       const id = nextId++;
       return new Promise((resolve, reject) => {
         const timer = setTimeout(
-          () => reject(new Error(`no response to ${method} within 5s`)),
-          5_000,
+          () => reject(new Error(`no response to ${method} within ${timeoutMs}ms`)),
+          timeoutMs,
         );
         pending.set(id, (value) => {
           clearTimeout(timer);
