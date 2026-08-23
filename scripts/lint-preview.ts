@@ -225,7 +225,23 @@ export function reportLint(
   exit(1);
 }
 
-if (import.meta.main) {
-  console.log('--- Running Allowlist-Based Preview & Contract Linter ---');
-  reportLint(runLint());
+/**
+ * Being the program, as a function of whether this file is one.
+ *
+ * The `if` was two lines nothing could run: `test/preview-lint.test.ts` imports
+ * this module, so the condition is false in every measurement. As a function
+ * the call below always happens, and the banner — the first line CI prints, and
+ * the one a person greps for when the step is silent — is asserted.
+ */
+export function runLintEntrypoint(
+  isMain: boolean,
+  run: typeof runLint = runLint,
+  report: typeof reportLint = reportLint,
+  say: (line: string) => void = console.log.bind(console),
+): void {
+  if (!isMain) return;
+  say('--- Running Allowlist-Based Preview & Contract Linter ---');
+  report(run());
 }
+
+runLintEntrypoint(import.meta.main);

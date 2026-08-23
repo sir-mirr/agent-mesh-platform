@@ -2272,6 +2272,33 @@ describe("keeping a stream open", () => {
 });
 
 /**
+ * Being the program.
+ *
+ * `if (import.meta.main)` was the one line in `main.ts` no measurement could
+ * reach: every suite imports the module, so the condition is false wherever it
+ * is watched. As a function both answers are a case — and the answer that
+ * matters is `false`, because an import that started a server would bind a port
+ * in every test file that touches this module.
+ */
+describe("being the program", () => {
+  test("starts the server when this file is what bun was given", async () => {
+    let started = 0;
+
+    await mod.runHttpEntrypoint(true, async () => { started += 1; return {}; });
+
+    expect(started).toBe(1);
+  });
+
+  test("and starts nothing when it is imported", async () => {
+    let started = 0;
+
+    await mod.runHttpEntrypoint(false, async () => { started += 1; return {}; });
+
+    expect(started, "importing the module started a server, so every suite that imports it binds a port").toBe(0);
+  });
+});
+
+/**
  * What the hub's limits route answers, and the two ways it answers nothing.
  *
  * **Which of the three a coverage run saw depended on the machine.** With a hub

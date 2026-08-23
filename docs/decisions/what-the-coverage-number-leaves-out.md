@@ -150,9 +150,6 @@ reason no longer describes anything and the row is stale.
 
 | File | Anchor | Why it is left |
 |---|---|---|
-| `packages/http/src/main.ts` | `if (import.meta.main) {` | One line — `await startHttpServer()`. What it used to hold (the listen, the heartbeat, the shutdown list, both signal handlers) moved into that function and is asserted in `main.in-process.test.ts`; being the program is what is left. |
-| `scripts/lint-preview.ts` | `if (import.meta.main) {` | Two lines: the banner, and a call to `reportLint`. Both of that function's branches — including the exit code CI stops on — are cases in `test/preview-lint.test.ts`. |
-| `scripts/ghost-identity.ts` | `if (import.meta.main) {` | The same shape: `runGhostIdentity` answers with its lines and a code, and this prints them. The repair itself, and its refusals, are cases in `test/ghost-identity.test.ts`. |
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password — a live route answering something other than 200, which needs the mesh. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 

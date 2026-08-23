@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { reportLint, runLint } from "../scripts/lint-preview";
+import { reportLint, runLint, runLintEntrypoint } from "../scripts/lint-preview";
 
 /**
  * What a check printed, without importing one.
@@ -263,5 +263,46 @@ describe("reporting a lint run", () => {
       { complained: out.complained.includes("Total Lint Errors: 3"), codes: out.codes, quiet: out.said },
       "a run with errors exited 0, or announced a pass beside them",
     ).toEqual({ complained: true, codes: [1], quiet: "" });
+  });
+});
+
+
+/**
+ * Being the program.
+ *
+ * The banner is the first line this step prints, and the line somebody greps
+ * for when the CI step is silent — and it lived inside `if (import.meta.main)`,
+ * which is false wherever this is measured. Both answers are a case now.
+ */
+describe("running the linter as a program", () => {
+  test("prints the banner and reports what the lint found", () => {
+    const said: string[] = [];
+    const reported: Array<{ errors: number }> = [];
+
+    runLintEntrypoint(
+      true,
+      (() => ({ errors: 0 })) as unknown as typeof runLint,
+      ((result: { errors: number }) => { reported.push(result); }) as unknown as typeof reportLint,
+      (line) => { said.push(line); },
+    );
+
+    expect({ said, reported }).toEqual({
+      said: ["--- Running Allowlist-Based Preview & Contract Linter ---"],
+      reported: [{ errors: 0 }],
+    });
+  });
+
+  test("and does nothing at all when it is imported", () => {
+    const said: string[] = [];
+    let ran = 0;
+
+    runLintEntrypoint(
+      false,
+      ((): { errors: number } => { ran += 1; return { errors: 0 }; }) as unknown as typeof runLint,
+      (() => {}) as unknown as typeof reportLint,
+      (line) => { said.push(line); },
+    );
+
+    expect({ said, ran }, "importing the linter ran it, so every test file pays for a full lint").toEqual({ said: [], ran: 0 });
   });
 });

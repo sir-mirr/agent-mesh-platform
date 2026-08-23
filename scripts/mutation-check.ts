@@ -7653,8 +7653,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `if (import.meta.main) {` |",
-    to: "| `packages/http/src/where-it-used-to-be.ts` | `if (import.meta.main) {` |",
+    from: "| `test/harness.ts` | `could not leave the password gate` | An admitted",
+    to: "| `test/where-it-used-to-be.ts` | `could not leave the password gate` | An admitted",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },
@@ -7665,8 +7665,8 @@ const MUTATIONS: Mutation[] = [
       "A row that says where and not why survives every other check and tells the next reader nothing. The failure this table was written against is not an uncovered line — it is an unexplained one.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
     from:
-      "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | Two lines: the banner, and a call to `reportLint`. Both of that function's branches \u2014 including the exit code CI stops on \u2014 are cases in `test/preview-lint.test.ts`. |",
-    to: "| `scripts/lint-preview.ts` | `if (import.meta.main) {` | CLI. |",
+      "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `\u2014 \ubbf8\ubcf4\uace0` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |",
+    to: "| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | FE. |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row says why, rather than only where"],
   },

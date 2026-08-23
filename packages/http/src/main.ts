@@ -4983,6 +4983,21 @@ export async function startHttpServer({
   return { port: server.port, shutdown }
 }
 
-if (import.meta.main) {
-  await startHttpServer()
+/**
+ * Being the program, as a function of whether this file is one.
+ *
+ * `if (import.meta.main)` is a branch no coverage run can take: the suite
+ * imports this module, so the condition is false in every measurement and the
+ * line inside it is the one line of this file nothing has ever run. Written
+ * this way the call below always executes, both answers are a case, and what
+ * the line does — start the server, once — is asserted rather than assumed.
+ */
+export async function runHttpEntrypoint(
+  isMain: boolean,
+  start: () => Promise<unknown> = startHttpServer,
+): Promise<void> {
+  if (!isMain) return
+  await start()
 }
+
+await runHttpEntrypoint(import.meta.main)

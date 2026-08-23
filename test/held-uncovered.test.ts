@@ -71,7 +71,7 @@ describe("what the coverage number leaves out", () => {
    * what this document is for: every row here is a line somebody could go and
    * cover, and the good ending for one is to leave.
    *
-   * It moved three times, each time because the table shrank past it, and
+   * It moved five times, each time because the table shrank past it, and
    * chasing it down per commit is the wrong shape: a number that must be
    * lowered whenever the work goes well is not measuring the parser. So the
    * live check is against the document instead — every line that *looks* like a
@@ -79,6 +79,12 @@ describe("what the coverage number leaves out", () => {
    * matching without caring how many rows there are. The floor stays only as
    * the case that check cannot see: a table with no rows at all, where nothing
    * looks like a row either.
+   *
+   * It is `> 0` now, which is where it stops moving. Under D-751 the table is
+   * meant to empty — every row is either covered, deleted, or shown to be
+   * unreachable by any input, failure or timing — and the day the last row
+   * leaves, this file has no subject and should go with it rather than be
+   * lowered again.
    */
   test("the table is still a table", () => {
     // Every table line in the document, counted without the row parser: the
@@ -89,7 +95,7 @@ describe("what the coverage number leaves out", () => {
       .filter((line) => !line.startsWith("| File |") && !line.startsWith("|---"));
 
     expect(ROWS.length).toBe(tableLines.length);
-    expect(ROWS.length).toBeGreaterThan(3);
+    expect(ROWS.length).toBeGreaterThan(0);
     // A row that lost a cell parses into something, and it is not a row.
     expect(ROWS.filter((r) => !r.file || !r.anchor || !r.why)).toEqual([]);
   });

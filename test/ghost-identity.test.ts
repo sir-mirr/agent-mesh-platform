@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openTestDb } from "./harness.ts";
-import { inspectGhost, runGhostIdentity } from "../scripts/ghost-identity";
+import { inspectGhost, runGhostEntrypoint, runGhostIdentity } from "../scripts/ghost-identity";
 
 /**
  * The row a crashed boot leaves, and the identity that looks like one.
@@ -150,5 +150,53 @@ describe("a name that holds nothing but a mesh row", () => {
       { meshRow: report.meshRow, attachments: report.attachments },
       "a table this deployment does not have was counted as an attachment",
     ).toEqual({ meshRow: true, attachments: {} });
+  });
+});
+
+
+/**
+ * Being the program.
+ *
+ * Three lines behind `if (import.meta.main)`, false wherever this is measured:
+ * printing what the repair found, and leaving with its code. The code is the
+ * half that matters — a refusal that exits `0` is a script an operator's
+ * `&&` walks straight past.
+ */
+describe("running the ghost repair as a program", () => {
+  test("prints what it found and leaves with the code it decided on", () => {
+    const said: string[] = [];
+    const left: number[] = [];
+
+    runGhostEntrypoint(
+      true,
+      ["some-agent", "--remove"],
+      ((argv: string[]) => ({ code: 1, lines: [`asked for ${argv.join(" ")}`, "refusing"] })) as typeof runGhostIdentity,
+      (line) => { said.push(line); },
+      (code) => { left.push(code); },
+    );
+
+    expect({ said, left }).toEqual({
+      said: ["asked for some-agent --remove", "refusing"],
+      left: [1],
+    });
+  });
+
+  test("and does nothing when it is imported", () => {
+    const said: string[] = [];
+    const left: number[] = [];
+    let ran = 0;
+
+    runGhostEntrypoint(
+      false,
+      ["some-agent"],
+      (() => { ran += 1; return { code: 0, lines: [] }; }) as typeof runGhostIdentity,
+      (line) => { said.push(line); },
+      (code) => { left.push(code); },
+    );
+
+    expect(
+      { said, left, ran },
+      "importing the repair ran it — and it would have called process.exit out of a test",
+    ).toEqual({ said: [], left: [], ran: 0 });
   });
 });

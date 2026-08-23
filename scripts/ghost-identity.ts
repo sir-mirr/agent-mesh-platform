@@ -187,8 +187,28 @@ export function runGhostIdentity(argv: string[], databases?: { mesh: Database; l
   return { code: 0, lines };
 }
 
-if (import.meta.main) {
-  const { code, lines } = runGhostIdentity(process.argv.slice(2));
-  for (const line of lines) console.log(line);
-  process.exit(code);
+/**
+ * Being the program, as a function of whether this file is one.
+ *
+ * Three lines nothing ran: `test/ghost-identity.test.ts` imports this module,
+ * so the condition is false wherever it is measured. What the three do is the
+ * whole difference between a repair that reports and one that reports and then
+ * exits `0` on a refusal — so they are a function, and both answers are a case.
+ *
+ * `exit` is bound rather than wrapped: a forwarding arrow is a function of its
+ * own, uncalled by every test that hands in a fake.
+ */
+export function runGhostEntrypoint(
+  isMain: boolean,
+  argv: string[] = process.argv.slice(2),
+  run: typeof runGhostIdentity = runGhostIdentity,
+  say: (line: string) => void = console.log.bind(console),
+  exit: (code: number) => void = process.exit.bind(process) as (code: number) => void,
+): void {
+  if (!isMain) return;
+  const { code, lines } = run(argv);
+  for (const line of lines) say(line);
+  exit(code);
 }
+
+runGhostEntrypoint(import.meta.main);
