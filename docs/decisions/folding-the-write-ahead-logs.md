@@ -116,6 +116,32 @@ Neither one covers the other. The first would pass with `hubStores()` returning
 the wrong four; the second cannot report a line as covered, because coverage is
 measured in the process that runs the test and this one is not that process.
 
+## What the log's size says, and what it does not
+
+The automatic checkpoint SQLite runs at 1000 pages **rewinds** the log: the
+frames go into the main database and the next writer starts again at the top of
+the same file. It does not shorten the file. Truncating is what
+`PRAGMA wal_checkpoint(TRUNCATE)` adds, and what `journal_size_limit` would ask
+for on its own — neither is set here outside `checkpointForShutdown`.
+
+So a 4 MB `-wal` is not evidence that no checkpoint has run. The finding above
+rests on the **main** file instead — three databases at exactly one page each
+— which is evidence, because a checkpoint moves frames into that file and a page
+count of one means none ever arrived.
+
+`packages/store/src/wal-growth.test.ts` had the confusion in it: it called the
+log folded when the file dropped below half its peak, which is true on some
+filesystems and after some checkpoints and neither reliably. It passed here and
+failed on CI, alone, for as long as it took to clear the failures above it. What
+it measures now is that the log **stops tracking the volume of writes** — pass
+the threshold, write four times the threshold again, and the peak does not
+follow — with the reader-snapshot case kept as the contrast, where it does.
+
+It opens through `openAt` rather than typing the pragmas out again, so the day
+`journal_mode` or the autocheckpoint moves in the opener, the test goes red
+instead of going on describing a configuration nothing ships
+(`wal-autocheckpoint-off` in `scripts/mutation-check.ts`).
+
 ## What is *not* established, and the honest reason
 
 Adding `auditDb.close()` was recorded in `docs/deferred.md` as turning `test/`
