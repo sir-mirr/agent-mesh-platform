@@ -5566,7 +5566,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const statedGroups = Number(claim![1]);
       const statedAgents = Number(claim![2]);
 
-      const drawnClusters = await page.locator("[data-testid='topology-cluster']").count();
+      // **Server groups, which is what the heading counts.** The screen also
+      // draws a container for agents the server placed in no group — an
+      // identity in this server's `agent_registry` that the hub has never
+      // heard of is in none, correctly, and `agent-unkeyed` is seeded as
+      // exactly that. Counting it as a group made this compare 5 against 6 and
+      // call the screen inconsistent when both halves were right; `801723a`
+      // gave the two kinds separate `data-topology-kind` so the question can
+      // be asked of the one the heading is about.
+      const drawnClusters = await page.locator("[data-testid='topology-cluster'][data-topology-kind='group']").count();
+      const drawnOrbits = await page.locator("[data-testid='topology-cluster']").count();
       const drawnAgents = await page.locator("[data-testid='topology-agent']").count();
       const drawnGateways = await page.locator("[data-testid='topology-gateway']").count();
 
@@ -5578,6 +5587,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       ).toEqual({ groups: true, agents: true, drew: true });
 
       expect({ stated: statedGroups, drawn: drawnClusters }).toEqual({ stated: statedGroups, drawn: statedGroups });
+      // The kind axis has to mean something, or the selector above is just a
+      // narrower way of counting the same thing and this stops being a check
+      // of the heading at all.
+      expect(
+        { everyOrbitIsAGroup: drawnOrbits === drawnClusters, unassignedDrawn: drawnOrbits - drawnClusters },
+        "every orbit on the page reported itself as a server group, so the kind attribute distinguishes nothing",
+      ).toEqual({ everyOrbitIsAGroup: false, unassignedDrawn: drawnOrbits - drawnClusters });
       expect({ stated: statedAgents, drawn: drawnAgents }).toEqual({ stated: statedAgents, drawn: statedAgents });
 
       // Only says something when there are gateways to absorb.
