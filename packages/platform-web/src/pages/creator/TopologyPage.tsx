@@ -16,7 +16,8 @@ interface ClusterConfig {
   fill: string;
   stroke: string;
   textColor: string;
-  gw: { id: string; x: number; y: number };
+  /** Only a server-reported group gets a synthesised gateway. */
+  gw: { id: string; x: number; y: number } | null;
 }
 
 interface TopoNode {
@@ -146,13 +147,15 @@ export function TopologyPage() {
   }, []);
 
   // 1. Build Topology Data Graph dynamically based on real liveGroups and liveAgents
-  const { clusters, nodes, edges, totalAgentCount, bounds } = useMemo(() => {
+  const { clusters, nodes, edges, totalAgentCount, groupCount, gatewayCount, bounds } = useMemo(() => {
     if (liveGroups.length === 0 && liveAgents.length === 0) {
       return {
         clusters: [],
         nodes: {},
         edges: [],
         totalAgentCount: 0,
+        groupCount: 0,
+        gatewayCount: 0,
         bounds: {
           minX: 0,
           maxX: 1200,
@@ -173,25 +176,39 @@ export function TopologyPage() {
     }
 
     const agentIds = new Set(liveAgents.map((agent) => agent.identity));
-    const effectiveGroups: GroupItem[] = liveGroups.length > 0
-      ? liveGroups.map((group) => ({
-          ...group,
-          // Group membership shares the unified identity namespace. Only an
-          // identity that the filtered agent registry confirms may become an
-          // agent node or contribute to an agent-labelled cluster count.
-          members: (group.members ?? []).filter((identity) => agentIds.has(identity)),
-        }))
-      : [
-          {
-            id: "default",
-            // Named for what it is — a placeholder the screen drew because the
-            // server reported no groups — rather than "Default Group", which
-            // reads as a group the mesh has.
+    const reportedGroups = liveGroups.map((group) => ({
+      ...group,
+      topologyKind: "group" as const,
+      // Group membership shares the unified identity namespace. Only an
+      // identity that the filtered agent registry confirms may become an
+      // agent node or contribute to an agent-labelled cluster count.
+      members: (group.members ?? []).filter((identity) => agentIds.has(identity)),
+    }));
+    const assignedAgentIds = new Set(reportedGroups.flatMap((group) => group.members));
+    const unassignedAgents = liveAgents.filter((agent) => !assignedAgentIds.has(agent.identity));
+
+    // `GET /agents` and `GET /admin/groups` answer two different questions.
+    // A registry row does not disappear just because no group claims it. The
+    // old branch only drew a no-group placeholder when there were *zero*
+    // groups, so a single empty `default` group made every unassigned agent
+    // vanish despite the screen having received it. Keep those rows in a
+    // visual container that is explicitly not a server group.
+    let unassignedGroupId = "__topology_unassigned__";
+    const reportedGroupIds = new Set(reportedGroups.map((group) => group.id));
+    while (reportedGroupIds.has(unassignedGroupId)) unassignedGroupId = `_${unassignedGroupId}`;
+
+    const effectiveGroups = [
+      ...reportedGroups,
+      ...(unassignedAgents.length > 0
+        ? [{
+            id: unassignedGroupId,
             name: t("topo.noGroup", "(그룹 없음)"),
-            member_count: liveAgents.length,
-            members: liveAgents.map((a) => a.identity),
-          },
-        ];
+            member_count: unassignedAgents.length,
+            members: unassignedAgents.map((agent) => agent.identity),
+            topologyKind: "unassigned" as const,
+          }]
+        : []),
+    ];
 
     const rawClusters: ClusterConfig[] = effectiveGroups.map((g, idx) => {
       const col = idx % 4;
@@ -220,7 +237,7 @@ export function TopologyPage() {
         fill: pal.fill,
         stroke: pal.stroke,
         textColor: pal.textColor,
-        gw: { id: `gw-${g.id}`, x: cx, y: cy + r + 50 },
+        gw: g.topologyKind === "group" ? { id: `gw-${g.id}`, x: cx, y: cy + r + 50 } : null,
       };
     });
 
@@ -239,29 +256,32 @@ export function TopologyPage() {
       minY = Math.min(minY, cfg.cy - cfg.r - 35);
       maxY = Math.max(maxY, cfg.cy + cfg.r);
 
-      // Gateway node
-      nodeDict[cfg.gw.id] = {
-        identity: cfg.gw.id,
-        group: cfg.id,
-        groupName: `${cfg.name} (Gateway)`,
-        type: "gateway-bridge",
-        status: "Gateway",
-        desc: `${cfg.name} — ${t("topo.gateway", "그룹 사이의 메시지 전송 규칙을 적용하는 서버")}`,
-        // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
-        // put a synthesised node in the same list as real agents wearing the
-        // same kind of value.
-        key: null,
-        x: cfg.gw.x,
-        y: cfg.gw.y,
-        icon: "🌐",
-        displayName: `${cfg.id}-gw`,
-        directPeers: [],
-      };
+      // A visual no-group container is not part of the routing backbone. Only
+      // a server-reported group gets a gateway node and can join highways.
+      if (cfg.gw) {
+        nodeDict[cfg.gw.id] = {
+          identity: cfg.gw.id,
+          group: cfg.id,
+          groupName: `${cfg.name} (Gateway)`,
+          type: "gateway-bridge",
+          status: "Gateway",
+          desc: `${cfg.name} — ${t("topo.gateway", "그룹 사이의 메시지 전송 규칙을 적용하는 서버")}`,
+          // A drawn gateway holds no key. It used to carry `sha256:gw_…`, which
+          // put a synthesised node in the same list as real agents wearing the
+          // same kind of value.
+          key: null,
+          x: cfg.gw.x,
+          y: cfg.gw.y,
+          icon: "🌐",
+          displayName: `${cfg.id}-gw`,
+          directPeers: [],
+        };
 
-      minX = Math.min(minX, cfg.gw.x - 24);
-      maxX = Math.max(maxX, cfg.gw.x + 24);
-      minY = Math.min(minY, cfg.gw.y - 24);
-      maxY = Math.max(maxY, cfg.gw.y + 40);
+        minX = Math.min(minX, cfg.gw.x - 24);
+        maxX = Math.max(maxX, cfg.gw.x + 24);
+        minY = Math.min(minY, cfg.gw.y - 24);
+        maxY = Math.max(maxY, cfg.gw.y + 40);
+      }
 
       const groupData = effectiveGroups.find((g) => g.id === cfg.id);
       const memberList: string[] = groupData?.members ?? [];
@@ -291,7 +311,13 @@ export function TopologyPage() {
         // topology said the whole mesh was up regardless of what the mesh knew.
         // `last_seen_at` is what it does know: seen at some point, or no record.
         const status: "Seen" | "NoRecord" = hasBeenSeen(agentObj ?? {}) ? "Seen" : "NoRecord";
-        const displayName = agentObj?.description || agentIdentity;
+        // A group card supplies the membership context around a descriptive
+        // label. An unassigned node has no such second source of identity, so
+        // its visible label must name the registry row the screen received.
+        // Otherwise `{ id: "soak-claude", description: "AI Claude" }` is
+        // technically drawn while the operator still cannot find
+        // `soak-claude` anywhere on the page.
+        const displayName = cfg.gw === null ? agentIdentity : (agentObj?.description || agentIdentity);
         const desc = `${agentIdentity} — ${cfg.name}`;
 
         // Radial orbital layout coordinates
@@ -363,7 +389,7 @@ export function TopologyPage() {
       }
 
       // Gateway link to galaxy lead
-      if (memberIds.length > 0) {
+      if (memberIds.length > 0 && cfg.gw) {
         const leadId = memberIds[0] ?? "";
         const leadNode = nodeDict[leadId];
         const gwNode = nodeDict[cfg.gw.id];
@@ -382,9 +408,12 @@ export function TopologyPage() {
     });
 
     // Inter-Gateway Highway Backbone edges
-    for (let i = 0; i < rawClusters.length - 1; i++) {
-      const cA = rawClusters[i];
-      const cB = rawClusters[i + 1];
+    const gatewayClusters = rawClusters.filter(
+      (cluster): cluster is ClusterConfig & { gw: NonNullable<ClusterConfig["gw"]> } => cluster.gw !== null,
+    );
+    for (let i = 0; i < gatewayClusters.length - 1; i++) {
+      const cA = gatewayClusters[i];
+      const cB = gatewayClusters[i + 1];
       if (cA && cB) {
         const gwA = nodeDict[cA.gw.id];
         const gwB = nodeDict[cB.gw.id];
@@ -434,6 +463,10 @@ export function TopologyPage() {
       // the half of it that survived the fix, because nothing compared the
       // heading against the drawing. `SC-CONSIST-01` does.
       totalAgentCount: Object.values(nodeDict).filter((n) => n.type !== "gateway-bridge").length,
+      // The unassigned orbit is a visual container, not a group or gateway the
+      // server reported. Keep the screen's measured counts tied to their APIs.
+      groupCount: liveGroups.length,
+      gatewayCount: gatewayClusters.length,
       bounds: {
         minX,
         maxX,
@@ -999,8 +1032,8 @@ export function TopologyPage() {
             ? t("topology.loading", "Loading topology…")
             : isError
             ? t("common.loadError", "토폴로지 데이터를 불러오지 못했습니다.")
-            : t("topo.subtitle", `실시간 연결된 ${clusters.length}개 그룹 네트워크 및 ${totalAgentCount}개 에이전트 라우팅 토폴로지`)
-                .replace("{groups}", String(clusters.length))
+            : t("topo.subtitle", `실시간 연결된 ${groupCount}개 그룹 네트워크 및 ${totalAgentCount}개 에이전트 라우팅 토폴로지`)
+                .replace("{groups}", String(groupCount))
                 // Gateways are drawn, not connected. Adding them here made the
                 // heading disagree with the counter beside it.
                 .replace("{agents}", String(totalAgentCount))
@@ -1056,11 +1089,11 @@ export function TopologyPage() {
             <span style={{ color: "var(--color-danger)" }}>{t("common.disconnected", "통신 불가")}</span>
           ) : (
             <>
-              <span>{t("topo.hud.groups", "Groups")}: {clusters.length}</span>
+              <span>{t("topo.hud.groups", "Groups")}: {groupCount}</span>
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
               <span>{t("topo.hud.agents", "Agents")}: {totalAgentCount}</span>
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
-              <span>{t("topo.hud.gateways", "Gateways")}: {clusters.length}</span>
+              <span>{t("topo.hud.gateways", "Gateways")}: {gatewayCount}</span>
               <span style={{ color: "var(--color-text-muted)" }}>·</span>
               <span style={{ color: "var(--color-primary)", fontWeight: 800 }} title={t("topo.egressTitle", "그룹 간 메시지 전송 규칙이 적용 중입니다")}>
                 {t("topo.hud.egress", "그룹 간 전송 규칙")}: {t("topo.hud.active", "적용 중")}
@@ -1115,7 +1148,7 @@ export function TopologyPage() {
             }}
           >
             <option value="all">
-              {t("topo.filter.all", `전체 그룹 보기 (${clusters.length})`).replace("{count}", String(clusters.length))}
+              {t("topo.filter.all", `전체 그룹 보기 (${groupCount})`).replace("{count}", String(groupCount))}
             </option>
             {clusters.map((c) => (
               <option key={c.id} value={c.id}>
