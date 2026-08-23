@@ -29,6 +29,11 @@ on:
   # re-running needs a new commit, because a new commit is a different tree.
   workflow_dispatch:
 
+  # The mutation manifest, nightly. A full pass is hours (below), so it belongs
+  # on a clock rather than in front of a merge.
+  schedule:
+    - cron: "0 17 * * *"
+
 concurrency:
   # A newer push supersedes an in-flight run on the same ref.
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,18 +74,24 @@ jobs:
       - name: Integration tests
         run: bun test test/
 
-      # The guards checked against the defects they exist for. Moving these into
-      # the repository was supposed to make "this was mutation-tested" a
-      # checkable claim; a manifest nothing runs decays exactly the way the
-      # documentation it replaced did.
+      # **Anchors, not the whole manifest.** This reads every entry against the
+      # tree and answers in a second: an entry whose `from` no longer appears
+      # plants nothing, the suite passes, and the run reads as *the guard did
+      # not catch it* — a false finding rather than a missing one. Every
+      # refactor in this repository has broken one, and it is the failure a
+      # ten-minute job can actually hold.
       #
-      # It edits tracked files and restores with `git checkout --`, which is
-      # safe on a fresh checkout and refuses outright on a dirty tree.
-      - name: Mutation check
-        run: bun run mutation-check
+      # Planting them is the `mutation` job below, and it is not here for a
+      # reason this step used to hide: a full pass is one suite per entry and
+      # seventy-two of those entries name the browser suite, so it could not
+      # have finished inside this job on any tree. It never had the chance to
+      # say so — for fifteen pushes something above it failed first.
+      - name: Mutation anchors
+        run: bun run mutation-check -- --anchors
 
-      # The tool checking its own reporting branch. Added after `18/18 caught`
-      # was reported while the code that prints a failure had never run.
+      # The tool checking its own reporting branch — three entries, seconds.
+      # Added after `18/18 caught` was reported while the code that prints a
+      # failure had never run.
       - name: Mutation check — self-check
         run: bun run mutation-check -- --self-check
 
@@ -137,3 +148,48 @@ jobs:
       # always one of the two: the suite broke, or the number did.
       - name: Coverage floor
         run: bun scripts/coverage.ts --floor 99
+
+  # **Planting all 761, on a clock.**
+  #
+  # One suite per entry, and seventy-two of them name `test/fe-render.test.ts`,
+  # which drives a browser for five minutes. That is hours however it is
+  # arranged, which is why it is not in front of a push: the wait would be paid
+  # by every merge, against a manifest that changes when a guard changes rather
+  # than when a feature does.
+  #
+  # Sharded round-robin because the manifest is grouped by subject and the
+  # expensive suites cluster inside a group — a contiguous eighth would hand one
+  # shard every browser entry and another none. `fail-fast: false`, because
+  # which *other* shards were also red is the first thing a reader wants.
+  mutation:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # The browser entries need both, for the same reason the integration
+      # suite does.
+      - name: Build web frontend
+        run: bun run build:web
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      # It edits tracked files and restores with `git checkout --`, which is
+      # safe on a fresh checkout and refuses outright on a dirty tree.
+      - name: Mutation check
+        run: bun run mutation-check -- --shard ${{ matrix.shard }}/8

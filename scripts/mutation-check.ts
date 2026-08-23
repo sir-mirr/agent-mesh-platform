@@ -8202,7 +8202,7 @@ const repeat = (() => {
 // 남은 것이 하필 보안 줄이었다.
 //
 // 알리기 전에 안 민 것이 원인이고, 이 거절은 그 종류가 다시 안 나게 하는 자리다.
-const KNOWN_FLAGS = new Set(["--self-check", "--anchors", "--repeat"]);
+const KNOWN_FLAGS = new Set(["--self-check", "--anchors", "--repeat", "--shard"]);
 const unknownFlag = argv.find((a) => a.startsWith("--") && !KNOWN_FLAGS.has(a));
 if (unknownFlag) {
   console.error(`unknown flag ${unknownFlag} — refusing rather than running the whole manifest`);
@@ -8210,17 +8210,53 @@ if (unknownFlag) {
   process.exit(2);
 }
 const repeatValueIndex = argv.findIndex((a) => a === "--repeat") + 1;
-const filter = argv.filter((a, i) => !a.startsWith("--") && !(repeatValueIndex > 0 && i === repeatValueIndex));
-const selected = selfCheck
+const shardValueIndex = argv.findIndex((a) => a === "--shard") + 1;
+const filter = argv.filter(
+  (a, i) =>
+    !a.startsWith("--") &&
+    !(repeatValueIndex > 0 && i === repeatValueIndex) &&
+    !(shardValueIndex > 0 && i === shardValueIndex),
+);
+
+/**
+ * `--shard k/n`: one nth of the manifest, taken round-robin.
+ *
+ * **A full pass is one suite per entry, and seventy-two of those suites are the
+ * browser one.** Measured against the runner: `check` carried the whole
+ * manifest in a ten-minute job, so the step could not have passed on any tree —
+ * it had simply never been reached before, because something above it failed
+ * first for fifteen pushes.
+ *
+ * Round-robin rather than contiguous blocks, because the manifest is grouped by
+ * subject and the expensive suites cluster inside a group: a contiguous eighth
+ * would hand one shard every `fe-render` entry and another shard none.
+ */
+const shard = (() => {
+  if (shardValueIndex === 0) return null;
+  const raw = argv[shardValueIndex];
+  const [k, n] = (raw ?? "").split("/").map(Number);
+  if (!Number.isInteger(k) || !Number.isInteger(n) || n! < 1 || k! < 1 || k! > n!) {
+    console.error(`--shard takes \`k/n\`, as in \`--shard 1/8\` — got ${raw ?? "nothing"}`);
+    process.exit(2);
+  }
+  return { k: k!, n: n! };
+})();
+const chosen = selfCheck
   ? SELF_CHECK
   : filter.length
     ? MUTATIONS.filter((m) => filter.some((f) => m.id.includes(f)))
     : MUTATIONS;
+const selected = shard ? chosen.filter((_, i) => i % shard.n === shard.k - 1) : chosen;
 
 if (selected.length === 0) {
-  console.error(`no mutation matches ${filter.join(", ")}`);
+  console.error(
+    shard
+      ? `shard ${shard.k}/${shard.n} of ${chosen.length} entr${chosen.length === 1 ? "y" : "ies"} is empty — fewer entries than shards`
+      : `no mutation matches ${filter.join(", ")}`,
+  );
   process.exit(2);
 }
+if (shard) console.log(`shard ${shard.k}/${shard.n}: ${selected.length} of ${chosen.length} entries`);
 
 // **`--anchors`: does every entry still point at something?**
 //
