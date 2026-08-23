@@ -538,6 +538,21 @@ describe("the way out", () => {
     expect(localStorage.getItem(SESSION_KEY)).toBe(null);
   });
 
+  it("keeps the locked-session screen and shows an error when logout gets no answer", async () => {
+    wires = [[ME, LOCKED_SESSION], [LOGOUT, noAnswer]];
+    await mount();
+    expect(localStorage.getItem(SESSION_KEY)).not.toBe(null);
+
+    fireEvent.click(screen.getByTestId("pwchg-signout"));
+    await settle();
+
+    expect(sentTo(LOGOUT).length).toBe(1);
+    expect(signedOut()).toBe(false);
+    expect(stillOnTheForm()).toBe(true);
+    expect(localStorage.getItem(SESSION_KEY)).not.toBe(null);
+    expect(verdict()).toBe(en("auth.logoutFailed"));
+  });
+
   it("does not change the password on the way out", async () => {
     wires = [[ME, LOCKED_SESSION], [CHANGE, ACCEPTED]];
     await mount();

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { User, UserRole, Capability } from "@/types/auth.ts";
 import { ApiError, apiClient } from "@/api/client.ts";
 
@@ -29,7 +29,15 @@ interface AuthContextType {
   refreshSession: () => Promise<void>;
   loginWithLocal: (id: string, pass: string) => Promise<void>;
   loginWithGitHub: () => void;
-  logout: () => void;
+  /** True from the first sign-out attempt until the server answers. */
+  isLoggingOut: boolean;
+  /**
+   * End the server session before clearing the local one.
+   *
+   * `true` means the cookie-expiry response arrived and the caller may leave
+   * for `/login`; `false` means the current session and screen are still live.
+   */
+  logout: () => Promise<boolean>;
 }
 
 import { ALL_CAPABILITIES } from "@/types/auth.ts";
@@ -149,8 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [authFailure, setAuthFailure] = useState<"unauthenticated" | "unreachable" | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState<boolean | null>(null);
+  // State disables the rendered controls; the ref closes the smaller window
+  // before React has rendered that state. Two calls in the same event turn
+  // must still share one POST.
+  const logoutInFlight = useRef<Promise<boolean> | null>(null);
 
   // Validate session on mount via /auth/me
   useEffect(() => {
@@ -261,16 +274,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = "/auth/github";
   };
 
-  const logout = () => {
+  const logout = (): Promise<boolean> => {
+    if (logoutInFlight.current) return logoutInFlight.current;
+
     // **The cookie is the session, and it is the server's.** Clearing local
-    // state alone sent the browser to `/login` still signed in — measured on
-    // the running product: `mesh_token` survived, `/auth/me` answered `200`,
-    // and `/dashboard` opened again.
-    void apiClient("/auth/logout", { method: "POST" }).catch(() => {});
-    setUser(null);
-    setMustChangePassword(null);
-    setAuthFailure(null);
-    localStorage.removeItem("agent_mesh_user");
+    // state before this response sent the browser to `/login` while the cookie
+    // was still live. It also made a failed request indistinguishable from a
+    // successful one: the guard had already discarded the current screen and
+    // user by the time there was an error to show.
+    const request = (async () => {
+      setIsLoggingOut(true);
+      try {
+        await apiClient("/auth/logout", { method: "POST" });
+        // Only the server's success makes the local half true. From here a
+        // guard or the caller may move to `/login`; the expiry response has
+        // already arrived.
+        setUser(null);
+        setMustChangePassword(null);
+        setAuthFailure(null);
+        localStorage.removeItem("agent_mesh_user");
+        return true;
+      } catch {
+        // No local mutation on failure. The caller still has the current
+        // screen and user and can draw the error where the action happened.
+        return false;
+      } finally {
+        setIsLoggingOut(false);
+        logoutInFlight.current = null;
+      }
+    })();
+
+    logoutInFlight.current = request;
+    return request;
   };
 
 
@@ -286,6 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshSession,
         loginWithLocal,
         loginWithGitHub,
+        isLoggingOut,
         logout,
       }}
     >

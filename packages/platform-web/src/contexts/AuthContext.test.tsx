@@ -577,26 +577,59 @@ describe("logging out", () => {
   it("tells the server, because the cookie is the server's", async () => {
     await signedIn();
     const before = calls.length;
-    await act(async () => { auth().logout(); });
+    let succeeded = false;
+    await act(async () => { succeeded = await auth().logout(); });
     // Measured on the running product: clearing local state alone left
     // `mesh_token` alive, `/auth/me` answered 200, and `/dashboard` opened
     // again on the next visit. The person had not signed out of anything.
     const logout = calls.slice(before).find((c) => c.url.endsWith(LOGOUT));
     expect(logout).not.toBe(undefined);
     expect(logout!.init?.method).toBe("POST");
+    expect(succeeded).toBe(true);
     expect(auth().isAuthenticated).toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBe(null);
   });
 
-  it("clears the session even when the call to the server failed", async () => {
+  it("keeps the current session when the server did not sign it out", async () => {
     await signedIn();
     reply = () => { throw new TypeError("Failed to fetch"); };
-    await act(async () => { auth().logout(); });
-    // The local half must not wait on the network half. A logout that leaves
-    // the console signed in because the request failed is the worse of the two
-    // wrong answers on a shared machine.
+    let succeeded = true;
+    await act(async () => { succeeded = await auth().logout(); });
+    // The request did not expire the cookie, so clearing this half would put a
+    // login form in front of a still-live server session. Failure is an answer
+    // the current screen can show, not a successful local sign-out.
+    expect(succeeded).toBe(false);
+    expect(auth().user?.name).toBe("operator-1");
+    expect(auth().isAuthenticated).toBe(true);
+    expect(auth().isLoggingOut).toBe(false);
+    expect(rememberedNow()?.name).toBe("operator-1");
+  });
+
+  it("shares one POST across every call made while logout is in flight", async () => {
+    await signedIn();
+    let answer!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { answer = resolve; });
+    reply = (url) => (url.endsWith(LOGOUT) ? pending : json(200, SESSION));
+
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    act(() => {
+      first = auth().logout();
+      second = auth().logout();
+    });
+
+    expect(first).toBe(second);
+    expect(auth().isLoggingOut).toBe(true);
+    expect(calls.filter((c) => c.url.endsWith(LOGOUT)).length).toBe(1);
+
+    let succeeded = false;
+    await act(async () => {
+      answer(json(200, { ok: true }));
+      succeeded = await first;
+    });
+    expect(succeeded).toBe(true);
+    expect(auth().isLoggingOut).toBe(false);
     expect(auth().user).toBe(null);
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(null);
   });
 
   it("leaves no reason behind for there being no user", async () => {
@@ -616,7 +649,7 @@ describe("logging out", () => {
     expect(auth().isAuthenticated).toBe(true);
     expect(auth().mustChangePassword).toBe(false);
 
-    await act(async () => { auth().logout(); });
+    await act(async () => { await auth().logout(); });
     // Signing out on purpose is not the backend refusing and not the backend
     // being down; the stored word comes back the instant the user goes, and a
     // leftover "unreachable" puts the disconnected panel in front of someone

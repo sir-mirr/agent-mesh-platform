@@ -19,7 +19,7 @@ import { useI18n } from "@/contexts/I18nContext.tsx";
  */
 export function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { refreshSession, logout } = useAuth();
+  const { refreshSession, logout, isLoggingOut } = useAuth();
   const { t } = useI18n();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -52,6 +52,20 @@ export function ChangePasswordPage() {
     await refreshSession();
     setBusy(false);
     navigate("/dashboard", { replace: true });
+  };
+
+  const signOut = async () => {
+    setError(null);
+    if (await logout()) {
+      navigate("/login", { replace: true });
+      return;
+    }
+    setError(
+      t(
+        "auth.logoutFailed",
+        "로그아웃하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.",
+      ),
+    );
   };
 
   const label: React.CSSProperties = { fontSize: "0.8rem", color: "var(--color-text-muted)" };
@@ -142,13 +156,19 @@ export function ChangePasswordPage() {
         <button
           type="button"
           data-testid="pwchg-signout"
-          onClick={() => {
-            logout();
-            navigate("/login", { replace: true });
+          disabled={busy || isLoggingOut}
+          aria-busy={isLoggingOut}
+          onClick={() => { void signOut(); }}
+          style={{
+            ...input,
+            cursor: busy || isLoggingOut ? "wait" : "pointer",
+            background: "transparent",
+            fontWeight: 600,
           }}
-          style={{ ...input, cursor: "pointer", background: "transparent", fontWeight: 600 }}
         >
-          {t("pwchg.signout", "Sign out")}
+          {isLoggingOut
+            ? t("auth.loggingOut", "Signing out…")
+            : t("pwchg.signout", "Sign out")}
         </button>
       </form>
     </div>
