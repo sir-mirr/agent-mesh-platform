@@ -150,7 +150,6 @@ reason no longer describes anything and the row is stale.
 
 | File | Anchor | Why it is left |
 |---|---|---|
-| `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password — a live route answering something other than 200, which needs the mesh. |
 | `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
 ## The functions this table cannot name

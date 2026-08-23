@@ -925,6 +925,42 @@ export function capabilityViewerName(...capabilities: string[]): string {
  * page. `agent-mesh-local-pm` measured it twice (mail #1104) while I argued from
  * a column the gate does not read.
  */
+/**
+ * Whether an admission opened an account, and what a refusal means.
+ *
+ * **Both refusals come from a live route**, which is what makes them this
+ * harness's business rather than the server's: `409` is the account already
+ * being there, which every second run of a file produces, and anything else is
+ * a mesh that did not admit and did not say `409`. The second used to be a
+ * branch inside `capabilityViewer` that only a broken deployment could reach,
+ * so it had never run — and the sentence it throws is the whole of what a
+ * person sees when the harness gives up.
+ *
+ * The body is a thunk: it is read only on the path that reports it, so the
+ * success path does not consume a stream it does not need.
+ */
+export async function admissionOpened(
+  username: string,
+  admitted: { ok: boolean; status: number },
+  body: () => Promise<string>,
+): Promise<boolean> {
+  if (admitted.ok) return true;
+  if (admitted.status === 409) return false;
+  throw new Error(`admitting ${username} answered ${admitted.status}: ${await body()}`);
+}
+
+/**
+ * The password gate, which a new account has to walk out of before anything
+ * else opens. A non-200 here means the account exists and cannot be used, and
+ * every later failure in that file would be about a session that was never
+ * issued — which is why it stops here, naming the status.
+ */
+export function leftThePasswordGate(username: string, status: number): void {
+  if (status !== 200) {
+    throw new Error(`${username} could not leave the password gate: ${status}`);
+  }
+}
+
 export async function capabilityViewer(
   mesh: Mesh,
   ...capabilities: string[]
@@ -941,7 +977,7 @@ export async function capabilityViewer(
   // **201, not 200.** The route answers Created, and a check for 200 sent every
   // first admission down the error path — caught by printing the body in the
   // message rather than the status alone.
-  if (admitted.ok) {
+  if (await admissionOpened(username, admitted, () => admitted.text())) {
     // Admission hands back a password that must be changed before anything else
     // opens, which is the first thing a real account does.
     const { temporary_password: temporary } = (await admitted.json()) as { temporary_password: string };
@@ -957,11 +993,7 @@ export async function capabilityViewer(
       headers: { "content-type": "application/json", cookie: firstCookie },
       body: JSON.stringify({ current: temporary, next: password }),
     });
-    if (changed.status !== 200) {
-      throw new Error(`${username} could not leave the password gate: ${changed.status}`);
-    }
-  } else if (admitted.status !== 409) {
-    throw new Error(`admitting ${username} answered ${admitted.status}: ${await admitted.text()}`);
+    leftThePasswordGate(username, changed.status);
   }
 
   for (const capability of capabilities) {

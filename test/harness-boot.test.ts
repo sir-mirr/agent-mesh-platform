@@ -16,10 +16,12 @@ import { describe, expect, test } from "bun:test";
 
 import {
   absentService,
+  admissionOpened,
   bootFailureMessage,
   bootRetryable,
   connectRpc,
   freePort,
+  leftThePasswordGate,
   rpcAnswer,
   sessionCookie,
   startMesh,
@@ -381,5 +383,45 @@ describe("talking to a hub over the socket", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+
+/**
+ * Admitting an account, and the two ways a live route says no.
+ *
+ * `409` is the account already being there, which every second run of a file
+ * produces and which the harness walks past. Anything else is a mesh that did
+ * not admit and did not say so in the one way this expects — and the sentence
+ * thrown there is the whole of what a person sees when the harness gives up. It
+ * had never been produced: reaching it means a server answering something no
+ * healthy one answers.
+ */
+describe("admitting the account a scenario needs", () => {
+  const read = () => Promise.resolve("");
+
+  test("an admission that opened is walked through the password gate", async () => {
+    expect(await admissionOpened("viewer", { ok: true, status: 201 }, read)).toBe(true);
+  });
+
+  test("an account already there is walked past, not treated as a failure", async () => {
+    expect(
+      await admissionOpened("viewer", { ok: false, status: 409 }, read),
+      "the second run of a file would fail on an account the first one made",
+    ).toBe(false);
+  });
+
+  test("and anything else stops, naming the status and what the route said", async () => {
+    await expect(
+      admissionOpened("viewer", { ok: false, status: 403 }, () => Promise.resolve("no capability")),
+    ).rejects.toThrow("admitting viewer answered 403: no capability");
+  });
+
+  test("the password gate is walked out of, or the run stops there", () => {
+    expect(() => leftThePasswordGate("viewer", 200)).not.toThrow();
+    expect(
+      () => leftThePasswordGate("viewer", 401),
+      "an account that cannot leave the gate goes on to fail at every later step, about a session it never had",
+    ).toThrow("viewer could not leave the password gate: 401");
   });
 });
