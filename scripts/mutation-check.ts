@@ -867,6 +867,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["writes no message when it refuses"],
   },
   {
+    id: "the-no-group-orbit-reports-itself-as-a-group",
+    defect:
+      "The kind attribute collapsed to `group`, so the orbit holding agents the server placed nowhere claimed to be one of the server's groups. The heading counts groups and the canvas would then be counted as drawing one more of them \u2014 which is the shape `SC-CONSIST-01` called an inconsistency while both halves were right, and the axis added to tell them apart is the thing being removed here.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "                data-topology-kind={c.topologyKind}",
+    to: "                data-topology-kind=\"group\"",
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["draws an answered registry under an explicit no-group placeholder"],
+  },
+  {
+    id: "an-agent-in-no-group-is-dropped-from-the-canvas",
+    defect:
+      "The safety net went empty, so a registry row no group claims is received by the screen and drawn nowhere \u2014 T-035 exactly: `soak-claude` was listed by `GET /api/v1/agents` and absent from the topology. An identity the hub has never heard of is in no group *correctly*, so the screen cannot rely on membership to decide what it draws.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "    const unassignedAgents = liveAgents.filter((agent) => !assignedAgentIds.has(agent.identity));",
+    to: "    const unassignedAgents: typeof liveAgents = [];",
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["keeps a registered agent visible when the reported default group has no members"],
+  },
+  {
+    id: "the-safety-net-gets-a-gateway-of-its-own",
+    defect:
+      "A gateway was synthesised for the no-group orbit. Gateways stand for something the mesh has \u2014 a group's egress point \u2014 and drawing one for a container the screen invented to hold unplaced rows puts a thing on the canvas that no server answer names.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "        gw: g.topologyKind === \"group\" ? { id: `gw-${g.id}`, x: cx, y: cy + r + 50 } : null,",
+    to: "        gw: { id: `gw-${g.id}`, x: cx, y: cy + r + 50 },",
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["draws an answered registry under an explicit no-group placeholder"],
+  },
+  {
     id: "default-holds-only-what-a-row-says",
     defect:
       "Membership went back to being what `agent_group_members` holds, so `default` \u2014 the group \u00a7 12 puts every identity nobody has moved into \u2014 reported no members at all. That is the read the console draws the topology from: a registered agent existed, was listed by `GET /api/v1/agents`, and belonged to nothing on screen.",
