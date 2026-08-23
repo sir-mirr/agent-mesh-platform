@@ -180,9 +180,11 @@ describe("the line that decides a start is worth retrying", () => {
  */
 describe("a mesh that cannot start", () => {
   test("stops what it started and reports what the process said", async () => {
+    const began = Date.now();
     const failed = await startMesh({ env: { AGENT_MESH_STATE_DIR: "/proc/agent-mesh-cannot-write-here" } })
       .then(() => null)
       .catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))));
+    const took = Date.now() - began;
 
     expect(failed, "a mesh started on a directory nothing can open, which is not a mesh").not.toBeNull();
     // The child's own account, not just the harness's timeout sentence.
@@ -190,5 +192,16 @@ describe("a mesh that cannot start", () => {
       failed!.message,
       "the boot failure says the wait ended and not what the process said, which is the report this block exists to replace",
     ).toContain("SQLITE_CANTOPEN");
+    // **Which of the two failures it is.** Both messages carry the child's
+    // output — the health wait would eventually give up and the `catch` would
+    // report the same log — so the sentence is what separates *it exited* from
+    // *it never answered*, and they are different facts about the same mesh.
+    expect(failed!.message).toContain("exited before it answered");
+    // And the cost of telling them apart: the wait is fifteen seconds, and a
+    // process that is already gone should not be waited on at all.
+    expect(
+      { under5s: took < 5_000 },
+      `a boot that could never happen took ${took}ms — the wait is polling a process that has already exited`,
+    ).toEqual({ under5s: true });
   }, 30_000);
 });
