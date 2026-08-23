@@ -1147,6 +1147,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a directory"],
   },
   {
+    id: "boot-retry-ignores-a-spawn-the-kernel-refused",
+    defect:
+      "A spawn the kernel refused went back to being read as the mesh's answer. `Bun.spawn` throwing `EBADF` means no child existed to have an opinion, and without this clause the whole file it was booting for fails once, loudly, naming a file descriptor \u2014 which is the machine's state and not this repository's code.",
+    file: "test/harness.ts",
+    from: "  if (SPAWN_REFUSED.test(said)) return true;\n  if (PORT_TAKEN.test(said)) return true;",
+    to: "  if (PORT_TAKEN.test(said)) return true;",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["a spawn the kernel refused is retried, and reads as the machine's answer"],
+  },
+  {
+    id: "the-kernel-codes-match-inside-a-sentence",
+    defect:
+      "The spawn-refusal pattern lost its word boundaries, so any message merely containing one of those codes as a substring became retryable. That is the unsafe direction: `misconfigured-boot.test.ts` asserts two services refuse to start, and a refusal that happens to mention one would be retried until the run went green against a server that had stopped refusing.",
+    file: "test/harness.ts",
+    from: "export const SPAWN_REFUSED = /\\b(EBADF|EMFILE|ENFILE|EAGAIN|ENOMEM)\\b/;",
+    to: "export const SPAWN_REFUSED = /(EBADF|EMFILE|ENFILE|EAGAIN|ENOMEM)/;",
+    suite: "test/boot-retryable.test.ts",
+    expect: ["a service that names one of those codes in a refusal is still a refusal"],
+  },
+  {
     id: "boot-retry-swallows-refusal",
     defect:
       "Every failed boot became retryable, so the two misconfigured-boot checks would pass against a server that had stopped refusing to start.",

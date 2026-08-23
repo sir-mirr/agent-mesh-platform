@@ -49,6 +49,29 @@ describe("what is worth another port", () => {
       .toBe(true);
   });
 
+  test("a spawn the kernel refused is retried, and reads as the machine's answer", () => {
+    // Observed on a CI runner: `Bun.spawn` threw before any child existed, and
+    // the message is about a file descriptor. Every test in that file then
+    // failed for a reason with nothing to do with the mesh — which is the
+    // definition this guard is for, and the one shape it did not recognise.
+    const said =
+      "EBADF: bad file descriptor, epoll_ctl\n" +
+      "      at spawnService (/home/runner/work/agent-mesh-platform/test/harness.ts:199:8)";
+    expect(bootRetryable(said), "a spawn the OS refused was reported as the mesh's answer").toBe(true);
+    // The neighbours, for the same reason: a run out of descriptors or memory
+    // has not reached the point of anything having an opinion either.
+    expect(["EMFILE: too many open files", "ENFILE: file table overflow", "ENOMEM: out of memory"].map(bootRetryable))
+      .toEqual([true, true, true]);
+  });
+
+  test("a service that names one of those codes in a refusal is still a refusal", () => {
+    // The word has to be the kernel's, not a sentence a service wrote. This is
+    // the direction that is unsafe to widen: `misconfigured-boot.test.ts`
+    // asserts services refuse, and a retry there would go green against a
+    // server that had stopped refusing.
+    expect(bootRetryable("[http-server] refusing to start: set EMFILEX_LIMIT first")).toBe(false);
+  });
+
   test("a service that refused is the answer, not a race", () => {
     // These two are asserted by `misconfigured-boot.test.ts`. If either became
     // retryable, those checks would go green against a server that no longer

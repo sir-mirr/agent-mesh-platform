@@ -437,6 +437,21 @@ const NEVER_HEALTHY = /service at \S+ never became healthy:[^\n]*/g;
 const HARNESS_SECTIONS = /^--- (?:hub|http) output ---$/gm;
 
 /**
+ * What the kernel says when it refused *the harness* a resource, rather than
+ * anything a service said.
+ *
+ * `EBADF: bad file descriptor, epoll_ctl` out of `Bun.spawn` is the one this
+ * was written for: the spawn never happened, so no child had an opinion about
+ * anything, and the whole file it was booting for fails with a message about a
+ * file descriptor. It is not slowness and it is not silence — the two cases
+ * below — it is the machine refusing, which is transient by nature and never a
+ * statement about this repository's code. The neighbours are here for the same
+ * reason: a run that exhausts the fd table (`EMFILE`, `ENFILE`) or the process
+ * table has said nothing about the mesh either.
+ */
+export const SPAWN_REFUSED = /\b(EBADF|EMFILE|ENFILE|EAGAIN|ENOMEM)\b/;
+
+/**
  * Is a failed boot worth another port, or is it the answer?
  *
  * **A guard only makes a denominator out of what it recognises.** This retried
@@ -457,19 +472,11 @@ const HARNESS_SECTIONS = /^--- (?:hub|http) output ---$/gm;
  * is not something any of them assert.
  */
 export function bootRetryable(said: string): boolean {
+  if (SPAWN_REFUSED.test(said)) return true;
   if (PORT_TAKEN.test(said)) return true;
   return said.replace(NEVER_HEALTHY, "").replace(HARNESS_SECTIONS, "").trim() === "";
 }
 
-/**
- * Three attempts at a mesh, and the policy for when a second one is honest.
- *
- * `boot` is a parameter so the policy can be exercised without booting
- * anything. It decides whether a red run is a flake or a defect, which is the
- * one judgement in this file that a person acts on without reading — and until
- * it was a parameter, the only way to see a retry happen was to lose the race
- * it exists for.
- */
 /** The removal itself, so a test can let the real one run against a real
  *  directory while the cases about failing to remove inject their own. */
 export const removeStateDir = (dir: string): void => rmSync(dir, { recursive: true, force: true });
@@ -532,6 +539,15 @@ export function absentService(): Service {
   };
 }
 
+/**
+ * Three attempts at a mesh, and the policy for when a second one is honest.
+ *
+ * `boot` is a parameter so the policy can be exercised without booting
+ * anything. It decides whether a red run is a flake or a defect, which is the
+ * one judgement in this file that a person acts on without reading — and until
+ * it was a parameter, the only way to see a retry happen was to lose the race
+ * it exists for.
+ */
 export async function startMesh(
   opts: StartOptions = {},
   boot: (o: StartOptions) => Promise<Mesh> = startMeshOnce,
