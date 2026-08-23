@@ -18,7 +18,7 @@ import { describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "push-routes-probe";
 
-const { app } = await import("./main.ts");
+const { app, configureWebpush } = await import("./main.ts");
 const { getDb, getPushSubscriptions, upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 
@@ -173,5 +173,46 @@ describe("dropping an endpoint", () => {
 
     expect((await post("/api/v1/push/unsubscribe", { endpoint }, mine.authorization)).status).toBe(200);
     expect(getPushSubscriptions(theirs.login).some((s) => s.endpoint === endpoint)).toBe(false);
+  });
+});
+
+/**
+ * **Configuring web push, both ways.**
+ *
+ * This ran at module load against the process's own environment, so on every
+ * machine the suite runs on — none of which hold VAPID keys — only the *not
+ * configured* side could ever run, and the configured side was covered by
+ * nothing. A deployment holding one key and not the other takes the same silent
+ * path as one holding neither, and that is the case worth naming.
+ */
+describe("configuring web push", () => {
+  test("sets the details when both keys are there, and says so", () => {
+    const calls: string[][] = [];
+
+    const configured = configureWebpush(
+      { publicKey: "pub", privateKey: "priv" },
+      (...args: string[]) => { calls.push(args); },
+    );
+
+    expect({ configured, calls }).toEqual({
+      configured: true,
+      calls: [["mailto:sir_mirr@naver.com", "pub", "priv"]],
+    });
+  });
+
+  test("leaves it unconfigured when either key is missing", () => {
+    const calls: string[][] = [];
+    const track = (...args: string[]) => { calls.push(args); };
+
+    const outcomes = [
+      configureWebpush({ publicKey: "", privateKey: "priv" }, track),
+      configureWebpush({ publicKey: "pub", privateKey: "" }, track),
+      configureWebpush({ publicKey: "", privateKey: "" }, track),
+    ];
+
+    expect(
+      { outcomes, calls },
+      "half a key pair configured web push, so a deployment missing one would look configured",
+    ).toEqual({ outcomes: [false, false, false], calls: [] });
   });
 });

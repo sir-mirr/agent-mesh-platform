@@ -848,11 +848,33 @@ function sendPushNotificationForMessage(toUser: string, fromAgent: string, conte
   )
 }
 
+/** Where a push service sends its complaints. Part of the VAPID contract. */
+const PUSH_CONTACT = 'mailto:sir_mirr@naver.com'
+
+/**
+ * Configure web push, or leave it unconfigured and say nothing.
+ *
+ * **Both halves matter and neither could be reached.** This ran at module load
+ * against the process's own environment, so a machine without VAPID keys — every
+ * machine the suite runs on — could only ever take the `false` side, and the
+ * configured side was covered by nothing at all. A deployment that sets one key
+ * and not the other takes the same silent path as one that sets neither, which
+ * is worth knowing rather than guessing at.
+ *
+ * The keys and the setter are parameters, so both sides run here.
+ */
+export function configureWebpush(
+  keys: { publicKey: string; privateKey: string },
+  setDetails: (contact: string, publicKey: string, privateKey: string) => void = webpush.setVapidDetails.bind(webpush),
+): boolean {
+  if (!keys.publicKey || !keys.privateKey) return false
+  setDetails(PUSH_CONTACT, keys.publicKey, keys.privateKey)
+  return true
+}
+
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? ''
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? ''
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails('mailto:sir_mirr@naver.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-}
+configureWebpush({ publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY })
 
 
 // Dev environment uses lighter colors for visual distinction
