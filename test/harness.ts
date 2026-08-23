@@ -360,7 +360,7 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
       const gone = Promise.all([http.exited, hub.exited]);
       http.stop();
       hub.stop();
-      void gone.then(() => rmSync(stateDir, { recursive: true, force: true })).catch(() => {});
+      void removeStateDirWhenGone(gone, stateDir);
     },
   };
 }
@@ -470,6 +470,40 @@ export function bootRetryable(said: string): boolean {
  * it was a parameter, the only way to see a retry happen was to lose the race
  * it exists for.
  */
+/** The removal itself, so a test can let the real one run against a real
+ *  directory while the cases about failing to remove inject their own. */
+export const removeStateDir = (dir: string): void => rmSync(dir, { recursive: true, force: true });
+
+/**
+ * Remove a mesh's state directory once both processes are gone, and say so
+ * when it cannot be removed.
+ *
+ * This was `.catch(() => {})` on the end of the same promise chain: an empty
+ * handler, which is both a swallow and — because it holds no statement — a
+ * function no diagnostic can name when it turns out never to run. What it
+ * swallowed is a run leaving its temporary directory behind, one per mesh,
+ * silently, on the machine that is already low on the disk the suite filled.
+ * Reporting it is not the repair — the directory is still there — it is the
+ * difference between finding out now and finding out from `df`.
+ *
+ * The `await` covers the same ground the old `.catch` did: neither `exited`
+ * promise is expected to reject, and an unhandled rejection out of a `stop()`
+ * nobody awaits would land in whatever test is running five seconds later.
+ */
+export async function removeStateDirWhenGone(
+  gone: Promise<unknown>,
+  dir: string,
+  remove: (dir: string) => void = removeStateDir,
+  warn: (message: string) => void = console.warn.bind(console),
+): Promise<void> {
+  try {
+    await gone;
+    remove(dir);
+  } catch (err) {
+    warn(`harness: ${dir} was left behind: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /**
  * The `http` a hub-only mesh carries.
  *
@@ -952,8 +986,10 @@ export function capabilityViewerName(...capabilities: string[]): string {
  * so it had never run — and the sentence it throws is the whole of what a
  * person sees when the harness gives up.
  *
- * The body is a thunk: it is read only on the path that reports it, so the
- * success path does not consume a stream it does not need.
+ * The response itself comes in, and the body is read here rather than at the
+ * call site — on the reporting path only, so the success path does not consume
+ * a stream it does not need. It used to arrive as a `() => admitted.text()`
+ * beside the call, which put that read in an arrow no passing run executes.
  */
 export async function admissionOpened(
   username: string,

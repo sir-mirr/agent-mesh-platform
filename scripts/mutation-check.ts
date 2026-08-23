@@ -4973,6 +4973,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["and anything else stops, naming the status and what the route said"],
   },
   {
+    id: "a-state-directory-left-behind-goes-unmentioned",
+    defect:
+      "The harness went back to swallowing a cleanup it could not do. `stop()` is not awaited by anyone, so the failure has nowhere to surface on its own \u2014 the run ends green and one temporary mesh directory per suite stays on a disk the suite is already filling, with nothing anywhere saying so. Being told is the whole of the repair; the directory is still there either way.",
+    file: "test/harness.ts",
+    from: "    warn(`harness: ${dir} was left behind: ${err instanceof Error ? err.message : String(err)}`);",
+    to: "    void err;",
+    suite: "test/harness-boot.test.ts",
+    expect: ["names the directory it could not remove rather than dropping the failure"],
+  },
+  {
     id: "message-search-runs-on-an-empty-query",
     defect:
       "`GET /api/v1/messages/search` stopped refusing an absent or blank `q`, so the `LIKE '%%'` it builds matches every message the caller is party to. A search box that returns everything on an accidental Enter reads as a feature until somebody notices the response is the whole history.",
@@ -7972,10 +7982,10 @@ const MUTATIONS: Mutation[] = [
   {
     id: "a-heading-written-twice",
     defect:
-      "Two identical headings in one section, which is how a section gets added to the wrong copy: the next person appends under the first, and their paragraph is invisible to anyone who scrolled to where the list actually is. `docs/proposals/README.md` carried `### Still undecided` twice, one line apart.",
+      "Two identical headings in one section, which is how a section gets added to the wrong copy: the next person appends under the first, and their paragraph is invisible to anyone who scrolled to where the list actually is. `docs/proposals/README.md` carried `### Still undecided` twice, one line apart; the heading that stands there now is the ruling that closed it.",
     file: "docs/proposals/README.md",
-    from: "### Still undecided\n\n- **Whether `ASN` replaces `prefix`**",
-    to: "### Still undecided\n\n### Still undecided\n\n- **Whether `ASN` replaces `prefix`**",
+    from: "### Settled: `prefix` stays (D-753)\n\nWhether `ASN` should replace",
+    to: "### Settled: `prefix` stays (D-753)\n\n### Settled: `prefix` stays (D-753)\n\nWhether `ASN` should replace",
     suite: "test/readme.test.ts",
     expect: ["every heading in docs/ and the root documents is unique within its file"],
   },

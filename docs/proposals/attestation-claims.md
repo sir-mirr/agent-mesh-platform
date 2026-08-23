@@ -218,10 +218,17 @@ until someone asks.
 | ASN | moved provider | almost nothing, and misses moves within one cloud |
 
 A fixed-VM lane and a laptop lane want different answers, so this belongs
-beside the identity rather than in a global setting. **ASN is the safe default**
-— it fires on "this key is now being used from a different provider", which is
-the shape of the theft this is for, and stays quiet through the churn that
-makes operators disable things.
+beside the identity rather than in a global setting. This document argued for
+**ASN as the safe default** — it fires on "this key is now being used from a
+different provider", which is the shape of the theft this is for, and stays
+quiet through the churn that makes operators disable things.
+
+**D-753 ruled the other way, and `prefix` is what ships.** Not because it
+catches more, but because of how each one is wrong: `prefix` refuses a
+legitimate user out loud, with a `-32017` somebody reports, while ASN's two
+failures — a thief inside the same provider, and a dataset that has gone stale
+— both pass silently. The reasoning and what would reopen it are in
+[`README.md`](README.md).
 
 ### What Tier 2 does not catch, stated plainly
 

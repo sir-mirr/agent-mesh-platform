@@ -75,14 +75,30 @@ first. `test/readme.test.ts` compares the two now.
 | Ownership, pairing codes, scoped queues and teardown | § 11.3 | |
 | Groups, deny by default | § 12 | `-32018`, seeded `default` self-rule |
 
-### Still undecided
+### Settled: `prefix` stays (D-753)
 
-- **Whether `ASN` replaces `prefix`** as the observed-source granularity.
-  `prefix` shipped because it is arithmetic; `ASN` is quieter and misses a
-  thief inside the same cloud, and it needs a dataset this deployment does not
-  carry. Both are recorded in
-  [`attestation-claims.md`](attestation-claims.md), along with why vTPM — not
-  CPU fingerprinting — is the direction that would make either unnecessary.
+Whether `ASN` should replace `prefix` as the observed-source granularity was
+the last open item here, and it is closed on the shape of the two failures
+rather than on which catches more.
+
+**`prefix`'s false positive is loud.** A legitimate user who moves inside one
+provider is refused with `-32017`, and a refusal is a thing somebody reports —
+it arrives with a route to being fixed. **`ASN`'s false negative is silent, and
+so is its dataset going stale.** A thief inside the same cloud account is
+observed as the same provider and passes; a table that is three months old
+answers confidently and wrongly. Nothing on either path signals that anything
+happened. The trade being offered is loudness for quietness, and this
+repository does not take that trade.
+
+Both granularities and their costs stay written down in
+[`attestation-claims.md`](attestation-claims.md), along with why vTPM — not CPU
+fingerprinting — is the direction that would make the question go away. What
+reopens this:
+
+1. **A vTPM discussion starting**, which dissolves the question rather than
+   answering it.
+2. **Measured `-32017` false positives from legitimate users accumulating**,
+   which turns the trade above from an argument into data.
 
 ### Two deployment properties the hub cannot check itself
 

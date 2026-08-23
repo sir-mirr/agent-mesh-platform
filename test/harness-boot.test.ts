@@ -13,6 +13,9 @@
  * two message builders are functions, so the whole policy runs in this process.
  */
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   absentService,
@@ -22,6 +25,8 @@ import {
   connectRpc,
   freePort,
   leftThePasswordGate,
+  removeStateDir,
+  removeStateDirWhenGone,
   rpcAnswer,
   sessionCookie,
   startMesh,
@@ -341,6 +346,85 @@ describe("a mesh with no http", () => {
     // Not a throw: `teardown` stops what a mesh holds without asking which
     // half of it was real.
     expect(() => absent.stop()).not.toThrow();
+  });
+});
+
+
+/**
+ * The state directory a finished mesh leaves behind, and the failure that used
+ * to disappear.
+ *
+ * `stop()` orders the removal behind both processes exiting and does not wait
+ * for it, so a failure there has nowhere to be reported to — it was
+ * `.catch(() => {})`, which is a swallow and, holding no statement at all, a
+ * function no coverage diagnostic can name. What it swallowed is one temporary
+ * directory per mesh left on disk, on the machine whose disk the suite is
+ * already filling. The removal cannot be repaired from here; being told is the
+ * whole of the change.
+ */
+describe("removing the state directory a mesh is done with", () => {
+  test("removes it once both processes are gone, and says nothing", async () => {
+    const removed: string[] = [];
+    const warned: string[] = [];
+    let exited = false;
+
+    await removeStateDirWhenGone(
+      Promise.resolve([0, 0]).then((codes) => { exited = true; return codes; }),
+      "/state/one",
+      (dir) => { removed.push(dir); },
+      (message) => { warned.push(message); },
+    );
+
+    expect(
+      { removed, warned, afterTheExits: exited },
+      "the removal ran before the processes were gone, or warned about a removal that worked",
+    ).toEqual({ removed: ["/state/one"], warned: [], afterTheExits: true });
+  });
+
+  test("names the directory it could not remove rather than dropping the failure", async () => {
+    const warned: string[] = [];
+
+    await removeStateDirWhenGone(
+      Promise.resolve(0),
+      "/state/two",
+      () => { throw new Error("EBUSY: resource busy or locked"); },
+      (message) => { warned.push(message); },
+    );
+
+    // Both halves are load-bearing: the path is what somebody deletes by hand,
+    // and the reason is what says whether deleting by hand will work.
+    expect(warned).toEqual(["harness: /state/two was left behind: EBUSY: resource busy or locked"]);
+  });
+
+  test("does not throw out of a stop nobody awaits when an exit rejects", async () => {
+    const warned: string[] = [];
+    const removed: string[] = [];
+
+    // `stop()` calls this without awaiting it. A rejection escaping here is an
+    // unhandled rejection landing in whichever test is running five seconds
+    // later, which is the worst shape a harness failure can take.
+    await removeStateDirWhenGone(
+      Promise.reject(new Error("the hub never exited")),
+      "/state/three",
+      (dir) => { removed.push(dir); },
+      (message) => { warned.push(message); },
+    );
+
+    expect(
+      { warned, removed },
+      "a rejected exit either escaped or was reported as though the directory had been removed",
+    ).toEqual({ warned: ["harness: /state/three was left behind: the hub never exited"], removed: [] });
+  });
+
+  test("the removal it defaults to is the one that removes a real directory", () => {
+    // The default is a parameter everywhere above, which is exactly how a
+    // default goes unexecuted: every case injects. This one lets it run.
+    const dir = mkdtempSync(join(tmpdir(), "agent-mesh-harness-rm-"));
+    writeFileSync(join(dir, "agents.db"), "not empty");
+
+    removeStateDir(dir);
+
+    expect(existsSync(dir), "the harness's own cleanup left the directory it was handed").toBe(false);
   });
 });
 
