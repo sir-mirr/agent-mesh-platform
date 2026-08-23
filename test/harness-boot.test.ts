@@ -178,6 +178,33 @@ describe("taking another port", () => {
     expect(lines[1]).toContain("attempt 2/3");
   });
 
+  test("names the kernel's refusal as one, rather than as a port race", async () => {
+    // The absorbed failure has to stay findable. A retry that prints *port*
+    // about an `EBADF` is a run that recovered while telling whoever reads the
+    // log to go and look at port allocation, which is not where the fix is.
+    let attempts = 0;
+    const boot = async () => {
+      attempts++;
+      if (attempts < 2) throw new Error("EBADF: bad file descriptor, epoll_ctl");
+      return mesh;
+    };
+
+    const { lines, restore } = capture();
+    try {
+      expect(await startMesh({}, boot)).toBe(mesh);
+    } finally {
+      restore();
+    }
+
+    expect({
+      said: lines[0]?.includes("the spawn was refused with EBADF") ?? false,
+      notAPortRace: lines[0]?.includes("taking another port") === false,
+      attempt: lines[0]?.includes("attempt 1/3") ?? false,
+    }, "the spawn refusal was absorbed without being named, or was named as a port race").toEqual({
+      said: true, notAPortRace: true, attempt: true,
+    });
+  });
+
   /**
    * A service that refuses says why, and that is an answer. Retrying it would
    * hide the answer behind two more attempts and then report the same failure

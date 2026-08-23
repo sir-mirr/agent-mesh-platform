@@ -1147,6 +1147,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["refuses a directory"],
   },
   {
+    id: "an-absorbed-spawn-refusal-reads-as-a-port-race",
+    defect:
+      "The retry went back to printing one sentence for every kind of failure, so a spawn the kernel refused is absorbed under a line about taking another port. The run recovers and the log sends whoever reads it to port allocation \u2014 while the thing that actually happened is a runner that has started refusing spawns, which no amount of retrying repairs.",
+    file: "test/harness.ts",
+    from: "      const refused = SPAWN_REFUSED.exec(said)?.[1];",
+    to: "      const refused = null;",
+    suite: "test/harness-boot.test.ts",
+    expect: ["names the kernel's refusal as one, rather than as a port race"],
+  },
+  {
     id: "boot-retry-ignores-a-spawn-the-kernel-refused",
     defect:
       "A spawn the kernel refused went back to being read as the mesh's answer. `Bun.spawn` throwing `EBADF` means no child existed to have an opinion, and without this clause the whole file it was booting for fails once, loudly, naming a file descriptor \u2014 which is the machine's state and not this repository's code.",

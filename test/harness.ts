@@ -562,8 +562,18 @@ export async function startMesh(
       if (!bootRetryable(said)) throw err;
       // Printed rather than swallowed: the next person to meet this window
       // should not have to reconstruct what the boot said from its timing.
+      //
+      // **The kernel's refusals are named as their own thing**, because a
+      // retry that absorbs them quietly is how a machine that has started
+      // refusing spawns looks exactly like a machine that is merely busy. The
+      // two are repaired in different places — one by taking another port, the
+      // other by the runner having fewer things open — and a log line saying
+      // *port* about an `EBADF` sends the reader to the wrong one.
+      const refused = SPAWN_REFUSED.exec(said)?.[1];
       console.error(
-        `[harness] boot did not answer (attempt ${attempt}/3); taking another port. said: ${JSON.stringify(said.slice(0, 400))}`,
+        refused
+          ? `[harness] the spawn was refused with ${refused} (attempt ${attempt}/3); trying again. said: ${JSON.stringify(said.slice(0, 400))}`
+          : `[harness] boot did not answer (attempt ${attempt}/3); taking another port. said: ${JSON.stringify(said.slice(0, 400))}`,
       );
     }
   }
