@@ -24,12 +24,12 @@
  * it is written in and whatever shape it is drawn as.
  */
 import { describe, it, expect, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Conditional and never unregistered: bun runs every file's top level before any
 // test, so a register/unregister pair here would take `document` away from
 // whichever sibling file is mid-render.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup } = await import("@testing-library/react");
 const { ReceiptCard } = await import("./ReceiptCard.tsx");

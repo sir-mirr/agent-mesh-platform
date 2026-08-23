@@ -39,7 +39,7 @@
  * asserted instead is what a click can reach.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 // Type-only, so it is erased before the module graph is built and cannot run
 // ahead of the registration below the way a value import would.
 import type { PendingAgentRequest } from "./AgentPairingModal.tsx";
@@ -47,7 +47,7 @@ import type { PendingAgentRequest } from "./AgentPairingModal.tsx";
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a register/unregister pair here would
 // pull `document` out from under whichever file happens to run alongside.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { AgentPairingModal } = await import("./AgentPairingModal.tsx");

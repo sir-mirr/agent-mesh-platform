@@ -16,12 +16,12 @@
  * test files included.
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a register/unregister pair here would
 // pull `document` out from under whichever file is running alongside.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup } = await import("@testing-library/react");
 const { JsonViewer } = await import("./JsonViewer.tsx");

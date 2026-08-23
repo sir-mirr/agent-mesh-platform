@@ -8,9 +8,9 @@
  * the label and the dot are governed by the props they claim to be.
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup } = await import("@testing-library/react");
 const { StatusBadge } = await import("./StatusBadge.tsx");

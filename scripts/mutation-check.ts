@@ -7935,6 +7935,16 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/set-cookie-survives.test.ts",
     expect: ["the session cookie is set in 2 places"],
   },
+  {
+    id: "the-browser-globals-follow-the-document-in",
+    defect:
+      "Registering a document put a browser's `Request`, `Response` and `Headers` on `globalThis` for the rest of the process. `cookie` and `Set-Cookie` are forbidden header names there and are dropped, so every server suite that loaded after this one lost its session and every upload lost its length \u2014 275 failures on every CI push for weeks, on a commit that passed on the machine it was written on, because the two ran their files in a different order.",
+    file: "packages/platform-web/src/register-dom.ts",
+    from: "  GlobalRegistrator.register();\n  Object.assign(globalThis, server);",
+    to: "  GlobalRegistrator.register();",
+    suite: "packages/platform-web/src/register-dom.test.ts",
+    expect: ["a browser's Request is installed globally, so every server suite after this file loses its session"],
+  },
 ];
 
 /**

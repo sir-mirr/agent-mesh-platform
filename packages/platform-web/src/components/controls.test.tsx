@@ -8,9 +8,9 @@
  * the number it is reading with it.
  */
 import { describe, it, expect, afterAll, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
 const { Button } = await import("./common/Button.tsx");

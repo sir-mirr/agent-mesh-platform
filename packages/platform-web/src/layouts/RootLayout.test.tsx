@@ -17,12 +17,12 @@
  * rendered menu is the chain being checked.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a paired `unregister()` takes `document`
 // away from a file that is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");

@@ -21,12 +21,12 @@
  * claim success.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a register/unregister pair here would
 // take `document` away from whichever file happens to be running alongside.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 // `await import`, because a static import is hoisted above the registration
 // above and would bind React DOM to a process that has no document yet.

@@ -16,12 +16,12 @@
  * button lying underneath the page.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, and a register/unregister pair swaps the
 // document out from under whichever file is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup, fireEvent } = await import("@testing-library/react");
 const { ConfirmDialog } = await import("./ConfirmDialog.tsx");

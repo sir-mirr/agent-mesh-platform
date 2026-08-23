@@ -42,12 +42,12 @@
  * pretend that reading its own output twice is two checks.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before it runs any test, so a register/unregister pair swaps
 // the document out from under whichever file is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 // `await import`, not a statement: a static import is hoisted above the
 // registration above and would load React's DOM entry into a process with no

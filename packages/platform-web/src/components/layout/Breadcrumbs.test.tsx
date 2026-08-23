@@ -25,12 +25,12 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a paired `unregister()` here would take
 // `document` away from a file still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 // `await import`, not a statement: a static import is hoisted above the
 // registrator and would run against a process with no document.

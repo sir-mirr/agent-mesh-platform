@@ -21,12 +21,12 @@
  * so an export list shorter than the real one breaks whichever file runs next.
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a paired `unregister()` takes `document`
 // away from a file that is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup, act } = await import("@testing-library/react");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");

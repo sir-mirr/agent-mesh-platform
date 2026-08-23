@@ -18,12 +18,12 @@
  * and a `403` once printed "could not ask" at a server that had answered.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a register/unregister pair swaps the
 // document out from under whichever file is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { NotificationBell } = await import("./NotificationBell.tsx");

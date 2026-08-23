@@ -21,13 +21,13 @@
  * person lands* is the thing being claimed, and now it is the thing being run.
  */
 import { describe, it, expect, afterEach, mock } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // **Registered once for the process, and never unregistered.** Bun executes
 // every matching file's top level before it runs any test, so two files each
 // calling `register()` swap the document out from under one another, and the
 // first `afterAll` to fire takes it away from the file still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup, act } = await import("@testing-library/react");
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");

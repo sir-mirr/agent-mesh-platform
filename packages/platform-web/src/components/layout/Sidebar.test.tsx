@@ -27,13 +27,13 @@
  * process with no document.
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 import type { SidebarProps } from "./Sidebar.tsx";
 
 // **Registered once for the process, and never unregistered.** Bun runs every
 // test file's top level before any test, so a file that unregisters takes the
 // document away from a file still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");

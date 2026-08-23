@@ -40,12 +40,12 @@
  * loading assertions below name both places rather than the sentence alone.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
 // Registered once for the process and never unregistered: bun runs every test
 // file's top level before any test, so a register/unregister pair would swap
 // the document out from under whichever file is still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 // `await import`, never a static import: a static one is hoisted above the
 // registration and would load React's DOM entry into a process with no document.

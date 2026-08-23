@@ -9,11 +9,11 @@
  * redeem route is served by `agent-mesh-http`, so the line worked nowhere.
  */
 import { describe, it, expect, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
 // Registered once per process; see GuardedRoute.test.tsx for why this is a
 // condition and not a call.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { ENV, publicApiOrigin } = await import("./env.ts");
 

@@ -9,7 +9,7 @@
  * hold the same keys. They do today: 510 and 510.
  */
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../register-dom";
 
 // Registered before `@testing-library/react` is loaded, which is why these are
 // `await import` and not statements: a static import is hoisted above this line
@@ -20,7 +20,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // first `afterAll` to fire takes it away from the file still using it — seven
 // failures that appeared only when the two ran together, and none when either
 // ran alone.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { cleanup, render, screen, act } = await import("@testing-library/react");
 const { DICTIONARY, I18nProvider, useI18n } = await import("./I18nContext.tsx");

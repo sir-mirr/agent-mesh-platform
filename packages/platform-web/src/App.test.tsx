@@ -19,12 +19,12 @@
 import { describe, it, expect, afterEach, mock } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "./register-dom";
 
 // Registered once for the process and never unregistered: bun runs every
 // matching file's top level before any test, so a second `register()` swaps
 // the document out from under the file still using it.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup, act } = await import("@testing-library/react");
 const { App } = await import("./App.tsx");

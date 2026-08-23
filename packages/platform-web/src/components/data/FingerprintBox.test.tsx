@@ -9,9 +9,9 @@
  * mismatch would have been invisible. `null` now draws a dash and says why.
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { DICTIONARY, I18nProvider } = await import("@/contexts/I18nContext.tsx");

@@ -9,9 +9,9 @@
  * asserted.
  */
 import { describe, it, expect, afterEach } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "../../register-dom";
 
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const { render, cleanup } = await import("@testing-library/react");
 const { DataTable } = await import("./DataTable.tsx");

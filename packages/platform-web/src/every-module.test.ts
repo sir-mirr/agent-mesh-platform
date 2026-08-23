@@ -20,11 +20,11 @@
 import { describe, expect, test, afterAll } from "bun:test";
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { registerDom } from "./register-dom";
 
 // Components reach for `document` at module scope by way of React; registered
 // once per process, as everywhere else in this package.
-if (!(globalThis as { document?: unknown }).document) GlobalRegistrator.register();
+registerDom();
 
 const SRC = join(import.meta.dir);
 
