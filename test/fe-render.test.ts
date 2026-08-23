@@ -6043,10 +6043,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
         const text = (await page.locator("#root").innerText().catch(() => "")) ?? "";
         if (text.length > 200) drew++;
+        // **Where it came from, not only that it was there.** This failed on
+        // CI and passes here, and the name of a word is not enough to tell the
+        // three candidates apart: a response fetched outside the window above
+        // and so misread as copy, a fallback drawn before the dictionary
+        // arrives, or a lost session landing the run on a different screen
+        // altogether. The pathname the page actually settled on separates the
+        // last from the other two, and the surrounding text usually names the
+        // component. A failure nobody can reproduce has to carry its own
+        // evidence.
+        // `page.url()` on a page whose context has gone throws, and this loop
+        // already tolerates a navigation that failed — a message that cannot be
+        // built must not turn a report into an error.
+        let landed = "unknown";
+        try {
+          landed = new URL(page.url()).pathname;
+        } catch {
+          /* the page is gone; the route below still names where this was */
+        }
         // Runs of two, because one syllable can land inside a payload by luck.
         for (const chunk of new Set(text.match(/[가-힣]{2,}/g) ?? [])) {
           if (payload.includes(chunk)) dataSeen++;
-          else offenders.push(`${route}: ${chunk}`);
+          else {
+            const at = text.indexOf(chunk);
+            const near = text.slice(Math.max(0, at - 40), at + chunk.length + 40).replace(/\s+/g, " ");
+            offenders.push(`${route}: ${chunk} — landed on ${landed}, near "${near}"`);
+          }
         }
       }
 
