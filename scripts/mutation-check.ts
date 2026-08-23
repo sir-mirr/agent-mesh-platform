@@ -3304,7 +3304,10 @@ const MUTATIONS: Mutation[] = [
     from: "    const rows = [...doc.matchAll(/^\\| `(SC-[A-Z0-9-]+)-\\*` \\|[^|]*\\| ([0-9]+) \\|$/gm)];",
     to: "    const rows = [...doc.matchAll(/^\\| `(SC-[A-Z-]+)-\\*` \\|[^|]*\\| ([0-9]+) \\|$/gm)];",
     suite: "test/scenario-ids.test.ts",
-    expect: ["has 2 ids and no row in § 0", "SC-I18N"],
+    // **No count in the expectation.** It read "has 2 ids and no row in § 0";
+    // the family has seven now, so the check failed exactly as designed and the
+    // manifest reported it as a guard that was gone.
+    expect: ["no row in § 0", "SC-I18N"],
   },
   {
     id: "landing-combo-is-two-buttons",
@@ -3476,8 +3479,14 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/api/client.ts",
     from: '      typeof errorData.capability === "string" ? errorData.capability : null,',
     to: "      null,",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-07", "a refusal was drawn as silence"],
+    // **Where the field is read, not where it used to be printed.**
+    // `SC-CAP-07` could see this while the screen repeated the capability back;
+    // the console's rule reversed, and the machine key stays on the error
+    // object where code reads it. So the check is the one that reads it there —
+    // a unit test, which the nightly runs in a second instead of four minutes
+    // of browser.
+    suite: "packages/platform-web/src/api/client.test.ts",
+    expect: ["reads a refusal's fields rather than its sentence"],
   },
   {
     id: "users-blames-permission-when-the-server-is-gone",
@@ -3513,7 +3522,11 @@ const MUTATIONS: Mutation[] = [
     // Caught by the rule rather than the case: dropping `failureKind` is what a
     // screen looks like when it decides the answer itself, and the source half
     // names it before the browser half gets there.
-    expect: ["SC-CAP-07", "without recording which kind of failure it was"],
+    // **The half that actually fails.** The source rule asks whether a file
+    // mentions `failureKind(` at all, and `UserAdminPage` calls it three times,
+    // so taking one call site away leaves the file compliant. What fails is the
+    // browser half, which reads the screen.
+    expect: ["SC-CAP-07", "silence was drawn as a permission problem"],
   },
   {
     id: "member-panel-answers-zero-while-waiting",
@@ -3542,8 +3555,13 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/api/telemetry.ts",
     from: "  const totalAgents = health?.agent_count ?? null",
     to: "  const totalAgents = health?.agent_count ?? agentList.length",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-INVENT-05", "answered from another table"],
+    // `SC-INVENT-05`'s subject moved: the console removed the label that drew
+    // `total_agents`, so the scenario measures the dashboard's own card now and
+    // cannot see this line at all. The fallback is `telemetry.ts`'s, and this
+    // is the check that reads what it answers when health is silent — the
+    // mirror of the `web_channel_identities` case beside it.
+    suite: "packages/platform-web/src/api/telemetry.test.ts",
+    expect: ["leaves the agent count null when health did not answer"],
   },
   {
     id: "screen-calls-the-registry-the-viewers-own",
@@ -3677,7 +3695,8 @@ const MUTATIONS: Mutation[] = [
     from: 'header: t("reg.col.status", "승인 상태"),',
     to: 'header: "승인 상태",',
     suite: "test/fe-scenarios.test.ts",
-    expect: ["SC-I18N-04", "untranslated strings, up from"],
+    // The sentence gained "or lines" when the ratchet began counting both.
+    expect: ["SC-I18N-04", "up from"],
   },
   {
     id: "korean-straight-into-a-screen",
@@ -3814,7 +3833,8 @@ const MUTATIONS: Mutation[] = [
     from: "{(failure === \"refused\" || (telemetry?.refused.length ?? 0) > 0) && (",
     to: "{false && (",
     suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-10", "did not name the capability"],
+    // The message was rewritten when the assertion grew its fourth term.
+    expect: ["SC-CAP-10", "the screen blamed the network for a refusal"],
   },
   {
     id: "bell-decides-without-the-server",
@@ -3920,8 +3940,13 @@ const MUTATIONS: Mutation[] = [
     file: "packages/platform-web/src/pages/tenant/RbacManagementPage.tsx",
     from: "      setAvailableCaps(caps);",
     to: '      setAvailableCaps(caps.length ? ["group.manage", "audit.read.metadata"] : [])',
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-USER-D3", "the screen drew a capability axis or a role that the server did not give it"],
+    // **The scenario dies before it can speak.** Restricting the axis makes a
+    // write scenario wait out its thirty seconds, the browser closes, and
+    // `SC-USER-D3` fails with `Target page … closed` alongside 47 others —
+    // caught, by nothing that names the defect. The unit test asks the same
+    // question in milliseconds.
+    suite: "packages/platform-web/src/pages/tenant/RbacManagementPage.test.tsx",
+    expect: ["draws a column for each name the answer carried, and for no other"],
   },
   {
     id: "password-gate-lets-everybody-through",
@@ -3993,7 +4018,8 @@ const MUTATIONS: Mutation[] = [
     from: "          {loginError && (",
     to: "          <div>\n            <label style={labelStyle}>시뮬레이션 역할 (RBAC Role)</label>\n            <select style={inputStyle}><option>👑 플랫폼 관리자 (Platform Admin - 전체 메뉴)</option></select>\n          </div>\n\n          {loginError && (",
     suite: "test/fe-render.test.ts",
-    expect: ["SC-AUTH-06", "the login screen still lets a person pick what they are"],
+    // "pick" became "pick or be handed" when the scenario grew its second half.
+    expect: ["SC-AUTH-06", "still lets a person pick or be handed what they are"],
   },
   {
     id: "login-stops-signing-in",

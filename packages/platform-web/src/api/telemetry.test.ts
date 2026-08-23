@@ -115,6 +115,28 @@ describe("fetchTelemetry", () => {
     expect((await fetchTelemetry()).web_channel_identities).toBe(null);
   });
 
+  /**
+   * **The mirror of the case above, and the one nothing held.**
+   *
+   * `total_agents` counts mesh identities and the registry list counts rows in
+   * this server's chat registry — 12 against 13 when the fallback was removed.
+   * Putting one under the other's label changes what the number means the
+   * moment a route stops answering, and says nothing about having done so.
+   *
+   * The scenario that used to hold this reads the dashboard's card now, which
+   * draws the registry on purpose and cannot see this line at all.
+   */
+  it("leaves the agent count null when health did not answer", async () => {
+    routes({
+      agents: { agents: [{ status: "active" }, { channel: "web" }, { status: "idle" }] },
+      mailbox: { ok: true, mailboxes: [], total_queued: 0 },
+      behaviour: { counting_since: null },
+    });
+    // Not 3: the registry list is a different quantity, and the count of what
+    // this panel could not measure is `null`.
+    expect((await fetchTelemetry()).total_agents).toBe(null);
+  });
+
   it("throws only when every panel failed", async () => {
     routes({});
     await expect(fetchTelemetry()).rejects.toThrow(/unreachable/);

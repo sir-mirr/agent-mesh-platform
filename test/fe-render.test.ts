@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, setDefaultTimeout } from "bun:test";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 
@@ -6052,9 +6052,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const { page, context } = await createAuthedPage("/dashboard", "en");
     const offenders: string[] = [];
+    /** Every Korean run the walk drew, judged once the walk is complete. */
+    const seen: Array<{ route: string; chunk: string; landed: string; near: string }> = [];
     let drew = 0;
     let dataSeen = 0;
     let lastPayload = "";
+    /** Every response body the walk received, for the origin question below. */
+    let arrived = "";
     /**
      * **What this front end wrote is what is in its own modules.**
      *
@@ -6071,7 +6075,30 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
      * loads is kept, and a Korean run on the screen is this console's copy when
      * it is *in* one of them. A value that arrived over the wire is in none.
      */
-    let modules = "";
+    // **The console's own text, read from the tree.**
+    //
+    // This was collected from the modules the browser fetched, and the
+    // dictionary was never among them: the listener attaches after the first
+    // navigation, so by the time it is watching, every module that page loaded
+    // is in the browser's cache and is never requested again. Measured — a
+    // Korean string planted in the English dictionary drew on `/platform`
+    // (`nodes=false korean=["가동","중인","서비스","노드"]`), was in none of the
+    // captured bodies, and was filed as *arrived from the server*. The
+    // scenario reported 15 routes drawn and passed.
+    //
+    // What the console wrote is a fact about this repository, not about which
+    // requests a browser happened to make, so it is read from the source.
+    // Responses are still folded in below, because a module served by the dev
+    // server can differ from the file on disk.
+    const WEB_SRC = join(import.meta.dir, "..", "packages", "platform-web", "src");
+    const walkSrc = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walkSrc(join(dir, e.name)) : [join(dir, e.name)],
+      );
+    let modules = walkSrc(WEB_SRC)
+      .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
     const keepModule = async (res: import("playwright").Response) => {
       if (!/javascript|typescript/.test(res.headers()["content-type"] ?? "")) return;
       try {
@@ -6097,6 +6124,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await settled(page);
         page.off("response", collect);
         lastPayload = payload;
+        // **Every payload of the walk, not only this route's.** A console reads
+        // the tenant directory once and draws the name it was given wherever it
+        // is needed later; by then that value has no response behind it.
+        // `플랫폼` is such a value — `DEFAULT_TENANT_NAME` in
+        // `packages/store/src/tenants.ts` — and it is also a word this console
+        // writes, so a source-only rule reports the server's own data as our
+        // copy. What arrived at any point in the walk arrived.
+        arrived += payload;
 
         const text = (await page.locator("#root").innerText().catch(() => "")) ?? "";
         if (text.length > 200) drew++;
@@ -6119,14 +6154,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           /* the page is gone; the route below still names where this was */
         }
         // Runs of two, because one syllable can land inside a payload by luck.
+        //
+        // **Collected here, judged after the walk.** Deciding inside the loop
+        // asks whether a run had arrived *yet*, so the verdict depends on the
+        // order the routes happen to be visited: the tenant's name is copy on
+        // the first screen that draws it and data on the second.
         for (const chunk of new Set(text.match(/[가-힣]{2,}/g) ?? [])) {
-          if (!modules.includes(chunk)) dataSeen++;
-          else {
-            const at = text.indexOf(chunk);
-            const near = text.slice(Math.max(0, at - 40), at + chunk.length + 40).replace(/\s+/g, " ");
-            offenders.push(`${route}: ${chunk} — landed on ${landed}, near "${near}"`);
-          }
+          const at = text.indexOf(chunk);
+          const near = text.slice(Math.max(0, at - 40), at + chunk.length + 40).replace(/\s+/g, " ");
+          seen.push({ route, chunk, landed, near });
         }
+      }
+
+      for (const { route, chunk, landed, near } of seen) {
+        // Wire first, source second. A run that came over the wire is data even
+        // when the same letters sit in a component, and only what appears
+        // nowhere in the walk's answers is this console's own Korean.
+        if (arrived.includes(chunk) || !modules.includes(chunk)) dataSeen++;
+        else offenders.push(`${route}: ${chunk} — landed on ${landed}, near "${near}"`);
       }
 
       // **The classifier has to be shown working, in both directions.** If no
