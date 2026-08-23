@@ -7565,8 +7565,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `webpush.setVapidDetails(` |",
-    to: "| `packages/http/src/where-it-used-to-be.ts` | `webpush.setVapidDetails(` |",
+    from: "| `packages/http/src/main.ts` | `webpush.setVapidDetails.bind(webpush)` |",
+    to: "| `packages/http/src/where-it-used-to-be.ts` | `webpush.setVapidDetails.bind(webpush)` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },
