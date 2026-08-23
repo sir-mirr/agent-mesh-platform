@@ -7883,6 +7883,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/coverage-floor.test.ts",
     expect: ["CI does not run the floor at 99, so the reopen condition has nothing to fire it"],
   },
+  {
+    id: "the-table-skips-the-only-files-left",
+    defect:
+      "The by-file table went back to listing files by uncovered *lines* alone, which drops every file whose lines are complete and whose functions are not. That is not an edge case at 99%: a single-line arrow sits inside a line that ran, so the last uncovered functions in the repository live exclusively in files this filter would skip \u2014 and Bun's lcov writes no name and no line for them, making this table the only place they can be seen at all.",
+    file: "scripts/coverage.ts",
+    from: "    .filter((f) => f.lines - f.hit > 0 || f.funcs - f.funcsHit > 0)",
+    to: "    .filter((f) => f.lines - f.hit > 0)",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a file at 100% of lines with an uncovered function was left out of the only table that could name it"],
+  },
 ];
 
 /**

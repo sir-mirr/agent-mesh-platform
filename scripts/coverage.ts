@@ -108,6 +108,24 @@ export function floorFailures(files: FileCoverage[], floor: number): Shortfall[]
     .filter((s) => shown(s.value) < floor);
 }
 
+/**
+ * The files with something left in them, worst first by uncovered lines.
+ *
+ * **A file with no uncovered lines and an uncovered function belongs here.**
+ * Sorting by uncovered lines puts it last, at zero, which is right — it is the
+ * smallest work in the report — but dropping it was not, and that is what the
+ * report did until the last functions in this repository turned out to live
+ * nowhere else. `FNF`/`FNH` are the only function records Bun's lcov writes:
+ * how many a file has and how many ran, with no name and no line for the ones
+ * that did not, so this list is the whole of what a report can say about them
+ * and the rest is reading the file.
+ */
+export function uncoveredRows(files: FileCoverage[]): FileCoverage[] {
+  return files
+    .filter((f) => f.lines - f.hit > 0 || f.funcs - f.funcsHit > 0)
+    .sort((a, b) => (b.lines - b.hit) - (a.lines - a.hit) || (b.funcs - b.funcsHit) - (a.funcs - a.funcsHit));
+}
+
 export type Options = { targets: string[]; byFile: boolean; floor: number | null };
 
 /**
@@ -118,6 +136,12 @@ export type Options = { targets: string[]; byFile: boolean; floor: number | null
  * than a 900-line one at 60% and is worth a fiftieth as much — so the order
  * there is the count of lines nobody has run, which is the same thing as the
  * work each file is worth.
+ *
+ * It lists a file with **uncovered functions and no uncovered lines**, which
+ * for a long time it silently did not. A single-line arrow sits inside a line
+ * that ran — `x.map(v => f(v))` is covered whether or not the array had
+ * anything in it — so the last functions left in a repository at 99% live
+ * exclusively in files this table used to skip.
  *
  * `--floor 99` exits non-zero below that number. Its argument is consumed
  * here rather than filtered out by shape: a bare `99` left in `argv` becomes a
@@ -165,18 +189,16 @@ function main(): void {
   report("reported", counted);
   if (byFile) {
     console.log("\nby file, worst first by lines nobody ran:\n");
-    const rows = [...all].sort((a, b) => (b.lines - b.hit) - (a.lines - a.hit));
+    const rows = uncoveredRows(all);
     for (const f of rows) {
-      const missed = f.lines - f.hit;
-      if (missed === 0) continue;
       const mark = EXCLUDED.some((re) => re.test(f.path)) ? " (excluded)" : "";
       console.log(
-        `  ${String(missed).padStart(5)} uncovered  ${pct(f.hit, f.lines).toFixed(2).padStart(6)}%  ` +
+        `  ${String(f.lines - f.hit).padStart(5)} lines  ${String(f.funcs - f.funcsHit).padStart(3)} funcs  ` +
+        `${pct(f.hit, f.lines).toFixed(2).padStart(6)}% lines  ${pct(f.funcsHit, f.funcs).toFixed(2).padStart(6)}% funcs  ` +
         `${f.path}${mark}`,
       );
     }
-    const covered = rows.filter((f) => f.lines - f.hit === 0).length;
-    console.log(`\n  ${covered} file(s) fully covered, not listed`);
+    console.log(`\n  ${all.length - rows.length} file(s) with nothing uncovered, not listed`);
   }
 
   if (excluded.length > 0) {

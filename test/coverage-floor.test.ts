@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { floorFailures, parseArgs, parseLcov, type FileCoverage } from "../scripts/coverage";
+import { floorFailures, parseArgs, parseLcov, uncoveredRows, type FileCoverage } from "../scripts/coverage";
 
 const file = (over: Partial<FileCoverage> = {}): FileCoverage => ({
   path: "packages/http/src/main.ts", lines: 100, hit: 100, funcs: 100, funcsHit: 100, ...over,
@@ -121,6 +121,38 @@ describe("the lcov reader", () => {
 
   test("ignores records with no file to attach to", () => {
     expect(parseLcov("FNF:10\nLF:100\nend_of_record\n")).toEqual([]);
+  });
+});
+
+/**
+ * **The last functions live in files with no uncovered lines.**
+ *
+ * `x.map(v => f(v))` is one line, covered whether or not the array had anything
+ * in it, so an arrow nobody called sits inside a line everybody ran. At 99% the
+ * remaining functions are all of that shape — and the by-file table skipped
+ * every file whose lines were complete, which is precisely where they were.
+ */
+describe("the by-file table", () => {
+  test("lists a file whose lines are all covered and whose functions are not", () => {
+    const rows = uncoveredRows([
+      file({ path: "packages/http/src/main.ts", funcs: 281, funcsHit: 272 }),
+      file({ path: "test/harness.ts" }),
+    ]);
+
+    expect(
+      rows.map((f) => f.path),
+      "a file at 100% of lines with an uncovered function was left out of the only table that could name it",
+    ).toEqual(["packages/http/src/main.ts"]);
+  });
+
+  test("puts the most uncovered lines first, and breaks a tie on functions", () => {
+    const rows = uncoveredRows([
+      file({ path: "a.ts", lines: 100, hit: 99 }),
+      file({ path: "b.ts", lines: 100, hit: 40 }),
+      file({ path: "c.ts", lines: 100, hit: 99, funcs: 10, funcsHit: 4 }),
+    ]);
+
+    expect(rows.map((f) => f.path)).toEqual(["b.ts", "c.ts", "a.ts"]);
   });
 });
 
