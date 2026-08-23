@@ -166,6 +166,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
+    # **The token could not have filed anything.** This repository's default
+    # workflow permission is `read` (`gh api …/actions/permissions/workflow`
+    # answers `default_workflow_permissions=read`) and nothing here asked for
+    # more, so `gh issue create` in the step below had no scope to create with.
+    # The first red nightly reported `could not add label` and the label was
+    # indeed missing; creating it was necessary and not sufficient, and the
+    # second red run — this one, dispatched to watch it — filed nothing again.
+    #
+    # A workflow may ask for more than the default, and this job asks for the
+    # one thing its alarm needs.
+    permissions:
+      contents: read
+      issues: write
+
     strategy:
       fail-fast: false
       matrix:

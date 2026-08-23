@@ -95,6 +95,25 @@ describe("what CI does with the mutation manifest", () => {
    * without it if that still fails. Whether the issue is labelled is a
    * convenience; whether it exists is the check.
    */
+  /**
+   * **Scope, which is the half a name check cannot see.**
+   *
+   * The label existed and the step still filed nothing: this repository's
+   * default workflow permission is `read`, and the job asked for no more, so
+   * `gh issue create` had no scope to create with. Two red nightlies in a row
+   * reported a failure nobody could find, for two different reasons, and both
+   * looked identical from outside — a quiet night.
+   */
+  test("the job that files the issue is allowed to open one", () => {
+    const job = ci.slice(ci.indexOf("\n  mutation:"));
+    const permissions = /permissions:\s*\n\s+contents: read\s*\n\s+issues: write/.test(job);
+
+    expect(
+      { asksForIssueScope: permissions },
+      "the nightly's alarm runs with a read-only token, so a red shard files nothing",
+    ).toEqual({ asksForIssueScope: true });
+  });
+
   test("a red shard files its issue even when the label is not there", () => {
     const step = ci.slice(ci.indexOf("if: failure()"));
     const ensures = /gh label create (\S+)/.exec(step);
