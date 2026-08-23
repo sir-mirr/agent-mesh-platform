@@ -91,9 +91,13 @@ instantiation; ports follow a fixed offset rule.
 | runtime-adapter   | Wraps an external runtime; owns the lane's hub connection |
 | channel-driver    | Wraps an external channel; forwards to the adapter        |
 
-**Both are built in a separate repository.** This one holds the baseline they
-attach to and the contracts they implement (`SPEC.md` §§ 4–6); the wire types
-they consume come from `@agent-mesh/contracts`.
+**Both are built in
+[`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client)**,
+which is the lane side of this mesh: an installable local daemon that runs an
+agent runtime, attaches channel drivers to it, and connects to this hub. This
+repository holds the baseline it attaches to and the contract it implements
+(`SPEC.md` §§ 4–6); the wire types both sides consume come from
+`@agent-mesh/contracts`, pinned to the same tag on both.
 
 Every lane includes a runtime-adapter. A channel-driver forwards to it and
 does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
@@ -243,9 +247,9 @@ Bootstrap provisioning cross-references § 10 "Bootstrap contract".
 ## Add a lane
 
 Lane components — runtime-adapters and channel-drivers — are built and deployed
-from a separate repository. This one provides the baseline they attach to, the
-contract they implement (`SPEC.md` §§ 4–6), and the package they consume,
-`@agent-mesh/contracts`.
+from [`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client).
+This one provides the baseline they attach to, the contract they implement
+(`SPEC.md` §§ 4–6), and the package they consume, `@agent-mesh/contracts`.
 
 What a lane needs from here:
 
@@ -310,8 +314,9 @@ a hub identity of its own, and every lane includes a runtime-adapter
   suite has missed here was a cross-implementation disagreement, because a test
   written against one side can only assert that side agrees with itself.
 - **Lanes** — One runtime-adapter plus zero or more channel-drivers, joined by
-  an intra-lane HTTP control plane. The adapter holds the lane's single hub
-  connection. Built and deployed from a separate repository.
+  an intra-lane control plane. The adapter holds the lane's single hub
+  connection. Built and deployed from
+  [`sir-mirr/agent-mesh-client`](https://github.com/sir-mirr/agent-mesh-client).
 
 ---
 
