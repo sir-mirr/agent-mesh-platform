@@ -87,14 +87,34 @@ beforeAll(async () => {
     body: new URLSearchParams({ username: SEED_ADMIN, password: "admin" }).toString(),
   }));
   if (login.status !== 200) throw new Error(`sign-in failed: ${login.status} ${await login.text()}`);
-  cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+  const setCookie = login.headers.get("set-cookie") ?? "";
+  cookie = setCookie.split(";")[0]!;
+  // **A 200 with no session cookie is a different failure from a refused one.**
+  // This walk read `set-cookie` and carried whatever it found into every
+  // request below, so an empty string arrived at the next route as *no
+  // session*, and the route said `401` — which reads as the password being
+  // wrong. Naming it here costs one line and separates the two.
+  if (!cookie.startsWith("mesh_token=")) {
+    throw new Error(`sign-in answered 200 without a session cookie: ${JSON.stringify(setCookie).slice(0, 200)}`);
+  }
 
   const changed = await app.fetch(new Request("http://in-process/auth/local/password", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ current: "admin", next: "in-process-password" }),
   }));
-  if (changed.status !== 200) throw new Error(`password change failed: ${changed.status}`);
+  if (changed.status !== 200) {
+    // `401` here means the cookie was not accepted at all, `403` means the
+    // current password was wrong, and the two ask for different repairs. The
+    // message used to carry the number alone, which is why this failure has
+    // been unreadable in CI: `/auth/me` is asked with the same cookie so the
+    // line says which of the two happened.
+    const me = await app.fetch(new Request("http://in-process/auth/me", { headers: { cookie } }));
+    throw new Error(
+      `password change failed: ${changed.status} ${(await changed.text()).slice(0, 200)} ` +
+      `(session cookie ${cookie.length} chars, /auth/me answered ${me.status})`,
+    );
+  }
 });
 
 afterAll(() => { /* no process to stop: nothing was started */ });
