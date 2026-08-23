@@ -30,48 +30,80 @@
 
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+
+import { openAt } from "./open";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** A store opened the way `openStore` opens one. */
+/**
+ * A store, opened by the opener the services use.
+ *
+ * **Not a copy of it.** This began as `new Database` plus the same two pragmas
+ * typed out again, which measures SQLite rather than this repository: the day
+ * `openAt` stops setting `journal_mode = WAL`, or starts setting
+ * `wal_autocheckpoint = 0`, the copy here goes on passing and says the shipped
+ * configuration is self-limiting when it no longer is.
+ */
 function store(dir: string) {
   const path = join(dir, "probe.db");
-  const db = new Database(path, { create: true });
-  db.exec("PRAGMA journal_mode = WAL;");
+  const db = openAt(path, { create: true });
   db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, blob TEXT)");
   db.prepare("INSERT INTO t (blob) VALUES (?)").run("seed");
   return { db, path, wal: () => (existsSync(`${path}-wal`) ? statSync(`${path}-wal`).size : 0) };
 }
 
-/** Write until the log has clearly passed the threshold, or it folds. */
+/**
+ * Write well past the threshold and answer whether the log stayed bounded.
+ *
+ * **Bounded, not smaller.** The first version of this waited for the file to
+ * shrink, which is not what a checkpoint promises: SQLite rewinds the log and
+ * writes over it from the start, and whether the *file* shrinks depends on
+ * `journal_size_limit`, which nothing here sets. It shrank on the machine this
+ * was written on and did not in CI, so a true property was being read through
+ * an accident of one filesystem — the same shape as the prediction this file
+ * exists to have replaced.
+ *
+ * What is actually claimed by *self-limiting* is that the log stops tracking the
+ * volume of writes. So: write until it passes the threshold, then write several
+ * times the threshold again, and compare. Bounded means the peak did not follow.
+ */
 function fill(db: Database, wal: () => number, limit = 4000) {
   const payload = "x".repeat(8000);
   const insert = db.prepare("INSERT INTO t (blob) VALUES (?)");
+  const THRESHOLD = 3_000_000;
   let peak = 0;
+  let crossed = 0;
+  let wroteAfter = 0;
   for (let i = 0; i < limit; i++) {
     insert.run(payload);
+    if (crossed > 0) wroteAfter += payload.length;
     if (i % 50 !== 0) continue;
     const size = wal();
     if (size > peak) peak = size;
-    if (peak > 3_000_000 && size < peak / 2) return { peak, folded: true };
+    if (crossed === 0 && peak > THRESHOLD) crossed = peak;
+    // Four times the threshold written after crossing it. A log that is not
+    // being checkpointed has no way to hide that.
+    if (crossed > 0 && wroteAfter > THRESHOLD * 4) {
+      return { peak, bounded: peak < crossed * 2 };
+    }
   }
-  return { peak, folded: false };
+  return { peak, bounded: crossed > 0 && peak < crossed * 2 };
 }
 
 describe("the write-ahead log", () => {
-  test("folds back on its own once it passes the threshold", () => {
+  test("stops tracking the writes once it passes the threshold", () => {
     const dir = mkdtempSync(join(tmpdir(), "wal-fold-"));
     try {
       const { db, wal } = store(dir);
-      const { peak, folded } = fill(db, wal);
+      const { peak, bounded } = fill(db, wal);
       db.close();
 
       // Guards the guard: folding at a peak of nothing would mean the writes
       // never reached the threshold and the test proved only that it is small.
       expect(peak, "the log never approached the threshold, so nothing was tested")
         .toBeGreaterThan(3_000_000);
-      expect(folded, "the log never folded — `self-limiting` is not true of this configuration")
+      expect(bounded, "the log tracked the writes — `self-limiting` is not true of this configuration")
         .toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -86,12 +118,12 @@ describe("the write-ahead log", () => {
       reader.exec("BEGIN");
       reader.prepare("SELECT count(*) FROM t").get(); // the snapshot starts here
 
-      const { peak, folded } = fill(db, wal);
+      const { peak, bounded } = fill(db, wal);
       reader.exec("COMMIT");
       reader.close();
       db.close();
 
-      expect(folded, "the log folded under an open reader, which contradicts the case above")
+      expect(bounded, "the log stayed bounded under an open reader, which contradicts the case above")
         .toBe(false);
       // Well past the threshold, so this is not "it had not got there yet".
       expect(peak, "the log stayed near the threshold, so the reader's effect is unproven")
