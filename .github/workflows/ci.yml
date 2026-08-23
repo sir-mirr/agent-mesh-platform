@@ -102,6 +102,13 @@ jobs:
   # measurement itself. Separate also means a fall is its own red check, rather
   # than a suite failure with a different cause and the same colour.
   coverage-floor:
+    # After the suite, not beside it. The script refuses to report a number
+    # about a tree that does not pass, so on a red `main` this job spends
+    # twenty minutes arriving at what `check` already said — and while it runs,
+    # the run is still in progress and `gh run view --log-failed` answers
+    # "logs will be available when it is complete", which is how the first red
+    # main since this landed took ten minutes to read.
+    needs: check
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
