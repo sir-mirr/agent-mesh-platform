@@ -7893,6 +7893,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/coverage-floor.test.ts",
     expect: ["a file at 100% of lines with an uncovered function was left out of the only table that could name it"],
   },
+  {
+    id: "a-suite-a-signal-killed-exits-zero",
+    defect:
+      "`spawnSync` answers `null` for a status when a signal killed the process, and `null ?? 1` is what turns that into a failure. Made `?? 0` it becomes a success: an out-of-memory kill or a `^C` mid-run reads as a clean measurement, and the floor never sees the tree it was pointed at.",
+    file: "scripts/coverage.ts",
+    from: "    return exit(status ?? 1);",
+    to: "    return exit(status ?? 0);",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a failing suite still produced a percentage, or left with a success code"],
+  },
+  {
+    id: "half-the-suite-measured-as-though-it-were-all",
+    defect:
+      "The default target list lost `test/`. Bun's coverage covers the process it ran in, so dropping half the suite does not report half a number \u2014 it reports a *different* denominator, without saying so, and every file only the integration suite reaches falls out of the report entirely rather than appearing at 0%.",
+    file: "scripts/coverage.ts",
+    from: "  const status = run(dir, targets.length ? targets : [\"packages/\", \"test/\"]).status;",
+    to: "  const status = run(dir, targets.length ? targets : [\"packages/\"]).status;",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["runs the two default targets, in one process"],
+  },
 ];
 
 /**

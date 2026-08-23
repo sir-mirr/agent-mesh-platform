@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { floorFailures, parseArgs, parseLcov, uncoveredRows, type FileCoverage } from "../scripts/coverage";
+import { floorFailures, parseArgs, parseLcov, runCoverage, uncoveredRows, type FileCoverage, type Io } from "../scripts/coverage";
 
 const file = (over: Partial<FileCoverage> = {}): FileCoverage => ({
   path: "packages/http/src/main.ts", lines: 100, hit: 100, funcs: 100, funcsHit: 100, ...over,
@@ -153,6 +153,137 @@ describe("the by-file table", () => {
     ]);
 
     expect(rows.map((f) => f.path)).toEqual(["b.ts", "c.ts", "a.ts"]);
+  });
+});
+
+
+/**
+ * **The tool that measures coverage, measured.**
+ *
+ * The moment this file imported the script, bun started counting it: 65
+ * uncovered lines and four uncovered functions, and the *reported* number fell
+ * below the floor the script had just been written to hold. Nothing here could
+ * call `main()` — it spawned a suite, read a file, printed, and exited.
+ *
+ * So the four things it does to the outside are parameters, and these walk it
+ * with all four held: a suite that fails, one that passes, the per-file table,
+ * the excluded block, and both sides of the floor.
+ */
+describe("the coverage run", () => {
+  const lcov = (rows: Array<[string, number, number, number, number]>) =>
+    rows.map(([path, fnf, fnh, lf, lh]) =>
+      `SF:${path}\nFNF:${fnf}\nFNH:${fnh}\nLF:${lf}\nLH:${lh}\nend_of_record`).join("\n");
+
+  /** A run with every boundary held, and what it printed. */
+  function walk(argv: string[], report: string, status = 0) {
+    const said: string[] = [];
+    const complained: string[] = [];
+    const ran: Array<{ dir: string; targets: string[] }> = [];
+    const state: { left: number | null } = { left: null };
+    const io: Io = {
+      scratch: () => "/scratch",
+      run: (dir, targets) => { ran.push({ dir, targets }); return { status }; },
+      read: () => report,
+      say: (l) => { said.push(l); },
+      complain: (l) => { complained.push(l); },
+      // The real one never returns, and code after it must not run here either.
+      exit: ((code: number) => { state.left = code; throw new Error(`exit ${code}`); }) as (code: number) => never,
+    };
+    try { runCoverage(argv, io); } catch (err) {
+      if (!(err instanceof Error) || !err.message.startsWith("exit ")) throw err;
+    }
+    return { said: said.join("\n"), complained: complained.join("\n"), ran, left: state.left };
+  }
+
+  test("refuses to report a number about a broken tree", () => {
+    const walked = walk([], lcov([["packages/a.ts", 10, 10, 100, 100]]), 1);
+
+    expect(
+      { complained: walked.complained.includes("the suite did not pass"), said: walked.said, left: walked.left },
+      "a failing suite still produced a percentage, or left with a success code",
+    ).toEqual({ complained: true, said: "", left: 1 });
+  });
+
+  test("carries a signal death out as a failure of its own", () => {
+    // `spawnSync` answers `null` for a process a signal killed. `null !== 0`
+    // is the branch, and `?? 1` is what keeps it from exiting zero.
+    expect(walk([], "", null as unknown as number).left).toBe(1);
+  });
+
+  test("runs the two default targets, in one process", () => {
+    // Both, and one run: Bun's coverage covers the process it ran in, so
+    // splitting these into two runs measures neither.
+    expect(walk([], lcov([["packages/a.ts", 10, 10, 100, 100]])).ran)
+      .toEqual([{ dir: "/scratch", targets: ["packages/", "test/"] }]);
+  });
+
+  test("passes the targets it was given instead", () => {
+    expect(walk(["packages/http/"], lcov([["packages/a.ts", 1, 1, 1, 1]])).ran[0]!.targets)
+      .toEqual(["packages/http/"]);
+  });
+
+  test("prints the number with the excluded files and the number without", () => {
+    const walked = walk([], lcov([
+      ["packages/http/src/main.ts", 100, 99, 1000, 999],
+      ["packages/http/src/ui/chat.ts", 4, 0, 1000, 0],
+    ]));
+
+    expect(
+      {
+        both: /everything measured\s+95\.19 funcs ·\s+49\.95 lines ·\s+2 files/.test(walked.said),
+        counted: /reported\s+99\.00 funcs ·\s+99\.90 lines ·\s+1 files/.test(walked.said),
+        named: walked.said.includes("packages/http/src/ui/chat.ts"),
+      },
+      "the exclusion was taken on trust: the two numbers or the excluded file list are missing",
+    ).toEqual({ both: true, counted: true, named: true });
+  });
+
+  test("marks an excluded file in the per-file table rather than hiding it", () => {
+    const walked = walk(["--by-file"], lcov([
+      ["packages/http/src/ui/chat.ts", 4, 0, 1000, 0],
+      ["packages/http/src/main.ts", 100, 99, 1000, 1000],
+    ]));
+
+    expect({
+      excludedRow: /1000 lines\s+4 funcs.*chat\.ts \(excluded\)/.test(walked.said),
+      // Lines complete, one function short — the row this table used to drop.
+      funcsOnlyRow: /0 lines\s+1 funcs.*main\.ts$/m.test(walked.said),
+      counted: walked.said.includes("0 file(s) with nothing uncovered"),
+    }).toEqual({ excludedRow: true, funcsOnlyRow: true, counted: true });
+  });
+
+  test("says the floor held, on a tree that holds it", () => {
+    const walked = walk(["--floor", "99"], lcov([["packages/a.ts", 100, 99, 100, 99]]));
+
+    expect({ said: walked.said.includes("floor 99: held, on both metrics."), left: walked.left })
+      .toEqual({ said: true, left: null });
+  });
+
+  test("names the metric that fell, and leaves with a failure", () => {
+    const walked = walk(["--floor", "99"], lcov([["packages/a.ts", 100, 98, 100, 100]]));
+
+    expect(
+      {
+        named: walked.complained.includes("funcs at 98.00 is below the floor of 99"),
+        lines: walked.complained.includes("lines at"),
+        d749: walked.complained.includes("D-749"),
+        left: walked.left,
+      },
+      "a fall left with a success code, or did not say which metric fell",
+    ).toEqual({ named: true, lines: false, d749: true, left: 1 });
+  });
+
+  test("does not call a report with no files in it a pass", () => {
+    const walked = walk(["--floor", "99"], "");
+
+    expect({ complained: walked.complained.includes("names no files"), left: walked.left })
+      .toEqual({ complained: true, left: 1 });
+  });
+
+  test("prints the numbers and leaves quietly when no floor was asked for", () => {
+    const walked = walk([], lcov([["packages/a.ts", 100, 1, 100, 1]]));
+
+    expect({ left: walked.left, complained: walked.complained }).toEqual({ left: null, complained: "" });
   });
 });
 

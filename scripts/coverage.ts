@@ -61,11 +61,12 @@ const pct = (hit: number, total: number) => (total === 0 ? 100 : (hit / total) *
  */
 const shown = (value: number) => Number(value.toFixed(2));
 
-export function report(label: string, files: FileCoverage[]): void {
+/** One summary row: the label, both percentages, and the file count. */
+export function line(label: string, files: FileCoverage[]): string {
   const m = measure(files);
-  console.log(
+  return (
     `${label.padEnd(22)} ${m.funcs.toFixed(2).padStart(6)} funcs · ` +
-    `${m.lines.toFixed(2).padStart(6)} lines · ${String(files.length).padStart(3)} files`,
+    `${m.lines.toFixed(2).padStart(6)} lines · ${String(files.length).padStart(3)} files`
   );
 }
 
@@ -166,62 +167,96 @@ export function parseArgs(argv: string[]): Options {
   return { targets, byFile, floor };
 }
 
-function main(): void {
-  const { targets, byFile, floor } = parseArgs(process.argv.slice(2));
-  const dir = mkdtempSync(join(tmpdir(), "agent-mesh-coverage-"));
-  const run = spawnSync(
-    "bun",
-    ["test", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${dir}`,
-     ...(targets.length ? targets : ["packages/", "test/"])],
-    { stdio: ["ignore", "inherit", "inherit"] },
-  );
-  if (run.status !== 0) {
-    console.error("\ncoverage: the suite did not pass, so the number below would be about a broken tree");
-    process.exit(run.status ?? 1);
+/**
+ * Everything this script does, with the four things it does *to the outside*
+ * as parameters: run the suite, read the report, print, and leave.
+ *
+ * The seams are here because of what happened the moment this file grew a
+ * floor. `test/coverage-floor.test.ts` imports it, so bun's report started
+ * counting it — 65 uncovered lines and four uncovered functions in a file
+ * nothing could call, and the *reported* number fell below the floor the file
+ * had just been written to hold. A tool that measures coverage is not exempt
+ * from being measured, and the honest fix is the same one this repository has
+ * used everywhere else: bind the boundary, do not wrap it.
+ */
+export type Io = {
+  /** Runs the suite. Returns its exit status, `null` for a signal. */
+  run?: (dir: string, targets: string[]) => { status: number | null };
+  /** Reads `lcov.info` out of the directory the run wrote to. */
+  read?: (dir: string) => string;
+  /** Where the run writes. A fresh directory each time, so nothing carries. */
+  scratch?: () => string;
+  say?: (line: string) => void;
+  complain?: (line: string) => void;
+  exit?: (code: number) => never;
+};
+
+const defaults: Required<Io> = {
+  run: (dir, targets) =>
+    spawnSync(
+      "bun",
+      ["test", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${dir}`, ...targets],
+      { stdio: ["ignore", "inherit", "inherit"] },
+    ),
+  read: (dir) => readFileSync(join(dir, "lcov.info"), "utf8"),
+  scratch: () => mkdtempSync(join(tmpdir(), "agent-mesh-coverage-")),
+  say: console.log.bind(console),
+  complain: console.error.bind(console),
+  exit: process.exit.bind(process) as (code: number) => never,
+};
+
+export function runCoverage(argv: string[], io: Io = {}): void {
+  const { run, read, scratch, say, complain, exit } = { ...defaults, ...io };
+  const { targets, byFile, floor } = parseArgs(argv);
+  const dir = scratch();
+  const status = run(dir, targets.length ? targets : ["packages/", "test/"]).status;
+  if (status !== 0) {
+    complain("\ncoverage: the suite did not pass, so the number below would be about a broken tree");
+    return exit(status ?? 1);
   }
 
-  const all = parseLcov(readFileSync(join(dir, "lcov.info"), "utf8"));
+  const all = parseLcov(read(dir));
   const excluded = all.filter((f) => EXCLUDED.some((re) => re.test(f.path)));
   const counted = all.filter((f) => !EXCLUDED.some((re) => re.test(f.path)));
 
-  console.log("");
-  report("everything measured", all);
-  report("reported", counted);
+  say("");
+  say(line("everything measured", all));
+  say(line("reported", counted));
   if (byFile) {
-    console.log("\nby file, worst first by lines nobody ran:\n");
+    say("\nby file, worst first by lines nobody ran:\n");
     const rows = uncoveredRows(all);
     for (const f of rows) {
       const mark = EXCLUDED.some((re) => re.test(f.path)) ? " (excluded)" : "";
-      console.log(
+      say(
         `  ${String(f.lines - f.hit).padStart(5)} lines  ${String(f.funcs - f.funcsHit).padStart(3)} funcs  ` +
         `${pct(f.hit, f.lines).toFixed(2).padStart(6)}% lines  ${pct(f.funcsHit, f.funcs).toFixed(2).padStart(6)}% funcs  ` +
         `${f.path}${mark}`,
       );
     }
-    console.log(`\n  ${all.length - rows.length} file(s) with nothing uncovered, not listed`);
+    say(`\n  ${all.length - rows.length} file(s) with nothing uncovered, not listed`);
   }
 
   if (excluded.length > 0) {
-    console.log(`\nexcluded by decision (${excluded.length} files, ${excluded.reduce((n, f) => n + f.lines, 0)} lines):`);
-    for (const f of excluded.sort((a, b) => b.lines - a.lines)) {
-      console.log(`  ${f.path.padEnd(40)} ${String(f.lines).padStart(5)} lines · ${pct(f.hit, f.lines).toFixed(2)}%`);
+    say(`\nexcluded by decision (${excluded.length} files, ${excluded.reduce((n, f) => n + f.lines, 0)} lines):`);
+    for (const f of [...excluded].sort((a, b) => b.lines - a.lines)) {
+      say(`  ${f.path.padEnd(40)} ${String(f.lines).padStart(5)} lines · ${pct(f.hit, f.lines).toFixed(2)}%`);
     }
   }
 
   if (floor === null) return;
-  const short = floorFailures(counted, floor);
   if (counted.length === 0) {
-    console.error("\ncoverage: the report names no files, so there is no measurement for a floor to judge");
+    complain("\ncoverage: the report names no files, so there is no measurement for a floor to judge");
   }
+  const short = floorFailures(counted, floor);
   if (short.length === 0) {
-    console.log(`\nfloor ${floor}: held, on both metrics.`);
+    say(`\nfloor ${floor}: held, on both metrics.`);
     return;
   }
   for (const s of short) {
-    console.error(`\ncoverage: ${s.metric} at ${s.value.toFixed(2)} is below the floor of ${floor}`);
+    complain(`\ncoverage: ${s.metric} at ${s.value.toFixed(2)} is below the floor of ${floor}`);
   }
-  console.error("D-749 reopens the coverage track on this, without waiting for a new instruction.");
-  process.exit(1);
+  complain("D-749 reopens the coverage track on this, without waiting for a new instruction.");
+  return exit(1);
 }
 
-if (import.meta.main) main();
+if (import.meta.main) runCoverage(process.argv.slice(2));
