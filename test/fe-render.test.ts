@@ -6024,6 +6024,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     let drew = 0;
     let dataSeen = 0;
     let lastPayload = "";
+    /**
+     * **What this front end wrote is what is in its own modules.**
+     *
+     * Origin was read from the responses that drew *this* route, and a console
+     * is one application: it reads the tenant directory once and draws the name
+     * it was given on whichever screen needs it later. That cached value has no
+     * response behind it by the time it appears, so the rule called it copy —
+     * on the runner, where an admitted account gives `/platform/users` a row to
+     * draw, and not here, where the table is empty. The word was `플랫폼`,
+     * which is `DEFAULT_TENANT_NAME` in `packages/store/src/tenants.ts`: this
+     * repository's own server data, reported as this front end's Korean.
+     *
+     * So the question is asked of the source instead. Every module the page
+     * loads is kept, and a Korean run on the screen is this console's copy when
+     * it is *in* one of them. A value that arrived over the wire is in none.
+     */
+    let modules = "";
+    const keepModule = async (res: import("playwright").Response) => {
+      if (!/javascript|typescript/.test(res.headers()["content-type"] ?? "")) return;
+      try {
+        modules += await res.text();
+      } catch {
+        /* a body that cannot be read is not evidence either way */
+      }
+    };
+    page.on("response", keepModule);
     try {
       for (const route of routes) {
         let payload = "";
@@ -6063,7 +6089,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         }
         // Runs of two, because one syllable can land inside a payload by luck.
         for (const chunk of new Set(text.match(/[가-힣]{2,}/g) ?? [])) {
-          if (payload.includes(chunk)) dataSeen++;
+          if (!modules.includes(chunk)) dataSeen++;
           else {
             const at = text.indexOf(chunk);
             const near = text.slice(Math.max(0, at - 40), at + chunk.length + 40).replace(/\s+/g, " ");
@@ -6072,27 +6098,38 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         }
       }
 
-      // **The classifier has to be shown working, in both directions.** If the
-      // responses were never read, `payload` is empty and everything reads as
-      // copy — loud, and someone would notice. The quiet failure is the other
-      // one: a `payload` that swallows everything makes this scenario green
-      // about a fully Korean console. So: a word that no response contains must
-      // come out as copy, and a word that a response does contain must not.
+      // **The classifier has to be shown working, in both directions.** If no
+      // module was ever kept, `modules` is empty and everything reads as data —
+      // quiet, and the scenario would go green about a fully Korean console.
+      // The other direction fails loudly, so it is the first one this holds:
+      // a word that *is* in the modules must come out as copy, and a word that
+      // is in none of them must not.
+      //
+      // The copy side uses a Korean run taken out of the modules themselves, so
+      // it is a word this console really did write rather than one typed here
+      // that a rename could take away.
+      const fromModules = modules.match(/[가-힣]{2,}/)?.[0] ?? "";
       const planted = "심은문구없는말";
-      await page.evaluate((word) => {
-        const d = document.createElement("div");
-        d.textContent = word;
-        document.querySelector("#root")?.appendChild(d);
-      }, planted);
+      await page.evaluate((words: string[]) => {
+        for (const word of words) {
+          const d = document.createElement("div");
+          d.textContent = word;
+          document.querySelector("#root")?.appendChild(d);
+        }
+      }, [fromModules, planted]);
       const after = (await page.locator("#root").innerText().catch(() => "")) ?? "";
-      // The same two lines the loop runs, on a word chosen so the answer is
-      // known: it is on the screen and it is in no response.
+      // The same line the loop runs, on two words whose answers are known: both
+      // are on the screen, one is in the modules and one is in none of them.
       const afterChunks = new Set(after.match(/[가-힣]{2,}/g) ?? []);
-      const plantedReadsAsCopy = afterChunks.has(planted) && !lastPayload.includes(planted);
       expect(
-        { plantedIsCopy: plantedReadsAsCopy, drewSomething: drew > 0 },
-        "the classifier calls a word copy only when a response does not carry it — this run could not show that",
-      ).toEqual({ plantedIsCopy: true, drewSomething: true });
+        {
+          modulesRead: fromModules !== "",
+          copyIsCopy: afterChunks.has(fromModules) && modules.includes(fromModules),
+          arrivedIsData: afterChunks.has(planted) && !modules.includes(planted),
+          drewSomething: drew > 0,
+        },
+        "the classifier calls a word copy when a module carries it and data when none does — this run could not show that",
+      ).toEqual({ modulesRead: true, copyIsCopy: true, arrivedIsData: true, drewSomething: true });
 
       // **The other half of the classifier, on a real response.** The rule above
       // has two answers and this fixture only ever produced one of them: it
@@ -6135,7 +6172,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         { patched, onScreen: creatorText.includes(DATA_WORD), inPayload: echoed.includes(DATA_WORD) },
         "the data half of the rule was not exercised — the response was not marked, did not carry the mark, or the screen did not draw it",
       ).toEqual({ patched: true, onScreen: true, inPayload: true });
-      const creatorOffenders = [...new Set(creatorText.match(/[가-힣]{2,}/g) ?? [])].filter((c) => !echoed.includes(c));
+      const creatorOffenders = [...new Set(creatorText.match(/[가-힣]{2,}/g) ?? [])].filter((c) => modules.includes(c));
       expect(creatorOffenders, "a Korean run the server itself sent was counted as this front end's copy").toEqual([]);
 
       expect(offenders, "the console drew Korean it wrote itself, with the language set to English").toEqual([]);

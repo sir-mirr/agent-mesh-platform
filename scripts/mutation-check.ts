@@ -4967,8 +4967,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The abort listener stopped removing the client from the module-level set. Nothing fails at the time: the set grows for the life of the process and every push writes to controllers whose sockets are gone. Invisible until a long-running deployment is broadcasting to thousands of dead connections.",
     file: "packages/http/src/main.ts",
-    from: "        removeSSEClient(agentId, userLogin, controller)",
-    to: "        void controller",
+    from: "        remove(agentId, userLogin, controller)\n        stopHeartbeat()\n      })\n    },\n  })\n}",
+    to: "        void controller\n        stopHeartbeat()\n      })\n    },\n  })\n}",
     suite: "packages/http/src/streams.test.ts",
     expect: ["unregisters the client when the caller goes away"],
   },
@@ -5170,7 +5170,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The reconnect reached for the module's default schedule instead of the one it was given. In production nothing changes; in a shared test process the second close arms a real five-second dial that fires inside whatever file is running by then, and the failure lands on a test that never touched the hub.",
     file: "packages/http/src/main.ts",
-    from: "      schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)",
+    from: "      schedule(() => connectToHub(schedule, dial), HUB_RECONNECT_MS)",
     to: "      schedule(() => connectToHub(), HUB_RECONNECT_MS)",
     suite: "packages/http/src/hub-link.test.ts",
     expect: ["scheduled on the same clock"],
@@ -7558,6 +7558,72 @@ const MUTATIONS: Mutation[] = [
     to: "| `test/harness.ts` | `could not walk out of the password gate` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every anchor is still in the file it names"],
+  },
+  {
+    id: "keepalive-frame-not-written",
+    swept: true,
+    defect:
+      "The keepalive stopped writing. Every stream stays open until a proxy counting idle bytes closes it — minutes later, on somebody else's screen, with nothing in this service's log to connect the two.",
+    file: "packages/http/src/main.ts",
+    from: "  return startStreamKeepalive(() => controller.enqueue(bytes), everyMs, setTimer, clearTimer)",
+    to: "  return startStreamKeepalive(() => void bytes, everyMs, setTimer, clearTimer)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["writes the frame it was given, on every tick"],
+  },
+  {
+    id: "agent-stream-unregistered",
+    swept: true,
+    defect:
+      "The agent stream stopped registering its client, so a console holds an open connection the hub never pushes to. It looks connected from both ends and carries nothing.",
+    file: "packages/http/src/main.ts",
+    from: "      send('connected', { agent: agentId })\n      add(agentId, userLogin, controller)",
+    to: "      send('connected', { agent: agentId })\n      void add",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["opens by naming the agent and registering the client"],
+  },
+  {
+    id: "agent-stream-abort-leaks",
+    swept: true,
+    defect:
+      "A closed tab left its client in the registry and its ping timer running. The hub goes on pushing to a controller nobody reads, for the life of the process.",
+    file: "packages/http/src/main.ts",
+    from: "        remove(agentId, userLogin, controller)\n        stopHeartbeat()",
+    to: "        void remove",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["an abort takes the client out of the registry and the timer with it"],
+  },
+  {
+    id: "hub-limits-refusal-read-as-limits",
+    swept: true,
+    defect:
+      "A hub answering `503` had its error body read as limits, so the behaviour panel draws whatever fields that object happens to have — and a refusal becomes counts nobody sent.",
+    file: "packages/http/src/main.ts",
+    from: "    .then((r) => (r.ok ? r.json() : null))\n    .catch(() => null)",
+    to: "    .then((r) => r.json())\n    .catch(() => null)",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["answers nothing when the hub refuses, rather than a shape it did not send"],
+  },
+  {
+    id: "redial-drops-its-dialler",
+    swept: true,
+    defect:
+      "The redial after a refused dial fell back to the global constructor, so a caller that handed this a dialler gets a socket somewhere it never asked for — and in a suite, a five-second dial left running in a later file.",
+    file: "packages/http/src/main.ts",
+    from: "    schedule(() => connectToHub(schedule, dial), HUB_RECONNECT_MS)\n  }\n}",
+    to: "    schedule(() => connectToHub(schedule), HUB_RECONNECT_MS)\n  }\n}",
+    suite: "packages/http/src/hub-link.test.ts",
+    expect: ["the redial dropped the dialler it was given"],
+  },
+  {
+    id: "env-reader-invents-a-file",
+    swept: true,
+    defect:
+      "The env-file reader answered an empty string instead of throwing. `loadEnvFile` treats a file it cannot read as absent — that decision is only possible because this one refuses out loud, and a reader that returns nothing turns a misspelt path into a deployment running on defaults with no way to tell.",
+    file: "packages/http/src/main.ts",
+    from: "export const readEnvFile = (path: string): string => readFs(path, 'utf8')",
+    to: "export const readEnvFile = (path: string): string => { void path; return '' }",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["returns what is in the file, and throws when there is none"],
   },
   {
     id: "held-table-file-moved",
