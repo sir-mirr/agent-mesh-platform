@@ -15,10 +15,13 @@
  * the sender iterates.
  */
 import { describe, expect, test } from "bun:test";
+import { createECDH, randomBytes } from "node:crypto";
+
+import webpush from "web-push";
 
 process.env.JWT_SECRET ||= "push-routes-probe";
 
-const { app, configureWebpush } = await import("./main.ts");
+const { app, configureWebpush, webpushDelivery } = await import("./main.ts");
 const { getDb, getPushSubscriptions, upsertUser, approveUser, createPendingApproval } = await import("./db");
 const { signJwt } = await import("./auth");
 
@@ -214,5 +217,51 @@ describe("configuring web push", () => {
       { outcomes, calls },
       "half a key pair configured web push, so a deployment missing one would look configured",
     ).toEqual({ outcomes: [false, false, false], calls: [] });
+  });
+});
+
+/**
+ * **The default arguments, which are the library itself.**
+ *
+ * `configureWebpush` and `webpushDelivery` each take their side effect as a
+ * parameter, and every test above passes a fake — so the default expression,
+ * `webpush.setVapidDetails.bind(webpush)` and `webpush.sendNotification.bind(webpush)`,
+ * was evaluated by nothing here. Two rows of the held-uncovered table said so,
+ * on the reasoning that reaching them needs a deployment with keys and a
+ * registered device.
+ *
+ * It does not. A key pair is a call to the library, and a push service that
+ * refuses is a closed port — both are states the outside world makes, which is
+ * where D-751 puts the obligation. What is asserted is that the default really
+ * is the library: a binding that had been replaced by something inert would
+ * accept the malformed pair and reach the closed port without complaint.
+ */
+describe("what happens when the caller passes no dependency", () => {
+  test("configuring goes to the real setVapidDetails", () => {
+    const keys = webpush.generateVAPIDKeys();
+
+    expect(configureWebpush({ publicKey: keys.publicKey, privateKey: keys.privateKey })).toBe(true);
+    expect(
+      () => configureWebpush({ publicKey: "not-a-public-key", privateKey: "not-a-private-key" }),
+      "the default setter accepted a malformed pair, so it is not the library and this proves nothing",
+    ).toThrow();
+  });
+
+  test("delivering goes to the real sendNotification", async () => {
+    // A well-formed subscription — the library checks the key lengths before it
+    // opens anything, and a rejection from that check would not prove a request
+    // was attempted. Port 1 is the closed one.
+    const ecdh = createECDH("prime256v1");
+    ecdh.generateKeys();
+    const target = {
+      endpoint: "http://127.0.0.1:1/push",
+      p256dh: ecdh.getPublicKey().toString("base64url"),
+      auth: randomBytes(16).toString("base64url"),
+    };
+
+    await expect(
+      webpushDelivery(target, JSON.stringify({ title: "probe" })),
+      "the default sender reached a closed port without failing, so it is not sending anything",
+    ).rejects.toThrow();
   });
 });

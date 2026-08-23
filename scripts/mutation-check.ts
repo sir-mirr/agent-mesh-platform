@@ -7554,8 +7554,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "A document naming code is a copy of it. A row whose anchor has been renamed or deleted still reads as a decision somebody made about the code that is there now — which is worse than no document, because the reason is stated with confidence and points at nothing.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `webpush.sendNotification.bind(webpush)` |",
-    to: "| `packages/http/src/main.ts` | `webpush.deliverNotification.bind(webpush)` |",
+    from: "| `test/harness.ts` | `could not leave the password gate` |",
+    to: "| `test/harness.ts` | `could not walk out of the password gate` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every anchor is still in the file it names"],
   },
@@ -7565,8 +7565,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The other way a row goes stale: the file moves. A path nothing tracks cannot be checked at all, so the row silently stops being about this repository.",
     file: "docs/decisions/what-the-coverage-number-leaves-out.md",
-    from: "| `packages/http/src/main.ts` | `webpush.setVapidDetails.bind(webpush)` |",
-    to: "| `packages/http/src/where-it-used-to-be.ts` | `webpush.setVapidDetails.bind(webpush)` |",
+    from: "| `packages/http/src/main.ts` | `if (import.meta.main) {` |",
+    to: "| `packages/http/src/where-it-used-to-be.ts` | `if (import.meta.main) {` |",
     suite: "test/held-uncovered.test.ts",
     expect: ["every row names a tracked file"],
   },
