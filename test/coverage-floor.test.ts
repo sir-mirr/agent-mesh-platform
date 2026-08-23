@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { floorFailures, parseArgs, parseLcov, runCoverage, uncoveredRows, type FileCoverage, type Io } from "../scripts/coverage";
+import { defaults, floorFailures, parseArgs, parseLcov, runCoverage, uncoveredRows, type FileCoverage, type Io } from "../scripts/coverage";
 
 const file = (over: Partial<FileCoverage> = {}): FileCoverage => ({
   path: "packages/http/src/main.ts", lines: 100, hit: 100, funcs: 100, funcsHit: 100, ...over,
@@ -301,4 +301,46 @@ describe("the workflow", () => {
       "CI does not run the floor at 99, so the reopen condition has nothing to fire it",
     ).toEqual({ invokes: true });
   });
+});
+
+
+/**
+ * The three boundaries every case above replaces.
+ *
+ * Handing in fakes is what makes the rest of this file possible, and it left
+ * the real spawn, the real read and the real scratch directory as functions
+ * nothing ran — in the tool that reports which functions nothing runs. What can
+ * be wrong with the spawn is the spelling of its flags, and a misspelt
+ * `--coverage-reporter` writes no report rather than failing, so it is run here
+ * against one small suite instead of being reasoned about.
+ */
+describe("the boundaries the fakes stand in for", () => {
+  test("the scratch directory is fresh, and the read comes back out of it", () => {
+    const dir = defaults.scratch();
+    try {
+      expect(existsSync(dir)).toBe(true);
+      writeFileSync(join(dir, "lcov.info"), "SF:probe.ts\nDA:1,1\nend_of_record\n");
+
+      expect(defaults.read(dir)).toContain("SF:probe.ts");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the spawn asks bun for an lcov report, and gets one", () => {
+    const dir = defaults.scratch();
+    try {
+      // One file, chosen for being fast and having no service behind it.
+      const status = defaults.run(dir, ["packages/store/src/checkpoint.test.ts"]).status;
+
+      expect({ status, wrote: existsSync(join(dir, "lcov.info")) }, "the flags this passes bun no longer produce a report").toEqual({
+        status: 0,
+        wrote: true,
+      });
+      // A report about the file that ran, not an empty one.
+      expect(parseLcov(defaults.read(dir)).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

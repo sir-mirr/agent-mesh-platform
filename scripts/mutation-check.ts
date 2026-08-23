@@ -7648,6 +7648,17 @@ const MUTATIONS: Mutation[] = [
     expect: ["a call nobody answers gives up, naming the method and the wait"],
   },
   {
+    id: "coverage-spawn-asks-for-the-wrong-report",
+    swept: true,
+    defect:
+      "The coverage run asked bun for a text report and then read `lcov.info`, which is not written. The read throws where a person expects a number — and a flag spelling is exactly what the seam in this file hides, because every case hands in a fake runner.",
+    file: "scripts/coverage.ts",
+    from: '      ["test", "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${dir}`, ...targets],',
+    to: '      ["test", "--coverage", "--coverage-reporter=text", `--coverage-dir=${dir}`, ...targets],',
+    suite: "test/coverage-floor.test.ts",
+    expect: ["the spawn asks bun for an lcov report, and gets one"],
+  },
+  {
     id: "held-table-file-moved",
     swept: true,
     defect:

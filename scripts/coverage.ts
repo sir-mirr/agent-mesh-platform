@@ -191,7 +191,17 @@ export type Io = {
   exit?: (code: number) => never;
 };
 
-const defaults: Required<Io> = {
+/**
+ * The boundary itself, exported so it can be run once.
+ *
+ * Every case below hands in fakes — that is the point of the seam — which left
+ * the three real ones as functions nothing executed: the spawn, the read and
+ * the scratch directory. The spawn is the one worth executing rather than
+ * reasoning about, because what can be wrong with it is the flag spelling, and
+ * a misspelt `--coverage-reporter` produces an empty report rather than an
+ * error.
+ */
+export const defaults: Required<Io> = {
   run: (dir, targets) =>
     spawnSync(
       "bun",
