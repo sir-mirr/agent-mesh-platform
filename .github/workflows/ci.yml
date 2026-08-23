@@ -149,7 +149,7 @@ jobs:
       - name: Coverage floor
         run: bun scripts/coverage.ts --floor 99
 
-  # **Planting all 761, on a clock.**
+  # **Planting the whole manifest, on a clock.**
   #
   # One suite per entry, and seventy-two of them name `test/fe-render.test.ts`,
   # which drives a browser for five minutes. That is hours however it is

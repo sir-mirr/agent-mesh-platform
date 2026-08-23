@@ -1729,14 +1729,25 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | POST   | `/api/v1/push/unsubscribe`        | JWT    | `200`   | Drop a Web Push subscription. |
 | GET    | `/auth/github`                    | None   | `302`   | Begin GitHub OAuth flow. |
 | GET    | `/auth/github/callback`           | None   | `302`   | OAuth callback; sets `mesh_token` cookie. |
-| POST   | `/auth/local`                     | None   | `302`   | Local username/password login; sets cookie. |
+| POST   | `/auth/local`                     | None   | `200`/`302` | Local username/password login; sets cookie. **Answers in the caller's medium**: a request that accepts JSON gets `200` with a JSON body, a form post gets `302`. Failures follow the same split — `400` for a missing field and `401` for bad credentials as JSON, or a redirect carrying the reason for a form. |
+| POST   | `/auth/local/password`            | JWT ¶  | `200`   | Change this session's local password. The seeded account must do this before any other route opens to it. `400` when `next` is shorter than eight characters or equal to `current`, `403` when `current` is wrong, `404` when the session has no local account. |
+| POST   | `/auth/logout`                    | None   | `200`   | Expire the `mesh_token` cookie. Takes no body and refuses nothing: logging out of a session that is already gone is the same outcome as logging out of a live one. |
 | GET    | `/auth/me`                        | JWT ¶  | `200`   | Current user info, including `approved` and `capabilities` — the § 11 grants this subject holds. Carries `tenant`, the session's own `local_users.tenant`, or `null` for a login with no local row — `null` means *no local account*, not *the default tenant*, and is not defaulted on the way out. Reporting which tenant a session is in is not the scoping question (`I-093`/`I-094`) and does not wait on it. |
 
-¶ `/auth/me` is the one `JWT` route that does **not** refuse an
-unapproved user: it answers `200` with `approved: false`. It is how a
-client discovers it is pending, so refusing it would make the pending
-state undiscoverable and leave the client with a `403` it cannot
-explain. It returns `404` for a session whose user row does not exist.
+¶ marks the two `JWT` routes that do **not** refuse an unapproved user.
+
+`/auth/me` answers `200` with `approved: false`. It is how a client discovers
+it is pending, so refusing it would make the pending state undiscoverable and
+leave the client with a `403` it cannot explain. It returns `404` for a session
+whose user row does not exist.
+
+`/auth/local/password` does not consult approval either, for a reason of the
+same shape. An account an operator creates arrives with a temporary
+password and `must_change_password` set, and the change is what opens
+everything else to it — so gating the change on approval would leave a user
+who has been admitted but not yet approved unable to do the one thing the
+server is telling them to do. It validates the body first, which is why an
+empty request answers `400` rather than anything about the session.
 
 † The SSE route authenticates from the **session cookie**, like every other
 route here. `EventSource` cannot set headers, which is true and does not

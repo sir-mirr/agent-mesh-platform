@@ -21,7 +21,7 @@ into a single shared backbone via well-defined contracts.
                  │                                          │
    external ───► │  agent-mesh-http   agent-mesh-hub        │
    clients       │  :3000  REST/SSE   :3100  JSON-RPC WS    │
-                 │  OAuth, PWA        + POST /api/v1/rpc    │
+                 │  sign-in, PWA      + POST /api/v1/rpc    │
                  │                                          │
                  │            agent-mesh-self-reminder      │
                  │            once / interval / cron        │
@@ -59,7 +59,7 @@ can be zero and these three still run cleanly.
 | Service                     | Port | Role                                                       |
 |-----------------------------|------|------------------------------------------------------------|
 | `agent-mesh-hub`            | 3100 | JSON-RPC 2.0 broker over WebSocket, and over HTTP for callers that cannot hold a socket |
-| `agent-mesh-http`           | 3000 | Hono REST API + SSE + GitHub OAuth + admin + Web Push/PWA  |
+| `agent-mesh-http`           | 3000 | Hono REST API + SSE + sign-in (local password or GitHub OAuth) + admin + Web Push/PWA |
 | `agent-mesh-self-reminder`  | —    | Scheduler (once / interval / cron), at-least-once delivery |
 
 Storage is four SQLite files, not one (`SPEC.md` § 3.1). `agents.db` holds
@@ -103,9 +103,9 @@ does not connect to the hub itself (`SPEC.md` §§ 4.1, 6.1).
 ## Quick start (Baseline only)
 
 > **On a laptop, this is the wrong section.** It needs a Linux host with
-> systemd, root, and a GitHub OAuth app, and every prerequisite below is a real
-> one — an agent following it as a first reader could not get past them on
-> macOS. For three processes on one machine with none of that, read
+> systemd and root, and every prerequisite below is a real one — an agent
+> following it as a first reader could not get past them on macOS. For three
+> processes on one machine with none of that, read
 > [`docs/running-locally.md`](docs/running-locally.md), which was executed
 > before it was written and prints what it printed.
 
@@ -115,7 +115,10 @@ Prerequisites:
 - [Bun](https://bun.sh) runtime — SQLite is embedded via `bun:sqlite`, so no
   separate install is needed to *run* the mesh
 - The `sqlite3` CLI, if you intend to apply `ops/migrations/` by hand
-- A GitHub OAuth app (for the HTTP admin login)
+- A GitHub OAuth app — **optional.** Sign-in works without one: the first boot
+  seeds a `platform-admin` local account and forces a password change. Set
+  `AGENT_MESH_ADMIN_PASSWORD` before that boot on any host others can reach,
+  or the seeded password is `admin` and the server says so in its log.
 
 ```bash
 # 1. Clone
@@ -126,8 +129,9 @@ cd agent-mesh-platform
 bun install
 
 # 3. Provision env files (see SPEC.md "env layout")
-# Required: env/shared/{common,hub,http,self-reminder}.env
-#           secrets/shared.env  (GITHUB_CLIENT_SECRET, JWT_SECRET, VAPID_*)
+# Copy from ops/env/shared/{common,hub,http,self-reminder}.env.example
+#           secrets/shared.env  (JWT_SECRET, VAPID_*, GITHUB_CLIENT_SECRET
+#                                if you want the OAuth button to work)
 
 # 4. Install the baseline systemd units (ops/systemd/)
 sudo cp ops/systemd/agent-mesh-*.service ops/systemd/agent-mesh-*.timer \
@@ -144,6 +148,12 @@ sudo systemctl enable --now agent-mesh-collect-orphans-lab.timer
 curl -fsS http://localhost:3000/api/v1/health
 curl -fsS http://localhost:3100/health     # reports agent_mesh_spec (§ 13)
 ```
+
+Steps 1 to 3 run anywhere. Steps 4 to 6 install and start systemd units, so
+they need the host — on a machine without systemd and root they do nothing, and
+the `curl` checks in step 6 then have nothing to answer them. To reach the same
+two answers on a laptop, start the processes directly:
+[`docs/running-locally.md`](docs/running-locally.md).
 
 At this point the mesh is live with zero agents. The HTTP server serves the
 admin/PWA at `:3000`; the hub accepts JSON-RPC 2.0 WebSocket connections at
@@ -267,9 +277,20 @@ a hub identity of its own, and every lane includes a runtime-adapter
   endpoint. Maintains the agent registry in SQLite. All inter-agent traffic
   is an envelope (see `envelope.ts` in `@agent-mesh/contracts`) routed by identity.
 - **HTTP** (`packages/http`) — Hono server. Provides REST, SSE for
-  per-agent event streams, `/auth/github` (GitHub OAuth → JWT HS256), an
-  admin panel for pending-pair approval, Web Push (VAPID), and a PWA
-  bundle.
+  per-agent event streams, sign-in for people (`/auth/local` with a seeded
+  `platform-admin` account, or `/auth/github` — both mint the same HS256 JWT),
+  an admin surface for key and user approval, Web Push (VAPID), and a PWA
+  bundle with server-rendered pages under `src/ui/`.
+- **Admin console** (`packages/platform-web`) — the React console an operator
+  actually looks at: React 19, Vite, React Router. It is a client of
+  `packages/http` and talks to nothing else. See *The admin console* below.
+- **Mailbox** (`packages/mailbox`) — store-and-forward at the edge of the mesh,
+  forbidden from importing the hub, and running in the hub's process today (see
+  the note under *API at a glance*).
+- **Log** (`packages/log`) — one log-line shape for every service, and the
+  counters that shadow it, so an operator greps one format rather than four.
+- **Store** (`packages/store`) — schema and access for the databases the
+  baseline services share, including the WAL policy each one opens under.
 - **Self-reminder** (`packages/self-reminder`) — Independent scheduler
   daemon. Connects to the hub as `identity=self-reminder`, accepts schedule
   requests over the mesh, persists them, and re-injects payloads at fire
@@ -301,8 +322,10 @@ a hub identity of its own, and every lane includes a runtime-adapter
 - **Storage**: SQLite via `bun:sqlite`
 - **Inter-agent transport**: JSON-RPC 2.0 over WebSocket
 - **Streaming**: Server-Sent Events (SSE)
-- **Auth**: Ed25519-signed JSON-RPC requests between agents; GitHub OAuth +
-  JWT (HS256) for people
+- **Auth**: Ed25519-signed JSON-RPC requests between agents; for people, a
+  local password (seeded `platform-admin`, change forced on first use) or
+  GitHub OAuth — both end in the same JWT (HS256) session cookie
+- **Admin console**: React 19 + Vite + React Router (`packages/platform-web`)
 - **Notifications**: Web Push (VAPID)
 - **Process supervision**: systemd (templated units)
 
@@ -365,12 +388,22 @@ registry for a screen, `POST` on the hub provisions an identity, and the hub's
 `/api/v1/agents/{identity}/keys` reads a key back. A path-prefix proxy cannot separate
 them, and does not need to: a browser wants the `GET` and nothing else.
 
-A front end in development wants a proxy rather than CORS:
+### The admin console
 
-```ts
-// vite.config.ts
-server: { proxy: { '/api': 'http://localhost:3000', '/auth': 'http://localhost:3000' } }
+`packages/platform-web` is the React console — React 19, Vite, React Router —
+and it is a client of `:3000` like any other. There is a second, older surface:
+`packages/http/src/ui/` server-renders `/admin` and `/chat` from the HTTP
+process itself, which is what a deployment with no build step gets.
+
+```bash
+bun run start:web     # vite dev server, asks for :3005
+bun run build:web     # type-checks, then builds to packages/platform-web/dist
 ```
+
+The dev server proxies `/api` and `/auth` to `http://localhost:3000`, so the
+browser sees one origin and no CORS is involved. Point it elsewhere with
+`API_PROXY_TARGET`. **Read the port off vite's own output**: it asks for 3005
+and moves when something already holds it, which is a laptop's normal state.
 
 Cross-origin in production needs `AGENT_MESH_ALLOWED_ORIGINS`. It is empty by
 default and empty means none, which is the right default for a server that
@@ -468,8 +501,17 @@ already broken. A required argument cannot be silent, and it greps.
 | `GET  /api/v1/admin/mailbox/{identity}` | What is waiting for one identity, and what is leased |
 | `*    /api/v1/admin/keys/*`         | Key approval: `pending` / `approve` / `deny` / `revoke` (§ 10.2.1) |
 | `*    /api/v1/admin/*`              | User approval: `pending` / `approve` / `deny`, audits, AI usage |
-| `POST /api/v1/push/subscribe`       | Web Push subscription                |
-| `GET  /auth/github`, `/auth/me`     | GitHub OAuth + JWT session           |
+| `*    /api/v1/admin/groups*`        | Groups and their egress rules — deny by default (SPEC § 12) |
+| `*    /api/v1/admin/tenants*`       | Tenants, and the directory a console lists |
+| `GET  /api/v1/admin/grants`         | The capability grant table, read per request (§ 11) |
+| `GET  /api/v1/admin/agent-sources`  | Where each identity has been observed connecting from (§ 8.11) |
+| `GET  /api/v1/admin/telemetry`, `/telemetry/behaviour` | What the mesh measured about itself |
+| `GET  /api/v1/admin/chat-audits*`   | Recorded conversations, and a stream of new ones |
+| `GET  /api/v1/admin/ai-usage`, `/ai-usage/stream` | Model spend, polled or streamed |
+| `POST /api/v1/admin/pairing-codes`, `POST /api/v1/pairing-codes/redeem` | Ownership pairing (§ 11.3) |
+| `*    /api/v1/push/*`               | Web Push: `subscribe` / `unsubscribe` / `vapid-key` |
+| `POST /auth/local`, `/auth/local/password` | Password sign-in, and the forced change a seeded account walks out of |
+| `GET  /auth/github`, `POST /auth/logout`, `GET /auth/me` | OAuth sign-in, sign-out, and who the session says you are |
 
 **Auth has three states, not two** (`SPEC.md` § 9.1). No session is `401`; a
 valid session for a user no operator has approved is `403`; an approved user
@@ -486,6 +528,8 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 | `GET    /health`                        | Liveness, online count, `agent_mesh_spec` (§ 13) |
 | `POST   /api/v1/agents`                 | Provision an identity (§ 10.1); `create_only` refuses to take over an existing one |
 | `GET    /api/v1/agents/{identity}/keys` | Key record and status (§ 10.2) |
+| `GET    /api/v1/capabilities`           | **Unsigned.** What this deployment enforces, and in which mode |
+| `GET    /api/v1/limits`                 | The sizes and rates this deployment will accept |
 | `DELETE /api/agents/{identity}`         | **Refused** — teardown needs an admin session (§ 9.3) |
 
 ---
@@ -496,19 +540,28 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 .
 ├── README.md                      # this file
 ├── SPEC.md                        # normative contracts
+├── DEPLOYMENT.md                  # deployment and operations guide
+├── CONTRIBUTING.md                # clone, install, typecheck, conventions
+├── CLAUDE.md                      # how the agents working here coordinate
 ├── MIGRATION.md                   # legacy → normalized migration notes
 ├── docs/
 │   ├── architecture.md            # how this repository is built, and why
+│   ├── running-locally.md         # three processes on a laptop, executed before written
 │   ├── implementation-plan-0.2.md # what to build next, in order
 │   ├── decisions/                 # settled design, with the reasoning
 │   ├── proposals/                 # cross-team interface work
 │   ├── open-questions.md
 │   ├── deferred.md                # found, not fixed, and why
+│   ├── operator-functional-spec.md, information-architecture.md, design-system.md
 │   └── e2e-platform.md            # this side's half of the E2E scenarios
 ├── test/                          # integration — real processes, real ports
+├── preview/                       # static screen previews, linted by scripts/lint-preview.ts
 ├── scripts/
 │   ├── e2e-harness.ts             # stand up a mesh for the client's E2E run
 │   ├── mesh-mail.ts               # reference client for the socketless transport
+│   ├── coverage.ts                # the measurement, and the floor CI enforces
+│   ├── mutation-check.ts          # the manifest: plant a defect, expect a suite to catch it
+│   ├── lint-preview.ts            # preview/ against the capability vocabulary
 │   └── collect-orphan-blobs.ts    # § 15.6 sweep, run by the timer below
 ├── ops/
 │   ├── bin/bootstrap-hub-service-identities.sh
@@ -518,9 +571,13 @@ Full request/response shapes and auth requirements are in `SPEC.md`.
 ├── packages/
 │   ├── store/                     # schema and access for the shared databases
 │   ├── hub/                       # JSON-RPC 2.0 broker (port 3100)
-│   ├── http/                      # REST + SSE + OAuth + PWA (port 3000)
-│   │   └── src/ui/                #   server-rendered pages
+│   ├── mailbox/                   # store-and-forward; runs in the hub's process
+│   ├── http/                      # REST + SSE + sign-in + PWA (port 3000)
+│   │   └── src/ui/                #   server-rendered /admin and /chat
+│   ├── platform-web/              # React admin console (vite dev :3005)
+│   ├── log/                       # one log-line shape for every service
 │   └── self-reminder/             # scheduler daemon
+├── .github/workflows/ci.yml       # check · coverage floor · nightly mutation
 ├── package.json
 ├── bun.lock
 └── tsconfig.base.json
@@ -541,13 +598,53 @@ lives **outside** the code repository and is not versioned here. See
 
 ```bash
 bun run typecheck
+bun run build:web      # the console; the browser scenarios need it built
 bun test packages/     # unit
 bun test test/         # integration — starts real hub and http processes
 ```
 
-CI runs all three. A failure in `test/` usually means wiring rather than logic:
-those tests spawn the real entrypoints on real ports, because the bugs worth
-catching there are the ones where each half works and the two disagree.
+A failure in `test/` usually means wiring rather than logic: those tests spawn
+the real entrypoints on real ports, and some of them drive a real browser
+against the built console, because the bugs worth catching there are the ones
+where each half works and the two disagree.
+
+### What CI does
+
+One workflow, `.github/workflows/ci.yml`, with three jobs.
+
+| Job | When | What it does |
+|---|---|---|
+| `check` | every push and PR | typecheck, build the console, unit tests, integration tests, then the mutation manifest's *anchors* and its self-check |
+| `coverage-floor` | pushes to `main`, after `check` | `bun scripts/coverage.ts --floor 99` — exits non-zero below the number and names which metric fell |
+| `mutation` | nightly at 17:00 UTC, or on demand | plants every defect in the manifest across 8 shards, and files a `nightly-mutation` issue if a shard is red |
+
+**Anchors are not the whole manifest.** An anchor check reads every entry
+against the tree in about a second: an entry whose `from` string no longer
+appears plants nothing, the suite passes, and the run reads as *the guard did
+not catch it* — a false all-clear rather than a missing one. Planting all of
+them is one suite per entry and hours of wall clock, which is why it is
+nightly. Before starting work, read what the nightly said:
+
+```bash
+gh issue list --label nightly-mutation
+bun run mutation-check -- --anchors      # every entry still points at one place
+bun run coverage                          # the number, and what is left uncovered
+```
+
+### Coverage, and what the number means here
+
+The floor is **99** and CI enforces it; the goal is **100**, and
+`bun run coverage` prints where the tree actually is rather than leaving a
+number in this file to go stale. Only `packages/http/src/ui/` is excluded from
+the reported denominator, and the report prints the excluded files beside the
+number rather than hiding them — an exclusion nobody can see is an exclusion
+nobody re-argues.
+
+The floor stays below the goal on purpose: a floor equal to the ceiling turns
+every ordinary in-progress commit red and leaves no room to aim at.
+[`docs/decisions/what-the-coverage-number-leaves-out.md`](docs/decisions/what-the-coverage-number-leaves-out.md)
+records what a percentage cannot tell you, including the two kinds of function
+no line-based report can point at.
 
 `docs/architecture.md` explains how this repository is built and why;
 `SPEC.md` is the contract any implementation satisfies. **When they disagree,
