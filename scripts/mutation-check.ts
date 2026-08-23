@@ -3489,8 +3489,10 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Signing out that ends nothing. The browser goes to `/login`, `mesh_token` stays set, and the next person to type `/dashboard` on that machine is inside the previous session. It looks correct from the seat of the person who clicked.",
     file: "packages/http/src/main.ts",
-    from: "    headers: { 'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0) },",
-    to: "    headers: { 'content-type': 'application/json' },",
+    // The expiry moved out of the response and into the one middleware that
+    // survives CORS on Linux; what it does is unchanged, and so is this.
+    from: "  holdSessionCookie(c, sessionCookie(c, '', 0))\n  return new Response(JSON.stringify({ ok: true }), {",
+    to: "  return new Response(JSON.stringify({ ok: true }), {",
     suite: "test/fe-render.test.ts",
     expect: ["SC-AUTH-07", "signing out left the session usable"],
   },
@@ -7912,6 +7914,26 @@ const MUTATIONS: Mutation[] = [
     to: "  const status = run(dir, targets.length ? targets : [\"packages/\"]).status;",
     suite: "test/coverage-floor.test.ts",
     expect: ["runs the two default targets, in one process"],
+  },
+  {
+    id: "the-session-cookie-goes-back-inside-cors",
+    defect:
+      "The session cookie went back on inside the CORS rebuild. On Linux that loses it: signing in answers 200 with the user in the body and no session at all, and every request after it is 401 \u2014 which reads as a wrong password. It cost CI 276 unit failures on every push for weeks and was invisible from a Mac, where both orders work. The order is the repair, so the check reads the file rather than the behaviour.",
+    file: "packages/http/src/main.ts",
+    from: "app.use('*', async (c, next) => {\n  await next()\n  const cookie = c.get('sessionCookie')\n  if (cookie) c.res.headers.append('Set-Cookie', cookie)\n})",
+    to: "app.use('*', async (c, next) => {\n  await next()\n})\napp.use('/x-never', async (c, next) => {\n  const cookie = c.get('sessionCookie')\n  if (cookie) c.res.headers.append('Set-Cookie', cookie)\n  await next()\n})",
+    suite: "packages/http/src/set-cookie-survives.test.ts",
+    expect: ["the cookie is appended inside CORS's rebuild, where Linux loses it"],
+  },
+  {
+    id: "a-route-sets-its-own-session-cookie-again",
+    defect:
+      "A second place started setting the session cookie. Every place other than the outermost middleware is downstream of something that rebuilds the answer \u2014 CORS does, on every response \u2014 and a rebuild is where Linux drops it. One place is the property, not tidiness.",
+    file: "packages/http/src/main.ts",
+    from: "function holdSessionCookie(c: Context<Vars>, cookie: string): void {\n  c.set('sessionCookie', cookie)\n}",
+    to: "function holdSessionCookie(c: Context<Vars>, cookie: string): void {\n  c.set('sessionCookie', cookie)\n}\nexport const staleCookieHeader = { 'Set-Cookie': 'mesh_token=' }",
+    suite: "packages/http/src/set-cookie-survives.test.ts",
+    expect: ["the session cookie is set in 2 places"],
   },
 ];
 

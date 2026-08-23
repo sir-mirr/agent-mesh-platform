@@ -161,6 +161,22 @@ describe("the source", () => {
     expect(sites.length, `the session cookie is set in ${sites.length} places: ${sites.join(", ")}`).toBe(1);
   });
 
+  test("appends the cookie outside CORS, not inside it", () => {
+    // The order is the repair, and it is invisible from a Mac: both orders pass
+    // every behavioural test here, and only one of them keeps the cookie on
+    // Linux. So the check reads the file. `app.use` runs in registration order
+    // going in and in reverse coming out, so the cookie middleware has to be
+    // registered *before* CORS for its half after `next()` to run *after* it.
+    const source = readFileSync(join(import.meta.dir, "main.ts"), "utf8").split("\n");
+    const cookieAt = source.findIndex((l) => l.includes("c.res.headers.append('Set-Cookie'"));
+    const corsAt = source.findIndex((l) => l.trimStart().startsWith("cors({"));
+
+    expect(
+      { cookieFound: cookieAt >= 0, corsFound: corsAt >= 0, cookieFirst: cookieAt < corsAt },
+      "the cookie is appended inside CORS's rebuild, where Linux loses it",
+    ).toEqual({ cookieFound: true, corsFound: true, cookieFirst: true });
+  });
+
   test("never hands Set-Cookie to the Response constructor", () => {
     const dir = import.meta.dir;
     const offenders: string[] = [];
@@ -184,5 +200,40 @@ describe("the source", () => {
       offenders,
       "a header record carries the session cookie again, which is the shape that drops it on Linux",
     ).toEqual([]);
+  });
+});
+
+/**
+ * **The other half: a cookie arriving.**
+ *
+ * Fixing the answer did not fix CI. The admin suites never sign in — they sign
+ * a JWT themselves and send it as a `cookie:` request header — and they still
+ * answer `401` there, which means the failure on the way *in* is a different
+ * one from the failure on the way out. These two hold the two halves of that
+ * path apart: what Hono reads out of a request, and whether a token this
+ * process signed verifies in this process.
+ */
+describe("a session arriving on a request", () => {
+  test("hono reads mesh_token out of the cookie header", async () => {
+    const { getCookie } = await import("hono/cookie");
+    const app = new Hono();
+    app.get("/who", (c) => c.json({ token: getCookie(c, "mesh_token") ?? null }));
+
+    const res = await app.fetch(new Request("http://probe.invalid/who", { headers: { cookie: "mesh_token=probe-value" } }));
+
+    expect(await res.json(), "the cookie a caller sent was not readable from the request").toEqual({ token: "probe-value" });
+  });
+
+  test("a token signed in this process verifies in this process", async () => {
+    process.env.JWT_SECRET ||= "set-cookie-probe";
+    const { signJwt, verifyJwt } = await import("./auth");
+    const jwt = await signJwt({ github_id: -1, github_login: "probe", role: "admin" });
+
+    const payload = await verifyJwt(jwt);
+
+    expect(
+      { login: payload.github_login, id: payload.github_id },
+      "a session this process issued does not verify here, so every authenticated route refuses everyone",
+    ).toEqual({ login: "probe", id: -1 });
   });
 });
