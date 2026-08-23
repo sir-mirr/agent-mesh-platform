@@ -685,7 +685,124 @@ describe("the drawer's peer list is a list of peers", () => {
     // two disagreeing is how a repeat would reach an operator who never counts.
     expect(panelText()).toContain(`${say("topo.peers")} (${chips.length}):`);
   });
+
+  it("flies to the neighbour a chip names, out of a filter that was hiding it", async () => {
+    // `handleSelectPeer` used to carry a second behaviour for a peer id the
+    // node dictionary did not hold: select the id, and leave everything else
+    // where it was. Nothing produces that state — every id in `directPeers` is
+    // pushed by an edge loop that has already found both endpoints in the
+    // dictionary — so the branch sat unreachable and uncovered, and it is
+    // gone. What it was standing in for is asserted here instead, on every
+    // chip the drawer draws: the id resolves to a node, and the click *flies*
+    // to it. The drawer alone cannot tell the two apart, because the deleted
+    // branch opened one too; the group filter can, because flying clears it
+    // and a bare selection does not — which is the difference between landing
+    // on a peer you can see and landing on one the canvas is still hiding.
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "grp_alpha", name: "Alpha", members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"] },
+        { group_id: "grp_beta", name: "Beta", members: ["svc-beta-1"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        ...AGENT_ROWS,
+        { id: "svc-alpha-3", name: "Alpha Three", description: "Alpha Three", type: "runtime", last_seen_at: null },
+        { id: "svc-beta-1", name: "Beta One", description: "Beta One", type: "runtime", last_seen_at: null },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+
+    // The camera eases over `requestAnimationFrame`, and a half-run move is a
+    // transform between two nodes. Every frame is run to its end here.
+    const realRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const realCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    let frames: FrameRequestCallback[] = [];
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    };
+    globalThis.cancelAnimationFrame = () => {};
+    const finishAnimations = async () => {
+      const pending = frames;
+      frames = [];
+      await act(async () => { for (const frame of pending) frame(performance.now() + 1000); });
+    };
+
+    try {
+      await mount();
+      await finishAnimations();
+
+      const filter = document.querySelector("select") as HTMLSelectElement | null;
+      if (!filter) throw new Error("the topology canvas has no group filter");
+
+      /** A drawn node, by the name the canvas writes under it. */
+      const drawnNode = (label: string): HTMLElement | null =>
+        [...screen.queryAllByTestId("topology-agent"), ...screen.queryAllByTestId("topology-gateway")]
+          .find((g) => [...g.querySelectorAll("text")].some((el) => el.textContent === label)) ?? null;
+      const origin = () => {
+        const node = drawnNode("Alpha One");
+        if (!node) throw new Error("no agent node is labelled Alpha One");
+        return node;
+      };
+
+      await act(async () => { fireEvent.click(origin()); });
+      await finishAnimations();
+
+      const peers = [...(panel()?.querySelectorAll("button") ?? [])]
+        .map((b) => b.getAttribute("title") ?? "")
+        .filter((title) => title.startsWith("svc-") || title.startsWith("gw-"));
+      // A ring of three plus the gateway link. Asserted, because a drawer with
+      // no chips at all would make the loop below vacuous.
+      expect(peers.sort()).toEqual(["gw-grp_alpha", "svc-alpha-2", "svc-alpha-3"]);
+      // The chip carries the identity and the canvas draws the display name,
+      // so the pairing is written out rather than derived: a test that rebuilt
+      // the name the way the page does would pass on a page that built it
+      // wrongly.
+      const DRAWN_AS: Record<string, string> = {
+        "gw-grp_alpha": "grp_alpha-gw",
+        "svc-alpha-2": "Alpha Two",
+        "svc-alpha-3": "Alpha Three",
+      };
+
+      for (const peer of peers) {
+        // Back to the same node each time, then filtered away to Beta — which
+        // holds neither the node nor any of its peers, so every chip below is
+        // a chip for something the canvas is currently dimming.
+        await act(async () => { fireEvent.click(origin()); });
+        await finishAnimations();
+        await act(async () => { fireEvent.change(filter, { target: { value: "grp_beta" } }); });
+
+        const shown = DRAWN_AS[peer];
+        if (!shown) throw new Error(`this test states no drawer name for ${peer}`);
+        const hidden = drawnNode(shown);
+        if (!hidden) throw new Error(`the canvas draws no node for ${peer}`);
+        // The setup has to bite, or the assertion after the click is about a
+        // filter that was never hiding anything.
+        expect(hidden.style.opacity).toBe("0.2");
+
+        const chip = [...(panel()?.querySelectorAll("button") ?? [])]
+          .find((b) => b.getAttribute("title") === peer);
+        if (!chip) throw new Error(`the drawer draws no chip for ${peer}`);
+        await act(async () => { fireEvent.click(chip); });
+        await finishAnimations();
+
+        // Open and about the peer — a drawer that closed would mean the id
+        // reached `nodes` and found nothing, the state being denied here —
+        // and the canvas showing it rather than still dimming it.
+        expect({
+          drawer: panelText().includes(shown),
+          filter: filter.value,
+          peerOpacity: drawnNode(shown)?.style.opacity,
+        }, `the chip for ${peer} selected without flying`).toEqual({
+          drawer: true, filter: "all", peerOpacity: "1",
+        });
+      }
+    } finally {
+      globalThis.requestAnimationFrame = realRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = realCancelAnimationFrame;
+    }
+  });
 });
+
 
 describe("the populated canvas controls", () => {
   it("searches, zooms, pans, filters, and navigates the minimap without losing the selected node", async () => {

@@ -241,6 +241,29 @@ describe("the coverage run", () => {
     ).toEqual({ both: true, counted: true, named: true });
   });
 
+  test("orders the excluded block by what the exclusion costs, worst first", () => {
+    // Two files under the exclusion, because `sort` never calls a comparator
+    // on a list of one — which is how ordering the block became the last
+    // unexecuted function in the script that measures this repository, while
+    // the mesh excluded exactly one directory. The order is the whole point of
+    // printing the block: an exclusion is a decision somebody has to weigh
+    // again later, and the file it costs the most is the one to weigh first.
+    const walked = walk([], lcov([
+      ["packages/http/src/ui/chat.ts", 4, 0, 300, 0],
+      ["packages/http/src/ui/admin.ts", 6, 0, 1200, 0],
+      ["packages/http/src/main.ts", 100, 99, 1000, 999],
+    ]));
+    const block = walked.said.slice(walked.said.indexOf("excluded by decision"));
+
+    expect(
+      {
+        heading: block.startsWith("excluded by decision (2 files, 1500 lines):"),
+        biggestFirst: block.indexOf("admin.ts") < block.indexOf("chat.ts"),
+      },
+      "the excluded block came out in the report's file order rather than by size",
+    ).toEqual({ heading: true, biggestFirst: true });
+  });
+
   test("marks an excluded file in the per-file table rather than hiding it", () => {
     const walked = walk(["--by-file"], lcov([
       ["packages/http/src/ui/chat.ts", 4, 0, 1000, 0],

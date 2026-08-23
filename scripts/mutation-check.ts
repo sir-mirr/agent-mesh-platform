@@ -4943,6 +4943,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["without losing the selected node"],
   },
   {
+    id: "a-peer-chip-selects-without-flying",
+    defect:
+      "Clicking a peer chip went back to selecting the id and moving nothing else \u2014 the behaviour of the unreachable `else` this call site used to carry. The drawer still opens on the peer, so the screen reads as right; the camera never went there and a group filter that was hiding the peer is still hiding it, so the operator is reading a drawer about a node the canvas is not showing.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "      if (peerNode) focusAndFlyToNode(peerNode);",
+    to: "      if (peerNode) setSelectedNodeId(peerId);",
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["flies to the neighbour a chip names, out of a filter that was hiding it"],
+  },
+  {
+    id: "the-excluded-block-comes-out-unsorted",
+    defect:
+      "The excluded-by-decision block stopped ordering by cost, so the directory a reader should weigh first is wherever the lcov happened to put it. The block exists to be re-argued later; a list in report order reads as a list in importance order and quietly buries the expensive exclusion.",
+    file: "scripts/coverage.ts",
+    from: "    for (const f of [...excluded].sort((a, b) => b.lines - a.lines)) {",
+    to: "    for (const f of [...excluded].sort((a, b) => a.lines - b.lines)) {",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["orders the excluded block by what the exclusion costs, worst first"],
+  },
+  {
+    id: "the-harness-swallows-what-a-refused-admission-said",
+    defect:
+      "The harness stopped putting the route's body in the sentence it throws when admission is refused for a reason that is not `409`. What a person then sees is a status and nothing else, on the failure whose whole diagnosis is in the body — the 201-not-200 defect this helper exists for was found by reading that body.",
+    file: "test/harness.ts",
+    from: "  throw new Error(`admitting ${username} answered ${admitted.status}: ${await admitted.text()}`);",
+    to: "  throw new Error(`admitting ${username} answered ${admitted.status}`);",
+    suite: "test/harness-boot.test.ts",
+    expect: ["and anything else stops, naming the status and what the route said"],
+  },
+  {
     id: "message-search-runs-on-an-empty-query",
     defect:
       "`GET /api/v1/messages/search` stopped refusing an absent or blank `q`, so the `LIKE '%%'` it builds matches every message the caller is party to. A search box that returns everything on an accidental Enter reads as a feature until somebody notices the response is the whole history.",

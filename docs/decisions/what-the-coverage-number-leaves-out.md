@@ -142,6 +142,18 @@ producer named in a comment beside it. That is the distinction this category
 turns on: a branch waiting for a producer somebody has decided to build is
 different from one waiting for nothing.
 
+**A fourth, on the topology canvas, and it was the last uncovered line in the
+console.** `handleSelectPeer` looked its peer id up in the node dictionary and
+carried an `else` for not finding it: select the id, leave the camera where it
+was. Nothing produces that state. Every id in `directPeers` is pushed by an
+edge loop that has already found *both* endpoints in the dictionary, the chips
+are drawn from the selected node's `directPeers`, and the selected node is read
+out of the same dictionary — so the miss is not unlikely, it is excluded by how
+the list is built. It is deleted, and what stood behind it is asserted from the
+outside instead: on every chip the drawer draws, the click has to *fly* — the
+group filter it clears is the observable, because the drawer alone could not
+have told the two apart, the deleted branch opened one too.
+
 ## The table
 
 Each row names a file, a string that must still be in it, and why the lines

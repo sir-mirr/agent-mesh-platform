@@ -398,22 +398,28 @@ describe("talking to a hub over the socket", () => {
  * healthy one answers.
  */
 describe("admitting the account a scenario needs", () => {
-  const read = () => Promise.resolve("");
+  /** The response shape the helper reads: the two fields it decides on, and
+   *  the body it only asks for when it is about to throw. */
+  const answer = (over: { ok: boolean; status: number; body?: string }) => ({
+    ok: over.ok,
+    status: over.status,
+    text: () => Promise.resolve(over.body ?? ""),
+  });
 
   test("an admission that opened is walked through the password gate", async () => {
-    expect(await admissionOpened("viewer", { ok: true, status: 201 }, read)).toBe(true);
+    expect(await admissionOpened("viewer", answer({ ok: true, status: 201 }))).toBe(true);
   });
 
   test("an account already there is walked past, not treated as a failure", async () => {
     expect(
-      await admissionOpened("viewer", { ok: false, status: 409 }, read),
+      await admissionOpened("viewer", answer({ ok: false, status: 409 })),
       "the second run of a file would fail on an account the first one made",
     ).toBe(false);
   });
 
   test("and anything else stops, naming the status and what the route said", async () => {
     await expect(
-      admissionOpened("viewer", { ok: false, status: 403 }, () => Promise.resolve("no capability")),
+      admissionOpened("viewer", answer({ ok: false, status: 403, body: "no capability" })),
     ).rejects.toThrow("admitting viewer answered 403: no capability");
   });
 

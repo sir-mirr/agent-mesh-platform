@@ -957,12 +957,16 @@ export function capabilityViewerName(...capabilities: string[]): string {
  */
 export async function admissionOpened(
   username: string,
-  admitted: { ok: boolean; status: number },
-  body: () => Promise<string>,
+  admitted: { ok: boolean; status: number; text: () => Promise<string> },
 ): Promise<boolean> {
   if (admitted.ok) return true;
   if (admitted.status === 409) return false;
-  throw new Error(`admitting ${username} answered ${admitted.status}: ${await body()}`);
+  // The response itself, not a `() => admitted.text()` at the call site. A
+  // forwarding arrow is a function too, and one that only runs when admission
+  // fails is a function no passing run executes — which is how this line came
+  // to be the last uncovered one in the harness. Taking the response moves the
+  // read in here, where the failure case is a unit test's argument.
+  throw new Error(`admitting ${username} answered ${admitted.status}: ${await admitted.text()}`);
 }
 
 /**
@@ -993,7 +997,7 @@ export async function capabilityViewer(
   // **201, not 200.** The route answers Created, and a check for 200 sent every
   // first admission down the error path — caught by printing the body in the
   // message rather than the status alone.
-  if (await admissionOpened(username, admitted, () => admitted.text())) {
+  if (await admissionOpened(username, admitted)) {
     // Admission hands back a password that must be changed before anything else
     // opens, which is the first thing a real account does.
     const { temporary_password: temporary } = (await admitted.json()) as { temporary_password: string };

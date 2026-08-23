@@ -638,12 +638,15 @@ export function TopologyPage() {
         e.stopPropagation();
         e.preventDefault();
       }
+      // Every id in `directPeers` was pushed by an edge loop above that had
+      // already found both endpoints in `nodes`, so a badge cannot name a node
+      // this dictionary does not hold. What stood here was an `else` that
+      // selected the id and left the camera where it was — a second, quieter
+      // behaviour for a state the product cannot produce, and no test could
+      // reach it because nothing can. The guard that is left is the type's,
+      // not a behaviour's: an index read is `TopoNode | undefined` here.
       const peerNode = nodes[peerId];
-      if (peerNode) {
-        focusAndFlyToNode(peerNode);
-      } else {
-        setSelectedNodeId(peerId);
-      }
+      if (peerNode) focusAndFlyToNode(peerNode);
     },
     [nodes, focusAndFlyToNode]
   );
