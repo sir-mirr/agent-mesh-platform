@@ -20,7 +20,7 @@ import { describe, expect, test } from "bun:test";
 
 process.env.JWT_SECRET ||= "pages-and-form-probe";
 
-const { app } = await import("./main.ts");
+const { app, extractJwt } = await import("./main.ts");
 const { upsertUser, approveUser, createPendingApproval, getDb, seedLocalUsers } =
   await import("./db");
 const { signJwt } = await import("./auth");
@@ -206,6 +206,44 @@ describe("asking who you are", () => {
       headers: { authorization: "Bearer a.b.c" },
     }));
     expect(res.status).toBe(401);
+  });
+
+  /**
+   * **The cookie is still a session, and something has to prove it.**
+   *
+   * Every suite in this package sends `Authorization: Bearer …`, which is the
+   * branch `extractJwt` reads first — so when they moved, the cookie fallback
+   * stopped being run by anything in this process. A browser sends a cookie and
+   * nothing else, and the paths a spawned service takes are uninstrumented
+   * rather than covered, so a session arriving that way is checked here.
+   *
+   * **Not through a `Request`.** `cookie` is a forbidden header name: a request
+   * built in this process keeps it on this runtime and loses it on CI's, which
+   * is what `set-cookie-survives.test.ts` holds shut. The context below carries
+   * the header itself — `getCookie` reads `c.req.raw.headers.get`, so that is
+   * the one method it needs, and nothing here depends on a runtime's opinion of
+   * which header names a request may hold.
+   */
+  const carrying = (jar: string) => ({
+    req: {
+      header: () => undefined,
+      raw: { headers: { get: (name: string) => (name.toLowerCase() === "cookie" ? jar : null) } },
+    },
+  });
+
+  test("takes a session from the cookie a browser would send", async () => {
+    const login = uniq("pg-jar");
+    const jwt = await signJwt({ github_id: 987_654_323, github_login: login, role: "member" });
+
+    const payload = await extractJwt(carrying(`mesh_token=${jwt}`));
+
+    expect(payload?.github_login, "the cookie fallback did not read the session out of the cookie").toBe(login);
+  });
+
+  test("and refuses a cookie that does not verify, rather than throwing", async () => {
+    // The other half of the fallback: `verifyJwt` throws on a token that is not
+    // one, and the `catch` is what turns that into a refusal instead of a 500.
+    expect(await extractJwt(carrying("mesh_token=not-a-jwt"))).toBeNull();
   });
 
   test("answers 404 for a signed session whose user is gone", async () => {

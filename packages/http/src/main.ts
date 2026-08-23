@@ -1509,7 +1509,19 @@ app.get('/auth/me', async (c) => {
 
 // --- Auth helpers ---
 
-async function extractJwt(c: any): Promise<JwtPayload | null> {
+/**
+ * The session, from wherever this caller carries it.
+ *
+ * **Exported for the cookie half.** `Authorization` is read first and every
+ * in-process suite sends one, so the cookie fallback below is reached only by a
+ * browser — and a browser reaches it over a spawned service, which is
+ * uninstrumented rather than covered. A `Request` built in this process cannot
+ * stand in for one: `cookie` is a forbidden header name, kept by the runtime
+ * here and dropped by the runtime CI runs, which is the defect
+ * `set-cookie-survives.test.ts` exists to hold shut. So the function is reached
+ * directly instead, with a context that carries the header and no `Request`.
+ */
+export async function extractJwt(c: any): Promise<JwtPayload | null> {
   // Try Authorization header first
   const authHeader = c.req.header('Authorization')
   if (authHeader?.startsWith('Bearer ')) {
