@@ -202,6 +202,33 @@ describe("listing them", () => {
     const after = await (await get("/api/v1/admin/groups", op.authorization)).json();
     expect(after.groups.find((g: any) => g.group_id === empty).members).toEqual([]);
   });
+
+  /**
+   * **The agent nobody moved is still in a group**, and this is the read that
+   * says which. § 12 puts every unplaced identity in `default`, so a listing
+   * built from `agent_group_members` alone answers `[]` for the group that
+   * holds all of them — which is what `agent-mesh-local-pm` measured on the
+   * standing stack: `soak-claude` registered and listed by `GET
+   * /api/v1/agents`, `default` reporting no members, and the console drawing
+   * the topology from the second one.
+   */
+  test("names an agent nobody has placed among `default`'s members", async () => {
+    const op = await holder(CAPABILITY.GROUP_MANAGE);
+    const identity = uniq("unplaced");
+    db.prepare(`INSERT INTO agents (identity, type, tenant) VALUES (?, 'ai-claude', 'default')`)
+      .run(identity);
+
+    const listed = (await (await get("/api/v1/admin/groups", op.authorization)).json())
+      .groups.find((g: any) => g.group_id === "default");
+    expect(listed.members).toContain(identity);
+
+    // And it leaves when somebody places it, rather than being in both.
+    const elsewhere = await group(op.authorization);
+    await post(`/api/v1/admin/groups/${elsewhere}/members`, op.authorization, { identity });
+    const moved = (await (await get("/api/v1/admin/groups", op.authorization)).json()).groups;
+    expect(moved.find((g: any) => g.group_id === "default").members).not.toContain(identity);
+    expect(moved.find((g: any) => g.group_id === elsewhere).members).toEqual([identity]);
+  });
 });
 
 describe("moving somebody into one", () => {

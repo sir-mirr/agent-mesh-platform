@@ -867,6 +867,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["writes no message when it refuses"],
   },
   {
+    id: "default-holds-only-what-a-row-says",
+    defect:
+      "Membership went back to being what `agent_group_members` holds, so `default` \u2014 the group \u00a7 12 puts every identity nobody has moved into \u2014 reported no members at all. That is the read the console draws the topology from: a registered agent existed, was listed by `GET /api/v1/agents`, and belonged to nothing on screen.",
+    file: "packages/store/src/groups.ts",
+    from: "  if (groupId !== DEFAULT_GROUP) return placed;",
+    to: "  return placed;",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["an agent nobody placed is a member of `default`"],
+  },
+  {
+    id: "a-torn-down-identity-stays-in-default",
+    defect:
+      "The soft-delete term went, so a torn-down identity (\u00a7 9.3) kept turning up among `default`'s members \u2014 a member list describing a mesh that no longer exists.",
+    file: "packages/store/src/groups.ts",
+    from: "          WHERE a.tenant = ? AND a.deleted_at IS NULL AND m.identity IS NULL`,",
+    to: "          WHERE a.tenant = ? AND m.identity IS NULL`,",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["a torn-down identity is in no group at all"],
+  },
+  {
+    id: "unplaced-identities-cross-tenants",
+    defect:
+      "The tenant term went from the unplaced half, so one tenant's `default` swept up every other tenant's unregistered identities \u2014 \u00a7 11.4 isolation broken by the one group that holds everybody.",
+    file: "packages/store/src/groups.ts",
+    from: "          WHERE a.tenant = ? AND a.deleted_at IS NULL AND m.identity IS NULL`,",
+    to: "          WHERE a.tenant = a.tenant AND a.deleted_at IS NULL AND m.identity IS NULL`,",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["`default` in one tenant does not hold another tenant's unplaced"],
+  },
+  {
     id: "egress-rule-read-in-both-directions",
     defect:
       "An egress rule started answering for the reverse pair. Allowing `a \u2192 b` says nothing about `b \u2192 a`, and reading it both ways quietly widens every rule an operator has ever written \u2014 the kind of change nothing visible fails on.",
@@ -1695,7 +1725,7 @@ const MUTATIONS: Mutation[] = [
     id: "registry-scope-group",
     defect: "The group term went missing, so people in one group could not see each other (§ 12).",
     file: "packages/http/src/main.ts",
-    from: "      for (const member of groupsStore.membersOf(mesh, myGroup)) visible.add(member)",
+    from: "      for (const member of groupsStore.placedIn(mesh, myGroup)) visible.add(member)",
     to: "      void 0",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["everyone in the session's own group"],
