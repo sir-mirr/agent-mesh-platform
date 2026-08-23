@@ -867,6 +867,29 @@ const MUTATIONS: Mutation[] = [
     expect: ["writes no message when it refuses"],
   },
   {
+    id: "a-killed-run-keeps-its-mutation",
+    defect:
+      "The signal handler stopped restoring, so a run killed mid-entry leaves the planted edit in the tree. Measured here: a ten-minute wrapper timeout sent `SIGTERM` and `I18nContext.tsx` kept a Korean string in its English dictionary, staged by the next `git add -A` and one commit from being a guard nobody would ever see fail. The tool that proves checks work, disabling one.",
+    file: "scripts/mutation-check.ts",
+    from: "  process.on(sig, () => {\n    unplant();\n    releaseTree();",
+    to: "  process.on(sig, () => {\n    releaseTree();",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a killed run would leave its mutation in the tree"],
+  },
+  {
+    id: "an-exiting-run-keeps-its-mutation",
+    defect:
+      "The exit handler went. Every way out that is not a signal \u2014 a thrown error, `process.exit` from the dirty-tree refusal, the parent closing the pipe \u2014 then leaves the plant behind, which is the same disabled guard by a quieter route.",
+    file: "scripts/mutation-check.ts",
+    // Two lines, because one would match this entry's own text: the manifest
+    // lives in the file this plants into, and a single-line anchor written in
+    // quotes here is the same characters as the code there.
+    from: "};\nprocess.on(\"exit\", unplant);",
+    to: "};\nvoid unplant;",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a killed run would leave its mutation in the tree"],
+  },
+  {
     id: "the-alarm-assumes-its-label-exists",
     defect:
       "The step went back to naming a label it does not ensure. That is the state the first red nightly met \u2014 eight shards, eight `could not add label: 'nightly-mutation' not found`, zero issues \u2014 and the label check beside it passed throughout, because it compares the name in the workflow against the name in `CLAUDE.md` and both agreed about a label neither could see was missing.",
@@ -8548,6 +8571,40 @@ if (before) {
 // guess.
 const releaseTree = holdTree(`mutation-check (${selected.length} entr${selected.length === 1 ? "y" : "ies"})`);
 
+/**
+ * The file that is planted right now, so a killed run does not leave it that
+ * way.
+ *
+ * **Measured, on this repository.** A ten-minute wrapper timeout sent `SIGTERM`
+ * mid-entry; the tree lock's handler released the marker and the process left,
+ * and `I18nContext.tsx` kept the mutation — a Korean string in the English
+ * dictionary, staged by the next `git add -A` and one commit away from being a
+ * check nobody would ever see fail again. That is the failure this whole script
+ * is about, produced by the script itself.
+ *
+ * `git checkout --` is what the loop uses to restore, and it is what runs here.
+ */
+let planted: string | null = null;
+const unplant = () => {
+  if (!planted) return;
+  const file = planted;
+  planted = null;
+  try {
+    Bun.spawnSync(["git", "checkout", "--", file]);
+    console.error(`restored ${file} — the run was interrupted while it was planted`);
+  } catch {
+    console.error(`could not restore ${file} — run \`git checkout -- ${file}\``);
+  }
+};
+process.on("exit", unplant);
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(sig, () => {
+    unplant();
+    releaseTree();
+    process.exit(130);
+  });
+}
+
 let missed = 0;
 /** Why each failure happened — the self-check needs the reason, not just the count. */
 const kinds = new Map<string, FailureKind>();
@@ -8588,6 +8645,7 @@ for (const m of selected) {
     continue;
   }
 
+  planted = m.file;
   await Bun.write(m.file, src.replace(m.from!, m.to!));
   // Repeated with the mutation left in place. The suite is the expensive part,
   // and re-applying the edit between attempts would put the edit inside what is
@@ -8598,6 +8656,7 @@ for (const m of selected) {
     attempts.push({ output: r.stdout.toString() + r.stderr.toString(), exitCode: r.exitCode ?? 0 });
   }
   await $`git checkout -- ${m.file}`.quiet();
+  planted = null;
   const run = attempts[0]!;
   const output = run.output;
 

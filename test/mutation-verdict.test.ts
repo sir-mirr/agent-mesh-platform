@@ -21,6 +21,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
@@ -74,6 +76,89 @@ describe("the manifest's anchors", () => {
       `--anchors did not report, or some entry no longer names one place:\n${out}`,
     ).toEqual({ printed: true, everyOne: true });
     expect(code, "--anchors exited non-zero").toBe(0);
+  }, 60_000);
+});
+
+/**
+ * **A killed run must not leave the mutation behind.**
+ *
+ * The tool plants an edit, runs a suite, and restores with `git checkout --`.
+ * Everything between those two is a window where the tree is deliberately
+ * wrong, and nothing closed that window when the process was killed: a
+ * ten-minute wrapper timeout sent `SIGTERM` mid-entry and `I18nContext.tsx`
+ * kept a Korean string in its English dictionary. The tree lock's own handler
+ * ran — the marker was released — so from outside the run looked tidy.
+ *
+ * What that costs is the whole point of the script. The next `git add -A`
+ * stages the mutation, and a commit turns it into a guard nobody will ever see
+ * fail: a check disabled by the tool that exists to prove checks work.
+ */
+describe("a run that is killed while a mutation is planted", () => {
+  test("puts the file back before it goes", async () => {
+    const root = new URL("..", import.meta.url).pathname;
+    const status = async (...paths: string[]) => {
+      const p = Bun.spawn(["git", "status", "--porcelain", ...paths], {
+        cwd: root, stdout: "pipe", stderr: "pipe",
+      });
+      return (await new Response(p.stdout).text()).trim();
+    };
+
+    // **Asked before the spawn, because the tool refuses a tree with edits.**
+    // That is the state a developer running this file is usually in and never
+    // the state CI runs it in, and waiting thirty seconds to discover it is
+    // waiting for a refusal that was already visible.
+    if (await status()) {
+      console.error("[killed-run restore] inconclusive: the working tree has edits, so nothing was planted to restore");
+      // The shape CI measures below is read out of the source instead, so a
+      // handler deleted while somebody had edits open is still caught.
+      const script = readFileSync(join(import.meta.dir, "..", "scripts", "mutation-check.ts"), "utf8");
+      expect(
+        {
+          restoresOnSignal: /for \(const sig of \["SIGINT", "SIGTERM", "SIGHUP"\] as const\) \{\n\s+process\.on\(sig, \(\) => \{\n\s+unplant\(\);/.test(script),
+          restoresOnExit: /process\.on\("exit", unplant\);/.test(script),
+        },
+        "a killed run would leave its mutation in the tree",
+      ).toEqual({ restoresOnSignal: true, restoresOnExit: true });
+      return;
+    }
+
+    // A cheap entry: its suite is a few static reads, so the window is short
+    // and this test is not waiting on a browser.
+    const proc = Bun.spawn(["bun", "scripts/mutation-check.ts", "the-alarm-assumes-its-label-exists"], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const dirty = async () => {
+      const p = Bun.spawn(["git", "status", "--porcelain", ".github/workflows/ci.yml"], {
+        cwd: root, stdout: "pipe", stderr: "pipe",
+      });
+      return (await new Response(p.stdout).text()).trim();
+    };
+
+    // Wait for the plant, then kill it there. A test that killed before the
+    // edit landed would pass on a tool that never restores anything.
+    let planted = "";
+    const deadline = Date.now() + 30_000;
+    while (!planted && Date.now() < deadline) {
+      planted = await dirty();
+      if (!planted) await Bun.sleep(20);
+    }
+    const said = () => new Response(proc.stderr).text();
+    expect(planted, `the mutation never landed on a clean tree:\n${planted ? "" : (await said()).slice(0, 400)}`)
+      .not.toBe("");
+
+    proc.kill("SIGTERM");
+    await proc.exited;
+    // The handler restores; give the spawn it runs a moment to finish.
+    const cleanBy = Date.now() + 10_000;
+    let left = await dirty();
+    while (left && Date.now() < cleanBy) {
+      await Bun.sleep(50);
+      left = await dirty();
+    }
+
+    expect(left, "the run was killed and left its mutation in the tree").toBe("");
   }, 60_000);
 });
 

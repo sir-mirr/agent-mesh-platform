@@ -73,6 +73,52 @@ than reasoning about it, twice, and both times the answer disagreed with mine.
 | Empty state directory | A fresh boot's seeding path is exercised only there | The `test/` harness makes its own state; a fixture that assumes a populated one is a defect |
 | Same version string, different binary | baseline/modern/musl print identically | Print `process.execPath` and check the asset name before blaming a runtime |
 
+## A path nothing had ever taken
+
+The night the sharded mutation pass first ran, every shard came back red and
+**nothing was filed**. The step that files a report on a red shard had existed
+for weeks, was described in `CLAUDE.md` as the thing each session should read,
+and had never executed once: nothing had gone red on that path before.
+
+It failed twice, for two independent reasons, and both look identical from
+outside:
+
+    could not add label: 'nightly-mutation' not found     ← a label nobody had created
+    default_workflow_permissions=read                     ← a token that cannot open an issue
+
+Fixing the first did not fix the second. That was found only by dispatching a
+run *while the tree was still red* and watching the step fail again — the
+demonstration `agent-mesh-local-pm` asked for, in the one window where a real
+failure was still available to demonstrate with.
+
+**A check that has never failed has never run.** Its success path is exercised
+by every green build; its failure path is prose until something makes it fire.
+The same is true of a `catch` block, a retry, an alert, and a rollback.
+
+## The first full pass measures what has accumulated, not what changed
+
+That same night, 17 of 777 manifest entries came back *not caught* — spread
+across subjects, one to four per shard, which is why all eight shards were red
+at once. None of it was a regression from that day. The anchors check had been
+green throughout, because an anchor asks whether the text an entry plants into
+still exists, not whether the guard still notices.
+
+Six of the seven cheapest reproduced locally on the first try. So the shape was
+not *CI versus local* at all: it was **a measurement taken for the first time**,
+and the backlog it found was the ordinary drift of guards and their subjects
+moving apart. Three kinds, in the order they were common:
+
+| Kind | Example |
+|---|---|
+| The expectation quoted prose that moved | `"has 2 ids"` — the family has seven now; `"untranslated strings, up from"` — gained *or lines* |
+| The guard read something adjacent to its subject | the testid sweep read `*.test.tsx` as the product; the gate check took the first `app.use('*')`, which stopped being the gate |
+| The scenario outlived the behaviour | the console stopped printing the capability, so the scenario that watched the screen could no longer see the field being dropped |
+
+The second kind is the one worth fearing: those guards were green, specific,
+and measuring the wrong thing. A count inside an expectation is the cheapest
+version of the first kind and the easiest to avoid — quote the stable half of a
+sentence.
+
 ## Why CI is watched now
 
 `coverage-floor` runs `bun scripts/coverage.ts --floor 99` on `main`. From the
