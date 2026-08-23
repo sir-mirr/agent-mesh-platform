@@ -237,3 +237,29 @@ describe("a session arriving on a request", () => {
     ).toEqual({ login: "probe", id: -1 });
   });
 });
+
+
+/**
+ * Which layer loses the cookie on the way in — the same three shapes as on the
+ * way out, one variable at a time.
+ */
+describe("what this runtime does with a request cookie", () => {
+  test("keeps it in a Headers built from a record", () => {
+    expect(new Headers({ cookie: "mesh_token=probe" }).get("cookie")).toBe("mesh_token=probe");
+  });
+
+  test("keeps it in a Request built from a Headers", () => {
+    const req = new Request("http://probe.invalid/", { headers: new Headers({ cookie: "mesh_token=probe" }) });
+
+    expect(req.headers.get("cookie")).toBe("mesh_token=probe");
+  });
+
+  test("keeps it in a Request built from a record", () => {
+    const req = new Request("http://probe.invalid/", { headers: { cookie: "mesh_token=probe" } });
+
+    expect(
+      req.headers.get("cookie"),
+      "a Request built from a header record arrives without its cookie, so every in-process test that signs in by hand is refused",
+    ).toBe("mesh_token=probe");
+  });
+});
