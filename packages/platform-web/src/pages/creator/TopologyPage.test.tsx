@@ -179,9 +179,21 @@ const subtitle = (): string => {
 const drawn = (kind: "topology-agent" | "topology-cluster" | "topology-gateway"): number =>
   screen.queryAllByTestId(kind).length;
 
+const drawnClusters = (kind: "group" | "unassigned"): number =>
+  screen.queryAllByTestId("topology-cluster")
+    .filter((cluster) => cluster.getAttribute("data-topology-kind") === kind).length;
+
 /** Every group pill on the canvas, as `Name (count)`. */
 const clusterLabels = (): string[] =>
-  screen.queryAllByTestId("topology-cluster").map((g) => g.querySelector("text")?.textContent ?? "");
+  screen.queryAllByTestId("topology-cluster")
+    .filter((cluster) => cluster.getAttribute("data-topology-kind") === "group")
+    .map((g) => g.querySelector("text")?.textContent ?? "");
+
+/** The safety-net orbit is visible without pretending to be a server group. */
+const unassignedClusterLabels = (): string[] =>
+  screen.queryAllByTestId("topology-cluster")
+    .filter((cluster) => cluster.getAttribute("data-topology-kind") === "unassigned")
+    .map((g) => g.querySelector("text")?.textContent ?? "");
 
 /** The banner a send raises. `Toast` is the one `inline-flex` div on the page. */
 const toastBox = (): HTMLElement | null =>
@@ -411,10 +423,13 @@ describe("empty is what the server said, and only that", () => {
     // and in no group, so it gets an explicit visual home instead of being
     // pushed into Empty or silently discarded.
     expect(drawn("topology-cluster")).toBe(3);
+    expect(drawnClusters("group")).toBe(2);
+    expect(drawnClusters("unassigned")).toBe(1);
     expect(drawn("topology-agent")).toBe(2);
     // **`|| 1` turned a known 0 into a 1** in this exact pill. A group the
     // server described as empty says nothing else.
-    expect(clusterLabels()).toEqual(["Empty (0)", "Beta (1)", `${say("topo.noGroup")} (1)`]);
+    expect(clusterLabels()).toEqual(["Empty (0)", "Beta (1)"]);
+    expect(unassignedClusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
   });
 
   it("keeps a registered agent visible when the reported default group has no members", async () => {
@@ -434,9 +449,12 @@ describe("empty is what the server said, and only that", () => {
 
     expect(calls.some((url) => url.endsWith(AGENTS))).toBe(true);
     expect(drawn("topology-cluster")).toBe(2);
+    expect(drawnClusters("group")).toBe(1);
+    expect(drawnClusters("unassigned")).toBe(1);
     expect(drawn("topology-agent")).toBe(1);
     expect(drawn("topology-gateway")).toBe(1);
-    expect(clusterLabels()).toEqual(["Default (0)", `${say("topo.noGroup")} (1)`]);
+    expect(clusterLabels()).toEqual(["Default (0)"]);
+    expect(unassignedClusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
     expect(screen.getByText("soak-claude")).toBeTruthy();
     // The no-group orbit is a visual container, not a second server group or
     // a gateway. The measured counters stay tied to the two API answers.
@@ -446,6 +464,29 @@ describe("empty is what the server said, and only that", () => {
     expect(hudText()).toContain(`${say("topo.hud.groups")}: 1`);
     expect(hudText()).toContain(`${say("topo.hud.agents")}: 1`);
     expect(hudText()).toContain(`${say("topo.hud.gateways")}: 1`);
+  });
+
+  it("uses the reported default membership without also drawing the no-group safety net", async () => {
+    // T-036: the server now derives default membership for an identity that
+    // has never been explicitly moved. T-035 must remain a fallback for
+    // divergent responses, not duplicate the normal server answer.
+    serve({
+      [GROUPS]: () => json(200, { groups: [
+        { group_id: "default", name: "Default", members: ["soak-claude"] },
+      ] }),
+      [AGENTS]: () => json(200, { agents: [
+        { id: "soak-claude", name: "ai-claude", description: "AI Claude", type: "ai-claude", created_at: "2026-08-22T00:00:00Z" },
+      ] }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    expect(drawn("topology-cluster")).toBe(1);
+    expect(drawnClusters("group")).toBe(1);
+    expect(drawnClusters("unassigned")).toBe(0);
+    expect(drawn("topology-agent")).toBe(1);
+    expect(clusterLabels()).toEqual(["Default (1)"]);
+    expect(screen.getByText("soak-claude")).toBeTruthy();
   });
 });
 
@@ -1201,9 +1242,12 @@ describe("the populated canvas controls", () => {
     await mount();
 
     expect(drawn("topology-cluster")).toBe(1);
+    expect(drawnClusters("group")).toBe(0);
+    expect(drawnClusters("unassigned")).toBe(1);
     expect(drawn("topology-agent")).toBe(1);
     expect(drawn("topology-gateway")).toBe(0);
-    expect(clusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
+    expect(clusterLabels()).toEqual([]);
+    expect(unassignedClusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
     expect(subtitle()).toBe(
       say("topo.subtitle").replace("{groups}", "0").replace("{agents}", "1"),
     );

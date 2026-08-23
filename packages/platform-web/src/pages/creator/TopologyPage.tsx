@@ -10,6 +10,8 @@ interface ClusterConfig {
   id: string;
   name: string;
   count: number;
+  /** Distinguishes a server-reported group from the visual safety net. */
+  topologyKind: "group" | "unassigned";
   cx: number;
   cy: number;
   r: number;
@@ -231,6 +233,7 @@ export function TopologyPage() {
         id: g.id,
         name: g.name,
         count: memberCount,
+        topologyKind: g.topologyKind,
         cx,
         cy,
         r,
@@ -1258,10 +1261,15 @@ export function TopologyPage() {
           <g transform={`translate(${panX}, ${panY}) scale(${scale})`}>
             {/* 1. Galaxy Orbital Background Circles */}
             {clusters.map((c) => (
-              /* `data-testid` so a scenario can count what is drawn rather than
-                 re-deriving it. The heading states these counts, and the two
-                 disagreeing is what `I-064` was. */
-              <g key={c.id} data-testid="topology-cluster">
+              /* A no-group orbit is visible, but is not a group the server
+                 reported. Naming the two apart keeps the stated group count
+                 comparable to the groups actually drawn while preserving
+                 every registry row the screen received. */
+              <g
+                key={c.id}
+                data-testid="topology-cluster"
+                data-topology-kind={c.topologyKind}
+              >
                 <circle
                   cx={c.cx}
                   cy={c.cy}
@@ -1452,6 +1460,24 @@ export function TopologyPage() {
                   >
                     {node.displayName}
                   </text>
+                  {node.displayName !== node.identity && (
+                    <text
+                      x={node.x}
+                      y={node.y + 40}
+                      textAnchor="middle"
+                      fontSize={8}
+                      fontWeight={600}
+                      fill="#475569"
+                      style={{
+                        paintOrder: "stroke fill",
+                        stroke: "rgba(255, 255, 255, 0.95)",
+                        strokeWidth: "2px",
+                        strokeLinejoin: "round",
+                      }}
+                    >
+                      {node.identity}
+                    </text>
+                  )}
                 </g>
               );
             })}
