@@ -5624,17 +5624,32 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.locator("[data-testid='topology-cluster']").first().waitFor({ state: "attached", timeout: 15_000 })
         .catch(() => {});
 
-      const clusters = await page.locator("[data-testid='topology-cluster']").count();
-      const agents = await page.locator("[data-testid='topology-agent']").count();
+      // **Inside that group, not on the whole page.** This counted every
+      // `topology-agent` the page drew, which could not tell *not in the empty
+      // group* from *not drawn at all* — and once the screen gained a place
+      // for agents the server placed nowhere (`9e0a8d2`), a global zero
+      // forbade that place existing. The question was always about the inside
+      // of the group, so it is asked there.
+      const emptyGroup = page.locator("[data-testid='topology-cluster']").filter({ hasText: "빈 그룹" });
+      const clusters = await emptyGroup.count();
+      const agentsInside = await emptyGroup.locator("[data-testid='topology-agent']").count();
+      const agentsDrawn = await page.locator("[data-testid='topology-agent']").count();
 
       // The cluster must be there, or "no agents drawn" is just "nothing drawn"
       // — the vacuous pass this repository keeps meeting.
       expect({ clusterDrawn: clusters > 0 }, "the empty group was not drawn at all, so nothing was tested").toEqual({
         clusterDrawn: true,
       });
-      expect({ agentsInEmptyGroup: agents }, "an empty group drew agents the server did not put in it").toEqual({
+      expect({ agentsInEmptyGroup: agentsInside }, "an empty group drew agents the server did not put in it").toEqual({
         agentsInEmptyGroup: 0,
       });
+      // And the mesh's agents did reach the screen. Without this, a page that
+      // drew nothing at all passes the assertion above — the same vacuity the
+      // cluster guard is there to refuse, one level in.
+      expect(
+        { agentsDrawnSomewhere: agentsDrawn > 0 },
+        "the screen drew no agents anywhere, so the empty group holding none says nothing",
+      ).toEqual({ agentsDrawnSomewhere: true });
     } finally {
       await context.close().catch(() => {});
     }
