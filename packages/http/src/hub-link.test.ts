@@ -453,7 +453,7 @@ describe("sending through the hub", () => {
     // below true of a session nobody in this deployment actually has.
     getDb().prepare(`INSERT OR IGNORE INTO policies (github_login, allowed_agent) VALUES (?, '*')`).run(login);
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-    return { login, cookie: `mesh_token=${jwt}` };
+    return { login, authorization: `Bearer ${jwt}` };
   }
 
   /**
@@ -475,7 +475,7 @@ describe("sending through the hub", () => {
   const post = (cookie: string, body: Record<string, unknown>) =>
     app.fetch(new Request("http://hub-probe/api/v1/messages", {
       method: "POST",
-      headers: { cookie, "content-type": "application/json" },
+      headers: { authorization: cookie, "content-type": "application/json" },
       body: JSON.stringify(body),
     }));
 
@@ -496,7 +496,7 @@ describe("sending through the hub", () => {
     const me = await sender();
     const to = recipient();
 
-    const inFlight = post(me.cookie, { to, text: "hello there" });
+    const inFlight = post(me.authorization, { to, text: "hello there" });
     await Bun.sleep(5);
     const request = parse(ws.sent).find((f) => f.method === "mesh.send");
     expect(request, "nothing was sent to the hub").toBeDefined();
@@ -526,7 +526,7 @@ describe("sending through the hub", () => {
     const to = recipient();
 
     const attachment = { id: "a".repeat(64) + ".txt", download_url: "http://x/api/v1/attachments/a" };
-    const inFlight = post(me.cookie, { to, text: "see attached", attachments: [attachment] });
+    const inFlight = post(me.authorization, { to, text: "see attached", attachments: [attachment] });
     await Bun.sleep(5);
     const request = parse(ws.sent).find((f) => f.method === "mesh.send");
     expect(JSON.parse(request.params.content)).toEqual({ text: "see attached", attachments: [attachment] });
@@ -544,7 +544,7 @@ describe("sending through the hub", () => {
     const ws = await connected();
     const me = await sender();
 
-    const inFlight = post(me.cookie, { to: recipient(), text: "correlated" });
+    const inFlight = post(me.authorization, { to: recipient(), text: "correlated" });
     await Bun.sleep(5);
     const before = ws.listeners();
     expect(before).toBeGreaterThan(0);
@@ -572,7 +572,7 @@ describe("sending through the hub", () => {
     const ws = await connected();
     const me = await sender();
 
-    const inFlight = post(me.cookie, { to: recipient(), text: "refused" });
+    const inFlight = post(me.authorization, { to: recipient(), text: "refused" });
     await Bun.sleep(5);
     // An answer with no message id is the hub declining to take it.
     ws.reply({});

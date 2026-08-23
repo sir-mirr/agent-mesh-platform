@@ -42,13 +42,13 @@ async function session(opts: { admin?: boolean } = {}) {
     getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(login);
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const call = (method: string, path: string, cookie: string, body?: unknown) =>
   app.fetch(new Request(`http://tn-probe${path}`, {
     method,
-    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    headers: { "content-type": "application/json", ...(cookie ? { authorization: cookie } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }));
 
@@ -75,7 +75,7 @@ describe("the directory", () => {
     createPendingApproval(login, user.github_id);
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
 
-    const res = await call("GET", `${TENANTS}/directory`, `mesh_token=${jwt}`);
+    const res = await call("GET", `${TENANTS}/directory`, `Bearer ${jwt}`);
     expect(res.status).toBe(403);
     expect((await res.json()).approved).toBe(false);
   });
@@ -88,10 +88,10 @@ describe("the directory", () => {
    */
   test("shows an ordinary session its own tenant and nothing else", async () => {
     const admin = await session({ admin: true });
-    await call("POST", TENANTS, admin.cookie, { id: uniq("other"), name: "Somebody Else" });
+    await call("POST", TENANTS, admin.authorization, { id: uniq("other"), name: "Somebody Else" });
 
     const member = await session();
-    const body = await (await call("GET", `${TENANTS}/directory`, member.cookie)).json();
+    const body = await (await call("GET", `${TENANTS}/directory`, member.authorization)).json();
     expect(body.tenant).toBe("default");
     expect(body.tenants.map((t: any) => t.id)).toEqual(["default"]);
   });
@@ -99,10 +99,10 @@ describe("the directory", () => {
   test("shows the platform administrator all of them, deleted ones included", async () => {
     const admin = await session({ admin: true });
     const gone = uniq("closed");
-    await call("POST", TENANTS, admin.cookie, { id: gone, name: "Closed" });
-    expect((await call("DELETE", `${TENANTS}/${gone}`, admin.cookie)).status).toBe(200);
+    await call("POST", TENANTS, admin.authorization, { id: gone, name: "Closed" });
+    expect((await call("DELETE", `${TENANTS}/${gone}`, admin.authorization)).status).toBe(200);
 
-    const body = await (await call("GET", `${TENANTS}/directory`, admin.cookie)).json();
+    const body = await (await call("GET", `${TENANTS}/directory`, admin.authorization)).json();
     const row = body.tenants.find((t: any) => t.id === gone);
     // Named rather than hidden: somebody explaining last month's traffic needs
     // the name of a tenant nobody may pick any more, and a picker filters on
@@ -114,7 +114,7 @@ describe("the directory", () => {
 
   test("carries the default tenant under the name a person reads", async () => {
     const member = await session();
-    const body = await (await call("GET", `${TENANTS}/directory`, member.cookie)).json();
+    const body = await (await call("GET", `${TENANTS}/directory`, member.authorization)).json();
     expect(body.tenants[0]).toMatchObject({ id: "default", name: tenants.DEFAULT_TENANT_NAME });
   });
 });
@@ -122,7 +122,7 @@ describe("the directory", () => {
 describe("creating one", () => {
   test("refuses an ordinary session, and says what it is reserved to", async () => {
     const member = await session();
-    const res = await call("POST", TENANTS, member.cookie, { id: uniq("acme"), name: "Acme" });
+    const res = await call("POST", TENANTS, member.authorization, { id: uniq("acme"), name: "Acme" });
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("PLATFORM_ADMIN_ONLY");
   });
@@ -130,7 +130,7 @@ describe("creating one", () => {
   test("takes an id and a name, and answers the row", async () => {
     const admin = await session({ admin: true });
     const id = uniq("acme");
-    const res = await call("POST", TENANTS, admin.cookie, { id, name: "  Acme  " });
+    const res = await call("POST", TENANTS, admin.authorization, { id, name: "  Acme  " });
     expect(res.status).toBe(201);
     const { tenant } = await res.json();
     // Trimmed: a name with an edge of whitespace sorts and searches as a
@@ -140,25 +140,25 @@ describe("creating one", () => {
 
   test("refuses a malformed id and a blank name, before writing anything", async () => {
     const admin = await session({ admin: true });
-    expect((await call("POST", TENANTS, admin.cookie, { id: "not a tenant id", name: "X" })).status)
+    expect((await call("POST", TENANTS, admin.authorization, { id: "not a tenant id", name: "X" })).status)
       .toBe(400);
     const id = uniq("nameless");
-    expect((await call("POST", TENANTS, admin.cookie, { id, name: "   " })).status).toBe(400);
+    expect((await call("POST", TENANTS, admin.authorization, { id, name: "   " })).status).toBe(400);
     expect(tenants.getTenant(db, id)).toBeNull();
   });
 
   test("refuses an id that is taken, including by a deleted tenant", async () => {
     const admin = await session({ admin: true });
     const id = uniq("twice");
-    expect((await call("POST", TENANTS, admin.cookie, { id, name: "First" })).status).toBe(201);
+    expect((await call("POST", TENANTS, admin.authorization, { id, name: "First" })).status).toBe(201);
 
-    const again = await call("POST", TENANTS, admin.cookie, { id, name: "Second" });
+    const again = await call("POST", TENANTS, admin.authorization, { id, name: "Second" });
     expect(again.status).toBe(409);
     expect((await again.json()).code).toBe("TENANT_EXISTS");
     expect(tenants.getTenant(db, id)!.name).toBe("First");
 
-    await call("DELETE", `${TENANTS}/${id}`, admin.cookie);
-    const afterDelete = await call("POST", TENANTS, admin.cookie, { id, name: "Third" });
+    await call("DELETE", `${TENANTS}/${id}`, admin.authorization);
+    const afterDelete = await call("POST", TENANTS, admin.authorization, { id, name: "Third" });
     expect(afterDelete.status).toBe(409);
     // The two 409s are not the same refusal, and the message says which: an id
     // freed by deletion would attribute last week's `message_stats` rows to
@@ -171,9 +171,9 @@ describe("renaming one", () => {
   test("moves the name and never the id", async () => {
     const admin = await session({ admin: true });
     const id = uniq("acme");
-    await call("POST", TENANTS, admin.cookie, { id, name: "Acme" });
+    await call("POST", TENANTS, admin.authorization, { id, name: "Acme" });
 
-    const res = await call("PATCH", `${TENANTS}/${id}`, admin.cookie, { name: "Acme Holdings" });
+    const res = await call("PATCH", `${TENANTS}/${id}`, admin.authorization, { name: "Acme Holdings" });
     expect(res.status).toBe(200);
     expect((await res.json()).tenant).toMatchObject({ id, name: "Acme Holdings" });
   });
@@ -182,14 +182,14 @@ describe("renaming one", () => {
     const admin = await session({ admin: true });
     const member = await session();
     const id = uniq("acme");
-    await call("POST", TENANTS, admin.cookie, { id, name: "Acme" });
+    await call("POST", TENANTS, admin.authorization, { id, name: "Acme" });
 
-    expect((await call("PATCH", `${TENANTS}/${id}`, member.cookie, { name: "Mine Now" })).status)
+    expect((await call("PATCH", `${TENANTS}/${id}`, member.authorization, { name: "Mine Now" })).status)
       .toBe(403);
     expect(tenants.getTenant(db, id)!.name).toBe("Acme");
-    expect((await call("PATCH", `${TENANTS}/tn-never-existed`, admin.cookie, { name: "X" })).status)
+    expect((await call("PATCH", `${TENANTS}/tn-never-existed`, admin.authorization, { name: "X" })).status)
       .toBe(404);
-    expect((await call("PATCH", `${TENANTS}/${id}`, admin.cookie, { name: "  " })).status).toBe(400);
+    expect((await call("PATCH", `${TENANTS}/${id}`, admin.authorization, { name: "  " })).status).toBe(400);
   });
 
   /**
@@ -199,7 +199,7 @@ describe("renaming one", () => {
   test("includes the default tenant", async () => {
     const admin = await session({ admin: true });
     const before = tenants.getTenant(db, "default")!.name;
-    expect((await call("PATCH", `${TENANTS}/default`, admin.cookie, { name: "Head Office" })).status)
+    expect((await call("PATCH", `${TENANTS}/default`, admin.authorization, { name: "Head Office" })).status)
       .toBe(200);
     expect(tenants.getTenant(db, "default")!.name).toBe("Head Office");
     tenants.renameTenant(db, "default", before);
@@ -209,7 +209,7 @@ describe("renaming one", () => {
 describe("deleting one", () => {
   test("refuses the default tenant", async () => {
     const admin = await session({ admin: true });
-    const res = await call("DELETE", `${TENANTS}/default`, admin.cookie);
+    const res = await call("DELETE", `${TENANTS}/default`, admin.authorization);
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("DEFAULT_TENANT");
     expect(tenants.getTenant(db, "default")!.deleted_at).toBeNull();
@@ -222,7 +222,7 @@ describe("deleting one", () => {
    */
   test("says not-found for a tenant nobody created, rather than refusing", async () => {
     const admin = await session({ admin: true });
-    const res = await call("DELETE", `${TENANTS}/tn-never-existed`, admin.cookie);
+    const res = await call("DELETE", `${TENANTS}/tn-never-existed`, admin.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, action: "not-found" });
   });
@@ -230,13 +230,13 @@ describe("deleting one", () => {
   test("stops offering it, keeps the row, and names the three outcomes apart", async () => {
     const admin = await session({ admin: true });
     const id = uniq("closing");
-    await call("POST", TENANTS, admin.cookie, { id, name: "Closing" });
+    await call("POST", TENANTS, admin.authorization, { id, name: "Closing" });
 
-    const first = await call("DELETE", `${TENANTS}/${id}`, admin.cookie);
+    const first = await call("DELETE", `${TENANTS}/${id}`, admin.authorization);
     expect(first.status).toBe(200);
     expect(await first.json()).toMatchObject({ ok: true, action: "deleted" });
 
-    const second = await call("DELETE", `${TENANTS}/${id}`, admin.cookie);
+    const second = await call("DELETE", `${TENANTS}/${id}`, admin.authorization);
     expect(second.status).toBe(200);
     // Three cases, three words: doing it, having done it, and never having had
     // it. One boolean beside `ok` would collapse the last two, and they are the
@@ -249,9 +249,9 @@ describe("deleting one", () => {
     const admin = await session({ admin: true });
     const member = await session();
     const id = uniq("kept");
-    await call("POST", TENANTS, admin.cookie, { id, name: "Kept" });
+    await call("POST", TENANTS, admin.authorization, { id, name: "Kept" });
 
-    expect((await call("DELETE", `${TENANTS}/${id}`, member.cookie)).status).toBe(403);
+    expect((await call("DELETE", `${TENANTS}/${id}`, member.authorization)).status).toBe(403);
     expect(tenants.getTenant(db, id)!.deleted_at).toBeNull();
   });
 });
@@ -260,7 +260,7 @@ describe("a session's own tenant", () => {
   test("is the local row's, and `default` for a login with no local account", async () => {
     const member = await session();
     expect(getLocalUser(member.login)).toBeNull();
-    const body = await (await call("GET", `${TENANTS}/directory`, member.cookie)).json();
+    const body = await (await call("GET", `${TENANTS}/directory`, member.authorization)).json();
     expect(body.tenant).toBe("default");
   });
 });

@@ -38,7 +38,7 @@ let n = 0;
 const uniq = (p: string) => `rs-${p}-${++n}-${process.pid}`;
 
 const call = (path: string, cookie: string) =>
-  app.fetch(new Request(`http://rs-probe${path}`, { headers: { cookie } }));
+  app.fetch(new Request(`http://rs-probe${path}`, { headers: { authorization: cookie } }));
 
 /** A well-formed Ed25519 public key: 32 raw bytes, base64url. */
 const publicKey = () =>
@@ -69,7 +69,7 @@ beforeAll(async () => {
   approveUser(login);
   getDb().prepare(`UPDATE users SET role = 'admin' WHERE github_login = ?`).run(login);
   upsertApprovedWebUser(login);
-  adminCookie = `mesh_token=${await signJwt({ github_id: user.github_id, github_login: login, role: "admin" })}`;
+  adminCookie = `Bearer ${await signJwt({ github_id: user.github_id, github_login: login, role: "admin" })}`;
 });
 
 const listed = async (): Promise<string[]> => {
@@ -277,7 +277,7 @@ describe("a boot after the rule landed", () => {
     const send = () =>
       app.fetch(new Request("http://rs-probe/api/v1/messages", {
         method: "POST",
-        headers: { "content-type": "application/json", cookie: adminCookie },
+        headers: { "content-type": "application/json", authorization: adminCookie },
         body: JSON.stringify({ to: old, text: "are you there" }),
       }));
 

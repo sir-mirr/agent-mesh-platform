@@ -49,7 +49,7 @@ const uniq = (p: string) => `pg-${p}-${++n}-${process.pid}`;
 
 const page = (path: string, cookie = "") =>
   app.fetch(new Request(`http://pg-probe${path}`, {
-    headers: cookie ? { cookie } : {},
+    headers: cookie ? { authorization: cookie } : {},
     redirect: "manual",
   }));
 
@@ -78,7 +78,7 @@ async function signedIn(approved: boolean) {
   createPendingApproval(login, user.github_id);
   if (approved) expect(approveUser(login)).toBe(true);
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 function registerAgent(id: string) {
@@ -105,7 +105,7 @@ describe("the chat pages", () => {
   test("send a valid session for a user who is gone to the same place", async () => {
     const jwt = await signJwt({ github_id: 987_654_321, github_login: uniq("ghost"), role: "member" });
     for (const path of ["/chat", `/chat/${uniq("agent")}`]) {
-      const res = await page(path, `mesh_token=${jwt}`);
+      const res = await page(path, `Bearer ${jwt}`);
       expect(res.status).toBe(302);
       expect(res.headers.get("location")).toBe("/");
     }
@@ -125,7 +125,7 @@ describe("the chat pages", () => {
     const who = await signedIn(false);
     const agent = registerAgent(uniq("agent"));
     for (const path of ["/chat", `/chat/${agent}`]) {
-      const res = await page(path, who.cookie);
+      const res = await page(path, who.authorization);
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(`${path}: ${html.match(/<title>([^<]*)<\/title>/)?.[1] ?? "no title"}`)
@@ -136,14 +136,14 @@ describe("the chat pages", () => {
 
   test("answer 404 for an agent the registry does not hold", async () => {
     const who = await signedIn(true);
-    expect((await page(`/chat/${uniq("ghost")}`, who.cookie)).status).toBe(404);
+    expect((await page(`/chat/${uniq("ghost")}`, who.authorization)).status).toBe(404);
   });
 
   test("open the conversation for an agent it does hold", async () => {
     const who = await signedIn(true);
     const agent = registerAgent(uniq("agent"));
-    expect((await page(`/chat/${agent}`, who.cookie)).status).toBe(200);
-    expect((await page("/chat", who.cookie)).status).toBe(200);
+    expect((await page(`/chat/${agent}`, who.authorization)).status).toBe(200);
+    expect((await page("/chat", who.authorization)).status).toBe(200);
   });
 });
 
@@ -195,7 +195,7 @@ describe("asking who you are", () => {
    */
   test("refuses a cookie that does not verify", async () => {
     for (const value of ["not-a-jwt", "a.b.c", ""]) {
-      const res = await page("/auth/me", `mesh_token=${value}`);
+      const res = await page("/auth/me", `Bearer ${value}`);
       expect(`${value || "<empty>"} -> ${res.status}`).toBe(`${value || "<empty>"} -> 401`);
     }
   });
@@ -210,7 +210,7 @@ describe("asking who you are", () => {
 
   test("answers 404 for a signed session whose user is gone", async () => {
     const jwt = await signJwt({ github_id: 987_654_322, github_login: uniq("ghost"), role: "member" });
-    const res = await page("/auth/me", `mesh_token=${jwt}`);
+    const res = await page("/auth/me", `Bearer ${jwt}`);
     expect(res.status).toBe(404);
   });
 });
@@ -241,7 +241,7 @@ describe("the browser sign-in form", () => {
     const username = uniq("local");
     const res = await app.fetch(new Request("http://pg-probe/api/v1/admin/users", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: `mesh_token=${jwt}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${jwt}` },
       body: JSON.stringify({ username }),
     }));
     expect(res.status).toBe(201);
@@ -289,8 +289,15 @@ describe("the browser sign-in form", () => {
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("SameSite=Lax");
 
-    // The session it handed out is a session: the same cookie answers `/auth/me`.
-    const me = await (await page("/auth/me", cookie!.split(";")[0]!)).json();
+    // The session it handed out is a session: the same token answers `/auth/me`.
+    //
+    // Carried as a bearer token rather than as the cookie it arrived in. A
+    // `Request` built in this process does not always keep a `cookie` header —
+    // it is a forbidden header name, and the runtime CI runs strips it while
+    // this one does not — so a walk that puts the cookie back on a request is
+    // testing the runtime, not the session. `set-cookie-survives.test.ts` holds
+    // that difference; the browser path is covered where a browser runs it.
+    const me = await (await page("/auth/me", `Bearer ${cookie!.slice("mesh_token=".length).split(";")[0]}`)).json();
     expect(me.github_login).toBe(who.username);
     expect(me.approved).toBe(true);
   });

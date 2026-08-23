@@ -34,13 +34,13 @@ async function session(approved: boolean) {
   // an empty table becomes one — so reading the role back would make the
   // refusal below depend on how many people the table already held.
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const post = (path: string, body: unknown, cookie?: string) =>
   app.fetch(new Request(`http://push-probe${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    headers: { "content-type": "application/json", ...(cookie ? { authorization: cookie } : {}) },
     body: typeof body === "string" ? body : JSON.stringify(body),
   }));
 
@@ -60,14 +60,14 @@ describe("registering an endpoint", () => {
    */
   test("refuses a signed-in person the operator has not approved", async () => {
     const waiting = await session(false);
-    const res = await post("/api/v1/push/subscribe", subscription("https://push/y"), waiting.cookie);
+    const res = await post("/api/v1/push/subscribe", subscription("https://push/y"), waiting.authorization);
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe("Forbidden");
   });
 
   test("refuses a body that is not JSON", async () => {
     const me = await session(true);
-    const res = await post("/api/v1/push/subscribe", "{not json", me.cookie);
+    const res = await post("/api/v1/push/subscribe", "{not json", me.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("Invalid JSON");
   });
@@ -88,7 +88,7 @@ describe("registering an endpoint", () => {
       { subscription: { keys: { p256dh: "a", auth: "b" } } },
     ];
     for (const body of bad) {
-      const res = await post("/api/v1/push/subscribe", body, me.cookie);
+      const res = await post("/api/v1/push/subscribe", body, me.authorization);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("Missing subscription data");
     }
@@ -97,7 +97,7 @@ describe("registering an endpoint", () => {
   test("stores one it can deliver to", async () => {
     const me = await session(true);
     const endpoint = `https://push.example/${uniq("ep")}`;
-    const res = await post("/api/v1/push/subscribe", subscription(endpoint), me.cookie);
+    const res = await post("/api/v1/push/subscribe", subscription(endpoint), me.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
@@ -113,8 +113,8 @@ describe("registering an endpoint", () => {
   test("and re-registering the same endpoint does not double it", async () => {
     const me = await session(true);
     const endpoint = `https://push.example/${uniq("ep")}`;
-    await post("/api/v1/push/subscribe", subscription(endpoint), me.cookie);
-    await post("/api/v1/push/subscribe", subscription(endpoint), me.cookie);
+    await post("/api/v1/push/subscribe", subscription(endpoint), me.authorization);
+    await post("/api/v1/push/subscribe", subscription(endpoint), me.authorization);
     expect(getPushSubscriptions(me.login).filter((s) => s.endpoint === endpoint)).toHaveLength(1);
   });
 });
@@ -123,13 +123,13 @@ describe("dropping an endpoint", () => {
   test("refuses a caller with no session, and one not approved", async () => {
     expect((await post("/api/v1/push/unsubscribe", { endpoint: "https://push/x" })).status).toBe(401);
     const waiting = await session(false);
-    expect((await post("/api/v1/push/unsubscribe", { endpoint: "https://push/x" }, waiting.cookie)).status).toBe(403);
+    expect((await post("/api/v1/push/unsubscribe", { endpoint: "https://push/x" }, waiting.authorization)).status).toBe(403);
   });
 
   test("refuses a body that is not JSON, and one with no endpoint", async () => {
     const me = await session(true);
-    expect((await post("/api/v1/push/unsubscribe", "{not json", me.cookie)).status).toBe(400);
-    const res = await post("/api/v1/push/unsubscribe", {}, me.cookie);
+    expect((await post("/api/v1/push/unsubscribe", "{not json", me.authorization)).status).toBe(400);
+    const res = await post("/api/v1/push/unsubscribe", {}, me.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Missing endpoint");
   });
@@ -137,10 +137,10 @@ describe("dropping an endpoint", () => {
   test("removes the row the browser is giving up", async () => {
     const me = await session(true);
     const endpoint = `https://push.example/${uniq("ep")}`;
-    await post("/api/v1/push/subscribe", subscription(endpoint), me.cookie);
+    await post("/api/v1/push/subscribe", subscription(endpoint), me.authorization);
     expect(getPushSubscriptions(me.login).some((s) => s.endpoint === endpoint)).toBe(true);
 
-    const res = await post("/api/v1/push/unsubscribe", { endpoint }, me.cookie);
+    const res = await post("/api/v1/push/unsubscribe", { endpoint }, me.authorization);
     expect(res.status).toBe(200);
     expect(getPushSubscriptions(me.login).some((s) => s.endpoint === endpoint)).toBe(false);
   });
@@ -151,7 +151,7 @@ describe("dropping an endpoint", () => {
    */
   test("and says the same thing about an endpoint that was never there", async () => {
     const me = await session(true);
-    const res = await post("/api/v1/push/unsubscribe", { endpoint: `https://push.example/${uniq("ghost")}` }, me.cookie);
+    const res = await post("/api/v1/push/unsubscribe", { endpoint: `https://push.example/${uniq("ghost")}` }, me.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });
@@ -168,10 +168,10 @@ describe("dropping an endpoint", () => {
     const mine = await session(true);
     const theirs = await session(true);
     const endpoint = `https://push.example/${uniq("ep")}`;
-    await post("/api/v1/push/subscribe", subscription(endpoint), theirs.cookie);
+    await post("/api/v1/push/subscribe", subscription(endpoint), theirs.authorization);
     expect(getPushSubscriptions(theirs.login).some((s) => s.endpoint === endpoint)).toBe(true);
 
-    expect((await post("/api/v1/push/unsubscribe", { endpoint }, mine.cookie)).status).toBe(200);
+    expect((await post("/api/v1/push/unsubscribe", { endpoint }, mine.authorization)).status).toBe(200);
     expect(getPushSubscriptions(theirs.login).some((s) => s.endpoint === endpoint)).toBe(false);
   });
 });

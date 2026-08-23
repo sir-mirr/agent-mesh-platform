@@ -32,13 +32,13 @@ async function reader() {
   createPendingApproval(login, user.github_id);
   expect(approveUser(login)).toBe(true);
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return `mesh_token=${jwt}`;
+  return `Bearer ${jwt}`;
 }
 
 const fetchFile = (path: string | null, cookie: string) =>
   app.fetch(new Request(
     `http://fr-probe/api/v1/files${path === null ? "" : `?path=${encodeURIComponent(path)}`}`,
-    { headers: cookie ? { cookie } : {} },
+    { headers: cookie ? { authorization: cookie } : {} },
   ));
 
 /** A file of `bytes` bytes, sparse so a size limit can be tested without writing one. */

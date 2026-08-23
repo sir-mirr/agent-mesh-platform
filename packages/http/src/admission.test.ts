@@ -65,7 +65,7 @@ async function operator(withAdmit: boolean) {
     grants.grant(agentsDb, { subject: login, capability: CAPABILITY.USER_ADMIT, grantedBy: "admission-test" });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** Somebody waiting in the queue an operator works through. */
@@ -79,7 +79,7 @@ function waiting() {
 const post = (path: string, body: unknown, cookie: string) =>
   app.fetch(new Request(`http://adm-probe${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", authorization: cookie },
     body: typeof body === "string" ? body : JSON.stringify(body),
   }));
 
@@ -87,7 +87,7 @@ describe("who may admit", () => {
   test("refuses an operator holding everything else", async () => {
     const nobody = await operator(false);
     for (const path of ["/api/v1/admin/approve", "/api/v1/admin/deny"]) {
-      const res = await post(path, { github_login: waiting() }, nobody.cookie);
+      const res = await post(path, { github_login: waiting() }, nobody.authorization);
       expect([401, 403]).toContain(res.status);
     }
   });
@@ -96,9 +96,9 @@ describe("who may admit", () => {
 describe("admitting somebody", () => {
   test("refuses a body it cannot parse, or one naming nobody", async () => {
     const op = await operator(true);
-    expect((await post("/api/v1/admin/approve", "{not json", op.cookie)).status).toBe(400);
+    expect((await post("/api/v1/admin/approve", "{not json", op.authorization)).status).toBe(400);
     for (const body of [{}, { github_login: "" }, { github_login: 7 }]) {
-      const res = await post("/api/v1/admin/approve", body, op.cookie);
+      const res = await post("/api/v1/admin/approve", body, op.authorization);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("github_login");
     }
@@ -111,7 +111,7 @@ describe("admitting somebody", () => {
   test("refuses a login with nothing pending, and says which", async () => {
     const op = await operator(true);
     const stranger = uniq("stranger");
-    const res = await post("/api/v1/admin/approve", { github_login: stranger }, op.cookie);
+    const res = await post("/api/v1/admin/approve", { github_login: stranger }, op.authorization);
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain(stranger);
   });
@@ -127,7 +127,7 @@ describe("admitting somebody", () => {
     const person = waiting();
     hubAnswers();
 
-    const res = await post("/api/v1/admin/approve", { github_login: person }, op.cookie);
+    const res = await post("/api/v1/admin/approve", { github_login: person }, op.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, github_login: person, status: "approved" });
 
@@ -147,7 +147,7 @@ describe("admitting somebody", () => {
     const person = waiting();
     hubAnswers(false);
 
-    const res = await post("/api/v1/admin/approve", { github_login: person }, op.cookie);
+    const res = await post("/api/v1/admin/approve", { github_login: person }, op.authorization);
     expect(res.status).toBe(200);
     expect(getPendingApproval(person)?.status).toBe("approved");
     expect(listApprovedWebUserIds()).toContain(person);
@@ -160,16 +160,16 @@ describe("admitting somebody", () => {
     const op = await operator(true);
     const person = waiting();
     hubAnswers();
-    expect((await post("/api/v1/admin/approve", { github_login: person }, op.cookie)).status).toBe(200);
-    expect((await post("/api/v1/admin/approve", { github_login: person }, op.cookie)).status).toBe(404);
+    expect((await post("/api/v1/admin/approve", { github_login: person }, op.authorization)).status).toBe(200);
+    expect((await post("/api/v1/admin/approve", { github_login: person }, op.authorization)).status).toBe(404);
   });
 });
 
 describe("turning somebody away", () => {
   test("refuses a body it cannot parse, or one naming nobody", async () => {
     const op = await operator(true);
-    expect((await post("/api/v1/admin/deny", "{not json", op.cookie)).status).toBe(400);
-    const res = await post("/api/v1/admin/deny", {}, op.cookie);
+    expect((await post("/api/v1/admin/deny", "{not json", op.authorization)).status).toBe(400);
+    const res = await post("/api/v1/admin/deny", {}, op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("github_login");
   });
@@ -177,7 +177,7 @@ describe("turning somebody away", () => {
   test("refuses a login with nothing pending, and says which", async () => {
     const op = await operator(true);
     const stranger = uniq("stranger");
-    const res = await post("/api/v1/admin/deny", { github_login: stranger }, op.cookie);
+    const res = await post("/api/v1/admin/deny", { github_login: stranger }, op.authorization);
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain(stranger);
   });
@@ -193,7 +193,7 @@ describe("turning somebody away", () => {
     const op = await operator(true);
     const person = waiting();
 
-    const res = await post("/api/v1/admin/deny", { github_login: person }, op.cookie);
+    const res = await post("/api/v1/admin/deny", { github_login: person }, op.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, github_login: person, status: "denied" });
 

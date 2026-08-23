@@ -52,7 +52,7 @@ async function reader(...caps: string[]) {
     grants.grant(db, { subject: login, capability, grantedBy: "ai-usage-test" });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const snapshot = (over: Record<string, unknown> = {}) => ({
@@ -74,7 +74,7 @@ const ingest = (body: unknown, bearer?: string) =>
   }));
 
 const get = (path: string, cookie: string) =>
-  app.fetch(new Request(`http://aiu-probe${path}`, { headers: { cookie } }));
+  app.fetch(new Request(`http://aiu-probe${path}`, { headers: { authorization: cookie } }));
 
 describe("writing the figures", () => {
   /**
@@ -154,7 +154,7 @@ describe("reading them", () => {
     const nobody = await reader();
     for (const path of ["/api/v1/admin/ai-usage", "/api/v1/admin/ai-usage/stream"]) {
       expect((await get(path, "")).status).toBe(401);
-      const res = await get(path, nobody.cookie);
+      const res = await get(path, nobody.authorization);
       expect(res.status).toBe(403);
       expect((await res.json()).capability).toBe(CAPABILITY.USAGE_READ);
     }
@@ -163,7 +163,7 @@ describe("reading them", () => {
   /** Spend does not borrow the audit's grant, nor the mailbox's. */
   test("is not satisfied by a grant that answers another question", async () => {
     const other = await reader(CAPABILITY.AUDIT_READ_CONTENT, CAPABILITY.MAILBOX_READ_DEPTH);
-    expect((await get("/api/v1/admin/ai-usage", other.cookie)).status).toBe(403);
+    expect((await get("/api/v1/admin/ai-usage", other.authorization)).status).toBe(403);
   });
 
   test("serves the snapshot that was last written", async () => {
@@ -172,7 +172,7 @@ describe("reading them", () => {
     const sent = snapshot({ accounts: [{ account: uniq("acct"), spend_usd: 3.25 }] });
     await ingest(sent, `Bearer ${TOKEN}`);
 
-    const body = await (await get("/api/v1/admin/ai-usage", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/ai-usage", op.authorization)).json();
     expect(body.snapshot).toMatchObject({
       schema_version: "v1", ts: sent.ts, source: sent.source, accounts: sent.accounts,
     });
@@ -185,7 +185,7 @@ describe("reading them", () => {
 /** A subscriber held open, read frame by frame. The pending read is kept. */
 function subscribe(cookie: string) {
   const res = app.fetch(new Request("http://aiu-probe/api/v1/admin/ai-usage/stream", {
-    headers: { cookie },
+    headers: { authorization: cookie },
   }));
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   let pending: ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> | null = null;
@@ -211,7 +211,7 @@ function subscribe(cookie: string) {
 describe("subscribing to them", () => {
   test("says it is connected before anything else", async () => {
     const op = await reader(CAPABILITY.USAGE_READ);
-    const s = await subscribe(op.cookie).ready();
+    const s = await subscribe(op.authorization).ready();
     expect(await s.next()).toBe(":connected\n\n");
     await s.close();
   });
@@ -227,7 +227,7 @@ describe("subscribing to them", () => {
     const sent = snapshot({ source: uniq("earlier") });
     await ingest(sent, `Bearer ${TOKEN}`);
 
-    const s = await subscribe(op.cookie).ready();
+    const s = await subscribe(op.authorization).ready();
     expect(await s.next()).toBe(":connected\n\n");
     const frame = (await s.next())!;
     expect(frame).toContain("event: ai-usage-update");
@@ -238,8 +238,8 @@ describe("subscribing to them", () => {
   test("hands every subscriber the next snapshot as it arrives", async () => {
     process.env.AI_USAGE_INGEST_TOKEN = TOKEN;
     const op = await reader(CAPABILITY.USAGE_READ);
-    const one = await subscribe(op.cookie).ready();
-    const two = await subscribe(op.cookie).ready();
+    const one = await subscribe(op.authorization).ready();
+    const two = await subscribe(op.authorization).ready();
     for (const s of [one, two]) {
       await s.next();                       // :connected
       await s.next();                       // whatever was already held, if any
@@ -274,8 +274,8 @@ describe("subscribing to them", () => {
     process.env.AI_USAGE_INGEST_TOKEN = TOKEN;
     const op = await reader(CAPABILITY.USAGE_READ);
     const before = aiUsageSseClientCount();
-    const gone = await subscribe(op.cookie).ready();
-    const stays = await subscribe(op.cookie).ready();
+    const gone = await subscribe(op.authorization).ready();
+    const stays = await subscribe(op.authorization).ready();
     for (const s of [gone, stays]) { await s.next(); await s.next(); }
     expect(aiUsageSseClientCount()).toBe(before + 2);
 

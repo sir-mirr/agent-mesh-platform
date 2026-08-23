@@ -41,7 +41,7 @@ let n = 0;
 const uniq = (p: string) => `sse-${p}-${++n}-${process.pid}`;
 
 /** An approved person, and the cookie their browser would carry. */
-async function person(): Promise<{ login: string; cookie: string }> {
+async function person(): Promise<{ login: string; authorization: string }> {
   const login = uniq("person");
   const user = upsertUser(700000 + n, login);
   createPendingApproval(login, user.github_id);
@@ -50,7 +50,7 @@ async function person(): Promise<{ login: string; cookie: string }> {
   // admin, and an admin is approved by definition — so reading the role back
   // would make approval depend on how many people the table already held.
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** A message this person is party to, so search has something to find. */
@@ -80,14 +80,14 @@ describe("searching your own messages", () => {
     const login = uniq("waiting");
     const user = upsertUser(710000 + n, login);
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-    const res = await get("/api/v1/messages/search?q=x", { cookie: `mesh_token=${jwt}` });
+    const res = await get("/api/v1/messages/search?q=x", { authorization: `Bearer ${jwt}` });
     expect(res.status).toBe(403);
   });
 
   test("refuses a query that is absent, empty, or only spaces", async () => {
     const me = await person();
     for (const q of ["", "?q=", "?q=%20%20"]) {
-      const res = await get(`/api/v1/messages/search${q}`, { cookie: me.cookie });
+      const res = await get(`/api/v1/messages/search${q}`, { authorization: me.authorization });
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("q");
     }
@@ -97,7 +97,7 @@ describe("searching your own messages", () => {
     const me = await person();
     const needle = uniq("needle");
     say(me.login, "peer-sse", `the ${needle} is here`);
-    const res = await get(`/api/v1/messages/search?q=%20${needle}%20`, { cookie: me.cookie });
+    const res = await get(`/api/v1/messages/search?q=%20${needle}%20`, { authorization: me.authorization });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.query).toBe(needle);
@@ -115,7 +115,7 @@ describe("searching your own messages", () => {
     const needle = uniq("many");
     for (let i = 0; i < 3; i++) say(me.login, "peer-sse", `${needle} ${i}`);
     const count = async (limit: string) =>
-      (await (await get(`/api/v1/messages/search?q=${needle}&limit=${limit}`, { cookie: me.cookie })).json()).count;
+      (await (await get(`/api/v1/messages/search?q=${needle}&limit=${limit}`, { authorization: me.authorization })).json()).count;
     expect(await count("2")).toBe(2);
     expect(await count("0")).toBe(3);
     expect(await count("100000")).toBe(3);
@@ -131,7 +131,7 @@ describe("the per-agent event stream", () => {
   test("refuses without a session, and does not read one from the query", async () => {
     expect((await get("/api/v1/events/agt-x")).status).toBe(401);
     const me = await person();
-    const token = me.cookie.split("=")[1]!;
+    const token = me.authorization.split("=")[1]!;
     expect((await get(`/api/v1/events/agt-x?token=${token}`)).status).toBe(401);
   });
 
@@ -139,12 +139,12 @@ describe("the per-agent event stream", () => {
     const login = uniq("waiting");
     const user = upsertUser(720000 + n, login);
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-    expect((await get("/api/v1/events/agt-x", { cookie: `mesh_token=${jwt}` })).status).toBe(403);
+    expect((await get("/api/v1/events/agt-x", { authorization: `Bearer ${jwt}` })).status).toBe(403);
   });
 
   test("opens with a connected frame naming the agent, in SSE framing", async () => {
     const me = await person();
-    const res = await get("/api/v1/events/agt-sse-1", { cookie: me.cookie });
+    const res = await get("/api/v1/events/agt-sse-1", { authorization: me.authorization });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     expect(res.headers.get("cache-control")).toBe("no-cache");
@@ -165,7 +165,7 @@ describe("the per-agent event stream", () => {
     const me = await person();
     const before = sseClientCount();
     const ac = new AbortController();
-    const res = await get("/api/v1/events/agt-sse-2", { cookie: me.cookie }, ac.signal);
+    const res = await get("/api/v1/events/agt-sse-2", { authorization: me.authorization }, ac.signal);
     await firstChunk(res);
     expect(sseClientCount()).toBe(before + 1);
 
@@ -184,7 +184,7 @@ describe("the spend stream", () => {
    */
   test("refuses a session holding every other capability but this one", async () => {
     const me = await person();
-    const res = await get("/api/v1/admin/ai-usage/stream", { cookie: me.cookie });
+    const res = await get("/api/v1/admin/ai-usage/stream", { authorization: me.authorization });
     expect([401, 403]).toContain(res.status);
   });
 
@@ -196,7 +196,7 @@ describe("the spend stream", () => {
       grantedBy: "streams-test",
     });
 
-    const res = await get("/api/v1/admin/ai-usage/stream", { cookie: me.cookie });
+    const res = await get("/api/v1/admin/ai-usage/stream", { authorization: me.authorization });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     // Proxies that buffer a stream turn it into a very slow poll.

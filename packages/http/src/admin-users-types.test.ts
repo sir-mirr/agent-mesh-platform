@@ -49,13 +49,13 @@ async function holder(...caps: string[]) {
     grants.grant(db, { subject: login, capability, grantedBy: "admin-users-test" });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const req = (method: string, path: string, cookie: string, body?: unknown) =>
   app.fetch(new Request(`http://aut-probe${path}`, {
     method,
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", authorization: cookie },
     ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
   }));
 const get = (p: string, c: string) => req("GET", p, c);
@@ -73,7 +73,7 @@ describe("admitting a person", () => {
       ["GET", "/api/v1/admin/users"],
     ] as Array<[string, string]>) {
       expect((await req(method, path, "", {})).status).toBe(401);
-      const res = await req(method, path, nobody.cookie, {});
+      const res = await req(method, path, nobody.authorization, {});
       expect(res.status).toBe(403);
       expect((await res.json()).capability).toBe(CAPABILITY.USER_ADMIT);
     }
@@ -81,9 +81,9 @@ describe("admitting a person", () => {
 
   test("refuses a body it cannot parse, and a username off-pattern", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
-    expect((await post("/api/v1/admin/users", op.cookie, "{not json")).status).toBe(400);
+    expect((await post("/api/v1/admin/users", op.authorization, "{not json")).status).toBe(400);
     for (const username of [undefined, 7, "", "-leading", "has space", "under_score"]) {
-      const res = await post("/api/v1/admin/users", op.cookie, { username });
+      const res = await post("/api/v1/admin/users", op.authorization, { username });
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("username");
     }
@@ -97,7 +97,7 @@ describe("admitting a person", () => {
   test("hands back a password that appears nowhere else", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("newcomer");
-    const res = await post("/api/v1/admin/users", op.cookie, { username, display_name: "A Newcomer" });
+    const res = await post("/api/v1/admin/users", op.authorization, { username, display_name: "A Newcomer" });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.user).toMatchObject({ username, display_name: "A Newcomer" });
@@ -105,7 +105,7 @@ describe("admitting a person", () => {
     expect(secret.length).toBeGreaterThan(8);
 
     // Not in the listing.
-    const listed = await (await get("/api/v1/admin/users", op.cookie)).json();
+    const listed = await (await get("/api/v1/admin/users", op.authorization)).json();
     expect(JSON.stringify(listed)).not.toContain(secret);
     // **The exact column set**, because the way this breaks is `SELECT *`.
     // `must_change_password` is a flag and belongs here; a hash would not, and
@@ -125,7 +125,7 @@ describe("admitting a person", () => {
   test("puts the new account behind the first-login gate", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("newcomer");
-    await post("/api/v1/admin/users", op.cookie, { username });
+    await post("/api/v1/admin/users", op.authorization, { username });
     expect(getLocalUser(username)?.must_change_password).toBe(1);
   });
 
@@ -133,8 +133,8 @@ describe("admitting a person", () => {
   test("refuses a name that is taken", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("twice");
-    expect((await post("/api/v1/admin/users", op.cookie, { username })).status).toBe(201);
-    const again = await post("/api/v1/admin/users", op.cookie, { username });
+    expect((await post("/api/v1/admin/users", op.authorization, { username })).status).toBe(201);
+    const again = await post("/api/v1/admin/users", op.authorization, { username });
     expect(again.status).toBe(409);
     expect((await again.json()).error).toContain(username);
   });
@@ -147,7 +147,7 @@ describe("admitting a person", () => {
   test("puts the account in the admitting operator's tenant by default", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const here = uniq("here");
-    await post("/api/v1/admin/users", op.cookie, { username: here });
+    await post("/api/v1/admin/users", op.authorization, { username: here });
     expect(getLocalUser(here)?.tenant).toBe("default");
   });
 
@@ -163,7 +163,7 @@ describe("admitting a person", () => {
     tenants.createTenant(db, { id: "aut-elsewhere", name: "Elsewhere" });
 
     const named = uniq("elsewhere");
-    const res = await post("/api/v1/admin/users", op.cookie, { username: named, tenant: "aut-elsewhere" });
+    const res = await post("/api/v1/admin/users", op.authorization, { username: named, tenant: "aut-elsewhere" });
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("TENANT_NOT_YOURS");
     expect(getLocalUser(named)).toBeNull();
@@ -175,7 +175,7 @@ describe("admitting a person", () => {
     tenants.createTenant(db, { id: "aut-branch", name: "Branch" });
 
     const named = uniq("posted");
-    expect((await post("/api/v1/admin/users", op.cookie, { username: named, tenant: "aut-branch" })).status)
+    expect((await post("/api/v1/admin/users", op.authorization, { username: named, tenant: "aut-branch" })).status)
       .toBe(201);
     expect(getLocalUser(named)?.tenant).toBe("aut-branch");
 
@@ -183,7 +183,7 @@ describe("admitting a person", () => {
     // string with nothing pointing back at the list — an account admitted into
     // one stays in a tenant no screen will ever show.
     const nowhere = uniq("nowhere");
-    const res = await post("/api/v1/admin/users", op.cookie, { username: nowhere, tenant: "aut-not-a-tenant" });
+    const res = await post("/api/v1/admin/users", op.authorization, { username: nowhere, tenant: "aut-not-a-tenant" });
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("NO_SUCH_TENANT");
     expect(getLocalUser(nowhere)).toBeNull();
@@ -195,7 +195,7 @@ describe("admitting a person", () => {
     tenants.createTenant(db, { id: "aut-closed", name: "Closed" });
     tenants.deleteTenant(db, "aut-closed");
 
-    const res = await post("/api/v1/admin/users", op.cookie,
+    const res = await post("/api/v1/admin/users", op.authorization,
       { username: uniq("late"), tenant: "aut-closed" });
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("NO_SUCH_TENANT");
@@ -204,7 +204,7 @@ describe("admitting a person", () => {
   test("ignores a display_name or role that is not a string", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("odd");
-    const res = await post("/api/v1/admin/users", op.cookie,
+    const res = await post("/api/v1/admin/users", op.authorization,
       { username, display_name: 7, role: { not: "a string" } });
     expect(res.status).toBe(201);
     const { user } = await res.json();
@@ -224,7 +224,7 @@ describe("reissuing a password", () => {
   test("answers a different absence than admission does", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const stranger = uniq("stranger");
-    const res = await post(`/api/v1/admin/users/${stranger}/password`, op.cookie, {});
+    const res = await post(`/api/v1/admin/users/${stranger}/password`, op.authorization, {});
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain(stranger);
   });
@@ -232,10 +232,10 @@ describe("reissuing a password", () => {
   test("issues a different password and says the account must change it", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("forgetful");
-    const first = (await (await post("/api/v1/admin/users", op.cookie, { username })).json())
+    const first = (await (await post("/api/v1/admin/users", op.authorization, { username })).json())
       .temporary_password as string;
 
-    const res = await post(`/api/v1/admin/users/${username}/password`, op.cookie, {});
+    const res = await post(`/api/v1/admin/users/${username}/password`, op.authorization, {});
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, username, must_change_password: true });
@@ -245,7 +245,7 @@ describe("reissuing a password", () => {
     // login, not a password.
     expect(getLocalUser(username)?.must_change_password).toBe(1);
 
-    const listed = await (await get("/api/v1/admin/users", op.cookie)).json();
+    const listed = await (await get("/api/v1/admin/users", op.authorization)).json();
     expect(JSON.stringify(listed)).not.toContain(body.temporary_password);
   });
 });
@@ -256,9 +256,9 @@ describe("an account that must change its password", () => {
   async function flagged() {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("flagged");
-    await post("/api/v1/admin/users", op.cookie, { username });
+    await post("/api/v1/admin/users", op.authorization, { username });
     const jwt = await signJwt({ github_id: 0, github_login: username, role: "member" });
-    return { username, cookie: `mesh_token=${jwt}` };
+    return { username, authorization: `Bearer ${jwt}` };
   }
 
   /**
@@ -268,7 +268,7 @@ describe("an account that must change its password", () => {
   test("is refused everywhere, with the reason in the body", async () => {
     const who = await flagged();
     for (const path of ["/api/v1/admin/users", "/api/v1/messages", "/api/v1/admin/agent-types"]) {
-      const res = await get(path, who.cookie);
+      const res = await get(path, who.authorization);
       expect(res.status).toBe(403);
       expect(await res.json()).toMatchObject({ must_change_password: true });
     }
@@ -282,7 +282,7 @@ describe("an account that must change its password", () => {
   test("may change its password, ask why, and leave", async () => {
     const who = await flagged();
     for (const path of ["/auth/me", "/auth/local/password", "/auth/logout"]) {
-      const res = await get(path, who.cookie);
+      const res = await get(path, who.authorization);
       expect(res.status).not.toBe(403);
     }
   });
@@ -290,7 +290,7 @@ describe("an account that must change its password", () => {
   /** An account that is not flagged passes through untouched. */
   test("does not stand in anybody else's way", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
-    const res = await get("/api/v1/admin/users", op.cookie);
+    const res = await get("/api/v1/admin/users", op.authorization);
     expect(res.status).toBe(200);
   });
 });
@@ -305,15 +305,15 @@ describe("naming what an agent may be", () => {
       ["POST", "/api/v1/admin/agent-types"],
       ["DELETE", "/api/v1/admin/agent-types/whatever"],
     ] as Array<[string, string]>) {
-      expect((await req(method, path, nobody.cookie, {})).status).toBe(403);
+      expect((await req(method, path, nobody.authorization, {})).status).toBe(403);
     }
   });
 
   test("refuses a body it cannot parse, and a type off-pattern", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
-    expect((await post("/api/v1/admin/agent-types", op.cookie, "{not json")).status).toBe(400);
+    expect((await post("/api/v1/admin/agent-types", op.authorization, "{not json")).status).toBe(400);
     for (const type of [undefined, 7, "", "has space", "under_score"]) {
-      const res = await post("/api/v1/admin/agent-types", op.cookie, { type });
+      const res = await post("/api/v1/admin/agent-types", op.authorization, { type });
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("type");
     }
@@ -332,7 +332,7 @@ describe("naming what an agent may be", () => {
     ];
     for (const [requires_key, expected] of cases) {
       const type = uniq("kind");
-      const res = await post("/api/v1/admin/agent-types", op.cookie, { type, requires_key });
+      const res = await post("/api/v1/admin/agent-types", op.authorization, { type, requires_key });
       expect(res.status).toBe(201);
       expect((await res.json()).type.requires_key, `requires_key: ${JSON.stringify(requires_key)}`)
         .toBe(expected);
@@ -342,7 +342,7 @@ describe("naming what an agent may be", () => {
   test("keeps a description only when it is a string", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const typed = uniq("kind");
-    await post("/api/v1/admin/agent-types", op.cookie, { type: typed, description: 7 });
+    await post("/api/v1/admin/agent-types", op.authorization, { type: typed, description: 7 });
     expect(agentsSchema.getType(db, typed)?.description).toBeNull();
   });
 
@@ -355,9 +355,9 @@ describe("naming what an agent may be", () => {
   test("refuses to update an existing type rather than lowering its guard", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("kind");
-    expect((await post("/api/v1/admin/agent-types", op.cookie, { type })).status).toBe(201);
+    expect((await post("/api/v1/admin/agent-types", op.authorization, { type })).status).toBe(201);
 
-    const again = await post("/api/v1/admin/agent-types", op.cookie, { type, requires_key: 0 });
+    const again = await post("/api/v1/admin/agent-types", op.authorization, { type, requires_key: 0 });
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ ok: false, code: "TYPE_EXISTS" });
     expect(agentsSchema.getType(db, type)?.requires_key).toBe(1);
@@ -366,8 +366,8 @@ describe("naming what an agent may be", () => {
   test("lists what it has been told, including the new one", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("kind");
-    await post("/api/v1/admin/agent-types", op.cookie, { type, description: "a kind of thing" });
-    const { ok, types } = await (await get("/api/v1/admin/agent-types", op.cookie)).json();
+    await post("/api/v1/admin/agent-types", op.authorization, { type, description: "a kind of thing" });
+    const { ok, types } = await (await get("/api/v1/admin/agent-types", op.authorization)).json();
     expect(ok).toBe(true);
     expect(types.find((t: any) => t.type === type))
       .toMatchObject({ type, description: "a kind of thing", requires_key: 1 });
@@ -383,11 +383,11 @@ describe("taking a type away", () => {
   test("refuses while anybody carries it, and says who", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("kind");
-    await post("/api/v1/admin/agent-types", op.cookie, { type });
+    await post("/api/v1/admin/agent-types", op.authorization, { type });
     const carrier = uniq("agent");
     db.prepare(`INSERT INTO agents (identity, type) VALUES (?, ?)`).run(carrier, type);
 
-    const res = await del(`/api/v1/admin/agent-types/${type}`, op.cookie);
+    const res = await del(`/api/v1/admin/agent-types/${type}`, op.authorization);
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body).toMatchObject({ ok: false, code: "TYPE_IN_USE" });
@@ -399,11 +399,11 @@ describe("taking a type away", () => {
   test("names at most twenty of them", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("crowded");
-    await post("/api/v1/admin/agent-types", op.cookie, { type });
+    await post("/api/v1/admin/agent-types", op.authorization, { type });
     for (let i = 0; i < 25; i++) {
       db.prepare(`INSERT INTO agents (identity, type) VALUES (?, ?)`).run(uniq("carrier"), type);
     }
-    const body = await (await del(`/api/v1/admin/agent-types/${type}`, op.cookie)).json();
+    const body = await (await del(`/api/v1/admin/agent-types/${type}`, op.authorization)).json();
     expect(body.identities).toHaveLength(20);
     expect(body.error).toContain("25");
   });
@@ -416,11 +416,11 @@ describe("taking a type away", () => {
   test("counts an identity that has been torn down", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("kind");
-    await post("/api/v1/admin/agent-types", op.cookie, { type });
+    await post("/api/v1/admin/agent-types", op.authorization, { type });
     const gone = uniq("agent");
     db.prepare(`INSERT INTO agents (identity, type, deleted_at) VALUES (?, ?, datetime('now'))`)
       .run(gone, type);
-    const res = await del(`/api/v1/admin/agent-types/${type}`, op.cookie);
+    const res = await del(`/api/v1/admin/agent-types/${type}`, op.authorization);
     expect(res.status).toBe(409);
     expect((await res.json()).identities).toContain(gone);
   });
@@ -432,14 +432,14 @@ describe("taking a type away", () => {
   test("says deleted or not-found, and never disagrees with its status", async () => {
     const op = await holder(CAPABILITY.AGENT_PROVISION);
     const type = uniq("kind");
-    await post("/api/v1/admin/agent-types", op.cookie, { type });
+    await post("/api/v1/admin/agent-types", op.authorization, { type });
 
-    const deleted = await del(`/api/v1/admin/agent-types/${type}`, op.cookie);
+    const deleted = await del(`/api/v1/admin/agent-types/${type}`, op.authorization);
     expect(deleted.status).toBe(200);
     expect(await deleted.json()).toEqual({ ok: true, type, action: "deleted" });
     expect(agentsSchema.getType(db, type)).toBeNull();
 
-    const again = await del(`/api/v1/admin/agent-types/${type}`, op.cookie);
+    const again = await del(`/api/v1/admin/agent-types/${type}`, op.authorization);
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ ok: true, type, action: "not-found" });
   });
@@ -452,10 +452,10 @@ describe("changing the password that was handed to you", () => {
   async function admitted() {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("holder");
-    const res = await post("/api/v1/admin/users", op.cookie, { username });
+    const res = await post("/api/v1/admin/users", op.authorization, { username });
     const { temporary_password } = await res.json();
     const jwt = await signJwt({ github_id: 0, github_login: username, role: "member" });
-    return { username, password: temporary_password as string, cookie: `mesh_token=${jwt}` };
+    return { username, password: temporary_password as string, authorization: `Bearer ${jwt}` };
   }
 
   const change = (cookie: string, body: unknown) =>
@@ -463,7 +463,7 @@ describe("changing the password that was handed to you", () => {
 
   test("refuses a body it cannot parse", async () => {
     const who = await admitted();
-    expect((await change(who.cookie, "{not json")).status).toBe(400);
+    expect((await change(who.authorization, "{not json")).status).toBe(400);
   });
 
   /**
@@ -480,7 +480,7 @@ describe("changing the password that was handed to you", () => {
       { current: who.password, next: 12345678 },
       { current: 7, next: "longenough" },
     ]) {
-      const res = await change(who.cookie, body);
+      const res = await change(who.authorization, body);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("`next`");
     }
@@ -489,7 +489,7 @@ describe("changing the password that was handed to you", () => {
   /** Changing it to itself is not a change, and a gate it passes is not passed. */
   test("refuses a next that is the current one", async () => {
     const who = await admitted();
-    const res = await change(who.cookie, { current: who.password, next: who.password });
+    const res = await change(who.authorization, { current: who.password, next: who.password });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("must differ");
   });
@@ -501,7 +501,7 @@ describe("changing the password that was handed to you", () => {
    */
   test("refuses a wrong current password without denying the account exists", async () => {
     const who = await admitted();
-    const res = await change(who.cookie, { current: "not-the-password", next: "longenough" });
+    const res = await change(who.authorization, { current: "not-the-password", next: "longenough" });
     expect(res.status).toBe(403);
     expect((await res.json()).error).toContain("`current`");
   });
@@ -509,7 +509,7 @@ describe("changing the password that was handed to you", () => {
   /** A session with no local account behind it has nothing to change. */
   test("answers 404 for a session that is not a local account", async () => {
     const github = await holder(CAPABILITY.USER_ADMIT);   // an OAuth session
-    const res = await change(github.cookie, { current: "whatever", next: "longenough" });
+    const res = await change(github.authorization, { current: "whatever", next: "longenough" });
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain("no local account");
   });
@@ -520,24 +520,24 @@ describe("changing the password that was handed to you", () => {
    */
   test("clears the flag, and the refusal with it", async () => {
     const who = await admitted();
-    expect((await get("/api/v1/admin/users", who.cookie)).status).toBe(403);
+    expect((await get("/api/v1/admin/users", who.authorization)).status).toBe(403);
 
-    const res = await change(who.cookie, { current: who.password, next: "a-longer-one" });
+    const res = await change(who.authorization, { current: who.password, next: "a-longer-one" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, must_change_password: false });
     expect(getLocalUser(who.username)?.must_change_password).toBe(0);
 
     // No longer refused by the gate. `403` for a missing capability is a
     // different refusal and the body says which.
-    const after = await get("/api/v1/admin/users", who.cookie);
+    const after = await get("/api/v1/admin/users", who.authorization);
     expect(await after.json()).not.toMatchObject({ must_change_password: true });
   });
 
   /** And the old password stops working, which is what changing one means. */
   test("leaves the password it replaced unusable", async () => {
     const who = await admitted();
-    await change(who.cookie, { current: who.password, next: "a-longer-one" });
-    const again = await change(who.cookie, { current: who.password, next: "another-longer-one" });
+    await change(who.authorization, { current: who.password, next: "a-longer-one" });
+    const again = await change(who.authorization, { current: who.password, next: "another-longer-one" });
     expect(again.status).toBe(403);
   });
 });

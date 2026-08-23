@@ -58,11 +58,11 @@ async function holder(...caps: string[]) {
   // Stated, not read back: the first user of an empty table is an admin, and an
   // admin is approved by definition.
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const get = (path: string, cookie: string) =>
-  app.fetch(new Request(`http://adm-probe${path}`, { headers: { cookie } }));
+  app.fetch(new Request(`http://adm-probe${path}`, { headers: { authorization: cookie } }));
 
 /** Answer the hub's capabilities route with one observed-source mode, or fail. */
 function hubSays(mode: string | null, ok = true) {
@@ -87,19 +87,19 @@ const source = (identity: string, observed: string) =>
 describe("the grant map", () => {
   test("refuses a caller without role.grant", async () => {
     const nobody = await holder();
-    expect([401, 403]).toContain((await get("/api/v1/admin/grants", nobody.cookie)).status);
+    expect([401, 403]).toContain((await get("/api/v1/admin/grants", nobody.authorization)).status);
   });
 
   test("lists what one subject holds", async () => {
     const op = await holder(CAPABILITY.ROLE_GRANT);
-    const body = await (await get(`/api/v1/admin/grants?subject=${op.login}`, op.cookie)).json();
+    const body = await (await get(`/api/v1/admin/grants?subject=${op.login}`, op.authorization)).json();
     expect(body.ok).toBe(true);
     expect(body.grants.map((g: any) => g.capability)).toContain(CAPABILITY.ROLE_GRANT);
   });
 
   test("refuses a capability that is not in the vocabulary, and hands the vocabulary over", async () => {
     const op = await holder(CAPABILITY.ROLE_GRANT);
-    const res = await get("/api/v1/admin/grants?capability=cook.dinner", op.cookie);
+    const res = await get("/api/v1/admin/grants?capability=cook.dinner", op.authorization);
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("cook.dinner");
@@ -109,7 +109,7 @@ describe("the grant map", () => {
 
   test("lists who holds one capability", async () => {
     const op = await holder(CAPABILITY.ROLE_GRANT);
-    const body = await (await get(`/api/v1/admin/grants?capability=${CAPABILITY.ROLE_GRANT}`, op.cookie)).json();
+    const body = await (await get(`/api/v1/admin/grants?capability=${CAPABILITY.ROLE_GRANT}`, op.authorization)).json();
     expect(body.capability).toBe(CAPABILITY.ROLE_GRANT);
     expect(body.subjects.map((s: any) => s.subject)).toContain(op.login);
   });
@@ -122,7 +122,7 @@ describe("the grant map", () => {
    */
   test("and answers the whole map with the vocabulary beside it", async () => {
     const op = await holder(CAPABILITY.ROLE_GRANT);
-    const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/grants", op.authorization)).json();
     expect(body.capabilities).toEqual(ALL_CAPABILITIES);
     expect(body.grants.some((g: any) => g.subject === op.login && g.capability === CAPABILITY.ROLE_GRANT)).toBe(true);
   });
@@ -131,13 +131,13 @@ describe("the grant map", () => {
 describe("the observed sources, and what the addresses are worth", () => {
   test("refuses a caller without source.read", async () => {
     const nobody = await holder();
-    expect([401, 403]).toContain((await get("/api/v1/admin/agent-sources", nobody.cookie)).status);
+    expect([401, 403]).toContain((await get("/api/v1/admin/agent-sources", nobody.authorization)).status);
   });
 
   test("refuses an identity that is not shaped like one", async () => {
     const op = await holder(CAPABILITY.SOURCE_READ);
     hubSays("socket");
-    const res = await get("/api/v1/admin/agent-sources?identity=not%20an%20identity", op.cookie);
+    const res = await get("/api/v1/admin/agent-sources?identity=not%20an%20identity", op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("invalid identity");
   });
@@ -148,7 +148,7 @@ describe("the observed sources, and what the addresses are worth", () => {
     source(who, "203.0.113.9");
     source(uniq("other"), "198.51.100.9");
     hubSays("socket");
-    const body = await (await get(`/api/v1/admin/agent-sources?identity=${who}`, op.cookie)).json();
+    const body = await (await get(`/api/v1/admin/agent-sources?identity=${who}`, op.authorization)).json();
     expect(body.sources.every((r: any) => r.identity === who)).toBe(true);
     expect(body.sources_total).toBe(body.sources.length);
   });
@@ -166,7 +166,7 @@ describe("the observed sources, and what the addresses are worth", () => {
     expect(total).toBeGreaterThan(500);
 
     hubSays("socket");
-    const body = await (await get("/api/v1/admin/agent-sources", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/agent-sources", op.authorization)).json();
     expect(body.sources.length).toBe(500);
     expect(body.sources_total).toBe(total);
   });
@@ -180,12 +180,12 @@ describe("the observed sources, and what the addresses are worth", () => {
     const op = await holder(CAPABILITY.SOURCE_READ);
 
     hubSays("socket");
-    let body = await (await get("/api/v1/admin/agent-sources", op.cookie)).json();
+    let body = await (await get("/api/v1/admin/agent-sources", op.authorization)).json();
     expect(body.observed_source).toBe("socket");
     expect(body.evidence_note).toContain("kernel-observed peer");
 
     hubSays("forwarded");
-    body = await (await get("/api/v1/admin/agent-sources", op.cookie)).json();
+    body = await (await get("/api/v1/admin/agent-sources", op.authorization)).json();
     expect(body.observed_source).toBe("forwarded");
     expect(body.evidence_note).toContain("X-Forwarded-For");
     // The condition the hub cannot verify, stated rather than implied.
@@ -195,7 +195,7 @@ describe("the observed sources, and what the addresses are worth", () => {
   test("and says the mode is unknown when the hub does not answer, not that it is socket", async () => {
     const op = await holder(CAPABILITY.SOURCE_READ);
     hubSays(null, false);
-    const body = await (await get("/api/v1/admin/agent-sources", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/agent-sources", op.authorization)).json();
     expect(body.ok).toBe(true);
     expect(body.observed_source).toBeNull();
     expect(body.evidence_note).toContain("did not answer");
@@ -211,7 +211,7 @@ describe("who appears in the audit", () => {
    */
   test("refuses a caller without audit.read.metadata", async () => {
     const nobody = await holder(CAPABILITY.SOURCE_READ);
-    expect([401, 403]).toContain((await get("/api/v1/admin/chat-audits/agents", nobody.cookie)).status);
+    expect([401, 403]).toContain((await get("/api/v1/admin/chat-audits/agents", nobody.authorization)).status);
   });
 
   test("answers the identities on both sides of every audited message", async () => {
@@ -223,7 +223,7 @@ describe("who appears in the audit", () => {
        VALUES (?, ?, ?, 'hello', 'delivered', datetime('now'))`,
     ).run(uniq("m"), from, to);
 
-    const res = await get("/api/v1/admin/chat-audits/agents", op.cookie);
+    const res = await get("/api/v1/admin/chat-audits/agents", op.authorization);
     expect(res.status).toBe(200);
     const body = await res.json();
     // `{ agents }` and nothing else — no `ok`, which is worth pinning because
@@ -263,7 +263,7 @@ describe("who appears in the audit", () => {
        VALUES (?, ?, ?, 'x', 'delivered', datetime('now'))`,
     ).run(uniq("msg"), from, to);
 
-    const res = await get("/api/v1/admin/chat-audits/agents", op.cookie);
+    const res = await get("/api/v1/admin/chat-audits/agents", op.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(auditAgents(() => hub).body);
   });
@@ -298,7 +298,7 @@ describe("how deep the queues are", () => {
   test("refuses a caller without mailbox.read_depth", async () => {
     const nobody = await holder();
     expect((await get("/api/v1/admin/mailbox", "")).status).toBe(401);
-    expect((await get("/api/v1/admin/mailbox", nobody.cookie)).status).toBe(403);
+    expect((await get("/api/v1/admin/mailbox", nobody.authorization)).status).toBe(403);
   });
 
   /**
@@ -314,7 +314,7 @@ describe("how deep the queues are", () => {
     queued(identity, { lease: "2099-01-01 00:00:00" });          // held
     queued(identity, { status: "delivered" });                   // not pending at all
 
-    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/mailbox", op.authorization)).json();
     const row = body.mailboxes.find((q: any) => q.identity === identity);
     expect(row).toMatchObject({ identity, pending: 3, leased: 1, oldest: "2026-01-01 00:00:00" });
   });
@@ -328,7 +328,7 @@ describe("how deep the queues are", () => {
     const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
     queued(uniq("someone"));
     const before = pendingNow();
-    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/mailbox", op.authorization)).json();
     expect(body.ok).toBe(true);
     expect(body.total_queued).toBe(before);
     expect(body.total_queued).toBeGreaterThan(0);
@@ -342,14 +342,14 @@ describe("how deep the queues are", () => {
     queued(few);
     for (let i = 0; i < 4; i++) queued(many);
 
-    const body = await (await get("/api/v1/admin/mailbox", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/mailbox", op.authorization)).json();
     const mine = body.mailboxes.filter((q: any) => q.identity === few || q.identity === many);
     expect(mine.map((q: any) => q.identity)).toEqual([many, few]);
   });
 
   test("refuses an off-pattern identity", async () => {
     const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
-    const res = await get("/api/v1/admin/mailbox/has%20space", op.cookie);
+    const res = await get("/api/v1/admin/mailbox/has%20space", op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("invalid identity format");
   });
@@ -369,7 +369,7 @@ describe("how deep the queues are", () => {
     queued(identity, { status: "delivered", ts: "2020-01-01 00:00:00" });
     queued(uniq("other"), { ts: "2019-01-01 00:00:00" });
 
-    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.cookie)).json();
+    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.authorization)).json();
     expect(body).toEqual({
       ok: true,
       identity,
@@ -385,7 +385,7 @@ describe("how deep the queues are", () => {
     const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
     const identity = uniq("sized");
     queued(identity, { content: "x".repeat(4096) });
-    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.cookie)).json();
+    const body = await (await get(`/api/v1/admin/mailbox/${identity}`, op.authorization)).json();
     expect(body.messages[0].size).toBe(4096);
     expect(JSON.stringify(body)).not.toContain("xxxx");
   });
@@ -401,7 +401,7 @@ describe("how deep the queues are", () => {
     for (let i = 0; i < 6; i++) queued(identity, { ts: `2026-03-0${i + 1} 00:00:00` });
 
     const count = async (q: string) =>
-      (await (await get(`/api/v1/admin/mailbox/${identity}${q}`, op.cookie)).json()).messages.length;
+      (await (await get(`/api/v1/admin/mailbox/${identity}${q}`, op.authorization)).json()).messages.length;
 
     expect(await count("?limit=2")).toBe(2);
     expect(await count("?limit=0")).toBe(6);      // 0 is falsy -> default 100
@@ -414,7 +414,7 @@ describe("how deep the queues are", () => {
   /** A name with nothing queued is an empty list, not a 404. */
   test("answers an empty queue rather than refusing", async () => {
     const op = await holder(CAPABILITY.MAILBOX_READ_DEPTH);
-    const res = await get(`/api/v1/admin/mailbox/${uniq("idle")}`, op.cookie);
+    const res = await get(`/api/v1/admin/mailbox/${uniq("idle")}`, op.authorization);
     expect(res.status).toBe(200);
     expect((await res.json()).messages).toEqual([]);
   });
@@ -451,7 +451,7 @@ describe("when the hub will not say what it is limiting", () => {
   test("names the status when the hub refuses", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
     hubLimits(503);
-    const body = await (await telemetry(op.cookie)).json();
+    const body = await (await telemetry(op.authorization)).json();
     expect(body.rate_limits_error).toBe("hub answered 503");
     expect(body.rate_limits).toBeNull();
     expect(body.refusals).toBeNull();
@@ -460,7 +460,7 @@ describe("when the hub will not say what it is limiting", () => {
   test("names the reason when the hub cannot be reached", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_METADATA);
     hubLimits(null);
-    const body = await (await telemetry(op.cookie)).json();
+    const body = await (await telemetry(op.authorization)).json();
     expect(body.rate_limits_error).toContain("connection refused");
     expect(body.rate_limits).toBeNull();
   });
@@ -472,7 +472,7 @@ describe("when the hub will not say what it is limiting", () => {
       limiters: [{ name: "send", refusals: 4 }],
       refusals: [{ kind: "signature", count: 2 }],
     });
-    const body = await (await telemetry(op.cookie)).json();
+    const body = await (await telemetry(op.authorization)).json();
     expect(body.rate_limits_error).toBeNull();
     expect(body.rate_limits).toEqual([{ name: "send", refusals: 4 }]);
     expect(body.refusals).toEqual([{ kind: "signature", count: 2 }]);
@@ -494,7 +494,7 @@ describe("when the hub will not say what it is limiting", () => {
     for (let i = 0; i < 12; i++) insert.run(uniq("stuck-m"), uniq("stuck-lane"));
 
     hubLimits(200);
-    const body = await (await telemetry(op.cookie)).json();
+    const body = await (await telemetry(op.authorization)).json();
     expect(body.lanes_not_draining.length).toBe(10);
     expect(body.lanes_not_draining_shown).toBe(10);
     expect(body.lanes_not_draining_total).toBeGreaterThanOrEqual(12);

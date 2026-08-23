@@ -41,13 +41,13 @@ async function person() {
   createPendingApproval(login, user.github_id);
   expect(approveUser(login)).toBe(true);
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** A browser watching one conversation. */
 async function watching(agentId: string, cookie: string) {
   const res = await app.fetch(new Request(`http://fan-probe/api/v1/events/${agentId}`, {
-    headers: { cookie },
+    headers: { authorization: cookie },
   }));
   expect(res.status).toBe(200);
   const reader = res.body!.getReader();
@@ -101,7 +101,7 @@ describe("what reaches a watching browser", () => {
   test("delivers the hub's frame to the conversation being watched", async () => {
     const who = await person();
     const agent = uniq("agent");
-    const view = await watching(agent, who.cookie);
+    const view = await watching(agent, who.authorization);
     expect(await view.next()).toContain("event: connected");
 
     const door = frameDoor();
@@ -127,7 +127,7 @@ describe("what reaches a watching browser", () => {
   test("reaches the sender's own view as well as the recipient's", async () => {
     const who = await person();
     const agent = uniq("agent");
-    const inbox = await watching(agent, who.cookie);
+    const inbox = await watching(agent, who.authorization);
     await inbox.next();
 
     const door = frameDoor();
@@ -147,7 +147,7 @@ describe("what reaches a watching browser", () => {
   test("does not deliver another conversation's frame", async () => {
     const who = await person();
     const agent = uniq("agent");
-    const view = await watching(agent, who.cookie);
+    const view = await watching(agent, who.authorization);
     await view.next();
 
     const door = frameDoor();
@@ -167,7 +167,7 @@ describe("what reaches a watching browser", () => {
   test("forgets a browser that has gone, the next time it writes", async () => {
     const who = await person();
     const agent = uniq("agent");
-    const view = await watching(agent, who.cookie);
+    const view = await watching(agent, who.authorization);
     await view.next();
 
     const before = sseClientCount();

@@ -37,7 +37,7 @@ async function session(approved: boolean) {
   createPendingApproval(login, user.github_id);
   if (approved) expect(approveUser(login)).toBe(true);
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return `mesh_token=${jwt}`;
+  return `Bearer ${jwt}`;
 }
 
 /**
@@ -75,7 +75,7 @@ function upload(
 ) {
   const { body, type } = multipart(file);
   const headers = new Headers({ "content-type": type });
-  if (cookie) headers.set("cookie", cookie);
+  if (cookie) headers.set("authorization", cookie);
   const length = declared === undefined ? String(body.length) : declared;
   if (length !== null) headers.set("content-length", length);
   // `as BodyInit`: a `Uint8Array` is one at runtime, and the DOM lib types

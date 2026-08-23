@@ -54,7 +54,7 @@ async function operator(...caps: Array<string | [string, string]>) {
     });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** A well-formed Ed25519 public key: 32 raw bytes, base64url. The store parses it. */
@@ -64,7 +64,7 @@ const publicKey = () =>
 const call = (method: string, path: string, cookie: string, body?: unknown) =>
   app.fetch(new Request(`http://gw-probe${path}`, {
     method,
-    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    headers: { "content-type": "application/json", ...(cookie ? { authorization: cookie } : {}) },
     ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
   }));
 
@@ -76,13 +76,13 @@ describe("writing a grant", () => {
   test("refuses a caller without role.grant", async () => {
     const nobody = await operator();
     expect((await post("", { subject: "x", capability: CAPABILITY.USAGE_READ })).status).toBe(401);
-    expect((await post(nobody.cookie, { subject: "x", capability: CAPABILITY.USAGE_READ })).status)
+    expect((await post(nobody.authorization, { subject: "x", capability: CAPABILITY.USAGE_READ })).status)
       .toBe(403);
   });
 
   test("refuses a body it cannot parse", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
-    const res = await post(op.cookie, "{ not json");
+    const res = await post(op.authorization, "{ not json");
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("invalid JSON body");
   });
@@ -90,7 +90,7 @@ describe("writing a grant", () => {
   test("refuses a grant with no subject", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     for (const body of [{}, { capability: CAPABILITY.USAGE_READ }, { subject: "", capability: CAPABILITY.USAGE_READ }, { subject: 7 }]) {
-      const res = await post(op.cookie, body);
+      const res = await post(op.authorization, body);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("subject is required");
     }
@@ -99,7 +99,7 @@ describe("writing a grant", () => {
   /** The refusal carries the vocabulary, so a mistyped name is fixable in one round trip. */
   test("refuses a capability nobody defines, and says which exist", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
-    const res = await post(op.cookie, { subject: uniq("who"), capability: "cook.dinner" });
+    const res = await post(op.authorization, { subject: uniq("who"), capability: "cook.dinner" });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toContain("cook.dinner");
@@ -108,7 +108,7 @@ describe("writing a grant", () => {
 
   test("refuses a capability that is missing rather than wrong", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
-    expect((await post(op.cookie, { subject: uniq("who") })).status).toBe(400);
+    expect((await post(op.authorization, { subject: uniq("who") })).status).toBe(400);
   });
 
   /**
@@ -118,13 +118,13 @@ describe("writing a grant", () => {
   test("records the actor as the author, whatever the body claims", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     const subject = uniq("subject");
-    const res = await post(op.cookie, {
+    const res = await post(op.authorization, {
       subject, capability: CAPABILITY.USAGE_READ, grantedBy: "somebody-else", granted_by: "somebody-else",
     });
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ ok: true, subject, capability: CAPABILITY.USAGE_READ, scope: SCOPE_TENANT });
 
-    const listed = (await (await get(`/api/v1/admin/grants?subject=${subject}`, op.cookie)).json())
+    const listed = (await (await get(`/api/v1/admin/grants?subject=${subject}`, op.authorization)).json())
       .grants as Array<{ capability: string; granted_by: string }>;
     expect(listed.map((g) => g.granted_by)).toEqual([op.login]);
   });
@@ -133,7 +133,7 @@ describe("writing a grant", () => {
   test("defaults an unscoped grant to the tenant", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     const subject = uniq("subject");
-    await post(op.cookie, { subject, capability: CAPABILITY.KEY_APPROVE });
+    await post(op.authorization, { subject, capability: CAPABILITY.KEY_APPROVE });
     expect(grants.has(db, subject, CAPABILITY.KEY_APPROVE, SCOPE_TENANT)).toBe(true);
   });
 
@@ -141,7 +141,7 @@ describe("writing a grant", () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     const subject = uniq("subject");
     const identity = uniq("agent");
-    const res = await post(op.cookie, { subject, capability: CAPABILITY.KEY_APPROVE, scope: identity });
+    const res = await post(op.authorization, { subject, capability: CAPABILITY.KEY_APPROVE, scope: identity });
     expect((await res.json()).scope).toBe(identity);
     expect(grants.has(db, subject, CAPABILITY.KEY_APPROVE, identity)).toBe(true);
     expect(grants.has(db, subject, CAPABILITY.KEY_APPROVE, SCOPE_TENANT)).toBe(false);
@@ -152,20 +152,20 @@ describe("revoking one", () => {
   test("refuses a caller without role.grant", async () => {
     const nobody = await operator();
     expect((await del("", { subject: "x", capability: CAPABILITY.USAGE_READ })).status).toBe(401);
-    expect((await del(nobody.cookie, { subject: "x", capability: CAPABILITY.USAGE_READ })).status)
+    expect((await del(nobody.authorization, { subject: "x", capability: CAPABILITY.USAGE_READ })).status)
       .toBe(403);
   });
 
   test("refuses a body it cannot parse", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
-    expect((await del(op.cookie, "{ not json")).status).toBe(400);
+    expect((await del(op.authorization, "{ not json")).status).toBe(400);
   });
 
   /** Both halves name a row. Either missing is a request that names no grant. */
   test("refuses a revocation that names no grant", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     for (const body of [{}, { subject: uniq("who") }, { capability: CAPABILITY.USAGE_READ }, { subject: 7, capability: CAPABILITY.USAGE_READ }]) {
-      const res = await del(op.cookie, body);
+      const res = await del(op.authorization, body);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("subject and capability are required");
     }
@@ -179,13 +179,13 @@ describe("revoking one", () => {
   test("reports whether there was anything to remove", async () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     const subject = uniq("subject");
-    await post(op.cookie, { subject, capability: CAPABILITY.USAGE_READ });
+    await post(op.authorization, { subject, capability: CAPABILITY.USAGE_READ });
 
-    const first = await del(op.cookie, { subject, capability: CAPABILITY.USAGE_READ });
+    const first = await del(op.authorization, { subject, capability: CAPABILITY.USAGE_READ });
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({ ok: true, action: "deleted" });
 
-    const second = await del(op.cookie, { subject, capability: CAPABILITY.USAGE_READ });
+    const second = await del(op.authorization, { subject, capability: CAPABILITY.USAGE_READ });
     expect(await second.json()).toEqual({ ok: true, action: "not-found" });
     expect(grants.has(db, subject, CAPABILITY.USAGE_READ, SCOPE_TENANT)).toBe(false);
   });
@@ -201,10 +201,10 @@ describe("revoking one", () => {
     const op = await operator(CAPABILITY.ROLE_GRANT);
     const subject = uniq("subject");
     const mine = uniq("agent");
-    await post(op.cookie, { subject, capability: CAPABILITY.KEY_APPROVE, scope: mine });
-    await post(op.cookie, { subject, capability: CAPABILITY.KEY_APPROVE, scope: SCOPE_TENANT });
+    await post(op.authorization, { subject, capability: CAPABILITY.KEY_APPROVE, scope: mine });
+    await post(op.authorization, { subject, capability: CAPABILITY.KEY_APPROVE, scope: SCOPE_TENANT });
 
-    expect(await (await del(op.cookie, { subject, capability: CAPABILITY.KEY_APPROVE, scope: mine })).json())
+    expect(await (await del(op.authorization, { subject, capability: CAPABILITY.KEY_APPROVE, scope: mine })).json())
       .toEqual({ ok: true, action: "deleted" });
     const left = grants.listFor(db, subject)
       .filter((g) => g.capability === CAPABILITY.KEY_APPROVE)
@@ -224,7 +224,7 @@ describe("the any-scope gate", () => {
     const op = await operator([CAPABILITY.KEY_APPROVE, identity]);
     ownership.assign(db, { identity, owner: op.login, grantedBy: "grants-writes-test" });
 
-    const res = await get("/api/v1/admin/agents/owned", op.cookie);
+    const res = await get("/api/v1/admin/agents/owned", op.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, owner: op.login, identities: [identity] });
   });
@@ -232,7 +232,7 @@ describe("the any-scope gate", () => {
   test("refuses a caller holding the capability at no scope at all", async () => {
     const nobody = await operator();
     expect((await get("/api/v1/admin/agents/owned", "")).status).toBe(401);
-    const res = await get("/api/v1/admin/agents/owned", nobody.cookie);
+    const res = await get("/api/v1/admin/agents/owned", nobody.authorization);
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ capability: CAPABILITY.KEY_APPROVE, scope: "any" });
   });
@@ -244,7 +244,7 @@ describe("the any-scope gate", () => {
    */
   test("does not widen the owned list for a tenant-wide holder", async () => {
     const op = await operator([CAPABILITY.KEY_APPROVE, SCOPE_TENANT]);
-    expect((await (await get("/api/v1/admin/agents/owned", op.cookie)).json()).identities).toEqual([]);
+    expect((await (await get("/api/v1/admin/agents/owned", op.authorization)).json()).identities).toEqual([]);
   });
 });
 
@@ -259,14 +259,14 @@ describe("the pending-key queue", () => {
     const op = await operator([CAPABILITY.KEY_APPROVE, mine]);
     ownership.assign(db, { identity: mine, owner: op.login, grantedBy: "grants-writes-test" });
 
-    const body = await (await get("/api/v1/admin/keys/pending", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/keys/pending", op.authorization)).json();
     const listed = (body.keys as Array<{ identity: string }>).map((k) => k.identity);
     expect(listed).toContain(mine);
     expect(listed).not.toContain(theirs);
     expect(body.ok).toBe(true);
 
     const wide = await operator([CAPABILITY.KEY_APPROVE, SCOPE_TENANT]);
-    const all = (await (await get("/api/v1/admin/keys/pending", wide.cookie)).json())
+    const all = (await (await get("/api/v1/admin/keys/pending", wide.authorization)).json())
       .keys as Array<{ identity: string }>;
     expect(all.map((k) => k.identity)).toContain(theirs);
   });
@@ -286,7 +286,7 @@ describe("the pending-key stream", () => {
   /** Frames, one at a time, holding the pending read across calls. */
   function subscribe(cookie: string) {
     const res = app.fetch(new Request("http://gw-probe/api/v1/admin/keys/stream", {
-      headers: { cookie },
+      headers: { authorization: cookie },
     }));
     let reader: ReadableStreamDefaultReader<Uint8Array>;
     let pending: ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> | null = null;
@@ -312,7 +312,7 @@ describe("the pending-key stream", () => {
   test("refuses an operator who cannot decide", async () => {
     const nobody = await operator();
     expect((await get("/api/v1/admin/keys/stream", "")).status).toBe(401);
-    expect((await get("/api/v1/admin/keys/stream", nobody.cookie)).status).toBe(403);
+    expect((await get("/api/v1/admin/keys/stream", nobody.authorization)).status).toBe(403);
   });
 
   test("says what is already waiting, then what arrives", async () => {
@@ -320,7 +320,7 @@ describe("the pending-key stream", () => {
     const waiting = uniq("already");
     keys.proposeKey(db, waiting, publicKey(), "grants-writes-test");
 
-    const s = await subscribe(op.cookie).ready();
+    const s = await subscribe(op.authorization).ready();
     expect(await s.next()).toContain("event: connected");
 
     const snapshot = (await s.next())!;
@@ -415,7 +415,7 @@ describe("the last grantor", () => {
    * the state this asks about cannot be produced any other way.
    */
   describe("through the route", () => {
-    async function withOnlyOneGrantor<T>(fn: (op: { login: string; cookie: string }) => Promise<T>): Promise<T> {
+    async function withOnlyOneGrantor<T>(fn: (op: { login: string; authorization: string }) => Promise<T>): Promise<T> {
       const op = await operator(CAPABILITY.ROLE_GRANT);
       const others = grants
         .subjectsWith(db, CAPABILITY.ROLE_GRANT)
@@ -437,7 +437,7 @@ describe("the last grantor", () => {
 
     test("refuses to revoke itself, and says which grant it is", async () => {
       await withOnlyOneGrantor(async (op) => {
-        const res = await del(op.cookie, { subject: op.login, capability: CAPABILITY.ROLE_GRANT });
+        const res = await del(op.authorization, { subject: op.login, capability: CAPABILITY.ROLE_GRANT });
         expect(res.status).toBe(409);
         const body = await res.json();
         expect(body.code).toBe("LAST_GRANTOR");
@@ -454,7 +454,7 @@ describe("the last grantor", () => {
         grants.grant(db, {
           subject: op.login, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test",
         });
-        const res = await del(op.cookie, { subject: op.login, capability: CAPABILITY.USAGE_READ });
+        const res = await del(op.authorization, { subject: op.login, capability: CAPABILITY.USAGE_READ });
         expect(res.status).toBe(200);
         expect((await res.json()).action).toBe("deleted");
       });
@@ -472,7 +472,7 @@ describe("the last grantor", () => {
         grants.grant(db, {
           subject: op.login, capability: CAPABILITY.USAGE_READ, grantedBy: "grants-writes-test",
         });
-        const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+        const body = await (await get("/api/v1/admin/grants", op.authorization)).json();
         const rows = body.grants as Array<{
           subject: string; capability: string; revocable: boolean; immutable_reason?: string;
         }>;
@@ -492,7 +492,7 @@ describe("the last grantor", () => {
     test("and every grant is revocable again once somebody else holds it", async () => {
       const first = await operator(CAPABILITY.ROLE_GRANT);
       const second = await operator(CAPABILITY.ROLE_GRANT);
-      const body = await (await get("/api/v1/admin/grants", first.cookie)).json();
+      const body = await (await get("/api/v1/admin/grants", first.authorization)).json();
       const rows = (body.grants as Array<{ subject: string; capability: string; revocable: boolean }>)
         .filter((r) => r.capability === CAPABILITY.ROLE_GRANT
           && (r.subject === first.login || r.subject === second.login));
@@ -503,7 +503,7 @@ describe("the last grantor", () => {
     test("with a second holder, the revoke goes through", async () => {
       const first = await operator(CAPABILITY.ROLE_GRANT);
       const second = await operator(CAPABILITY.ROLE_GRANT);
-      const res = await del(first.cookie, { subject: second.login, capability: CAPABILITY.ROLE_GRANT });
+      const res = await del(first.authorization, { subject: second.login, capability: CAPABILITY.ROLE_GRANT });
       expect(res.status).toBe(200);
       expect((await res.json()).action).toBe("deleted");
       expect(grants.has(db, second.login, CAPABILITY.ROLE_GRANT, SCOPE_TENANT)).toBe(false);
@@ -541,7 +541,7 @@ describe("a protected account", () => {
     const fixed = await protectedOperator();
     const op = await operator(CAPABILITY.ROLE_GRANT);
 
-    const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+    const body = await (await get("/api/v1/admin/grants", op.authorization)).json();
     expect(body.immutable_subjects).toContain(fixed);
 
     const rows = (body.grants as Array<{
@@ -558,7 +558,7 @@ describe("a protected account", () => {
     const fixed = await protectedOperator();
     const op = await operator(CAPABILITY.ROLE_GRANT);
 
-    const res = await del(op.cookie, { subject: fixed, capability: CAPABILITY.USAGE_READ });
+    const res = await del(op.authorization, { subject: fixed, capability: CAPABILITY.USAGE_READ });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.code).toBe("PROTECTED_ACCOUNT");
@@ -591,10 +591,10 @@ describe("a protected account", () => {
       expect(protectedSubjects()).toContain(local);
 
       const op = await operator(CAPABILITY.ROLE_GRANT);
-      const body = await (await get("/api/v1/admin/grants", op.cookie)).json();
+      const body = await (await get("/api/v1/admin/grants", op.authorization)).json();
       expect(body.immutable_subjects).toContain(local);
 
-      const res = await del(op.cookie, { subject: local, capability: CAPABILITY.USAGE_READ });
+      const res = await del(op.authorization, { subject: local, capability: CAPABILITY.USAGE_READ });
       expect(res.status).toBe(409);
     } finally {
       getDb().prepare(`DELETE FROM local_users WHERE username = ?`).run(local);

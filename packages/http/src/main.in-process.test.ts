@@ -76,6 +76,20 @@ const app = mod.app;
  * requests, not one, and a walk that skipped the second would read the mesh as
  * refusing everything.
  */
+/**
+ * The session an answer just issued, in the form an in-process request can carry.
+ *
+ * `cookie` is a forbidden header name: the runtime CI runs strips it from a
+ * `Request` built in this process, and this one does not. A walk that puts the
+ * issued cookie back on a request is therefore testing the runtime rather than
+ * the mesh, so the token travels as a bearer instead — which `extractJwt` reads
+ * first. The cookie itself is checked where a browser sends it.
+ */
+function bearerFrom(res: Response): string {
+  const issued = res.headers.getSetCookie().find((c) => c.startsWith("mesh_token=")) ?? "";
+  return `Bearer ${issued.slice("mesh_token=".length).split(";")[0]}`;
+}
+
 let cookie = "";
 
 beforeAll(async () => {
@@ -87,7 +101,7 @@ beforeAll(async () => {
     body: new URLSearchParams({ username: SEED_ADMIN, password: "admin" }).toString(),
   }));
   if (login.status !== 200) throw new Error(`sign-in failed: ${login.status} ${await login.text()}`);
-  const setCookie = login.headers.get("set-cookie") ?? "";
+  const setCookie = login.headers.getSetCookie().find((c) => c.startsWith("mesh_token=")) ?? "";
   cookie = setCookie.split(";")[0]!;
   // **A 200 with no session cookie is a different failure from a refused one.**
   // This walk read `set-cookie` and carried whatever it found into every
@@ -123,9 +137,15 @@ beforeAll(async () => {
     );
   }
 
+  // From here the session travels as a bearer token. A `Request` built in this
+  // process does not always keep a `cookie` header — it is a forbidden header
+  // name, and the runtime CI runs strips it — so carrying the cookie itself
+  // would make this walk a test of the runtime rather than of the mesh.
+  cookie = `Bearer ${cookie.slice("mesh_token=".length)}`;
+
   const changed = await app.fetch(new Request("http://in-process/auth/local/password", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", authorization: cookie },
     body: JSON.stringify({ current: "admin", next: "in-process-password" }),
   }));
   if (changed.status !== 200) {
@@ -134,7 +154,7 @@ beforeAll(async () => {
     // message used to carry the number alone, which is why this failure has
     // been unreadable in CI: `/auth/me` is asked with the same cookie so the
     // line says which of the two happened.
-    const me = await app.fetch(new Request("http://in-process/auth/me", { headers: { cookie } }));
+    const me = await app.fetch(new Request("http://in-process/auth/me", { headers: { authorization: cookie } }));
     throw new Error(
       `password change failed: ${changed.status} ${(await changed.text()).slice(0, 200)} ` +
       `(session cookie ${cookie.length} chars, /auth/me answered ${me.status})`,
@@ -148,7 +168,7 @@ afterAll(() => { /* no process to stop: nothing was started */ });
 const asAdmin = (path: string, method: string, body?: unknown) =>
   app.fetch(new Request(`http://in-process${path}`, {
     method,
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", authorization: cookie },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }));
 
@@ -551,7 +571,7 @@ describe("the registry, scoped to the session", () => {
 
   /** The identities the route returned, for whoever the cookie belongs to. */
   const idsFor = async (session: string): Promise<string[]> => {
-    const res = await call("/api/v1/agents", { headers: { cookie: session } });
+    const res = await call("/api/v1/agents", { headers: { authorization: session } });
     expect(res.status).toBe(200);
     const body = await res.json();
     return (body.agents as Array<{ id: string }>).map(a => a.id);
@@ -574,13 +594,13 @@ describe("the registry, scoped to the session", () => {
       body: new URLSearchParams({ username: MEMBER, password: temporary_password }).toString(),
     });
     if (login.status !== 200) throw new Error(`member sign-in failed: ${login.status}`);
-    memberCookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    memberCookie = bearerFrom(login);
 
     // An admitted account is behind the first-login gate, and every other route
     // answers `403 { must_change_password: true }` until it is passed.
     const changed = await call("/auth/local/password", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: memberCookie },
+      headers: { "content-type": "application/json", authorization: memberCookie },
       body: JSON.stringify({ current: temporary_password, next: "in-process-member-password" }),
     });
     if (changed.status !== 200) throw new Error(`member password change failed: ${changed.status}`);
@@ -666,7 +686,7 @@ describe("the registry, scoped to the session", () => {
                 ON CONFLICT(identity) DO UPDATE SET last_seen = excluded.last_seen`)
       .run(OWNED, seen);
 
-    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const res = await call("/api/v1/agents", { headers: { authorization: memberCookie } });
     const agents = (await res.json()).agents as Array<{ id: string; last_seen_at: string | null }>;
     const byId = new Map(agents.map(a => [a.id, a] as const));
 
@@ -684,7 +704,7 @@ describe("the registry, scoped to the session", () => {
     insert.run("in-process-scoped-fp-approved", OWNED, "in-process-key", "approved");
     insert.run("in-process-scoped-fp-pending", CORRESPONDENT, "in-process-key", "pending");
 
-    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const res = await call("/api/v1/agents", { headers: { authorization: memberCookie } });
     const agents = (await res.json()).agents as Array<{ id: string; fingerprint: string | null }>;
     const byId = new Map(agents.map(a => [a.id, a] as const));
 
@@ -700,7 +720,7 @@ describe("the registry, scoped to the session", () => {
     // Deliberate absence. Whether silence for five minutes is `inactive` is an
     // operating policy, and a route answering it would ship a judgement dressed
     // as a measurement — the defect the screens were fixed for in `71afcdb`.
-    const res = await call("/api/v1/agents", { headers: { cookie: memberCookie } });
+    const res = await call("/api/v1/agents", { headers: { authorization: memberCookie } });
     const agents = (await res.json()).agents as Array<Record<string, unknown>>;
     expect(agents.length).toBeGreaterThan(0);
     for (const entry of agents) {
@@ -868,7 +888,7 @@ describe("a send with nothing behind it, and the edges of sign-in", () => {
   });
 
   test("signing out clears the browser's copy of the session", async () => {
-    const res = await call("/auth/logout", { method: "POST", headers: { cookie } });
+    const res = await call("/auth/logout", { method: "POST", headers: { authorization: cookie } });
     expect(res.status).toBe(200);
     // The front end clearing its own state is not signing out: the cookie is
     // what the next request carries. Expiring it is the server's half, and on
@@ -1042,14 +1062,14 @@ describe("who may fetch an attachment", () => {
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
       body: new URLSearchParams({ username: "in-process-unapproved", password: temporary_password }).toString(),
     });
-    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    const theirs = bearerFrom(login);
     await call("/auth/local/password", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: theirs },
+      headers: { "content-type": "application/json", authorization: theirs },
       body: JSON.stringify({ current: temporary_password, next: "in-process-unapproved-pw" }),
     });
     getDb().prepare("DELETE FROM agent_registry WHERE id = ?").run("in-process-unapproved");
-    const res = await call(`/api/v1/attachments/${ATTACHMENT}`, { headers: { cookie: theirs } });
+    const res = await call(`/api/v1/attachments/${ATTACHMENT}`, { headers: { authorization: theirs } });
     expect(res.status).toBe(403);
   });
 });
@@ -1161,14 +1181,14 @@ describe("what the key stream says first", () => {
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
       body: new URLSearchParams({ username: "in-process-nokeys", password: temporary_password }).toString(),
     });
-    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    const theirs = bearerFrom(login);
     await call("/auth/local/password", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: theirs },
+      headers: { "content-type": "application/json", authorization: theirs },
       body: JSON.stringify({ current: temporary_password, next: "in-process-nokeys-pw" }),
     });
 
-    const res = await call("/api/v1/admin/keys/stream", { headers: { cookie: theirs } });
+    const res = await call("/api/v1/admin/keys/stream", { headers: { authorization: theirs } });
     expect(res.status).toBe(403);
     // An operator told which grant is missing can ask for that one; one told
     // "forbidden" asks for everything.
@@ -1206,7 +1226,7 @@ describe("what a reconnecting audit stream replays", () => {
 
   /** Frames until the stream goes quiet, then it is dropped. */
   const replay = async (path: string, headers: Record<string, string>): Promise<string[]> => {
-    const res = await call(path, { headers: { cookie, ...headers } });
+    const res = await call(path, { headers: { authorization: cookie, ...headers } });
     expect(res.status).toBe(200);
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
@@ -1264,16 +1284,16 @@ describe("what a reconnecting audit stream replays", () => {
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
       body: new URLSearchParams({ username: "in-process-noaudit", password: temporary_password }).toString(),
     });
-    const theirs = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
+    const theirs = bearerFrom(login);
     await call("/auth/local/password", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: theirs },
+      headers: { "content-type": "application/json", authorization: theirs },
       body: JSON.stringify({ current: temporary_password, next: "in-process-noaudit-pw" }),
     });
 
     // This route serves whole message bodies. It was behind a role check, so
     // every admin-role session read every conversation on the mesh (§ 11.0).
-    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { cookie: theirs } });
+    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { authorization: theirs } });
     expect(res.status).toBe(403);
     expect((await res.json()).capability).toBe("audit.read.content");
   });
@@ -1289,7 +1309,7 @@ describe("what a reconnecting audit stream replays", () => {
   });
 
   test("says hello as an event stream", async () => {
-    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { cookie } });
+    const res = await call("/api/v1/admin/chat-audits/stream", { headers: { authorization: cookie } });
     const type = res.headers.get("content-type") ?? "";
     await res.body?.cancel();
     expect(type).toContain("text/event-stream");
@@ -1407,7 +1427,7 @@ describe("the service worker's own source", () => {
     // for a name it does not know, which is the same answer a route that does
     // not exist gives — and this check is about the route existing.
     upsertApprovedWebUser("in-process-sw-target");
-    const res = await call(`${target}in-process-sw-target`, { headers: { cookie } });
+    const res = await call(`${target}in-process-sw-target`, { headers: { authorization: cookie } });
     expect({ opens: res.status }).toEqual({ opens: 200 });
   });
 
@@ -1618,7 +1638,7 @@ describe("deciding a key by the string the operator compared", () => {
   test("refuses a body that is not JSON at all", async () => {
     const res = await call("/api/v1/admin/keys/approve", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", authorization: cookie },
       body: "in-process-not-json",
     });
     expect(res.status).toBe(400);
@@ -1811,7 +1831,7 @@ describe("when a store under a route will not answer", () => {
    */
   test("a gap fetch that fails leaves the stream open and live", async () => {
     const res = await withoutTable("hub.db", "messages", () =>
-      call("/api/v1/admin/chat-audits/stream", { headers: { cookie, "last-event-id": "in-process-audit-anchor" } }),
+      call("/api/v1/admin/chat-audits/stream", { headers: { authorization: cookie, "last-event-id": "in-process-audit-anchor" } }),
     );
 
     expect(res.status).toBe(200);
@@ -1892,7 +1912,7 @@ describe("the id that pairs a complaint with a log line", () => {
 const asAdminWithId = (path: string, method: string, requestId: string, body?: unknown) =>
   app.fetch(new Request(`http://in-process${path}`, {
     method,
-    headers: { "content-type": "application/json", cookie, "x-request-id": requestId },
+    headers: { "content-type": "application/json", authorization: cookie, "x-request-id": requestId },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   }));
 

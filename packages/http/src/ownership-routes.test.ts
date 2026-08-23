@@ -54,7 +54,7 @@ async function operator(scope?: string) {
     });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** An identity this server's registry knows about. */
@@ -72,7 +72,7 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
   }));
 
 const issue = (body: unknown, cookie: string) =>
-  post("/api/v1/admin/pairing-codes", body, { cookie });
+  post("/api/v1/admin/pairing-codes", body, { authorization: cookie });
 
 const redeem = (body: unknown, headers: Record<string, string> = {}) =>
   post("/api/v1/pairing-codes/redeem", body, headers);
@@ -83,14 +83,14 @@ describe("issuing a pairing code", () => {
   test("refuses a caller with no session and one with no grant", async () => {
     expect((await issue({ identity: registered() }, "")).status).toBe(401);
     const nobody = await operator();
-    const res = await issue({ identity: registered() }, nobody.cookie);
+    const res = await issue({ identity: registered() }, nobody.authorization);
     expect(res.status).toBe(403);
     expect((await res.json()).capability).toBe(CAPABILITY.AGENT_PROVISION);
   });
 
   test("refuses a body it cannot parse", async () => {
     const op = await operator(SCOPE_TENANT);
-    const res = await issue("{not json", op.cookie);
+    const res = await issue("{not json", op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("JSON");
   });
@@ -99,7 +99,7 @@ describe("issuing a pairing code", () => {
   test("refuses an identity that is missing, not a string, or off-pattern", async () => {
     const op = await operator(SCOPE_TENANT);
     for (const identity of [undefined, 7, "", "-leading-dash", "has space", "has_underscore", "슬"]) {
-      const res = await issue({ identity }, op.cookie);
+      const res = await issue({ identity }, op.authorization);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("identity");
     }
@@ -112,13 +112,13 @@ describe("issuing a pairing code", () => {
   test("refuses a ttl outside 1..3600", async () => {
     const op = await operator(SCOPE_TENANT);
     for (const ttl_seconds of [0, -1, 3601, 3600.5, "not a number", ""]) {
-      const res = await issue({ identity: registered(), ttl_seconds }, op.cookie);
+      const res = await issue({ identity: registered(), ttl_seconds }, op.authorization);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("1..3600");
     }
     // The boundaries themselves are inside.
     for (const ttl_seconds of [1, 3600]) {
-      expect((await issue({ identity: registered(), ttl_seconds }, op.cookie)).status).toBe(201);
+      expect((await issue({ identity: registered(), ttl_seconds }, op.authorization)).status).toBe(201);
     }
   });
 
@@ -132,7 +132,7 @@ describe("issuing a pairing code", () => {
   test("takes the default for a ttl JSON could not carry", async () => {
     const op = await operator(SCOPE_TENANT);
     for (const ttl_seconds of [NaN, Infinity, null]) {
-      const res = await issue({ identity: registered(), ttl_seconds }, op.cookie);
+      const res = await issue({ identity: registered(), ttl_seconds }, op.authorization);
       expect(res.status).toBe(201);
       expect((await res.json()).ttl_seconds).toBe(300);
     }
@@ -147,7 +147,7 @@ describe("issuing a pairing code", () => {
   test("issues a code, and says how long it is good for", async () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
-    const res = await issue({ identity, ttl_seconds: 120 }, op.cookie);
+    const res = await issue({ identity, ttl_seconds: 120 }, op.authorization);
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -164,7 +164,7 @@ describe("issuing a pairing code", () => {
   /** Omitting it takes the deployment's default rather than refusing. */
   test("defaults the window when the caller does not ask for one", async () => {
     const op = await operator(SCOPE_TENANT);
-    const res = await issue({ identity: registered() }, op.cookie);
+    const res = await issue({ identity: registered() }, op.authorization);
     expect(res.status).toBe(201);
     expect((await res.json()).ttl_seconds).toBe(300);
   });
@@ -177,7 +177,7 @@ describe("issuing a pairing code", () => {
    */
   test("issues for a name this registry has never seen", async () => {
     const op = await operator(SCOPE_TENANT);
-    expect((await issue({ identity: uniq("unregistered") }, op.cookie)).status).toBe(201);
+    expect((await issue({ identity: uniq("unregistered") }, op.authorization)).status).toBe(201);
   });
 });
 
@@ -188,7 +188,7 @@ describe("redeeming one", () => {
   test("is reached with no cookie at all", async () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
-    const { code } = await (await issue({ identity }, op.cookie)).json();
+    const { code } = await (await issue({ identity }, op.authorization)).json();
 
     const owner = uniq("owner");
     const res = await redeem({ code, owner });
@@ -205,7 +205,7 @@ describe("redeeming one", () => {
   test("records the issuer as the grantor, not the redeemer", async () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
-    const { code } = await (await issue({ identity }, op.cookie)).json();
+    const { code } = await (await issue({ identity }, op.authorization)).json();
     const owner = uniq("owner");
     await redeem({ code, owner });
 
@@ -243,7 +243,7 @@ describe("redeeming one", () => {
     expect((await expired.json()).reason).toBe("expired");
 
     const op = await operator(SCOPE_TENANT);
-    const { code } = await (await issue({ identity: registered() }, op.cookie)).json();
+    const { code } = await (await issue({ identity: registered() }, op.authorization)).json();
     expect((await redeem({ code, owner: uniq("first") })).status).toBe(200);
     const again = await redeem({ code, owner: uniq("second") });
     expect(again.status).toBe(409);
@@ -254,7 +254,7 @@ describe("redeeming one", () => {
   test("gives the loser of a race no ownership", async () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
-    const { code } = await (await issue({ identity }, op.cookie)).json();
+    const { code } = await (await issue({ identity }, op.authorization)).json();
     const first = uniq("first");
     const second = uniq("second");
     await redeem({ code, owner: first });
@@ -272,7 +272,7 @@ describe("redeeming one", () => {
    */
   test("records the nearest address in x-forwarded-for", async () => {
     const op = await operator(SCOPE_TENANT);
-    const { code } = await (await issue({ identity: registered() }, op.cookie)).json();
+    const { code } = await (await issue({ identity: registered() }, op.authorization)).json();
     await redeem({ code, owner: uniq("owner") }, { "x-forwarded-for": "10.0.0.1, 203.0.113.9" });
     expect(db.prepare(`SELECT redeemed_from FROM pairing_codes WHERE code = ?`).get(code))
       .toEqual({ redeemed_from: "203.0.113.9" });
@@ -282,7 +282,7 @@ describe("redeeming one", () => {
     const op = await operator(SCOPE_TENANT);
     const codes: string[] = [];
     for (let i = 0; i < 3; i++) {
-      codes.push((await (await issue({ identity: registered() }, op.cookie)).json()).code);
+      codes.push((await (await issue({ identity: registered() }, op.authorization)).json()).code);
     }
     await redeem({ code: codes[0], owner: uniq("owner") }, { "x-real-ip": "198.51.100.4" });
     // An empty forwarded-for must not shadow the fallback.
@@ -303,7 +303,7 @@ describe("redeeming one", () => {
    */
   test("keeps the spent code as the record of the claim", async () => {
     const op = await operator(SCOPE_TENANT);
-    const { code } = await (await issue({ identity: registered() }, op.cookie)).json();
+    const { code } = await (await issue({ identity: registered() }, op.authorization)).json();
     await redeem({ code, owner: uniq("owner") }, { "x-real-ip": "192.0.2.7" });
     const row = db.prepare(`SELECT redeemed_at, redeemed_from FROM pairing_codes WHERE code = ?`)
       .get(code) as { redeemed_at: string | null; redeemed_from: string | null };
@@ -318,7 +318,7 @@ describe("redeeming one", () => {
     const first = uniq("first");
     const second = uniq("second");
     for (const owner of [first, second]) {
-      const { code } = await (await issue({ identity }, op.cookie)).json();
+      const { code } = await (await issue({ identity }, op.authorization)).json();
       expect((await redeem({ code, owner })).status).toBe(200);
     }
     expect(ownership.owners(db, identity).map((o) => o.owner).sort())
@@ -329,14 +329,14 @@ describe("redeeming one", () => {
 // --- can_proxy (POST /api/v1/admin/agents/:identity/can-proxy) -------------
 
 const setProxy = (identity: string, body: unknown, cookie: string) =>
-  post(`/api/v1/admin/agents/${identity}/can-proxy`, body, { cookie });
+  post(`/api/v1/admin/agents/${identity}/can-proxy`, body, { authorization: cookie });
 
 describe("granting the right to speak for others", () => {
   test("refuses a caller with no session and one with no grant", async () => {
     const identity = registered();
     expect((await setProxy(identity, { can_proxy: true }, "")).status).toBe(401);
     const nobody = await operator();
-    expect((await setProxy(identity, { can_proxy: true }, nobody.cookie)).status).toBe(403);
+    expect((await setProxy(identity, { can_proxy: true }, nobody.authorization)).status).toBe(403);
   });
 
   /**
@@ -349,8 +349,8 @@ describe("granting the right to speak for others", () => {
     const theirs = registered();
     const op = await operator(mine);
 
-    expect((await setProxy(mine, { can_proxy: true }, op.cookie)).status).toBe(200);
-    const res = await setProxy(theirs, { can_proxy: true }, op.cookie);
+    expect((await setProxy(mine, { can_proxy: true }, op.authorization)).status).toBe(200);
+    const res = await setProxy(theirs, { can_proxy: true }, op.authorization);
     expect(res.status).toBe(403);
     expect((await res.json()).scope).toBe(theirs);
     expect(entitlement.canProxy(db, theirs)).toBe(false);
@@ -360,7 +360,7 @@ describe("granting the right to speak for others", () => {
   test("accepts a tenant-wide grant", async () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
-    expect((await setProxy(identity, { can_proxy: true }, op.cookie)).status).toBe(200);
+    expect((await setProxy(identity, { can_proxy: true }, op.authorization)).status).toBe(200);
     expect(entitlement.canProxy(db, identity)).toBe(true);
   });
 
@@ -371,17 +371,17 @@ describe("granting the right to speak for others", () => {
    */
   test("checks the grant before the name's shape", async () => {
     const bad = "has%20space";
-    expect((await setProxy(bad, { can_proxy: true }, (await operator()).cookie)).status).toBe(403);
+    expect((await setProxy(bad, { can_proxy: true }, (await operator()).authorization)).status).toBe(403);
 
     const op = await operator(SCOPE_TENANT);
-    const res = await setProxy(bad, { can_proxy: true }, op.cookie);
+    const res = await setProxy(bad, { can_proxy: true }, op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("invalid identity format");
   });
 
   test("refuses a body it cannot parse", async () => {
     const op = await operator(SCOPE_TENANT);
-    const res = await setProxy(registered(), "{not json", op.cookie);
+    const res = await setProxy(registered(), "{not json", op.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("JSON");
   });
@@ -395,7 +395,7 @@ describe("granting the right to speak for others", () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
     for (const can_proxy of [undefined, 1, 0, "true", "false", null, {}]) {
-      const res = await setProxy(identity, { can_proxy }, op.cookie);
+      const res = await setProxy(identity, { can_proxy }, op.authorization);
       expect(res.status).toBe(400);
       expect((await res.json()).error).toContain("can_proxy must be a boolean");
     }
@@ -406,7 +406,7 @@ describe("granting the right to speak for others", () => {
   test("refuses a name this registry does not carry", async () => {
     const op = await operator(SCOPE_TENANT);
     const stranger = uniq("stranger");
-    const res = await setProxy(stranger, { can_proxy: true }, op.cookie);
+    const res = await setProxy(stranger, { can_proxy: true }, op.authorization);
     expect(res.status).toBe(404);
     expect((await res.json()).error).toContain(stranger);
     expect(db.prepare(`SELECT 1 FROM agents WHERE identity = ?`).get(stranger)).toBeNull();
@@ -417,7 +417,7 @@ describe("granting the right to speak for others", () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
     db.prepare(`UPDATE agents SET deleted_at = datetime('now') WHERE identity = ?`).run(identity);
-    expect((await setProxy(identity, { can_proxy: true }, op.cookie)).status).toBe(404);
+    expect((await setProxy(identity, { can_proxy: true }, op.authorization)).status).toBe(404);
   });
 
   /** Both directions, and the store agrees with the answer. */
@@ -425,12 +425,12 @@ describe("granting the right to speak for others", () => {
     const op = await operator(SCOPE_TENANT);
     const identity = registered();
 
-    const on = await setProxy(identity, { can_proxy: true }, op.cookie);
+    const on = await setProxy(identity, { can_proxy: true }, op.authorization);
     expect(on.status).toBe(200);
     expect(await on.json()).toEqual({ ok: true, identity, can_proxy: true });
     expect(entitlement.canProxy(db, identity)).toBe(true);
 
-    const off = await setProxy(identity, { can_proxy: false }, op.cookie);
+    const off = await setProxy(identity, { can_proxy: false }, op.authorization);
     expect(off.status).toBe(200);
     expect(await off.json()).toEqual({ ok: true, identity, can_proxy: false });
     expect(entitlement.canProxy(db, identity)).toBe(false);
@@ -443,7 +443,7 @@ describe("granting the right to speak for others", () => {
     const op = await operator(SCOPE_TENANT);
     const target = registered();
     const bystander = registered();
-    await setProxy(target, { can_proxy: true }, op.cookie);
+    await setProxy(target, { can_proxy: true }, op.authorization);
     expect(entitlement.canProxy(db, bystander)).toBe(false);
   });
 });
@@ -461,7 +461,7 @@ describe("tearing down what you own", () => {
   const teardown = (identity: string, cookie: string) =>
     app.fetch(new Request(`http://own-probe/api/v1/admin/agents/${identity}`, {
       method: "DELETE",
-      headers: { cookie },
+      headers: { authorization: cookie },
     }));
 
   /** A holder scoped to some other agent, who owns this one. */
@@ -478,13 +478,13 @@ describe("tearing down what you own", () => {
     });
     ownership.assign(db, { identity, owner: login, grantedBy: "ownership-test" });
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-    return { login, cookie: `mesh_token=${jwt}` };
+    return { login, authorization: `Bearer ${jwt}` };
   }
 
   test("admits an owner whose grant names another agent", async () => {
     const identity = registered();
     const who = await ownerOf(identity);
-    const res = await teardown(identity, who.cookie);
+    const res = await teardown(identity, who.authorization);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, identity, action: "soft-deleted" });
   });
@@ -494,7 +494,7 @@ describe("tearing down what you own", () => {
     const mine = registered();
     const theirs = registered();
     const who = await ownerOf(mine);
-    expect((await teardown(theirs, who.cookie)).status).toBe(403);
+    expect((await teardown(theirs, who.authorization)).status).toBe(403);
   });
 
   /**
@@ -506,7 +506,7 @@ describe("tearing down what you own", () => {
   test("refuses a malformed identity even from its owner", async () => {
     const bad = "-not-an-identity";
     const who = await ownerOf(bad);
-    const res = await teardown(bad, who.cookie);
+    const res = await teardown(bad, who.authorization);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toContain("invalid identity format");
   });

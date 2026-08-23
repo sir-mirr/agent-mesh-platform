@@ -61,7 +61,7 @@ async function holder(...caps: string[]) {
     grants.grant(agentsDb, { subject: login, capability, grantedBy: "audit-stream-test" });
   }
   const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 /** A message in the hub's table, at a time this test chose. */
@@ -76,7 +76,7 @@ function said(o: { from?: string; to?: string; content?: string; ts: string }): 
 
 const open = (query: string, cookie: string, headers: Record<string, string> = {}) =>
   app.fetch(new Request(`http://aud-probe/api/v1/admin/chat-audits/stream${query}`, {
-    headers: { cookie, ...headers },
+    headers: { authorization: cookie, ...headers },
   }));
 
 /**
@@ -121,7 +121,7 @@ describe("who may watch", () => {
   test("refuses a caller without audit.read.content", async () => {
     expect((await open("", "")).status).toBe(401);
     const metadataOnly = await holder(CAPABILITY.AUDIT_READ_METADATA);
-    const res = await open("", metadataOnly.cookie);
+    const res = await open("", metadataOnly.authorization);
     expect(res.status).toBe(403);
     expect((await res.json()).capability).toBe(CAPABILITY.AUDIT_READ_CONTENT);
   });
@@ -134,7 +134,7 @@ describe("who may watch", () => {
     ).get(op.login) as { n: number }).n;
 
     said({ to: "watched", content: "a secret nobody should find in the log", ts: "2026-04-01 00:00:00" });
-    const res = await open("?to_agent=watched", op.cookie);
+    const res = await open("?to_agent=watched", op.authorization);
     await drain(res, 1);
 
     const row = auditDb.prepare(
@@ -157,7 +157,7 @@ describe("who may watch", () => {
 describe("opening the stream", () => {
   test("answers an event-stream that is not cached or transformed", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
-    const res = await open("", op.cookie);
+    const res = await open("", op.authorization);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     expect(res.headers.get("cache-control")).toContain("no-transform");
@@ -167,7 +167,7 @@ describe("opening the stream", () => {
   /** A comment first, so a client observes the connection rather than inferring it. */
   test("says it is connected before anything else", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
-    const res = await open("", op.cookie);
+    const res = await open("", op.authorization);
     expect((await drain(res, 1))[0]).toBe(":connected\n\n");
   });
 });
@@ -177,7 +177,7 @@ describe("the gap after a reconnect", () => {
   test("replays nothing when no last id is offered", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
     said({ ts: "2026-05-01 00:00:00" });
-    const frames = await drain(await open("", op.cookie), 2);
+    const frames = await drain(await open("", op.authorization), 2);
     expect(frames).toEqual([":connected\n\n"]);
   });
 
@@ -185,7 +185,7 @@ describe("the gap after a reconnect", () => {
   test("replays nothing when the anchor is unknown", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
     said({ ts: "2026-05-02 00:00:00" });
-    const frames = await drain(await open("?last_event_id=never-existed", op.cookie), 2);
+    const frames = await drain(await open("?last_event_id=never-existed", op.authorization), 2);
     expect(frames).toEqual([":connected\n\n"]);
   });
 
@@ -203,7 +203,7 @@ describe("the gap after a reconnect", () => {
     const missed2 = said({ to, content: "missed two", ts: "2026-06-03 00:00:00" });
 
     const frames = events(await drain(
-      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.cookie), 3));
+      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.authorization), 3));
     expect(frames[0]).toBe(":connected");
 
     const replayed = frames.slice(1).map((f) => JSON.parse(f.split("data: ")[1]!));
@@ -221,7 +221,7 @@ describe("the gap after a reconnect", () => {
     const missed = said({ to, ts: "2026-06-05 00:00:00" });
 
     const frames = events(await drain(
-      await open(`?to_agent=${to}`, op.cookie, { "Last-Event-ID": anchor }), 2));
+      await open(`?to_agent=${to}`, op.authorization, { "Last-Event-ID": anchor }), 2));
     expect(frames).toHaveLength(2);
     expect(JSON.parse(frames[1]!.split("data: ")[1]!).id).toBe(missed);
   });
@@ -241,7 +241,7 @@ describe("the gap after a reconnect", () => {
     said({ to: mine, content: "no match here", ts: "2026-07-04 00:00:00" });
 
     const frames = events(await drain(
-      await open(`?to_agent=${mine}&search=NEEDLE&last_event_id=${anchor}`, op.cookie), 3));
+      await open(`?to_agent=${mine}&search=NEEDLE&last_event_id=${anchor}`, op.authorization), 3));
     const replayed = frames.slice(1).map((f) => JSON.parse(f.split("data: ")[1]!));
     expect(replayed.map((m) => m.id)).toEqual([wanted]);
   });
@@ -255,7 +255,7 @@ describe("the gap after a reconnect", () => {
     const wanted = said({ from: speaker, to, ts: "2026-07-12 00:00:00" });
 
     const frames = events(await drain(
-      await open(`?from_agent=${speaker}&to_agent=${to}&last_event_id=${anchor}`, op.cookie), 3));
+      await open(`?from_agent=${speaker}&to_agent=${to}&last_event_id=${anchor}`, op.authorization), 3));
     const replayed = frames.slice(1).map((f) => JSON.parse(f.split("data: ")[1]!));
     expect(replayed.map((m) => m.id)).toEqual([wanted]);
   });
@@ -275,7 +275,7 @@ describe("the gap after a reconnect", () => {
     }
 
     const frames = events(await drain(
-      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.cookie), 5));
+      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.authorization), 5));
     expect(frames).toHaveLength(2);
     expect(frames[1]).toContain("event: gap-too-large");
     const data = JSON.parse(frames[1]!.split("data: ")[1]!);
@@ -295,7 +295,7 @@ describe("the gap after a reconnect", () => {
       said({ to, ts: `2026-09-02 ${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00` });
     }
     const frames = events(await drain(
-      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.cookie), 102));
+      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.authorization), 102));
     expect(frames).toHaveLength(101);
     expect(frames.join("")).not.toContain("gap-too-large");
   });
@@ -313,7 +313,7 @@ describe("the gap after a reconnect", () => {
     const anchor = ids[1]!;
 
     const frames = events(await drain(
-      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.cookie), 3));
+      await open(`?to_agent=${to}&last_event_id=${anchor}`, op.authorization), 3));
     const replayed = frames.slice(1).map((f) => JSON.parse(f.split("data: ")[1]!));
     expect(replayed.map((m) => m.id)).toEqual([ids[2]]);
   });
@@ -325,7 +325,7 @@ describe("the gap after a reconnect", () => {
     const anchor = said({ to, ts: "2026-11-01 00:00:00" });
     const after = said({ to, ts: "2026-11-02 00:00:00" });
     const frames = events(await drain(
-      await open(`?from_agent=&to_agent=${to}&search=&last_event_id=${anchor}`, op.cookie), 3));
+      await open(`?from_agent=&to_agent=${to}&search=&last_event_id=${anchor}`, op.authorization), 3));
     const replayed = frames.slice(1).map((f) => JSON.parse(f.split("data: ")[1]!));
     expect(replayed.map((m) => m.id)).toEqual([after]);
   });
@@ -348,7 +348,7 @@ describe("the gap after a reconnect", () => {
  */
 function subscribe(query: string, cookie: string) {
   const res = app.fetch(new Request(
-    `http://aud-probe/api/v1/admin/chat-audits/stream${query}`, { headers: { cookie } }));
+    `http://aud-probe/api/v1/admin/chat-audits/stream${query}`, { headers: { authorization: cookie } }));
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   let pending: ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> | null = null;
   const decoder = new TextDecoder();
@@ -408,7 +408,7 @@ const said2 = (o: Record<string, unknown>) => ({
 describe("what a watcher receives", () => {
   test("hands a live frame to a subscriber, with an id to reconnect on", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
-    const s = await subscribe("", op.cookie).ready();
+    const s = await subscribe("", op.authorization).ready();
     expect(await s.next()).toBe(":connected\n\n");
 
     const door = frameDoor();
@@ -434,7 +434,7 @@ describe("what a watcher receives", () => {
    */
   test("sends one id once", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
-    const s = await subscribe("", op.cookie).ready();
+    const s = await subscribe("", op.authorization).ready();
     await s.next();
 
     const door = frameDoor();
@@ -460,7 +460,7 @@ describe("what a watcher receives", () => {
     door.deliver(msg);                                   // remembered, nobody watching
     for (let i = 0; i < 200; i++) door.deliver(said2({}));
 
-    const s = await subscribe("", op.cookie).ready();
+    const s = await subscribe("", op.authorization).ready();
     await s.next();
     door.deliver(msg);
     expect((await s.next())!).toContain(msg.id);
@@ -473,7 +473,7 @@ describe("what a watcher receives", () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
     const from = uniq("speaker");
     const to = uniq("listener");
-    const s = await subscribe(`?from_agent=${from}&to_agent=${to}&search=needle`, op.cookie).ready();
+    const s = await subscribe(`?from_agent=${from}&to_agent=${to}&search=needle`, op.authorization).ready();
     await s.next();
 
     const door = frameDoor();
@@ -493,8 +493,8 @@ describe("what a watcher receives", () => {
   test("decides per subscriber, not per message", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
     const mine = uniq("mine");
-    const watching = await subscribe(`?to_agent=${mine}`, op.cookie).ready();
-    const everything = await subscribe("", op.cookie).ready();
+    const watching = await subscribe(`?to_agent=${mine}`, op.authorization).ready();
+    const everything = await subscribe("", op.authorization).ready();
     await watching.next();
     await everything.next();
 
@@ -516,7 +516,7 @@ describe("what a watcher receives", () => {
    */
   test("strips newlines out of the id line", async () => {
     const op = await holder(CAPABILITY.AUDIT_READ_CONTENT);
-    const s = await subscribe("", op.cookie).ready();
+    const s = await subscribe("", op.authorization).ready();
     await s.next();
 
     const door = frameDoor();

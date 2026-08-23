@@ -70,7 +70,7 @@ async function approved(login = uniq("person")) {
   // prove approval through the `pending_approvals` row it just wrote and
   // sometimes through being first in the table.
   const jwt = await signJwt({ github_id: user.github_id, github_login: user.github_login, role: "member" });
-  return { login, cookie: `mesh_token=${jwt}` };
+  return { login, authorization: `Bearer ${jwt}` };
 }
 
 const get = (id: string, headers: Record<string, string> = {}) =>
@@ -173,7 +173,7 @@ describe("what the route refuses before it looks at the disk", () => {
     // people the shared table happened to hold when the file ran. The session
     // is what the guard reads, and a waiting person's session says `member`.
     const jwt = await signJwt({ github_id: user.github_id, github_login: login, role: "member" });
-    const res = await get(digestId(), { cookie: `mesh_token=${jwt}` });
+    const res = await get(digestId(), { authorization: `Bearer ${jwt}` });
     expect(res.status).toBe(403);
     expect((await res.json()).error).toBe("Account pending approval");
   });
@@ -190,14 +190,14 @@ describe("the answer that is deliberately the same twice", () => {
     const me = await approved();
     const id = digestId();
     carry("someone-else", "another", id);
-    const res = await get(id, { cookie: me.cookie });
+    const res = await get(id, { authorization: me.authorization });
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe("Not found");
   });
 
   test("and so does one nobody ever sent", async () => {
     const me = await approved();
-    const res = await get(digestId(), { cookie: me.cookie });
+    const res = await get(digestId(), { authorization: me.authorization });
     expect(res.status).toBe(404);
     expect((await res.json()).error).toBe("Not found");
   });
@@ -212,7 +212,7 @@ describe("the answer that is deliberately the same twice", () => {
     const id = digestId();
     carry(me.login, "peer-att", id);
     expect(mayDownload(hubDb(), me.login, id)).toBe(true);
-    const res = await get(id, { cookie: me.cookie });
+    const res = await get(id, { authorization: me.authorization });
     expect(res.status).toBe(404);
   });
 
@@ -235,7 +235,7 @@ describe("the answer that is deliberately the same twice", () => {
     mkdirSync(path, { recursive: true });
 
     try {
-      const res = await get(id, { cookie: me.cookie });
+      const res = await get(id, { authorization: me.authorization });
 
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("Not a file");
@@ -268,7 +268,7 @@ describe("serving an attachment to somebody entitled to it", () => {
     body.set(head, 0); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
     const res = await app.fetch(new Request("http://att-probe/api/v1/upload", {
       method: "POST",
-      headers: { cookie, "content-type": `multipart/form-data; boundary=${boundary}`, "content-length": String(body.length) },
+      headers: { authorization: cookie, "content-type": `multipart/form-data; boundary=${boundary}`, "content-length": String(body.length) },
       body: body as unknown as BodyInit,
     }));
     expect(res.status).toBe(200);
@@ -278,10 +278,10 @@ describe("serving an attachment to somebody entitled to it", () => {
   test("answers the bytes, their type, and a name a browser can save", async () => {
     const me = await approved();
     const content = `the quick brown fox ${uniq("body")}`;
-    const meta = await store(me.cookie, "report.txt", content);
+    const meta = await store(me.authorization, "report.txt", content);
     carry(me.login, "peer-att", meta.id);
 
-    const res = await get(meta.id, { cookie: me.cookie });
+    const res = await get(meta.id, { authorization: me.authorization });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
     expect(res.headers.get("content-length")).toBe(String(meta.size));
@@ -298,9 +298,9 @@ describe("serving an attachment to somebody entitled to it", () => {
    */
   test("names a digest-keyed attachment after its digest", async () => {
     const me = await approved();
-    const meta = await store(me.cookie, "quarterly summary.txt", `named ${uniq("body")}`);
+    const meta = await store(me.authorization, "quarterly summary.txt", `named ${uniq("body")}`);
     carry(me.login, "peer-att", meta.id);
-    const res = await get(meta.id, { cookie: me.cookie });
+    const res = await get(meta.id, { authorization: me.authorization });
     expect(res.headers.get("content-disposition")).toContain(meta.id);
     expect(res.headers.get("content-disposition")).not.toContain("quarterly");
   });
@@ -322,7 +322,7 @@ describe("serving an attachment to somebody entitled to it", () => {
     writeFileSync(joinPath(dir(), "uploads", legacyId), "legacy bytes");
     carry(me.login, "peer-att", legacyId);
 
-    const res = await get(legacyId, { cookie: me.cookie });
+    const res = await get(legacyId, { authorization: me.authorization });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toContain(legacyName);
     expect(res.headers.get("content-disposition")).not.toContain("1734567890123");
@@ -332,8 +332,8 @@ describe("serving an attachment to somebody entitled to it", () => {
   test("serves it to the recipient as readily as to the sender", async () => {
     const sender = await approved();
     const recipient = await approved();
-    const meta = await store(sender.cookie, "shared.txt", `shared ${uniq("body")}`);
+    const meta = await store(sender.authorization, "shared.txt", `shared ${uniq("body")}`);
     carry(sender.login, recipient.login, meta.id);
-    expect((await get(meta.id, { cookie: recipient.cookie })).status).toBe(200);
+    expect((await get(meta.id, { authorization: recipient.authorization })).status).toBe(200);
   });
 });
