@@ -558,13 +558,31 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
         if (!/\.tsx?$/.test(e.name)) continue;
         const src = readFileSync(full, "utf8");
         // `\bt(` so a `fetch(` header object does not read as a translation.
-        for (const m of src.matchAll(/\bt\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*\)/g)) {
+        //
+        // **`,?` for the comma a formatter leaves behind.** A call wrapped
+        // across lines ends `"…",\n)`, and without this the whole call site is
+        // invisible here — its key is never checked against the English
+        // dictionary, which is the one thing this scenario exists to check.
+        // `SC-I18N-04` had the same blind spot in its own regex and reported
+        // the opposite way: correct calls as untranslated copy.
+        for (const m of src.matchAll(/\bt\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,?\s*\)/g)) {
           if (/[가-힣]/.test(m[2]!)) calls.push({ file: full, key: m[1]!, fallback: m[2]! });
         }
       }
     };
     walk("packages/platform-web/src");
     expect(calls.length, "no translated call sites found — the pattern went stale").toBeGreaterThan(50);
+
+    // **The pattern reads both layouts.** A call site the regex cannot see is
+    // a key nothing checks, and the way that happens is formatting: the same
+    // call, wrapped, with the comma a formatter adds. Written here rather than
+    // counted, because a count that fell would read as "fewer call sites"
+    // rather than "the scanner stopped seeing a shape".
+    const SHAPES = 'const a = t("one.key", "한국어");\nconst b = t(\n  "two.key",\n  "한국어",\n);\n';
+    expect(
+      [...SHAPES.matchAll(/\bt\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*,?\s*\)/g)].map((m) => m[1]),
+      "the call-site pattern misses a wrapped call, so its key is never checked against the English dictionary",
+    ).toEqual(["one.key", "two.key"]);
 
     const undefinedInEnglish = calls
       .filter((c) => !en.has(c.key))
