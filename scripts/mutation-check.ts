@@ -941,8 +941,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The browser form's success stopped setting the cookie on the redirect. The person is sent to `/chat`, which finds no session and sends them back to `/` \u2014 a sign-in that succeeds and does nothing, twice in a row, with no error anywhere to say why.",
     file: "packages/http/src/main.ts",
-    from: "    headers: { 'Location': '/chat', 'Set-Cookie': cookie },",
-    to: "    headers: { 'Location': '/chat' },",
+    from: "  holdSessionCookie(c, cookie)\n  return new Response(null, { status: 302, headers: { 'Location': '/chat' } })",
+    to: "  return new Response(null, { status: 302, headers: { 'Location': '/chat' } })",
     suite: "packages/http/src/pages-and-form.test.ts",
     expect: ["signs the browser in, and lands it on the conversation"],
   },
@@ -1580,8 +1580,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "Signing out stopped expiring the session cookie, so the next request from that browser was still signed in.",
     file: "packages/http/src/main.ts",
-    from: "'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0)",
-    to: "'content-type': 'application/json'",
+    from: "  holdSessionCookie(c, sessionCookie(c, '', 0))",
+    to: "  void c",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["clears the browser's copy of the session"],
   },
@@ -2514,6 +2514,59 @@ const MUTATIONS: Mutation[] = [
     to: "    void _db",
     suite: "test/wal-shutdown.test.ts",
     expect: ["stopping the hub first still folds what only the http server holds", "audit.db-wal"],
+  },
+  {
+    id: "wal-autocheckpoint-off",
+    swept: true,
+    defect:
+      "The opener stopped checkpointing on its own, so the write-ahead log tracks the volume of writes with nothing folding it. Never true here — SQLite's default is 1000 pages and `openAt` sets no autocheckpoint pragma — but `wal-growth.test.ts` typed the two pragmas out again instead of opening through `openAt`, and a copy of a configuration cannot notice the configuration moving. This mutation is the reason it opens through the real one.",
+    file: "packages/store/src/open.ts",
+    from: '    db.exec("PRAGMA journal_mode = WAL;");',
+    to: '    db.exec("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;");',
+    suite: "packages/store/src/wal-growth.test.ts",
+    expect: [
+      "stops tracking the writes once it passes the threshold",
+      "`self-limiting` is not true of this configuration",
+    ],
+  },
+  {
+    id: "session-cookie-fallback-gone",
+    swept: true,
+    defect:
+      "`extractJwt` stopped reading the session cookie, so a browser — which sends a cookie and nothing else — is anonymous on every authenticated route while every suite stays green, because they all send `Authorization: Bearer …`. That is the state the branch was already in for coverage: reached by nothing in this process.",
+    file: "packages/http/src/main.ts",
+    from: "  const cookieToken = getCookie(c, 'mesh_token')",
+    to: "  const cookieToken = ''",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: [
+      "takes a session from the cookie a browser would send",
+      "the cookie fallback did not read the session out of the cookie",
+    ],
+  },
+  {
+    id: "cookie-refusal-becomes-a-500",
+    swept: true,
+    defect:
+      "The cookie branch verified without a `catch`, so a cookie that is not a token throws out of `extractJwt` and every authenticated route answers 500. A stale cookie in one browser then reads as the server being broken rather than as a session that expired.",
+    file: "packages/http/src/main.ts",
+    from: "    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return null\n    }",
+    to: "    return await verifyJwt(cookieToken)",
+    suite: "packages/http/src/pages-and-form.test.ts",
+    expect: ["and refuses a cookie that does not verify, rather than throwing"],
+  },
+  {
+    id: "vapid-half-a-pair",
+    swept: true,
+    defect:
+      "Web push was configured when *either* VAPID key was present. `setVapidDetails` with half a pair either throws at load or leaves the library holding a key it cannot sign with, and both are worse than the silence a deployment with neither key gets — the operator is told nothing in all three cases.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!keys.publicKey || !keys.privateKey) return false",
+    to: "  if (!keys.publicKey && !keys.privateKey) return false",
+    suite: "packages/http/src/push-routes.test.ts",
+    expect: [
+      "leaves it unconfigured when either key is missing",
+      "half a key pair configured web push",
+    ],
   },
   {
     id: "agents-listing-drops-presence",
