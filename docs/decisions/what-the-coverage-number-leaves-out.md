@@ -193,3 +193,21 @@ coverage run — five minutes, and the browser suite, which is why the check
 beside this document holds the anchors rather than the percentages. A row that
 goes stale fails; a row that is never written is invisible, and the only guard
 against that is running `scripts/coverage.ts` and reading what it prints.
+
+## The floor, and what it does not watch
+
+D-749 closed this track on 99 with one condition: **a measurement below 99 on
+either metric reopens it, without a new instruction.** For that to be a
+condition rather than a habit, something has to measure. Nothing in CI ran
+`scripts/coverage.ts` at all — so `bun scripts/coverage.ts --floor 99` now exits
+non-zero below the number, naming the metric that fell, and a `main`-only job
+runs it. It is its own job because coverage has to run `packages/` and `test/`
+in one process, which duplicates both suites: on a pull request that is latency
+against a number that cannot move until the merge.
+
+What the floor watches is the *total*. It cannot see a file that stopped being
+imported — an absent file is not `0%`, it is absent, and the totals go **up**
+when the hard parts leave the report. `every-module.test.ts` is what holds that,
+and the file count printed beside each percentage is what makes a drop visible
+to somebody reading. Nor can it see this table going stale, which is the check
+beside this document.
