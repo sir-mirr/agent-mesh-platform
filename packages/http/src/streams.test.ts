@@ -170,8 +170,11 @@ describe("the per-agent event stream", () => {
     expect(sseClientCount()).toBe(before + 1);
 
     ac.abort();
-    // The listener runs on the abort event; giving the loop a turn is enough.
-    await Bun.sleep(10);
+    // The listener runs on the abort event, so what is waited for is the count
+    // coming back down — not ten milliseconds, which is a guess about the loop
+    // and not a property of anything.
+    const deadline = performance.now() + 2_000;
+    while (sseClientCount() !== before && performance.now() < deadline) await Bun.sleep(1);
     expect(sseClientCount()).toBe(before);
   });
 });

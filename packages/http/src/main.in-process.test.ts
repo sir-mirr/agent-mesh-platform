@@ -1272,8 +1272,15 @@ describe("what a reconnecting audit stream replays", () => {
     }
     hub.close();
 
-    // Let the poller take the seed while nothing is listening.
-    await Bun.sleep(2000);
+    // Take the seed while nothing is listening. The wait here was
+    // `Bun.sleep(2000)` against a poller on a 1500ms interval — 500ms of
+    // margin for a tick to both fire and finish, which is a bet on the
+    // scheduler rather than a property of anything. A pass is an ordinary
+    // exported function, and the interval `startup()` started shares its
+    // high-water mark, so draining it here is the same work on this test's
+    // schedule.
+    const deadline = performance.now() + 5_000;
+    while (mod.auditPollerPass() > 0 && performance.now() < deadline);
   });
 
   test("refuses an operator who does not hold audit.read.content, and names it", async () => {

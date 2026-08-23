@@ -46,6 +46,23 @@ function socket() {
   };
 }
 
+/**
+ * Wait for something a timer will do, rather than for a length of time.
+ *
+ * The close here is `setTimeout(…, 10)` so that the error frame goes out
+ * first, and a fixed wait for it is a bet on the scheduler: on a loaded runner
+ * a 10ms timer is not owed the loop back in 40. Same class of premise as the
+ * one that turned `hub-link.test.ts` red in CI (run 32643136361).
+ */
+async function until(predicate: () => boolean, within = 2_000): Promise<boolean> {
+  const deadline = performance.now() + within;
+  while (!predicate()) {
+    if (performance.now() > deadline) return false;
+    await Bun.sleep(1);
+  }
+  return true;
+}
+
 const register = (identity: string, type = "ai-claude") =>
   agentsDb.prepare(`INSERT OR IGNORE INTO agents (identity, type) VALUES (?, ?)`).run(identity, type);
 
@@ -105,7 +122,7 @@ describe("mesh.connect refuses", () => {
 
     // The close is on a timer so the error frame goes out first.
     expect(ws.closed).toEqual([]);
-    await Bun.sleep(40);
+    expect(await until(() => ws.closed.length > 0), "the socket was never closed").toBe(true);
     expect(ws.closed).toEqual([{ code: 1008, reason: "identity not registered" }]);
   });
 

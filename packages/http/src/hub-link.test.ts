@@ -178,6 +178,34 @@ async function approvedWebUser(): Promise<string> {
 
 const parse = (frames: string[]) => frames.map((f) => JSON.parse(f));
 
+/**
+ * Wait for a frame the service has not put on the wire yet.
+ *
+ * `await Bun.sleep(5)` was the wait, and five milliseconds is a property of
+ * nothing: `POST /api/v1/messages` verifies a JWT, writes the row and consults
+ * the push keys before `sendViaHub` reaches the socket, so the frame lands
+ * whenever that finishes. Both shapes of the miss have been seen. CI read
+ * `request.params` off `undefined` (run 32643136361), and here the reply went
+ * out while the last numbered frame was still `mesh.connect` — `reply` takes
+ * that id, no listener is waiting for it, and the test sits out `sendViaHub`'s
+ * full five-second timeout instead. Locally the send has been measured at
+ * 6.4ms on an idle machine.
+ *
+ * Waiting on the frame costs nothing when it is already there, and names what
+ * went wrong when it never arrives.
+ */
+async function frameSent(ws: Fake, method: string, within = 2000) {
+  const deadline = performance.now() + within;
+  for (;;) {
+    const frame = parse(ws.sent).find((f) => f.method === method);
+    if (frame) return frame;
+    if (performance.now() > deadline) {
+      throw new Error(`the service never sent ${method} (waited ${within}ms)`);
+    }
+    await Bun.sleep(1);
+  }
+}
+
 /** The machine-readable half of each log line. Split on the LAST ` {"ts":"`,
  *  because the sentence in front of it may quote one. */
 const events = (lines: string[]) =>
@@ -497,9 +525,7 @@ describe("sending through the hub", () => {
     const to = recipient();
 
     const inFlight = post(me.authorization, { to, text: "hello there" });
-    await Bun.sleep(5);
-    const request = parse(ws.sent).find((f) => f.method === "mesh.send");
-    expect(request, "nothing was sent to the hub").toBeDefined();
+    const request = await frameSent(ws, "mesh.send");
     expect(request.params).toEqual({ to, content: "hello there", from: me.login });
 
     ws.reply({ id: "hub-assigned-1" });
@@ -527,8 +553,7 @@ describe("sending through the hub", () => {
 
     const attachment = { id: "a".repeat(64) + ".txt", download_url: "http://x/api/v1/attachments/a" };
     const inFlight = post(me.authorization, { to, text: "see attached", attachments: [attachment] });
-    await Bun.sleep(5);
-    const request = parse(ws.sent).find((f) => f.method === "mesh.send");
+    const request = await frameSent(ws, "mesh.send");
     expect(JSON.parse(request.params.content)).toEqual({ text: "see attached", attachments: [attachment] });
     ws.reply({ id: "hub-assigned-2" });
     await inFlight;
@@ -545,11 +570,13 @@ describe("sending through the hub", () => {
     const me = await sender();
 
     const inFlight = post(me.authorization, { to: recipient(), text: "correlated" });
-    await Bun.sleep(5);
+    await frameSent(ws, "mesh.send");
     const before = ws.listeners();
     expect(before).toBeGreaterThan(0);
 
     ws.reply({ id: "not-mine" }, 999999);
+    // A clock wait, and it stays one: this asserts that nothing happened, and
+    // there is no frame to wait for. Too short only weakens it.
     await Bun.sleep(5);
     // Still waiting: the listener is attached and the request is unresolved.
     expect(ws.listeners()).toBe(before);
@@ -573,7 +600,7 @@ describe("sending through the hub", () => {
     const me = await sender();
 
     const inFlight = post(me.authorization, { to: recipient(), text: "refused" });
-    await Bun.sleep(5);
+    await frameSent(ws, "mesh.send");
     // An answer with no message id is the hub declining to take it.
     ws.reply({});
     const body = await (await inFlight).json();
