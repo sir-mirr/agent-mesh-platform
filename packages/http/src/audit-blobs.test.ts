@@ -69,8 +69,14 @@ function payload(text: string) {
 const grantFor = (who: ReturnType<typeof signer>, p: ReturnType<typeof payload>) =>
   nonces.issueGrant(agentsDb(), who.identity, p.blobKey, p.sha256, p.size);
 
-/** A request built the way an uploading client must build one. */
-function request(
+/**
+ * A request built the way an uploading client must build one, and the length it
+ * declares — handed back separately because `content-length` is a forbidden
+ * header name: a `Request` built in this process keeps it on one runtime and
+ * drops it on another, so a suite that reads it back is testing the runtime.
+ * `putBlob` takes the declaration as a parameter for exactly that reason.
+ */
+function upload(
   who: ReturnType<typeof signer> | null,
   grantNonce: string,
   p: ReturnType<typeof payload>,
@@ -98,14 +104,15 @@ function request(
     );
   }
   const body = over.body === undefined ? new Blob([p.bytes as any]) : over.body;
-  return new Request("http://blob-host/api/v1/audit/blobs/key", { method: "PUT", headers, ...(body ? { body } : {}) });
+  const req = new Request("http://blob-host/api/v1/audit/blobs/key", { method: "PUT", headers, ...(body ? { body } : {}) });
+  return [req, declared] as const;
 }
 
 describe("what an upload is refused for, before any byte is kept", () => {
   test("a key that is not a digest", async () => {
     const p = payload("x");
     for (const key of ["not-a-key", "../escape", "a".repeat(63), `${"a".repeat(64)}.this-extension-is-far-too-long`]) {
-      const r = await putBlob(key, request(null, "n", p, { header: null }));
+      const r = await putBlob(key, ...upload(null, "n", p, { header: null }));
       expect(r.status).toBe(400);
       expect(r.body.error).toBe("invalid blob key");
     }
@@ -113,7 +120,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
 
   test("no authorization at all", async () => {
     const p = payload("x");
-    const r = await putBlob(p.blobKey, request(null, "n", p, { header: null }));
+    const r = await putBlob(p.blobKey, ...upload(null, "n", p, { header: null }));
     expect(r.status).toBe(401);
     expect(String(r.body.error)).toContain("missing");
   });
@@ -121,7 +128,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
   test("an authorization in some other scheme", async () => {
     const p = payload("x");
     for (const header of ["Bearer abc", "AgentMeshSig kid=\"k\"", "AgentMeshSignope"]) {
-      const r = await putBlob(p.blobKey, request(null, "n", p, { header }));
+      const r = await putBlob(p.blobKey, ...upload(null, "n", p, { header }));
       expect(r.status).toBe(401);
       expect(String(r.body.error)).toContain("scheme");
     }
@@ -136,7 +143,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
     const p = payload("x");
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { contentLength: null }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { contentLength: null }));
     expect(r.status).toBe(411);
   });
 
@@ -145,7 +152,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
     const who = signer();
     const g = grantFor(who, p);
     for (const declared of ["-1", "1.5", "many"]) {
-      const r = await putBlob(p.blobKey, request(who, g.nonce, p, { contentLength: declared }));
+      const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { contentLength: declared }));
       expect(r.status).toBe(400);
       expect(String(r.body.error)).toContain("non-negative integer");
     }
@@ -155,7 +162,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
     const p = payload("x");
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { contentLength: String(MAX_BLOB_BYTES + 1) }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { contentLength: String(MAX_BLOB_BYTES + 1) }));
     expect(r.status).toBe(413);
     expect(String(r.body.error)).toContain(String(MAX_BLOB_BYTES));
   });
@@ -163,7 +170,7 @@ describe("what an upload is refused for, before any byte is kept", () => {
   test("a nonce no grant was ever issued for", async () => {
     const p = payload("x");
     const who = signer();
-    const r = await putBlob(p.blobKey, request(who, randomUUID(), p));
+    const r = await putBlob(p.blobKey, ...upload(who, randomUUID(), p));
     expect(r.status).toBe(403);
     expect(r.body.error).toBe("unknown or expired upload grant");
   });
@@ -180,7 +187,7 @@ describe("a grant that does not authorise this upload", () => {
     const theirs = payload("theirs");
     const who = signer();
     const g = grantFor(who, mine);
-    const r = await putBlob(theirs.blobKey, request(who, g.nonce, theirs));
+    const r = await putBlob(theirs.blobKey, ...upload(who, g.nonce, theirs));
     expect(r.status).toBe(403);
     expect(r.body.error).toBe("upload grant does not authorise this upload");
   });
@@ -189,7 +196,7 @@ describe("a grant that does not authorise this upload", () => {
     const p = payload("exactly this");
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { contentLength: String(p.size + 1) }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { contentLength: String(p.size + 1) }));
     expect(r.status).toBe(403);
     expect(r.body.error).toBe("upload grant does not authorise this upload");
   });
@@ -199,7 +206,7 @@ describe("a grant that does not authorise this upload", () => {
     const who = signer();
     const g = grantFor(who, p);
     agentsDb().prepare(`UPDATE upload_nonces SET expires_at = datetime('now','-1 hour') WHERE nonce = ?`).run(g.nonce);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p));
     expect(r.status).toBe(403);
     expect(r.body.error).toBe("upload grant does not authorise this upload");
   });
@@ -216,7 +223,7 @@ describe("the signature, checked against the grant's identity rather than the re
     const owner = signer();
     const thief = signer();
     const g = grantFor(owner, p);
-    const r = await putBlob(p.blobKey, request(thief, g.nonce, p));
+    const r = await putBlob(p.blobKey, ...upload(thief, g.nonce, p));
     expect(r.status).toBe(403);
     expect(String(r.body.error)).toContain("signature does not verify");
   });
@@ -226,7 +233,7 @@ describe("the signature, checked against the grant's identity rather than the re
     const p = payload("bound");
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { sign: { size: p.size + 1 } }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { sign: { size: p.size + 1 } }));
     expect(r.status).toBe(403);
     expect(String(r.body.error)).toContain("signature does not verify");
   });
@@ -237,7 +244,7 @@ describe("what it does with bytes it accepts", () => {
     const p = payload(`stored ${nextId("body")}`);
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p));
     expect(r.status).toBe(201);
     expect(r.body).toEqual({ ok: true, blob_key: p.blobKey, size: p.size, sha256: p.sha256 });
   });
@@ -252,9 +259,9 @@ describe("what it does with bytes it accepts", () => {
     const p = payload(`twice ${nextId("body")}`);
     const who = signer();
     const first = grantFor(who, p);
-    expect((await putBlob(p.blobKey, request(who, first.nonce, p))).status).toBe(201);
+    expect((await putBlob(p.blobKey, ...upload(who, first.nonce, p))).status).toBe(201);
 
-    const again = await putBlob(p.blobKey, request(who, first.nonce, p));
+    const again = await putBlob(p.blobKey, ...upload(who, first.nonce, p));
     expect(again.status).toBe(200);
     expect(again.body).toEqual({ ok: true, blob_key: p.blobKey, deduplicated: true });
   });
@@ -269,7 +276,7 @@ describe("what it does with bytes it accepts", () => {
     const who = signer();
     const g = grantFor(who, p);
     const longer = Buffer.concat([p.bytes, Buffer.from("extra")]);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { body: new Blob([longer as any]) }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { body: new Blob([longer as any]) }));
     expect(r.status).toBe(413);
     expect(String(r.body.error)).toContain("authorised");
   });
@@ -278,7 +285,7 @@ describe("what it does with bytes it accepts", () => {
     const p = payload(`padded ${nextId("body")}`);
     const who = signer();
     const g = grantFor(who, p);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { body: new Blob([p.bytes.subarray(0, 2) as any]) }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { body: new Blob([p.bytes.subarray(0, 2) as any]) }));
     expect(r.status).toBe(400);
     expect(String(r.body.error)).toContain("expected");
   });
@@ -293,12 +300,12 @@ describe("what it does with bytes it accepts", () => {
     const who = signer();
     const g = grantFor(who, p);
     const other = Buffer.alloc(p.size, 0x41);
-    const r = await putBlob(p.blobKey, request(who, g.nonce, p, { body: new Blob([other as any]) }));
+    const r = await putBlob(p.blobKey, ...upload(who, g.nonce, p, { body: new Blob([other as any]) }));
     expect(r.status).toBe(422);
     expect(String(r.body.error)).toContain("digest mismatch");
 
     // And nothing is left behind under the key it was aiming at.
-    const retry = await putBlob(p.blobKey, request(who, g.nonce, p));
+    const retry = await putBlob(p.blobKey, ...upload(who, g.nonce, p));
     expect(retry.status).toBe(201);
   });
 });
@@ -311,12 +318,12 @@ describe("closeBlobDb", () => {
   test("the upload after a shutdown gets a working handle, not a closed one", async () => {
     const who = signer();
     const first = payload("before the close");
-    expect((await putBlob(first.blobKey, request(who, grantFor(who, first).nonce, first))).status).toBe(201);
+    expect((await putBlob(first.blobKey, ...upload(who, grantFor(who, first).nonce, first))).status).toBe(201);
 
     closeBlobDb();
 
     const after = payload("after the close");
-    expect((await putBlob(after.blobKey, request(who, grantFor(who, after).nonce, after))).status).toBe(201);
+    expect((await putBlob(after.blobKey, ...upload(who, grantFor(who, after).nonce, after))).status).toBe(201);
   });
 
   test("closing a handle nothing opened is not an error", () => {
@@ -331,7 +338,7 @@ describe("closeBlobDb", () => {
     // the upload has to wait for it to drain rather than dropping the rest.
     const p = payload("x".repeat(2 * 1024 * 1024));
 
-    const r = await putBlob(p.blobKey, request(who, grantFor(who, p).nonce, p));
+    const r = await putBlob(p.blobKey, ...upload(who, grantFor(who, p).nonce, p));
 
     expect(r.status).toBe(201);
     expect(r.body).toMatchObject({ ok: true, sha256: p.sha256, size: p.size });

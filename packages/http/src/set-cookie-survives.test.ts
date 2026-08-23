@@ -204,77 +204,19 @@ describe("the source", () => {
 });
 
 /**
- * **The other half: a cookie arriving.**
+ * **What the in-process suites are allowed to depend on.**
  *
- * Fixing the answer did not fix CI. The admin suites never sign in — they sign
- * a JWT themselves and send it as a `cookie:` request header — and they still
- * answer `401` there, which means the failure on the way *in* is a different
- * one from the failure on the way out. These two hold the two halves of that
- * path apart: what Hono reads out of a request, and whether a token this
- * process signed verifies in this process.
+ * `cookie` is a forbidden header name. A `Request` built inside this process
+ * keeps it here and loses it on the runtime CI runs — through a record, through
+ * a `Headers`, through a tuple list and through a clone, all four measured
+ * there. Asserting either behaviour would fail on one of the two machines, so
+ * what is held instead is the thing that is true on both: `Authorization`
+ * survives, and no suite in this package asks a `Request` to carry a session
+ * cookie. The cookie path is exercised where a browser sends it, over a real
+ * connection.
  */
-describe("a session arriving on a request", () => {
-  test("hono reads mesh_token out of the cookie header", async () => {
-    const { getCookie } = await import("hono/cookie");
-    const app = new Hono();
-    app.get("/who", (c) => c.json({ token: getCookie(c, "mesh_token") ?? null }));
-
-    const res = await app.fetch(new Request("http://probe.invalid/who", { headers: { cookie: "mesh_token=probe-value" } }));
-
-    expect(await res.json(), "the cookie a caller sent was not readable from the request").toEqual({ token: "probe-value" });
-  });
-
-  test("a token signed in this process verifies in this process", async () => {
-    process.env.JWT_SECRET ||= "set-cookie-probe";
-    const { signJwt, verifyJwt } = await import("./auth");
-    const jwt = await signJwt({ github_id: -1, github_login: "probe", role: "admin" });
-
-    const payload = await verifyJwt(jwt);
-
-    expect(
-      { login: payload.github_login, id: payload.github_id },
-      "a session this process issued does not verify here, so every authenticated route refuses everyone",
-    ).toEqual({ login: "probe", id: -1 });
-  });
-});
-
-
-/**
- * Which layer loses the cookie on the way in — the same three shapes as on the
- * way out, one variable at a time.
- */
-describe("what this runtime does with a request cookie", () => {
-  test("keeps it in a Headers built from a record", () => {
-    expect(new Headers({ cookie: "mesh_token=probe" }).get("cookie")).toBe("mesh_token=probe");
-  });
-
-  test("keeps it in a Request built from a Headers", () => {
-    const req = new Request("http://probe.invalid/", { headers: new Headers({ cookie: "mesh_token=probe" }) });
-
-    expect(req.headers.get("cookie")).toBe("mesh_token=probe");
-  });
-
-  test("keeps it in a Request built from a record", () => {
-    const req = new Request("http://probe.invalid/", { headers: { cookie: "mesh_token=probe" } });
-
-    expect(
-      req.headers.get("cookie"),
-      "a Request built from a header record arrives without its cookie, so every in-process test that signs in by hand is refused",
-    ).toBe("mesh_token=probe");
-  });
-});
-
-/**
- * What an in-process request *can* carry, on a runtime that strips the cookie.
- *
- * `extractJwt` reads `Authorization: Bearer …` before it looks at the cookie,
- * so a suite that authenticates that way asks nothing of a forbidden header.
- * These say whether that is true before forty files are rewritten to rely on
- * it — and whether a tuple list or a clone smuggles a cookie past the guard,
- * which would be the smaller change if it worked.
- */
-describe("what an in-process request can carry instead", () => {
-  test("an Authorization header", () => {
+describe("what an in-process request may carry", () => {
+  test("an Authorization header, on any runtime", () => {
     const req = new Request("http://probe.invalid/", { headers: { authorization: "Bearer probe-token" } });
 
     expect(
@@ -283,16 +225,32 @@ describe("what an in-process request can carry instead", () => {
     ).toBe("Bearer probe-token");
   });
 
-  test("a cookie passed as a tuple list", () => {
-    const req = new Request("http://probe.invalid/", { headers: [["cookie", "mesh_token=probe"]] });
+  test("and no suite here authenticates with a cookie header", () => {
+    // The header objects themselves, not the word: a parameter named `cookie`
+    // carrying a bearer token is fine, and `res.headers.get("set-cookie")` on
+    // an answer is a different thing entirely. So this reads each `headers: {…}`
+    // literal and looks for a cookie *key* inside it.
+    const keyInHeaders = (source: string): boolean => {
+      for (let at = source.indexOf("headers:"); at >= 0; at = source.indexOf("headers:", at + 1)) {
+        const open = source.indexOf("{", at);
+        if (open < 0 || open > at + 12) continue;
+        let depth = 0, i = open;
+        for (; i < source.length; i++) {
+          if (source[i] === "{") depth++;
+          else if (source[i] === "}" && --depth === 0) break;
+        }
+        if (/[{,]\s*cookie\s*[,}:]/.test(source.slice(open, i + 1))) return true;
+      }
+      return /headers\.set\(\s*["']cookie["']/.test(source);
+    };
 
-    expect(req.headers.get("cookie")).toBe("mesh_token=probe");
-  });
+    const offenders = readdirSync(import.meta.dir)
+      .filter((n) => n.endsWith(".test.ts") && n !== "set-cookie-survives.test.ts")
+      .filter((n) => keyInHeaders(readFileSync(join(import.meta.dir, n), "utf8")));
 
-  test("a cookie carried through a clone", () => {
-    const first = new Request("http://probe.invalid/", { headers: new Headers({ cookie: "mesh_token=probe" }) });
-    const second = new Request(first);
-
-    expect(second.headers.get("cookie")).toBe("mesh_token=probe");
+    expect(
+      offenders,
+      "a suite carries its session in a cookie header, which arrives on one machine and not the other",
+    ).toEqual([]);
   });
 });

@@ -90,7 +90,19 @@ export function abandonStalledUpload(sink: { destroy: (err?: Error) => void }): 
   sink.destroy(new Error('upload timed out'))
 }
 
-export async function putBlob(blobKey: string, req: Request): Promise<BlobPutResult> {
+/**
+ * `declared` is a parameter for the same reason the store handles are: so a
+ * caller can hand it in. `content-length` is a forbidden header name, and a
+ * `Request` built inside a test process keeps it on one runtime and drops it on
+ * another — measured in `set-cookie-survives.test.ts` — so a suite that sets the
+ * header is testing the runtime. Production passes nothing and this reads the
+ * header, which is the only place it can come from over a real connection.
+ */
+export async function putBlob(
+  blobKey: string,
+  req: Request,
+  declared: string | null = req.headers.get('content-length'),
+): Promise<BlobPutResult> {
   if (!BLOB_KEY_ACCEPT_RE.test(blobKey)) {
     return refuse(400, 'invalid blob key')
   }
@@ -107,7 +119,6 @@ export async function putBlob(blobKey: string, req: Request): Promise<BlobPutRes
   // Required and matched, not advisory. Without it the size bound could only be
   // enforced by counting bytes as they arrive, which means accepting an
   // unbounded stream before deciding to reject it.
-  const declared = req.headers.get('content-length')
   if (declared === null) {
     return refuse(411, 'Content-Length is required')
   }
