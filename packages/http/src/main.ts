@@ -970,7 +970,13 @@ function timingSafeEqualString(a: string, b: string): boolean {
  * `app.fetch(new Request(...))` runs the same handler stack the served process
  * runs, in the test's own process, where it can be counted.
  */
-export const app = new Hono()
+/**
+ * `sessionCookie` is the one variable a route hands to the middleware chain:
+ * the cookie it wants on the way out. See `holdSessionCookie`.
+ */
+type Vars = { Variables: { sessionCookie?: string } }
+
+export const app = new Hono<Vars>()
 
 /**
  * Origins allowed to call this server from a browser (open question 7).
@@ -990,6 +996,28 @@ const ALLOWED_ORIGINS = (process.env.AGENT_MESH_ALLOWED_ORIGINS ?? '')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean)
+
+/**
+ * **The session cookie goes on last, after everything that rebuilds the answer.**
+ *
+ * Measured on bun 1.3.13, the same build on both platforms: on Linux a
+ * `Response` built from an init that carries `Set-Cookie` loses it, and so does
+ * any answer that passes through `hono/cors`, which rebuilds the response to
+ * add its own headers. Appending to a bare response keeps it; so does the
+ * correlation middleware below, which only prepares a header. Held one variable
+ * at a time in `set-cookie-survives.test.ts`, in CI, because the difference is
+ * invisible on a Mac.
+ *
+ * So a route does not put the cookie on its own answer. It hands it here with
+ * `holdSessionCookie`, and this middleware — registered before CORS, so its
+ * half after `next()` runs after CORS is done — appends it to whatever answer
+ * comes back. Nothing rebuilds the response after this line.
+ */
+app.use('*', async (c, next) => {
+  await next()
+  const cookie = c.get('sessionCookie')
+  if (cookie) c.res.headers.append('Set-Cookie', cookie)
+})
 
 app.use(
   '/*',
@@ -1143,24 +1171,15 @@ function sessionCookie(c: Context, jwt: string, maxAge: number): string {
 }
 
 /**
- * Put the cookie on an answer that already exists.
+ * Hand the session cookie to the middleware that puts it on last.
  *
- * **`new Response(body, { headers: { 'Set-Cookie': … } })` loses it on Linux.**
- * Measured, on bun 1.3.13 (the same build both places): a `Headers` built from
- * a record keeps `Set-Cookie`, appending to an existing response keeps it, and
- * the `Response` constructor's header record **drops** it — on Linux only. Every
- * session this server handed out was built the third way, so on the platform it
- * deploys to, signing in answered `200` with the user in the body and no
- * session at all, and the next request came back `401`.
- *
- * It cost the unit suite 276 failures in CI for weeks, which is how it was
- * found; nobody had read a red run whose first green neighbour was a laptop.
- * `set-cookie-survives.test.ts` holds all three shapes so the day this is fixed
- * upstream is a day a test changes rather than a day somebody notices.
+ * Not `res.headers.append` here, and not a header record in the constructor:
+ * both lose the cookie on Linux once CORS has rebuilt the answer behind them.
+ * The reasoning, and the measurements, are on the middleware near the top of
+ * this file.
  */
-function withSessionCookie(res: Response, cookie: string): Response {
-  res.headers.append('Set-Cookie', cookie)
-  return res
+function holdSessionCookie(c: Context<Vars>, cookie: string): void {
+  c.set('sessionCookie', cookie)
 }
 
 /**
@@ -1261,7 +1280,8 @@ app.post('/auth/local', async (c) => {
     // The same fields `/auth/me` answers with, so a client has a session
     // without a second round trip — and so the two cannot describe the same
     // user differently.
-    return withSessionCookie(new Response(
+    holdSessionCookie(c, cookie)
+    return new Response(
       JSON.stringify({
         ok: true,
         user: {
@@ -1279,10 +1299,11 @@ app.post('/auth/local', async (c) => {
         must_change_password: mustChangePassword(user.username),
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
-    ), cookie)
+    )
   }
 
-  return withSessionCookie(new Response(null, { status: 302, headers: { 'Location': '/chat' } }), cookie)
+  holdSessionCookie(c, cookie)
+  return new Response(null, { status: 302, headers: { 'Location': '/chat' } })
 })
 
 app.get('/auth/github/callback', async (c) => {
@@ -1313,10 +1334,8 @@ app.get('/auth/github/callback', async (c) => {
     }
 
     const maxAge = 60 * 60 * 24 * 30 // 30 days
-    return withSessionCookie(
-      new Response(null, { status: 302, headers: { 'Location': '/chat' } }),
-      sessionCookie(c, jwt, maxAge),
-    )
+    holdSessionCookie(c, sessionCookie(c, jwt, maxAge))
+    return new Response(null, { status: 302, headers: { 'Location': '/chat' } })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return c.json({ error: 'OAuth callback failed', detail: message }, 500)
@@ -1353,13 +1372,11 @@ const OPEN_WHILE_FLAGGED = new Set(['/auth/local/password', '/auth/me', '/auth/l
  * browser has no session, which is what this makes true.
  */
 app.post('/auth/logout', (c) => {
-  return withSessionCookie(
-    new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    }),
-    sessionCookie(c, '', 0),
-  )
+  holdSessionCookie(c, sessionCookie(c, '', 0))
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
 })
 
 

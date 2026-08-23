@@ -27,19 +27,22 @@ import { cors } from "hono/cors";
 const COOKIE = "mesh_token=probe; Path=/; Max-Age=60; SameSite=Lax";
 
 describe("the session cookie", () => {
-  test("survives the middleware in front of the route when the answer appends it", async () => {
-    // The two middlewares main.ts installs, in the order it installs them: one
-    // that prepares a header before the route runs, and CORS in front of both.
-    const app = new Hono();
+  test("survives CORS when the cookie goes on after it", async () => {
+    // main.ts's chain, in its order: the cookie middleware outermost, then
+    // CORS, then the one that prepares the correlation header. The route hands
+    // its cookie to the first and answers without one, so nothing downstream
+    // has a cookie to lose.
+    const app = new Hono<{ Variables: { sessionCookie?: string } }>();
+    app.use("*", async (c, next) => {
+      await next();
+      const cookie = c.get("sessionCookie");
+      if (cookie) c.res.headers.append("Set-Cookie", cookie);
+    });
     app.use("/*", cors({ origin: (origin) => (origin === "http://allowed" ? origin : null), credentials: true }));
     app.use("*", async (c, next) => { c.header("x-request-id", "probe-id"); await next(); });
-    app.post("/sign-in", () => {
-      const res = new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-      res.headers.append("Set-Cookie", COOKIE);
-      return res;
+    app.post("/sign-in", (c) => {
+      c.set("sessionCookie", COOKIE);
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
     });
 
     const res = await app.fetch(new Request("http://probe.invalid/sign-in", { method: "POST" }));
@@ -48,6 +51,29 @@ describe("the session cookie", () => {
       { status: res.status, cookies: res.headers.getSetCookie(), correlated: res.headers.get("x-request-id") },
       "the answer reached this line without its session cookie: a sign-in on this platform hands out no session",
     ).toEqual({ status: 200, cookies: [COOKIE], correlated: "probe-id" });
+  });
+
+  test("does not survive CORS when the route puts it on itself", async () => {
+    // The shape this server used until now, and the one the source guard below
+    // keeps out. On Linux the cookie is gone by the time it reaches this line;
+    // on macOS it is not. Asserting *either* would fail on one of the two
+    // platforms, so what is asserted is the part that holds everywhere: the
+    // answer is otherwise identical, and the cookie is the only thing at risk.
+    const app = new Hono();
+    app.use("/*", cors({ origin: (origin) => (origin === "http://allowed" ? origin : null), credentials: true }));
+    app.post("/sign-in", () => {
+      const res = new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+      res.headers.append("Set-Cookie", COOKIE);
+      return res;
+    });
+
+    const res = await app.fetch(new Request("http://probe.invalid/sign-in", { method: "POST" }));
+    const kept = res.headers.getSetCookie();
+
+    expect(
+      { status: res.status, kept: kept.length === 0 || kept[0] === COOKIE },
+      "the cookie came through changed rather than kept or dropped, which is neither platform's behaviour",
+    ).toEqual({ status: 200, kept: true });
   });
 });
 
@@ -117,6 +143,24 @@ describe("what this runtime does with Set-Cookie", () => {
  * does not depend on which machine is running it. This one reads the files.
  */
 describe("the source", () => {
+  test("sets the session cookie in exactly one place", () => {
+    // Not a style rule. Every other place is downstream of something that
+    // rebuilds the answer, and rebuilding is what loses it — so "one place, and
+    // it is the outermost middleware" is the property, not "tidy".
+    const dir = import.meta.dir;
+    const sites: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".ts") || name.includes(".test.")) continue;
+      for (const [i, l] of readFileSync(join(dir, name), "utf8").split("\n").entries()) {
+        const code = l.trimStart();
+        if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) continue;
+        if (/['"]Set-Cookie['"]/.test(l)) sites.push(`${name}:${i + 1}`);
+      }
+    }
+
+    expect(sites.length, `the session cookie is set in ${sites.length} places: ${sites.join(", ")}`).toBe(1);
+  });
+
   test("never hands Set-Cookie to the Response constructor", () => {
     const dir = import.meta.dir;
     const offenders: string[] = [];
