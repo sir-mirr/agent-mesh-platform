@@ -5,7 +5,8 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
  *
  * `GlobalRegistrator.register()` copies **every** property of a happy-dom
  * window onto `globalThis` — `document` and `window`, which these tests want,
- * and `Request`, `Response`, `Headers` and `fetch`, which they do not. Those
+ * and `Request`, `Response`, `Headers`, `fetch` and the body types that go with
+ * them, which they do not. Those
  * four are the browser's, and the browser enforces rules a server does not: a
  * `Request` built with a `cookie` header arrives without one, a `Response`
  * built with `Set-Cookie` answers without it, and header names come back in
@@ -25,12 +26,14 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 export function registerDom(): void {
   if ((globalThis as { document?: unknown }).document) return;
 
-  const server = {
-    Request: globalThis.Request,
-    Response: globalThis.Response,
-    Headers: globalThis.Headers,
-    fetch: globalThis.fetch,
-  };
+  // The body types belong with them. A `Blob` from the window is not one this
+  // `Request` accepts, so a body built with it arrives as the string
+  // `[object Blob]` — the upload suites uploaded that, hashed it, and were
+  // refused `400` for a digest that did not match anything.
+  const server = Object.fromEntries(
+    (["Request", "Response", "Headers", "fetch", "Blob", "File", "FormData"] as const)
+      .map((name) => [name, globalThis[name]]),
+  );
   GlobalRegistrator.register();
   Object.assign(globalThis, server);
 }

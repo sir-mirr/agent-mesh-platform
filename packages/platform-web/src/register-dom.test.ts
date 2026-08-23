@@ -42,6 +42,19 @@ describe("registering a document", () => {
     ).toEqual({ cookies: ["mesh_token=probe"], names: ["set-cookie"] });
   });
 
+  test("and the body types those two speak", async () => {
+    // A `Blob` from the window is not one the server's `Request` accepts: the
+    // body arrives as the string `[object Blob]`, which uploads then hash and
+    // are refused for. Measured — this is what the first version of the fix
+    // missed, and what nineteen upload cases failed on afterwards.
+    const req = new Request("http://probe.invalid/", { method: "PUT", body: new Blob(["hello"]) });
+
+    expect(
+      await req.text(),
+      "a body built here does not survive into a request, so every upload uploads the word `[object Blob]`",
+    ).toBe("hello");
+  });
+
   test("and a second call changes nothing", () => {
     // `register()` throws if it has already run, and every file in this package
     // calls this at its top level. The guard is the whole reason it is a
