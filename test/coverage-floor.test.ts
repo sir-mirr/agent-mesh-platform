@@ -207,7 +207,10 @@ describe("the coverage run", () => {
   test("carries a signal death out as a failure of its own", () => {
     // `spawnSync` answers `null` for a process a signal killed. `null !== 0`
     // is the branch, and `?? 1` is what keeps it from exiting zero.
-    expect(walk([], "", null as unknown as number).left).toBe(1);
+    expect(
+      walk([], "", null as unknown as number).left,
+      "a run a signal killed left with a success code, so a measurement of nothing reads as a pass",
+    ).toBe(1);
   });
 
   test("runs the two default targets, in one process", () => {

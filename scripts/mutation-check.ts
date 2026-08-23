@@ -7901,7 +7901,7 @@ const MUTATIONS: Mutation[] = [
     from: "    return exit(status ?? 1);",
     to: "    return exit(status ?? 0);",
     suite: "test/coverage-floor.test.ts",
-    expect: ["a failing suite still produced a percentage, or left with a success code"],
+    expect: ["a run a signal killed left with a success code, so a measurement of nothing reads as a pass"],
   },
   {
     id: "half-the-suite-measured-as-though-it-were-all",
