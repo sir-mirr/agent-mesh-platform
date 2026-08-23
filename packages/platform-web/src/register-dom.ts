@@ -31,7 +31,11 @@ export function registerDom(): void {
   // `[object Blob]` — the upload suites uploaded that, hashed it, and were
   // refused `400` for a digest that did not match anything.
   const server = Object.fromEntries(
-    (["Request", "Response", "Headers", "fetch", "Blob", "File", "FormData"] as const)
+    (["Request", "Response", "Headers", "fetch", "Blob", "File", "FormData",
+      // A signal from the window is not one this `Request` accepts either —
+      // "signal is not of type AbortSignal" — and the streaming types travel
+      // with the bodies for the same reason.
+      "AbortController", "AbortSignal", "ReadableStream", "WritableStream", "TransformStream"] as const)
       .map((name) => [name, globalThis[name]]),
   );
   GlobalRegistrator.register();

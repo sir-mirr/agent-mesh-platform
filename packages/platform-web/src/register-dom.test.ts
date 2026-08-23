@@ -55,6 +55,17 @@ describe("registering a document", () => {
     ).toBe("hello");
   });
 
+  test("and the signal type a request can be cancelled with", () => {
+    const controller = new AbortController();
+
+    // "signal is not of type AbortSignal" is what a window's controller gets
+    // from this `Request`, and the stream tests cancel their reader that way.
+    expect(
+      () => new Request("http://probe.invalid/", { signal: controller.signal }),
+      "a signal built here is refused by the request type, so nothing can be cancelled",
+    ).not.toThrow();
+  });
+
   test("and a second call changes nothing", () => {
     // `register()` throws if it has already run, and every file in this package
     // calls this at its top level. The guard is the whole reason it is a

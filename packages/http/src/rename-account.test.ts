@@ -267,17 +267,47 @@ describe("the seeded administrator's rename", () => {
     written.push(LEGACY_SEED_ADMIN_USERNAME);
   }
 
+  /**
+   * **The new name has to be free, and this process is shared.**
+   *
+   * `agent_registry` is the same namespace as a login, and the rename refuses
+   * rather than colliding — correctly. But every file in this package shares
+   * one database, and one of them registers an agent called `platform-admin`,
+   * so whether this test finds the name free came down to which file bun loaded
+   * first. It passed here and refused in CI with `blocked_by:
+   * agent_registry.id`. The row is borrowed for the length of the test and put
+   * back, which is what the neighbouring cases already do with the ones they
+   * create.
+   */
+  function borrowRegistryName<T>(id: string, fn: () => T): T {
+    const db = getDb();
+    const held = db.prepare(`SELECT * FROM agent_registry WHERE id = ?`).get(id) as Record<string, unknown> | null;
+    if (held) db.prepare(`DELETE FROM agent_registry WHERE id = ?`).run(id);
+    try {
+      return fn();
+    } finally {
+      if (held) {
+        const columns = Object.keys(held);
+        db.prepare(
+          `INSERT OR REPLACE INTO agent_registry (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+        ).run(...columns.map((c) => held[c] as never));
+      }
+    }
+  }
+
   test("moves `admin` to `platform-admin` once, and does nothing on the next start", async () => {
     await legacyAdmin();
     written.push(SEED_ADMIN_USERNAME);
 
-    renameSeededAdmin();
-    expect(getLocalUser(LEGACY_SEED_ADMIN_USERNAME)).toBeNull();
-    expect(getLocalUser(SEED_ADMIN_USERNAME)?.role).toBe("admin");
+    borrowRegistryName(SEED_ADMIN_USERNAME, () => {
+      renameSeededAdmin();
+      expect(getLocalUser(LEGACY_SEED_ADMIN_USERNAME)).toBeNull();
+      expect(getLocalUser(SEED_ADMIN_USERNAME)?.role).toBe("admin");
 
-    // Idempotent: the second start has nothing named `admin` to find.
-    renameSeededAdmin();
-    expect(getLocalUser(SEED_ADMIN_USERNAME)).not.toBeNull();
+      // Idempotent: the second start has nothing named `admin` to find.
+      renameSeededAdmin();
+      expect(getLocalUser(SEED_ADMIN_USERNAME)).not.toBeNull();
+    });
   });
 
   /**
