@@ -76,3 +76,31 @@ describe("the session cookie", () => {
     expect(res.headers.getSetCookie()).toEqual(["mesh_token=probe; Path=/; Max-Age=60; SameSite=Lax"]);
   });
 });
+
+/**
+ * **Below Hono, below the app: the runtime itself.**
+ *
+ * Both shapes above lose the cookie on the platform CI runs — the raw
+ * `Response` and the `c.header` + `c.json` one — which is one layer too low for
+ * a framework-usage answer. These three ask the runtime directly: a `Headers`
+ * built from a record, a `Response` built with one, and the same value
+ * `append`ed. Whichever of them fails is the layer the cookie is lost at, and
+ * if all three pass the loss is Hono's merge after all.
+ */
+describe("what this runtime does with Set-Cookie", () => {
+  test("keeps it in a Headers built from a record", () => {
+    expect(new Headers({ "Set-Cookie": "mesh_token=probe; Path=/" }).getSetCookie())
+      .toEqual(["mesh_token=probe; Path=/"]);
+  });
+
+  test("keeps it in a Response built from a record", () => {
+    expect(new Response("x", { headers: { "Set-Cookie": "mesh_token=probe; Path=/" } }).headers.getSetCookie())
+      .toEqual(["mesh_token=probe; Path=/"]);
+  });
+
+  test("keeps it when appended to an existing response", () => {
+    const res = new Response("x");
+    res.headers.append("Set-Cookie", "mesh_token=probe; Path=/");
+    expect(res.headers.getSetCookie()).toEqual(["mesh_token=probe; Path=/"]);
+  });
+});
