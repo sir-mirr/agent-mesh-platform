@@ -149,6 +149,17 @@ describe("heartbeat", () => {
     // than throwing and the failure branch was unreachable.
     expect(await waitFor(async () => (await onlineCount(hub)) === 0)).toBe(true);
 
+    // **The count moves before the line arrives.** `online_agents` is read over
+    // HTTP the instant the sweep judges; the hub's log reaches `output()`
+    // through a pipe this process drains on its own schedule, and on a loaded
+    // runner that is a few milliseconds later. Asserting straight after the
+    // count read an empty log and called a working heartbeat a defect — CI run
+    // 32633321171, and green on every machine that was not busy.
+    expect(
+      await waitFor(async () => hub.output().includes('"event":"heartbeat_drop"')),
+      "the peer was dropped and the hub never said so — a drop nothing announces is a socket that vanishes from an operator's count with no line to explain it",
+    ).toBe(true);
+
     // The fields, not the sentence. A sentence can be reworded without any
     // operator noticing; `event` and `actor` are what a counter and a
     // complaint are answered from, so those are what this holds to.
