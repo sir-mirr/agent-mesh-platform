@@ -3522,11 +3522,16 @@ const MUTATIONS: Mutation[] = [
     // Caught by the rule rather than the case: dropping `failureKind` is what a
     // screen looks like when it decides the answer itself, and the source half
     // names it before the browser half gets there.
-    // **The half that actually fails.** The source rule asks whether a file
-    // mentions `failureKind(` at all, and `UserAdminPage` calls it three times,
-    // so taking one call site away leaves the file compliant. What fails is the
-    // browser half, which reads the screen.
-    expect: ["SC-CAP-07", "silence was drawn as a permission problem"],
+    // **The scenario that owns the property, and answers the same way twice.**
+    // `SC-CAP-07`'s source rule asks whether a file mentions `failureKind(` at
+    // all, and `UserAdminPage` calls it three times — taking one call site away
+    // leaves the file compliant. Its browser half does see the screen, but not
+    // on every run: one pass had both `SC-CAP-07` and `SC-CAP-12` red and the
+    // next had only `SC-CAP-12`. That one walks every route and reads the
+    // refusal sentence out of the dictionary, and it names the defect in the
+    // words the defect deserves — `/platform/users: 이 계정에는 이 화면을 볼
+    // 권한이 없습니다`, drawn for a backend that never answered.
+    expect: ["SC-CAP-12", "a screen blamed a permission for a backend that never answered"],
   },
   {
     id: "member-panel-answers-zero-while-waiting",
