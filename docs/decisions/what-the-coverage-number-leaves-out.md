@@ -212,9 +212,50 @@ nine uncovered functions and its service-worker template holds about ten
 arrows"* gave a confident, wrong answer: moving that source into a file left
 the nine untouched and raised the file's function count, because a template
 literal's arrows were never being counted. Two numbers being close is not
-evidence. What remains after that correction — four files with one uncovered
-function each, and `test/harness.ts` with four — is not being guessed at again:
-whoever picks it up should expect to read code rather than a report.
+evidence. What remains after that correction is not guessed at again: whoever
+picks it up should expect to read code rather than a report.
+
+**Measured again on 2026-08-23 at `f1b4497`: 100.00% of functions and 100.00%
+of lines, on both denominators, over 137 files.** What was left to close was
+three functions and one line, and the distinction matters because they were
+found by different means. The line was a peer-badge branch nothing could
+produce — `TopologyPage.tsx` stood at 82/82 functions and 1266/1267 lines, so
+only the line report could see it. The three functions were a forwarding arrow
+only a refused admission ran, a comparator `sort` never called because the
+exclusion holds one directory, and an empty `catch`; none of them had a line of
+their own to be missing from. The branch was deleted and the three were
+reached, which is the ratio this whole exercise kept producing: what could not be tested was
+usually not worth keeping, and what was worth keeping could be tested once the
+dependency became a parameter.
+
+Two things that number does not say. The excluded four files are themselves at
+100%, so **the exclusion currently costs nothing** — denominator A and
+denominator B are the same number today, and the argument for the exclusion is
+about what those files are, not about what they would do to the report. And
+100% is a statement about lines and functions, not about branches or inputs:
+`test/held-uncovered.test.ts` holding an empty table means nothing is being
+held back on purpose, not that everything reachable has been reached.
+
+**There is a way to make lcov name them, and it has two blind spots.** Split
+every arrow body onto a line of its own — mechanically, across the file — and
+re-measure: a function that never ran now owns a line nothing else is on, and
+that line comes back `DA:…,0`. **Two** of the last four places were named this
+way, and being exact about which is the point: the peer-badge line was already
+`DA:644,0` in the plain report, splitting turned up the comparator and the
+forwarding arrow, and the empty `catch` had to be found by reading because
+splitting cannot reach it.
+
+The first blind spot is a default parameter: in
+`epitaph: () => string | null = () => null`, the default expression's *line* is
+counted from the signature, so an unused default reads as hit. The second
+cannot be worked around at all — **an empty body has no statement to move**.
+`.catch(() => {})` is a function, and splitting it produces the same two
+characters on the same line, so no line-based diagnostic can ever point at it.
+Its existence shows only as the gap between `FNF` and `FNH`, and its position
+has to be found by reading. The one this repository had was a swallowed
+cleanup failure, which is the second time that pairing has turned up here: a
+line that cannot be reached and a failure that cannot be seen are usually the
+same line.
 
 ## What this table cannot check
 
