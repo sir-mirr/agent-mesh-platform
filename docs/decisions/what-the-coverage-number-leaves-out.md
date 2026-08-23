@@ -96,11 +96,14 @@ not to work, per case, at seconds each.
 **A branch with no producer.** There were three in the console: an avatar image
 nothing set, a breadcrumb for a route that redirects before it renders, and a
 mailbox depth `GET /api/v1/agents` does not report. fe-codex ruled on all three
-under D-745 (T-025) and the answer was not the same for each — the first two
-were deleted, because nothing was going to set them; the third stays, with the
-producer named in a comment beside it. That is the distinction this category
-turns on: a branch waiting for a producer somebody has decided to build is
-different from one waiting for nothing.
+under D-745 (T-025): the first two were deleted because nothing was going to
+set them, while the third was held for the already shipped
+`GET /api/v1/admin/mailbox` producer. D-751 connected that producer for sessions
+holding `mailbox.read.depth`; measured pending counts now reach the matching
+agent row, while a refusal, failure, absent grant, or absent identity remains
+honestly unreported. The last held console row therefore left the table by
+becoming a product path rather than by inventing a fixture for an impossible
+state.
 
 ## The table
 
@@ -123,7 +126,6 @@ reason no longer describes anything and the row is stale.
 | `test/harness.ts` | `could not leave the password gate` | An admitted account that cannot change its temporary password. |
 | `test/harness.ts` | `no mesh_token` | A sign-in that redirects without setting a cookie. |
 | `packages/hub/src/provenance.ts` | `Bun.spawnSync(["git"` | The catch around a `git` that will not spawn, on a module read once at load. |
-| `packages/platform-web/src/pages/creator/AgentsPage.tsx` | `item.inboxDepth === null ?` | The non-null half. `GET /api/v1/agents` reports no queue depth, so every row takes the `— 미보고` side; kept under D-745 for the admin-mailbox producer, which is named in the comment above it. |
 
 ## What this table cannot check
 

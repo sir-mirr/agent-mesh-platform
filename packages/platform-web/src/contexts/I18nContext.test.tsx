@@ -55,6 +55,7 @@ function Probe({ k, fallback }: { k: string; fallback?: string }) {
       <span data-testid="said">{t(k, fallback)}</span>
       <span data-testid="lang">{language}</span>
       <button data-testid="to-ko" onClick={() => setLanguage("ko")}>ko</button>
+      <button data-testid="to-en" onClick={() => setLanguage("en")}>en</button>
     </div>
   );
 }
@@ -110,9 +111,19 @@ describe("t()", () => {
 });
 
 describe("useI18n outside a provider", () => {
-  it("still answers rather than throwing", () => {
+  it("still answers and keeps its fallback language when its control is used", () => {
     // A hook that throws here turns one forgotten provider into a blank screen.
     render(<Probe k="common.loading" fallback="untranslated" />);
+    expect(screen.getByTestId("said").textContent).toBe("untranslated");
+    expect(screen.getByTestId("lang").textContent).toBe("ko");
+
+    // There is deliberately no provider state to change. The recovery
+    // contract is that a live language control remains safe, not that clicking
+    // it manufactures a second, disconnected source of language state.
+    expect(() => {
+      act(() => { screen.getByTestId("to-en").click(); });
+    }).not.toThrow();
+    expect(screen.getByTestId("lang").textContent).toBe("ko");
     expect(screen.getByTestId("said").textContent).toBe("untranslated");
   });
 });

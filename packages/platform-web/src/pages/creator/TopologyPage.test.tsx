@@ -602,6 +602,39 @@ describe("a receipt is read, not assumed", () => {
     expect(toastBox()).toBeNull();
   });
 
+  it("removes the receipt toast when its product timeout expires", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: GROUP_ROWS }),
+      [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+      [MESSAGES]: () => json(201, { ok: true, message: {
+        id: "msg_timeout", from: "operator", to: "svc-alpha-1", ts: "2026-08-20T00:00:00Z", status: "pending",
+      } }),
+    });
+
+    const realSetTimeout = globalThis.setTimeout;
+    let fireAutoClose: (() => void) | null = null;
+    globalThis.setTimeout = ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+      if (delay === 3500) {
+        fireAutoClose = () => callback(...args);
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }
+      return realSetTimeout(callback, delay, ...args);
+    }) as typeof globalThis.setTimeout;
+
+    try {
+      await mount();
+      await sendTo("Alpha One");
+      expect(toastText()).toContain(say("topo.send.accepted"));
+      if (!fireAutoClose) throw new Error("the receipt toast scheduled no product timeout");
+
+      await act(async () => { fireAutoClose?.(); });
+      expect(toastBox() === null).toBe(true);
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+  });
+
   it("does not report a send the server never took", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: GROUP_ROWS }),

@@ -63,6 +63,7 @@ const { AgentsPage } = await import("./AgentsPage.tsx");
 
 const ME = "/auth/me";
 const AGENTS = "/api/v1/agents";
+const MAILBOX = "/api/v1/admin/mailbox";
 /** The teardown route, which is a different path — `admin/agents/<identity>`. */
 const TEARDOWN_PATH = "/api/v1/admin/agents/";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while agents fails. */
@@ -72,6 +73,7 @@ const BELL = "/api/v1/admin/keys/pending";
 // mesh does not define is as wrong in a fixture as it is on a screen, because
 // it makes the test agree with a server that does not exist.
 const TEARDOWN_CAP = CAPABILITY.AGENT_TEARDOWN;
+const MAILBOX_CAP = CAPABILITY.MAILBOX_READ_DEPTH;
 /**
  * The name a refusal carries in the fixtures below.
  *
@@ -116,6 +118,8 @@ const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
 let held: string[] = [TEARDOWN_CAP];
 /** What `GET /api/v1/agents` does. */
 let readAgents: Reply = () => json(200, { agents: [] });
+/** What the separately protected queue-depth producer does. */
+let readMailbox: Reply = () => json(200, { ok: true, mailboxes: [], total_queued: 0 });
 /** What `DELETE /api/v1/admin/agents/<identity>` does. */
 let destroyAgent: Reply = () => json(200, { ok: true, identity: "agt_beta", action: "soft-deleted" });
 
@@ -133,6 +137,7 @@ beforeEach(() => {
   calls.length = 0;
   held = [TEARDOWN_CAP];
   readAgents = () => json(200, { agents: [] });
+  readMailbox = () => json(200, { ok: true, mailboxes: [], total_queued: 0 });
   destroyAgent = () => json(200, { ok: true, identity: "agt_beta", action: "soft-deleted" });
   // `AuthProvider` hydrates from storage and `I18nProvider` reads a saved
   // language out of it; happy-dom's storage belongs to the process, so a
@@ -143,6 +148,7 @@ beforeEach(() => {
     calls.push({ url, init });
     if (url.endsWith(ME)) return json(200, session(held));
     if (url.endsWith(BELL)) return json(200, { ok: true, keys: [] });
+    if (url.endsWith(MAILBOX)) return await readMailbox(url, init);
     if (url.endsWith(AGENTS)) return await readAgents(url, init);
     if (url.includes(TEARDOWN_PATH)) return await destroyAgent(url, init);
     return json(200, { ok: true });
@@ -259,6 +265,7 @@ const toast = (): string => {
 };
 
 const agentReads = () => calls.filter((c) => c.url.endsWith(AGENTS));
+const mailboxReads = () => calls.filter((c) => c.url.endsWith(MAILBOX));
 const teardownWrites = () => calls.filter((c) => c.url.includes(TEARDOWN_PATH));
 
 /** Two hours before now, so `lastSeenText` composes the hour unit from it. */
@@ -450,6 +457,9 @@ describe("a row says only what the server sent", () => {
     expect(other[4]).toBe(NOT_REPORTED);
     expect(other[4]).not.toContain("0");
     expect(screen.getAllByTestId("inbox-unknown")).toHaveLength(2);
+    // This session was not granted the depth capability, so "unreported" is
+    // not the result of making a request the server was bound to refuse.
+    expect(mailboxReads()).toHaveLength(0);
   });
 
   it("calls no presence record no presence record, rather than offline", async () => {
@@ -523,6 +533,60 @@ describe("a row says only what the server sent", () => {
     expect(cellsOf(rowFor(ALPHA.id))[3]).toBe(FP_ABSENT);
     expect(cellsOf(rowFor(beta().id))[2]).toBe(NEVER_SEEN);
     expect(cellsOf(rowFor(beta().id))[3]).toContain("99aabbccddeeff0011223344556677");
+  });
+});
+
+describe("mailbox depth comes from its protected producer", () => {
+  it("joins each measured pending count to the matching identity, including a real zero", async () => {
+    held = [MAILBOX_CAP];
+    readAgents = () => json(200, { agents: [ALPHA, beta()] });
+    readMailbox = () => json(200, {
+      ok: true,
+      // Reverse registry order so a positional join gives both agents the
+      // other one's queue. Identity is the contract shared by the two routes.
+      mailboxes: [
+        { identity: "agt_beta", pending: 7, leased: 2, oldest: "2026-08-23T06:00:00Z" },
+        { identity: "agt_alpha", pending: 0, leased: 0, oldest: null },
+      ],
+      total_queued: 7,
+    });
+    await mount();
+
+    expect(mailboxReads().map((c) => c.url)).toEqual([MAILBOX]);
+    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe("0");
+    expect(cellsOf(rowFor(beta().id))[4]).toBe("7");
+    expect(screen.queryByTestId("inbox-unknown")).toBe(null);
+
+    const idle = screen.getByTestId(`inbox-depth-${ALPHA.id}`);
+    const backedUp = screen.getByTestId(`inbox-depth-${beta().id}`);
+    expect(idle.style.color).toContain("text-muted");
+    expect(backedUp.style.color).toContain("warning");
+  });
+
+  it("keeps only depth unreported when the protected producer refuses", async () => {
+    held = [MAILBOX_CAP];
+    readAgents = () => json(200, { agents: [ALPHA] });
+    readMailbox = () => json(403, { error: "not allowed", capability: MAILBOX_CAP });
+    await mount();
+
+    expect(rows()).toHaveLength(1);
+    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe(NOT_REPORTED);
+    expect(status()).not.toContain(REFUSED);
+    expect(status()).not.toContain(UNREACHABLE);
+    expect(mailboxReads()).toHaveLength(1);
+  });
+
+  it("keeps only depth unreported when the protected producer does not answer", async () => {
+    held = [MAILBOX_CAP];
+    readAgents = () => json(200, { agents: [ALPHA] });
+    readMailbox = () => { throw new TypeError("Failed to fetch"); };
+    await mount();
+
+    expect(rows()).toHaveLength(1);
+    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe(NOT_REPORTED);
+    expect(status()).not.toContain(REFUSED);
+    expect(status()).not.toContain(UNREACHABLE);
+    expect(mailboxReads()).toHaveLength(1);
   });
 });
 

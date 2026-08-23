@@ -73,7 +73,7 @@ describe("what the coverage number leaves out", () => {
    */
   test("the table is still a table", () => {
     expect(ROWS.length).toBeGreaterThan(10);
-    expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(4);
+    expect(new Set(ROWS.map((r) => r.file)).size).toBeGreaterThan(3);
   });
 
   test("every row names a tracked file", () => {

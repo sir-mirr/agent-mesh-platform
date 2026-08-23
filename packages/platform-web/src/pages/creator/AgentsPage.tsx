@@ -14,6 +14,7 @@ import {
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useRbac } from "@/contexts/RbacContext.tsx";
+import { fetchAdminMailbox } from "@/api/mailbox.ts";
 
 interface AgentItem {
   id: string;
@@ -51,9 +52,10 @@ interface TeardownNotice {
 import { agentRegistryEntries, fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
 
 export function AgentsPage() {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const { hasCapability } = useRbac();
   const canTeardown = hasCapability("agent.teardown");
+  const canReadMailboxDepth = hasCapability("mailbox.read.depth");
   const { t } = useI18n();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -72,7 +74,18 @@ export function AgentsPage() {
     setIsError(false);
       setFailure(null);
     try {
-      const list = agentRegistryEntries(await fetchAgents());
+      // Queue depth has its own protected producer. A refusal or failed depth
+      // read must not turn an honestly loaded registry into a failed table;
+      // it leaves only that cell unreported. Waiting for auth below prevents
+      // an unprivileged probe before the session's capabilities are known.
+      const mailboxRead = canReadMailboxDepth
+        ? fetchAdminMailbox().catch(() => null)
+        : Promise.resolve(null);
+      const [agentResponse, mailbox] = await Promise.all([fetchAgents(), mailboxRead]);
+      const list = agentRegistryEntries(agentResponse);
+      const inboxDepthByIdentity = new Map<string, number>(
+        (mailbox?.mailboxes ?? []).map((row) => [row.identity, row.pending]),
+      );
       setAgents(
         (list || []).map((a) => {
           const seen = lastSeen(a.last_seen_at);
@@ -86,8 +99,10 @@ export function AgentsPage() {
             lastSeenKind: seen.kind,
             // Absent, not invented — see `fetchAgents`.
             fingerprint: a.fingerprint ?? null,
-            // `GET /api/v1/agents` does not report queue depth. See the type.
-            inboxDepth: null,
+            // Kept absent when the protected mailbox read did not answer, was
+            // refused, or did not name this identity. Zero is retained when
+            // the producer really measured zero.
+            inboxDepth: inboxDepthByIdentity.get(a.identity) ?? null,
           };
         })
       );
@@ -103,8 +118,8 @@ export function AgentsPage() {
 
   // Load real agents from backend
   React.useEffect(() => {
-    loadAgents();
-  }, []);
+    if (!isAuthLoading) void loadAgents();
+  }, [isAuthLoading, canReadMailboxDepth]);
 
   const handleTeardownConfirm = async () => {
     if (!teardownTarget || teardownInFlight.current) return;
@@ -248,6 +263,7 @@ export function AgentsPage() {
           </span>
         ) : (
           <span
+            data-testid={`inbox-depth-${item.id}`}
             style={{
               fontFamily: "var(--font-mono)",
               fontWeight: 700,
