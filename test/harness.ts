@@ -128,10 +128,26 @@ export function freePort(): Promise<number> {
  * was exported neither the wording nor the last error it carries had ever been
  * checked.
  */
-export async function waitForHealth(url: string, timeoutMs = 15_000): Promise<void> {
+export async function waitForHealth(
+  url: string,
+  timeoutMs = 15_000,
+  /**
+   * Why the process is gone, if it is — `Service.died()`.
+   *
+   * **Waiting fifteen seconds for a process that exited two hundred
+   * milliseconds ago** is the difference between "the mesh could not start" and
+   * "the mesh took too long", and only the first is true. Worse, the wait hides
+   * what the child said: by the time this gives up, the reason has been sitting
+   * in `output()` for the whole timeout. Asked every attempt, so a boot that
+   * cannot happen fails in the time it takes to fail.
+   */
+  epitaph: () => string | null = () => null,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastError = "no attempt made";
   while (Date.now() < deadline) {
+    const gone = epitaph();
+    if (gone) throw new Error(`service at ${url} exited before it answered: ${gone}`);
     try {
       const res = await fetch(url);
       if (res.ok) return;
@@ -270,7 +286,7 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
   let http: Service;
   let httpProc: ReturnType<typeof spawnService> | undefined;
   try {
-    await waitForHealth(`${hub.url}/health`);
+    await waitForHealth(`${hub.url}/health`, 15_000, () => hubProc.died());
 
     if (withHttp) {
       httpProc = spawnService("packages/http/src/main.ts", httpPort, {
@@ -286,7 +302,7 @@ async function startMeshOnce(opts: StartOptions = {}): Promise<Mesh> {
         AGENT_MESH_UPLOAD_MAX_BYTES: "65536",
       });
       http = addressable(httpProc, `http://127.0.0.1:${httpPort}`);
-      await waitForHealth(`${http.url}/api/v1/health`);
+      await waitForHealth(`${http.url}/api/v1/health`, 15_000, () => httpProc!.died());
 
       /**
        * Past the first-login password gate, in the file rather than through the

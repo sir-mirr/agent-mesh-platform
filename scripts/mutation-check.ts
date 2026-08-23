@@ -7659,6 +7659,39 @@ const MUTATIONS: Mutation[] = [
     expect: ["the spawn asks bun for an lcov report, and gets one"],
   },
   {
+    id: "health-wait-ignores-a-dead-child",
+    swept: true,
+    defect:
+      "The wait stopped asking whether the process was still alive, so a service that exited two hundred milliseconds in is reported fifteen seconds later as one that took too long — and the reason it gave has been sitting in `output()` for the whole wait. The two readings send a person to different halves of the system.",
+    file: "test/harness.ts",
+    from: '    if (gone) throw new Error(`service at ${url} exited before it answered: ${gone}`);',
+    to: "    void gone;",
+    suite: "test/harness-death.test.ts",
+    expect: ["stops what it started and reports what the process said"],
+  },
+  {
+    id: "admission-refusal-walked-past",
+    swept: true,
+    defect:
+      "Every refusal from the admission route was treated as *the account is already there*. A mesh that refused with `403` then runs the whole file against an account it never made, and the failures land on the scenarios instead of on the harness.",
+    file: "test/harness.ts",
+    from: "  if (admitted.status === 409) return false;",
+    to: "  return false;",
+    suite: "test/harness-boot.test.ts",
+    expect: ["and anything else stops, naming the status and what the route said"],
+  },
+  {
+    id: "password-gate-not-checked",
+    swept: true,
+    defect:
+      "The harness stopped checking that the new account left the password gate. Every later step then fails about a session that was never issued — twenty failures whose cause is one line above them, and none of them says so.",
+    file: "test/harness.ts",
+    from: "  if (status !== 200) {\n    throw new Error(`${username} could not leave the password gate: ${status}`);\n  }",
+    to: "  void status;",
+    suite: "test/harness-boot.test.ts",
+    expect: ["the password gate is walked out of, or the run stops there"],
+  },
+  {
     id: "held-table-file-moved",
     swept: true,
     defect:

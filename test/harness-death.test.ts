@@ -162,3 +162,33 @@ describe("the line that decides a start is worth retrying", () => {
     expect(PORT_TAKEN.test(crash)).toBe(false);
   });
 });
+
+
+/**
+ * A boot that cannot happen, and what the harness says about it.
+ *
+ * **The `catch` in `startMeshOnce` had never run.** It is where a failed boot
+ * stops both processes and puts *both* their outputs into one message — a fix
+ * made because it used to append the hub's alone, so an http server that died
+ * on startup was reported underneath a healthy hub log. That repair had no
+ * test: reaching the block means a mesh that will not start, and every suite
+ * here starts one that does.
+ *
+ * A state directory the services cannot open does it, and costs about a second
+ * now that `waitForHealth` asks whether the child is still alive instead of
+ * waiting out its fifteen.
+ */
+describe("a mesh that cannot start", () => {
+  test("stops what it started and reports what the process said", async () => {
+    const failed = await startMesh({ env: { AGENT_MESH_STATE_DIR: "/proc/agent-mesh-cannot-write-here" } })
+      .then(() => null)
+      .catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))));
+
+    expect(failed, "a mesh started on a directory nothing can open, which is not a mesh").not.toBeNull();
+    // The child's own account, not just the harness's timeout sentence.
+    expect(
+      failed!.message,
+      "the boot failure says the wait ended and not what the process said, which is the report this block exists to replace",
+    ).toContain("SQLITE_CANTOPEN");
+  }, 30_000);
+});
