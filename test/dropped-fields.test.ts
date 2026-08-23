@@ -357,14 +357,25 @@ describe("a request body field the route never reads", () => {
    * `bun test` against a mutated tree and reads exit codes; the day it starts
    * calling a route itself, its calls stop being scanned and this file goes on
    * saying every caller was checked.
+   *
+   * **Checked against invented text as well as the real file**, because a
+   * predicate that always answers "no requests here" would pass on the real
+   * file forever. It cannot be planted in `scripts/mutation-check.ts` the usual
+   * way: an entry that quotes a line of that file *is* a second copy of the
+   * line, so the anchor stops being unique and `--anchors` refuses it. The
+   * synthetic case is what a mutation would have bought.
    */
   test("the file left out of the scan does not call a route itself", () => {
-    const manifest = readFileSync(join(ROOT, QUOTES_SOURCE), "utf8");
+    const requests = (text: string) => text.match(/\bfetch\s*\(/g) ?? [];
 
     expect(
-      manifest.match(/\bfetch\s*\(/g) ?? [],
+      requests(readFileSync(join(ROOT, QUOTES_SOURCE), "utf8")),
       "the mutation manifest makes requests now, so leaving it out of the scan leaves those requests unchecked",
     ).toEqual([]);
+    expect(
+      requests('await fetch("/api/v1/messages", { method: "POST" })').length,
+      "the predicate cannot see a request at all, so its silence about the manifest means nothing",
+    ).toBe(1);
   });
 
   test("no caller sends one, and no caller writes to a verb this server does not answer", () => {
