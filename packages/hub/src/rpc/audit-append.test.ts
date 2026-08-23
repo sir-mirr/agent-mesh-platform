@@ -27,8 +27,9 @@
  * This file owns the `aap-` prefix.
  */
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 
 import { deriveBlobKey } from "@agent-mesh/contracts";
 
@@ -116,6 +117,20 @@ describe("appending an event", () => {
     // entry is safe drops it, so an ACK that predates the commit is how an
     // event is lost with both sides believing it was stored.
     expect(answered.result!.stored_at).toBe(row.stored_at);
+    // **And the equality above cannot see the defect.** The column's default
+    // is `strftime('%Y-%m-%dT%H:%M:%fZ','now')` and a stamp beside it would be
+    // `new Date().toISOString()` — the same format, and equal whenever both
+    // land in one millisecond, which on this path they always do. A mutation
+    // replacing the read-back with a fresh stamp passed here, twice, with the
+    // comment above still explaining why it could not. So where the answer
+    // comes from is read out of the source: the row, selected by id, after the
+    // transaction.
+    const source = readFileSync(join(import.meta.dir, "audit.ts"), "utf8");
+    const readBack = /const stored = ([^\n]*)\n/.exec(source)?.[1] ?? "";
+    expect(
+      { readBack, answers: /stored_at: stored\.stored_at/.test(source) },
+      "the ACK's `stored_at` no longer comes from the committed row",
+    ).toEqual({ readBack: "stmtSelectAuditEvent.get(eventId) as { stored_at: string };", answers: true });
     expect(row).toMatchObject({
       event_id: e.event_id,
       event_type: "app.thing.happened",

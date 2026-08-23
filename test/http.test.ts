@@ -137,7 +137,20 @@ describe("a session that must change its password", () => {
     // and produces a route that is silently outside the gate.
     const source = readFileSync(join(REPO_ROOT, "packages/http/src/main.ts"), "utf8");
     const lines = source.split("\n");
-    const gate = lines.findIndex((l: string) => l.startsWith("app.use('*'"));
+    // **The gate, and not merely the first middleware.** This took the first
+    // `app.use('*'` in the file, which has not been the gate since the session
+    // cookie's middleware went in above it — that one has to be registered
+    // before CORS, so it is near the top, and everything between it and the
+    // real gate was measured as safe. A route planted there was invisible: the
+    // mutation that adds `/api/v1/gate-probe` beside `/auth/logout` passed.
+    // The gate is the middleware that consults `OPEN_WHILE_FLAGGED`, so it is
+    // found by that and not by position.
+    const guardBody = lines.findIndex((l: string) => l.includes("OPEN_WHILE_FLAGGED.has(path)"));
+    expect(guardBody, "the password gate's body was not found, so this test compared nothing").toBeGreaterThan(0);
+    const gate = lines.slice(0, guardBody).map((l: string, i: number) => ({ l, i }))
+      .filter(({ l }: { l: string }) => l.startsWith("app.use('*'"))
+      .map(({ i }: { i: number }) => i)
+      .pop() ?? -1;
     expect(gate, "the password gate's middleware was not found, so this test compared nothing").toBeGreaterThan(0);
 
     const above = lines
