@@ -148,11 +148,26 @@ describe("the source", () => {
     const source = readFileSync(join(import.meta.dir, "main.ts"), "utf8").split("\n");
     const cookieAt = source.findIndex((l) => l.includes("c.res.headers.append('Set-Cookie'"));
     const corsAt = source.findIndex((l) => l.trimStart().startsWith("cors({"));
+    // **Which middleware the append sits in, not only where the line is.**
+    // Reading the line's position alone let a mutation move the append into a
+    // middleware mounted on a path nothing requests — order preserved, cookie
+    // gone for every real route — and this passed. So the mount is read back:
+    // the nearest `app.use(` above the append, and the path it was given.
+    const mountAt = source.slice(0, cookieAt < 0 ? 0 : cookieAt).map((l, i) => [l, i] as const)
+      .filter(([l]) => l.trimStart().startsWith("app.use("))
+      .map(([, i]) => i)
+      .pop() ?? -1;
+    const mountPath = /app\.use\(\s*['"`]([^'"`]*)['"`]/.exec(source[mountAt] ?? "")?.[1];
 
     expect(
-      { cookieFound: cookieAt >= 0, corsFound: corsAt >= 0, cookieFirst: cookieAt < corsAt },
+      {
+        cookieFound: cookieAt >= 0,
+        corsFound: corsAt >= 0,
+        cookieFirst: cookieAt < corsAt,
+        mountedOn: mountPath,
+      },
       "the cookie is appended inside CORS's rebuild, where Linux loses it",
-    ).toEqual({ cookieFound: true, corsFound: true, cookieFirst: true });
+    ).toEqual({ cookieFound: true, corsFound: true, cookieFirst: true, mountedOn: "*" });
   });
 
   test("never hands Set-Cookie to the Response constructor", () => {

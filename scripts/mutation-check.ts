@@ -7689,12 +7689,12 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "held-table-parser-stopped-matching",
+    retired:
+      "The table is empty, and an empty table is what a stopped parser produces \u2014 so nothing here can tell them apart by counting. What covers the empty case is the sentence a person has to write (`**The table is empty.**`), which a broken parser cannot produce and which this mutation does not touch. Same emptiness as `held-table-anchor-stale`, and this comes back the day a row does.",
     swept: true,
     defect:
       "The row parser stopped matching, and every check in this file went vacuous \u2014 no rows means no stale anchors, no untracked files and nothing to disagree with. A guard that reads its own subject fails open, and the floor that used to notice was a number somebody had to lower each time the table shrank.",
     file: "test/held-uncovered.test.ts",
-    from: '  .filter((line) => line.startsWith("| `"))',
-    to: '  .filter((line) => line.startsWith("| ``"))',
     suite: "test/held-uncovered.test.ts",
     expect: ["the table is still a table"],
   },
@@ -7883,7 +7883,11 @@ const MUTATIONS: Mutation[] = [
     from: 'export * from "./open";',
     to: 'export * from "./open";\nexport * from "@agent-mesh/mailbox";',
     suite: "test/import-graph.test.ts",
-    expect: ["has exactly these package pairs, four of them at run time"],
+    // **Not the whole title.** It carries the pair count, so every legitimate
+    // change to the graph renames the test and the entry stops matching a
+    // check that is running and failing exactly as intended — the nightly read
+    // that as *the guard is gone*.
+    expect: ["has exactly these package pairs"],
   },
   {
     id: "boundary-cycle",

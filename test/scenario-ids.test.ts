@@ -501,7 +501,14 @@ describe("testid landmarks", () => {
         e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
       );
     const source = walk(WEB)
-      .filter((f) => /\.tsx?$/.test(f))
+      // **The product, and not the checks beside it.** A unit test asserting
+      // `querySelector('[data-testid="bell"]')` puts that id in this file's
+      // hands as surely as the component does, so renaming the attribute in
+      // `NotificationBell.tsx` left the id "emitted" by `Breadcrumbs.test.tsx`
+      // and every scenario waiting on it still read as covered — which is the
+      // thirty-second wait and the ninety-red-tests cascade this exists to
+      // name.
+      .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
       .map((f) => readFileSync(f, "utf8"))
       .join("\n");
 

@@ -649,11 +649,22 @@ describe("running-locally's commands", () => {
     const refs = [...new Set([...DOC.matchAll(/\borigin\/([A-Za-z0-9._\/-]+)/g)].map((m) => m[1]!))];
     expect(refs.length, "no refs found — the section's shape changed").toBeGreaterThan(0);
 
+    // Whether this clone has remote-tracking refs at all. A checkout that has
+    // never fetched knows nothing about any branch, and reading its silence as
+    // "the branch is gone" would fail on every fresh clone.
+    const hasRemoteRefs = spawnSync("git", ["rev-parse", "--verify", "origin/main"], { cwd: REPO_ROOT })
+      .status === 0;
+
     const superseded = refs.filter((ref) => {
       if (ref === "main") return false;
       const exists = spawnSync("git", ["rev-parse", "--verify", `origin/${ref}`], { cwd: REPO_ROOT });
-      // A ref this clone does not have says nothing either way.
-      if (exists.status !== 0) return false;
+      // **A branch that has been deleted is worse than one that was merged**,
+      // and this used to read the two as the same silence: `origin/` gone
+      // meant "says nothing either way", so tidying the remote disarmed the
+      // check for exactly the refs it was written about. A clone that knows
+      // `origin/main` knows which branches exist, and a document naming one it
+      // does not have is naming something nobody can fetch.
+      if (exists.status !== 0) return hasRemoteRefs;
       const merged = spawnSync(
         "git",
         ["merge-base", "--is-ancestor", `origin/${ref}`, "origin/main"],
