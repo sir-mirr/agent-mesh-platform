@@ -188,8 +188,12 @@ const parse = (frames: string[]) => frames.map((f) => JSON.parse(f));
  * `request.params` off `undefined` (run 32643136361), and here the reply went
  * out while the last numbered frame was still `mesh.connect` — `reply` takes
  * that id, no listener is waiting for it, and the test sits out `sendViaHub`'s
- * full five-second timeout instead. Locally the send has been measured at
- * 6.4ms on an idle machine.
+ * full five-second timeout instead.
+ *
+ * Measured here, 25 samples each: 1.1ms median and 1.7ms worst on a quiet
+ * machine, and 3.0ms median with **6 of 25 over five** with eight busy loops
+ * running. The second is the one that matters, because a shared CI runner is
+ * the loaded machine rather than the quiet one.
  *
  * Waiting on the frame costs nothing when it is already there, and names what
  * went wrong when it never arrives.
