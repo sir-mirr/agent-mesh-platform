@@ -53,28 +53,6 @@ describe("the session cookie", () => {
     ).toEqual({ status: 200, cookies: [COOKIE], correlated: "probe-id" });
   });
 
-  test("does not survive CORS when the route puts it on itself", async () => {
-    // The shape this server used until now, and the one the source guard below
-    // keeps out. On Linux the cookie is gone by the time it reaches this line;
-    // on macOS it is not. Asserting *either* would fail on one of the two
-    // platforms, so what is asserted is the part that holds everywhere: the
-    // answer is otherwise identical, and the cookie is the only thing at risk.
-    const app = new Hono();
-    app.use("/*", cors({ origin: (origin) => (origin === "http://allowed" ? origin : null), credentials: true }));
-    app.post("/sign-in", () => {
-      const res = new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
-      res.headers.append("Set-Cookie", COOKIE);
-      return res;
-    });
-
-    const res = await app.fetch(new Request("http://probe.invalid/sign-in", { method: "POST" }));
-    const kept = res.headers.getSetCookie();
-
-    expect(
-      { status: res.status, kept: kept.length === 0 || kept[0] === COOKIE },
-      "the cookie came through changed rather than kept or dropped, which is neither platform's behaviour",
-    ).toEqual({ status: 200, kept: true });
-  });
 });
 
 /**

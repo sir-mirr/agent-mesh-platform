@@ -76,27 +76,6 @@ async function approved(login = uniq("person")) {
 const get = (id: string, headers: Record<string, string> = {}) =>
   app.fetch(new Request(`http://att-probe/api/v1/attachments/${id}`, { headers }));
 
-/**
- * **Whether a request built in this process can declare its own length.**
- *
- * `content-length` is a forbidden header name. This runtime lets a test set it;
- * the one CI runs strips it, and then every upload here is refused `411` before
- * the route reaches the thing each case is about — measured, with three other
- * header shapes, in `set-cookie-survives.test.ts`. Nothing about the product
- * differs: over a real connection the length is on the wire, and `test/` drives
- * uploads that way.
- *
- * So the cases below run where a request can carry the header and are skipped —
- * visibly, by name — where it cannot, rather than failing for a reason that has
- * nothing to do with what they check.
- */
-const CAN_DECLARE_LENGTH =
-  new Request("http://probe.invalid/", {
-    method: "POST",
-    headers: { "content-length": "1" },
-    body: "x",
-  }).headers.get("content-length") !== null;
-
 describe("who counts as party to an attachment", () => {
   test("the sender does, and so does the recipient", () => {
     const id = digestId();
@@ -274,7 +253,7 @@ describe("the answer that is deliberately the same twice", () => {
  * stores content-addressed bytes, and the one that serves them to a party of
  * the message carrying them.
  */
-describe.skipIf(!CAN_DECLARE_LENGTH)("serving an attachment to somebody entitled to it", () => {
+describe("serving an attachment to somebody entitled to it", () => {
   /** Upload as this person, and return the § 15.2 metadata. */
   async function store(cookie: string, name: string, content: string) {
     const boundary = `----att-probe-${++n}`;

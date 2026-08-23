@@ -85,28 +85,7 @@ function upload(
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 
-/**
- * **Whether a request built in this process can declare its own length.**
- *
- * `content-length` is a forbidden header name. This runtime lets a test set it;
- * the one CI runs strips it, and then every upload here is refused `411` before
- * the route reaches the thing each case is about — measured, with three other
- * header shapes, in `set-cookie-survives.test.ts`. Nothing about the product
- * differs: over a real connection the length is on the wire, and `test/` drives
- * uploads that way.
- *
- * So the cases below run where a request can carry the header and are skipped —
- * visibly, by name — where it cannot, rather than failing for a reason that has
- * nothing to do with what they check.
- */
-const CAN_DECLARE_LENGTH =
-  new Request("http://probe.invalid/", {
-    method: "POST",
-    headers: { "content-length": "1" },
-    body: "x",
-  }).headers.get("content-length") !== null;
-
-describe.skipIf(!CAN_DECLARE_LENGTH)("what it refuses before it reads a byte", () => {
+describe("what it refuses before it reads a byte", () => {
   test("a caller with no session", async () => {
     expect((await upload(null, { name: "a.txt", bytes: bytes("hi") })).status).toBe(401);
   });
@@ -186,7 +165,7 @@ describe.skipIf(!CAN_DECLARE_LENGTH)("what it refuses before it reads a byte", (
   });
 });
 
-describe.skipIf(!CAN_DECLARE_LENGTH)("what it does with bytes it accepts", () => {
+describe("what it does with bytes it accepts", () => {
   test("answers the § 15.2 metadata, keyed on the digest it computed", async () => {
     const me = await session(true);
     const content = `stored ${uniq("body")}`;
