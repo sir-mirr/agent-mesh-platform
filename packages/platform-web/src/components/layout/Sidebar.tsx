@@ -37,6 +37,7 @@ export interface SidebarProps {
   userRole?: string;
   userName?: string;
   onLogout?: () => void;
+  isLoggingOut?: boolean;
 }
 
 export function Sidebar({
@@ -44,6 +45,7 @@ export function Sidebar({
   userRole = "",
   userName = "admin",
   onLogout,
+  isLoggingOut = false,
 }: SidebarProps) {
   const location = useLocation();
   const { language, setLanguage, t } = useI18n();
@@ -695,22 +697,30 @@ export function Sidebar({
 
             {onLogout && (
               <button
+                type="button"
                 onClick={onLogout}
+                disabled={isLoggingOut}
+                aria-busy={isLoggingOut}
                 style={{
                   background: "none",
                   border: "none",
                   color: "var(--color-text-muted)",
-                  cursor: "pointer",
+                  cursor: isLoggingOut ? "wait" : "pointer",
                   fontSize: "0.78rem",
                   fontWeight: 600,
                   padding: "4px 6px",
                   borderRadius: "var(--radius-sm)",
                   whiteSpace: "nowrap",
+                  opacity: isLoggingOut ? 0.65 : 1,
                 }}
-                title={t("common.logout", "로그아웃")}
+                title={isLoggingOut
+                  ? t("auth.loggingOut", "로그아웃 중…")
+                  : t("common.logout", "로그아웃")}
                 data-testid="logout"
               >
-                {t("common.logout", "로그아웃")}
+                {isLoggingOut
+                  ? t("auth.loggingOut", "로그아웃 중…")
+                  : t("common.logout", "로그아웃")}
               </button>
             )}
           </>
@@ -739,18 +749,27 @@ export function Sidebar({
             </button>
 
             <button
+              type="button"
               onClick={onLogout}
+              disabled={isLoggingOut}
+              aria-busy={isLoggingOut}
+              aria-label={isLoggingOut
+                ? t("auth.loggingOut", "로그아웃 중…")
+                : t("nav.logout", "로그아웃")}
               style={{
                 background: "none",
                 border: "none",
-                cursor: "pointer",
+                cursor: isLoggingOut ? "wait" : "pointer",
                 fontSize: "1.1rem",
                 padding: 4,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                opacity: isLoggingOut ? 0.65 : 1,
               }}
-              title={t("nav.logout", "로그아웃")}
+              title={isLoggingOut
+                ? t("auth.loggingOut", "로그아웃 중…")
+                : t("nav.logout", "로그아웃")}
               data-testid="logout"
             >
               🚪

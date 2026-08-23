@@ -36,14 +36,16 @@ const realFetch = globalThis.fetch;
 /** Every request the shell makes, and the one it makes when signing out. */
 let signOutPosts = 0;
 let session: Record<string, unknown> | null = null;
+let logoutReply: () => Response | Promise<Response> = () =>
+  new Response(JSON.stringify({ ok: true }),
+    { status: 200, headers: { "content-type": "application/json" } });
 
 function serve() {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/auth/logout")) {
       signOutPosts += 1;
-      return new Response(JSON.stringify({ ok: true }),
-        { status: 200, headers: { "content-type": "application/json" } });
+      return await logoutReply();
     }
     if (url.includes("/auth/me")) {
       if (session === null) {
@@ -80,6 +82,8 @@ const signedInAs = (user: { name?: string; role?: string; capabilities?: unknown
 
 beforeEach(() => {
   signOutPosts = 0;
+  logoutReply = () => new Response(JSON.stringify({ ok: true }),
+    { status: 200, headers: { "content-type": "application/json" } });
   signedInAs({ name: "sohee", role: "AGENT_OPERATOR", capabilities: [] });
   serve();
 });
@@ -119,6 +123,10 @@ const shell = async (): Promise<HTMLElement> => {
     ).container;
   });
   return container;
+};
+
+const settle = async () => {
+  await act(async () => { await new Promise((done) => setTimeout(done, 0)); });
 };
 
 /** Every destination the shell is currently offering. */
@@ -181,6 +189,7 @@ describe("RootLayout", () => {
   it("ends the session and leaves the shell when signing out", async () => {
     const c = await shell();
     fireEvent.click(screen.getByTestId("logout"));
+    await settle();
     // Both halves, because each has shipped alone. Navigating without ending
     // the session left `mesh_token` alive behind a login form that let the
     // person straight back in; ending it without navigating leaves an operator
@@ -189,6 +198,47 @@ describe("RootLayout", () => {
     expect(screen.queryByTestId("login")).not.toBe(null);
     expect(screen.queryByTestId("page")).toBe(null);
     expect(c.querySelector("aside")).toBe(null);
+  });
+
+  it("stays in the shell, reports the failure, and keeps the session when logout gets no answer", async () => {
+    logoutReply = () => { throw new TypeError("Failed to fetch"); };
+    const c = await shell();
+    expect(localStorage.getItem("agent_mesh_user")).not.toBe(null);
+
+    fireEvent.click(screen.getByTestId("logout"));
+    await settle();
+
+    expect(signOutPosts).toBe(1);
+    expect(screen.queryByTestId("login")).toBe(null);
+    expect(screen.queryByTestId("page")).not.toBe(null);
+    expect(c.querySelector("aside")).not.toBe(null);
+    expect(whoAmI(c)).toContain("sohee");
+    expect(localStorage.getItem("agent_mesh_user")).not.toBe(null);
+    expect(screen.getByTestId("logout-error").textContent).toMatch(/로그아웃|sign out/i);
+  });
+
+  it("does not leave before the cookie-expiry response and blocks a second POST while waiting", async () => {
+    let answer!: (response: Response) => void;
+    logoutReply = () => new Promise<Response>((resolve) => { answer = resolve; });
+    await shell();
+    const button = screen.getByTestId("logout") as HTMLButtonElement;
+
+    fireEvent.click(button);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(signOutPosts).toBe(1);
+    expect(button.disabled).toBe(true);
+    expect(screen.queryByTestId("page")).not.toBe(null);
+    expect(screen.queryByTestId("login")).toBe(null);
+    fireEvent.click(button);
+    expect(signOutPosts).toBe(1);
+
+    answer(new Response(JSON.stringify({ ok: true }),
+      { status: 200, headers: { "content-type": "application/json" } }));
+    await settle();
+
+    expect(screen.queryByTestId("login")).not.toBe(null);
+    expect(screen.queryByTestId("page")).toBe(null);
   });
 
   it("leaves the name blank for a session it has no user for", async () => {

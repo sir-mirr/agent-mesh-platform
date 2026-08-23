@@ -590,6 +590,24 @@ describe("Sidebar sign-out", () => {
     expect(onLogout).toHaveBeenCalledTimes(2);
   });
 
+  it("does not call back while a sign-out request is already in flight", () => {
+    const onLogout = mock(() => {});
+    show({ onLogout, isLoggingOut: true });
+    const expanded = screen.getByTestId("logout") as HTMLButtonElement;
+    expect(expanded.disabled).toBe(true);
+    expect(expanded.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(expanded);
+    expect(onLogout).toHaveBeenCalledTimes(0);
+
+    fireEvent.click(aside().querySelector<HTMLButtonElement>(
+      `button[title="${DICTIONARY.en["nav.collapse"]!}"]`,
+    )!);
+    const collapsed = screen.getByTestId("logout") as HTMLButtonElement;
+    expect(collapsed.disabled).toBe(true);
+    fireEvent.click(collapsed);
+    expect(onLogout).toHaveBeenCalledTimes(0);
+  });
+
   it("keeps the sign-out control out of the expanded footer when there is nothing behind it", () => {
     // A button that ends a session has to end one. Drawing it with nothing
     // behind it teaches a person they have signed out when they have not.
