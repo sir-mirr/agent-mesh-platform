@@ -208,15 +208,26 @@ jobs:
       # second failure the next night files a second issue rather than silently
       # updating one, because "still broken" and "broken again" are different
       # facts and the count is the visible one.
+      # **The alarm has to survive the alarm's own dependencies.**
+      #
+      # This step read as done for as long as the nightly had never gone red,
+      # and the first time it did — every shard, on `cf6e44f` — it filed
+      # nothing: `could not add label: 'nightly-mutation' not found`. A label
+      # this repository had never been given, named in a workflow, in a step
+      # nothing had ever run. `CLAUDE.md` told each session to read those
+      # issues; there were none to read, and no way to tell that from a quiet
+      # night.
+      #
+      # So the label is ensured here rather than assumed, and the issue is
+      # filed without it if that still fails. A labelled issue is nicer; an
+      # issue is the point.
       - name: File the failure where somebody will read it
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue create \
-            --title "nightly mutation shard ${{ matrix.shard }}/8 is red" \
-            --label nightly-mutation \
-            --body "Shard ${{ matrix.shard }} of 8 failed on \`${{ github.sha }}\`.
+          cat > /tmp/nightly-mutation-body.md <<'BODY'
+          Shard ${{ matrix.shard }} of 8 failed on `${{ github.sha }}`.
 
           A mutation that is not caught means the guard named in the entry no
           longer holds — the defect it was written against would now reach a
@@ -224,4 +235,14 @@ jobs:
 
           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          Reproduce one entry locally with \`bun run mutation-check -- <id>\`."
+          Reproduce one entry locally with `bun run mutation-check -- <id>`.
+          BODY
+
+          gh label create nightly-mutation \
+            --color B60205 \
+            --description "A nightly mutation shard came back red: a guard named in the manifest no longer holds" \
+            || echo "the label already exists, or could not be created — filing anyway"
+
+          title="nightly mutation shard ${{ matrix.shard }}/8 is red"
+          gh issue create --title "$title" --label nightly-mutation --body-file /tmp/nightly-mutation-body.md \
+            || gh issue create --title "$title" --body-file /tmp/nightly-mutation-body.md

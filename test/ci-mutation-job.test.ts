@@ -79,4 +79,33 @@ describe("what CI does with the mutation manifest", () => {
       "the workflow files under one label and the instructions read another",
     ).toEqual({ filed: told![1], told: told![1] });
   });
+
+  /**
+   * **The alarm may not depend on somebody having created the label.**
+   *
+   * The first red nightly filed nothing. Every shard reached the step and every
+   * shard died on `could not add label: 'nightly-mutation' not found` — a label
+   * that had never existed in this repository, named by a workflow, in a step
+   * nothing had ever run. The test above passes on that state: it compares the
+   * name in `ci.yml` against the name in `CLAUDE.md`, and both agreed about a
+   * label neither of them could see was missing.
+   *
+   * A name matching a name is not the property. The property is that a red
+   * shard leaves an issue, so the step ensures the label itself and files
+   * without it if that still fails. Whether the issue is labelled is a
+   * convenience; whether it exists is the check.
+   */
+  test("a red shard files its issue even when the label is not there", () => {
+    const step = ci.slice(ci.indexOf("if: failure()"));
+    const ensures = /gh label create (\S+)/.exec(step);
+    // The fallback is the second `gh issue create` — the one reached by `||`,
+    // carrying no `--label`.
+    const creates = [...step.matchAll(/gh issue create[^\n]*/g)].map((m) => m[0]);
+    const unlabelled = creates.filter((c) => !c.includes("--label"));
+
+    expect(
+      { ensuresLabel: ensures?.[1], filesAnyway: unlabelled.length },
+      "the step needs a label somebody created by hand, so the night it goes red it files nothing",
+    ).toEqual({ ensuresLabel: "nightly-mutation", filesAnyway: 1 });
+  });
 });

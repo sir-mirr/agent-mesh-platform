@@ -867,6 +867,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["writes no message when it refuses"],
   },
   {
+    id: "the-alarm-assumes-its-label-exists",
+    defect:
+      "The step went back to naming a label it does not ensure. That is the state the first red nightly met \u2014 eight shards, eight `could not add label: 'nightly-mutation' not found`, zero issues \u2014 and the label check beside it passed throughout, because it compares the name in the workflow against the name in `CLAUDE.md` and both agreed about a label neither could see was missing.",
+    file: ".github/workflows/ci.yml",
+    from: "          gh label create nightly-mutation \\\n            --color B60205 \\",
+    to: "          : nightly-mutation \\\n            --color B60205 \\",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["a red shard files its issue even when the label is not there"],
+  },
+  {
+    id: "a-red-shard-files-nothing-when-labelling-fails",
+    defect:
+      "The unlabelled fallback went, so anything that breaks labelling \u2014 a renamed label, a token without the scope, a repository that has never had one \u2014 takes the whole report with it. A labelled issue is a convenience; an issue is the alarm.",
+    file: ".github/workflows/ci.yml",
+    from: "            || gh issue create --title \"$title\" --body-file /tmp/nightly-mutation-body.md",
+    to: "            || true",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["a red shard files its issue even when the label is not there"],
+  },
+  {
     id: "the-no-group-orbit-reports-itself-as-a-group",
     defect:
       "The kind attribute collapsed to `group`, so the orbit holding agents the server placed nowhere claimed to be one of the server's groups. The heading counts groups and the canvas would then be counted as drawing one more of them \u2014 which is the shape `SC-CONSIST-01` called an inconsistency while both halves were right, and the axis added to tell them apart is the thing being removed here.",
