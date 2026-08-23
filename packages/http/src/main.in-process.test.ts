@@ -95,7 +95,16 @@ beforeAll(async () => {
   // session*, and the route said `401` — which reads as the password being
   // wrong. Naming it here costs one line and separates the two.
   if (!cookie.startsWith("mesh_token=")) {
-    throw new Error(`sign-in answered 200 without a session cookie: ${JSON.stringify(setCookie).slice(0, 200)}`);
+    // Everything the answer can be, in the one line that will be read: the
+    // body says whether this route answered at all (a JSON `ok` versus a page),
+    // and `getSetCookie` says whether the header was there and `get` could not
+    // see it — which are different repairs and look identical from `""`.
+    throw new Error(
+      `sign-in answered 200 without a session cookie: get=${JSON.stringify(setCookie)} ` +
+      `getSetCookie=${JSON.stringify(login.headers.getSetCookie?.() ?? null)} ` +
+      `content-type=${login.headers.get("content-type")} ` +
+      `body=${JSON.stringify((await login.clone().text()).slice(0, 200))}`,
+    );
   }
 
   const changed = await app.fetch(new Request("http://in-process/auth/local/password", {

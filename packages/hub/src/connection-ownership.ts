@@ -15,10 +15,30 @@ export interface OwnershipConflict {
  * the current owner, which makes incumbent-close races safe.
  */
 export class ConnectionOwnership<Socket extends object> {
-  private nextGeneration = 0;
-  private readonly generations = new WeakMap<Socket, number>();
-  private readonly identities = new WeakMap<Socket, string>();
-  private readonly owners = new Map<string, Socket>();
+  private nextGeneration: number;
+  private readonly generations: WeakMap<Socket, number>;
+  private readonly identities: WeakMap<Socket, string>;
+  private readonly owners: Map<string, Socket>;
+
+  /**
+   * Written out rather than left to field initialisers, because of what the
+   * coverage report does with the difference.
+   *
+   * A class with no explicit constructor still gets one, and it runs on every
+   * `new` — but bun's lcov counts it as a function and never marks it hit.
+   * Measured on 1.3.13: fields and one method with no constructor reports
+   * `FNF:2 FNH:1`; the same class with the constructor written out reports
+   * `FNF:2 FNH:2`. This was the last uncovered function in the file and it was
+   * being attributed to code nobody could reach, which is the opposite of what
+   * the number is for. It is also the only class in the counted source without
+   * one, so the whole artefact costs exactly this.
+   */
+  constructor() {
+    this.nextGeneration = 0;
+    this.generations = new WeakMap();
+    this.identities = new WeakMap();
+    this.owners = new Map();
+  }
 
   claim(identity: string, socket: Socket): OwnershipGranted | OwnershipConflict {
     const contenderGeneration = this.generationOf(socket);
