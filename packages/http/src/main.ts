@@ -1143,6 +1143,27 @@ function sessionCookie(c: Context, jwt: string, maxAge: number): string {
 }
 
 /**
+ * Put the cookie on an answer that already exists.
+ *
+ * **`new Response(body, { headers: { 'Set-Cookie': … } })` loses it on Linux.**
+ * Measured, on bun 1.3.13 (the same build both places): a `Headers` built from
+ * a record keeps `Set-Cookie`, appending to an existing response keeps it, and
+ * the `Response` constructor's header record **drops** it — on Linux only. Every
+ * session this server handed out was built the third way, so on the platform it
+ * deploys to, signing in answered `200` with the user in the body and no
+ * session at all, and the next request came back `401`.
+ *
+ * It cost the unit suite 276 failures in CI for weeks, which is how it was
+ * found; nobody had read a red run whose first green neighbour was a laptop.
+ * `set-cookie-survives.test.ts` holds all three shapes so the day this is fixed
+ * upstream is a day a test changes rather than a day somebody notices.
+ */
+function withSessionCookie(res: Response, cookie: string): Response {
+  res.headers.append('Set-Cookie', cookie)
+  return res
+}
+
+/**
  * A refused sign-in, said once (T-022 § 3).
  *
  * This route wrote nothing on any of its three refusals, so "I could not sign
@@ -1240,7 +1261,7 @@ app.post('/auth/local', async (c) => {
     // The same fields `/auth/me` answers with, so a client has a session
     // without a second round trip — and so the two cannot describe the same
     // user differently.
-    return new Response(
+    return withSessionCookie(new Response(
       JSON.stringify({
         ok: true,
         user: {
@@ -1257,14 +1278,11 @@ app.post('/auth/local', async (c) => {
         // building from what I told them it contained.
         must_change_password: mustChangePassword(user.username),
       }),
-      { status: 200, headers: { 'content-type': 'application/json', 'Set-Cookie': cookie } },
-    )
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ), cookie)
   }
 
-  return new Response(null, {
-    status: 302,
-    headers: { 'Location': '/chat', 'Set-Cookie': cookie },
-  })
+  return withSessionCookie(new Response(null, { status: 302, headers: { 'Location': '/chat' } }), cookie)
 })
 
 app.get('/auth/github/callback', async (c) => {
@@ -1295,13 +1313,10 @@ app.get('/auth/github/callback', async (c) => {
     }
 
     const maxAge = 60 * 60 * 24 * 30 // 30 days
-    return new Response(null, {
-      status: 302,
-      headers: {
-        'Location': '/chat',
-        'Set-Cookie': sessionCookie(c, jwt, maxAge),
-      },
-    })
+    return withSessionCookie(
+      new Response(null, { status: 302, headers: { 'Location': '/chat' } }),
+      sessionCookie(c, jwt, maxAge),
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return c.json({ error: 'OAuth callback failed', detail: message }, 500)
@@ -1338,10 +1353,13 @@ const OPEN_WHILE_FLAGGED = new Set(['/auth/local/password', '/auth/me', '/auth/l
  * browser has no session, which is what this makes true.
  */
 app.post('/auth/logout', (c) => {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { 'content-type': 'application/json', 'Set-Cookie': sessionCookie(c, '', 0) },
-  })
+  return withSessionCookie(
+    new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+    sessionCookie(c, '', 0),
+  )
 })
 
 
