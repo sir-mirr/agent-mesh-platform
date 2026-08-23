@@ -123,7 +123,8 @@ export function groupOf(db: Database, identity: string, tenant = DEFAULT_TENANT)
   return row?.group_id ?? DEFAULT_GROUP;
 }
 
-export function membersOf(db: Database, groupId: string, tenant = DEFAULT_TENANT): string[] {
+/** The identities a row places in this group. See `membersOf` for the rest. */
+export function placedIn(db: Database, groupId: string, tenant = DEFAULT_TENANT): string[] {
   return (
     db
       .prepare(
@@ -131,6 +132,44 @@ export function membersOf(db: Database, groupId: string, tenant = DEFAULT_TENANT
       )
       .all(tenant, groupId) as Array<{ identity: string }>
   ).map((r) => r.identity);
+}
+
+/**
+ * Everyone in a group — which for `default` is mostly people no row mentions.
+ *
+ * § 12: *an identity nobody has placed is in `default`*, and `groupOf` has
+ * always answered that way. Membership is therefore not what
+ * `agent_group_members` holds: a freshly registered agent is in `default`
+ * without a row, and a reader that asks the table alone answers `[]` for the
+ * group that in fact holds every such identity. `agent-mesh-local-pm` measured
+ * exactly that on the standing stack — `soak-claude` registered and listed by
+ * `GET /api/v1/agents`, `default` reporting no members — and it is not a
+ * display fault: this is the read the console draws from.
+ *
+ * The unplaced come from `agents` rather than being written down at
+ * registration, so that there is one answer to *which group is this identity
+ * in* and not a table that can drift from it. Soft-deleted identities (§ 9.3)
+ * are not members of anything; an explicit row is honoured whether or not the
+ * identity is registered here, because somebody placed it on purpose.
+ */
+export function membersOf(db: Database, groupId: string, tenant = DEFAULT_TENANT): string[] {
+  const placed = placedIn(db, groupId, tenant);
+  if (groupId !== DEFAULT_GROUP) return placed;
+  const unplaced = (
+    db
+      .prepare(
+        `SELECT a.identity
+           FROM agents a
+           LEFT JOIN agent_group_members m ON m.tenant = a.tenant AND m.identity = a.identity
+          WHERE a.tenant = ? AND a.deleted_at IS NULL AND m.identity IS NULL`,
+      )
+      .all(tenant) as Array<{ identity: string }>
+  ).map((r) => r.identity);
+  // No de-duplication: a row placing an identity in `default` is a row, so the
+  // join above has already excluded it from the unplaced half. The two lists
+  // cannot name the same identity, and a `Set` here would be a guard against a
+  // state the query makes impossible.
+  return [...placed, ...unplaced].sort();
 }
 
 /** Move an identity. Replaces rather than adds — one group per identity. */

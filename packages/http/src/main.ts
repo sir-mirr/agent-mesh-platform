@@ -1768,11 +1768,19 @@ app.get('/api/v1/agents', async (c) => {
     // missing.
     for (const identity of ownership.ownedBy(mesh, actor)) visible.add(identity)
 
-    // The group this person is in, and everyone else in it. `(tenant, identity)`
-    // is the primary key, so a person is in at most one.
+    // The group this person is in, and everyone else placed in it.
+    // `(tenant, identity)` is the primary key, so a person is in at most one.
+    //
+    // **`placedIn` and not `membersOf`, deliberately.** § 12 puts every
+    // identity nobody has moved in `default`, so `membersOf('default')` is
+    // every registered agent on a deployment that has never used groups —
+    // and reading it here would widen who each person may see, on a listing
+    // whose rule (yourself, what you own, your group, who you have talked to)
+    // predates groups and is not a § 12 question. Widening it is a decision
+    // about privacy rather than a fix, so it is asked rather than assumed.
     const myGroup = groupsStore.groupOf(mesh, actor)
     if (myGroup) {
-      for (const member of groupsStore.membersOf(mesh, myGroup)) visible.add(member)
+      for (const member of groupsStore.placedIn(mesh, myGroup)) visible.add(member)
     }
 
     // Everyone this person's identities have exchanged a message with, in
