@@ -274,6 +274,13 @@ bun run mutation-check -- --anchors
 bun run mutation-check -- --self-check
 ```
 
+**Run `--anchors` after editing prose, too.** Some entries plant their defect in
+a document — a heading, a sentence a checker greps for — so a rewording that
+touches nothing executable can still leave an entry pointing at text that is no
+longer there. It plants nothing, its suite passes, and the run reads as *the
+guard did not catch it*. Renaming one heading in `docs/proposals/README.md` did
+exactly that here; the check takes a second and names the entry.
+
 A full pass is one suite per entry, seventy-two of which name the browser suite,
 so it is hours and belongs on a clock rather than in front of a change. CI runs
 `--anchors` and `--self-check` on every push and the whole manifest nightly, in
