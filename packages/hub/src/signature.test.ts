@@ -60,6 +60,16 @@ describe("raw params extraction", () => {
     expect(rawParams(text)).toBe('{"inner":{"params":{"nested":1}}}');
   });
 
+  test("takes the top-level member even when a nested one comes first", () => {
+    // **The order the two appear in is the whole test.** The case above has the
+    // nested `params` inside the real one, so a scan that stopped caring about
+    // depth would still meet the right key first and agree by luck. Here the
+    // decoy arrives earlier in the text: only the depth decides, and getting it
+    // wrong signs `{"decoy":true}` while the client signed `{"real":1}`.
+    const text = '{"method":"m","meta":{"params":{"decoy":true}},"params":{"real":1}}';
+    expect(rawParams(text)).toBe('{"real":1}');
+  });
+
   test("handles arrays, escapes and multi-byte content", () => {
     const text = '{"method":"m","params":["한글",{"q":"a \\" b"},null,1.5e3]}';
     expect(rawParams(text)).toBe('["한글",{"q":"a \\" b"},null,1.5e3]');

@@ -1617,6 +1617,24 @@ const MUTATIONS: Mutation[] = [
     expect: ["reports the counts from a run that printed more than it keeps"],
   },
   {
+    id: "a-params-key-nested-earlier-is-signed-instead",
+    defect: "the scan for the signed span stops caring which nesting level the key is at, so a `params` member inside some other object \u2014 appearing earlier in the text than the real one \u2014 becomes the preimage, and the hub verifies a signature over bytes the client never signed",
+    file: "packages/hub/src/raw-params.ts",
+    from: "if (depth === 1 && text.slice(start, i)",
+    to: "if (depth >= 1 && text.slice(start, i)",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["takes the top-level member even when a nested one comes first"],
+  },
+  {
+    id: "the-hub-advertises-a-version-it-invented",
+    defect: "the advertised audit capabilities stop being the contract's and carry a number of this file's own, which is the drift this module was split out to prevent \u2014 a client fail-closed on an unrecognised version then refuses to start audit at all",
+    file: "packages/hub/src/rpc/audit-limits.ts",
+    from: "export const AUDIT_LIMITS = AUDIT_CAPABILITY_DEFAULTS;",
+    to: "export const AUDIT_LIMITS = { ...AUDIT_CAPABILITY_DEFAULTS, version: 99 };",
+    suite: "packages/hub/src/signature.test.ts",
+    expect: ["every field, with the contract's values"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
