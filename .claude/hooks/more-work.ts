@@ -62,9 +62,16 @@ async function mainWorktree(): Promise<string> {
 
 const ROOT = await mainWorktree();
 
-const read = async (path: string): Promise<string> => {
+/**
+ * **The root is an argument, not a constant.** This read `ROOT` directly while
+ * `remainingWork` took a root parameter, so passing one moved the git count to
+ * that tree and left the documents being read from this one — a caller would
+ * get one worktree's unpushed commits beside another's open items, and nothing
+ * could be measured against a fixture at all.
+ */
+const read = async (root: string, path: string): Promise<string> => {
   try {
-    return await Bun.file(`${ROOT}/${path}`).text();
+    return await Bun.file(`${root}/${path}`).text();
   } catch {
     return "";
   }
@@ -113,8 +120,8 @@ function undecided(text: string): string[] {
  */
 export async function remainingWork(root = ROOT): Promise<string | null> {
   const [deferredText, indexText] = await Promise.all([
-    read("docs/deferred.md"),
-    read("docs/proposals/README.md"),
+    read(root, "docs/deferred.md"),
+    read(root, "docs/proposals/README.md"),
   ]);
 
   let unpushed = 0;

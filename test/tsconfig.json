@@ -32,6 +32,11 @@
     // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
     // it rather than restating it, for the same reason the hooks do: a second
     // copy is a second thing that can disagree.
-    "../.claude/hooks/standing-order.ts"
+    "../.claude/hooks/standing-order.ts",
+    // The hook that decides whether a turn may end. Every way it fails is
+    // quiet — a heading convention it stops matching, a section boundary it
+    // reads past — and a hook that goes quiet reads exactly like a repository
+    // with nothing left to do.
+    "../.claude/hooks/more-work.ts"
   ]
 }
