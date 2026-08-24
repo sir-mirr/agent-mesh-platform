@@ -980,7 +980,7 @@ const MUTATIONS: Mutation[] = [
     expect: ["the leftmost entry is the attacker's and is never taken"],
   },
   {
-    id: "a-contender-evicts-the-live-owner",
+    id: "a-second-claim-takes-the-identity",
     defect:
       "The incumbent test goes, so the second connection for an identity takes ownership from the first. A healthy agent is then evicted by anything that reconnects — including the flapping client that caused the reconnect — and the mesh hands the identity back and forth for as long as both sides keep trying.",
     file: "packages/hub/src/connection-ownership.ts",
@@ -988,6 +988,16 @@ const MUTATIONS: Mutation[] = [
     to: "    if (false) {",
     suite: "packages/hub/src/connection-ownership.test.ts",
     expect: ["normal conflict retains the established owner with machine-correlatable generations"],
+  },
+  {
+    id: "two-entries-answer-to-one-name",
+    defect:
+      "Two entries carry the same id. `mutation-check <id>` then runs both, `--shard` can put them in different shards, and the report prints one name with two verdicts — which is exactly how this was noticed: a filtered run of four ids answered `5/5 caught` and listed one of them twice. The guard against it existed and nothing had ever planted against the guard.",
+    file: "scripts/mutation-check.ts",
+    from: "    id: \"generations-stop-counting\",",
+    to: "    id: \"a-second-claim-takes-the-identity\",",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["an id is used by more than one manifest entry, so filtering by it runs both"],
   },
   {
     id: "generations-stop-counting",
@@ -8825,6 +8835,21 @@ if (shard) console.log(`shard ${shard.k}/${shard.n}: ${selected.length} of ${cho
 // did not name and the verdict is about a line nobody chose.
 if (argv.includes("--anchors")) {
   const problems: string[] = [];
+  // **The id is the handle, and nothing had ever checked it is unique.** Two
+  // entries sharing one means `mutation-check <id>` runs both, `--shard` can
+  // put them in different shards, and the report prints the id twice with two
+  // verdicts — which is how this was found: a new entry for
+  // `connection-ownership.ts` reused the name of an existing one for
+  // `connect.ts`, and a filtered run reported `5/5` for four ids.
+  //
+  // Counted over the whole manifest rather than `selected`, because a filter
+  // that names one id is exactly the run that cannot see the collision.
+  const idProblems: string[] = [];
+  const idCounts = new Map<string, number>();
+  for (const m of [...MUTATIONS, ...SELF_CHECK]) idCounts.set(m.id, (idCounts.get(m.id) ?? 0) + 1);
+  for (const [id, n] of idCounts) {
+    if (n > 1) idProblems.push(`${id}: ${n} entries share this id — filtering and sharding cannot tell them apart`);
+  }
   // **`SELF_CHECK` is not this check's denominator**, so a real mutation parked
   // there is anchored by nothing and raises no count: `234/234` stayed `234/234`
   // while two live entries sat outside it. That is how a guard goes quiet rather
@@ -8855,8 +8880,8 @@ if (argv.includes("--anchors")) {
     else if (hits > 1) problems.push(`${m.id}: its \`from\` appears ${hits} times in ${m.file} — replace takes the first`);
   }
   console.log(`${selected.length - problems.length}/${selected.length} anchors point at exactly one place`);
-  for (const p of problems) console.error(`✗ ${p}`);
-  process.exit(problems.length ? 1 : 0);
+  for (const p of [...problems, ...idProblems]) console.error(`✗ ${p}`);
+  process.exit(problems.length + idProblems.length ? 1 : 0);
 }
 
 // A run inside another mutation measures a baseline somebody else moved, and
