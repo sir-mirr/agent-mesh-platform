@@ -1047,12 +1047,29 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             .map((a: { id: string }) => a.id);
         });
 
-        const options = await info.page.locator("select option").allTextContents();
-        const shown = new Set(
-          options.flatMap((text) => served.filter((id) => text.includes(id))),
-        );
-        // Every served agent appears, and nothing appears that was not served.
-        expect({ label, shown: [...shown].sort() }).toEqual({ label, shown: [...served].sort() });
+        // **Every picker, not the union of them.** This took the options of
+        // all the selects on the page together, and the screen has two — the
+        // sender and the recipient. A filter on one was answered by the other:
+        // planting `senderAgents.filter((a) => a.group === "Support Group")`
+        // left the union intact and this check green, while four other
+        // scenarios went red around it.
+        //
+        // A select showing none of the served ids is not an agent picker —
+        // there are other selects on other screens — so the rule is: whichever
+        // pickers list agents must list all of them.
+        const selects = await info.page.locator("select").all();
+        const listings: Array<{ picker: number; shown: string[] }> = [];
+        for (const [index, select] of selects.entries()) {
+          const options = await select.locator("option").allTextContents();
+          const shown = [...new Set(options.flatMap((text) => served.filter((id) => text.includes(id))))].sort();
+          if (shown.length > 0) listings.push({ picker: index, shown });
+        }
+        // Every served agent appears in each picker, and nothing appears in one
+        // that was not served.
+        expect({ label, listings }).toEqual({
+          label,
+          listings: listings.map(({ picker }) => ({ picker, shown: [...served].sort() })),
+        });
         return served.length;
       } finally {
         await info.context.close();
