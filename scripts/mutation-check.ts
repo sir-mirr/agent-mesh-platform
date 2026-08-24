@@ -970,6 +970,79 @@ const MUTATIONS: Mutation[] = [
     expect: ["a narrow grant does NOT widen"],
   },
   {
+    id: "a-spent-pairing-code-can-be-spent-again",
+    defect:
+      "The `redeemed_at IS NULL` term goes, so a code that was already redeemed redeems again. Ownership of an agent is what a code proves, and a reusable one hands the same proof to whoever asks second — including whoever read it over somebody's shoulder.",
+    file: "packages/store/src/ownership.ts",
+    from: "        WHERE code = ? AND redeemed_at IS NULL AND expires_at > datetime('now')`,",
+    to: "        WHERE code = ? AND expires_at > datetime('now')`,",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["a code is single-use, and the second attempt says so specifically"],
+  },
+  {
+    id: "an-expired-pairing-code-still-works",
+    defect:
+      "The expiry term goes. A code's time limit is the only thing bounding how long a leaked one is worth stealing, and nothing else in the flow re-checks it.",
+    file: "packages/store/src/ownership.ts",
+    from: "        WHERE code = ? AND redeemed_at IS NULL AND expires_at > datetime('now')`,\n",
+    to: "        WHERE code = ? AND redeemed_at IS NULL`,\n",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["an expired code is refused, and is distinguishable from a spent one"],
+  },
+  {
+    id: "spent-and-expired-become-one-answer",
+    defect:
+      "Both failures report `expired`. They call for different reactions — one says ask for another code, the other says somebody else already used this one — and collapsing them tells an operator to reissue when what happened is that their code was taken.",
+    file: "packages/store/src/ownership.ts",
+    from: "    return { ok: false, reason: row.redeemed_at ? \"already-redeemed\" : \"expired\" };",
+    to: "    return { ok: false, reason: \"expired\" };",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["a code is single-use, and the second attempt says so specifically"],
+  },
+  {
+    id: "an-unknown-code-is-told-it-expired",
+    defect:
+      "A code that never existed is answered `expired`, which says one was issued and has run out. That is an existence oracle: an attacker guessing codes learns which guesses were real, and the whole alphabet exists to make guessing expensive.",
+    file: "packages/store/src/ownership.ts",
+    from: "    if (!row) return { ok: false, reason: \"unknown\" };",
+    to: "    if (!row) return { ok: false, reason: \"expired\" };",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["an unknown code is refused without revealing whether one exists"],
+  },
+  {
+    id: "the-redeemed-code-row-is-deleted",
+    defect:
+      "The row is removed once spent. It is the provenance of the claim — who issued the code, to which identity, and where it was redeemed from — so deleting it leaves an ownership with nothing behind it and no way to answer how it was obtained.",
+    file: "packages/store/src/ownership.ts",
+    from: "  return { ok: true, identity: row.identity, owner };",
+    to: "  db.prepare(`DELETE FROM pairing_codes WHERE code = ?`).run(code);\n  return { ok: true, identity: row.identity, owner };",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["the redeemed row survives, because it is the provenance of the claim"],
+  },
+  {
+    id: "the-code-alphabet-takes-back-its-ambiguous-letters",
+    defect:
+      "`I`, `O`, `0` and `1` return to the alphabet. A pairing code is read aloud or copied off a screen, and those four are the pairs people get wrong — the failure arrives as a redemption that says the code is unknown, which is indistinguishable from an attack.",
+    file: "packages/store/src/ownership.ts",
+    from: "const CODE_ALPHABET = \"ABCDEFGHJKLMNPQRSTUVWXYZ23456789\"; // no I/O/0/1",
+    to: "const CODE_ALPHABET = \"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\"; // no I/O/0/1",
+    suite: "packages/store/src/ownership.test.ts",
+    expect: ["codes avoid characters that are misread aloud"],
+  },
+  {
+    id: "ownership-is-read-across-tenants",
+    defect:
+      "The tenant term stops narrowing `ownedBy`, so one tenant's operator sees every tenant's agents in the queue scoped to them. § 11.4 isolation, decided by one predicate in the read the scoped screens draw from.",
+    file: "packages/store/src/ownership.ts",
+    from: "      .prepare(`SELECT identity FROM agent_owners WHERE tenant = ? AND owner = ? ORDER BY identity`)",
+    to: "      .prepare(`SELECT identity FROM agent_owners WHERE (tenant = ? OR 1 = 1) AND owner = ? ORDER BY identity`)",
+    suite: "packages/store/src/ownership.test.ts",
+    // The tenant test that existed exercises `isOwner`; this predicate is
+    // `ownedBy`'s, and nothing crossed tenants through it until the entry was
+    // planted and stayed green.
+    expect: ["one tenant's queue listed another tenant's agents"],
+  },
+  {
     id: "the-chain-is-read-from-the-attackers-end",
     defect:
       "The walk goes left to right, so the first entry wins — and the left is exactly where an attacker prepends. `X-Forwarded-For: 1.2.3.4, <real chain>` then reports `1.2.3.4` as the peer, which is the forgery this whole function is built against. Nothing errors; the address is simply somebody else's.",

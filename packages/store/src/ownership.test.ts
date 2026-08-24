@@ -119,6 +119,22 @@ describe("ownership", () => {
     d.close();
   });
 
+  test("a scoped queue does not show another tenant's agents", () => {
+    // **`ownedBy`, not `isOwner`.** The test above is about the membership
+    // question and this is about the listing the queue is drawn from — two
+    // functions with their own tenant predicate, and only one of them had a
+    // test crossing tenants. A mutation dropping the term here was not caught.
+    const d = db();
+    ownership.assign(d, { tenant: "acme", identity: "lane-x", owner: "alice", grantedBy: "t" });
+    ownership.assign(d, { tenant: "nova", identity: "lane-y", owner: "alice", grantedBy: "t" });
+
+    expect(
+      { acme: ownership.ownedBy(d, "alice", "acme"), nova: ownership.ownedBy(d, "alice", "nova") },
+      "one tenant's queue listed another tenant's agents",
+    ).toEqual({ acme: ["lane-x"], nova: ["lane-y"] });
+    d.close();
+  });
+
   test("ownedBy answers what a scoped queue should show", () => {
     // The screen that changes: an operator's approval queue is their agents,
     // and someone with none sees an empty queue rather than a refusal.
