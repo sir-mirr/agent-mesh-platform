@@ -45,8 +45,19 @@ export function readVerdict(output: string, expect: string[], exitCode: number, 
   const passed = counts("pass");
   const failed = counts("fail");
   const expected = expect.every((e) => output.includes(e));
-  // Bun's phrasing when a suite dies before its tests.
-  const hookDied = /\bhook (timed out|failed|threw)/i.test(output);
+  // Bun's phrasing when a suite dies before its tests — read with the source
+  // it echoes taken out.
+  //
+  // **A failing test is quoted back with its source, and a fixture is source.**
+  // Bun prints the failing assertion's lines with an `NNN | ` prefix, so a
+  // suite holding `"error: a beforeEach hook timed out"` as a fixture hands
+  // this predicate its own words back. `an-elided-run-forgets-what-it-held`
+  // planted cleanly, its guard objected, and the verdict came back *a hook
+  // died* — measured, from the suite that tests this function.
+  //
+  // The same shape as reading the first `N pass` instead of the last: the run's
+  // output and what the run quoted are not the same text.
+  const hookDied = /\bhook (timed out|failed|threw)/i.test(output.replace(/^\s*\d+ \|.*$/gm, ""));
 
   // **A summary without the failures it counts is a cut-off run.** bun prints
   // one `(fail) suite > title` line per failing test, and with a large enough

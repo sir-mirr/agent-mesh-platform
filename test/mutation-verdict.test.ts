@@ -428,6 +428,21 @@ describe("condensing a run", () => {
     expect(readVerdict(captured.text, EXPECT, 1, captured.named)).toEqual({ kind: "caught" });
   });
 
+  test("a hook the run only quoted is not a hook that died", async () => {
+    // What bun echoes of a failing test's source, prefixed with its line
+    // number. It is the test's text, not the run's, and reading it as the
+    // run's is how this file broke its own verdict.
+    const output = [
+      "(fail) a socket that dropped the frame",
+      '  437 |       stream("q".repeat(4000), "error: a beforeEach hook timed out\\n"),',
+      "",
+      " 0 pass",
+      " 1 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1, 1)).toEqual({ kind: "caught" });
+  });
+
   test("a hook that died in the part that went still stops the verdict", async () => {
     // Not the entry's string, but one the verdict turns on all the same: a
     // suite whose hook died never reached the guard, whatever else it printed.
@@ -459,9 +474,14 @@ describe("condensing a run", () => {
     expect(readVerdict(captured.text, EXPECT, 1, captured.named).kind).toBe("inconclusive");
   });
 
-  test("a marker split across two reads is one failure, not two", async () => {
-    const captured = await condenseRun(stream("(fa", "il) a socket that dropped the frame\n 0 pass\n 1 fail\n"), EXPECT, 1024);
-    expect(captured.named).toBe(1);
+  test("a marker near a chunk boundary is counted once, not once per read", async () => {
+    // Two ways to sit on a boundary, and only the second one can double: a
+    // marker *split* by the boundary is stitched back together and counted
+    // once whatever the arithmetic, while a marker lying wholly inside the
+    // carried-over window is offered to the next read a second time.
+    const split = await condenseRun(stream("(fa", "il) a socket that dropped the frame\n 0 pass\n 1 fail\n"), EXPECT, 1024);
+    const carried = await condenseRun(stream("(fail) one\n", "(fail) two\n 0 pass\n 2 fail\n"), EXPECT, 1024);
+    expect({ split: split.named, carried: carried.named }).toEqual({ split: 1, carried: 2 });
   });
 });
 

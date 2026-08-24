@@ -1578,7 +1578,7 @@ const MUTATIONS: Mutation[] = [
     from: "    named += markers(window) - markers(carry);",
     to: "    named += markers(window);",
     suite: "test/mutation-verdict.test.ts",
-    expect: ["a marker split across two reads is one failure, not two"],
+    expect: ["a marker near a chunk boundary is counted once, not once per read"],
   },
   {
     id: "a-cut-off-run-is-read-as-a-quiet-guard",
@@ -1597,6 +1597,15 @@ const MUTATIONS: Mutation[] = [
     to: "    const captured = { text: \"\", named: 0 };",
     suite: "test/mutation-verdict.test.ts",
     expect: ["a failure named after the flood is still readable"],
+  },
+  {
+    id: "an-echoed-fixture-is-read-as-the-run",
+    defect: "the scan for a dead hook reads the source bun echoes back with a failing test, so a suite holding one of those phrases as a fixture is refused a verdict on its own guard",
+    file: "scripts/mutation-verdict.ts",
+    from: "  const hookDied = /\\bhook (timed out|failed|threw)/i.test(output.replace(/^\\s*\\d+ \\|.*$/gm, \"\"));",
+    to: "  const hookDied = /\\bhook (timed out|failed|threw)/i.test(output);",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a hook the run only quoted is not a hook that died"],
   },
   {
     id: "a-loading-table-reports-an-error-it-does-not-have",
