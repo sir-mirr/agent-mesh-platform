@@ -94,6 +94,36 @@ describe("bracketing a run", () => {
   });
 
   /**
+   * **A run can print more than a machine holds.** This script kept every byte
+   * the child wrote in one string so it could read the counts back out of it,
+   * and one failed `toBe(null)` on a jsdom node serialises to 248 MB. Taking
+   * the gate down that way takes the release with it, and a window announced
+   * and never released is the failure at the top of this file.
+   *
+   * Only the end is kept, because every line the summary is read out of is a
+   * run's closing summary. The terminal still gets all of it.
+   */
+  test("reports the counts from a run that printed more than it keeps", async () => {
+    const { sent, server, url } = recorder();
+    servers.push(server);
+
+    const flood = [
+      "bun", "-e",
+      'for (let i = 0; i < 24; i++) console.log("x".repeat(100_000)); console.log("\\n 41 pass\\n 0 fail\\n");',
+    ];
+    const proc = runGate(url, "a run that floods", flood);
+    const printed = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(0);
+
+    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    expect({
+      released: end.body.includes("창 해제"),
+      counted: end.body.includes("41 pass / 0 fail"),
+      teed: printed.length > 2_000_000,
+    }).toEqual({ released: true, counted: true, teed: true });
+  }, 30_000);
+
+  /**
    * **Exiting zero is not a result.** A process can exit zero having run
    * nothing, and reporting that as success is the shape this repository keeps
    * finding behind its own checks. With no counts printed, the release says it

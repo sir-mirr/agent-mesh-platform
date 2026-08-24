@@ -1608,6 +1608,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["a hook the run only quoted is not a hook that died"],
   },
   {
+    id: "the-gate-keeps-the-wrong-end-of-a-flood",
+    defect: "the bounded capture keeps the front of a long run instead of the back, so the counts the release is read out of \u2014 printed last \u2014 are the part thrown away, and a finished run is announced as one that measured nothing",
+    file: "scripts/gate.ts",
+    from: "    captured = (captured + text).slice(-KEPT);",
+    to: "    captured = (captured + text).slice(0, KEPT);",
+    suite: "test/gate-window.test.ts",
+    expect: ["reports the counts from a run that printed more than it keeps"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",

@@ -137,12 +137,24 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 await broadcast(`[측정 출발] ${label} · ${commit}\n\n${command.join(" ")}`);
 
 const proc = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
+
+/**
+ * How much of the run is kept to read counts out of.
+ *
+ * **Everything was kept, and a run can print more than a machine holds.** One
+ * failed `toBe(null)` on a jsdom node serialises to 248 MB; holding that as a
+ * string here would take the window down with it, and this script's whole job
+ * is to announce that the window closed. Every line `summarise` looks for is a
+ * run's closing summary, so the end is the part worth keeping.
+ */
+const KEPT = 1024 * 1024;
 let captured = "";
 const tee = async (stream: ReadableStream<Uint8Array>, sink: typeof Bun.stdout) => {
   const decoder = new TextDecoder();
   for await (const chunk of stream) {
     const text = decoder.decode(chunk);
-    captured += text;
+    // Kept bounded; the terminal still gets all of it below.
+    captured = (captured + text).slice(-KEPT);
     await Bun.write(sink, text);
   }
 };
