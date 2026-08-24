@@ -492,6 +492,53 @@ describe("condensing a run", () => {
  * measures one. bun prints one `(fail)` marker per failing test and a count at
  * the end; fewer markers than the count is the run saying it did not finish.
  */
+describe("a hook that died beside the guard, not under it", () => {
+  /**
+   * **A suite is not one test.** `the-poller-anchor-stands-still` planted
+   * cleanly, the guard it names objected — 145 pass, 4 fail, its title on a
+   * `(fail)` line — and a different test's `beforeEach` timed out in the same
+   * run. Reading the hook first threw that verdict away and called the entry
+   * unmeasured, on every run it could ever have.
+   */
+  const HOOK = "  ^ a beforeEach/afterEach hook timed out for this test.";
+
+  test("a guard that objected is caught, whatever died elsewhere", () => {
+    const output = [
+      "(fail) what a reconnecting audit stream replays > (unnamed) [5032.93ms]",
+      HOOK,
+      "(fail) a socket that dropped the frame",
+      "",
+      " 145 pass",
+      " 2 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1, 2)).toEqual({ kind: "caught" });
+  });
+
+  test("a run where only hooks failed decided nothing", () => {
+    const output = ["(fail) some suite > (unnamed) [5000.00ms]", HOOK, "", " 0 pass", " 1 fail", ""].join("\n");
+    const verdict = readVerdict(output, EXPECT, 1, 1);
+    expect(verdict).toHaveProperty("why", "a hook died, so the guard was never reached");
+  });
+
+  test("the guard's own dead hook is not the guard objecting", () => {
+    // The title prints on the `(fail)` line either way, so a title-shaped
+    // expectation would read a suite that never reached the assertion as a
+    // guard that caught the defect.
+    const output = [
+      "(fail) a socket that dropped the frame [5001.00ms]",
+      HOOK,
+      "(fail) something else entirely",
+      "",
+      " 3 pass",
+      " 2 fail",
+      "",
+    ].join("\n");
+    const verdict = readVerdict(output, EXPECT, 1, 2);
+    expect(verdict).toHaveProperty("why", "a hook died, so the guard was never reached");
+  });
+});
+
 describe("a run whose output was cut short", () => {
   test("fewer failures named than counted decides nothing", () => {
     const output = "(fail) one\n\n 0 pass\n 2 fail\n";

@@ -71,7 +71,37 @@ export function readVerdict(output: string, expect: string[], exitCode: number, 
   // Counted rather than measured against a size, because the size that drowns
   // a run depends on what it printed. Fewer names than failures is the run
   // saying it did not finish telling us.
-  if (hookDied) return { kind: "inconclusive", why: "a hook died, so the guard was never reached" };
+  // **Whose hook died.** bun attributes a dead hook to the test above it:
+  //
+  // ```
+  // (fail) what a reconnecting audit stream replays > (unnamed) [5032.93ms]
+  //   ^ a beforeEach/afterEach hook timed out for this test.
+  // ```
+  //
+  // A suite is not one test, and one dead hook does not mean nothing ran.
+  // `the-poller-anchor-stands-still` planted cleanly, the guard it names
+  // objected — its title on a `(fail)` line, 145 pass and 4 fail — and a
+  // *different* test's `beforeEach` timed out in the same run. Reading the
+  // hook first threw the verdict away and reported the entry as unmeasured on
+  // every run there could ever be.
+  //
+  // So the hook decides only when it is the reason the expected message is
+  // missing: nothing failed but hooks, or the expected string names a test
+  // whose own hook is the one that died. Anything else and the run reached the
+  // guard, whatever else went wrong around it.
+  const failures = [...output.matchAll(/^\s*\(fail\) (.*)$/gm)];
+  const killedByHook = new Set<string>();
+  for (const failure of failures) {
+    const rest = output.slice(failure.index! + failure[0].length, failure.index! + failure[0].length + 200);
+    if (/^\s*\^\s*a [^\n]*hook (timed out|failed|threw)/m.test(rest)) killedByHook.add(failure[1]!);
+  }
+  const onlyHooksFailed = failures.length > 0 && killedByHook.size === failures.length;
+  const expectedOnlyInADeadTest =
+    expected && expect.every((e) => [...killedByHook].some((t) => t.includes(e)));
+
+  if (hookDied && (!expected || onlyHooksFailed || expectedOnlyInADeadTest)) {
+    return { kind: "inconclusive", why: "a hook died, so the guard was never reached" };
+  }
   if (named !== undefined && failed > named) {
     return {
       kind: "inconclusive",

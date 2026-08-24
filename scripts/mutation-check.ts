@@ -1788,6 +1788,24 @@ const MUTATIONS: Mutation[] = [
     expect: ["pages on an index in the order the query API reads"],
   },
   {
+    id: "one-dead-hook-buries-every-other-verdict",
+    defect: "a hook that died anywhere in a suite ends the verdict for the whole run, so a guard that objected in the same run is reported as unmeasured \u2014 and an entry whose suite has one flaky hook can never be measured at all",
+    file: "scripts/mutation-verdict.ts",
+    from: "  if (hookDied && (!expected || onlyHooksFailed || expectedOnlyInADeadTest)) {",
+    to: "  if (hookDied) {",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a guard that objected is caught, whatever died elsewhere"],
+  },
+  {
+    id: "a-guard-that-died-in-its-own-hook-reads-as-caught",
+    defect: "the attribution stops asking whose hook died, so a test whose own setup timed out \u2014 its title printed on the failure line either way \u2014 is read as the guard objecting, which is the false finding this whole distinction exists to prevent",
+    file: "scripts/mutation-verdict.ts",
+    from: "    if (/^\\s*\\^\\s*a [^\\n]*hook (timed out|failed|threw)/m.test(rest)) killedByHook.add(failure[1]!);",
+    to: "    if (false) killedByHook.add(failure[1]!);",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["the guard's own dead hook is not the guard objecting"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
