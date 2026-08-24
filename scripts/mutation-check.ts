@@ -1821,6 +1821,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["an offline run is not a guard that stayed quiet"],
   },
   {
+    id: "the-http-server-signs-its-lines-as-the-hub",
+    defect: "every log line this process writes claims to come from the hub, so a filter on the component field pulls two processes into one story and the field a counter keys on is the wrong one",
+    file: "packages/http/src/log.ts",
+    from: "export const log = createLogger(\"http\");",
+    to: "export const log = createLogger(\"hub\");",
+    suite: "packages/http/src/push.test.ts",
+    expect: ["a deployment with no push keys says so"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
