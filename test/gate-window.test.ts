@@ -112,6 +112,59 @@ describe("bracketing a run", () => {
     expect(end.body).not.toContain("pass /");
   });
 
+  /**
+   * **The runs that most need the window are not bun-test-shaped.** A mutation
+   * batch, an anchor pass and a coverage floor each print their own verdict,
+   * and reporting *수치 없음* for all three is indistinguishable from a run
+   * that never started — which is exactly how it was read.
+   */
+  test("carries the verdict of a run that does not print pass and fail", async () => {
+    const { sent, server, url } = recorder();
+    servers.push(server);
+
+    const proc = runGate(url, "mutation: five entries", ["bun", "-e",
+      `console.log("\\n5/5 caught — filtered to a, b, c, d, e, of 792 in the manifest")`]);
+    await new Response(proc.stdout).text();
+    await proc.exited;
+
+    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    expect({ says: /5\/5 caught/.test(end.body), quiet: end.body.includes("수치 없음") },
+      "a mutation batch released saying it measured nothing, which reads as a run that never started",
+    ).toEqual({ says: true, quiet: false });
+  });
+
+  test("carries the anchor pass, the self-check and the floor", async () => {
+    const { sent, server, url } = recorder();
+    servers.push(server);
+
+    const proc = runGate(url, "the other shapes", ["bun", "-e",
+      `console.log("792/792 anchors point at exactly one place\\nself-check: 2/2 failed for the declared reason\\nratchet 100 funcs · 100 lines: held, with nothing to raise.")`]);
+    await new Response(proc.stdout).text();
+    await proc.exited;
+
+    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    expect({
+      anchors: /792\/792 anchors/.test(end.body),
+      selfCheck: /self-check: 2\/2 failed/.test(end.body),
+      floor: /floor held \(100 funcs · 100 lines\)/.test(end.body),
+    }, "a window closed on numbers the run had printed and the release did not carry").toEqual({
+      anchors: true, selfCheck: true, floor: true,
+    });
+  });
+
+  test("carries the metric that fell, when the floor did not hold", async () => {
+    const { sent, server, url } = recorder();
+    servers.push(server);
+
+    const proc = runGate(url, "a floor that fell", ["bun", "-e",
+      `console.error("coverage: lines at 99.50 is below the recorded floor of 100"); process.exit(1)`]);
+    await new Response(proc.stdout).text();
+    await proc.exited;
+
+    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    expect(end.body).toContain("lines 99.50 below the floor");
+  });
+
   /** Somebody stops the run: the machine is free now, and nothing else says so. */
   test("releases the window when the run is stopped", async () => {
     const { sent, server, url } = recorder();

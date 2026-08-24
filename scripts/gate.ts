@@ -78,12 +78,45 @@ async function broadcast(body: string): Promise<void> {
 
 const commit = (await $`git rev-parse --short HEAD`.quiet().nothrow().text()).trim() || "unknown";
 
-/** `N pass` / `N fail`, as the run printed them. Null when it printed neither. */
+/**
+ * What the run measured, in whichever shape it prints. Null when it printed no
+ * measurement at all.
+ *
+ * Bun's `N pass / N fail` was the only shape this knew, and the runs that most
+ * need an exclusive window print other ones: `mutation-check` ends on `n/m
+ * caught`, its anchor pass on `n/m anchors point at exactly one place`, and
+ * `coverage.ts` on whether the floor held. All of those released with *수치
+ * 없음*, which reads as *nothing ran* — `agent-mesh-local-pm` measured two
+ * sub-second windows, could not tell them from runs that never started, and
+ * asked. The answer was in the captured output the whole time.
+ *
+ * Every shape here is a line one of those tools actually prints, and the
+ * absence of all of them still reports nothing rather than the exit code.
+ */
 function summarise(output: string): string | null {
-  const pass = [...output.matchAll(/^\s*(\d+)\s+pass\s*$/gm)].at(-1)?.[1];
-  const fail = [...output.matchAll(/^\s*(\d+)\s+fail\s*$/gm)].at(-1)?.[1];
-  if (pass === undefined && fail === undefined) return null;
-  return `${pass ?? "?"} pass / ${fail ?? "?"} fail`;
+  const last = (re: RegExp) => [...output.matchAll(re)].at(-1);
+  const parts: string[] = [];
+
+  const pass = last(/^\s*(\d+)\s+pass\s*$/gm)?.[1];
+  const fail = last(/^\s*(\d+)\s+fail\s*$/gm)?.[1];
+  if (pass !== undefined || fail !== undefined) parts.push(`${pass ?? "?"} pass / ${fail ?? "?"} fail`);
+
+  const caught = last(/^(\d+)\/(\d+) caught\b/gm);
+  if (caught) parts.push(`${caught[1]}/${caught[2]} caught`);
+
+  const anchors = last(/^(\d+)\/(\d+) anchors point at exactly one place/gm);
+  if (anchors) parts.push(`${anchors[1]}/${anchors[2]} anchors`);
+
+  const selfCheck = last(/^self-check: ([^\n]+)/gm);
+  if (selfCheck) parts.push(`self-check: ${selfCheck[1]}`);
+
+  const held = last(/^(?:floor|ratchet) ([^\n]*?): held[^\n]*/gm);
+  if (held) parts.push(`floor held (${held[1]})`);
+
+  const below = last(/^coverage: (funcs|lines) at ([\d.]+) is below[^\n]*/gm);
+  if (below) parts.push(`${below[1]} ${below[2]} below the floor`);
+
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 let released = false;

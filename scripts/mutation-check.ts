@@ -6622,6 +6622,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["releases the window when the run fails"],
   },
   {
+    id: "a-mutation-window-closes-on-nothing",
+    defect:
+      "The release stopped recognising `n/m caught`, so every mutation batch closes its window saying it measured nothing. That is not a cosmetic loss: `agent-mesh-local-pm` read two sub-second windows reporting 수치 없음, could not tell them from runs that never started, and asked — the numbers were in the captured output the whole time.",
+    file: "scripts/gate.ts",
+    from: "  const caught = last(/^(\\d+)\\/(\\d+) caught\\b/gm);",
+    to: "  const caught = last(/^(\\d+)\\/(\\d+) never printed\\b/gm);",
+    suite: "test/gate-window.test.ts",
+    expect: ["a mutation batch released saying it measured nothing, which reads as a run that never started"],
+  },
+  {
+    id: "the-window-forgets-the-ratchet-line",
+    defect:
+      "The floor shape matches `floor …: held` and no longer matches `ratchet …: held`, so a coverage window closes on 수치 없음 for the one job whose whole output is that line. The two spellings are one regex apart and the surviving half keeps the test looking green if it only greps for `held`.",
+    file: "scripts/gate.ts",
+    from: "  const held = last(/^(?:floor|ratchet) ([^\\n]*?): held[^\\n]*/gm);",
+    to: "  const held = last(/^(?:floor) ([^\\n]*?): held[^\\n]*/gm);",
+    suite: "test/gate-window.test.ts",
+    expect: ["a window closed on numbers the run had printed and the release did not carry"],
+  },
+  {
+    id: "a-fallen-floor-releases-without-the-number",
+    defect:
+      "The shape that carries a fallen metric stopped matching, so the window that most needs a number in it — the one where coverage dropped — closes saying nothing was measured. The run is red either way; what goes missing is the reason, in the message the other side reads first.",
+    file: "scripts/gate.ts",
+    from: "  const below = last(/^coverage: (funcs|lines) at ([\\d.]+) is below[^\\n]*/gm);",
+    to: "  const below = last(/^coverage: (funcs|lines) at ([\\d.]+) is under[^\\n]*/gm);",
+    suite: "test/gate-window.test.ts",
+    expect: ["carries the metric that fell, when the floor did not hold"],
+  },
+  {
     id: "a-stopped-run-never-says-the-machine-is-free",
     defect:
       "The signal handlers went. Somebody stops a gate with ^C and the machine is free that instant, with nothing about to say so \u2014 the other side waits on a release that cannot come, which is the observed failure this script was written for.",
