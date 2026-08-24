@@ -980,6 +980,48 @@ const MUTATIONS: Mutation[] = [
     expect: ["a code is single-use, and the second attempt says so specifically"],
   },
   {
+    id: "a-second-identity-is-answered-with-the-first-ones-key",
+    defect:
+      "The ownership test goes, so a second identity proposing a key somebody else holds is answered with the *other* holder's status while no row is written for it. That is the exact bug this branch was added for: the caller was told `approved` and had no key, and every later request signed with a key the server does not associate with it.",
+    file: "packages/store/src/keys.ts",
+    from: "    if (existing.identity !== identity) {",
+    to: "    if (false) {",
+    suite: "packages/store/src/store.test.ts",
+    expect: ["throws rather than reporting the other identity's status"],
+  },
+  {
+    id: "the-collision-error-names-the-holder",
+    defect:
+      "The refusal carries the other identity instead of the fingerprint. Proposing keys then becomes a lookup: an attacker who has a public key learns which identity holds it, from an error meant only to say *not yours*.",
+    file: "packages/store/src/keys.ts",
+    from: "      throw new KeyOwnershipError(fingerprint);",
+    to: "      throw new KeyOwnershipError(existing.identity);",
+    suite: "packages/store/src/store.test.ts",
+    expect: ["the error does not carry the holder's name"],
+  },
+  {
+    id: "re-proposing-reopens-a-ruling",
+    defect:
+      "A re-proposal reports `pending` whatever the operator decided. A key that was denied or revoked then reads as awaiting approval again, so the screen offers to approve something already ruled on and the ruling is invisible to the caller.",
+    file: "packages/store/src/keys.ts",
+    from: "    return { fingerprint, status: existing.status, created: false };",
+    to: "    return { fingerprint, status: \"pending\", created: false };",
+    suite: "packages/store/src/store.test.ts",
+    expect: ["a ruling was reopened by re-proposing the key it was made about"],
+  },
+  {
+    id: "a-superseded-key-is-parked-rather-than-removed",
+    defect:
+      "The superseded pending key is marked `denied` instead of deleted. Nothing was ever signed with it, so its survival keeps no signature verifiable — and it makes a client that flaps between two keys unable to re-propose the first, because the row it would need is sitting in a terminal state.",
+    file: "packages/store/src/keys.ts",
+    from: "      db.prepare(`DELETE FROM agent_keys WHERE fingerprint = ?`).run(superseded.fingerprint);",
+    to: "      db.prepare(`UPDATE agent_keys SET status = 'denied' WHERE fingerprint = ?`).run(superseded.fingerprint);",
+    // `store.test.ts` covers the schema constraint with raw inserts, which a
+    // parked row satisfies. What notices is the behaviour test in `test/`.
+    suite: "test/keys.test.ts",
+    expect: ["a superseded key can be proposed again"],
+  },
+  {
     id: "an-expired-pairing-code-still-works",
     defect:
       "The expiry term goes. A code's time limit is the only thing bounding how long a leaked one is worth stealing, and nothing else in the flow re-checks it.",

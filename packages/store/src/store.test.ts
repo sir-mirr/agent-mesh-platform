@@ -369,6 +369,22 @@ describe("proposing a key that is already someone else's", () => {
     db.close();
   });
 
+  test("re-proposing a key an operator ruled on returns the ruling, not pending", () => {
+    // The test above re-proposes a *pending* key, so it cannot see a version
+    // that answers `pending` unconditionally — and the comment in `proposeKey`
+    // claims denied and revoked come back as themselves. A key that was denied
+    // reading as pending offers approval on something already decided.
+    const db = seeded();
+    const { fingerprint } = keys.proposeKey(db, "owner", KEY, "test");
+    keys.denyKey(db, fingerprint, "operator", "not this one");
+
+    expect(
+      keys.proposeKey(db, "owner", KEY, "test"),
+      "a ruling was reopened by re-proposing the key it was made about",
+    ).toEqual({ fingerprint, status: "denied", created: false });
+    db.close();
+  });
+
   /**
    * The same question asked *before* the write, for a route that has to refuse
    * without reporting. It answers a name, which is why § 10.2 has the caller
