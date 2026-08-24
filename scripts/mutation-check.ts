@@ -1080,6 +1080,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["reads the origin the page came from when the base URL is empty"],
   },
   {
+    id: "an-empty-table-stops-saying-what-it-is-about",
+    defect:
+      "The headers are drawn only when there are rows, so an empty table is a blank panel with a sentence in it. What the table was going to show is exactly what a reader needs when it shows nothing — otherwise *no agents* and *no audit events* are the same screen.",
+    file: "packages/platform-web/src/components/data/DataTable.tsx",
+    from: "          <tr style={{ background: \"var(--color-bg-surface-sub)\" }}>\n            {columns.map((col) => (",
+    to: "          <tr style={{ background: \"var(--color-bg-surface-sub)\" }}>\n            {(data.length ? columns : []).map((col) => (",
+    suite: "packages/platform-web/src/components/data/DataTable.test.tsx",
+    expect: ["always draws the headers, so an empty table still says what it is about"],
+  },
+  {
+    id: "a-loading-table-reports-an-error-it-does-not-have",
+    defect:
+      "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
+    file: "packages/platform-web/src/components/data/DataTable.tsx",
+    from: "          {isLoading ? t(\"table.loading\"",
+    to: "          {isLoading && !isError ? t(\"table.loading\"",
+    suite: "packages/platform-web/src/components/data/DataTable.test.tsx",
+    expect: ["prefers loading over error when both are set"],
+  },
+  {
+    id: "the-callers-empty-sentence-is-dropped",
+    defect:
+      "Every empty table says the generic sentence, so a screen that explains *why* it is empty — no tenants yet, nothing in this window — loses that and says only that there is no data. The caller's sentence is the one carrying the reason.",
+    file: "packages/platform-web/src/components/data/DataTable.tsx",
+    from: ") : emptyMessage ?? t(\"table.empty\"",
+    to: ") : t(\"table.empty\"",
+    suite: "packages/platform-web/src/components/data/DataTable.test.tsx",
+    expect: ["uses the caller's empty sentence, and has one of its own"],
+  },
+  {
+    id: "column-renderers-are-ignored",
+    defect:
+      "Cells stop going through the column's renderer and print the raw field instead. Every badge, link and formatted timestamp becomes whatever `String()` makes of the value — `[object Object]` where a component was, and a screen that is still drawing rows so nothing looks broken.",
+    file: "packages/platform-web/src/components/data/DataTable.tsx",
+    from: "                    {col.render\n                      ? col.render(item, index)\n                      : String((item as Record<string, unknown>)[col.key] ?? \"\")}",
+    to: "                    {String((item as Record<string, unknown>)[col.key] ?? \"\")}",
+    suite: "packages/platform-web/src/components/data/DataTable.test.tsx",
+    expect: ["draws the rows it is given, through the column renderers"],
+  },
+  {
     id: "the-pasted-command-gains-a-double-slash",
     defect:
       "A trailing slash comes back, so every command built from this reads `https://host//api/v1/…`. It is the kind of defect that works on some servers and not others, discovered by whoever pastes it rather than by anything here.",
