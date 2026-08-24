@@ -5467,6 +5467,69 @@ const MUTATIONS: Mutation[] = [
     expect: ["a second socket claiming a live identity, keeping the incumbent"],
   },
   {
+    id: "a-fresh-socket-is-judged-on-its-first-sweep",
+    defect:
+      "The grace interval goes: a socket is dropped on the first sweep it appears in, before anything has been asked of it. A connection that arrives a moment before the timer fires is closed for not answering a ping nobody sent.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "      if (this.awaiting.has(socket)) {",
+    to: "      if (true) {",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    expect: ["a socket gets a full interval of grace before it can be judged"],
+  },
+  {
+    id: "last-seen-is-written-after-the-drop",
+    defect:
+      "`touchLastSeen` moves after `drop`. Once the socket is gone the registry is the only record that this identity was ever reachable, and § 3.1 wants the moment it stopped answering — written afterwards it is either lost or a later time than the truth.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "        this.deps.touchLastSeen(identity);\n        this.deps.drop(socket, identity);",
+    to: "        this.deps.drop(socket, identity);\n        this.deps.touchLastSeen(identity);",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    expect: ["last_seen is touched before the socket is dropped (SPEC 3.1)"],
+  },
+  {
+    id: "an-inbound-frame-stops-counting-as-life",
+    defect:
+      "`alive` stops clearing the flag, so a socket that answered is dropped on the next sweep anyway. Every healthy connection is closed one interval after it is first pinged — the busiest sockets included, since being busy is not what this reads.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "  alive(socket: Socket): void {\n    this.awaiting.delete(socket);",
+    to: "  alive(socket: Socket): void {\n    void socket;",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    expect: ["a socket that answers is pinged again, never dropped"],
+  },
+  {
+    id: "eviction-skips-the-proxy-withdrawal",
+    defect:
+      "The drop is replaced by deleting the identity from `online`. The socket stops owning its own name and keeps every proxy route it was carrying, so somebody else's mail is still routed into a connection nobody is holding — which is the failure the injected `drop` exists to avoid.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "        this.deps.drop(socket, identity);",
+    to: "        this.deps.online.delete(identity);",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    expect: ["eviction goes through drop, so proxies are withdrawn too"],
+  },
+  {
+    id: "one-throwing-ping-ends-the-sweep",
+    defect:
+      "The ping is no longer guarded, so one socket that throws takes the whole pass with it. Every identity after it in the map goes unpinged and unjudged for as long as that socket is there — the sweep stops sweeping and nothing says so.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "      try {\n        socket.ping();\n      } catch {",
+    to: "      socket.ping();\n      if (false) try {} catch {",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    // The test that objects is the one about a throwing ping, not the one about
+    // a silent socket: the sweep dies at the throw, so the *later* identities
+    // are never reached and the silent-socket case never arises to be judged.
+    expect: ["a ping that throws leaves the socket to be removed by the next sweep"],
+  },
+  {
+    id: "a-reconnect-inherits-the-old-flag",
+    defect:
+      "`forget` stops clearing the flag. A socket object that closed cleanly and is reused arrives already marked as awaiting a pong, so its first sweep drops it — a reconnect that is killed for the silence of the connection before it.",
+    file: "packages/hub/src/heartbeat.ts",
+    from: "  forget(socket: Socket): void {\n    this.awaiting.delete(socket);",
+    to: "  forget(socket: Socket): void {\n    void socket;",
+    suite: "packages/hub/src/heartbeat.test.ts",
+    expect: ["forget clears the flag so a reconnect starts with full grace"],
+  },
+  {
     id: "any-socket-may-proxy-any-identity",
     defect:
       "The entitlement verdict on each `proxy_for` entry stopped being consulted, so a socket was wired into `proxyMap` for identities it may not act for (\u00a7 8.2). Combined with the replay above this is impersonation with delivery attached; alone it is enough, because `mesh.send` then routes that identity's traffic to a socket nobody entitled.",
