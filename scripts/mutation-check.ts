@@ -900,6 +900,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["a red shard files its issue even when the label is not there"],
   },
   {
+    id: "the-alarm-runs-on-a-read-only-token",
+    defect:
+      "The job asks for `issues: read`, which is what the repository default already grants. This is the second of the nightly alarm's two independent failures, and it outlived the first: with the label ensured the step still filed nothing, because `default_workflow_permissions` is `read` here and a job gets more only by asking. The label check beside it cannot see this one \u2014 a label that exists and a token that may not use it read the same in the workflow text.",
+    file: ".github/workflows/ci.yml",
+    from: "      contents: read\n      issues: write",
+    to: "      contents: read\n      issues: read",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["the nightly's alarm runs with a read-only token, so a red shard files nothing"],
+  },
+  {
     id: "a-red-shard-files-nothing-when-labelling-fails",
     defect:
       "The unlabelled fallback went, so anything that breaks labelling \u2014 a renamed label, a token without the scope, a repository that has never had one \u2014 takes the whole report with it. A labelled issue is a convenience; an issue is the alarm.",
