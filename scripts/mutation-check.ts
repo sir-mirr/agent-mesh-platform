@@ -960,6 +960,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["an agent nobody placed is a member of `default`"],
   },
   {
+    id: "a-narrow-grant-widens",
+    defect:
+      "The scope test in `has` accepts anything, so a grant on one identity answers yes for every other and for the tenant. This is the silent failure the function's own docstring is about: nothing errors, no screen changes, and every scoped permission in § 11 quietly becomes tenant-wide.",
+    file: "packages/store/src/grants.ts",
+    from: "          AND (scope = ? OR scope = ?)",
+    to: "          AND (scope = ? OR scope = ? OR 1 = 1)",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["a narrow grant does NOT widen"],
+  },
+  {
+    id: "a-grant-in-one-tenant-answers-in-another",
+    defect:
+      "The tenant term in `has` stopped narrowing, so a grant written in `acme` authorises the same subject in `nova`. § 11.4 isolation is one predicate, and this is the predicate.",
+    file: "packages/store/src/grants.ts",
+    from: "      `SELECT 1 AS ok FROM role_grants\n        WHERE tenant = ? AND subject = ? AND capability = ?",
+    to: "      `SELECT 1 AS ok FROM role_grants\n        WHERE (tenant = ? OR 1 = 1) AND subject = ? AND capability = ?",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["tenants do not leak into each other"],
+  },
+  {
+    id: "a-regrant-rewrites-the-grantor",
+    defect:
+      "A second grant of the same permission overwrites `granted_by`, so the audit row names whoever ran the script last rather than whoever first gave the permission. The grant is still one row and every screen looks unchanged — what moved is the only field that says who decided.",
+    file: "packages/store/src/grants.ts",
+    from: "     ON CONFLICT(tenant, subject, capability, scope) DO NOTHING",
+    to: "     ON CONFLICT(tenant, subject, capability, scope) DO UPDATE SET granted_by = excluded.granted_by",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["granting twice is idempotent, and keeps the first grantor"],
+  },
+  {
+    id: "a-typo-is-stored-rather-than-refused",
+    defect:
+      "The capability is taken as any string, so `key.aprove` is stored as a grant. Nothing ever checks for it — it looks granted on every screen and gates nothing, which is worse than refusing it and worse than not having it.",
+    file: "packages/store/src/grants.ts",
+    from: "  if (!(ALL_CAPABILITIES as readonly string[]).includes(g.capability)) {",
+    to: "  if (false) {",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["a typo'd capability is refused rather than stored"],
+  },
+  {
+    id: "a-revoke-that-removed-nothing-says-it-did",
+    defect:
+      "`revoke` reports success on a row that was not there, so a caller cannot tell a revoke from a no-op. The audit line then says a permission was taken away on a call that took nothing.",
+    file: "packages/store/src/grants.ts",
+    from: "      .run(g.tenant ?? DEFAULT_TENANT, g.subject, g.capability, g.scope ?? SCOPE_TENANT).changes > 0",
+    to: "      .run(g.tenant ?? DEFAULT_TENANT, g.subject, g.capability, g.scope ?? SCOPE_TENANT).changes >= 0",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["revoke reports whether anything went"],
+  },
+  {
+    id: "revoking-the-wide-grant-takes-the-narrow-one",
+    defect:
+      "The scope term in `DELETE` stopped narrowing, so revoking a tenant-wide grant also removes every scoped one the subject holds. Taking away more than was asked for reads as a successful revoke and shows up later as somebody who cannot do their own job.",
+    file: "packages/store/src/grants.ts",
+    from: "          WHERE tenant = ? AND subject = ? AND capability = ? AND scope = ?",
+    to: "          WHERE tenant = ? AND subject = ? AND capability = ? AND (scope = ? OR 1 = 1)",
+    suite: "packages/store/src/grants.test.ts",
+    expect: ["revoking a wide grant does not remove a narrow one"],
+  },
+  {
     id: "a-torn-down-identity-stays-in-default",
     defect:
       "The soft-delete term went, so a torn-down identity (\u00a7 9.3) kept turning up among `default`'s members \u2014 a member list describing a mesh that no longer exists.",
