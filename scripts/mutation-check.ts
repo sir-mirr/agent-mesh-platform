@@ -1090,6 +1090,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["always draws the headers, so an empty table still says what it is about"],
   },
   {
+    id: "a-given-trail-is-merged-with-the-routes",
+    defect:
+      "A caller's trail is appended to the route's instead of replacing it, so the screen shows two Home steps and two sections. The page that passes its own trail is the page whose route table entry is deliberately absent, so the merge draws the fallback beside the real one.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "  const breadcrumbs = items || getRouteBreadcrumbs(location.pathname);",
+    to: "  const breadcrumbs = [...(items ?? []), ...getRouteBreadcrumbs(location.pathname)];",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["uses the given trail instead of the route's, without merging the two"],
+  },
+  {
+    id: "an-empty-trail-reads-as-no-trail",
+    defect:
+      "`items={[]}` falls back to the route's trail. An empty array is an answer — *this page shows no breadcrumbs* — and treating it as a missing argument draws a trail the caller deliberately suppressed.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "  const breadcrumbs = items || getRouteBreadcrumbs(location.pathname);\n",
+    to: "  const breadcrumbs = items?.length ? items : getRouteBreadcrumbs(location.pathname);\n",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["treats an empty trail as a trail, not as a missing one"],
+  },
+  {
+    id: "the-page-you-are-on-becomes-a-link",
+    defect:
+      "The last step is linked whenever the caller supplied a href. Clicking where you already are is the smallest possible bug and the one that makes a trail untrustworthy — a reader uses the last step to know where they stand, and a link says they do not.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "              {item.href && !isLast ? (",
+    to: "              {item.href ? (",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["never links the page you are already on, even when the caller gives it a href"],
+  },
+  {
+    id: "the-trail-opens-with-a-separator",
+    defect:
+      "A separator is drawn in front of the first step, so every trail reads `/ 홈 / …` as though a step above it had been cut off.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "              {index > 0 && (",
+    to: "              {index >= 0 && (",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["puts a separator between each pair and never in front of the first"],
+  },
+  {
+    id: "an-unknown-path-is-named-after-the-dashboard",
+    defect:
+      "A path with no table entry is labelled 대시보드 rather than echoed. The trail then names a different page than the one being shown — a route somebody forgot to add reads as the dashboard, which is the one thing a reader might have believed.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "          { label: pathname.slice(1) || t(\"bc.dashboard\", \"대시보드\") },",
+    to: "          { label: t(\"bc.dashboard\", \"대시보드\") },",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["echoes a path it has no label for instead of naming it after another page"],
+  },
+  {
+    id: "the-bell-moves-inside-the-trail",
+    defect:
+      "The registration bell is mounted inside the `nav`, so a screen reader announcing the breadcrumb landmark reads a notification control as one of the steps. It looks identical: the bell sits at the same place on screen either way.",
+    file: "packages/platform-web/src/components/layout/Breadcrumbs.tsx",
+    from: "      </nav>\n\n      {/* Realtime Agent Registration Notification Bell */}\n      <NotificationBell />",
+    to: "        <NotificationBell />\n      </nav>\n",
+    suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
+    expect: ["mounts the registration bell beside the trail, outside the nav"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
