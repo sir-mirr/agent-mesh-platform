@@ -1070,6 +1070,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["asks for no window, so the one reported back is the server's"],
   },
   {
+    id: "the-pasted-command-names-the-whole-url",
+    defect:
+      "The origin becomes the full page URL, so the `curl` line rendered onto a pairing screen carries the path the reader happened to be standing on. The command is copied into a terminal on another machine and addresses something that is not the API.",
+    file: "packages/platform-web/src/config/env.ts",
+    from: "  return typeof window === \"undefined\" ? \"\" : window.location.origin;",
+    to: "  return typeof window === \"undefined\" ? \"\" : window.location.href;",
+    suite: "packages/platform-web/src/config/env.test.ts",
+    expect: ["reads the origin the page came from when the base URL is empty"],
+  },
+  {
+    id: "the-pasted-command-gains-a-double-slash",
+    defect:
+      "A trailing slash comes back, so every command built from this reads `https://host//api/v1/…`. It is the kind of defect that works on some servers and not others, discovered by whoever pastes it rather than by anything here.",
+    file: "packages/platform-web/src/config/env.ts",
+    from: "  return typeof window === \"undefined\" ? \"\" : window.location.origin;\n}",
+    to: "  return typeof window === \"undefined\" ? \"\" : `${window.location.origin}/`;\n}",
+    suite: "packages/platform-web/src/config/env.test.ts",
+    expect: ["never ends in a slash"],
+  },
+  {
+    id: "the-browser-stub-answers-something-hash-shaped",
+    defect:
+      "The stubbed digest returns plausible hex instead of the empty string. A browser build then produces something that looks like a digest, gets compared against a real one somewhere, and agrees with nothing — a defect that arrives as data rather than as an error, which is exactly what the empty string is chosen to avoid.",
+    file: "packages/platform-web/src/stubs/crypto.ts",
+    from: "    digest: (_encoding?: string) => \"\",",
+    to: "    digest: (_encoding?: string) => \"0123456789abcdef\",",
+    suite: "packages/platform-web/src/stubs/crypto.test.ts",
+    expect: ["does not answer anything that could be mistaken for a digest"],
+  },
+  {
+    id: "the-browser-stub-loses-its-default-export",
+    defect:
+      "The default export stops pointing at the same `createHash`. Both import spellings are used in this package on a path a bundler follows into the browser, and the one that misses is a blank screen rather than a type error — the stub is aliased in at build time, so nothing type-checks against it.",
+    file: "packages/platform-web/src/stubs/crypto.ts",
+    from: "export default {\n  createHash,\n};",
+    to: "export default {\n  createHash: (_algorithm?: string) => ({ update: () => ({ digest: () => \"\" }) }),\n};",
+    suite: "packages/platform-web/src/stubs/crypto.test.ts",
+    expect: ["is reachable both ways it is imported"],
+  },
+  {
     id: "a-tenant-id-goes-into-the-path-unencoded",
     defect:
       "The rename path interpolates the id raw. An id containing a slash or a `?` then addresses a different route than the one the operator is renaming — and the request still succeeds, against something else.",
