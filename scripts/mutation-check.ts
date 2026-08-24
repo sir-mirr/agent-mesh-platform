@@ -1130,6 +1130,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["keeps the whitespace a paste depends on, including the edges"],
   },
   {
+    id: "an-unreached-directory-becomes-an-empty-one",
+    defect:
+      "A directory the page could not read is stored as `[]` rather than null, so the screen says this platform has no tenants. Not reaching the directory is not proof that no tenants exist, and a soft-deleted row disappearing into that is the same lie twice.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "      setTenants(null);",
+    to: "      setTenants([]);",
+    suite: "packages/platform-web/src/pages/platform/TenantManagementPage.test.tsx",
+    expect: ["does not call an unanswered directory an empty one"],
+  },
+  {
+    id: "a-body-with-no-tenants-field-reads-as-no-tenants",
+    defect:
+      "The shape check goes, so a `200` carrying no `tenants` array sets the list to undefined and the page draws its empty state. A route that changed its body — or answered a different route's — then reads as a platform with nothing in it.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "      if (!Array.isArray(response.tenants)) {",
+    to: "      if (false) {",
+    suite: "packages/platform-web/src/pages/platform/TenantManagementPage.test.tsx",
+    expect: ["does not call a malformed directory response an empty directory"],
+  },
+  {
+    id: "a-refusal-is-drawn-as-a-broken-read",
+    defect:
+      "Every failed read is classified as unreachable, so a `403` is shown with the generic read-failed sentence. The operator is told the directory could not be read when what happened is that they may not read it — one is a fault to report and the other is a permission to ask for. The first version of this entry dropped `refusedCapability` instead and was not caught, correctly: that value is diagnostic, and `client.ts` says operator-facing copy must not print it.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "      setFailure(failureKind(err));",
+    to: "      setFailure(\"unreachable\");",
+    suite: "packages/platform-web/src/pages/platform/TenantManagementPage.test.tsx",
+    expect: ["tells a refusal from an unanswered directory"],
+  },
+  {
+    id: "an-unanswered-write-is-reported-as-the-error-it-is-not",
+    defect:
+      "A write that got no answer is reported with whatever `String(err)` makes of it — `TypeError: Failed to fetch` — instead of the sentence saying the tenant state is unknown. The two are not the same: one names a bug, the other says the write may have landed and nobody knows.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "  return err instanceof ApiError && err.status === null",
+    to: "  return false",
+    suite: "packages/platform-web/src/pages/platform/TenantManagementPage.test.tsx",
+    expect: ["calls an unanswered create unknown instead of reporting success"],
+  },
+  {
     id: "the-clipboard-gets-something-else",
     defect:
       "What goes on the clipboard is trimmed while the screen keeps the original. The reader checks the block, copies it, and pastes something that differs from what they checked — the one failure a copy button must not have.",
