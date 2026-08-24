@@ -105,6 +105,25 @@ export function assertTreeUsable(who: string): void {
   const held = read();
   if (!held) return;
 
+  // **A torn write is written by somebody who is still here.** The only way to
+  // catch a half-written marker is to look while it is being written, so an
+  // unreadable one is the strongest evidence of a live holder there is — and it
+  // carries no pid to check. `read` says so by reporting pid -1; treating that
+  // as a dead holder cleared the marker and let the caller build from a tree
+  // mid-mutation, which is the failure at the top of this file, reached through
+  // the one path that cannot name who to wait for.
+  if (held.pid === -1) {
+    console.error(
+      `${who} refuses to start: this working tree carries a mutation marker that cannot be read.\n` +
+        `  ${MARKER}\n` +
+        `\n` +
+        `A marker is only ever caught half-written while it is being written, so\n` +
+        `something is very likely mutating this tree right now. Wait for it, or —\n` +
+        `if you are certain nothing is — delete that file.`,
+    );
+    process.exit(2);
+  }
+
   if (!alive(held.pid)) {
     // Stale. Say so — a silent cleanup here would hide a mutation-check that is
     // dying repeatedly.
