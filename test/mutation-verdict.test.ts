@@ -22,9 +22,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutation-verdict";
+import { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
 const EXPECT = ["a socket that dropped the frame"];
 
@@ -350,4 +352,184 @@ describe("summarise", () => {
     expect(markFor("inconclusive")).toBe("?");
     expect(markFor("flapped")).toBe("?");
   });
+});
+
+/**
+ * **The capture is part of the predicate.** `readVerdict` reads a string, and
+ * for most of this script's life that string was whatever `$\`bun test …\`
+ * .quiet()` handed back — about a megabyte, however much the child printed,
+ * with the rest dropped and nothing said about it.
+ *
+ * `the-bell-moves-inside-the-trail` is what that costs. Its assertion was
+ * `expect(node).toBe(null)` on a jsdom node, which serialises to the node's
+ * whole graph; with the defect planted the suite printed 248 MB, and bun prints
+ * the `(fail) suite > title` line an entry names in `expect` *after* the dump.
+ * The line was produced, the capture threw it away, the summary at the very end
+ * survived, and the verdict read *exit 1, a summary, no expected string* — a
+ * guard that objected correctly, written down as one that did not. Caught when
+ * run alone; missed in a batch of 112.
+ *
+ * Measured against the same suite, the three ways out differ:
+ *
+ * ```
+ * $`…`.quiet()   787 KB back    no (fail) marker survived
+ * a pipe         787 KB back    no (fail) marker survived
+ * a file         248 MB back    every marker, and the title
+ * ```
+ *
+ * So the run goes to a file, and what is dropped is dropped here instead —
+ * deliberately, with the elision saying which of the strings the verdict turns
+ * on were in the part that went.
+ */
+describe("condensing a run", () => {
+  const stream = (...parts: string[]): AsyncIterable<Uint8Array> => ({
+    async *[Symbol.asyncIterator]() {
+      const encoder = new TextEncoder();
+      for (const part of parts) yield encoder.encode(part);
+    },
+  });
+
+  test("a run small enough to hold is held whole", async () => {
+    const output = "(fail) a socket that dropped the frame\n\n 0 pass\n 1 fail\n";
+    const captured = await condenseRun(stream(output), EXPECT, 1024);
+    expect(captured.text).toBe(output);
+    expect(captured.named).toBe(1);
+  });
+
+  test("a long run keeps both ends and says how much went", async () => {
+    const captured = await condenseRun(stream("HEAD", "x".repeat(5000), "TAIL"), EXPECT, 64);
+    expect(captured.text.startsWith("HEAD")).toBe(true);
+    expect(captured.text.endsWith("TAIL")).toBe(true);
+    expect(captured.text).toContain("characters not shown");
+    // Everything is accounted for: what was kept plus what the note claims to
+    // have dropped is what arrived.
+    const dropped = Number(/… (\d+) characters/.exec(captured.text)![1]);
+    expect(dropped + 64 * 2).toBe(5008);
+  });
+
+  test("an expected string in the part that went is still there to be read", async () => {
+    // The bell, in miniature: the title bun printed after a dump nothing kept.
+    const captured = await condenseRun(
+      stream("x".repeat(4000), "(fail) a socket that dropped the frame\n", "y".repeat(4000), "\n 0 pass\n 1 fail\n"),
+      EXPECT,
+      64,
+    );
+    expect(readVerdict(captured.text, EXPECT, 1, captured.named)).toEqual({ kind: "caught" });
+  });
+
+  test("a string arriving in two pieces is one string", async () => {
+    // A stream hands over whatever the read returned, and the string the whole
+    // verdict rests on can be split anywhere in it.
+    const captured = await condenseRun(
+      stream("z".repeat(4000), "(fail) a socket that dro", "pped the frame", "z".repeat(4000), "\n 0 pass\n 1 fail\n"),
+      EXPECT,
+      64,
+    );
+    expect(readVerdict(captured.text, EXPECT, 1, captured.named)).toEqual({ kind: "caught" });
+  });
+
+  test("a hook that died in the part that went still stops the verdict", async () => {
+    // Not the entry's string, but one the verdict turns on all the same: a
+    // suite whose hook died never reached the guard, whatever else it printed.
+    // bun names no test for it, which is why the hook is read before the count
+    // of names — otherwise every dead hook reads as a cut-off run.
+    const captured = await condenseRun(
+      stream("q".repeat(4000), "error: a beforeEach hook timed out\n", "q".repeat(4000), "\n 0 pass\n 1 fail\n"),
+      EXPECT,
+      64,
+    );
+    const verdict = readVerdict(captured.text, EXPECT, 1, captured.named);
+    expect(verdict).toHaveProperty("why", "a hook died, so the guard was never reached");
+  });
+
+  test("the summary at the end survives, because it is what says anything ran", async () => {
+    const captured = await condenseRun(stream("w".repeat(9000), "\n 3 pass\n 0 fail\n"), EXPECT, 64);
+    expect(readVerdict(captured.text, EXPECT, 0, captured.named)).toEqual({ kind: "not-caught" });
+  });
+
+  test("failures named in the part that went are still counted", async () => {
+    // Counted over the stream rather than over what survives, or this
+    // function's own shortening would look like a run that was cut off.
+    const captured = await condenseRun(
+      stream("m".repeat(4000), "(fail) one\n(fail) two\n", "m".repeat(4000), "\n 0 pass\n 2 fail\n"),
+      EXPECT,
+      64,
+    );
+    expect(captured.named).toBe(2);
+    expect(readVerdict(captured.text, EXPECT, 1, captured.named).kind).toBe("inconclusive");
+  });
+
+  test("a marker split across two reads is one failure, not two", async () => {
+    const captured = await condenseRun(stream("(fa", "il) a socket that dropped the frame\n 0 pass\n 1 fail\n"), EXPECT, 1024);
+    expect(captured.named).toBe(1);
+  });
+});
+
+/**
+ * **A summary without the failures it counts is a run that stopped talking.**
+ *
+ * The size that drowns a run depends on what it printed, so nothing here
+ * measures one. bun prints one `(fail)` marker per failing test and a count at
+ * the end; fewer markers than the count is the run saying it did not finish.
+ */
+describe("a run whose output was cut short", () => {
+  test("fewer failures named than counted decides nothing", () => {
+    const output = "(fail) one\n\n 0 pass\n 2 fail\n";
+    const verdict = readVerdict(output, EXPECT, 1, 1);
+    expect(verdict.kind).toBe("inconclusive");
+    expect(verdict).toHaveProperty("why", "the run's output was cut short — 2 failed, 1 named");
+  });
+
+  test("a guard that objected is still caught when the run finished", () => {
+    const output = "(fail) a socket that dropped the frame\n\n 12 pass\n 1 fail\n";
+    expect(readVerdict(output, EXPECT, 1, 1)).toEqual({ kind: "caught" });
+  });
+
+  test("more markers than failures is not a cut-off run", () => {
+    // bun repeats names in its own summary block, and a dump can quote the
+    // marker. Only the missing direction says anything.
+    const output = "(fail) a socket that dropped the frame\n(fail) a socket that dropped the frame\n\n 0 pass\n 1 fail\n";
+    expect(readVerdict(output, EXPECT, 1, 2)).toEqual({ kind: "caught" });
+  });
+});
+
+/**
+ * The capture, end to end, against a real child.
+ *
+ * **What is guarded here and what is not.** The spawn, the file, the stream and
+ * the signals are all exercised below on a run that prints far more than the
+ * capture keeps. The *choice* of a file over a pipe is not: measured on the
+ * suite that produced this bug, a pipe and a file agreed at 3 MB and at 8 MB
+ * and disagreed at 248 MB, and 248 MB of dump is not worth spending on every
+ * run of this file. The reasoning for the choice is written down in
+ * `captureRun`; this says only that the path taken works.
+ */
+describe("capturing a run that prints more than it keeps", () => {
+  test("a failure named after the flood is still readable", async () => {
+    const suite = join(tmpdir(), `mutation-capture-${process.pid}.test.ts`);
+    // Named for the string the verdict looks for, because the line bun prints
+    // it in — `(fail) suite > title` — is the one that used to be lost.
+    await Bun.write(
+      suite,
+      [
+        'import { expect, test } from "bun:test";',
+        "",
+        'test("a socket that dropped the frame", () => {',
+        '  console.error("x".repeat(1_500_000));',
+        "  expect(1).toBe(2);",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    try {
+      const run = await captureRun(["bun", "test", suite], EXPECT, { ...process.env });
+      expect({
+        decided: readVerdict(run.output, EXPECT, run.exitCode, run.named).kind,
+        named: run.named,
+        held: run.output.length < 1_500_000,
+      }).toEqual({ decided: "caught", named: 1, held: true });
+    } finally {
+      await rm(suite, { force: true });
+    }
+  }, 30_000);
 });

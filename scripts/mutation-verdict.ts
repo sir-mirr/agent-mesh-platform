@@ -3,6 +3,9 @@ export type Verdict =
   | { kind: "not-caught" }
   | { kind: "inconclusive"; why: string };
 
+/** The marker bun prints, once, for each test that failed. */
+export const FAIL_MARKER = "(fail)";
+
 /**
  * What a test run actually said about a mutation.
  *
@@ -26,7 +29,7 @@ export type Verdict =
  * every other verdict is believed was the one piece of this with no test of its
  * own.
  */
-export function readVerdict(output: string, expect: string[], exitCode: number): Verdict {
+export function readVerdict(output: string, expect: string[], exitCode: number, named?: number): Verdict {
   // **The last counts, not the first.** Bun prints its summary at the end, and
   // everything before it is the run's own output — including a failure message
   // quoting a string that happens to read like a summary. That is not
@@ -45,7 +48,25 @@ export function readVerdict(output: string, expect: string[], exitCode: number):
   // Bun's phrasing when a suite dies before its tests.
   const hookDied = /\bhook (timed out|failed|threw)/i.test(output);
 
+  // **A summary without the failures it counts is a cut-off run.** bun prints
+  // one `(fail) suite > title` line per failing test, and with a large enough
+  // error — a jsdom node in a failed `toBe(null)` serialises to its whole graph
+  // — it cuts the output mid-token and the line never arrives, while the
+  // summary at the end still says `1 fail`. Every string the entry names is
+  // then missing for a reason that has nothing to do with the guard, and
+  // `the-bell-moves-inside-the-trail` was written down as not caught on
+  // exactly that: caught when run alone, missed in a batch of 112.
+  //
+  // Counted rather than measured against a size, because the size that drowns
+  // a run depends on what it printed. Fewer names than failures is the run
+  // saying it did not finish telling us.
   if (hookDied) return { kind: "inconclusive", why: "a hook died, so the guard was never reached" };
+  if (named !== undefined && failed > named) {
+    return {
+      kind: "inconclusive",
+      why: `the run's output was cut short — ${failed} failed, ${named} named`,
+    };
+  }
   if (passed === 0 && failed === 0) return { kind: "inconclusive", why: "nothing ran" };
   // A silent guard and a broken suite look identical from here.
   if (passed === 0 && !expected) {
@@ -119,4 +140,150 @@ export type FailureKindName = "no-match" | "not-caught" | "inconclusive" | "flap
 export function markFor(kind: FailureKindName): string {
   // `!` is the manifest's own problem, `?` is the tool's, `✗` is the code's.
   return kind === "not-caught" ? "✗" : kind === "no-match" ? "!" : "?";
+}
+
+import { open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+/**
+ * How much of each end of a run's output is kept when it has to be condensed.
+ */
+export const KEPT_ENDS = 128 * 1024;
+
+/**
+ * Phrases `readVerdict` decides on that are not the entry's own `expect`.
+ *
+ * They are listed here because a condensed run has to carry them out of the
+ * part it drops: a hook that died in the middle of a 200 MB dump still means
+ * the guard was never reached, and losing the sentence turns that into a
+ * finding about the guard.
+ */
+export const VERDICT_PHRASES = ["hook timed out", "hook failed", "hook threw"];
+
+/** A run's output, small enough to hold, with what the shortening would hide. */
+export type CapturedRun = { text: string; named: number };
+
+/**
+ * A run's output, small enough to hold, without losing what decides it.
+ *
+ * **Capture truncates, and the truncation is silent.** The runner used to read
+ * the suite through `$\`bun test …\`.quiet()`, which returns about a megabyte
+ * however much the child printed. A jsdom node in a failed `toBe(null)`
+ * serialises to its whole graph — one such assertion measured 248 MB — and bun
+ * prints the `(fail) suite > title` line *after* the dump. So the line the
+ * entry's `expect` names was produced, and thrown away between the child and
+ * this script, while the summary at the very end survived. The verdict read
+ * `exit 1, summary present, expected string absent` and reported a guard that
+ * had objected correctly as one that had not: `the-bell-moves-inside-the-trail`,
+ * caught alone and missed in the batch of 112.
+ *
+ * The child now writes to a file and the file is streamed, so nothing is lost
+ * on the way in. What is dropped is dropped *here*, deliberately, and the
+ * elision says which of the strings the verdict turns on were in it — the
+ * decision stays honest without holding 248 MB in a string.
+ */
+export async function condenseRun(
+  chunks: AsyncIterable<Uint8Array>,
+  signals: string[],
+  keep: number = KEPT_ENDS,
+): Promise<CapturedRun> {
+  const wanted = [...new Set([...signals, ...VERDICT_PHRASES])].filter((s) => s.length > 0);
+  // **Matching spans chunk boundaries.** A stream hands over whatever the read
+  // returned, so the string the whole verdict rests on can arrive in two
+  // pieces. Carrying the last `longest - 1` characters into the next search is
+  // the smallest window that cannot miss one.
+  const longest = wanted.reduce((n, s) => Math.max(n, s.length), 0);
+  const decoder = new TextDecoder();
+  const found = new Set<string>();
+  // Counted over the whole stream, not over what survives the elision: a
+  // failure named in the part that is dropped here has still been named, and
+  // reading the count off the condensed text would turn this function's own
+  // shortening into a cut-off run.
+  let named = 0;
+  let carry = "";
+  let seen = 0;
+  let whole: string | null = "";
+  let head = "";
+  let tail = "";
+
+  const take = (text: string) => {
+    if (text.length === 0) return;
+    seen += text.length;
+    const window = carry + text;
+    for (const s of wanted) if (window.includes(s)) found.add(s);
+    // Over the stitched window minus what the carry already contributed. The
+    // carry is a prefix of the window, so an occurrence lying wholly inside it
+    // was counted last round, and adding the window's total would count every
+    // marker near a chunk boundary twice.
+    const markers = (t: string) => t.split(FAIL_MARKER).length - 1;
+    named += markers(window) - markers(carry);
+    carry = longest > 1 ? window.slice(-(longest - 1)) : "";
+    if (whole !== null) {
+      whole += text;
+      if (whole.length > keep * 2) {
+        head = whole.slice(0, keep);
+        tail = whole.slice(-keep);
+        whole = null;
+      }
+      return;
+    }
+    // The tail is what carries bun's summary, which is printed last and is the
+    // only thing saying whether anything ran at all.
+    tail = (tail + text).slice(-keep);
+  };
+
+  for await (const chunk of chunks) take(decoder.decode(chunk, { stream: true }));
+  take(decoder.decode());
+
+  if (whole !== null) return { text: whole, named };
+  const dropped = seen - head.length - tail.length;
+  const printed = [...found].map((s) => JSON.stringify(s)).join(", ");
+  const note = printed
+    ? `\n\n… ${dropped} characters not shown; the run printed ${printed} …\n\n`
+    : `\n\n… ${dropped} characters not shown …\n\n`;
+  return { text: head + note + tail, named };
+}
+
+/**
+ * Run a suite and come back with what it said.
+ *
+ * **Through a file, and that is the whole of this function.** Measured against
+ * one suite that fails a `toBe(null)` on a jsdom node:
+ *
+ * ```
+ * $`bun test …`.quiet()   787 KB back    no (fail) marker survived
+ * stdout/stderr as pipes  787 KB back    no (fail) marker survived
+ * a file descriptor       248 MB back    every marker, and the title
+ * ```
+ *
+ * bun prints the `(fail) suite > title` line after the failure's output, so on
+ * either of the first two the string an entry names in `expect` is produced and
+ * then dropped between the child and here — while the summary at the end
+ * survives, leaving a verdict that reads *exit 1, a summary, no expected
+ * string*. That is a guard which objected, written down as one that did not.
+ *
+ * Both streams share the descriptor so their interleave survives, and the file
+ * goes as soon as it has been read. `condenseRun` decides what is kept.
+ */
+export async function captureRun(
+  cmd: string[],
+  expect: string[],
+  env: Record<string, string | undefined>,
+): Promise<{ output: string; named: number; exitCode: number }> {
+  const log = join(tmpdir(), `mutation-run-${process.pid}-${cmd.length}-${Bun.hash(cmd.join(" ")).toString(36)}.log`);
+  const sink = await open(log, "w");
+  let exitCode: number;
+  try {
+    const child = Bun.spawn(cmd, { env, stdout: sink.fd, stderr: sink.fd });
+    exitCode = await child.exited;
+  } finally {
+    await sink.close();
+  }
+  try {
+    const captured = await condenseRun(Bun.file(log).stream(), expect);
+    return { output: captured.text, named: captured.named, exitCode };
+  } finally {
+    await rm(log, { force: true });
+  }
 }

@@ -114,9 +114,9 @@ interface Mutation {
 // The verdict predicate lives in its own module because importing a script
 // runs it: this one refuses on a dirty tree and exits, so a test that imported
 // it to check `readVerdict` never got as far as a test.
-import { markFor, readVerdict, summarise, verdictsAgree, type Verdict } from "./mutation-verdict";
+import { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree, type Verdict } from "./mutation-verdict";
 
-export { markFor, readVerdict, summarise, verdictsAgree, type Verdict };
+export { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree, type Verdict };
 
 /** Why an entry was not counted as caught. */
 type FailureKind = import("./mutation-verdict").FailureKindName;
@@ -1543,6 +1543,60 @@ const MUTATIONS: Mutation[] = [
     to: "        <NotificationBell />\n      </nav>\n",
     suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
     expect: ["the bell is missing from the header, or is being announced as one of the breadcrumb steps"],
+  },
+  {
+    id: "an-elided-run-forgets-what-it-held",
+    defect: "the shortening drops the middle of a long run without saying which of the strings the verdict turns on were in it, so a guard that objected in the part that went reads as one that stayed quiet",
+    file: "scripts/mutation-verdict.ts",
+    from: "  const note = printed\n    ? `\\n\\n\u2026 ${dropped} characters not shown; the run printed ${printed} \u2026\\n\\n`\n    : `\\n\\n\u2026 ${dropped} characters not shown \u2026\\n\\n`;",
+    to: "  const note = `\\n\\n\u2026 ${dropped} characters not shown \u2026\\n\\n`;",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["an expected string in the part that went is still there to be read"],
+  },
+  {
+    id: "a-string-split-across-two-reads-is-missed",
+    defect: "the scan forgets the end of the previous chunk, so a string arriving in two pieces \u2014 which is the normal case for a stream \u2014 is never found",
+    file: "scripts/mutation-verdict.ts",
+    from: "    carry = longest > 1 ? window.slice(-(longest - 1)) : \"\";",
+    to: "    carry = \"\";",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a string arriving in two pieces is one string"],
+  },
+  {
+    id: "the-end-of-a-run-goes-with-its-summary",
+    defect: "the shortening keeps the front of the overflow instead of the back, dropping bun's counts \u2014 the only thing that says whether anything ran",
+    file: "scripts/mutation-verdict.ts",
+    from: "    tail = (tail + text).slice(-keep);",
+    to: "    tail = (tail + text).slice(0, keep);",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["the summary at the end survives, because it is what says anything ran"],
+  },
+  {
+    id: "a-marker-at-a-chunk-boundary-is-counted-twice",
+    defect: "failures are counted over the stitched window without subtracting what the carry already contributed, so every marker near a chunk boundary counts twice and a cut-off run looks complete",
+    file: "scripts/mutation-verdict.ts",
+    from: "    named += markers(window) - markers(carry);",
+    to: "    named += markers(window);",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a marker split across two reads is one failure, not two"],
+  },
+  {
+    id: "a-cut-off-run-is-read-as-a-quiet-guard",
+    defect: "a run that reported failures it never named is read as a verdict, so output lost between the child and the tool is written down as a guard that did not object",
+    file: "scripts/mutation-verdict.ts",
+    from: "  if (named !== undefined && failed > named) {",
+    to: "  if (false && named !== undefined && failed > named) {",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["fewer failures named than counted decides nothing"],
+  },
+  {
+    id: "the-capture-keeps-none-of-what-it-read",
+    defect: "the run is spawned but its output is never read back, so every entry decides on an empty string",
+    file: "scripts/mutation-verdict.ts",
+    from: "    const captured = await condenseRun(Bun.file(log).stream(), expect);",
+    to: "    const captured = { text: \"\", named: 0 };",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a failure named after the flood is still readable"],
   },
   {
     id: "a-loading-table-reports-an-error-it-does-not-have",
@@ -9793,10 +9847,11 @@ for (const m of selected) {
   // Repeated with the mutation left in place. The suite is the expensive part,
   // and re-applying the edit between attempts would put the edit inside what is
   // being measured.
-  const attempts: Array<{ output: string; exitCode: number }> = [];
+  const attempts: Array<{ output: string; named: number; exitCode: number }> = [];
   for (let attempt = 0; attempt < repeat; attempt++) {
-    const r = await $`bun test ${m.suite}`.env({ ...process.env, AGENT_MESH_MUTATING: "1" }).quiet().nothrow();
-    attempts.push({ output: r.stdout.toString() + r.stderr.toString(), exitCode: r.exitCode ?? 0 });
+    // One call site with the test, which spawns a suite big enough to prove
+    // the choice: see `captureRun`.
+    attempts.push(await captureRun(["bun", "test", m.suite], m.expect, { ...process.env, AGENT_MESH_MUTATING: "1" }));
   }
   await $`git checkout -- ${m.file}`.quiet();
   planted = null;
@@ -9839,7 +9894,7 @@ for (const m of selected) {
   // `0 pass` means two different things and the count cannot tell them apart —
   // which is the ambiguity this whole script exists to hunt, sitting in the
   // script. What separates them is *why* nothing passed:
-  const verdict = readVerdict(output, m.expect, run.exitCode);
+  const verdict = readVerdict(output, m.expect, run.exitCode, run.named);
   if (verdict.kind === "inconclusive") {
     console.error(`${markFor("inconclusive")} ${m.id}: no verdict from ${m.suite} — ${verdict.why}`);
     await Bun.write(evidenceName(m.id), `exit ${run.exitCode}\n\n${output}`);
@@ -9854,7 +9909,7 @@ for (const m of selected) {
   // for different repairs: `not-caught` says write a guard, `flapped` says the
   // guard is measuring something it does not control.
   if (attempts.length > 1) {
-    const kindsSeen = attempts.map((a) => readVerdict(a.output, m.expect, a.exitCode).kind);
+    const kindsSeen = attempts.map((a) => readVerdict(a.output, m.expect, a.exitCode, a.named).kind);
     if (!verdictsAgree(kindsSeen)) {
       console.error(`${markFor("flapped")} ${m.id}: verdict flapped across ${attempts.length} runs — ${kindsSeen.join(", ")}`);
       await Bun.write(
