@@ -37,6 +37,6 @@
     // quiet — a heading convention it stops matching, a section boundary it
     // reads past — and a hook that goes quiet reads exactly like a repository
     // with nothing left to do.
-    "../.claude/hooks/more-work.ts"
+    "../.claude/hooks/remaining-work.ts"
   ]
 }

@@ -13,10 +13,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { $ } from "bun";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { remainingWork } from "../.claude/hooks/more-work";
+import { mainWorktree, remainingWork } from "../.claude/hooks/remaining-work";
 
 /** A tree with the two documents this hook reads, and no git remote. */
 function tree(deferred: string, proposals = ""): string {
@@ -85,4 +86,45 @@ describe("what counts as work left", () => {
     const elsewhere = tree("### an item only this tree has\n");
     expect(await remainingWork(elsewhere)).toContain("an item only this tree has");
   });
+});
+
+describe("which tree it reads", () => {
+  test("a directory that is not a repository answers with itself", async () => {
+    // No worktree list to read, and inventing a sibling path would be a second
+    // place recording where `main` lives.
+    const root = mkdtempSync(join(tmpdir(), "not-a-repo-"));
+    expect(await mainWorktree(root)).toBe(root);
+  });
+
+  test("a repository with no worktree on main answers with itself too", async () => {
+    const root = mkdtempSync(join(tmpdir(), "no-main-"));
+    await $`git -C ${root} init -q -b side`.quiet();
+    expect(await mainWorktree(root)).toBe(root);
+  });
+
+  test("documents that are not there are not work left", async () => {
+    // An empty read, not a crash: a tree without these files is a tree with
+    // nothing to say, and the hook must stay silent rather than throw inside a
+    // `Stop` handler.
+    const bare = mkdtempSync(join(tmpdir(), "bare-"));
+    expect(await remainingWork(bare)).toBeNull();
+  });
+
+  test("commits the remote has not seen are the first thing asked about", async () => {
+    const root = mkdtempSync(join(tmpdir(), "unpushed-"));
+    await $`git -C ${root} init -q -b main`.quiet();
+    await $`git -C ${root} config user.email probe@example.com`.quiet();
+    await $`git -C ${root} config user.name probe`.quiet();
+    await Bun.write(join(root, "a.txt"), "one\n");
+    await $`git -C ${root} add -A`.quiet();
+    await $`git -C ${root} commit -qm one`.quiet();
+    const base = (await $`git -C ${root} rev-parse HEAD`.quiet().text()).trim();
+    await $`git -C ${root} update-ref refs/remotes/origin/main ${base}`.quiet();
+    await Bun.write(join(root, "b.txt"), "two\n");
+    await $`git -C ${root} add -A`.quiet();
+    await $`git -C ${root} commit -qm two`.quiet();
+
+    const said = await remainingWork(root);
+    expect(said).toContain("1 commit(s) not on `origin/main`");
+  }, 20_000);
 });

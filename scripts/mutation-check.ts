@@ -1841,7 +1841,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "a-closed-item-is-asked-about-again",
     defect: "the hook stops reading the struck-through convention `docs/deferred.md` uses, so every closed entry is offered as work left \u2014 and a hook that speaks on every turn stops being read, which is the failure it exists to prevent",
-    file: ".claude/hooks/more-work.ts",
+    file: ".claude/hooks/remaining-work.ts",
     from: '    .filter((b) => b.startsWith("### ") && !b.startsWith("### ~~") && !b.includes("**Why deferred"))',
     to: '    .filter((b) => b.startsWith("### ") && !b.includes("**Why deferred"))',
     suite: "test/more-work.test.ts",
@@ -1850,7 +1850,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "the-undecided-list-reads-past-its-section",
     defect: "the scan for undecided proposals stops at the end of the document rather than at the next heading, so every settled proposal is reported as an open question every turn",
-    file: ".claude/hooks/more-work.ts",
+    file: ".claude/hooks/remaining-work.ts",
     from: "  const end = rest.indexOf(\"\\n### \");",
     to: "  const end = -1;",
     suite: "test/more-work.test.ts",
@@ -1859,7 +1859,7 @@ const MUTATIONS: Mutation[] = [
   {
     id: "the-work-hook-reads-another-trees-documents",
     defect: "the reads go to the module's own root rather than the one the caller named, so a caller asking about one worktree is told about another \u2014 the shape that made this hook report items closed on main hours earlier",
-    file: ".claude/hooks/more-work.ts",
+    file: ".claude/hooks/remaining-work.ts",
     from: "    read(root, \"docs/deferred.md\"),",
     to: "    read(ROOT, \"docs/deferred.md\"),",
     suite: "test/more-work.test.ts",
