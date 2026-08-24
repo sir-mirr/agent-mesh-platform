@@ -1542,7 +1542,7 @@ const MUTATIONS: Mutation[] = [
     from: "      </nav>\n\n      {/* Realtime Agent Registration Notification Bell */}\n      <NotificationBell />",
     to: "        <NotificationBell />\n      </nav>\n",
     suite: "packages/platform-web/src/components/layout/Breadcrumbs.test.tsx",
-    expect: ["mounts the registration bell beside the trail, outside the nav"],
+    expect: ["the bell is missing from the header, or is being announced as one of the breadcrumb steps"],
   },
   {
     id: "a-loading-table-reports-an-error-it-does-not-have",

@@ -257,9 +257,20 @@ describe("Breadcrumbs, from the route", () => {
     // stopped rendering it would take the whole queue off the screen without
     // any page noticing. Beside the trail, not in it: it is not a step, and a
     // reader walking `nav` must not find it there.
+    // **Booleans, not the nodes.** `expect(node).toBe(null)` prints the whole
+    // element on failure, and a jsdom node expands into its entire graph: the
+    // planted-defect run of this assertion produced a 74 MB log in which bun
+    // never got as far as printing the failing test's name. An assertion whose
+    // failure is unreadable is one nobody can act on, and here it also swallowed
+    // the verdict that depended on reading it.
     const container = view("/creator");
-    expect(container.querySelector('[data-testid="bell"]')).not.toBe(null);
-    expect(navAt("/creator").querySelector('[data-testid="bell"]')).toBe(null);
+    expect(
+      {
+        onScreen: container.querySelector('[data-testid="bell"]') !== null,
+        insideTheTrail: navAt("/creator").querySelector('[data-testid="bell"]') !== null,
+      },
+      "the bell is missing from the header, or is being announced as one of the breadcrumb steps",
+    ).toEqual({ onScreen: true, insideTheTrail: false });
   });
 });
 
