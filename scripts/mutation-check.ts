@@ -1100,6 +1100,36 @@ const MUTATIONS: Mutation[] = [
     expect: ["uses the given trail instead of the route's, without merging the two"],
   },
   {
+    id: "the-shell-leaves-before-the-logout-answers",
+    defect:
+      "The navigation no longer waits for `logout()`. The screen goes to the login page while the request that clears the cookie is still in flight, so a session that was never ended looks ended — and the second POST the wait was blocking can now go out.",
+    file: "packages/platform-web/src/layouts/RootLayout.tsx",
+    from: "    if (await logout()) {",
+    to: "    if (void logout() || true) {",
+    suite: "packages/platform-web/src/layouts/RootLayout.test.tsx",
+    expect: ["does not leave before the cookie-expiry response and blocks a second POST while waiting"],
+  },
+  {
+    id: "a-failed-logout-says-nothing",
+    defect:
+      "A logout that got no answer sets the flag back to false, so the screen stays where it is and says nothing. The reader is still signed in, believes they signed out, and walks away from the machine.",
+    file: "packages/platform-web/src/layouts/RootLayout.tsx",
+    from: "    setLogoutFailed(true);",
+    to: "    setLogoutFailed(false);",
+    suite: "packages/platform-web/src/layouts/RootLayout.test.tsx",
+    expect: ["stays in the shell, reports the failure, and keeps the session when logout gets no answer"],
+  },
+  {
+    id: "the-shell-hands-the-sidebar-no-capabilities",
+    defect:
+      "The capability list stops reaching the sidebar, so every gated destination is hidden from everybody. It fails closed, which is why it is worth planting: nothing errors, no screen is wrong, and an operator simply cannot reach the page they hold the name for.",
+    file: "packages/platform-web/src/layouts/RootLayout.tsx",
+    from: "        userCapabilities={capabilities}",
+    to: "        userCapabilities={[]}",
+    suite: "packages/platform-web/src/layouts/RootLayout.test.tsx",
+    expect: ["opens exactly the destination a granted name gates, and no neighbour"],
+  },
+  {
     id: "an-empty-trail-reads-as-no-trail",
     defect:
       "`items={[]}` falls back to the route's trail. An empty array is an answer — *this page shows no breadcrumbs* — and treating it as a missing argument draws a trail the caller deliberately suppressed.",

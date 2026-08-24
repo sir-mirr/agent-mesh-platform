@@ -257,6 +257,16 @@ describe("RootLayout", () => {
     signedInAs(null);
     expect(whoAmI(await shell())).not.toContain("admin");
     cleanup();
+
+    // **What this cannot see.** A mutation replacing the `?? ""` with a
+    // placeholder was planted here and the suite stayed green, because with no
+    // session the shell renders the login route and draws no sidebar at all —
+    // there is no name field for a placeholder to appear in. Passing a session
+    // whose `github_login` is empty does not reach it either: `AuthProvider`
+    // reads that as no session. So the assertion below is about the Sidebar's
+    // default literal never reaching the screen, which is real, and the blank
+    // itself is not observable from out here. Said rather than papered over
+    // with an assertion comparing two empty strings.
     signedInAs({ name: "admin", role: "PLATFORM_ADMIN", capabilities: [] });
     // Positive control: `admin` is a name the shell will print when the session
     // actually carries it, so the assertion above is about the blank and not
