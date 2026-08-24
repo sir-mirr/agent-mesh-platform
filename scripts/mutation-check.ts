@@ -980,6 +980,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["the leftmost entry is the attacker's and is never taken"],
   },
   {
+    id: "a-contender-evicts-the-live-owner",
+    defect:
+      "The incumbent test goes, so the second connection for an identity takes ownership from the first. A healthy agent is then evicted by anything that reconnects — including the flapping client that caused the reconnect — and the mesh hands the identity back and forth for as long as both sides keep trying.",
+    file: "packages/hub/src/connection-ownership.ts",
+    from: "    if (incumbent && incumbent !== socket) {",
+    to: "    if (false) {",
+    suite: "packages/hub/src/connection-ownership.test.ts",
+    expect: ["normal conflict retains the established owner with machine-correlatable generations"],
+  },
+  {
+    id: "generations-stop-counting",
+    defect:
+      "The counter stops advancing, so every socket is generation zero. The conflict report then says incumbent and contender are the same generation, and the whole point of the number — correlating the two ends of a conflict in two machines' logs — is gone while the report still looks well-formed.",
+    file: "packages/hub/src/connection-ownership.ts",
+    from: "    const generation = ++this.nextGeneration;",
+    to: "    const generation = this.nextGeneration;",
+    suite: "packages/hub/src/connection-ownership.test.ts",
+    expect: ["normal conflict retains the established owner with machine-correlatable generations"],
+  },
+  {
+    id: "a-socket-is-renumbered-every-time-it-is-asked",
+    defect:
+      "The cache lookup goes, so asking a socket's generation twice answers two different numbers. A conflict then reports an incumbent generation the incumbent never had, which is worse than no number: it correlates to nothing, and it looks like a third connection.",
+    file: "packages/hub/src/connection-ownership.ts",
+    from: "    if (known) return known;",
+    to: "    if (false) return known;",
+    suite: "packages/hub/src/connection-ownership.test.ts",
+    expect: ["normal conflict retains the established owner with machine-correlatable generations"],
+  },
+  {
+    id: "a-released-socket-keeps-its-identity",
+    defect:
+      "Release stops forgetting which identity the socket held, so a late close from the old owner still resolves to an identity a new owner now holds. `wasOwner` keeps it from deleting anything today — the guard behind the guard — but the caller is handed a release for a live identity instead of the null that says this socket is nobody's.",
+    file: "packages/hub/src/connection-ownership.ts",
+    from: "    this.identities.delete(socket);",
+    to: "    if (false) this.identities.delete(socket);",
+    suite: "packages/hub/src/connection-ownership.test.ts",
+    expect: ["incumbent-close race lets a new owner claim while a stale release cannot remove it"],
+  },
+  {
     id: "a-header-from-anyone-is-believed",
     defect:
       "The immediate peer no longer has to be a trusted proxy, so anything that reaches this process directly can write the whole chain and be believed. The header is only evidence because a proxy we trust put it there; without that test it is an attacker-controlled string.",
