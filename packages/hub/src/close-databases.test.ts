@@ -20,7 +20,7 @@
  */
 
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,28 +47,31 @@ const SHUTDOWN = `
     ? statSync(process.env.AGENT_MESH_STATE_DIR + "/" + n + "-wal").size : 0;
   const before = { "hub.db": wal("hub.db"), "audit.db": wal("audit.db"), "agents.db": wal("agents.db") };
   closeDatabases();
-  console.log(JSON.stringify(before));
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(process.env.AGENT_MESH_WAL_REPORT, JSON.stringify(before));
 `;
 
 test("closeDatabases folds hub, agents and audit", async () => {
+  // **The child's answer comes back on disk.** It used to be printed and read
+  // off a pipe, and this test timed out at five seconds on CI while passing
+  // everywhere else. Measured in this repository the same day: a pipe returned
+  // 787 KB of a 248 MB run, and a lock probe's eight bytes of stdout never
+  // arrived at all while the child exited 0. A file is not a race.
+  const report = join(dir, "wal-report.json");
   const proc = Bun.spawn(["bun", "-e", SHUTDOWN], {
-    env: { ...process.env, AGENT_MESH_STATE_DIR: dir },
+    env: { ...process.env, AGENT_MESH_STATE_DIR: dir, AGENT_MESH_WAL_REPORT: report },
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   expect({ code, err }).toEqual({ code: 0, err: "" });
 
   // Non-zero is the precondition, not "large": SQLite's own threshold folds a
   // log mid-run and never truncates it, so what separates the fix from the
   // default is exactly zero afterwards, not merely smaller.
-  const before = JSON.parse(out.trim()) as Record<string, number>;
+  const before = JSON.parse(readFileSync(report, "utf8")) as Record<string, number>;
   for (const store of ["hub.db", "audit.db", "agents.db"]) {
     expect({ store, wrote: before[store]! > 0 }).toEqual({ store, wrote: true });
     expect({ store, wal: wal(store) }).toEqual({ store, wal: 0 });
   }
-});
+}, 30_000);
