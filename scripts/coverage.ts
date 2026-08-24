@@ -20,7 +20,7 @@
  * percentage for the same reason.
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -98,15 +98,100 @@ export type Shortfall = { metric: "funcs" | "lines"; value: number };
  * Every way this measurement breaks — a filter matching no test, a report read
  * from the wrong directory — arrives as an empty set.
  */
-export function floorFailures(files: FileCoverage[], floor: number): Shortfall[] {
+export type Recorded = { funcs: number; lines: number };
+
+/** Both metrics over the whole set, with the empty denominator counted as nothing measured. */
+export function metrics(files: FileCoverage[]): Recorded {
   const sum = (pick: (f: FileCoverage) => number) => files.reduce((n, f) => n + pick(f), 0);
-  const pairs: [Shortfall["metric"], number, number][] = [
-    ["funcs", sum((f) => f.funcsHit), sum((f) => f.funcs)],
-    ["lines", sum((f) => f.hit), sum((f) => f.lines)],
-  ];
-  return pairs
-    .map(([metric, hit, total]) => ({ metric, value: total === 0 ? 0 : (hit / total) * 100 }))
+  const ratio = (hit: number, total: number) => (total === 0 ? 0 : (hit / total) * 100);
+  return {
+    funcs: ratio(sum((f) => f.funcsHit), sum((f) => f.funcs)),
+    lines: ratio(sum((f) => f.hit), sum((f) => f.lines)),
+  };
+}
+
+export function floorFailures(files: FileCoverage[], floor: number): Shortfall[] {
+  const m = metrics(files);
+  return (["funcs", "lines"] as const)
+    .map((metric) => ({ metric, value: m[metric] }))
     .filter((s) => shown(s.value) < floor);
+}
+
+/** D-751: 99 is the minimum, whatever the record says. A ratchet cannot lower it. */
+export const RATCHET_MINIMUM = 99;
+
+export type Rise = { metric: Shortfall["metric"]; from: number; to: number };
+
+/**
+ * The measurement judged against a recorded floor that rises with it.
+ *
+ * D-751 set two numbers rather than one: 99 is the minimum and 100 is the
+ * goal. A fixed floor at 99 states the first and abandons the second — a tree
+ * measuring 100.00 can lose a whole point without anything going red, and
+ * nothing would name the day it happened. The record here is the measurement
+ * itself, so what has been reached is what has to be held.
+ *
+ * `RATCHET_MINIMUM` is the reason the record is a floor and not just a
+ * remembered number: a record that somehow said 40 would make the check pass
+ * on 40, which is the check that cannot fail again.
+ *
+ * A *rise* is reported rather than silently accepted, and that is the whole
+ * design. Writing the new number is not enough: on CI the write lands in a
+ * checkout that is thrown away at the end of the job, so a ratchet that raised
+ * quietly would raise nothing and read as green for ever. Reporting it makes
+ * the record travel the only way it can — in a commit.
+ */
+export function ratchetVerdict(
+  files: FileCoverage[],
+  recorded: Recorded,
+): { fallen: Shortfall[]; risen: Rise[]; floor: Recorded } {
+  const floor: Recorded = {
+    funcs: Math.max(RATCHET_MINIMUM, shown(recorded.funcs)),
+    lines: Math.max(RATCHET_MINIMUM, shown(recorded.lines)),
+  };
+  const m = metrics(files);
+  const fallen: Shortfall[] = [];
+  const risen: Rise[] = [];
+  for (const metric of ["funcs", "lines"] as const) {
+    const value = shown(m[metric]);
+    if (value < floor[metric]) fallen.push({ metric, value: m[metric] });
+    else if (value > floor[metric]) risen.push({ metric, from: floor[metric], to: value });
+  }
+  return { fallen, risen, floor };
+}
+
+/**
+ * The record, or an error naming what is wrong with it.
+ *
+ * An unreadable record is not a missing floor: it is a check whose standard
+ * nobody can state, and passing on it would be the same failure the empty
+ * denominator is guarded against above.
+ */
+export function readRecorded(text: string): Recorded {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("coverage: the recorded floor is not JSON");
+  }
+  const r = parsed as Partial<Recorded>;
+  if (!Number.isFinite(r?.funcs) || !Number.isFinite(r?.lines)) {
+    throw new Error('coverage: the recorded floor needs both numbers, as in {"funcs": 100, "lines": 100}');
+  }
+  return { funcs: Number(r.funcs), lines: Number(r.lines) };
+}
+
+/** What gets written back when the measurement has risen above the record. */
+export function recordedText(floor: Recorded): string {
+  return `${JSON.stringify(
+    {
+      funcs: floor.funcs,
+      lines: floor.lines,
+      note: "Raised by `bun scripts/coverage.ts --ratchet coverage-floor.json`. Never below 99 (D-751).",
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 /**
@@ -127,7 +212,12 @@ export function uncoveredRows(files: FileCoverage[]): FileCoverage[] {
     .sort((a, b) => (b.lines - b.hit) - (a.lines - a.hit) || (b.funcs - b.funcsHit) - (a.funcs - a.funcsHit));
 }
 
-export type Options = { targets: string[]; byFile: boolean; floor: number | null };
+export type Options = {
+  targets: string[];
+  byFile: boolean;
+  floor: number | null;
+  ratchet: string | null;
+};
 
 /**
  * `--by-file` prints the per-file table, worst first by *uncovered lines*.
@@ -154,17 +244,28 @@ export function parseArgs(argv: string[]): Options {
   const targets: string[] = [];
   let byFile = false;
   let floor: number | null = null;
+  let ratchet: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--by-file") byFile = true;
     else if (arg === "--floor") floor = Number(argv[++i]);
     else if (arg.startsWith("--floor=")) floor = Number(arg.slice("--floor=".length));
+    else if (arg === "--ratchet") ratchet = argv[++i] ?? "";
+    else if (arg.startsWith("--ratchet=")) ratchet = arg.slice("--ratchet=".length);
     else if (!arg.startsWith("-")) targets.push(arg);
   }
   if (floor !== null && !Number.isFinite(floor)) {
     throw new Error("coverage: --floor takes a number, as in `--floor 99`");
   }
-  return { targets, byFile, floor };
+  // Both consume their argument, so neither leaves a stray word behind to
+  // become a test filter — the failure the paragraph above is about.
+  if (ratchet === "") {
+    throw new Error("coverage: --ratchet takes a path, as in `--ratchet coverage-floor.json`");
+  }
+  if (floor !== null && ratchet !== null) {
+    throw new Error("coverage: --floor and --ratchet judge the same number two ways; pass one");
+  }
+  return { targets, byFile, floor, ratchet };
 }
 
 /**
@@ -186,6 +287,10 @@ export type Io = {
   read?: (dir: string) => string;
   /** Where the run writes. A fresh directory each time, so nothing carries. */
   scratch?: () => string;
+  /** Reads the recorded ratchet floor. */
+  readText?: (path: string) => string;
+  /** Writes it back, on the runs where the measurement has risen above it. */
+  writeText?: (path: string, text: string) => void;
   say?: (line: string) => void;
   complain?: (line: string) => void;
   exit?: (code: number) => never;
@@ -209,6 +314,8 @@ export const defaults: Required<Io> = {
       { stdio: ["ignore", "inherit", "inherit"] },
     ),
   read: (dir) => readFileSync(join(dir, "lcov.info"), "utf8"),
+  readText: (path) => readFileSync(path, "utf8"),
+  writeText: (path, text) => writeFileSync(path, text),
   scratch: () => mkdtempSync(join(tmpdir(), "agent-mesh-coverage-")),
   say: console.log.bind(console),
   complain: console.error.bind(console),
@@ -216,8 +323,8 @@ export const defaults: Required<Io> = {
 };
 
 export function runCoverage(argv: string[], io: Io = {}): void {
-  const { run, read, scratch, say, complain, exit } = { ...defaults, ...io };
-  const { targets, byFile, floor } = parseArgs(argv);
+  const { run, read, scratch, readText, writeText, say, complain, exit } = { ...defaults, ...io };
+  const { targets, byFile, floor, ratchet } = parseArgs(argv);
   const dir = scratch();
   const status = run(dir, targets.length ? targets : ["packages/", "test/"]).status;
   if (status !== 0) {
@@ -251,6 +358,36 @@ export function runCoverage(argv: string[], io: Io = {}): void {
     for (const f of [...excluded].sort((a, b) => b.lines - a.lines)) {
       say(`  ${f.path.padEnd(40)} ${String(f.lines).padStart(5)} lines · ${pct(f.hit, f.lines).toFixed(2)}%`);
     }
+  }
+
+  if (ratchet !== null) {
+    if (counted.length === 0) {
+      complain("\ncoverage: the report names no files, so there is no measurement for a floor to judge");
+      return exit(1);
+    }
+    const { fallen, risen, floor: at } = ratchetVerdict(counted, readRecorded(readText(ratchet)));
+    for (const s of fallen) {
+      complain(`\ncoverage: ${s.metric} at ${s.value.toFixed(2)} is below the recorded floor of ${at[s.metric]}`);
+    }
+    if (fallen.length > 0) {
+      complain("D-749 reopens the coverage track on this, without waiting for a new instruction.");
+      return exit(1);
+    }
+    if (risen.length > 0) {
+      const raised = { ...at };
+      for (const r of risen) {
+        raised[r.metric] = r.to;
+        complain(`\ncoverage: ${r.metric} is at ${r.to.toFixed(2)}, above the recorded floor of ${r.from}`);
+      }
+      writeText(ratchet, recordedText(raised));
+      complain(
+        `${ratchet} has been raised to what this run measured. Commit it: a raise written` +
+        " inside a CI checkout goes away with the checkout, so the record only rises if it travels in a commit.",
+      );
+      return exit(1);
+    }
+    say(`\nratchet ${at.funcs} funcs · ${at.lines} lines: held, with nothing to raise.`);
+    return;
   }
 
   if (floor === null) return;

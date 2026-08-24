@@ -1,0 +1,5 @@
+{
+  "funcs": 99,
+  "lines": 99,
+  "note": "Raised by `bun scripts/coverage.ts --ratchet coverage-floor.json`. Never below 99 (D-751)."
+}

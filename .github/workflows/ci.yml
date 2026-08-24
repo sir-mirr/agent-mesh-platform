@@ -146,8 +146,12 @@ jobs:
       # `--floor 99` exits non-zero below the number, naming which metric fell.
       # The script refuses to report at all on a red tree, so a failure here is
       # always one of the two: the suite broke, or the number did.
+      # The record it reads is `coverage-floor.json`, and the run raises it
+      # whenever the measurement is higher — failing when it does, because the
+      # raise is written into this checkout and this checkout is thrown away.
+      # A ratchet that raised quietly here would raise nothing.
       - name: Coverage floor
-        run: bun scripts/coverage.ts --floor 99
+        run: bun scripts/coverage.ts --ratchet coverage-floor.json
 
   # **Planting the whole manifest, on a clock.**
   #

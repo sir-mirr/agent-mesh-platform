@@ -282,3 +282,29 @@ when the hard parts leave the report. `every-module.test.ts` is what holds that,
 and the file count printed beside each percentage is what makes a drop visible
 to somebody reading. Nor can it see this table going stale, which is the check
 beside this document.
+
+## The ratchet, which is why 99 stopped being the number
+
+D-751 set two numbers, not one: **99 is the minimum and 100 is the goal.** A
+fixed floor at 99 states the first and quietly abandons the second. Measured at
+100.00 on both metrics, twice, this repository could give back a whole point —
+every uncovered branch of a new feature, a file that stopped being imported —
+and no run would go red, and nothing would name the day it happened.
+
+So the floor is now a record rather than a constant. `coverage-floor.json`
+holds the two numbers the last run measured, `bun scripts/coverage.ts --ratchet
+coverage-floor.json` judges against them, and what has been reached is what has
+to be held. The minimum survives as a clamp: a record below 99 is read as 99,
+because a record saying 40 would otherwise make the check pass at 40, and a
+file is somewhere a bad merge can put a smaller number without anyone reading
+it as a decision.
+
+**A rise fails the run, and that is the design.** The obvious behaviour — write
+the higher number, exit zero — raises nothing on CI, where the file is written
+into a checkout that is deleted when the job ends. The record would sit at its
+seed value for ever while every run reported a raise it then threw away.
+Failing is what makes the new number travel the only way it can: in a commit,
+where a reviewer sees the number move and the reason it moved.
+
+What it still cannot watch is what the floor could not: an absent file is not
+`0%`, and the totals go **up** when the hard parts leave the report.

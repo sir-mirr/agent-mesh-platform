@@ -8312,8 +8312,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The floor went back to `pct`'s convention, where an empty denominator is 100%. That is right for a file with no functions in it and wrong for a run that measured none: every way this measurement breaks — a filter matching nothing, a report read from the wrong directory, a suite that loaded no source — arrives as an empty set, and each of them would then be reported as full coverage.",
     file: "scripts/coverage.ts",
-    from: "    .map(([metric, hit, total]) => ({ metric, value: total === 0 ? 0 : (hit / total) * 100 }))",
-    to: "    .map(([metric, hit, total]) => ({ metric, value: total === 0 ? 100 : (hit / total) * 100 }))",
+    from: "  const ratio = (hit: number, total: number) => (total === 0 ? 0 : (hit / total) * 100);",
+    to: "  const ratio = (hit: number, total: number) => (total === 0 ? 100 : (hit / total) * 100);",
     suite: "test/coverage-floor.test.ts",
     expect: ["a run that measured nothing passed the floor"],
   },
@@ -8330,12 +8330,72 @@ const MUTATIONS: Mutation[] = [
   {
     id: "a-floor-ci-runs-at-zero",
     defect:
-      "The workflow still invokes the coverage floor, and invokes it at a number no tree can fall below. From outside — a green check named `Coverage floor` — it is indistinguishable from the real one, which is the exact shape of `lint-preview.ts`: a good check nobody ran, and a manifest that decayed like the documentation it replaced. D-749's condition reopens the track automatically or it does not reopen it, and automatic means CI.",
+      "The workflow went back to a fixed floor, at a number no tree can fall below. From outside — a green check named `Coverage floor` — it is indistinguishable from the real one, which is the exact shape of `lint-preview.ts`: a good check nobody ran, and a manifest that decayed like the documentation it replaced. D-749's condition reopens the track automatically or it does not reopen it, and automatic means CI.",
     file: ".github/workflows/ci.yml",
-    from: "        run: bun scripts/coverage.ts --floor 99",
+    from: "        run: bun scripts/coverage.ts --ratchet coverage-floor.json",
     to: "        run: bun scripts/coverage.ts --floor 0",
     suite: "test/coverage-floor.test.ts",
-    expect: ["CI does not run the floor at 99, so the reopen condition has nothing to fire it"],
+    expect: ["CI does not run the ratchet, or runs it against a record below D-751's minimum"],
+  },
+  {
+    id: "the-ratchet-honours-a-record-below-the-minimum",
+    defect:
+      "The clamp went, so the recorded floor is whatever the file says. A record reading 40 then makes the check pass at 40 — the check that cannot fail again — and the file is a place a bad merge or a hand edit can put a smaller number without anyone reading it as a decision. D-751's 99 is the floor under the floor for that reason.",
+    file: "scripts/coverage.ts",
+    from: "    funcs: Math.max(RATCHET_MINIMUM, shown(recorded.funcs)),",
+    to: "    funcs: shown(recorded.funcs),",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a record below the minimum was honoured, so 98% passed a check D-751 says is red"],
+  },
+  {
+    id: "the-lines-half-of-the-clamp-goes",
+    defect:
+      "The clamp is written once per metric, and this takes the other one. It is here because the first version of the test caught neither: it grepped the whole complaint for `below the recorded floor of 99`, which the surviving clamp keeps printing, so a mutation to either half read as caught while nothing was checking that half.",
+    file: "scripts/coverage.ts",
+    from: "    lines: Math.max(RATCHET_MINIMUM, shown(recorded.lines)),",
+    to: "    lines: shown(recorded.lines),",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a record below the minimum was honoured, so 98% passed a check D-751 says is red"],
+  },
+  {
+    id: "a-raise-passes-quietly",
+    defect:
+      "A run that measured above the record wrote the new number and left with a success. On a developer's machine that is almost right; on CI it is the whole failure, because the raise lands in a checkout that is deleted at the end of the job. The record would then never move, and a tree that reached 100 would be judged against 99 for ever — green the entire time.",
+    file: "scripts/coverage.ts",
+    from: "        \" inside a CI checkout goes away with the checkout, so the record only rises if it travels in a commit.\",\n      );\n      return exit(1);",
+    to: "        \" inside a CI checkout goes away with the checkout, so the record only rises if it travels in a commit.\",\n      );\n      return;",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["the raise was written and the run passed, so on CI it would raise nothing and read green for ever"],
+  },
+  {
+    id: "a-raise-is-announced-and-not-written",
+    defect:
+      "The run says the record has been raised and does not raise it. The message is the part a reader checks, so this fails in the direction nobody looks: the commit that is supposed to carry the new number carries an unchanged file, and the next run says exactly the same thing.",
+    file: "scripts/coverage.ts",
+    from: "      writeText(ratchet, recordedText(raised));",
+    to: "      void recordedText(raised);",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["the raise was written and the run passed, so on CI it would raise nothing and read green for ever"],
+  },
+  {
+    id: "a-slipped-metric-is-only-mentioned",
+    defect:
+      "The drop is printed and the run still leaves with a success. This is worse than not checking: the number is in the log, the check is green, and the log is what nobody reads on a green run. D-749 reopens the track on the measurement, not on somebody noticing it.",
+    file: "scripts/coverage.ts",
+    from: "    if (fallen.length > 0) {",
+    to: "    if (false) {",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a point given back read as green, or the report blamed the metric that held"],
+  },
+  {
+    id: "half-a-record-is-a-whole-floor",
+    defect:
+      "The record is taken as read, so a file naming one metric leaves the other `undefined`. Every comparison against `NaN` is false, which means no metric has fallen and none has risen: the run reports the ratchet held and leaves green, on a record that states nothing.",
+    file: "scripts/coverage.ts",
+    from: "  if (!Number.isFinite(r?.funcs) || !Number.isFinite(r?.lines)) {",
+    to: "  if (false) {",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["refuses a record it cannot read"],
   },
   {
     id: "the-table-skips-the-only-files-left",

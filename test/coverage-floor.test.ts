@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { defaults, floorFailures, parseArgs, parseLcov, runCoverage, uncoveredRows, type FileCoverage, type Io } from "../scripts/coverage";
+import { defaults, floorFailures, parseArgs, parseLcov, readRecorded, recordedText, runCoverage, uncoveredRows, type FileCoverage, type Io } from "../scripts/coverage";
 
 const file = (over: Partial<FileCoverage> = {}): FileCoverage => ({
   path: "packages/http/src/main.ts", lines: 100, hit: 100, funcs: 100, funcsHit: 100, ...over,
@@ -84,16 +84,16 @@ describe("the coverage script's arguments", () => {
     expect(
       parseArgs(["--floor", "99"]),
       "the floor's value stayed in argv, where bun test reads it as a filter and measures nothing",
-    ).toEqual({ targets: [], byFile: false, floor: 99 });
+    ).toEqual({ targets: [], byFile: false, floor: 99, ratchet: null });
   });
 
   test("takes the joined form too", () => {
-    expect(parseArgs(["--floor=99"])).toEqual({ targets: [], byFile: false, floor: 99 });
+    expect(parseArgs(["--floor=99"])).toEqual({ targets: [], byFile: false, floor: 99, ratchet: null });
   });
 
   test("keeps the targets and the other flag", () => {
     expect(parseArgs(["packages/", "--by-file", "--floor", "99", "test/"]))
-      .toEqual({ targets: ["packages/", "test/"], byFile: true, floor: 99 });
+      .toEqual({ targets: ["packages/", "test/"], byFile: true, floor: 99, ratchet: null });
   });
 
   test("has no floor when none was asked for", () => {
@@ -102,6 +102,28 @@ describe("the coverage script's arguments", () => {
 
   test("refuses a floor that is not a number", () => {
     expect(() => parseArgs(["--floor", "--by-file"])).toThrow(/--floor takes a number/);
+  });
+
+  test("consumes the ratchet's path in both spellings", () => {
+    expect({
+      split: parseArgs(["--ratchet", "coverage-floor.json"]).ratchet,
+      joined: parseArgs(["--ratchet=coverage-floor.json"]).ratchet,
+      targets: parseArgs(["--ratchet", "coverage-floor.json", "test/"]).targets,
+    }, "the path stayed in argv, where bun test reads it as a filter and measures nothing").toEqual({
+      split: "coverage-floor.json",
+      joined: "coverage-floor.json",
+      targets: ["test/"],
+    });
+  });
+
+  test("refuses a ratchet with no path, and a run asking for both", () => {
+    expect({
+      empty: (() => { try { parseArgs(["--ratchet"]); return null; } catch (e) { return (e as Error).message; } })(),
+      both: (() => { try { parseArgs(["--floor", "99", "--ratchet", "f.json"]); return null; } catch (e) { return (e as Error).message; } })(),
+    }).toEqual({
+      empty: "coverage: --ratchet takes a path, as in `--ratchet coverage-floor.json`",
+      both: "coverage: --floor and --ratchet judge the same number two ways; pass one",
+    });
   });
 });
 
@@ -169,31 +191,38 @@ describe("the by-file table", () => {
  * with all four held: a suite that fails, one that passes, the per-file table,
  * the excluded block, and both sides of the floor.
  */
-describe("the coverage run", () => {
-  const lcov = (rows: Array<[string, number, number, number, number]>) =>
-    rows.map(([path, fnf, fnh, lf, lh]) =>
-      `SF:${path}\nFNF:${fnf}\nFNH:${fnh}\nLF:${lf}\nLH:${lh}\nend_of_record`).join("\n");
+const lcov = (rows: Array<[string, number, number, number, number]>) =>
+  rows.map(([path, fnf, fnh, lf, lh]) =>
+    `SF:${path}\nFNF:${fnf}\nFNH:${fnh}\nLF:${lf}\nLH:${lh}\nend_of_record`).join("\n");
 
-  /** A run with every boundary held, and what it printed. */
-  function walk(argv: string[], report: string, status = 0) {
-    const said: string[] = [];
-    const complained: string[] = [];
-    const ran: Array<{ dir: string; targets: string[] }> = [];
-    const state: { left: number | null } = { left: null };
-    const io: Io = {
-      scratch: () => "/scratch",
-      run: (dir, targets) => { ran.push({ dir, targets }); return { status }; },
-      read: () => report,
-      say: (l) => { said.push(l); },
-      complain: (l) => { complained.push(l); },
-      // The real one never returns, and code after it must not run here either.
-      exit: ((code: number) => { state.left = code; throw new Error(`exit ${code}`); }) as (code: number) => never,
-    };
-    try { runCoverage(argv, io); } catch (err) {
-      if (!(err instanceof Error) || !err.message.startsWith("exit ")) throw err;
-    }
-    return { said: said.join("\n"), complained: complained.join("\n"), ran, left: state.left };
+/** A run with every boundary held, and what it printed. */
+function walk(argv: string[], report: string, status = 0, record?: string) {
+  const said: string[] = [];
+  const complained: string[] = [];
+  const ran: Array<{ dir: string; targets: string[] }> = [];
+  const wrote: Array<{ path: string; text: string }> = [];
+  const state: { left: number | null } = { left: null };
+  const io: Io = {
+    readText: () => {
+      if (record === undefined) throw new Error("the run read a record this test did not give it");
+      return record;
+    },
+    writeText: (path, text) => { wrote.push({ path, text }); },
+    scratch: () => "/scratch",
+    run: (dir, targets) => { ran.push({ dir, targets }); return { status }; },
+    read: () => report,
+    say: (l) => { said.push(l); },
+    complain: (l) => { complained.push(l); },
+    // The real one never returns, and code after it must not run here either.
+    exit: ((code: number) => { state.left = code; throw new Error(`exit ${code}`); }) as (code: number) => never,
+  };
+  try { runCoverage(argv, io); } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith("exit ")) throw err;
   }
+  return { said: said.join("\n"), complained: complained.join("\n"), ran, wrote, left: state.left };
+}
+
+describe("the coverage run", () => {
 
   test("refuses to report a number about a broken tree", () => {
     const walked = walk([], lcov([["packages/a.ts", 10, 10, 100, 100]]), 1);
@@ -314,15 +343,23 @@ describe("the coverage run", () => {
 });
 
 describe("the workflow", () => {
-  test("runs the floor, so the reopen condition has something to fire it", () => {
+  test("runs the ratchet, so the reopen condition has something to fire it", () => {
     const ci = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "ci.yml"), "utf8");
+    const recorded = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "coverage-floor.json"), "utf8"),
+    ) as { funcs: number; lines: number };
 
-    // The number, not just the flag. A floor CI runs at 0 is a step that
-    // passes on any tree, and reads from the outside exactly like this one.
+    // The record as well as the flag. A ratchet pointed at a file that is not
+    // there fails loudly, but one pointed at a record below the minimum is a
+    // step that passes on a tree D-751 says is red, and from the outside the
+    // two commands read the same.
     expect(
-      { invokes: /bun scripts\/coverage\.ts --floor 99\b/.test(ci) },
-      "CI does not run the floor at 99, so the reopen condition has nothing to fire it",
-    ).toEqual({ invokes: true });
+      {
+        invokes: /bun scripts\/coverage\.ts --ratchet coverage-floor\.json\b/.test(ci),
+        atLeastTheMinimum: recorded.funcs >= 99 && recorded.lines >= 99,
+      },
+      "CI does not run the ratchet, or runs it against a record below D-751's minimum",
+    ).toEqual({ invokes: true, atLeastTheMinimum: true });
   });
 });
 
@@ -337,6 +374,108 @@ describe("the workflow", () => {
  * `--coverage-reporter` writes no report rather than failing, so it is run here
  * against one small suite instead of being reasoned about.
  */
+/**
+ * **The ratchet, which is D-751 written down as a check.**
+ *
+ * The decision set two numbers: 99 is the minimum and 100 is the goal. A fixed
+ * floor states the first and forgets the second, so a tree that reached 100.00
+ * could give a whole point back without a single run going red. The record is
+ * the measurement, and what has been reached is what has to be held.
+ *
+ * The awkward case is a *rise*, and it is deliberate that it is not silently
+ * green: the raise is written into the checkout, and on CI the checkout is
+ * discarded, so a quiet raise raises nothing and the record lags for ever.
+ * Failing is what makes it travel in a commit.
+ */
+describe("the ratchet", () => {
+  const record = (funcs: number, lines: number) => JSON.stringify({ funcs, lines });
+
+  test("holds when the measurement is the record", () => {
+    const walked = walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 10, 10, 100, 100]]), 0, record(100, 100));
+
+    expect(
+      { held: /ratchet 100 funcs · 100 lines: held/.test(walked.said), wrote: walked.wrote.length, left: walked.left },
+      "a run that measured exactly the record did not pass quietly",
+    ).toEqual({ held: true, wrote: 0, left: null });
+  });
+
+  test("reddens on the metric that slipped, and says which", () => {
+    const walked = walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 10, 10, 1000, 995]]), 0, record(100, 100));
+
+    expect(
+      {
+        named: /lines at 99\.50 is below the recorded floor of 100/.test(walked.complained),
+        quietAboutFuncs: !/funcs at/.test(walked.complained),
+        reopens: walked.complained.includes("D-749"),
+        left: walked.left,
+      },
+      "a point given back read as green, or the report blamed the metric that held",
+    ).toEqual({ named: true, quietAboutFuncs: true, reopens: true, left: 1 });
+  });
+
+  test("raises the record, and refuses to pass on the raise", () => {
+    const walked = walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 10, 10, 100, 100]]), 0, record(99, 99));
+
+    expect(
+      {
+        wrote: walked.wrote[0]?.path,
+        recorded: walked.wrote[0] ? JSON.parse(walked.wrote[0].text) as Record<string, unknown> : null,
+        says: /above the recorded floor of 99/.test(walked.complained) && walked.complained.includes("Commit it"),
+        left: walked.left,
+      },
+      "the raise was written and the run passed, so on CI it would raise nothing and read green for ever",
+    ).toEqual({
+      wrote: "f.json",
+      recorded: {
+        funcs: 100,
+        lines: 100,
+        note: "Raised by `bun scripts/coverage.ts --ratchet coverage-floor.json`. Never below 99 (D-751).",
+      },
+      says: true,
+      left: 1,
+    });
+  });
+
+  test("cannot be lowered below 99 by the record it reads", () => {
+    // A record saying 40 would make the check pass on 40, which is the check
+    // that can never fail again. D-751's minimum is the floor under the floor.
+    const walked = walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 100, 98, 100, 98]]), 0, record(40, 40));
+
+    // **Both metrics, named separately.** One regex over the whole complaint
+    // reads as covered and is not: the clamp is written per metric, so a
+    // mutation to either one leaves the other still saying `below the recorded
+    // floor of 99` and a test that only greps for that sentence stays green.
+    expect(
+      {
+        funcs: /funcs at 98\.00 is below the recorded floor of 99/.test(walked.complained),
+        lines: /lines at 98\.00 is below the recorded floor of 99/.test(walked.complained),
+        raised: walked.wrote.length,
+        left: walked.left,
+      },
+      "a record below the minimum was honoured, so 98% passed a check D-751 says is red",
+    ).toEqual({ funcs: true, lines: true, raised: 0, left: 1 });
+  });
+
+  test("does not call a report with no files in it a pass", () => {
+    const walked = walk(["--ratchet", "f.json"], lcov([["packages/http/src/ui/chat.ts", 10, 0, 100, 0]]), 0, record(100, 100));
+
+    expect(
+      { complained: walked.complained.includes("no measurement for a floor to judge"), left: walked.left },
+      "everything countable was excluded and the ratchet passed on nothing",
+    ).toEqual({ complained: true, left: 1 });
+  });
+
+  test("refuses a record it cannot read", () => {
+    expect(
+      () => walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 10, 10, 100, 100]]), 0, "not json at all"),
+      "an unreadable record passed, which is a check whose standard nobody can state",
+    ).toThrow(/recorded floor is not JSON/);
+
+    expect(() => walk(["--ratchet", "f.json"], lcov([["packages/a.ts", 10, 10, 100, 100]]), 0, '{"funcs": 100}'))
+      .toThrow(/needs both numbers/);
+  });
+});
+
 describe("the boundaries the fakes stand in for", () => {
   test("the scratch directory is fresh, and the read comes back out of it", () => {
     const dir = defaults.scratch();
@@ -366,4 +505,24 @@ describe("the boundaries the fakes stand in for", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  /**
+   * The record's two ends, which every ratchet test above replaces with a fake.
+   * A raise the run announces and does not write is the failure that reads
+   * correct in the log, so the write has to be the real one somewhere.
+   */
+  test("the record is written where it is named, and read back", () => {
+    const dir = defaults.scratch();
+    const path = join(dir, "coverage-floor.json");
+    try {
+      defaults.writeText(path, recordedText({ funcs: 100, lines: 99.5 }));
+
+      expect(
+        { onDisk: existsSync(path), readBack: readRecorded(defaults.readText(path)) },
+        "the recorded floor did not survive a round trip through the filesystem",
+      ).toEqual({ onDisk: true, readBack: { funcs: 100, lines: 99.5 } });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
