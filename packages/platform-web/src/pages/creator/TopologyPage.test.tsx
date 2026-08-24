@@ -204,6 +204,14 @@ const toastText = (): string => {
   return el.textContent ?? "";
 };
 
+/** The durable answer beside the control that caused the send. */
+const sendResult = (): HTMLElement => {
+  const el = screen.queryByTestId("topology-send-result");
+  if (!el) throw new Error("the node drawer carries no send result");
+  return el;
+};
+const sendResultText = (): string => sendResult().textContent ?? "";
+
 /** Two agents in one group. The second has never been seen; the route sends no
  *  `status` for either, because it has no such field. */
 const AGENT_ROWS = [
@@ -655,9 +663,12 @@ describe("a receipt is read, not assumed", () => {
     expect(calls.some((u) => u.endsWith(MESSAGES))).toBe(true);
     expect(toastText()).toContain(say("topo.send.refused"));
     expect(toastText()).not.toContain(say("topo.send.accepted"));
+    expect(sendResult().getAttribute("data-message-status")).toBe("failed");
+    expect(sendResultText()).toContain(say("topo.send.refused"));
+    expect(sendResultText()).toContain("failed");
   });
 
-  it("calls an accepted message accepted", async () => {
+  it("calls an accepted-but-undelivered message pending", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: GROUP_ROWS }),
       [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
@@ -667,16 +678,65 @@ describe("a receipt is read, not assumed", () => {
       } }),
     });
     await mount();
-    await sendTo("Alpha One");
+    const node = screen.queryAllByTestId("topology-agent")
+      .find((g) => [...g.querySelectorAll("text")].some((el) => el.textContent === "Alpha One"));
+    if (!node) throw new Error("no agent node is labelled Alpha One");
+    await act(async () => { fireEvent.click(node); });
+    const before = panelText();
+    const send = [...document.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("Send Message"));
+    if (!send) throw new Error("the node drawer offers no send control");
+    await act(async () => { fireEvent.click(send); });
+    await settle();
 
-    // The control: a toast that says "refused" whatever came back would pass
-    // the test above on its own.
-    expect(toastText()).toContain(say("topo.send.accepted"));
+    // Acceptance is not delivery. The visible panel changes, names the exact
+    // status the server returned, and does not round waiting up to success.
+    expect(panelText()).not.toBe(before);
+    expect(sendResult().getAttribute("data-message-status")).toBe("pending");
+    expect(sendResultText()).toContain(say("topo.send.pending"));
+    expect(sendResultText()).toContain("pending");
+    expect(sendResultText()).not.toContain(say("topo.send.delivered"));
+    expect(toastText()).toContain(say("topo.send.pending"));
     expect(toastText()).not.toContain(say("topo.send.refused"));
     const close = toastBox()?.querySelector("button");
     if (!close) throw new Error("the send result toast has no close control");
     fireEvent.click(close);
     expect(toastBox()).toBeNull();
+  });
+
+  it("shows a delivered receipt as delivered", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: GROUP_ROWS }),
+      [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+      [MESSAGES]: () => json(201, { ok: true, message: {
+        id: "msg_delivered", from: "operator", to: "svc-alpha-1", ts: "2026-08-20T00:00:00Z", status: "delivered",
+      } }),
+    });
+    await mount();
+    await sendTo("Alpha One");
+
+    expect(sendResult().getAttribute("data-message-status")).toBe("delivered");
+    expect(sendResultText()).toContain(say("topo.send.delivered"));
+    expect(sendResultText()).toContain("delivered");
+    expect(sendResultText()).not.toContain(say("topo.send.pending"));
+  });
+
+  it("shows a read receipt as read", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: GROUP_ROWS }),
+      [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+      [MESSAGES]: () => json(201, { ok: true, message: {
+        id: "msg_read", from: "operator", to: "svc-alpha-1", ts: "2026-08-20T00:00:00Z", status: "read",
+      } }),
+    });
+    await mount();
+    await sendTo("Alpha One");
+
+    expect(sendResult().getAttribute("data-message-status")).toBe("read");
+    expect(sendResultText()).toContain(say("topo.send.read"));
+    expect(sendResultText()).toContain("read");
+    expect(sendResultText()).not.toContain(say("topo.send.pending"));
   });
 
   it("removes the receipt toast when its product timeout expires", async () => {
@@ -702,11 +762,13 @@ describe("a receipt is read, not assumed", () => {
     try {
       await mount();
       await sendTo("Alpha One");
-      expect(toastText()).toContain(say("topo.send.accepted"));
+      expect(toastText()).toContain(say("topo.send.pending"));
       if (!fireAutoClose) throw new Error("the receipt toast scheduled no product timeout");
 
       await act(async () => { fireAutoClose?.(); });
       expect(toastBox() === null).toBe(true);
+      // The nearby result remains after the transient duplicate disappears.
+      expect(sendResultText()).toContain(say("topo.send.pending"));
     } finally {
       globalThis.setTimeout = realSetTimeout;
     }
@@ -726,6 +788,24 @@ describe("a receipt is read, not assumed", () => {
     // that the message went and stops watching a delivery that never started.
     expect(toastText()).toContain(say("topo.send.failed"));
     expect(toastText()).not.toContain(say("topo.send.accepted"));
+    expect(sendResult().getAttribute("data-message-status")).toBe("error");
+    expect(sendResultText()).toContain(say("topo.send.failed"));
+    expect(sendResultText()).toContain("Failed to fetch");
+  });
+
+  it("shows the server's error when the send route returns 5xx", async () => {
+    serve({
+      [GROUPS]: () => json(200, { groups: GROUP_ROWS }),
+      [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+      [MESSAGES]: () => json(503, { error: "message route unavailable" }),
+    });
+    await mount();
+    await sendTo("Alpha One");
+
+    expect(sendResult().getAttribute("data-message-status")).toBe("error");
+    expect(sendResultText()).toContain(say("topo.send.failed"));
+    expect(sendResultText()).toContain("message route unavailable");
   });
 });
 

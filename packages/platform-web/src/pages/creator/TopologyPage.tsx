@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
-import { PageHeader, Breadcrumbs, Button, Toast } from "@/components/index.ts";
+import { PageHeader, Breadcrumbs, Button, Toast, type ToastType } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { sendMessageApi } from "@/api/messages.ts";
+import { sendMessageApi, type MessageReceipt } from "@/api/messages.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 import { agentRegistryEntries, fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
 
@@ -62,6 +62,13 @@ interface TopoEdge {
   type: "member-edge" | "gw-link" | "highway-edge";
 }
 
+interface QuickSendResult {
+  target: string;
+  status: MessageReceipt["status"] | "sending" | "error";
+  type: ToastType;
+  message: string;
+}
+
 const PALETTE = [
   { fill: "#EFF6FF", stroke: "#93C5FD", textColor: "#1E40AF" },
   { fill: "#ECFDF5", stroke: "#A7F3D0", textColor: "#065F46" },
@@ -88,7 +95,9 @@ export function TopologyPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeFilterGroup, setActiveFilterGroup] = useState<string>("all");
   const [quickMsg, setQuickMsg] = useState<string>("Ping from Agent Mesh Console");
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [quickSendResult, setQuickSendResult] = useState<QuickSendResult | null>(null);
+  const [toast, setToast] = useState<Pick<QuickSendResult, "message" | "type"> | null>(null);
+  const [isQuickSending, setIsQuickSending] = useState<boolean>(false);
 
   // Load real groups and agents on mount
   useEffect(() => {
@@ -948,26 +957,61 @@ export function TopologyPage() {
   };
 
   const handleSendQuickMessage = async () => {
-    if (!selectedNode) return;
+    if (!selectedNode || isQuickSending) return;
+    const target = selectedNode.identity;
+    const displayName = selectedNode.displayName;
+    setIsQuickSending(true);
+    setQuickSendResult({
+      target,
+      status: "sending",
+      type: "info",
+      message: `${t("topo.send.sending", "메시지를 보내는 중입니다")}: ${displayName}`,
+    });
     try {
-      // `201` is not delivery. The server writes `failed` into this same
-      // response when the hub refuses the message, and this toast used to say
-      // "성공적으로 전송되었습니다" over that word — a refusal reported as a
-      // success, in green, with nothing else on the screen to contradict it.
       const receipt = await sendMessageApi({
-        to: selectedNode.identity,
+        to: target,
         text: quickMsg,
       });
-      setToastMsg(
-        receipt.status === "failed"
-          ? `${t("topo.send.refused", "허브가 거절했습니다")}: ${selectedNode.displayName} (${receipt.id})`
-          : `${t("topo.send.accepted", "허브가 접수했습니다")}: ${selectedNode.displayName} (${receipt.id})`
-      );
-    } catch (err: any) {
-      console.warn("[Topology] Quick send error:", err.message);
-      setToastMsg(`${t("topo.send.failed", "전송 실패")}: ${selectedNode.displayName} — ${err.message || t("common.errorLoad", "불러오지 못함")}`);
+      // A `201` only says the route produced a receipt. Its status still says
+      // whether the recipient is waiting, has received/read it, or the hub
+      // refused it. Keep that exact word on the screen instead of folding all
+      // non-failed receipts into a green success toast.
+      const copy: Record<MessageReceipt["status"], string> = {
+        pending: t("topo.send.pending", "수신자 전달을 기다리는 중입니다"),
+        delivered: t("topo.send.delivered", "수신자에게 전달되었습니다"),
+        read: t("topo.send.read", "수신자가 읽었습니다"),
+        failed: t("topo.send.refused", "허브가 거절했습니다"),
+      };
+      const type: ToastType = receipt.status === "failed"
+        ? "error"
+        : receipt.status === "pending"
+          ? "warning"
+          : "success";
+      const result: QuickSendResult = {
+        target,
+        status: receipt.status,
+        type,
+        message: `${copy[receipt.status]} (${receipt.status}): ${displayName} (${receipt.id})`,
+      };
+      setQuickSendResult(result);
+      setToast(result);
+    } catch (err: unknown) {
+      const reason = err instanceof Error && err.message
+        ? err.message
+        : t("common.errorLoad", "불러오지 못함");
+      console.warn("[Topology] Quick send error:", reason);
+      const result: QuickSendResult = {
+        target,
+        status: "error",
+        type: "error",
+        message: `${t("topo.send.failed", "전송 실패")} (error): ${displayName} — ${reason}`,
+      };
+      setQuickSendResult(result);
+      setToast(result);
+    } finally {
+      setIsQuickSending(false);
     }
-    setTimeout(() => setToastMsg(null), 3500);
+    setTimeout(() => setToast(null), 3500);
   };
 
   // HTML Floating Lens Overlay Coordinates on Top of Minimap
@@ -1674,9 +1718,29 @@ export function TopologyPage() {
                   outline: "none",
                 }}
               />
-              <Button size="sm" variant="primary" onClick={handleSendQuickMessage}>
-                Send Message ✈
+              <Button size="sm" variant="primary" onClick={handleSendQuickMessage} disabled={isQuickSending}>
+                {isQuickSending ? t("topo.send.sending", "메시지를 보내는 중입니다") : "Send Message ✈"}
               </Button>
+              {quickSendResult?.target === selectedNode.identity && (
+                <div
+                  data-testid="topology-send-result"
+                  data-message-status={quickSendResult.status}
+                  role={quickSendResult.type === "error" ? "alert" : "status"}
+                  aria-live="polite"
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "var(--radius-sm)",
+                    border: `1px solid ${quickSendResult.type === "error" ? "#FECACA" : quickSendResult.type === "warning" ? "#FDE68A" : quickSendResult.type === "success" ? "#A7F3D0" : "#BFDBFE"}`,
+                    background: quickSendResult.type === "error" ? "#FEF2F2" : quickSendResult.type === "warning" ? "#FFFBEB" : quickSendResult.type === "success" ? "#ECFDF5" : "#EFF6FF",
+                    color: quickSendResult.type === "error" ? "#991B1B" : quickSendResult.type === "warning" ? "#92400E" : quickSendResult.type === "success" ? "#065F46" : "#1E40AF",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {quickSendResult.message}
+                </div>
+              )}
             </div>
 
             {/* Connected Peers */}
@@ -1715,7 +1779,7 @@ export function TopologyPage() {
         )}
       </div>
 
-      {toastMsg && <Toast message={toastMsg} type="success" onClose={() => setToastMsg(null)} />}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
