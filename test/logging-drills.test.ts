@@ -208,6 +208,34 @@ describe("what the drill rests on", () => {
    * proved the lines and not this would leave the question the counters exist
    * for — was the path quiet, or was nobody looking — unanswered.
    */
+  /**
+   * **Whose line is it.** Every grep in this file finds lines by their event
+   * name, and the field that says which process wrote them was never asked
+   * about. Renaming the http server's subsystem to `hub` is one line and it
+   * survives every browser scenario and every integration suite here;
+   * `packages/hub/src/log.ts` is the same shape and nothing in `packages/hub`
+   * or `test/http.test.ts` notices its rename either.
+   *
+   * It matters because the component is what a filter and a counter key on: two
+   * processes writing under one name is the state this logger replaced, where
+   * answering "what happened to message X" meant grepping a sentence nobody had
+   * promised to keep.
+   */
+  test("each service signs its lines with its own name", () => {
+    // Not "one name per stream": a process carries the lines of the packages
+    // inside it, and `store` writes under its own name in the http server.
+    // What must never happen is a service signing as the *other service*,
+    // which is what a renamed subsystem does.
+    for (const [name, other, service] of [["hub", "http", mesh.hub], ["http", "hub", mesh.http]] as const) {
+      const signed = new Set(events(service.output(), '"component"').map((e) => e.component));
+      expect({ name, mine: signed.has(name), theirs: signed.has(other) }).toEqual({
+        name,
+        mine: true,
+        theirs: false,
+      });
+    }
+  });
+
   test("each service stamped its counters at boot", () => {
     for (const [name, service] of [["hub", mesh.hub], ["http", mesh.http]] as const) {
       const [snapshot] = events(service.output(), '"event":"counter_snapshot"');

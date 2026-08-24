@@ -1830,6 +1830,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["a deployment with no push keys says so"],
   },
   {
+    id: "the-hub-signs-its-lines-as-the-http-server",
+    defect: "every line the hub writes claims to come from the http server, so a filter on the component field pulls two processes into one story \u2014 the state this logger replaced, where answering \"what happened to message X\" meant grepping a sentence nobody had promised to keep",
+    file: "packages/hub/src/log.ts",
+    from: "export const log = createLogger(\"hub\");",
+    to: "export const log = createLogger(\"http\");",
+    suite: "test/logging-drills.test.ts",
+    expect: ["each service signs its lines with its own name"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
