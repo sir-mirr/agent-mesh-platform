@@ -1145,6 +1145,86 @@ const MUTATIONS: Mutation[] = [
     expect: ["marks a server redaction token as data, not operator-facing content"],
   },
   {
+    id: "an-absent-fingerprint-is-invented-again",
+    defect:
+      "The fingerprint defaults to `sha256:verified_mesh_identity`. `GET /api/v1/agents` carries no fingerprint, so this fires for every row, under a column headed *Ed25519 public key fingerprint* — a constant makes every agent match whatever an operator is comparing against, and the word `verified` inside it invites skipping the comparison, so a real mismatch is invisible.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "    fingerprint: a.fingerprint ?? null,",
+    to: "    fingerprint: a.fingerprint ?? \"sha256:verified_mesh_identity\",",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["leaves an absent fingerprint absent"],
+  },
+  {
+    id: "people-are-counted-as-agents",
+    defect:
+      "The registry filter stops removing `user` rows, so people are counted and drawn as agents. Membership uses one identity namespace, and a card headed *agents* that includes the operators is a number nobody can act on.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return entries.filter((entry) => entry.type !== \"user\");",
+    to: "  return [...entries];",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["keeps the unified response intact and lets agent-labelled views remove people"],
+  },
+  {
+    id: "a-group-card-counts-every-identity-in-it",
+    defect:
+      "The intersection with the registry goes, so a mixed group's agent card counts the people in it too. Same failure as above, at the place where a group's membership meets the agent rows.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return members.filter((identity) => agentIds.has(identity));",
+    to: "  return [...members];",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["keeps only registry-confirmed agents inside a mixed identity group"],
+  },
+  {
+    id: "the-key-queue-reads-the-admission-queues-name",
+    defect:
+      "Pending keys are read under `pending`, which is the *admission* queue's name — a different route about different rows. The bell then draws nothing, or worse draws people waiting to be admitted as keys waiting to be approved.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return Array.isArray(data) ? data : data.keys ?? [];",
+    to: "  return Array.isArray(data) ? data : data.pending ?? [];",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["reads `keys`, the name D-689 moved the route to"],
+  },
+  {
+    id: "a-denial-is-recorded-without-a-reason",
+    defect:
+      "The default reason becomes the empty string, so an operator who denies a key without typing one leaves an audit row that says a key was refused and nothing about why. The row is the only record of the decision.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "    body: JSON.stringify({ fingerprint, reason: reason ?? \"Rejected by operator\" }),",
+    to: "    body: JSON.stringify({ fingerprint, reason: reason ?? \"\" }),",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["always sends a reason, so the audit row is never blank"],
+  },
+  {
+    id: "a-teardown-path-takes-the-identity-raw",
+    defect:
+      "The identity is interpolated into the DELETE path unencoded. An identity containing a slash addresses a different route — and this is the teardown route, so the request that lands somewhere else is a destructive one.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return await apiClient<TeardownResponse>(`/api/v1/admin/agents/${encodeURIComponent(identity)}`, {",
+    to: "  return await apiClient<TeardownResponse>(`/api/v1/admin/agents/${identity}`, {",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["escapes the identity into the path"],
+  },
+  {
+    id: "an-unparsable-timestamp-reads-as-never-seen",
+    defect:
+      "A `last_seen_at` the client cannot parse is reported as *never seen*. The server did send something; collapsing that into no-record-at-all turns a client-side parsing fault into a statement about the mesh, and § 9.1 keeps those two apart on purpose.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  if (Number.isNaN(seen)) return { kind: \"invalid\" };",
+    to: "  if (Number.isNaN(seen)) return { kind: \"never\" };",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["calls no record `never`, which is not the same as offline"],
+  },
+  {
+    id: "a-clock-skew-shows-a-negative-age",
+    defect:
+      "The clamp goes, so a `last_seen_at` in the future prints as `-4초 전 접속`. Server and browser clocks differ by seconds routinely; the reading is nonsense and the screen says it with the same confidence as a real one.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  const secs = Math.max(0, Math.round((Date.now() - seen) / 1000));",
+    to: "  const secs = Math.round((Date.now() - seen) / 1000);",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["picks the unit by size and never goes negative"],
+  },
+  {
     id: "the-admission-queue-reads-the-name-the-route-left-behind",
     defect:
       "The pending queue is read under `pending` again. D-689 moved the route to `{ users }` and refused an alias precisely so a reader could tell which name the server sends; reading the old one brings the alias back by the door the decision closed, and the screen draws a queue from a shape the route no longer produces.",
