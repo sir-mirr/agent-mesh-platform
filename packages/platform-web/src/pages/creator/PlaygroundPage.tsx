@@ -234,6 +234,7 @@ export function PlaygroundPage() {
                 {t("play.senderLabel", "발신 에이전트 (Sender - 소유/관리 권한 필터링)")}
               </label>
               <select
+                data-testid="playground-sender"
                 value={sender}
                 onChange={(e) => setSender(e.target.value)}
                 style={{
@@ -270,6 +271,7 @@ export function PlaygroundPage() {
                 {t("play.recipientLabel", "수신 에이전트 (Recipient - 활성 메시 대상)")}
               </label>
               <select
+                data-testid="playground-recipient"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 style={{

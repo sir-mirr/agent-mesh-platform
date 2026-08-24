@@ -1047,28 +1047,35 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             .map((a: { id: string }) => a.id);
         });
 
-        // **Every picker, not the union of them.** This took the options of
-        // all the selects on the page together, and the screen has two — the
-        // sender and the recipient. A filter on one was answered by the other:
-        // planting `senderAgents.filter((a) => a.group === "Support Group")`
-        // left the union intact and this check green, while four other
-        // scenarios went red around it.
+        // **Each picker by name.** This read the options of every `select` on
+        // the screen as one set, and the playground has two — sender and
+        // recipient — so a filter on one was answered by the other: planting
+        // `senderAgents.filter((a) => a.group === "Support Group")` left the
+        // union whole and this check green while four other scenarios went red
+        // around it.
         //
-        // A select showing none of the served ids is not an agent picker —
-        // there are other selects on other screens — so the rule is: whichever
-        // pickers list agents must list all of them.
-        const selects = await info.page.locator("select").all();
-        const listings: Array<{ picker: number; shown: string[] }> = [];
-        for (const [index, select] of selects.entries()) {
-          const options = await select.locator("option").allTextContents();
-          const shown = [...new Set(options.flatMap((text) => served.filter((id) => text.includes(id))))].sort();
-          if (shown.length > 0) listings.push({ picker: index, shown });
+        // Asking "whichever pickers list agents must list all of them" is not
+        // enough either, and that is the more interesting half: `group` holds
+        // the agent's *kind*, so that filter empties the sender list outright,
+        // and a picker showing nothing is invisible to a rule keyed on what a
+        // picker shows. Both are named instead, and a missing one is a failure
+        // rather than a silence.
+        const listings: Array<{ picker: string; found: boolean; shown: string[] }> = [];
+        for (const picker of ["playground-sender", "playground-recipient"]) {
+          const select = info.page.locator(`[data-testid="${picker}"]`);
+          const found = (await select.count()) > 0;
+          const options = found ? await select.locator("option").allTextContents() : [];
+          listings.push({
+            picker,
+            found,
+            shown: [...new Set(options.flatMap((text) => served.filter((id) => text.includes(id))))].sort(),
+          });
         }
-        // Every served agent appears in each picker, and nothing appears in one
-        // that was not served.
+        // Every served agent appears in both pickers, and nothing appears in
+        // either that was not served.
         expect({ label, listings }).toEqual({
           label,
-          listings: listings.map(({ picker }) => ({ picker, shown: [...served].sort() })),
+          listings: listings.map(({ picker }) => ({ picker, found: true, shown: [...served].sort() })),
         });
         return served.length;
       } finally {
