@@ -65,14 +65,24 @@ describe("PageHeader", () => {
 
 describe("TelemetryCard", () => {
   it("clamps the bar to its track in both directions", () => {
+    // **The bar's own width, not any width on the card.** This asked whether
+    // *some* element carried the expected one, and the track behind the bar is
+    // always `width: 100%` — so with the clamp taken out entirely, a percentage
+    // of 137 drew a bar past its track and the track's own width answered for
+    // it. Planted: `clampedPercentage = percentage` passed all 812 tests here.
+    //
+    // The bar is the element that animates its width; nothing else does.
     for (const [given, drawn] of [[137, "100%"], [-5, "0%"], [42, "42%"]] as const) {
       const { container } = render(
         <TelemetryCard label="capacity" currentValue={given} percentage={given} />,
       );
-      const widths = [...container.querySelectorAll("div")]
-        .map((d) => d.getAttribute("style") ?? "")
-        .filter((s) => s.includes("width:"));
-      expect(widths.some((s) => s.includes(drawn))).toBe(true);
+      const bar = [...container.querySelectorAll("div")].find((d) =>
+        (d.getAttribute("style") ?? "").includes("transition: width"),
+      );
+      expect(
+        { found: bar !== undefined, style: bar?.getAttribute("style") ?? "" },
+        `a percentage of ${given} should be drawn as ${drawn} of the track`,
+      ).toEqual({ found: true, style: expect.stringContaining(`width: ${drawn}`) });
       cleanup();
     }
   });
