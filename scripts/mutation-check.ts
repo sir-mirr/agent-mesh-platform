@@ -1605,7 +1605,13 @@ const MUTATIONS: Mutation[] = [
     from: "  const hookDied = /\\bhook (timed out|failed|threw)/i.test(output.replace(/^\\s*\\d+ \\|.*$/gm, \"\"));",
     to: "  const hookDied = /\\bhook (timed out|failed|threw)/i.test(output);",
     suite: "test/mutation-verdict.test.ts",
-    expect: ["a hook the run only quoted is not a hook that died"],
+    // **Repointed.** The entry named the caught direction, and attributing a
+    // dead hook to the test it belongs to made that direction hold with or
+    // without the stripping — the mutation went inert and a shard caught it.
+    // What still rests on reading the quote is the *miss*: a guard that stayed
+    // quiet, in a suite whose fixtures mention a hook, must be reported as a
+    // finding rather than excused as a run that decided nothing.
+    expect: ["a quoted hook does not turn a miss into an excuse"],
   },
   {
     id: "the-gate-keeps-the-wrong-end-of-a-flood",

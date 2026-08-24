@@ -443,6 +443,24 @@ describe("condensing a run", () => {
     expect(readVerdict(output, EXPECT, 1, 1)).toEqual({ kind: "caught" });
   });
 
+  test("a quoted hook does not turn a miss into an excuse", () => {
+    // **The direction that still rests on this.** Once a dead hook is
+    // attributed to the test it belongs to, a *quoted* one is harmless when the
+    // guard objected — the failure is not hook-attributed either way. It is
+    // when the guard stayed quiet that reading the quote matters: the run is a
+    // finding about the guard, and reporting it as `a hook died` files the
+    // manifest's own fixtures as a reason not to look.
+    const output = [
+      "(fail) something else entirely",
+      '  437 |       stream("q".repeat(4000), "error: a beforeEach hook timed out\\n"),',
+      "",
+      " 3 pass",
+      " 1 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1, 1)).toEqual({ kind: "not-caught" });
+  });
+
   test("a hook that died in the part that went still stops the verdict", async () => {
     // Not the entry's string, but one the verdict turns on all the same: a
     // suite whose hook died never reached the guard, whatever else it printed.
