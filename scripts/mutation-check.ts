@@ -1635,6 +1635,33 @@ const MUTATIONS: Mutation[] = [
     expect: ["every field, with the contract's values"],
   },
   {
+    id: "the-hub-looks-for-uploads-in-another-directory",
+    defect: "the hub reads blobs from a directory the http server does not write to \u2014 three files declare this path independently \u2014 so every uploaded attachment reads as absent and every event referencing one is refused",
+    file: "packages/hub/src/blobs.ts",
+    from: "export const UPLOAD_DIR = join(stateDir(), \"uploads\");",
+    to: "export const UPLOAD_DIR = join(stateDir(), \"upload\");",
+    suite: "test/blobs.test.ts",
+    expect: ["a blob already held is reported present, with no grant issued"],
+  },
+  {
+    id: "a-handed-out-message-is-still-recallable",
+    defect: "the withdrawal stops asking whether the message was already handed to its recipient, so a sender can delete a message the other side is holding \u2014 the one rule that separates this from a mailer where the sender owns someone else's record",
+    file: "packages/store/src/outbox.ts",
+    from: "        WHERE id = ? AND from_agent = ? AND status = 'pending'\n          AND (leased_until IS NULL OR leased_until < datetime('now'))`,",
+    to: "        WHERE id = ? AND from_agent = ? AND status = 'pending'`,",
+    suite: "test/mailbox-routes.test.ts",
+    expect: ["hand-over ends it, not acknowledgement"],
+  },
+  {
+    id: "the-registry-renames-the-key-clients-read",
+    defect: "`mesh.list_agents` returns each agent under `identity` rather than `id`, which is the field \u00a7 8.3 names and every client indexes on, so the registry reads as a list of agents with no ids",
+    file: "packages/hub/src/rpc/agents.ts",
+    from: "    id: r.identity,",
+    to: "    identity: r.identity,",
+    suite: "test/identity.test.ts",
+    expect: ["a deleted identity disappears from list_agents"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
