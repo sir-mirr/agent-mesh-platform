@@ -113,6 +113,19 @@ export function readVerdict(output: string, expect: string[], exitCode: number, 
   if (passed === 0 && !expected) {
     return { kind: "inconclusive", why: "nothing passed and the expected message is absent" };
   }
+  // **A browser that could not reach anything drew nothing.** Five entries in
+  // one shard came back `not caught` together, each with 132 of 136 scenarios
+  // failing on `net::ERR_INTERNET_DISCONNECTED`: the machine's network went
+  // away mid-run. Re-measured with it back, they are caught. Nothing about a
+  // guard was learned either way, and five findings against five guards is the
+  // most expensive thing this tool can produce — a day spent in the wrong file.
+  //
+  // Only when the expected message is absent, for the same reason the hook rule
+  // is: a scenario that asserts what an offline console does prints this string
+  // while working perfectly, and it must still be allowed to decide.
+  if (!expected && /net::ERR_[A-Z_]+/.test(output)) {
+    return { kind: "inconclusive", why: "the browser could not reach the network, so nothing was drawn" };
+  }
   return exitCode !== 0 && expected ? { kind: "caught" } : { kind: "not-caught" };
 }
 
@@ -200,7 +213,7 @@ export const KEPT_ENDS = 128 * 1024;
  * the guard was never reached, and losing the sentence turns that into a
  * finding about the guard.
  */
-export const VERDICT_PHRASES = ["hook timed out", "hook failed", "hook threw"];
+export const VERDICT_PHRASES = ["hook timed out", "hook failed", "hook threw", "net::ERR_"];
 
 /** A run's output, small enough to hold, with what the shortening would hide. */
 export type CapturedRun = { text: string; named: number };

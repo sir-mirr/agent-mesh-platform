@@ -557,6 +557,45 @@ describe("a hook that died beside the guard, not under it", () => {
   });
 });
 
+describe("a browser that could not reach anything", () => {
+  /**
+   * **Five entries, one shard, one cause.** They came back `not caught`
+   * together, each with 132 of 136 scenarios failing on
+   * `net::ERR_INTERNET_DISCONNECTED` — the machine's network went away
+   * mid-run. Re-measured with it back, they are caught. Five findings filed
+   * against five guards that were never asked is the most expensive thing this
+   * tool can produce: a day spent in the wrong file.
+   */
+  test("an offline run is not a guard that stayed quiet", () => {
+    const output = [
+      "(fail) some scenario > draws the thing",
+      '  "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",',
+      "",
+      " 4 pass",
+      " 132 fail",
+      "",
+    ].join("\n");
+    // Every failure named, as a real one is: the run finished talking, it just
+    // had nothing to talk about.
+    const verdict = readVerdict(output, EXPECT, 1, 132);
+    expect(verdict).toHaveProperty("why", "the browser could not reach the network, so nothing was drawn");
+  });
+
+  test("a scenario that asserts what an offline console does still decides", () => {
+    // The string is what such a scenario prints while working perfectly, so it
+    // only silences a run whose expected message is missing.
+    const output = [
+      "(fail) a socket that dropped the frame",
+      '  "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",',
+      "",
+      " 12 pass",
+      " 1 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1, 1)).toEqual({ kind: "caught" });
+  });
+});
+
 describe("a run whose output was cut short", () => {
   test("fewer failures named than counted decides nothing", () => {
     const output = "(fail) one\n\n 0 pass\n 2 fail\n";

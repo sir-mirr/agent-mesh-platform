@@ -1812,6 +1812,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["the guard's own dead hook is not the guard objecting"],
   },
   {
+    id: "an-offline-browser-is-read-as-a-quiet-guard",
+    defect: "a run whose browser could not reach the network is read as a verdict, so a machine losing its connection mid-run files findings against every guard it was measuring \u2014 five at once, in one shard, each pointing at a file with nothing wrong in it",
+    file: "scripts/mutation-verdict.ts",
+    from: "  if (!expected && /net::ERR_[A-Z_]+/.test(output)) {",
+    to: "  if (false && !expected && /net::ERR_[A-Z_]+/.test(output)) {",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["an offline run is not a guard that stayed quiet"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
