@@ -23,10 +23,27 @@ const LOCK = resolve(import.meta.dir, "..", "scripts", "tree-lock.ts");
 /** Whatever this file wrote goes, whichever way the test ended. */
 afterEach(() => rmSync(MARKER, { force: true }));
 
-/** `assertTreeUsable` decides by exiting, so it is asked in its own process. */
+/**
+ * `assertTreeUsable` decides by exiting, so it is asked in its own process.
+ *
+ * **The answer is the exit code, not a line on stdout.** This printed
+ * `started` and looked for it, and CI came back `code: 0, started: false` —
+ * a child that ran to the end and exited cleanly with its eight bytes of
+ * stdout gone. Measured elsewhere in this repository the same day: a pipe
+ * returned 787 KB of a 248 MB run with none of the markers in it. A verdict
+ * carried on a pipe is a verdict that can be dropped, and an exit code cannot.
+ *
+ * `7` rather than `0`, so "the caller started" is a thing the child said and
+ * not the default a process exits with when it does nothing at all.
+ */
+const STARTED = 7;
 async function ask(): Promise<{ code: number; said: string }> {
   const child = Bun.spawn(
-    ["bun", "-e", `import { assertTreeUsable } from ${JSON.stringify(LOCK)}; assertTreeUsable("a-probe"); console.log("started");`],
+    [
+      "bun",
+      "-e",
+      `import { assertTreeUsable } from ${JSON.stringify(LOCK)}; assertTreeUsable("a-probe"); process.exit(${STARTED});`,
+    ],
     { stdout: "pipe", stderr: "pipe" },
   );
   const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
@@ -64,7 +81,9 @@ describe("a tree nobody is mutating", () => {
   test("lets a caller start", async () => {
     expect(existsSync(MARKER)).toBe(false);
     const { code, said } = await ask();
-    expect({ code, started: said.includes("started") }).toEqual({ code: 0, started: true });
+    expect({ started: code === STARTED }, `the caller did not start: exit ${code}, and it said ${JSON.stringify(said)}`).toEqual({
+      started: true,
+    });
   });
 });
 
@@ -81,7 +100,7 @@ describe("a tree somebody is mutating", () => {
         code,
         named: said.includes(`pid ${proc.pid}`),
         reason: said.includes("a probe holding the tree"),
-        started: said.includes("started"),
+        started: code === STARTED,
       }).toEqual({ code: 2, named: true, reason: true, started: false });
     } finally {
       proc.kill();
@@ -108,12 +127,11 @@ describe("a marker whose holder is gone", () => {
     writeFileSync(MARKER, JSON.stringify({ pid: 2 ** 30, reason: "a run that died", since: "2026-08-24T00:00:00Z" }));
     const { code, said } = await ask();
     expect({
-      code,
-      started: said.includes("started"),
+      started: code === STARTED,
       // Silence here would hide a mutation-check dying over and over.
       announced: said.includes("stale mutation marker"),
       gone: existsSync(MARKER),
-    }).toEqual({ code: 0, started: true, announced: true, gone: false });
+    }).toEqual({ started: true, announced: true, gone: false });
   }, 20_000);
 });
 
@@ -131,7 +149,7 @@ describe("a marker that cannot be read", () => {
     const { code, said } = await ask();
     expect({
       code,
-      started: said.includes("started"),
+      started: code === STARTED,
       kept: existsSync(MARKER),
       tellsHow: said.includes(".agent-mesh-mutating"),
     }).toEqual({ code: 2, started: false, kept: true, tellsHow: true });
