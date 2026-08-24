@@ -67,6 +67,17 @@ describe("admitLocalUserApi", () => {
       display_name: "New Comer",
       tenant: "tenant-b",
     });
+
+    // **The half the title is about.** Passing a tenant and seeing it arrive
+    // says nothing about deriving one; only the call that supplies none can.
+    // Until this line existed the sentence above was unguarded, and a fallback
+    // splitting the username would have passed.
+    const bare = spyOn({ ok: true, user: {}, temporary_password: "x" });
+    await admitLocalUserApi("acme-newcomer");
+    expect(
+      JSON.parse(String(bare.mock.calls[0]![1]!.body)),
+      "a tenant was invented from the account name, which puts an isolation boundary in a string split",
+    ).toEqual({ username: "acme-newcomer" });
   });
 
   it("carries the one-time password back to the caller", async () => {

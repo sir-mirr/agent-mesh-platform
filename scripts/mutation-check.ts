@@ -1030,6 +1030,76 @@ const MUTATIONS: Mutation[] = [
     expect: ["marks a server redaction token as data, not operator-facing content"],
   },
   {
+    id: "the-admission-queue-reads-the-name-the-route-left-behind",
+    defect:
+      "The pending queue is read under `pending` again. D-689 moved the route to `{ users }` and refused an alias precisely so a reader could tell which name the server sends; reading the old one brings the alias back by the door the decision closed, and the screen draws a queue from a shape the route no longer produces.",
+    file: "packages/platform-web/src/api/users.ts",
+    from: "  return Array.isArray(data) ? data : data.users ?? [];",
+    to: "  return Array.isArray(data) ? data : data.pending ?? [];",
+    suite: "packages/platform-web/src/api/users.test.ts",
+    expect: ["reads the queue under the name the route sends today"],
+  },
+  {
+    id: "an-empty-display-name-is-sent-as-one",
+    defect:
+      "An operator who typed no display name sends `\"\"` instead of omitting the field. The server then stores an empty name as a chosen one, and every screen shows a blank where the username would otherwise stand in.",
+    file: "packages/platform-web/src/api/users.ts",
+    from: "      display_name: displayName || undefined,",
+    to: "      display_name: displayName || \"\",",
+    suite: "packages/platform-web/src/api/users.test.ts",
+    expect: ["omits the display name rather than sending an empty one"],
+  },
+  {
+    id: "a-tenant-is-guessed-from-the-account-name",
+    defect:
+      "With no tenant chosen, one is derived from the username. A guess about which tenant somebody belongs to is an authorisation boundary invented on the client — § 11.4 isolation decided by string splitting, in the one request that creates the account.",
+    file: "packages/platform-web/src/api/users.ts",
+    from: "      tenant: tenant || undefined,",
+    to: "      tenant: tenant || username.split(\"-\")[0],",
+    suite: "packages/platform-web/src/api/users.test.ts",
+    expect: ["passes the selected tenant and does not derive one from the account name"],
+  },
+  {
+    id: "the-client-picks-the-traffic-window",
+    defect:
+      "The traffic read asks for a window, so the `hours` the screen reports back is the client's request rather than the server's answer. The number beside the table then describes what was asked for, which is right until the server answers something else and nobody can tell.",
+    file: "packages/platform-web/src/api/tenants.ts",
+    from: "  return apiClient<TenantTrafficResponse>(\"/api/v1/admin/tenants\");",
+    to: "  return apiClient<TenantTrafficResponse>(\"/api/v1/admin/tenants?hours=24\");",
+    suite: "packages/platform-web/src/api/tenants.test.ts",
+    expect: ["asks for no window, so the one reported back is the server's"],
+  },
+  {
+    id: "a-tenant-id-goes-into-the-path-unencoded",
+    defect:
+      "The rename path interpolates the id raw. An id containing a slash or a `?` then addresses a different route than the one the operator is renaming — and the request still succeeds, against something else.",
+    file: "packages/platform-web/src/api/tenants.ts",
+    from: "  return apiClient<TenantMutationResponse>(`/api/v1/admin/tenants/${encodeURIComponent(id)}`, {\n    method: \"PATCH\",",
+    to: "  return apiClient<TenantMutationResponse>(`/api/v1/admin/tenants/${id}`, {\n    method: \"PATCH\",",
+    suite: "packages/platform-web/src/api/tenants.test.ts",
+    expect: ["encodes a tenant id in rename and delete paths"],
+  },
+  {
+    id: "the-directory-is-read-off-the-traffic-route",
+    defect:
+      "The directory read goes to the traffic route. Both answer about tenants and the screen would render *something*, which is why this is worth planting: the rows would be traffic statistics presented as the tenant directory, and only the fields nobody looked at would be missing.",
+    file: "packages/platform-web/src/api/tenants.ts",
+    from: "  return apiClient<TenantDirectoryResponse>(\"/api/v1/admin/tenants/directory\");",
+    to: "  return apiClient<TenantDirectoryResponse>(\"/api/v1/admin/tenants\");",
+    suite: "packages/platform-web/src/api/tenants.test.ts",
+    expect: ["keeps the directory route distinct from traffic statistics"],
+  },
+  {
+    id: "a-refused-directory-becomes-an-empty-one",
+    defect:
+      "A refusal is caught and turned into an empty directory. The screen then says this platform has no tenants, which is a statement about the world made out of a failure to ask — the same shape as an audit log that shows nothing because the read failed.",
+    file: "packages/platform-web/src/api/tenants.ts",
+    from: "export async function fetchTenantDirectory(): Promise<TenantDirectoryResponse> {\n  return apiClient<TenantDirectoryResponse>",
+    to: "export async function fetchTenantDirectory(): Promise<TenantDirectoryResponse> {\n  try { return await apiClient<TenantDirectoryResponse>(\"/api/v1/admin/tenants/directory\"); } catch { return { ok: true, tenant: \"\", tenants: [] }; }\n  return apiClient<TenantDirectoryResponse>",
+    suite: "packages/platform-web/src/api/tenants.test.ts",
+    expect: ["does not turn a refused directory read into an empty directory"],
+  },
+  {
     id: "the-sender-carries-its-own-message",
     defect:
       "The identity is taken as the carrier even when it is the sender, so every direct message shows as having been relayed by the person who sent it. `sentBy` exists to name a third party; naming the sender there is a claim about the delivery path that nothing observed.",
