@@ -970,6 +970,56 @@ const MUTATIONS: Mutation[] = [
     expect: ["a torn-down identity is in no group at all"],
   },
   {
+    id: "a-named-group-sweeps-up-the-unplaced",
+    defect:
+      "The test for `default` was inverted, so every group *except* `default` got the unplaced appended — which makes every named group the same group, and makes `default` the only one that reports honestly. `default-holds-only-what-a-row-says` cannot see this: it plants the half that returns too little, and this is the half that returns too much.",
+    file: "packages/store/src/groups.ts",
+    from: "  if (groupId !== DEFAULT_GROUP) return placed;",
+    to: "  if (groupId === DEFAULT_GROUP) return placed;",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["a group that is not `default` is only its rows"],
+  },
+  {
+    id: "a-move-out-leaves-the-identity-in-default",
+    defect:
+      "The `m.identity IS NULL` term went, so the unplaced half stopped being *unplaced* and became *everyone registered*. An identity moved into `lab` then answered as a member of `lab` and of `default` at once, which is the one thing § 12 says membership is not: singular.",
+    file: "packages/store/src/groups.ts",
+    from: "          WHERE a.tenant = ? AND a.deleted_at IS NULL AND m.identity IS NULL`,",
+    to: "          WHERE a.tenant = ? AND a.deleted_at IS NULL`,",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["moving an agent out takes it out of `default` too"],
+  },
+  {
+    id: "the-two-halves-of-default-overlap",
+    defect:
+      "The join stopped matching rows that place an identity in `default`, so an identity somebody moved *into* `default` was found by both halves and named twice. This is the state that would make the deleted `Set` earn its keep — the comment says the query makes it impossible, and this is the mutation that says so out loud.",
+    file: "packages/store/src/groups.ts",
+    from: "           LEFT JOIN agent_group_members m ON m.tenant = a.tenant AND m.identity = a.identity",
+    to: "           LEFT JOIN agent_group_members m ON m.tenant = a.tenant AND m.identity = a.identity AND m.group_id <> 'default'",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["an agent placed back in `default` is named once, not twice"],
+  },
+  {
+    id: "default-forgets-what-somebody-placed-there",
+    defect:
+      "`default` became the unplaced half alone, so a row an operator wrote by hand was dropped — visibly only when the identity is not registered here, which is exactly the case the row exists for. Every other test in the family registers first, so the placed half is hidden behind the unplaced one and only this one fails.",
+    file: "packages/store/src/groups.ts",
+    from: "  return [...placed, ...unplaced].sort();",
+    to: "  return [...unplaced].sort();",
+    suite: "packages/store/src/groups.test.ts",
+    expect: ["an identity placed by hand is a member even if it registered nowhere"],
+  },
+  {
+    id: "the-group-listing-reads-the-table-alone",
+    defect:
+      "The admin listing went back to `placedIn`, so `default` reported no members while `GET /api/v1/agents` listed the same identities — the measured symptom `agent-mesh-local-pm` reported from the standing stack. The store fix does not protect this on its own: the route chooses which reading to draw, and D-755 keeps the *visibility* path on `placedIn` deliberately, so the two calls sit near each other and look interchangeable.",
+    file: "packages/http/src/main.ts",
+    from: "        members: groupsStore.membersOf(db, g.group_id, tenant),",
+    to: "        members: groupsStore.placedIn(db, g.group_id, tenant),",
+    suite: "packages/http/src/groups-routes.test.ts",
+    expect: ["names an agent nobody has placed among `default`'s members"],
+  },
+  {
     id: "unplaced-identities-cross-tenants",
     defect:
       "The tenant term went from the unplaced half, so one tenant's `default` swept up every other tenant's unregistered identities \u2014 \u00a7 11.4 isolation broken by the one group that holds everybody.",
