@@ -1770,6 +1770,24 @@ const MUTATIONS: Mutation[] = [
     expect: ["writes the grant the server's own vocabulary named, over the whole tenant"],
   },
   {
+    id: "the-audit-record-accepts-one-event-twice",
+    defect: "`event_id` stops being the table's key, so a client's retry lands as a second event under the same id \u2014 the insert is a plain INSERT and the check before it is a separate statement, which leaves the constraint as the only thing between a retry and a record saying something happened twice",
+    file: "packages/store/src/schema/audit.ts",
+    from: "      event_id           TEXT PRIMARY KEY,",
+    to: "      event_id           TEXT,",
+    suite: "packages/store/src/schema/audit.test.ts",
+    expect: ["refuses a second event under an id it already holds"],
+  },
+  {
+    id: "the-paging-index-is-built-the-other-way-round",
+    defect: "the index the query API pages on is ordered `(event_id, stored_at)` instead of `(stored_at, event_id)`; it answers the same queries and paginates differently, skipping or repeating rows when an event is appended mid-page",
+    file: "packages/store/src/schema/audit.ts",
+    from: "      ON audit_events(stored_at, event_id);",
+    to: "      ON audit_events(event_id, stored_at);",
+    suite: "packages/store/src/schema/audit.test.ts",
+    expect: ["pages on an index in the order the query API reads"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
