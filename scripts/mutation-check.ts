@@ -1120,6 +1120,76 @@ const MUTATIONS: Mutation[] = [
     expect: ["hands a string through untouched instead of re-encoding it"],
   },
   {
+    id: "the-command-is-trimmed-on-screen",
+    defect:
+      "The block trims what it draws. A command whose leading or trailing whitespace matters — a heredoc, a line ending in a continuation — is shown as something that does not do the same thing when pasted, and the difference is invisible on screen.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "        <code>{code}</code>",
+    to: "        <code>{code.trim()}</code>",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["keeps the whitespace a paste depends on, including the edges"],
+  },
+  {
+    id: "the-clipboard-gets-something-else",
+    defect:
+      "What goes on the clipboard is trimmed while the screen keeps the original. The reader checks the block, copies it, and pastes something that differs from what they checked — the one failure a copy button must not have.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "      await navigator.clipboard.writeText(code);",
+    to: "      await navigator.clipboard.writeText(code.trim());",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["keeps the edge whitespace on the way to the clipboard too"],
+  },
+  {
+    id: "the-copy-is-announced-before-it-happens",
+    defect:
+      "`✓ 복사됨` is set before the write is awaited, so the confirmation appears whether or not the clipboard took it. On a page with no clipboard, or one where the user refused permission, the screen says copied and nothing was.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "      await navigator.clipboard.writeText(code);\n      setCopied(true);",
+    to: "      setCopied(true);\n      await navigator.clipboard.writeText(code);",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["does not claim a copy the clipboard refused"],
+  },
+  {
+    id: "the-command-is-reflowed-into-one-line",
+    defect:
+      "Whitespace collapses, so a multi-line command is drawn as one long line. It still copies correctly — the text is unchanged — and what breaks is the reader's ability to see where the lines were before they run it.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "          whiteSpace: \"pre-wrap\",",
+    to: "          whiteSpace: \"normal\",",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["shows the line breaks rather than reflowing them into one line"],
+  },
+  {
+    id: "an-empty-bar-is-drawn-anyway",
+    defect:
+      "The title bar is drawn with no title and no button in it — a grey strip above every block that says nothing. Harmless-looking, and it is the case the condition exists for.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "      {(title || showCopy) && (",
+    to: "      {true && (",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["draws no bar at all when there is nothing for it to hold"],
+  },
+  {
+    id: "the-confirmation-stands-forever",
+    defect:
+      "The reset never fires, so the button says `✓ 복사됨` for the rest of the page's life. A second copy then gives no feedback at all — the reader cannot tell whether the click registered, on the control whose whole job is to say so.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "      setTimeout(() => setCopied(false), 2000);",
+    to: "      void 0;",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["lets the confirmation lapse back into an offer, rather than standing forever"],
+  },
+  {
+    id: "the-bar-forgets-the-callers-title",
+    defect:
+      "The bar always shows the language, so a caller's title — which is where the pairing screens say *which machine this runs on* — is dropped in favour of the word BASH. Every block then looks like every other block.",
+    file: "packages/platform-web/src/components/messaging/CodeBlock.tsx",
+    from: "          <span>{title || language.toUpperCase()}</span>",
+    to: "          <span>{language.toUpperCase()}</span>",
+    suite: "packages/platform-web/src/components/messaging/CodeBlock.test.tsx",
+    expect: ["prefers the caller's title, so the bar can say where the command is run"],
+  },
+  {
     id: "the-body-is-drawn-as-one-long-line",
     defect:
       "The indent argument goes, so every payload is one line. It is still the whole body and still correct, which is why nothing else would notice — and a nested audit payload becomes unreadable in the panel that exists to make it readable.",
