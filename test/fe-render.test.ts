@@ -6099,29 +6099,74 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
       .map((f) => readFileSync(f, "utf8"))
       .join("\n");
-    const keepModule = async (res: import("playwright").Response) => {
+    /**
+     * **A body that could not be read is not "no Korean arrived".**
+     *
+     * Both collectors here swallowed a failed read, and a swallowed read is
+     * indistinguishable from a response that never carried the word — which is
+     * the difference between *this console wrote Korean* and *the evidence for
+     * where it came from went missing*. Playwright cannot always hand back a
+     * body once the page has navigated on, so the reads are finished before
+     * the walk leaves the route, and whatever is still lost is counted and
+     * named in the failure.
+     */
+    let unread = 0;
+    const pending: Array<Promise<unknown>> = [];
+    /**
+     * **A stream has no body to wait for.** `/api/v1/*` includes an event
+     * stream, and its `text()` resolves when the stream ends — which is when
+     * the page goes away. Waiting on that one read took the walk past its
+     * timeout and the browser closed under it, so streams are left alone and
+     * the wait for the rest is bounded.
+     */
+    const bodied = (res: import("playwright").Response) =>
+      !/event-stream/.test(res.headers()["content-type"] ?? "");
+    const drain = async () => {
+      const waiting = pending.splice(0);
+      if (waiting.length === 0) return;
+      await Promise.race([
+        Promise.allSettled(waiting),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    };
+    const keepModule = (res: import("playwright").Response) => {
       if (!/javascript|typescript/.test(res.headers()["content-type"] ?? "")) return;
-      try {
-        modules += await res.text();
-      } catch {
-        /* a body that cannot be read is not evidence either way */
-      }
+      if (!bodied(res)) return;
+      pending.push(
+        res
+          .text()
+          .then((t) => {
+            modules += t;
+          })
+          .catch(() => {
+            unread++;
+          }),
+      );
     };
     page.on("response", keepModule);
     try {
       for (const route of routes) {
         let payload = "";
-        const collect = async (res: import("playwright").Response) => {
-          if (!/\/api\/|\/auth\//.test(res.url())) return;
-          try {
-            payload += await res.text();
-          } catch {
-            /* a body that cannot be read is not evidence either way */
-          }
+        const collect = (res: import("playwright").Response) => {
+          if (!/\/api\/|\/auth\//.test(res.url()) || !bodied(res)) return;
+          pending.push(
+            res
+              .text()
+              .then((t) => {
+                payload += t;
+              })
+              .catch(() => {
+                unread++;
+              }),
+          );
         };
         page.on("response", collect);
         await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" }).catch(() => {});
         await settled(page);
+        // Before the walk leaves: a body read after the page has moved on is
+        // the read that fails, and its loss would read as origin evidence that
+        // never existed.
+        await drain();
         page.off("response", collect);
         lastPayload = payload;
         // **Every payload of the walk, not only this route's.** A console reads
@@ -6251,7 +6296,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const creatorOffenders = [...new Set(creatorText.match(/[가-힣]{2,}/g) ?? [])].filter((c) => modules.includes(c));
       expect(creatorOffenders, "a Korean run the server itself sent was counted as this front end's copy").toEqual([]);
 
-      expect(offenders, "the console drew Korean it wrote itself, with the language set to English").toEqual([]);
+      await drain();
+      expect(
+        offenders,
+        "the console drew Korean it wrote itself, with the language set to English" +
+          ` (${unread} response bodies could not be read, so what they carried is not in the origin evidence)`,
+      ).toEqual([]);
     } finally {
       await context.close().catch(() => {});
     }
