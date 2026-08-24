@@ -1020,6 +1020,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["does not let one name imply the one next to it"],
   },
   {
+    id: "a-withheld-body-is-shown-as-a-body",
+    defect:
+      "The redaction sentinel stops being recognised, so the string the server sends *instead of* content is rendered as content. The row then shows `[content withheld …]` as though somebody had written it, and the screen stops distinguishing a body it may not see from a body that says that.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "    const redacted = /^\\[content withheld\\b/i.test(content);",
+    to: "    const redacted = false;",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["marks a server redaction token as data, not operator-facing content"],
+  },
+  {
+    id: "the-sender-carries-its-own-message",
+    defect:
+      "The identity is taken as the carrier even when it is the sender, so every direct message shows as having been relayed by the person who sent it. `sentBy` exists to name a third party; naming the sender there is a claim about the delivery path that nothing observed.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "(item.identity && item.identity !== sender ? item.identity : null)",
+    to: "(item.identity ? item.identity : null)",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["does not call the sender its own carrier"],
+  },
+  {
+    id: "a-row-with-no-integrity-claim-reads-as-mismatched",
+    defect:
+      "A row carrying no `integrity.digest_matches` becomes `false` instead of null. That collapses *nobody measured this* into *this did not match* — the same collapse the removed `signature_verified` branch made, where a rotated key and a forgery shared one `false`. The screen would accuse a row nothing had checked.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "        typeof item.integrity?.digest_matches === \"boolean\" ? item.integrity.digest_matches : null;",
+    to: "        typeof item.integrity?.digest_matches === \"boolean\" ? item.integrity.digest_matches : false;",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["leaves digestMatches null when the row carries no integrity claim"],
+  },
+  {
+    id: "an-unsigned-row-claims-a-signature",
+    defect:
+      "A row with no attestation reports `signed: true` with nothing to show for it. The cell then says signed while carrying no algorithm and no key id, which reads as a display bug and is a false statement about the evidence.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "        : { signed: false, algorithm: null, keyId: null };",
+    to: "        : { signed: true, algorithm: null, keyId: null };",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["calls an unsigned row unsigned rather than unknown"],
+  },
+  {
+    id: "a-bare-array-of-events-reads-as-none",
+    defect:
+      "Only `{ events: [...] }` is accepted, so a route answering a bare array shows an empty audit log. An empty audit screen is indistinguishable from a quiet mesh, which is the one thing an audit screen must not be.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "  const list = Array.isArray(data) ? data : data.events ?? [];",
+    to: "  const list = data.events ?? [];",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["takes a bare array as well as { events }"],
+  },
+  {
+    id: "one-unparseable-attestation-empties-the-log",
+    defect:
+      "The parse is no longer guarded, so a single row whose attestation is not JSON throws inside the map and the whole fetch rejects. One malformed row takes the entire audit log off the screen — the failure mode where the least trustworthy row hides all the others.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "      try { attestationObj = JSON.parse(item.attestation); } catch {}",
+    to: "      attestationObj = JSON.parse(item.attestation);",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["survives an attestation that is not JSON"],
+  },
+  {
     id: "a-senior-role-widens-a-short-list",
     defect:
       "The role is consulted after the list, so a platform administrator holding no capability names holds everything. Authorisation on this layer is capability-only by decision — the role sits in the session for other reasons — and this is the line that quietly makes it role-based again.",
