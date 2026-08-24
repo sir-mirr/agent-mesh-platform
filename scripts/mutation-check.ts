@@ -1000,6 +1000,76 @@ const MUTATIONS: Mutation[] = [
     expect: ["an id is used by more than one manifest entry, so filtering by it runs both"],
   },
   {
+    id: "the-login-stops-encoding-its-form",
+    defect:
+      "The login body stops being form-encoded. A password containing a space or an ampersand then arrives as a different password — `p a s s&word` becomes two fields — so the account is refused with correct credentials, and only for the passwords most likely to have been chosen well.",
+    file: "packages/platform-web/src/api/auth.ts",
+    from: "    body: formData.toString(),",
+    to: "    body: JSON.stringify({ username, password }),",
+    suite: "packages/platform-web/src/api/auth.test.ts",
+    expect: ["posts a form, not JSON, and says so in the header"],
+  },
+  {
+    id: "one-capability-name-implies-its-neighbour",
+    defect:
+      "Membership became a family test — same first segment, so `audit.read.metadata` answers yes for `audit.read.content`. § 11's privacy boundary is exactly a pair of names where one is a prefix of the other, and every screen that gates on the narrower one opens for somebody holding only the wider.",
+    file: "packages/platform-web/src/contexts/RbacContext.tsx",
+    from: "    return capabilities.includes(capability);",
+    to: "    return capabilities.some((c) => c.split(\".\")[0] === capability.split(\".\")[0]);",
+    suite: "packages/platform-web/src/contexts/RbacContext.test.tsx",
+    expect: ["does not let one name imply the one next to it"],
+  },
+  {
+    id: "a-senior-role-widens-a-short-list",
+    defect:
+      "The role is consulted after the list, so a platform administrator holding no capability names holds everything. Authorisation on this layer is capability-only by decision — the role sits in the session for other reasons — and this is the line that quietly makes it role-based again.",
+    file: "packages/platform-web/src/contexts/RbacContext.tsx",
+    from: "    if (!user) return false;",
+    to: "    if (!user) return false;\n    if (user.role === \"PLATFORM_ADMIN\") return true;",
+    suite: "packages/platform-web/src/contexts/RbacContext.test.tsx",
+    expect: ["gives a platform administrator holding no names nothing at all"],
+  },
+  {
+    id: "no-session-holds-everything",
+    defect:
+      "A context with no user answers yes to every capability. Every gate on the screen layer opens before anyone has logged in — the failure that looks like a rendering bug and is an authorisation one.",
+    file: "packages/platform-web/src/contexts/RbacContext.tsx",
+    from: "    if (!user) return false;\n    return capabilities.includes(capability);",
+    to: "    if (!user) return true;\n    return capabilities.includes(capability);",
+    suite: "packages/platform-web/src/contexts/RbacContext.test.tsx",
+    expect: ["holds nothing for a session that has no user, and still exposes a list"],
+  },
+  {
+    id: "the-rbac-hook-answers-outside-its-provider",
+    defect:
+      "`useRbac` stops refusing when there is no provider above it and returns null instead. A component mounted outside the tree then reads `hasCapability` off nothing — in practice a crash at the call site or, worse, a caught error that renders the screen as though every gate answered no, which is indistinguishable from a session that holds nothing.",
+    file: "packages/platform-web/src/contexts/RbacContext.tsx",
+    from: "  if (!context) {\n    throw new Error(\"useRbac must be used within an RbacProvider\");",
+    to: "  if (false) {\n    throw new Error(\"useRbac must be used within an RbacProvider\");",
+    suite: "packages/platform-web/src/contexts/RbacContext.test.tsx",
+    expect: ["refuses outside its provider instead of answering no to everything"],
+  },
+  {
+    id: "the-login-lies-about-its-content-type",
+    defect:
+      "The header says JSON while the body is still form-encoded. The server parses by the header, reads nothing, and answers as if no credentials were sent — an authentication failure with no bad password anywhere in it.",
+    file: "packages/platform-web/src/api/auth.ts",
+    from: "      \"Content-Type\": \"application/x-www-form-urlencoded\",",
+    to: "      \"Content-Type\": \"application/json\",",
+    suite: "packages/platform-web/src/api/auth.test.ts",
+    expect: ["posts a form, not JSON, and says so in the header"],
+  },
+  {
+    id: "a-password-change-stops-proving-the-old-one",
+    defect:
+      "The change sends only the new password. The route then has nothing but the session cookie to authorise with, so a screen left unattended is enough to take the account — the exact thing the function's docstring says asking for `current` is for.",
+    file: "packages/platform-web/src/api/auth.ts",
+    from: "  return await apiClient<PasswordChangeResponse>(\"/auth/local/password\", {\n    method: \"POST\",\n    body: JSON.stringify({ current, next }),",
+    to: "  return await apiClient<PasswordChangeResponse>(\"/auth/local/password\", {\n    method: \"POST\",\n    body: JSON.stringify({ next }),",
+    suite: "packages/platform-web/src/api/auth.test.ts",
+    expect: ["sends the current password as well as the next one"],
+  },
+  {
     id: "generations-stop-counting",
     defect:
       "The counter stops advancing, so every socket is generation zero. The conflict report then says incumbent and contender are the same generation, and the whole point of the number — correlating the two ends of a conflict in two machines' logs — is gone while the report still looks well-formed.",
