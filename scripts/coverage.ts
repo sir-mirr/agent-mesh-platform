@@ -339,17 +339,20 @@ export function runCoverage(argv: string[], io: Io = {}): void {
   say("");
   say(line("everything measured", all));
   say(line("reported", counted));
-  if (byFile) {
-    say("\nby file, worst first by lines nobody ran:\n");
-    const rows = uncoveredRows(all);
-    for (const f of rows) {
+  const table = (files: FileCoverage[]) =>
+    uncoveredRows(files).map((f) => {
       const mark = EXCLUDED.some((re) => re.test(f.path)) ? " (excluded)" : "";
-      say(
+      return (
         `  ${String(f.lines - f.hit).padStart(5)} lines  ${String(f.funcs - f.funcsHit).padStart(3)} funcs  ` +
         `${pct(f.hit, f.lines).toFixed(2).padStart(6)}% lines  ${pct(f.funcsHit, f.funcs).toFixed(2).padStart(6)}% funcs  ` +
-        `${f.path}${mark}`,
+        `${f.path}${mark}`
       );
-    }
+    });
+
+  if (byFile) {
+    say("\nby file, worst first by lines nobody ran:\n");
+    const rows = table(all);
+    for (const row of rows) say(row);
     say(`\n  ${all.length - rows.length} file(s) with nothing uncovered, not listed`);
   }
 
@@ -370,6 +373,13 @@ export function runCoverage(argv: string[], io: Io = {}): void {
       complain(`\ncoverage: ${s.metric} at ${s.value.toFixed(2)} is below the recorded floor of ${at[s.metric]}`);
     }
     if (fallen.length > 0) {
+      // **Named here rather than behind `--by-file`.** The run that fails is
+      // the run somebody needs the list from, and on CI there is no second
+      // chance to ask: the job took twenty minutes, the checkout is gone, and
+      // the only artefact is this log. Measured on 8f06416 — CI reported
+      // 99.87 funcs where this machine reported 100.00, and the log could not
+      // say which two functions, because nobody had passed the flag.
+      for (const row of table(counted)) complain(row);
       complain("D-749 reopens the coverage track on this, without waiting for a new instruction.");
       return exit(1);
     }

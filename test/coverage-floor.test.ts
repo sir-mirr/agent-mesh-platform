@@ -436,6 +436,31 @@ describe("the ratchet", () => {
     });
   });
 
+  /**
+   * **The failing run is the one somebody needs the list from.** On CI there is
+   * no asking again: the job took twenty minutes, the checkout is gone, and the
+   * log is the only artefact. Measured on `8f06416` — CI reported 99.87 funcs
+   * against this machine's 100.00, and nothing in the log could say which two
+   * functions, because the table was behind a flag nobody had passed.
+   */
+  test("names the files with something left in them when it fails", () => {
+    const walked = walk(
+      ["--ratchet", "f.json"],
+      lcov([["packages/a.ts", 10, 9, 100, 100], ["packages/b.ts", 5, 5, 10, 10]]),
+      0,
+      record(100, 100),
+    );
+
+    expect(
+      {
+        names: /packages\/a\.ts/.test(walked.complained),
+        quietAboutTheCoveredOne: !/packages\/b\.ts/.test(walked.complained),
+        left: walked.left,
+      },
+      "a floor failed without naming the file it failed on, which is a number and no next step",
+    ).toEqual({ names: true, quietAboutTheCoveredOne: true, left: 1 });
+  });
+
   test("cannot be lowered below 99 by the record it reads", () => {
     // A record saying 40 would make the check pass on 40, which is the check
     // that can never fail again. D-751's minimum is the floor under the floor.

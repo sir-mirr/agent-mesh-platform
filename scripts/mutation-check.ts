@@ -8868,6 +8868,16 @@ const MUTATIONS: Mutation[] = [
     expect: ["a point given back read as green, or the report blamed the metric that held"],
   },
   {
+    id: "a-failing-floor-names-no-file",
+    defect:
+      "The failing run prints the numbers and not the files. It is a number with no next step: the reader knows coverage fell and has to run the whole suite again locally to find out where — and on CI, where the job takes twenty minutes and the checkout is deleted, the second run is on a different machine and may not reproduce it. That is not hypothetical: `8f06416` measured 100.00 here and 99.87 there.",
+    file: "scripts/coverage.ts",
+    from: "      for (const row of table(counted)) complain(row);",
+    to: "      for (const row of table(counted)) void row;",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a floor failed without naming the file it failed on, which is a number and no next step"],
+  },
+  {
     id: "half-a-record-is-a-whole-floor",
     defect:
       "The record is taken as read, so a file naming one metric leaves the other `undefined`. Every comparison against `NaN` is false, which means no metric has fallen and none has risen: the run reports the ratchet held and leaves green, on a record that states nothing.",
