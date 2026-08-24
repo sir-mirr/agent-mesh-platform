@@ -1220,6 +1220,26 @@ const MUTATIONS: Mutation[] = [
     expect: ["lets the confirmation lapse back into an offer, rather than standing forever"],
   },
   {
+    id: "the-fingerprint-confirmation-stands-forever",
+    defect:
+      "The reset never fires, so the copy button on a fingerprint says 복사됨 for the rest of the page's life. `복사됨` is a claim about what the clipboard holds *now*, and the fingerprint is the one value on the card somebody carries to another machine to compare — a stale claim about it outliving its truth is the failure this two-second bound exists for.",
+    file: "packages/platform-web/src/components/data/FingerprintBox.tsx",
+    from: "      setTimeout(() => setCopied(false), 2000);",
+    to: "      void 0;",
+    suite: "packages/platform-web/src/components/data/FingerprintBox.test.tsx",
+    expect: ["the button kept claiming a copy it cannot still vouch for"],
+  },
+  {
+    id: "the-pairing-code-confirmation-stands-forever",
+    defect:
+      "The same reset in the pairing modal. The code is short-lived and the confirmation must not outlast it: a button still reading 복사됨 after the code rotated says the clipboard holds something it does not.",
+    file: "packages/platform-web/src/components/feedback/AgentPairingModal.tsx",
+    from: "    setTimeout(() => setCopied(false), 2000);",
+    to: "    void 0;",
+    suite: "packages/platform-web/src/components/feedback/AgentPairingModal.test.tsx",
+    expect: ["the button kept claiming a copy it cannot still vouch for"],
+  },
+  {
     id: "the-bar-forgets-the-callers-title",
     defect:
       "The bar always shows the language, so a caller's title — which is where the pairing screens say *which machine this runs on* — is dropped in favour of the word BASH. Every block then looks like every other block.",

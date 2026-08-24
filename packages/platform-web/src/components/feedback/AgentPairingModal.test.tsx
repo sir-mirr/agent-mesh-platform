@@ -342,6 +342,36 @@ describe("AgentPairingModal — the code it shows", () => {
     expect(written).toEqual([shown]);
     expect(copy.textContent).toContain(DICTIONARY.en["reg.copied"]!);
   });
+
+  /**
+   * The confirmation is bounded, and the bound has to be exercised by a test
+   * rather than by the process happening to outlive it: this file measured
+   * 90% funcs on CI and 100% here on the same commit, and the function in the
+   * gap was this reset callback.
+   */
+  it("lets the confirmation lapse back into an offer", () => {
+    const due: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fire: () => void) => {
+      due.push(fire);
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof globalThis.setTimeout;
+    try {
+      const { container } = show();
+      const copy = button(container, "📋");
+      fireEvent.click(copy);
+      expect(copy.textContent).toContain(DICTIONARY.en["reg.copied"]!);
+
+      act(() => { for (const fire of due.splice(0)) fire(); });
+
+      expect(
+        copy.textContent?.includes(DICTIONARY.en["reg.copied"]!),
+        "the button kept claiming a copy it cannot still vouch for",
+      ).toBe(false);
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+  });
 });
 
 describe("AgentPairingModal — the clock on the code", () => {

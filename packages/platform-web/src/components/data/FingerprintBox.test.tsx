@@ -84,5 +84,42 @@ describe("copying it", () => {
     expect(container.textContent).toContain(DICTIONARY.en["reg.copied"]!);
     expect(container.textContent).not.toContain(DICTIONARY.en["fp.copyFailed"]!);
   });
+
+  /**
+   * **`복사됨` is a claim about what the clipboard holds now**, and the page has
+   * no way to know it still holds it. Two seconds bounds the claim and leaves
+   * the button offering to copy again.
+   *
+   * It is also why this file's coverage disagreed between two machines on the
+   * same commit — 100% funcs here, 75% on CI. Nothing advanced the clock, so
+   * whether the reset callback ever ran depended on the test process outliving
+   * a two-second timer, which is not a property of the tests at all.
+   */
+  it("lets the confirmation lapse back into an offer", async () => {
+    withClipboard(() => Promise.resolve());
+    const due: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fire: () => void) => {
+      due.push(fire);
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof globalThis.setTimeout;
+    try {
+      const { container } = render(
+        <I18nProvider><FingerprintBox fingerprint="sha256:abc123" /></I18nProvider>,
+      );
+      const copy = container.querySelector("button")!;
+      await act(async () => { fireEvent.click(copy); });
+      expect(copy.textContent).toContain(DICTIONARY.en["reg.copied"]!);
+
+      act(() => { for (const fire of due.splice(0)) fire(); });
+
+      expect(
+        { offers: copy.textContent?.includes(DICTIONARY.en["fp.copy"]!), claims: copy.textContent?.includes(DICTIONARY.en["reg.copied"]!) },
+        "the button kept claiming a copy it cannot still vouch for",
+      ).toEqual({ offers: true, claims: false });
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+  });
 });
 
