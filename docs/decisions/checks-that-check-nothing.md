@@ -192,6 +192,55 @@ distinguishes `INCONCLUSIVE_NO_DATA` from a failure — which is the same fix as
 naming the check rather than the scenario, and naming the denominator rather
 than the count.
 
+## The checker read less than it was shown
+
+Three of the failures above are the checker asking the wrong question. This one
+is the checker never hearing the answer.
+
+`mutation-check.ts` decides whether a guard objected by looking in the test
+run's output for a string the entry names. It read that output through
+``$`bun test …`.quiet()``. Measured against one suite — a failed
+`expect(node).toBe(null)` on a jsdom node, which serialises the node's whole
+graph:
+
+| how the run was read | came back | `(fail)` markers in it |
+|---|---|---|
+| ``$`bun test …`.quiet()`` | 787 KB | none |
+| `stdout`/`stderr` as pipes | 787 KB | none |
+| a file descriptor | 248 MB | all of them, and the title |
+
+bun prints `(fail) suite > title` *after* the failure's own output, so on the
+first two readings the string the entry names is produced by the child and then
+dropped on the way in — while the summary at the very end survives. What
+arrives is `exit 1`, a summary, and no expected string, which is exactly the
+shape of a guard that stayed quiet. `the-bell-moves-inside-the-trail` was
+recorded that way: caught when it was run on its own, missed in a batch of 112.
+
+It is not a fixed limit. The same three readings agree at 3 MB and at 8 MB.
+What is lost depends on what the run printed, which makes the verdict depend on
+it too.
+
+Two things follow, and both are in the tool now.
+
+**Read through a file.** Nothing is dropped between the child and the tool, and
+what is dropped afterwards is dropped deliberately, by a function that says how
+much went and which of the strings the verdict turns on were in it.
+
+**Say when the output stopped rather than deciding on it.** bun prints one
+marker per failing test; fewer markers than the summary's count is a run that
+did not finish talking. That is `inconclusive`, not a finding — the same
+distinction as `INCONCLUSIVE_NO_DATA` above, arriving by a different route.
+
+There is a third, smaller one worth writing down because the file it broke was
+the file that tests this. bun echoes a failing test's source back with an
+`NNN | ` prefix, and one fixture in `test/mutation-verdict.test.ts` is the
+string `"error: a beforeEach hook timed out"`. The predicate scanned for that
+phrase, found the suite's own fixture, and refused to give the suite a verdict
+on its own guard — the same shape as reading the first `N pass` in a run rather
+than the last, which the same function had already been fixed for once. **What
+a run printed and what a run quoted are not the same text**, and a checker that
+cannot tell them apart is reading its own reflection.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
