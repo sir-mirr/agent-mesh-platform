@@ -9471,10 +9471,21 @@ const MUTATIONS: Mutation[] = [
   {
     id: "the-poller-anchor-stands-still",
     defect:
-      "The audit poller stopped moving its anchor with the rows it read, so every pass broadcasts the same batch again. On an audit screen that is the mesh appearing to repeat itself for ever, at 1.5-second intervals, with nothing wrong in any store.",
+      "The keyset the audit poller pages on stops excluding the row it stopped at, so the last row of every pass is broadcast again by the next one. On an audit screen that is the mesh appearing to repeat itself, at 1.5-second intervals, with nothing wrong in any store.",
     file: "packages/http/src/main.ts",
-    from: "      lastSeenMessageTs = r.ts\n      lastSeenMessageId = r.id",
-    to: "",
+    // **The tie-break rather than the anchor.** This entry used to delete
+    // `lastSeenMessageTs`/`lastSeenMessageId` outright, which is the same
+    // defect without a bound: the anchor never moves, every pass re-reads and
+    // re-broadcasts the whole table, and the suite's `beforeEach` times out
+    // under the flood. The tool reported it — correctly — as `inconclusive: a
+    // hook died`, which is a fact about the run and not about the guard, and
+    // no run of it could ever be anything else. Found by a full shard, not by
+    // the filtered run that added it.
+    //
+    // Taking one comparison off the keyset produces one duplicate per pass
+    // instead of a torrent, which is what the guard is written to notice.
+    from: "       WHERE (ts > $ts) OR (ts = $ts AND id > $id)",
+    to: "       WHERE (ts > $ts) OR (ts = $ts AND id >= $id)",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["picks up what arrived after it, counts it, and does not pick it up twice"],
   },
