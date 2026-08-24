@@ -1110,6 +1110,46 @@ const MUTATIONS: Mutation[] = [
     expect: ["does not leave before the cookie-expiry response and blocks a second POST while waiting"],
   },
   {
+    id: "a-string-payload-is-re-encoded",
+    defect:
+      "A body that is already a string goes through `JSON.stringify`, so the panel shows it wrapped in quotes with its newlines turned into `\\n`. The message a reader is trying to read becomes a rendering of the message.",
+    file: "packages/platform-web/src/components/messaging/JsonViewer.tsx",
+    from: "      return typeof data === \"string\" ? data : JSON.stringify(data, null, 2);",
+    to: "      return JSON.stringify(data, null, 2);",
+    suite: "packages/platform-web/src/components/messaging/JsonViewer.test.tsx",
+    expect: ["hands a string through untouched instead of re-encoding it"],
+  },
+  {
+    id: "the-body-is-drawn-as-one-long-line",
+    defect:
+      "The indent argument goes, so every payload is one line. It is still the whole body and still correct, which is why nothing else would notice — and a nested audit payload becomes unreadable in the panel that exists to make it readable.",
+    file: "packages/platform-web/src/components/messaging/JsonViewer.tsx",
+    from: "JSON.stringify(data, null, 2);",
+    to: "JSON.stringify(data);",
+    suite: "packages/platform-web/src/components/messaging/JsonViewer.test.tsx",
+    expect: ["indents two spaces per level instead of printing one long line"],
+  },
+  {
+    id: "the-panel-holds-the-previous-body",
+    defect:
+      "The memo stops depending on the payload, so the panel keeps drawing the first body it was given. Selecting a different message shows the previous one — the worst kind of stale, because it is a real body and looks like an answer.",
+    file: "packages/platform-web/src/components/messaging/JsonViewer.tsx",
+    from: "  }, [data]);",
+    to: "  }, []);",
+    suite: "packages/platform-web/src/components/messaging/JsonViewer.test.tsx",
+    expect: ["redraws the new body instead of holding the memoised previous one"],
+  },
+  {
+    id: "an-unserialisable-body-takes-the-panel-down",
+    defect:
+      "The catch rethrows, so a payload with a cycle in it throws during render and the panel goes with it. A body that cannot be serialised is exactly the body somebody is looking at the panel to understand.",
+    file: "packages/platform-web/src/components/messaging/JsonViewer.tsx",
+    from: "    } catch {\n      return String(data);\n    }",
+    to: "    } catch (error) {\n      throw error;\n    }",
+    suite: "packages/platform-web/src/components/messaging/JsonViewer.test.tsx",
+    expect: ["keeps the panel mounted when the payload cannot be serialized at all"],
+  },
+  {
     id: "a-failed-logout-says-nothing",
     defect:
       "A logout that got no answer sets the flag back to false, so the screen stays where it is and says nothing. The reader is still signed in, believes they signed out, and walks away from the machine.",
