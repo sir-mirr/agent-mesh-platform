@@ -970,6 +970,66 @@ const MUTATIONS: Mutation[] = [
     expect: ["a narrow grant does NOT widen"],
   },
   {
+    id: "the-chain-is-read-from-the-attackers-end",
+    defect:
+      "The walk goes left to right, so the first entry wins — and the left is exactly where an attacker prepends. `X-Forwarded-For: 1.2.3.4, <real chain>` then reports `1.2.3.4` as the peer, which is the forgery this whole function is built against. Nothing errors; the address is simply somebody else's.",
+    file: "packages/hub/src/observed.ts",
+    from: "  for (let i = chain.length - 1; i >= 0; i--) {",
+    to: "  for (let i = 0; i < chain.length; i++) {",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["the leftmost entry is the attacker's and is never taken"],
+  },
+  {
+    id: "a-header-from-anyone-is-believed",
+    defect:
+      "The immediate peer no longer has to be a trusted proxy, so anything that reaches this process directly can write the whole chain and be believed. The header is only evidence because a proxy we trust put it there; without that test it is an attacker-controlled string.",
+    file: "packages/hub/src/observed.ts",
+    from: "  if (!socket || !config.trustedProxies.has(socket)) return socket;",
+    to: "  if (!socket) return socket;",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["a peer that is not a trusted proxy has its header ignored entirely"],
+  },
+  {
+    id: "a-chain-of-proxies-invents-a-client",
+    defect:
+      "A chain consisting only of trusted proxies answers with the first hop instead of null. That address is a proxy, not a client, and reporting it as the peer attributes every request behind that deployment to one machine — a guess dressed as an observation, which § 8.11 says is worse than saying nothing.",
+    file: "packages/hub/src/observed.ts",
+    from: "    if (!config.trustedProxies.has(hop)) return hop;\n  }\n  return null;",
+    to: "    if (!config.trustedProxies.has(hop)) return hop;\n  }\n  return chain[0] ?? null;",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["a chain of nothing but trusted proxies answers null, not a guess"],
+  },
+  {
+    id: "no-trusted-proxies-still-reads-the-header",
+    defect:
+      "With no proxies configured the mode becomes `forwarded` anyway, so a deployment that never set `AGENT_MESH_TRUSTED_PROXIES` — the default — starts believing a header nobody vouched for. The unconfigured case is the one most installations are in.",
+    file: "packages/hub/src/observed.ts",
+    from: "  if (!raw) return { mode: \"socket\", trustedProxies: new Set() };",
+    to: "  if (!raw) return { mode: \"forwarded\", trustedProxies: new Set() };",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["no trusted proxies means the header is ignored, not used as a fallback"],
+  },
+  {
+    id: "the-two-spellings-of-one-host-stop-matching",
+    defect:
+      "IPv4-mapped IPv6 is left as `::ffff:127.0.0.1`, so the same host compares unequal to `127.0.0.1` depending on which transport observed it. Bun hands back the mapped spelling, so this is not exotic: a trusted proxy stops matching its own entry in the list, and stored-one-way versus observed-the-other refuses every agent — a denial of service against the mesh rather than a leak.",
+    file: "packages/hub/src/observed.ts",
+    from: "  if (mapped) s = mapped[1]!;",
+    to: "  if (false) s = mapped[1]!;",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["IPv4-mapped IPv6 collapses, in the spelling Bun actually returns"],
+  },
+  {
+    id: "the-ipv6-prefix-is-a-64-not-a-48",
+    defect:
+      "IPv6 groups to /64 instead of /48. It looks like a stricter setting and is a weaker control: /64 is one subnet of the many an operator is assigned, so the same operator reads as a different network on every subnet and § 8.11.2's grouping stops grouping anything.",
+    file: "packages/hub/src/observed.ts",
+    from: "    if (groups.length >= 3) return `${groups.slice(0, 3).join(\":\")}::/48`;",
+    to: "    if (groups.length >= 3) return `${groups.slice(0, 4).join(\":\")}::/48`;",
+    suite: "packages/hub/src/observed.test.ts",
+    expect: ["IPv6 groups to /48, the size an operator is actually assigned"],
+  },
+  {
     id: "a-grant-in-one-tenant-answers-in-another",
     defect:
       "The tenant term in `has` stopped narrowing, so a grant written in `acme` authorises the same subject in `nova`. § 11.4 isolation is one predicate, and this is the predicate.",
