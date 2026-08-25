@@ -311,20 +311,33 @@ list is not re-read as though the write had worked.
 
 ## What stays unnamed, and why that is not a backlog
 
-The manifest names 978 mutations across 184 files. Nine source files carry no
-entry at all, and counting them as debt would be the wrong reading — for most
-of them, an entry is not possible in the form this harness takes, which is *a
-mutation that makes a named suite go red*.
+A handful of source files carry no entry at all, and counting them as debt
+would be the wrong reading — for most of them, an entry is not possible in the
+form this harness takes, which is *a mutation that makes a named suite go red*.
 
-(The count moves with the manifest and is not maintained here; what is worth
-keeping is the sorting below.)
+(How many there are moves with the manifest, and stating it here would be a
+second declaration of something already true elsewhere — the failure mode this
+document is about. `comm` against the manifest's `file:` values answers it in
+one line. What is worth keeping is the sorting below.)
 
 | | |
 |---|---|
 | barrels, type-only files, `vite.config.ts` | the compiler is the checker. Deleting an export or widening a type fails `tsc`, and no suite goes red — `typecheck-scope.test.ts` reads the project's `include` globs on purpose rather than running a second compile, which would double the slowest check in CI |
 | `standing-order.ts` | the test imports the constant it asserts, so a mutation moves both sides at once. That is not a weak test: the same file also asserts each hook *uses* the constant and holds no second copy of the sentence, which is the property worth having |
 | `test-state-dir.ts` | the mutation's blast radius is somebody's real mesh. It exists so a suite cannot write to the default state directory, and the mutation that proves it works is the one that lets a suite do exactly that. Left unplanted deliberately |
-| entry-point glue (`main.tsx`, the hooks' `import.meta.main` blocks) | no process under test reaches those lines. Where the glue was worth measuring, the answer was to split the question out of the entry point — see [what the coverage number leaves out](what-the-coverage-number-leaves-out.md) — not to plant against a line that never runs |
+| browser entry points (`main.tsx`) | no process under test reaches those lines, and the answer where such glue was worth measuring was to split the question out of the entry point — see [what the coverage number leaves out](what-the-coverage-number-leaves-out.md) — not to plant against a line that never runs |
+
+**A hook's `import.meta.main` block was in that row, and did not belong there.**
+The reasoning was borrowed from `main.tsx` and does not transfer: a hook *is* a
+process, so a test can spawn it and hand it stdin, and coverage failing to see
+the lines is a fact about the instrumented process rather than about whether
+anything runs them. `more-work.ts` sat unnamed on that borrowed reason while
+`settings.json` registered it and `mailbox.ts` imported it, and the twelve
+lines it holds decide whether a continuation is blocked again, whether an empty
+answer is still spoken, and what shape the block takes. All three fail quietly,
+and a hook that says nothing is indistinguishable from a repository with
+nothing left to do. It is spawned and named now, and the same question is worth
+putting to any entry point that is a process rather than a page.
 
 What is left is a real question rather than a category: `packages/http/src/ui/
 theme.ts` is a table of constants whose only honest assertion would be a second
