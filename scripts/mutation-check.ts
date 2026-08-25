@@ -2406,6 +2406,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-AUTH-03"],
   },
   {
+    id: "every-table-in-the-console-drops-its-first-row",
+    defect: "the shared table body skips its first row, so every list in the console is one short \u2014 agents, groups, audits, admissions. Nothing is empty and nothing errors; the screen simply does not contain a row the server sent, and the only way to notice is to count against the route.",
+    file: "packages/platform-web/src/components/data/DataTable.tsx",
+    from: "            {data.map((item, index) => (",
+    to: "            {data.slice(1).map((item, index) => (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-RENDER-03"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
