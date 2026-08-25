@@ -366,7 +366,24 @@ describe("a request body field the route never reads", () => {
    * synthetic case is what a mutation would have bought.
    */
   test("the file left out of the scan does not call a route itself", () => {
-    const requests = (text: string) => text.match(/\bfetch\s*\(/g) ?? [];
+    /**
+     * **String literals removed first, because this file is a quoter.** An
+     * entry that plants a discarded `fetch` — `ui-fetch.test.ts` exists for
+     * three of them — carries that line into the manifest twice, as `from` and
+     * as `to`, and the characters `fetch(` then appear here with no call
+     * behind them. Counting them read the manifest as having started making
+     * requests on the day an entry quoted one.
+     *
+     * A call is code. Stripping the strings keeps the question the same one —
+     * a `fetch(` written as code in that file is still seen, which is the day
+     * this test is about — and stops a quotation from answering it.
+     */
+    const codeOnly = (text: string) =>
+      text
+        .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+        .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+        .replace(/`(?:[^`\\]|\\.)*`/g, "``");
+    const requests = (text: string) => codeOnly(text).match(/\bfetch\s*\(/g) ?? [];
 
     expect(
       requests(readFileSync(join(ROOT, QUOTES_SOURCE), "utf8")),
@@ -376,6 +393,10 @@ describe("a request body field the route never reads", () => {
       requests('await fetch("/api/v1/messages", { method: "POST" })').length,
       "the predicate cannot see a request at all, so its silence about the manifest means nothing",
     ).toBe(1);
+    expect(
+      requests(`  from: "const res = await fetch('/api/v1/admin/approve', { method: 'POST' });",`).length,
+      "a quoted line is being counted as a call, which is every entry that plants a request",
+    ).toBe(0);
   });
 
   test("no caller sends one, and no caller writes to a verb this server does not answer", () => {
