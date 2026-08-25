@@ -359,6 +359,33 @@ decides, not by what it looks like. Every file still on this list decides
 nothing — the compiler, the importing test, or a deliberate refusal to plant is
 what stands behind each.
 
+## The same question, asked of the suites
+
+A file with no entry is one half of it. The other half is a *suite* no entry
+names, and that is the sharper question: a suite nothing plants against has
+never been shown to go red, which is the same evidence as no suite. Twenty-six
+of the two hundred and fifteen test files were in that state, most of them the
+admin console's, and closing it turned up the console's own recurring defect
+over and over — one read behind a screen that can come back four ways, three of
+which draw an empty table, and an entry for each collapse that has shipped.
+
+Two things came out of the sweep that are worth keeping. **Unnamed sometimes
+means the anchor is missing rather than the test**: two of the entries land on
+checks that already existed with nothing pointing at them. And **an entry that
+names the wrong check is a verdict about the wrong thing even when the count
+comes out right** — one mutation was caught by the neighbour of the test it
+named, because every rule in the named case carried a tenant and the guard it
+was aimed at never ran.
+
+One suite is left, deliberately. `every-module.test.ts` imports every module in
+`platform-web` and asserts each loads; the defect it catches is a module-scope
+throw, and no one-line edit to existing source produces one — nothing in that
+package touches a browser global at module scope, and a bad import specifier is
+the compiler's to catch. Its other assertion, that the walk found more than
+forty modules, is derived inside the test. So it is a loader with a floor, not a
+checker, and it is unplanted for the same kind of reason `test-state-dir.ts` is.
+The day a module in that package does something at load, this changes.
+
 The distinction worth keeping: *unnamed because nothing can go red* is a fact
 about the harness, and *unnamed because nobody looked* is debt. Both this
 section's list and the two defects above came out of asking which one a given
