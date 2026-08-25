@@ -3332,7 +3332,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30000);
 
-  // SC-WRITE-09: a refused issue does not leave the last code on the screen.
+  // SC-WRITE-22: a refused issue does not leave the last code on the screen.
   //
   // **Split from `SC-WRITE-08` because that scenario cannot reach this.** It
   // aborts the first request the page ever makes, so `generatedCode` is still
@@ -3345,7 +3345,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   // is one-time: left on screen it is copied and handed to somebody, already
   // spent, or belonging to a different identity than the one now named beside
   // it.
-  it("[SC-WRITE-09] clears the issued code when the next issue is refused", async () => {
+  it("[SC-WRITE-22] clears the issued code when the next issue is refused", async () => {
     await withPage("/creator/register", async ({ page }) => {
       const identityInput = page.locator("input[placeholder*='agt_']").first();
       await identityInput.waitFor({ timeout: 5000 });
