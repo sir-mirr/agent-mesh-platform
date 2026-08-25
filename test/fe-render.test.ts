@@ -2317,7 +2317,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const loadText = await page.locator("#root").innerText();
     expect(loadText).toContain("조회 중");
-    expect(loadText).not.toContain("등록된 테넌트 없음");
+
+    // **The empty caption that exists, not the one that used to.** This
+    // asserted the absence of `등록된 테넌트 없음`, and no string in this
+    // package has said that since the dashboard stopped counting tenants — so
+    // it passed on every build and would have passed on a screen printing the
+    // empty state mid-read. The caption a still-loading card must not print is
+    // the groups card's own, and it is one key away on the same line of source.
+    //
+    // `SC-LOAD-04` guards the counts on the same screen; this guards the
+    // sentence under them. Two claims, both live.
+    expect(loadText, "the dashboard called the mesh empty while it was still reading")
+      .not.toContain("등록된 그룹 없음");
 
     await context.close();
   });
@@ -2909,9 +2920,36 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await settled(page);
       await shows(page, "조회 중");
       const loadText = await page.locator("#root").innerText();
-      expect(loadText).not.toContain("현재 등록된 테넌트 조직 데이터가 없습니다");
-      expect(loadText).not.toContain("0 sessions");
       expect(loadText).toContain("조회 중");
+
+      // **Absences that can actually occur.** This asserted that the screen did
+      // not say `현재 등록된 테넌트 조직 데이터가 없습니다` or `0 sessions`, and
+      // neither string exists anywhere in this package — the dashboard stopped
+      // counting tenants and never counted sessions. Two assertions that
+      // passed on every build and would have passed on a dashboard printing
+      // zero, which is the defect they were written for.
+      //
+      // What a dashboard still reading must not print is a count. Each card,
+      // for the reason `SC-DOWN-02` gives: page-wide, either card's `...`
+      // satisfies the whole check while its neighbour prints a number.
+      const kpi = async (label: string) => await page.locator(`[data-kpi="${label}"]`).innerText();
+      const [agentsCard, groupsCard] = [await kpi("등록된 에이전트"), await kpi("등록된 그룹")];
+      expect(
+        {
+          // No digit anywhere on the card: the label carries none, and the
+          // sub-line while waiting is `조회 중...`.
+          agentsCounted: /\d/.test(agentsCard),
+          agentsSaidWaiting: agentsCard.includes("조회 중"),
+          groupsCounted: /\d/.test(groupsCard),
+          groupsSaidWaiting: groupsCard.includes("조회 중"),
+        },
+        "a dashboard KPI printed a count, or printed no reason, while its read was still in flight",
+      ).toEqual({
+        agentsCounted: false,
+        agentsSaidWaiting: true,
+        groupsCounted: false,
+        groupsSaidWaiting: true,
+      });
     } finally {
       await context.close().catch(() => {});
     }
