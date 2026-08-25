@@ -10063,6 +10063,56 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/ui/ui-behaviour.test.ts",
     expect: ["a subscription the server would not store is undone rather than left half-made"],
   },
+  {
+    id: "the-hot-reload-client-will-not-parse",
+    defect:
+      "A type annotation is left in the injected browser script — the same shape that killed the admin console for four months, in the other template literal holding browser JavaScript. A browser refuses the block whole, so pages still render and only the reloading stops, which reads from the outside as a file that did not change.",
+    file: "scripts/serve-preview.ts",
+    from: "        const es = new EventSource('/livereload');",
+    to: "        const es: EventSource = new EventSource('/livereload');",
+    suite: "test/serve-preview.test.ts",
+    expect: ["injects a hot-reload script a browser can parse"],
+  },
+  {
+    id: "the-reload-stream-is-accepted-but-never-opened",
+    defect:
+      "The opening comment went out of the event stream. A client cannot then tell a live stream from a connection the server accepted and forgot, and neither can anything watching for the first byte.",
+    file: "scripts/serve-preview.ts",
+    from: "          controller.enqueue(new TextEncoder().encode(\": connected\\n\\n\"));",
+    to: "          void controller;",
+    suite: "test/serve-preview.test.ts",
+    expect: ["the reload stream opens and says so"],
+  },
+  {
+    id: "a-change-on-disk-is-broadcast-as-nothing",
+    defect:
+      "The reload event lost its name, so browsers receive a frame that means nothing to them and the page never refreshes. The watcher still fires and the log still says it reloaded, which is the worst combination available: the tool reports the thing it stopped doing.",
+    file: "scripts/serve-preview.ts",
+    from: "    const payload = `data: reload\\n\\n`;",
+    to: "    const payload = `: tick\\n\\n`;",
+    suite: "test/serve-preview.test.ts",
+    expect: ["a change on disk reaches an open browser"],
+  },
+  {
+    id: "the-preview-server-decodes-its-way-out-of-its-own-directory",
+    defect:
+      "The request path is decoded before being joined onto the preview directory, so `%2e%2e%2f` becomes `../` and the server hands out whatever the repository holds. `new URL` already folds literal `..` segments away, which is the reason the undecoded form is safe and this one is not.",
+    file: "scripts/serve-preview.ts",
+    from: "    const filePath = join(PREVIEW_DIR, url.pathname);",
+    to: "    const filePath = join(PREVIEW_DIR, decodeURIComponent(url.pathname));",
+    suite: "test/serve-preview.test.ts",
+    expect: ["a path that climbs out of the preview directory is not served"],
+  },
+  {
+    id: "a-missing-preview-file-answers-with-an-empty-page",
+    defect:
+      "A path with no file behind it started answering 200 with nothing in it. A blank page and a page whose stylesheet is missing look identical in a browser, and the status code was the one thing that told them apart.",
+    file: "scripts/serve-preview.ts",
+    from: "    return new Response(\"Not found\", { status: 404 });",
+    to: "    return new Response(\"\", { status: 200 });",
+    suite: "test/serve-preview.test.ts",
+    expect: ["a file it does not have is a 404, not an empty page"],
+  },
 ];
 
 /**
