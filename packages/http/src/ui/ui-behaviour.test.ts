@@ -314,17 +314,26 @@ describe("the chat page's push subscription", () => {
  * above are for that.
  */
 describe("every script this server ships", () => {
-  const pages: Array<[string, string]> = [
-    ["the admin console", renderAdminPage()],
-    ["the chat page", renderChatPage({ github_login: "someone", role: "user" })],
-    ["the pending-approval page", renderPendingApprovalPage({ github_login: "someone", role: "user" })],
-    ["the agent-not-found page", renderAgentNotFoundPage()],
-    ["the landing page", renderLandingPage(undefined)],
+  /**
+   * The expected block count is part of the assertion.
+   *
+   * "No block refused" is trivially true of a page carrying no blocks, so a
+   * page that lost its script — or an extraction that stopped matching — would
+   * pass this as loudly as a page that is fine. The landing page really has
+   * none, and says so here rather than by being silent.
+   */
+  const pages: Array<[string, string, number]> = [
+    ["the admin console", renderAdminPage(), 1],
+    ["the chat page", renderChatPage({ github_login: "someone", role: "user" }), 1],
+    ["the pending-approval page", renderPendingApprovalPage({ github_login: "someone", role: "user" }), 1],
+    ["the agent-not-found page", renderAgentNotFoundPage(), 0],
+    ["the landing page", renderLandingPage(undefined), 0],
   ];
 
-  for (const [name, html] of pages) {
+  for (const [name, html, expected] of pages) {
     test(`${name} hands the browser a script it can parse`, () => {
       const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+      expect(blocks).toHaveLength(expected);
       const refused = blocks
         .map((block, i) => {
           try {
@@ -338,4 +347,36 @@ describe("every script this server ships", () => {
       expect(refused).toEqual([]);
     });
   }
+});
+
+/**
+ * The sign-in page, which takes an error code out of a query string.
+ *
+ * The copy lives here and the route passes a code, so the value a browser sent
+ * never reaches the markup. That is the property worth pinning: the difference
+ * between a code and a message is the difference between two fixed sentences
+ * and whatever a link in an email decided to put in the URL.
+ */
+describe("the sign-in page", () => {
+  test("says which of the two things went wrong", () => {
+    expect({
+      invalid: renderLandingPage("invalid").includes("Invalid username or password"),
+      missing: renderLandingPage("missing").includes("Username and password are required"),
+      crossed: renderLandingPage("invalid").includes("Username and password are required"),
+    }).toEqual({ invalid: true, missing: true, crossed: false });
+  });
+
+  test("says nothing when nothing went wrong", () => {
+    const quiet = renderLandingPage(undefined);
+    expect(quiet).not.toContain("Invalid username or password");
+    expect(quiet).not.toContain("Username and password are required");
+  });
+
+  test("does not put the query string on the page", () => {
+    // `?error=` is whatever a link says it is. A page that renders the value
+    // renders markup somebody else wrote.
+    const hostile = renderLandingPage('"><img src=x onerror=alert(1)>');
+    expect(hostile).not.toContain("onerror=alert(1)");
+    expect(hostile).not.toContain("<img src=x");
+  });
 });

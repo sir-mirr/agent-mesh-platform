@@ -10173,6 +10173,26 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-screens-fixture.test.ts",
     expect: ["counts land in the range that no placeholder reaches for"],
   },
+  {
+    id: "the-sign-in-page-renders-what-the-link-said",
+    defect:
+      "The unrecognised case stops being silence and echoes the query value instead. `?error=` is whatever a link says it is, so the sign-in page renders markup somebody else wrote — and this is the page that has never needed a value from a browser, only a code.",
+    file: "packages/http/src/ui/landing.ts",
+    from: "      : ''",
+    to: "      : `<div>${error}</div>`",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["does not put the query string on the page"],
+  },
+  {
+    id: "the-sign-in-page-crosses-its-two-messages",
+    defect:
+      "The two refusals swap copy: a wrong password is reported as a missing one. They are different instructions to the person reading them — one says try again, the other says you left a field blank — and the screen is the only place that difference is expressed.",
+    file: "packages/http/src/ui/landing.ts",
+    from: "    ? `<div style=\"color:${THEME.accent}; font-size:0.85rem; margin-top:8px;\">Invalid username or password</div>`",
+    to: "    ? `<div style=\"color:${THEME.accent}; font-size:0.85rem; margin-top:8px;\">Username and password are required</div>`",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["says which of the two things went wrong"],
+  },
 ];
 
 /**

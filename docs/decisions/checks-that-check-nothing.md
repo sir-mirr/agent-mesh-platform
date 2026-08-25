@@ -309,6 +309,30 @@ globals for the whole block, so what a refused approval does is a question with
 an answer now: the operator is told the status and the server's reason, and the
 list is not re-read as though the write had worked.
 
+## What stays unnamed, and why that is not a backlog
+
+The manifest names 966 mutations across 180 files. Ten source files carry no
+entry at all, and counting them as debt would be the wrong reading — for most
+of them, an entry is not possible in the form this harness takes, which is *a
+mutation that makes a named suite go red*.
+
+| | |
+|---|---|
+| barrels, type-only files, `vite.config.ts` | the compiler is the checker. Deleting an export or widening a type fails `tsc`, and no suite goes red — `typecheck-scope.test.ts` reads the project's `include` globs on purpose rather than running a second compile, which would double the slowest check in CI |
+| `standing-order.ts` | the test imports the constant it asserts, so a mutation moves both sides at once. That is not a weak test: the same file also asserts each hook *uses* the constant and holds no second copy of the sentence, which is the property worth having |
+| `test-state-dir.ts` | the mutation's blast radius is somebody's real mesh. It exists so a suite cannot write to the default state directory, and the mutation that proves it works is the one that lets a suite do exactly that. Left unplanted deliberately |
+| entry-point glue (`main.tsx`, the hooks' `import.meta.main` blocks) | no process under test reaches those lines. Where the glue was worth measuring, the answer was to split the question out of the entry point — see [what the coverage number leaves out](what-the-coverage-number-leaves-out.md) — not to plant against a line that never runs |
+
+What is left is a real question rather than a category: `packages/http/src/ui/
+theme.ts` is a table of constants whose only honest assertion would be a second
+copy of the same table. It stays unnamed until there is a check that is not
+that.
+
+The distinction worth keeping: *unnamed because nothing can go red* is a fact
+about the harness, and *unnamed because nobody looked* is debt. Both this
+section's list and the two defects above came out of asking which one a given
+file was.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
