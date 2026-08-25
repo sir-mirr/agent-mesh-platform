@@ -2478,6 +2478,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-01"],
   },
   {
+    id: "the-dashboard-refresh-refreshes-nothing",
+    defect: "the refresh stops advancing the tick the reads depend on, so the button does nothing. It still highlights, the screen still looks current, and the numbers are whatever they were when the page loaded \u2014 an operator presses it precisely when they doubt what is on screen, and gets the same answer back with no way to tell it was not re-read.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "              onClick={() => setRefreshTick((t) => t + 1)}",
+    to: "              onClick={() => setRefreshTick((t) => t)}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-ACT-02"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
