@@ -24,6 +24,16 @@
  * suite, and knowing both is the difference between one broken thing and two.
  * The summary names every step that failed, and the exit code is 1 if any did.
  *
+ * ## It holds none of the output
+ *
+ * Each step's streams are inherited, so the bytes go straight out. Reading them
+ * into a string here would put a second, unbounded copy of the run in memory —
+ * `fe-codex` caught that in review, and the number behind it is measured in
+ * this repository: one jsdom failure serialised 248 MB, of which a pipe handed
+ * back 787 KB. Whoever needs a summary already keeps a bounded one; `gate.ts`
+ * captures its child's last megabyte and reads the counts out of that. Two
+ * captures of the same bytes, one of them unbounded, is not redundancy.
+ *
  * `AGENT_MESH_VERIFY_STEPS` replaces the step list with a JSON array of
  * `{name, command}` — how the suite exercises this without running the whole
  * repository twice.
@@ -57,26 +67,16 @@ function steps(): Step[] {
   return parsed;
 }
 
-/** The last few lines, which is what a summary of a passing suite is. */
-function tail(text: string, lines: number): string {
-  return text.trimEnd().split("\n").slice(-lines).join("\n");
-}
-
 const failed: string[] = [];
 
 for (const step of steps()) {
   console.log(`--- ${step.name}`);
-  const proc = Bun.spawn(step.command, { stdout: "pipe", stderr: "pipe" });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  const said = (out + err).trimEnd();
-  console.log(said.length === 0 ? "(no output)" : tail(said, 6));
-  // The code is taken from the process, not inferred from what it printed: a
-  // suite can print a summary and still exit non-zero, and a tool can print
-  // nothing and be fine.
+  const proc = Bun.spawn(step.command, { stdout: "inherit", stderr: "inherit" });
+  const code = await proc.exited;
+  console.log(`--- ${step.name}: exit ${code}`);
+  // Taken from the process, never inferred from what it printed: a suite can
+  // print a clean summary and still exit non-zero — bun does exactly that when
+  // a file fails to load.
   if (code !== 0) failed.push(`${step.name} (exit ${code})`);
 }
 

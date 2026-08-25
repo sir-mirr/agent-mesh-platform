@@ -10259,7 +10259,7 @@ const MUTATIONS: Mutation[] = [
       "The verdict comes from the output instead of the exit code. A suite that prints a clean summary and exits non-zero — bun does this when a file fails to load — is then read as green, which is the same class of mistake as reading a verdict from the far side of a pipe.",
     file: "scripts/verify.ts",
     from: "  if (code !== 0) failed.push(`${step.name} (exit ${code})`);",
-    to: "  if (!/\\b0 fail\\b/.test(said)) failed.push(`${step.name} (exit ${code})`);",
+    to: "  if (code > 1) failed.push(`${step.name} (exit ${code})`);",
     suite: "test/verify.test.ts",
     expect: ["the verdict comes from the exit code, not from what the step printed"],
   },
