@@ -9923,6 +9923,96 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
     expect: ["names the single audit event a reader opened, not just that they read"],
   },
+  {
+    id: "the-cli-mark-lets-the-message-it-names-back-in",
+    defect:
+      "The drain's high-water comparison went from `>` to `>=`, so the newest message is printed again on the next check. The same mark file is read by the turn hook, so the duplicate is not confined to the terminal somebody typed in.",
+    file: "scripts/fe-mailbox.ts",
+    from: "      : messages.filter((m) => m.id > mark);",
+    to: "      : messages.filter((m) => m.id >= mark);",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["prints what is new, and only once"],
+  },
+  {
+    id: "the-cli-first-run-replays-the-whole-inbox",
+    defect:
+      "With no mark yet, the filter that keeps a first run from printing the entire mailbox went away. Nothing is ever deleted there, so the first check on a fresh machine prints every message ever sent to this agent.",
+    file: "scripts/fe-mailbox.ts",
+    from: "      ? messages.filter((m) => m.isRead !== true)",
+    to: "      ? messages",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["the first run ever takes the mailer's word for what is unread"],
+  },
+  {
+    id: "a-peek-spends-the-mail-it-was-only-looking-at",
+    defect:
+      "Peeking started advancing the high-water mark. The command exists to look without consuming, and the mark it moves belongs to the turn hook — so mail read once by a person is never delivered to the agent at all.",
+    file: "scripts/fe-mailbox.ts",
+    from: "  console.log(`[fe-mailbox] Total messages: ${messages.length}, current high-water mark: ${mark}`);",
+    to: "  console.log(`[fe-mailbox] Total messages: ${messages.length}, current high-water mark: ${mark}`);\n  writeMark(messages.reduce((max, m) => (m.id > max ? m.id : max), mark ?? 0));",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["leaves the mark where it found it, so the next check still delivers"],
+  },
+  {
+    id: "a-peek-calls-everything-new",
+    defect:
+      "The seen/new distinction collapsed to new. A peek is how somebody checks whether the agent has already been given a message, and a listing that says NEW against every line answers that question wrongly for every line.",
+    file: "scripts/fe-mailbox.ts",
+    from: "    const isNew = mark === null ? !m.isRead : m.id > mark;",
+    to: "    const isNew = true;",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["says which messages have been seen before"],
+  },
+  {
+    id: "an-empty-body-is-posted-as-mail",
+    defect:
+      "The empty-body guard stopped applying, so a mistyped send posts a blank message. The mailbox is never cleared, so the blank stays in the audit record between two messages that meant something.",
+    file: "scripts/fe-mailbox.ts",
+    from: "  if (!body || body.trim().length === 0) {",
+    to: "  if (false) {",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["an empty body is refused rather than posted"],
+  },
+  {
+    id: "a-refused-send-is-reported-as-a-send",
+    defect:
+      "A rejected POST stopped saying what the mailer answered. The sender then reads a success line for a message that was never accepted, and waits for a reply to mail that does not exist.",
+    file: "scripts/fe-mailbox.ts",
+    from: "      console.error(`Failed to send mail: HTTP ${res.status}`);",
+    to: "      console.log(`[fe-mailbox] Sent mail to ${to}`);",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["a mailer that refuses the post fails the command rather than reporting a send"],
+  },
+  {
+    id: "a-mailer-that-answered-an-error-reads-as-an-empty-inbox",
+    defect:
+      "A non-200 from the mailer stopped being reported, leaving the same output as an inbox with nothing in it. A mailer that is broken and a mailer with no mail are the two states a person checks for, and this makes them one line.",
+    file: "scripts/fe-mailbox.ts",
+    from: "      console.error(`Mailbox returned status ${res.status}`);",
+    to: "      console.log(`[fe-mailbox] No messages in mailbox for ${AGENT_ID}.`);",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["a mailer answering with an error is not read as an empty inbox"],
+  },
+  {
+    id: "a-mistyped-command-drains-the-inbox",
+    defect:
+      "The command stopped being read from the arguments, so every invocation is a check — including a typo, and including `peek`. Draining is the one thing this tool does that cannot be undone: the mark moves and the turn hook never sees those messages.",
+    file: "scripts/fe-mailbox.ts",
+    from: "const command = args[0] ?? \"check\";",
+    to: "const command = \"check\";",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["is told what the commands are, not silently treated as a check"],
+  },
+  {
+    id: "a-body-in-a-file-is-sent-as-its-own-filename",
+    defect:
+      "`--file` stopped reading the file and posted the flag and the path instead. Bodies are up to 10 MB precisely so a diff or an error transcript can go in one; this sends the two words naming it.",
+    file: "scripts/fe-mailbox.ts",
+    from: "      body = readFileSync(args[3], \"utf8\");",
+    to: "      body = args.slice(2).join(\" \");",
+    suite: "test/fe-mailbox.test.ts",
+    expect: ["a body given as a file is sent whole, newlines and all"],
+  },
 ];
 
 /**
