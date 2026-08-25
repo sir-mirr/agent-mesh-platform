@@ -8,12 +8,22 @@ export interface SignatureFact {
 
 export interface AuditEventItem {
   id: string;
+  eventType: string | null;
   timestamp: string;
-  sender: string;
-  recipient: string;
+  identity: string | null;
+  actor: string | null;
+  readTarget: string | null;
+  changeFrom: string | null;
+  changeTo: string | null;
+  isMessage: boolean;
+  sender: string | null;
+  recipient: string | null;
   sentBy: string | null;
-  contentLength: number;
-  rawContent: string;
+  contentLength: number | null;
+  rawContent: string | null;
+  rawPayload: unknown;
+  /** Whether the returned payload contains a message/content field at all. */
+  containsContent: boolean;
   /** True when the server supplied its redaction sentinel instead of a body. */
   redacted: boolean;
   /** `integrity.digest_matches` — computed when the response was built. */
@@ -23,19 +33,75 @@ export interface AuditEventItem {
 
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringField(...values: unknown[]): string | null {
+  return values.find((value): value is string => typeof value === "string" && value.length > 0) ?? null;
+}
+
+function payloadHasContent(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(payloadHasContent);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(([key, nested]) => key === "content" || payloadHasContent(nested));
+}
+
+function payloadHasWithheldContent(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(payloadHasWithheldContent);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(([key, nested]) =>
+    (key === "content" && typeof nested === "string" && /^\[content withheld\b/i.test(nested))
+    || payloadHasWithheldContent(nested));
+}
+
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
   const data = await apiClient<any>("/api/v1/audit/events");
   const list = Array.isArray(data) ? data : data.events ?? [];
-  return list.map((item: any) => {
-    const payload = item.payload || {};
-    const msg = payload.message || payload;
-    const sender = msg.from || msg.sender || item.sender || item.identity || item.producer_id || "unknown";
-    const recipient = msg.to || msg.recipient || item.recipient || item.target || "unknown";
-    const sentBy = msg.sent_by || msg.carrier || item.carrier || (item.identity && item.identity !== sender ? item.identity : null);
-    const content = typeof msg.content === "string" ? msg.content : (typeof payload.content === "string" ? payload.content : (typeof item.content === "string" ? item.content : (payload ? JSON.stringify(payload) : "")));
-    const redacted = /^\[content withheld\b/i.test(content);
-    const contentLength = item.content_length ?? msg.content_length ?? payload.content_length ?? content.length;
-    const timestamp = item.occurred_at || item.stored_at || item.timestamp || item.ts || "—";
+  return list.map((item: any, index: number) => {
+    const rawPayload: unknown = item.payload ?? null;
+    const payload = isRecord(rawPayload) ? rawPayload : {};
+    const message = isRecord(payload.message) ? payload.message : null;
+    const eventType = typeof item.event_type === "string"
+      ? item.event_type
+      : typeof payload.event_type === "string"
+        ? payload.event_type
+        : null;
+    const isMessage = message !== null || Boolean(eventType?.includes(".message."));
+    const sender = isMessage
+      ? stringField(message?.from, message?.sender, item.sender, item.identity, item.producer_id)
+      : null;
+    const recipient = isMessage
+      ? stringField(message?.to, message?.recipient, item.recipient, item.target)
+      : null;
+    const sentBy = isMessage
+      ? stringField(
+        message?.sent_by,
+        message?.carrier,
+        item.carrier,
+        typeof item.identity === "string" && item.identity !== sender ? item.identity : null,
+      )
+      : null;
+    const content = typeof message?.content === "string"
+      ? message.content
+      : typeof payload.content === "string"
+        ? payload.content
+        : typeof item.content === "string"
+          ? item.content
+          : null;
+    const containsContent = payloadHasContent(rawPayload) || item.content !== undefined;
+    const redacted = payloadHasWithheldContent(rawPayload)
+      || (typeof item.content === "string" && /^\[content withheld\b/i.test(item.content));
+    const measuredLength = item.content_length ?? message?.content_length ?? payload.content_length;
+    const contentLength = typeof measuredLength === "number"
+      ? measuredLength
+      : content === null
+        ? null
+        : content.length;
+    const timestamp = stringField(item.occurred_at, item.stored_at, item.timestamp, item.ts) ?? "—";
+    const identity = stringField(item.identity, payload.identity, item.producer_id);
+    const actor = stringField(payload.actor, item.actor, identity);
+    const change = isRecord(payload.change) ? payload.change : {};
     
     let attestationObj: any = null;
     if (typeof item.attestation === "string") {
@@ -69,15 +135,24 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
         : { signed: false, algorithm: null, keyId: null };
 
     return {
-      id: item.event_id || item.id || `evt_${Math.random().toString(36).slice(2, 8)}`,
+      id: item.event_id || item.id || `event-${index + 1}`,
+      eventType,
       timestamp,
+      identity,
+      actor,
+      readTarget: typeof change.read === "string" ? change.read : null,
+      changeFrom: typeof change.from === "string" ? change.from : null,
+      changeTo: typeof change.to === "string" ? change.to : null,
+      isMessage,
       sender,
       recipient,
       sentBy,
       contentLength,
       rawContent: content,
+      rawPayload,
+      containsContent,
       redacted,
-        digestMatches,
+      digestMatches,
       signature,
     };
   });

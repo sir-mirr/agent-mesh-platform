@@ -4,19 +4,95 @@ import {
   PageHeader,
   Breadcrumbs,
   DataTable,
-  StatusBadge,
   Button,
 } from "@/components/index.ts";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
-
 import { fetchAuditEvents, type AuditEventItem } from "@/api/audit.ts";
+
+type Translate = (key: string, fallback?: string) => string;
+
+function messageAction(eventType: string | null, t: Translate): string {
+  switch (eventType) {
+    case "mesh.message.sent":
+    case "channel.message.sent":
+      return t("audit.event.messageSent", "message sent");
+    case "mesh.message.delivered":
+      return t("audit.event.messageDelivered", "message delivered");
+    case "mesh.message.pending":
+      return t("audit.event.messagePending", "waiting for delivery");
+    case "mesh.message.recalled":
+      return t("audit.event.messageRecalled", "message recalled");
+    case "channel.message.received":
+      return t("audit.event.messageReceived", "message received");
+    default:
+      return t("audit.event.messageRecorded", "message event recorded");
+  }
+}
+
+/**
+ * The sentence an operator reads before deciding whether the original record
+ * is worth opening. Only message events have a route; all other event kinds
+ * keep their own subjects instead of fabricating a recipient.
+ */
+function eventSummary(item: AuditEventItem, t: Translate): string {
+  const when = item.timestamp === "—"
+    ? t("audit.event.timeMissing", "time not recorded")
+    : item.timestamp;
+
+  if (item.eventType === "mesh.identity.audit_read") {
+    const action = item.readTarget === "list"
+      ? t("audit.event.auditReadList", "read the audit list")
+      : item.readTarget
+        ? `${t("audit.event.auditReadOne", "read audit event")} ${item.readTarget}`
+        : t("audit.event.auditRead", "read the audit log");
+    const subject = item.actor ?? item.identity;
+    return `${subject ? `${subject} ` : ""}${action} · ${when}`;
+  }
+
+  if (item.eventType === "mesh.identity.type_changed") {
+    const transition = item.changeFrom !== null || item.changeTo !== null
+      ? `${item.changeFrom ?? "—"} → ${item.changeTo ?? "—"}`
+      : null;
+    return [
+      item.identity,
+      t("audit.event.identityTypeChanged", "identity type changed"),
+      transition,
+      when,
+    ].filter(Boolean).join(" · ");
+  }
+
+  if (item.isMessage) {
+    const route = item.sender && item.recipient
+      ? `${item.sender} → ${item.recipient}`
+      : item.sender ?? item.recipient;
+    const carrier = item.sentBy && item.sentBy !== item.sender
+      ? `${t("audit.event.carrier", "carried by")} ${item.sentBy}`
+      : null;
+    const length = item.contentLength === null ? null : `${item.contentLength} B`;
+    return [route, messageAction(item.eventType, t), carrier, length, when]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  return [
+    item.actor ?? item.identity,
+    t("audit.event.recorded", "audit event recorded"),
+    when,
+  ].filter(Boolean).join(" · ");
+}
+
+function prettyJson(value: unknown): string {
+  const rendered = JSON.stringify(value, null, 2);
+  return rendered === undefined ? "null" : rendered;
+}
 
 export function AuditLogsPage() {
   const { t } = useI18n();
   const { hasCapability } = useRbac();
   const [events, setEvents] = useState<AuditEventItem[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   /** `refused` 와 `unreachable` 은 사람에게 다른 문장이다 — 하나는 권한, 하나는 서버다. */
@@ -29,6 +105,7 @@ export function AuditLogsPage() {
     setIsLoading(true);
     setIsError(false);
     setFailure(null);
+    setExpanded(new Set());
     fetchAuditEvents()
       .then((list) => {
         setEvents(list || []);
@@ -42,94 +119,41 @@ export function AuditLogsPage() {
       .finally(() => setIsLoading(false));
   };
 
-  // Load real audit events on mount
   React.useEffect(() => {
     loadAuditEvents();
   }, []);
 
+  const toggleOriginal = (id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const columns = [
     {
-      key: "timestamp",
-      header: t("audit.col.time", "타임스탬프"),
+      key: "event",
+      header: t("audit.col.event", "Event"),
+      width: "48%",
       render: (item: AuditEventItem) => (
-        <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
-          {item.timestamp}
+        <span data-testid="audit-summary" style={{ fontSize: "0.86rem", lineHeight: 1.5 }}>
+          {eventSummary(item, t)}
         </span>
       ),
     },
     {
-      key: "route",
-      header: t("audit.col.route", "송수신 경로"),
-      render: (item: AuditEventItem) => (
-        <span style={{ fontSize: "0.82rem" }}>
-          <code>{item.sender}</code> → <code>{item.recipient}</code>
-          {item.sentBy && item.sentBy !== item.sender && (
-            <span style={{ marginLeft: 6, fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-              {" "}(carried by <code>{item.sentBy}</code>)
-            </span>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: "contentLength",
-      header: t("audit.col.length", "길이 (Bytes)"),
-      render: (item: AuditEventItem) => (
-        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-          {item.contentLength} B
-        </span>
-      ),
-    },
-    {
-      key: "content",
-      header: t("audit.col.content", "메시지 본문"),
-      render: (item: AuditEventItem) => {
-        if (!canReadContent || item.redacted) {
-          return (
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.75rem",
-                color: "var(--color-warning)",
-                background: "var(--status-warning-bg)",
-                padding: "2px 6px",
-                borderRadius: "var(--radius-sm)",
-              }}
-              data-testid="audit-withheld"
-            >
-              {t("audit.held", "본문을 볼 권한이 없어 숨겼습니다")}
-            </span>
-          );
-        }
-        return (
-          <code
-            data-testid="audit-body"
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.75rem",
-              background: "var(--color-bg-surface-sub)",
-              padding: "2px 6px",
-              borderRadius: "var(--radius-sm)",
-            }}
-          >
-            {typeof item.rawContent === "string" ? item.rawContent : JSON.stringify(item.rawContent)}
-          </code>
-        );
-      },
-    },
-    {
-      key: "signatureInfo",
-      header: t("audit.col.signature", "서명 · 무결성"),
+      key: "record",
+      header: t("audit.col.record", "Record state"),
+      width: "27%",
       render: (item: AuditEventItem) => (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {/* Arrival, which is measured. Nothing about verification, which is not. */}
           <span data-testid="audit-signature" style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
             {item.signature.signed
-              ? `${t("audit.signed", "서명 있음")} · ${item.signature.algorithm ?? t("auditAlgUnknown", "알고리즘 미상")}${item.signature.keyId ? ` · ${item.signature.keyId}` : ""}`
-              : t("audit.unsigned", "미서명")}
+              ? `${t("audit.signed", "signed")} · ${item.signature.algorithm ?? t("auditAlgUnknown", "algorithm unknown")}${item.signature.keyId ? ` · ${item.signature.keyId}` : ""}`
+              : t("audit.unsigned", "unsigned")}
           </span>
-          {/* `digest_matches` is computed when the response is built, so this one
-              is a reading. A false is tampering and takes the colour that says so. */}
           <span
             data-testid="audit-integrity"
             data-digest={item.digestMatches === null ? "unmeasured" : item.digestMatches ? "matches" : "broken"}
@@ -145,13 +169,77 @@ export function AuditLogsPage() {
             }}
           >
             {item.digestMatches === true
-              ? t("audit.intact", "무결 — 본문이 기록된 해시와 일치")
+              ? t("audit.intact", "intact — the body matches the recorded hash")
               : item.digestMatches === false
-              ? t("audit.tampered", "변조 — 본문이 기록된 해시와 다름")
-              : t("audit.unmeasured", "무결성 미측정")}
+                ? t("audit.tampered", "tampered — the body differs from the recorded hash")
+                : t("audit.unmeasured", "integrity not measured")}
           </span>
         </div>
       ),
+    },
+    {
+      key: "original",
+      header: t("audit.col.original", "Original record"),
+      width: "25%",
+      render: (item: AuditEventItem) => {
+        const isExpanded = expanded.has(item.id);
+        const canRevealOriginal = !item.containsContent || (canReadContent && !item.redacted);
+        const panelId = `audit-original-${item.id}`;
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => toggleOriginal(item.id)}
+              aria-expanded={isExpanded}
+              aria-controls={panelId}
+            >
+              {isExpanded
+                ? t("audit.original.hide", "Hide original JSON")
+                : t("audit.original.show", "View original JSON")}
+            </Button>
+            {isExpanded && (
+              <div id={panelId} style={{ width: "100%" }}>
+                {canRevealOriginal ? (
+                  <pre
+                    data-testid="audit-raw-json"
+                    style={{
+                      margin: 0,
+                      maxWidth: 480,
+                      maxHeight: 280,
+                      overflow: "auto",
+                      whiteSpace: "pre",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "0.72rem",
+                      lineHeight: 1.45,
+                      color: "var(--color-text-secondary)",
+                      background: "var(--color-bg-surface-sub)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: 10,
+                    }}
+                  >
+                    {prettyJson(item.rawPayload)}
+                  </pre>
+                ) : (
+                  <span
+                    data-testid="audit-withheld"
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--color-warning)",
+                      background: "var(--status-warning-bg)",
+                      padding: "2px 6px",
+                      borderRadius: "var(--radius-sm)",
+                    }}
+                  >
+                    {t("audit.held", "Content hidden because this account cannot read message bodies")}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -160,11 +248,11 @@ export function AuditLogsPage() {
       <Breadcrumbs />
 
       <PageHeader
-        title={t("audit.title", "참가자 본문 감사 스트림")}
-        subtitle={t("audit.subtitle", "본문 열람 권한이 있으면 메시지 내용을 보여주고, 없으면 내용만 숨깁니다")}
+        title={t("audit.title", "Audit events")}
+        subtitle={t("audit.subtitle", "Each event is summarized in plain language; open the original JSON only when you need it")}
         actions={
           <Button variant="secondary" size="sm" onClick={loadAuditEvents}>
-            {t("audit.refreshBtn", "↻ 감사 로그 갱신")}
+            {t("audit.refreshBtn", "↻ Refresh Audit Logs")}
           </Button>
         }
       />
@@ -182,11 +270,11 @@ export function AuditLogsPage() {
         }}
       >
         <span>
-          {t("audit.status.label", "현재 권한 상태")}:{" "}
+          {t("audit.status.label", "What this account can read")}: {" "}
           <strong>
             {canReadContent
-              ? t("audit.status.has", "✓ 메시지 본문을 볼 수 있습니다. 열람 기록은 감사 로그에 남습니다")
-              : t("audit.status.none", "⚠️ 메시지 본문은 숨기고 시간·경로·길이만 표시합니다")}
+              ? t("audit.status.has", "✓ Original records can include message bodies. Each content read is recorded")
+              : t("audit.status.none", "⚠️ Event summaries remain visible; message bodies stay hidden")}
           </strong>
         </span>
       </div>
@@ -198,13 +286,11 @@ export function AuditLogsPage() {
         isLoading={isLoading}
         isError={isError}
         errorMessage={
-          // "연결 실패 **또는** 권한 오류" — 둘 다 적어두면 사람은 어느 쪽인지 모른다.
-          // 서버는 이미 갈라서 답했고, `ApiError.refused` 가 그것을 들고 있다.
           failure === "refused"
             ? refusedText(t, missing)
-            : t("audit.error", "감사 로그를 불러오지 못했습니다 (서버가 답하지 않았습니다).")
+            : t("audit.error", "Could not read the audit log (the server did not answer).")
         }
-        emptyMessage={t("audit.empty", "현재 기록된 감사 로그 데이터가 없습니다.")}
+        emptyMessage={t("audit.empty", "No audit entries are recorded.")}
       />
     </div>
   );
