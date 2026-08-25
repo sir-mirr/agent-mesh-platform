@@ -2138,6 +2138,29 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // it has no measurement, not that measuring is impossible.
     expect(downText).toContain("미측정");
 
+    // **Each card, not the page** — the repair `SC-DOWN-02` already carries,
+    // and this scenario did not. A page-wide `toContain` is satisfied by
+    // either counter saying it was not measured, so the one beside it could
+    // print `0` for a mailbox nothing answered about and nothing here would
+    // fail. Measured: a mutation doing exactly that left this scenario, and
+    // every other scenario in the file, green.
+    const kpi = async (label: string) => await page.locator(`[data-kpi="${label}"]`).innerText();
+    const [leasedCard, availableCard] = [await kpi("처리 중인 메시지"), await kpi("대기 중인 메시지")];
+    expect(
+      {
+        leasedUnmeasured: leasedCard.includes("미측정"),
+        leasedSaidWhy: leasedCard.includes("서버 연결 불가"),
+        availableUnmeasured: availableCard.includes("미측정"),
+        availableSaidWhy: availableCard.includes("서버 연결 불가"),
+      },
+      "a lease queue counter printed a number, or printed no reason, while its route was unreachable",
+    ).toEqual({
+      leasedUnmeasured: true,
+      leasedSaidWhy: true,
+      availableUnmeasured: true,
+      availableSaidWhy: true,
+    });
+
     await context.close();
   });
 
