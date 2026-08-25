@@ -267,6 +267,48 @@ change to the tool can retire an entry without touching it.** Nothing in the
 entry moved, nothing in the code it mutates moved, and it stopped measuring
 anything. Only a full pass noticed.
 
+## Text nothing parses
+
+The admin console shipped a browser script that no browser could parse, for
+four months, and every check the repository has was green throughout.
+
+```js
+const SUMMARY_WINDOW_MOBILE_LABEL: Record<string, string> = { … }
+```
+
+A TypeScript annotation, in JavaScript, inside a TypeScript template literal.
+The compiler reads that block as a *string*, so nothing in the build looked at
+it as code; the route answered 200 with the bytes intact; the page rendered its
+shell. A browser refuses the whole block on that line, and every control on the
+page — approve, deny, the tabs, the audit tail, the usage panel — is wired
+through it. The console drew and did nothing.
+
+Three separate mechanisms each had a reason not to catch it:
+
+| | |
+|---|---|
+| the type checker | the script is a string, and a string is well-typed |
+| `ui-fetch.test.ts` | reads that string with a regex; a regex has no opinion on whether text parses |
+| the coverage floor | `packages/http/src/ui/` is excluded from the denominator by the owner's decision |
+
+The last is the one to sit with. The exclusion is a deliberate choice and this
+does not overturn it — but the region *behind* it is where a four-month defect
+matured, and that is the argument the choice has to answer. Exclusions are not
+neutral: they decide where rot is allowed to be quiet.
+
+The guard is three lines and belongs beside the render, not in a browser:
+`new Function(block)` is the same parse a browser does, so a script that
+survives it runs. `/sw.js` already had exactly this test, written for exactly
+this reason — *no compiler sees it, so a stray bracket ships green* — and the
+five rendered pages simply had not been given one. Where a check like that
+exists for one file, ask what else is the same shape.
+
+Parsing is the floor, not the ceiling. The same harness executes the script
+with `fetch`, `alert` and `confirm` passed in as parameters, which shadow the
+globals for the whole block, so what a refused approval does is a question with
+an answer now: the operator is told the status and the server's reason, and the
+list is not re-read as though the write had worked.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
