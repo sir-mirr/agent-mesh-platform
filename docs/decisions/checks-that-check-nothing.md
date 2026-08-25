@@ -241,6 +241,32 @@ than the last, which the same function had already been fixed for once. **What
 a run printed and what a run quoted are not the same text**, and a checker that
 cannot tell them apart is reading its own reflection.
 
+## What a full pass finds that a filtered one cannot
+
+The manifest is usually run one entry at a time: plant a defect, watch the named
+suite object, move on. Rehearsing all 924 entries in eight shards before a
+nightly turned up four things, and **every one of them passed when its entry was
+run alone**.
+
+| what it looked like | what it was |
+|---|---|
+| an entry not caught | its mutation flooded a poller until a `beforeEach` timed out, so the verdict stopped at "a hook died" and no run of it could ever say anything else |
+| an entry not caught | the check read two agent pickers as one set, so the picker the defect had not touched answered for the one it had |
+| the same entry, again | `group` holds the agent's kind, so the filter emptied the sender list — and a rule keyed on *what a picker shows* cannot see a picker showing nothing |
+| an entry not caught | a later change to the verdict made the entry's direction hold either way, retiring it silently |
+| five entries not caught, together | the machine lost its network mid-run; every scenario failed on `net::ERR_INTERNET_DISCONNECTED` |
+
+The last one is the expensive shape. Five findings against five guards that were
+never asked is a day spent in the wrong files, and it is produced by a tool
+whose job is to prevent exactly that. It reports `inconclusive` now — but only
+when the expected message is absent, because a scenario asserting what an
+offline console does prints that string while working perfectly.
+
+The fourth is the one worth remembering when reading a green manifest: **a
+change to the tool can retire an entry without touching it.** Nothing in the
+entry moved, nothing in the code it mutates moved, and it stopped measuring
+anything. Only a full pass noticed.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
