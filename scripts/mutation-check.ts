@@ -10932,6 +10932,76 @@ const MUTATIONS: Mutation[] = [
     suite: "test/orphan-grants.test.ts",
     expect: ["names the subject, its grants, and who granted them"],
   },
+  {
+    id: "the-playground-sends-and-draws-no-receipt",
+    defect:
+      "The send fired, the mesh accepted it, and the panel stayed on its \"send a message and the receipt appears here\" prompt. The operator has no way to tell that from a send that never left: this screen exists to show the signed delivery receipt, and a screen that dispatches silently is the one shape it must not have.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "      setReceipt(await sendMessageApi({ to: recipient, text: sent }));",
+    to: "      await sendMessageApi({ to: recipient, text: sent });",
+    suite: "test/fe-render.test.ts",
+    expect: ["performs message dispatch in playground"],
+  },
+  {
+    id: "the-telemetry-refresh-refreshes-nothing",
+    defect:
+      "The telemetry refresh button stopped re-reading. Nothing on this screen streams — the figures are whatever the mount fetched — so a dead refresh leaves an operator reading minutes-old numbers while pressing the control that exists to say they are current. Same shape as the dashboard's, one screen over.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "          <Button variant=\"secondary\" size=\"sm\" onClick={loadTelemetry}>",
+    to: "          <Button variant=\"secondary\" size=\"sm\" onClick={() => {}}>",
+    suite: "test/fe-render.test.ts",
+    expect: ["clicks refresh on platform telemetry"],
+  },
+  {
+    id: "the-audit-refresh-refreshes-nothing",
+    defect:
+      "The audit log refresh stopped issuing its request. An audit screen is read while something is happening, and the events that matter are the ones that arrived since it was opened — a button that redraws the same page is worse than an absent one, because the reader concludes nothing new happened.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "          <Button variant=\"secondary\" size=\"sm\" onClick={loadAuditEvents}>",
+    to: "          <Button variant=\"secondary\" size=\"sm\" onClick={() => {}}>",
+    suite: "test/fe-render.test.ts",
+    expect: ["clicks audit logs refresh"],
+  },
+  {
+    id: "the-create-group-button-opens-nothing",
+    defect:
+      "The group-create button stopped opening its modal, so the only route to a new group on this console is gone while the control that names it stays on the page, enabled, under the capability check that says the operator may use it.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "            <Button variant=\"primary\" size=\"sm\" onClick={() => setIsCreateOpen(true)}>",
+    to: "            <Button variant=\"primary\" size=\"sm\" onClick={() => setIsCreateOpen(false)}>",
+    suite: "test/fe-render.test.ts",
+    expect: ["performs interactive group creation modal open"],
+  },
+  {
+    id: "a-refused-code-issue-announces-success",
+    defect:
+      "The failure branch reported the success copy, so a pairing code the server refused to issue was announced as issued. The operator then waits for an agent to redeem a credential that does not exist, and finds out from the other side. This is the mutation SC-WRITE-08 was green under until its wait covered both outcomes.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: "        message: `${t(\"reg.toast.failed\", \"연결 코드 발급 실패\")}: ${err.message}`,",
+    to: "        message: `${t(\"reg.toast.issued\", \"연결 코드 발급\")}: ${err.message}`,",
+    suite: "test/fe-render.test.ts",
+    expect: ["handles a pairing-code abort"],
+  },
+  {
+    id: "the-recipient-picker-drops-a-row",
+    defect:
+      "The recipient picker dropped the first agent the server handed it. A destination missing from the list is not a destination an operator can pick, and nothing on the screen says a row was withheld — the sender picker beside it still shows the whole registry, so the two disagree and neither says why.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "  const recipientAgents = agentsList;",
+    to: "  const recipientAgents = agentsList.slice(1);",
+    suite: "test/fe-render.test.ts",
+    expect: ["lists exactly the agents"],
+  },
+  {
+    id: "a-dead-queue-reports-zero-waiting",
+    defect:
+      "A registration queue that could not be read reported itself empty. `(0 대기)` is a claim about the mesh — nobody is waiting to be admitted — and here it was drawn from a request that was refused or never answered. The screen has copy for both real answers, `(권한 없음)` and `(통신 불가)`, and this makes it say neither.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: "        setIsError(true);",
+    to: "        setIsError(false);",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /creator/register safely"],
+  },
 ];
 
 /**

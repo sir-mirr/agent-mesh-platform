@@ -2457,6 +2457,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.goto(`${viteBaseUrl}/creator/register`, { waitUntil: "networkidle" });
       await settled(page);
       expect(await page.locator("input, textarea").count()).toBeGreaterThanOrEqual(1);
+
+      // **The form survives a dead API, and the queue does not call the silence
+      // empty.** Counting inputs was the whole check, and the only defect that
+      // could fail it is a crash: the queue heading underneath was free to
+      // report "(0 대기)" — no pending requests — for a list the screen never
+      // managed to read. Both halves are what "safely" means here, and the
+      // second is the one an operator acts on.
+      const shown = await page.locator("#root").innerText();
+      expect({
+        unreachable: shown.includes("통신 불가"),
+        claimsEmpty: /\(0 대기\)/.test(shown),
+      }).toEqual({ unreachable: true, claimsEmpty: false });
     } finally {
       await context.close().catch(() => {});
     }
