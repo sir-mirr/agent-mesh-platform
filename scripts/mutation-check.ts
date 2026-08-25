@@ -4937,12 +4937,12 @@ const MUTATIONS: Mutation[] = [
     // rather than letting the entry sit checking nothing, which is the whole
     // reason that check exists — it caught this one within a minute of
     // `fe-console` landing four new `SC-WRITE-*` scenarios.
-    from: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 21 |",
-    to: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 19 |",
+    from: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 22 |",
+    to: "· **받아들여진 쓰기에 화면이 영수증을 그리는가** | 20 |",
     suite: "test/scenario-ids.test.ts",
     // Moved with the anchor: the number the mutant produces is the number the
     // expected message quotes.
-    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 19"],
+    expect: ["every count it states is the count the tests hold", "SC-WRITE-*: table says 20"],
   },
   {
     id: "inventory-axis-missing-row",
