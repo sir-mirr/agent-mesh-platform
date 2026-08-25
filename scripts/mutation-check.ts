@@ -1875,6 +1875,33 @@ const MUTATIONS: Mutation[] = [
     expect: ["is also the one the e2e harness hands to a runner"],
   },
   {
+    id: "the-mesh-client-regenerates-its-key-each-run",
+    defect: "the reference client makes a new key on every run instead of reusing the one on disk, so it supersedes its own pending proposal \u2014 the fingerprint an operator is comparing against is gone before they finish comparing it, and it presents as approval being broken rather than as a client bug",
+    file: "scripts/mesh-mail.ts",
+    from: "  if (existsSync(path)) {",
+    to: "  if (false) {",
+    suite: "test/mesh-mail.test.ts",
+    expect: ["is kept, so a proposal an operator is comparing survives the next run"],
+  },
+  {
+    id: "a-private-key-is-left-readable-to-the-machine",
+    defect: "the identity's private key is written world-readable, so any account on the box can sign as that agent",
+    file: "scripts/mesh-mail.ts",
+    from: "    chmodSync(path, 0o600);",
+    to: "    chmodSync(path, 0o644);",
+    suite: "test/mesh-mail.test.ts",
+    expect: ["is written where only its owner can read it"],
+  },
+  {
+    id: "the-signature-covers-a-nonce-that-was-never-sent",
+    defect: "the preimage is built with a nonce of its own rather than the one in the frame, so every signed call carries a signature over bytes the hub did not receive \u2014 the failure mode this client spells its envelope out by hand to avoid",
+    file: "scripts/mesh-mail.ts",
+    from: "          kid: id.fingerprint,\n          nonce,\n          iat,",
+    to: "          kid: id.fingerprint,\n          nonce: randomUUID(),\n          iat,",
+    suite: "test/mesh-mail.test.ts",
+    expect: ["the signature verifies over the bytes the hub received"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
