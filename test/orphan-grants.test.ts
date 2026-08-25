@@ -12,10 +12,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+// `openTestDb`, not `new Database`: the harness sets `busy_timeout` and
+// `greppable.test.ts` enforces that every store in this tree is opened through
+// it. These are throwaway fixtures in a temp directory, and the rule is still
+// right — an exception is a copy of the setting that is missing.
+import { openTestDb } from "./harness";
 
 const REPAIR = resolve(import.meta.dir, "..", "scripts", "orphan-grants.ts");
 
@@ -34,7 +39,7 @@ function deployment(opts: {
 }): string {
   const dir = mkdtempSync(join(tmpdir(), "orphan-grants-"));
 
-  const local = new Database(join(dir, "agent-mesh.db"), { create: true });
+  const local = openTestDb(join(dir, "agent-mesh.db"), { create: true });
   local.exec(`CREATE TABLE local_users (username TEXT PRIMARY KEY, role TEXT)`);
   local.exec(`CREATE TABLE users (github_id INTEGER PRIMARY KEY, github_login TEXT, role TEXT)`);
   local.exec(`CREATE TABLE agent_registry (id TEXT PRIMARY KEY)`);
@@ -47,7 +52,7 @@ function deployment(opts: {
   for (const id of opts.registry ?? []) local.prepare(`INSERT INTO agent_registry (id) VALUES (?)`).run(id);
   local.close();
 
-  const agents = new Database(join(dir, "agents.db"), { create: true });
+  const agents = openTestDb(join(dir, "agents.db"), { create: true });
   agents.exec(`CREATE TABLE agents (identity TEXT PRIMARY KEY, type TEXT)`);
   agents.exec(`CREATE TABLE role_grants (
     tenant TEXT NOT NULL, subject TEXT NOT NULL, capability TEXT NOT NULL,
@@ -75,7 +80,7 @@ async function run(dir: string, ...args: string[]) {
 }
 
 const subjects = (dir: string): string[] => {
-  const db = new Database(join(dir, "agents.db"), { readonly: true });
+  const db = openTestDb(join(dir, "agents.db"), { readonly: true });
   try {
     return (db.prepare(`SELECT subject FROM role_grants ORDER BY subject`).all() as Array<{ subject: string }>)
       .map((r) => r.subject);
