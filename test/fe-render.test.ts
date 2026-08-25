@@ -3215,21 +3215,33 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         return r.continue();
       });
 
-      // Click on a node or send button
-      const nodeEl = page.locator("circle, g[cursor='pointer']").first();
-      if (await nodeEl.count() > 0) {
-        await nodeEl.click({ force: true });
-        await attemptOver(page);
-        const sendBtn = page.locator("button:has-text('메시지 전송'), button:has-text('빠른 전송'), button:has-text('전송')").first();
-        if (await sendBtn.count() > 0) {
-          await sendBtn.click();
-          await showsMatch(page, /실패|오류|통신/);
-          const rootText = await page.locator("#root").innerText();
-          expect(rootText).not.toContain("성공적으로 전송되었습니다");
-          expect(rootText).not.toContain("전송이 완료되었습니다");
-          expect(rootText).toMatch(/실패|오류|통신/);
-        }
-      }
+      // **Two nested `if`s stood here**, each skipping quietly when its
+      // locator matched nothing — the same shape `SC-WRITE-03` removed, and
+      // with the same consequence: a renamed control made this scenario send
+      // nothing, assert nothing and pass. What it then asserted could not have
+      // failed either. `성공적으로 전송되었습니다` and `전송이 완료되었습니다`
+      // are not strings this package has ever held, so both absences were
+      // true of every screen ever drawn.
+      //
+      // Found by planting: the screen gives the outcome its own marker and its
+      // own status, which is what a scenario about *which* outcome should read.
+      const node = page.locator('[data-testid="topology-agent"]').first();
+      await node.waitFor({ timeout: 5000 });
+      await node.click({ force: true });
+
+      const sendBtn = page.locator("button:has-text('Send Message')").first();
+      await sendBtn.waitFor({ timeout: 5000 });
+      await sendBtn.click();
+
+      const result = page.locator('[data-testid="topology-send-result"]');
+      await result.waitFor({ timeout: 5000 });
+      expect(
+        {
+          status: await result.getAttribute("data-message-status"),
+          role: await result.getAttribute("role"),
+        },
+        "a send the server never received was reported as one it did",
+      ).toEqual({ status: "error", role: "alert" });
     });
   });
 

@@ -2442,6 +2442,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-03"],
   },
   {
+    id: "a-send-that-never-left-the-browser-is-reported-as-accepted",
+    defect: "the quick send's failure branch files itself under the hub's accepted status, so a `POST` that never reached the server draws the outcome panel as a delivery and reads it out to assistive technology as an ordinary status rather than an alert. The operator has no other place to learn the message was not sent.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "        status: \"error\",\n        type: \"error\",",
+    to: "        status: \"accepted\",\n        type: \"success\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-04"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
