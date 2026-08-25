@@ -2460,6 +2460,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-22"],
   },
   {
+    id: "the-refused-panels-say-nothing-about-being-refused",
+    defect: "the banner that names withheld panels stops rendering, and the screen goes back to what agent-mesh-local-pm measured \u2014 999 bytes before the refusal and 999 after. Two of the four reads behind this page are ungated, so they answer, the cells fill, and the panels the account may not read draw `\u2014`: exactly what an idle mesh looks like. The screen makes no statement about the backend at all.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "          {telemetry.refused.length > 0 && (",
+    to: "          {false && (",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-04"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
