@@ -3233,15 +3233,25 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await sendBtn.waitFor({ timeout: 5000 });
       await sendBtn.click();
 
+      // **The panel arrives before the answer does.** It is drawn as soon as
+      // the send starts, holding `sending`, and the failure replaces it when
+      // the aborted request rejects. Waiting for the element caught the
+      // in-flight render: green alone and on `test/`, red under the coverage
+      // run, which is the worst verdict a scenario can give — it says
+      // something about the machine and nothing about the code. So the wait is
+      // for the status to stop being `sending`, which is the render that
+      // answers.
       const result = page.locator('[data-testid="topology-send-result"]');
       await result.waitFor({ timeout: 5000 });
-      expect(
-        {
+      const settled = await eventually(
+        async () => ({
           status: await result.getAttribute("data-message-status"),
           role: await result.getAttribute("role"),
-        },
-        "a send the server never received was reported as one it did",
-      ).toEqual({ status: "error", role: "alert" });
+        }),
+        (v) => v.status !== "sending",
+      );
+      expect(settled, "a send the server never received was reported as one it did")
+        .toEqual({ status: "error", role: "alert" });
     });
   });
 
