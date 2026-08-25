@@ -21,12 +21,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { captureRun, condenseRun, markFor, readVerdict, restoreFile, summarise, verdictsAgree } from "../scripts/mutation-verdict";
+import { captureRun, condenseRun, gitRestore, markFor, readVerdict, restoreFile, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
 const EXPECT = ["a socket that dropped the frame"];
 
@@ -722,5 +722,66 @@ describe("restoring a planted file", () => {
 
     expect({ ok: out.ok, tries: out.tries }).toEqual({ ok: false, tries: 1 });
     expect(out.stderr).toContain("did not match");
+  });
+});
+
+/**
+ * The seam between that decision and git.
+ *
+ * `restoreFile` is measured with a fake runner because a test that spawned git
+ * would measure git. This one is the opposite half and has to spawn: what
+ * `gitRestore` claims is that a file comes back, and only a real repository can
+ * say whether it did.
+ */
+describe("the runner that actually restores", () => {
+  /** A repository with one committed file, and that file edited. */
+  function dirtyRepo(): { dir: string; file: string } {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-restore-"));
+    for (const args of [
+      ["init", "-q", "-b", "main"],
+      ["config", "user.email", "probe@example.com"],
+      ["config", "user.name", "probe"],
+    ]) {
+      Bun.spawnSync(["git", ...args], { cwd: dir });
+    }
+    writeFileSync(join(dir, "guard.ts"), "export const KEEP = true;\n");
+    Bun.spawnSync(["git", "add", "-A"], { cwd: dir });
+    Bun.spawnSync(["git", "commit", "-qm", "one"], { cwd: dir });
+    writeFileSync(join(dir, "guard.ts"), "export const KEEP = false;\n");
+    return { dir, file: "guard.ts" };
+  }
+
+  test("puts the planted file back", () => {
+    const { dir, file } = dirtyRepo();
+    try {
+      expect(gitRestore(file, dir).code).toBe(0);
+      expect(readFileSync(join(dir, file), "utf8")).toBe("export const KEEP = true;\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports git's own words when there is nothing to restore", () => {
+    const { dir } = dirtyRepo();
+    try {
+      const out = gitRestore("no-such-file.ts", dir);
+      expect(out.code).not.toBe(0);
+      expect(out.stderr).toContain("no-such-file.ts");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("waits with the real clock when no wait was handed in", () => {
+    // The default parameter, which is the one line of this that a fake runner
+    // cannot reach. One 150 ms wait, once.
+    let asked = 0;
+    const out = restoreFile("a.ts", () =>
+      asked++ === 0
+        ? { code: 1, stderr: "Another git process seems to be running in this repository" }
+        : { code: 0, stderr: "" },
+    );
+
+    expect({ ok: out.ok, tries: out.tries }).toEqual({ ok: true, tries: 2 });
   });
 });

@@ -397,8 +397,16 @@ export function restoreFile(
   return { ok: false, tries: attempts, stderr };
 }
 
-/** `restoreFile`'s runner, against the git in this checkout. */
-export function gitRestore(path: string): { code: number; stderr: string } {
-  const done = Bun.spawnSync(["git", "checkout", "--", path], { stdout: "pipe", stderr: "pipe" });
+/**
+ * `restoreFile`'s runner, against a real git.
+ *
+ * `cwd` is a parameter with no default in the caller: the script runs in the
+ * tree it is mutating, and a test needs a repository of its own to check that
+ * this actually puts a file back. Nothing else about it is worth mocking —
+ * that a file comes back is the one thing this function claims.
+ */
+export function gitRestore(path: string, cwd?: string): { code: number; stderr: string } {
+  const where = cwd === undefined ? {} : { cwd };
+  const done = Bun.spawnSync(["git", "checkout", "--", path], { ...where, stdout: "pipe", stderr: "pipe" });
   return { code: done.exitCode, stderr: new TextDecoder().decode(done.stderr) };
 }

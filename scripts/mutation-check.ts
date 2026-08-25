@@ -2217,6 +2217,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["waits out a lock somebody else is holding"],
   },
   {
+    id: "the-restore-asks-git-for-something-that-is-not-a-restore",
+    defect: "the command that puts a planted file back stops being a checkout, so it exits zero having done nothing and every entry after it runs against a tree still holding the previous mutation. Exit zero is what the caller reads, so the run reports itself restored the whole way down.",
+    file: "scripts/mutation-verdict.ts",
+    from: "  const done = Bun.spawnSync([\"git\", \"checkout\", \"--\", path], { ...where, stdout: \"pipe\", stderr: \"pipe\" });",
+    to: "  const done = Bun.spawnSync([\"git\", \"status\", \"--\", path], { ...where, stdout: \"pipe\", stderr: \"pipe\" });",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["puts the planted file back"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
