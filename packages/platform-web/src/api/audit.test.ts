@@ -45,16 +45,49 @@ describe("fetchAuditEvents", () => {
     expect(row!.contentLength).toBe(4096);
   });
 
+  it("detects content fields recursively even when their value is not a message string", async () => {
+    answer({ events: [{ event_id: "e1", payload: { nested: { content: { secret: true } } } }] });
+    expect((await fetchAuditEvents())[0]!.containsContent).toBe(true);
+
+    answer({ events: [{ event_id: "e2", payload: { nested: {
+      content: "[content withheld — requires audit.read.content]",
+    } } }] });
+    expect((await fetchAuditEvents())[0]!.redacted).toBe(true);
+  });
+
   it("does not call the sender its own carrier", async () => {
     answer({ events: [{ event_id: "e1", identity: "a", payload: { message: { from: "a", to: "b" } } }] });
     expect((await fetchAuditEvents())[0]!.sentBy).toBe(null);
   });
 
-  it("says unknown rather than guessing when no name is carried", async () => {
+  it("does not invent message endpoints for an event that has no message", async () => {
     answer({ events: [{ event_id: "e1", payload: {} }] });
     const [row] = await fetchAuditEvents();
-    expect(row!.sender).toBe("unknown");
-    expect(row!.recipient).toBe("unknown");
+    expect({ isMessage: row!.isMessage, sender: row!.sender, recipient: row!.recipient })
+      .toEqual({ isMessage: false, sender: null, recipient: null });
+  });
+
+  it("keeps an audit read's type, actor, target and original payload", async () => {
+    const payload = {
+      event_type: "mesh.identity.audit_read",
+      actor: "platform-admin",
+      change: { read: "list", query: {} },
+    };
+    answer({ events: [{ event_id: "e1", occurred_at: "t", identity: "platform-admin", payload }] });
+    const [row] = await fetchAuditEvents();
+    expect({
+      eventType: row!.eventType,
+      actor: row!.actor,
+      readTarget: row!.readTarget,
+      rawPayload: row!.rawPayload,
+      isMessage: row!.isMessage,
+    }).toEqual({
+      eventType: "mesh.identity.audit_read",
+      actor: "platform-admin",
+      readTarget: "list",
+      rawPayload: payload,
+      isMessage: false,
+    });
   });
 
   it("reports a signature as a fact, not as a sentence", async () => {

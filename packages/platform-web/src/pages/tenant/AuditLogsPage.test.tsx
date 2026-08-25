@@ -91,10 +91,9 @@ const TAMPERED = en("audit.tampered");
 const UNMEASURED = en("audit.unmeasured");
 const BANNER_HELD = en("audit.status.has");
 const BANNER_WITHHELD = en("audit.status.none");
-const COL_TIME = en("audit.col.time");
-const COL_ROUTE = en("audit.col.route");
-const COL_LENGTH = en("audit.col.length");
-const COL_CONTENT = en("audit.col.content");
+const COL_EVENT = en("audit.col.event");
+const COL_ORIGINAL = en("audit.col.original");
+const SHOW_ORIGINAL = en("audit.original.show");
 
 const AUDIT = "/api/v1/audit/events";
 const ME = "/auth/me";
@@ -253,7 +252,7 @@ const refresh = async () => {
 };
 
 /**
- * One row, found by the identity in its route cell.
+ * One row, found by the identity in its human summary.
  *
  * `bodyText()` holds every value wherever it landed, so a body-wide
  * `toContain` passes with two facts in each other's slots. The row is looked up
@@ -262,8 +261,8 @@ const refresh = async () => {
  * sentence the screen made up, out of words the server really sent.
  */
 const rowOf = (sender: string): HTMLElement => {
-  const cell = [...document.querySelectorAll("tbody code")].find((c) => c.textContent === sender);
-  const row = cell?.closest("tr");
+  const row = [...document.querySelectorAll("tbody tr")]
+    .find((candidate) => candidate.querySelector("[data-testid='audit-summary']")?.textContent?.includes(sender));
   if (!row) throw new Error(`no row names ${sender} as its sender`);
   return row as HTMLElement;
 };
@@ -281,6 +280,15 @@ const integrityTextOf = (sender: string): string =>
   rowOf(sender).querySelector("[data-testid='audit-integrity']")?.textContent ?? "";
 const digestOf = (sender: string): string | null =>
   rowOf(sender).querySelector("[data-testid='audit-integrity']")?.getAttribute("data-digest") ?? null;
+const summaryOf = (subject: string): string =>
+  rowOf(subject).querySelector("[data-testid='audit-summary']")?.textContent ?? "";
+const openOriginal = (subject: string): HTMLElement => {
+  const button = [...rowOf(subject).querySelectorAll("button")]
+    .find((candidate) => candidate.textContent === SHOW_ORIGINAL);
+  if (!button) throw new Error(`no original-record button for ${subject}`);
+  fireEvent.click(button);
+  return rowOf(subject);
+};
 
 /**
  * One audit row as `audit-query.ts` shapes it: the message under
@@ -578,31 +586,28 @@ describe("SPEC § 11.0's content boundary", () => {
       } },
     }) ] });
     await mount();
-    // The screen draws its own redaction marker rather than passing the
-    // server's placeholder through as if it were a body — the difference is
-    // what an operator reads as "you are not allowed to see this" instead of
-    // "this message said the following".
-    //
-    // **The length on this path is deliberately not asserted.** `content_length`
-    // is the one measurement § 11.0 keeps for a metadata-only reader, and the
-    // route carries it beside the body it replaced — `payload.message.
-    // content_length` — while `api/audit.ts` looks for `item.content_length` at
-    // the top level and finds nothing, so the column falls back to the length of
-    // the placeholder. Pinning that number here would pin the defect; it is
-    // reported instead.
-    expect(screen.queryByTestId("audit-withheld")).not.toBe(null);
-    expect(screen.queryByTestId("audit-body")).toBe(null);
+    // No record body is painted by default. The measured length remains in the
+    // summary, and opening the record draws operator prose rather than the
+    // server's machine sentinel.
+    expect(summaryOf("sender-a")).toContain("4096 B");
+    expect(screen.queryByTestId("audit-withheld")).toBe(null);
+    expect(screen.queryByTestId("audit-raw-json")).toBe(null);
+    openOriginal("sender-a");
+    expect(screen.queryByTestId("audit-withheld")?.textContent).toBe(en("audit.held"));
+    expect(screen.queryByTestId("audit-raw-json")).toBe(null);
+    expect(bodyText()).not.toContain("[content withheld");
     expect(bodyText()).toContain(BANNER_WITHHELD);
     expect(bodyText()).not.toContain(BANNER_HELD);
   });
 
-  it("shows the body to a session the server said holds the content grant", async () => {
+  it("shows the body only after a content reader opens the original record", async () => {
     meRoute = session([METADATA, CONTENT]);
     auditRoute = answers(200, { ok: true, events: [withBody("sender-a", SECRET)] });
     await mount();
-    // The control for every withholding assertion in this file: without it a
-    // screen that never renders a body at all passes all of them.
-    expect(screen.getByTestId("audit-body").textContent).toBe(SECRET);
+    expect(bodyText()).not.toContain(SECRET);
+    expect(screen.queryByTestId("audit-raw-json")).toBe(null);
+    openOriginal("sender-a");
+    expect(screen.getByTestId("audit-raw-json").textContent).toContain(SECRET);
     expect(screen.queryByTestId("audit-withheld")).toBe(null);
     expect(bodyText()).toContain(BANNER_HELD);
   });
@@ -611,6 +616,8 @@ describe("SPEC § 11.0's content boundary", () => {
     meRoute = session([METADATA, CONTENT]);
     auditRoute = answers(200, { ok: true, events: [withBody("sender-a", "[content withheld]")] });
     await mount();
+    expect(bodyText()).not.toContain("[content withheld]");
+    openOriginal("sender-a");
     expect(screen.queryByTestId("audit-withheld")?.textContent).toBe(en("audit.held"));
     expect(bodyText()).not.toContain("[content withheld]");
   });
@@ -623,7 +630,10 @@ describe("SPEC § 11.0's content boundary", () => {
     meRoute = session([]);
     auditRoute = answers(200, { ok: true, events: [withBody("sender-a", SECRET)] });
     await mount();
-    expect(screen.queryByTestId("audit-body")).toBe(null);
+    expect(bodyText()).not.toContain(SECRET);
+    openOriginal("sender-a");
+    expect(screen.queryByTestId("audit-withheld")).not.toBe(null);
+    expect(screen.queryByTestId("audit-raw-json")).toBe(null);
     expect(bodyText()).not.toContain(SECRET);
   });
 
@@ -633,6 +643,8 @@ describe("SPEC § 11.0's content boundary", () => {
     meRoute = stillReading;
     auditRoute = answers(200, { ok: true, events: [withBody("sender-a", SECRET)] });
     await mount();
+    expect(bodyText()).not.toContain(SECRET);
+    openOriginal("sender-a");
     expect(screen.queryByTestId("audit-withheld")).not.toBe(null);
     expect(bodyText()).not.toContain(SECRET);
   });
@@ -648,24 +660,22 @@ describe("SPEC § 11.0's content boundary", () => {
     // draws the redaction as an error takes the whole audit trail away from the
     // account § 11.0 wrote the mode for.
     expect(logState()).toEqual({ ...quiet, rows: 1 });
-    expect(cellUnder("sender-a", COL_ROUTE)).toBe("sender-a → recipient-b");
+    expect(summaryOf("sender-a")).toContain("sender-a → recipient-b");
     expect(digestOf("sender-a")).toBe("matches");
     expect(signatureOf("sender-a")).toBe(`${SIGNED} · ed25519 · kid-1`);
   });
 });
 
-describe("the metadata columns", () => {
-  it("puts each fact under the heading that names it", async () => {
+describe("message event summaries", () => {
+  it("puts route, action, length, and time in one readable event line", async () => {
     meRoute = session([METADATA, CONTENT]);
     auditRoute = answers(200, { ok: true, events: [withBody("sender-a", SECRET)] });
     await mount();
-    // Every one of these is a word the server sent, so a body-wide `toContain`
-    // passes with any two of them exchanged — and a row that says the right
-    // things in the wrong columns is still a row saying something untrue.
-    expect(cellUnder("sender-a", COL_TIME)).toBe("2026-02-03T04:05:06.000Z");
-    expect(cellUnder("sender-a", COL_ROUTE)).toBe("sender-a → recipient-b");
-    expect(cellUnder("sender-a", COL_LENGTH)).toBe(`${SECRET.length} B`);
-    expect(cellUnder("sender-a", COL_CONTENT)).toBe(SECRET);
+    expect(cellUnder("sender-a", COL_EVENT)).toBe(
+      `sender-a → recipient-b · ${en("audit.event.messageReceived")} · ${SECRET.length} B · 2026-02-03T04:05:06.000Z`,
+    );
+    expect(cellUnder("sender-a", COL_ORIGINAL)).toBe(SHOW_ORIGINAL);
+    expect(bodyText()).not.toContain(SECRET);
   });
 
   it("does not invent a time for a row that carried none", async () => {
@@ -675,11 +685,8 @@ describe("the metadata columns", () => {
       payload: { message: { from: "sender-a", to: "recipient-b", content: "hello" } },
     }] });
     await mount();
-    // The alternative is a fabricated arrival time — a value an operator would
-    // sort an audit trail by that no server ever sent. Asserted as "carries no
-    // number" rather than as the placeholder's literal text, because the
-    // placeholder is free to change and being mistakable for a timestamp is not.
-    expect(cellUnder("sender-a", COL_TIME)).not.toMatch(/[0-9]/);
+    expect(summaryOf("sender-a")).toContain(en("audit.event.timeMissing"));
+    expect(summaryOf("sender-a")).not.toContain("2026-");
   });
 
   it("names a carrier only when something else carried the message", async () => {
@@ -694,23 +701,73 @@ describe("the metadata columns", () => {
       } } }),
     ] });
     await mount();
-    expect(cellUnder("sender-proxied", COL_ROUTE)).toContain("gateway-x");
+    expect(summaryOf("sender-proxied")).toContain(`${en("audit.event.carrier")} gateway-x`);
     // § 8.2 keeps the sender and the carrier as separate facts. A screen that
     // dropped the comparison would print "(carried by …)" on every row and
     // claim a proxy on a mesh that has never had one — compared whole, because
     // the carrier's name here is the sender's.
-    expect(cellUnder("sender-direct", COL_ROUTE)).toBe("sender-direct → recipient-b");
+    expect(summaryOf("sender-direct")).not.toContain(en("audit.event.carrier"));
   });
 
-  it("says unknown rather than guessing a name the message did not carry", async () => {
-    // A row carrying no name in any of the fields the mapping falls through —
-    // no message, no identity, no producer.
+  it("does not turn a recipient-less event into an unknown-to-unknown message", async () => {
     auditRoute = answers(200, { ok: true, events: [{ event_id: "evt-1", payload: {} }] });
     await mount();
-    // "unknown" in both slots is a reading of the row. A blank cell, an
-    // `undefined`, or a name copied from the other end of the route would each
-    // put something on screen that nobody recorded — and the arrow makes it
-    // read as a delivery that happened between two named parties.
-    expect(cellUnder("unknown", COL_ROUTE)).toBe("unknown → unknown");
+    const summary = screen.getByTestId("audit-summary").textContent ?? "";
+    expect(summary).toContain(en("audit.event.recorded"));
+    expect(summary).not.toContain("unknown");
+    expect(summary).not.toContain("→");
+  });
+});
+
+describe("event-shaped audit rows", () => {
+  it("describes an audit read without a fake recipient and reveals its JSON only on request", async () => {
+    meRoute = session([METADATA, CONTENT]);
+    const payload = {
+      schema_version: 1,
+      event_id: "evt-read-1",
+      event_type: "mesh.identity.audit_read",
+      occurred_at: "2026-08-25T03:04:05.000Z",
+      correlation_id: "platform-admin",
+      identity: "platform-admin",
+      actor: "platform-admin",
+      change: { read: "list", query: {} },
+    };
+    auditRoute = answers(200, { ok: true, events: [event({
+      event_id: "evt-read-1",
+      event_type: "mesh.identity.audit_read",
+      occurred_at: "2026-08-25T03:04:05.000Z",
+      identity: "platform-admin",
+      payload,
+    })] });
+
+    await mount();
+
+    expect(bodyText()).toContain("platform-admin read the audit list · 2026-08-25T03:04:05.000Z");
+    expect(bodyText()).not.toContain("unknown");
+    expect(bodyText()).not.toContain(JSON.stringify(payload));
+    expect(screen.queryByTestId("audit-raw-json")).toBe(null);
+
+    fireEvent.click(screen.getByRole("button", { name: "View original JSON" }));
+    expect(screen.getByTestId("audit-raw-json").textContent).toContain('"event_type": "mesh.identity.audit_read"');
+  });
+
+  it("describes an identity type transition without a message route", async () => {
+    auditRoute = answers(200, { ok: true, events: [event({
+      event_id: "evt-type-1",
+      event_type: "mesh.identity.type_changed",
+      identity: "worker-1",
+      payload: {
+        event_type: "mesh.identity.type_changed",
+        identity: "worker-1",
+        change: { from: "agent", to: "service" },
+      },
+    })] });
+
+    await mount();
+
+    expect(summaryOf("worker-1")).toBe(
+      `worker-1 · ${en("audit.event.identityTypeChanged")} · agent → service · 2026-02-03T04:05:06.000Z`,
+    );
+    expect(summaryOf("worker-1")).not.toContain("unknown");
   });
 });

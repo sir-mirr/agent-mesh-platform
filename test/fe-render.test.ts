@@ -837,13 +837,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(rowCount).toBeGreaterThanOrEqual(4);
 
     const mainText = await page.locator("#root").innerText();
-    // D-99 & D-67 assertions:
-    expect(mainText).toContain("agent-alpha → admin (carried by agent-proxy)");
+    // D-99 & D-67 assertions. Message events alone retain a route, while the
+    // route's meaning and carrier are written as a sentence beside it.
+    expect(mainText).toContain("agent-alpha → admin · 메시지를 보냄");
     expect(mainText).toContain("admin → agent-alpha");
-    expect((mainText.match(/carried by agent-proxy/g) || []).length).toBe(2);
+    expect((mainText.match(/전달자 agent-proxy/g) || []).length).toBe(2);
     // D-67 ① Ledger outer timestamp vs payload inner timestamp assertion:
     expect(mainText).toContain("14:10:00");
     expect(mainText).not.toContain("14:09:58");
+    // Original payload bytes are not the default reading surface. The first
+    // record remains reachable through the explicit disclosure control.
+    expect(await page.locator('[data-testid="audit-raw-json"]').count()).toBe(0);
+    await page.getByRole("button", { name: "원문 JSON 보기" }).first().click();
+    expect(await page.locator('[data-testid="audit-raw-json"]').count()).toBe(1);
+    expect(await page.locator('[data-testid="audit-raw-json"]').first().innerText()).toContain("14:09:58");
     // D-25 & D-28 assertions:
     expect(mainText).not.toContain("VERIFIED");
     expect(mainText).toContain("서명 있음 · ed25519");
@@ -973,10 +980,24 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const rowCount = await page.locator("table tbody tr, [role='row']").count();
     expect(rowCount).toBeGreaterThanOrEqual(4);
 
-    const bodyCells = await page.locator("tbody tr td:nth-child(4)").allInnerTexts();
-    expect(bodyCells.length).toBeGreaterThanOrEqual(4);
-    expect(await page.locator("tbody tr td:nth-child(4) [data-testid='audit-withheld']").count())
-      .toBe(bodyCells.length);
+    const summaries = await page.locator('[data-testid="audit-summary"]').count();
+    expect(summaries).toBeGreaterThanOrEqual(4);
+    expect(await page.locator('[data-testid="audit-raw-json"]').count()).toBe(0);
+    expect(await page.locator('[data-testid="audit-withheld"]').count()).toBe(0);
+
+    // The placeholder is operator prose and appears only after the person asks
+    // for an original record. Open every seeded message record so this checks
+    // the entire page rather than one convenient row.
+    const closed = page.getByRole("button", { name: "원문 JSON 보기" });
+    while (await closed.count()) await closed.first().click();
+    const withheld = await page.locator('[data-testid="audit-withheld"]').count();
+    const safeOriginals = await page.locator('[data-testid="audit-raw-json"]').count();
+    // Four seeded message events carry content and stay withheld. Content-free
+    // audit-read events can expose their own query record to this metadata
+    // reader; treating those as message bodies is the category error T-041
+    // removes from the screen.
+    expect(withheld).toBeGreaterThanOrEqual(4);
+    expect(withheld + safeOriginals).toBe(summaries);
 
     const mainText = await page.locator("#root").innerText();
     expect(mainText).toContain("본문을 볼 권한이 없어 숨겼습니다");
@@ -4366,15 +4387,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const { page, context } = await createViewerAuthedPage(cookie, "/tenant/audits");
       try {
         await settled(page);
+        const rows = await page.locator('[data-testid="audit-summary"]').count();
+        await page.getByRole("button", { name: "원문 JSON 보기" }).first().click();
         const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
-        // **부제가 그 기능을 설명한다** — `[content withheld]` 라는 문자열은 이 화면의
-        // 소개문에도 있어서, 본문을 다 보여주는 판에서도 페이지에는 그 말이 있다.
-        // 첫 판이 그래서 통과했다(같은 화면, 같은 함정, 기록된 유형 10④).
-        // 그래서 **셀을 센다**: 가려진 칸이 있고 본문 칸이 없어야 한다.
         return {
-          drewRows: (await page.locator('[data-testid="audit-withheld"], [data-testid="audit-body"]').count()) > 0,
+          drewRows: rows > 0,
           withheldCells: await page.locator('[data-testid="audit-withheld"]').count(),
-          bodyCells: await page.locator('[data-testid="audit-body"]').count(),
+          rawRecords: await page.locator('[data-testid="audit-raw-json"]').count(),
+          bodyLeaked: text.includes("hello security via proxy"),
           blamedPermission: /권한이 없습니다|may not read/.test(text),
         };
       } finally {
@@ -4404,8 +4424,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       "the session was refused on the screen it holds, or told silence where the server refused",
     ).toEqual({
       drewRows: true,
-      withheldCells: held.withheldCells,
-      bodyCells: 0,
+      withheldCells: 1,
+      rawRecords: 0,
+      bodyLeaked: false,
       blamedPermission: false,
       saysRefused: true,
       leaksMachineKey: false,
