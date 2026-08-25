@@ -311,10 +311,13 @@ list is not re-read as though the write had worked.
 
 ## What stays unnamed, and why that is not a backlog
 
-The manifest names 966 mutations across 180 files. Ten source files carry no
+The manifest names 978 mutations across 184 files. Nine source files carry no
 entry at all, and counting them as debt would be the wrong reading — for most
 of them, an entry is not possible in the form this harness takes, which is *a
 mutation that makes a named suite go red*.
+
+(The count moves with the manifest and is not maintained here; what is worth
+keeping is the sorting below.)
 
 | | |
 |---|---|
