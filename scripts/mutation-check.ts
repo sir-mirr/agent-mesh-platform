@@ -10263,6 +10263,36 @@ const MUTATIONS: Mutation[] = [
     suite: "test/verify.test.ts",
     expect: ["the verdict comes from the exit code, not from what the step printed"],
   },
+  {
+    id: "a-rename-leaves-the-web-user-behind",
+    defect:
+      "The rename stops moving the `users` row and moves only `local_users`. `administratorLogins()` reads both, so the old name stays an administrator and `seedLegacyAdminGrants()` re-grants it the full set on every start — twelve live grants for a name no account answers to, which is how the owner found this on the running stack.",
+    file: "packages/http/src/rename-account.ts",
+    from: "  ['users', 'github_login'],",
+    to: "",
+    suite: "packages/http/src/rename-account.test.ts",
+    expect: ["the old name does not regrow its grants on the next start"],
+  },
+  {
+    id: "an-agents-grants-are-called-orphans",
+    defect:
+      "The repair stops counting mesh identities as subjects, so every capability granted to an agent is reported as belonging to nobody — and `--repair` then deletes an agent's permissions along with the only record of why they were granted.",
+    file: "scripts/orphan-grants.ts",
+    from: "  ...column(agents, `SELECT identity FROM agents`),",
+    to: "",
+    suite: "test/orphan-grants.test.ts",
+    expect: ["an agent's grants are not orphans"],
+  },
+  {
+    id: "the-orphan-report-finds-nothing-to-report",
+    defect:
+      "The filter inverts to keep only subjects that exist, so the report is always empty and the repair always removes nothing. A tool that answers *clean* on a deployment carrying twelve dead administrator grants is worse than no tool, because somebody checked.",
+    file: "scripts/orphan-grants.ts",
+    from: "const orphans = rows.filter((r) => !answers.has(r.subject));",
+    to: "const orphans = rows.filter((r) => answers.has(r.subject));",
+    suite: "test/orphan-grants.test.ts",
+    expect: ["names the subject, its grants, and who granted them"],
+  },
 ];
 
 /**

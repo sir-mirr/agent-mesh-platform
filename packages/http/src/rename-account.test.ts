@@ -15,7 +15,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 process.env.JWT_SECRET ||= "rename-account-probe";
 
 const { renameLocalAccount } = await import("./rename-account");
-const { renameSeededAdmin } = await import("./main.ts");
+const { renameSeededAdmin, seedLegacyAdminGrants } = await import("./main.ts");
 const {
   getDb, getLocalUser, admitLocalUser, insertMessage, listApprovedWebUserIds,
   SEED_ADMIN_USERNAME, LEGACY_SEED_ADMIN_USERNAME,
@@ -351,5 +351,68 @@ describe("the seeded administrator's rename", () => {
     // here can know which of the two the operator signs in with.
     expect(getLocalUser(LEGACY_SEED_ADMIN_USERNAME)).not.toBeNull();
     expect(getLocalUser(SEED_ADMIN_USERNAME)).not.toBeNull();
+  });
+});
+
+/**
+ * The web `users` table, which the rename did not know about.
+ *
+ * Found on the running stack by the owner, through the screens: the account
+ * permissions page listed `admin` and the local accounts page did not.
+ * `agent-mesh-local-pm` measured it — `/api/v1/admin/users` held only
+ * `platform-admin`, while `/api/v1/admin/grants` still carried twelve rows for
+ * subject `admin`, the same twelve `platform-admin` had.
+ *
+ * Deleting those rows would not have fixed it, and that is the part worth
+ * pinning. `administratorLogins()` reads **two** tables — `local_users` and
+ * `users` — and `seedLegacyAdminGrants()` re-grants the full set to every name
+ * it returns, on every start. So a `users` row still called by the old name
+ * regrows its grants the next time the service boots, and a repair that only
+ * removed grants would look correct until the next restart.
+ */
+describe("an account that is also a web user", () => {
+  const webUser = (login: string, role = "admin") => {
+    getDb()
+      .prepare(`INSERT INTO users (github_id, github_login, role) VALUES (?, ?, ?)`)
+      .run(Math.floor(Math.random() * 1e9) + 1000, login, role);
+    return login;
+  };
+  const webLogins = (): string[] =>
+    (getDb().prepare(`SELECT github_login FROM users`).all() as Array<{ github_login: string }>)
+      .map((r) => r.github_login);
+
+  afterEach(() => {
+    for (const login of webLogins()) {
+      if (login.startsWith("rn-")) getDb().prepare(`DELETE FROM users WHERE github_login = ?`).run(login);
+    }
+  });
+
+  test("moves the web user row too, so nothing still answers to the old name", async () => {
+    const from = await account();
+    const to = uniq("renamed");
+    written.push(to);
+    webUser(from);
+
+    expect(renameLocalAccount(from, to)).toMatchObject({ ok: true });
+    expect(webLogins()).toContain(to);
+    expect(webLogins()).not.toContain(from);
+  });
+
+  test("the old name does not regrow its grants on the next start", async () => {
+    // The failure exactly as the owner saw it: twelve rows under a name no
+    // account has, identical to the twelve the renamed account holds.
+    const from = await account();
+    const to = uniq("renamed");
+    written.push(to);
+    webUser(from);
+    renameLocalAccount(from, to);
+
+    // What a boot does.
+    seedLegacyAdminGrants();
+
+    const subjects = (agentsDb()
+      .prepare(`SELECT DISTINCT subject FROM role_grants`)
+      .all() as Array<{ subject: string }>).map((r) => r.subject);
+    expect(subjects).not.toContain(from);
   });
 });

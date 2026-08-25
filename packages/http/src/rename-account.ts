@@ -52,6 +52,13 @@ const LOCAL_REFERENCES: ReadonlyArray<readonly [string, string]> = [
   ['agent_registry', 'id'],
   ['policies', 'github_login'],
   ['push_subscriptions', 'github_login'],
+  // **`users`, not only `local_users`.** An installation can hold the same
+  // person under both, and `administratorLogins()` reads both — so a `users`
+  // row left under the old name is re-granted the full administrator set by
+  // `seedLegacyAdminGrants()` on every start. The owner found that as twelve
+  // grants for `admin` against an account list that had no `admin` in it, and
+  // deleting those rows would have fixed it until the next restart.
+  ['users', 'github_login'],
   ['local_users', 'username'],
 ]
 
