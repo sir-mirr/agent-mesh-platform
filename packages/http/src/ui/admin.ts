@@ -1526,7 +1526,7 @@ function renderAiUsageSummaryRow(acc) {
 // --- AI Usage iter2 (task #79) --- U-01 + D-01: reset 시간 강조 + ARIA
 // --- AI Usage M-01 mobile (task #80): 요약 박스는 compact reset 텍스트 사용 ---
 // --- AI Usage iter6 (task #80) C-01: data-mobile-label 속성 추가 (모바일 @media::before 축약 대응) ---
-const SUMMARY_WINDOW_MOBILE_LABEL: Record<string, string> = {
+const SUMMARY_WINDOW_MOBILE_LABEL = {
   '5시간 누적': '5h',
   '주간': '주간',
 };

@@ -10013,6 +10013,56 @@ const MUTATIONS: Mutation[] = [
     suite: "test/fe-mailbox.test.ts",
     expect: ["a body given as a file is sent whole, newlines and all"],
   },
+  {
+    id: "the-admin-console-ships-a-script-a-browser-refuses",
+    defect:
+      "A TypeScript annotation is left in the browser script — the exact line this repository shipped for months. The compiler never reads these scripts, because they live inside template literals, so nothing objected: the console rendered its shell and then did nothing at all, since every button on the page is wired through the one block a browser refuses whole.",
+    file: "packages/http/src/ui/admin.ts",
+    from: "const SUMMARY_WINDOW_MOBILE_LABEL = {",
+    to: "const SUMMARY_WINDOW_MOBILE_LABEL: Record<string, string> = {",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["the admin console hands the browser a script it can parse"],
+  },
+  {
+    id: "a-refused-admin-write-is-swallowed",
+    defect:
+      "The refusal check stopped looking at the answer, so a 403 on approve or deny reports nothing. The routes are gated on `user.admit`: an operator without it clicks approve, watches the same list come back, and cannot tell a refusal from an approval of somebody who reappears.",
+    file: "packages/http/src/ui/admin.ts",
+    from: "  if (res.ok) return false;",
+    to: "  return false;",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["a refusal reaches the operator, with what the server said"],
+  },
+  {
+    id: "a-refused-approval-refreshes-as-though-it-worked",
+    defect:
+      "The early return after a refusal went away, so the screen re-reads both lists on a write the server rejected. The refusal is drawn over immediately by a fresh render of the same pending queue — which is what the report exists to prevent.",
+    file: "packages/http/src/ui/admin.ts",
+    from: "  if (await reportIfRefused(res, login + ' 승인')) return;",
+    to: "  await reportIfRefused(res, login + ' 승인');",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["a refused approval does not re-read the list as though it had worked"],
+  },
+  {
+    id: "an-approval-is-posted-without-asking",
+    defect:
+      "The confirmation stopped guarding the write, so admitting somebody happens on the click that was about to be reconsidered. Approval grants an account access to the mesh and there is no undo on this screen.",
+    file: "packages/http/src/ui/admin.ts",
+    from: "  if (!confirm(login + ' 사용자를 승인하시겠습니까?')) return;",
+    to: "  confirm(login + ' 사용자를 승인하시겠습니까?');",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["declining the confirmation posts nothing at all"],
+  },
+  {
+    id: "a-push-subscription-the-server-refused-is-kept",
+    defect:
+      "The browser keeps a subscription the server would not store. It is worse than having none: none retries on the next visit, while this device believes it will be notified and goes quiet — the same end state as a subscription the server deleted, and nobody finds out for the same reason.",
+    file: "packages/http/src/ui/chat.ts",
+    from: "    await sub.unsubscribe().catch(() => {});",
+    to: "    void sub;",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["a subscription the server would not store is undone rather than left half-made"],
+  },
 ];
 
 /**
