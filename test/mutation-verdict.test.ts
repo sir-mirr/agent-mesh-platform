@@ -26,7 +26,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree } from "../scripts/mutation-verdict";
+import { captureRun, condenseRun, markFor, readVerdict, restoreFile, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
 const EXPECT = ["a socket that dropped the frame"];
 
@@ -656,4 +656,71 @@ describe("capturing a run that prints more than it keeps", () => {
       await rm(suite, { force: true });
     }
   }, 30_000);
+});
+
+/**
+ * Putting the file back, which is the one step that must not fail quietly.
+ *
+ * A restore that does not happen leaves the mutation in the tree, where the
+ * next `git add -A` stages it and a guard that guards nothing is one commit
+ * from permanent. That is the failure the manifest exists to prevent, arriving
+ * through the tool that proves it — and it has happened once, when a
+ * `git checkout --` lost a race for `index.lock` against another process in
+ * the `.git` two worktrees share.
+ *
+ * The runner and the wait are handed in. A test that spawned git would measure
+ * git, and one that slept would measure the clock.
+ */
+describe("restoring a planted file", () => {
+  const CONTENDED =
+    "fatal: Unable to create '/repo/.git/worktrees/main/index.lock': File exists.\n" +
+    "Another git process seems to be running in this repository";
+
+  /** A runner that fails the first `failures` times with `stderr`, then succeeds. */
+  const flaky = (failures: number, stderr: string) => {
+    const asked: string[] = [];
+    let left = failures;
+    return {
+      asked,
+      run: (path: string) => {
+        asked.push(path);
+        return left-- > 0 ? { code: 1, stderr } : { code: 0, stderr: "" };
+      },
+    };
+  };
+
+  test("asks once when git answers", () => {
+    const git = flaky(0, "");
+    expect(restoreFile("a.ts", git.run, () => {})).toEqual({ ok: true, tries: 1, stderr: "" });
+    expect(git.asked).toEqual(["a.ts"]);
+  });
+
+  test("waits out a lock somebody else is holding", () => {
+    const git = flaky(3, CONTENDED);
+    const waits: number[] = [];
+    const out = restoreFile("a.ts", git.run, (ms) => waits.push(ms));
+
+    expect({ ok: out.ok, tries: out.tries }).toEqual({ ok: true, tries: 4 });
+    // One wait per refusal, and none after the success.
+    expect(waits.length).toBe(3);
+  });
+
+  test("gives up with git's own words rather than looping forever", () => {
+    const git = flaky(99, CONTENDED);
+    const out = restoreFile("a.ts", git.run, () => {}, 5);
+
+    expect({ ok: out.ok, tries: out.tries }).toEqual({ ok: false, tries: 5 });
+    expect(out.stderr).toContain("index.lock");
+    expect(git.asked.length).toBe(5);
+  });
+
+  test("does not retry a failure that is not contention", () => {
+    // A path git cannot check out will not become one. Retrying it would turn
+    // a clear error into a delay and then the same error.
+    const git = flaky(99, "error: pathspec 'a.ts' did not match any file(s) known to git");
+    const out = restoreFile("a.ts", git.run, () => {});
+
+    expect({ ok: out.ok, tries: out.tries }).toEqual({ ok: false, tries: 1 });
+    expect(out.stderr).toContain("did not match");
+  });
 });

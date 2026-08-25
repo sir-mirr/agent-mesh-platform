@@ -341,3 +341,64 @@ export async function captureRun(
     await rm(log, { force: true });
   }
 }
+
+/**
+ * git's index lock, held for a moment by somebody else.
+ *
+ * Two worktrees of this repository are checked out at once — one agent per
+ * branch — and `.git` is shared between them, so an ordinary `git status` in
+ * either can hold an index lock while this script is restoring a file. The
+ * collision is brief and says so in its own words.
+ */
+const CONTENDED = /index\.lock|Another git process/i;
+
+export interface RestoreAttempt {
+  /** Did the file come back? */
+  ok: boolean;
+  /** How many times git was asked. Worth reporting: a retry is a fact about the machine. */
+  tries: number;
+  /** git's own words, when it did not come back. */
+  stderr: string;
+}
+
+/**
+ * Put a planted file back, waiting out a lock somebody else is holding.
+ *
+ * **A failed restore is the worst outcome this script has.** The mutation stays
+ * in the tree, the next `git add -A` stages it, and a guard that no longer
+ * guards anything is one commit from being permanent — the failure the whole
+ * manifest exists to prevent, produced by the tool that proves it.
+ *
+ * It happened: a `git checkout --` lost a race for `index.lock` against another
+ * process in the shared `.git`, threw, and took the run with it. The signal
+ * handler saved that tree; on the exit path it would not have, because it
+ * called `spawnSync` and never read the exit code — printing *restored* for a
+ * file that still held the mutation.
+ *
+ * So contention is waited out rather than treated as failure, and anything else
+ * fails immediately: a path git cannot check out is not going to become one.
+ * The runner and the wait are parameters because a test that spawned git would
+ * be measuring git, and one that slept would be measuring the clock.
+ */
+export function restoreFile(
+  file: string,
+  run: (path: string) => { code: number; stderr: string },
+  wait: (ms: number) => void = Bun.sleepSync,
+  attempts = 12,
+): RestoreAttempt {
+  let stderr = "";
+  for (let tries = 1; tries <= attempts; tries++) {
+    const result = run(file);
+    if (result.code === 0) return { ok: true, tries, stderr: "" };
+    stderr = result.stderr;
+    if (!CONTENDED.test(stderr)) return { ok: false, tries, stderr };
+    wait(150);
+  }
+  return { ok: false, tries: attempts, stderr };
+}
+
+/** `restoreFile`'s runner, against the git in this checkout. */
+export function gitRestore(path: string): { code: number; stderr: string } {
+  const done = Bun.spawnSync(["git", "checkout", "--", path], { stdout: "pipe", stderr: "pipe" });
+  return { code: done.exitCode, stderr: new TextDecoder().decode(done.stderr) };
+}

@@ -114,7 +114,7 @@ interface Mutation {
 // The verdict predicate lives in its own module because importing a script
 // runs it: this one refuses on a dirty tree and exits, so a test that imported
 // it to check `readVerdict` never got as far as a test.
-import { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree, type Verdict } from "./mutation-verdict";
+import { captureRun, condenseRun, gitRestore, markFor, readVerdict, restoreFile, summarise, verdictsAgree, type Verdict } from "./mutation-verdict";
 
 export { captureRun, condenseRun, markFor, readVerdict, summarise, verdictsAgree, type Verdict };
 
@@ -2197,6 +2197,24 @@ const MUTATIONS: Mutation[] = [
     to: "    \"lease.col.leased\": \"Leased\",",
     suite: "packages/platform-web/src/user-facing-vocabulary.test.ts",
     expect: ["contains no specification citations, machine keys, tokens, or unimplemented concepts"],
+  },
+  {
+    id: "a-failed-restore-is-reported-as-done",
+    defect: "any exit code counts as the file coming back, so a restore that git refused is reported as a restore. That is the shape the signal handler shipped with \u2014 `spawnSync` and no exit code read \u2014 and it prints *restored* for a file that still holds the mutation, which the next `git add -A` stages.",
+    file: "scripts/mutation-verdict.ts",
+    from: "    if (result.code === 0) return { ok: true, tries, stderr: \"\" };",
+    to: "    if (result.code >= 0) return { ok: true, tries, stderr: \"\" };",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["gives up with git's own words rather than looping forever"],
+  },
+  {
+    id: "a-held-index-lock-ends-the-run",
+    defect: "a lock another worktree is holding for a moment stops being waited out, so an ordinary `git status` in the other agent's checkout aborts a manifest run mid-entry. It happened once: the restore threw, the run died, and only the signal handler kept the planted mutation out of the tree.",
+    file: "scripts/mutation-verdict.ts",
+    from: "    if (!CONTENDED.test(stderr)) return { ok: false, tries, stderr };",
+    to: "    return { ok: false, tries, stderr };",
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["waits out a lock somebody else is holding"],
   },
   {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
@@ -10905,11 +10923,11 @@ const unplant = () => {
   if (!planted) return;
   const file = planted;
   planted = null;
-  try {
-    Bun.spawnSync(["git", "checkout", "--", file]);
+  const back = restoreFile(file, gitRestore);
+  if (back.ok) {
     console.error(`restored ${file} — the run was interrupted while it was planted`);
-  } catch {
-    console.error(`could not restore ${file} — run \`git checkout -- ${file}\``);
+  } else {
+    console.error(`could not restore ${file} — run \`git checkout -- ${file}\`\n${back.stderr.trim()}`);
   }
 };
 process.on("exit", unplant);
@@ -10972,7 +10990,10 @@ for (const m of selected) {
     // the choice: see `captureRun`.
     attempts.push(await captureRun(["bun", "test", m.suite], m.expect, { ...process.env, AGENT_MESH_MUTATING: "1" }));
   }
-  await $`git checkout -- ${m.file}`.quiet();
+  const restored = restoreFile(m.file, gitRestore);
+  if (!restored.ok) {
+    throw new Error(`could not restore ${m.file} after ${restored.tries} tries — the mutation is still in the tree\n${restored.stderr.trim()}`);
+  }
   planted = null;
   const run = attempts[0]!;
   const output = run.output;
