@@ -1139,7 +1139,7 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The redaction sentinel stops being recognised, so the string the server sends *instead of* content is rendered as content. The row then shows `[content withheld …]` as though somebody had written it, and the screen stops distinguishing a body it may not see from a body that says that.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "    const redacted = /^\\[content withheld\\b/i.test(content);",
+    from: "    const redacted = payloadHasWithheldContent(rawPayload)\n      || (typeof item.content === \"string\" && /^\\[content withheld\\b/i.test(item.content));",
     to: "    const redacted = false;",
     suite: "packages/platform-web/src/api/audit.test.ts",
     expect: ["marks a server redaction token as data, not operator-facing content"],
@@ -1996,8 +1996,8 @@ const MUTATIONS: Mutation[] = [
     defect:
       "The identity is taken as the carrier even when it is the sender, so every direct message shows as having been relayed by the person who sent it. `sentBy` exists to name a third party; naming the sender there is a claim about the delivery path that nothing observed.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "(item.identity && item.identity !== sender ? item.identity : null)",
-    to: "(item.identity ? item.identity : null)",
+    from: "        typeof item.identity === \"string\" && item.identity !== sender ? item.identity : null,",
+    to: "        typeof item.identity === \"string\" ? item.identity : null,",
     suite: "packages/platform-web/src/api/audit.test.ts",
     expect: ["does not call the sender its own carrier"],
   },
@@ -9832,6 +9832,96 @@ const MUTATIONS: Mutation[] = [
     to: "  GlobalRegistrator.register();",
     suite: "packages/platform-web/src/register-dom.test.ts",
     expect: ["a browser's Request is installed globally, so every server suite after this file loses its session"],
+  },
+  {
+    id: "a-first-run-replays-the-whole-inbox",
+    defect:
+      "With no mark yet, the one filter that keeps a first run from replaying the entire mailbox went away. Nothing is ever deleted there, so the other front end opens its next turn holding every message ever sent to it — and the one that actually just arrived is somewhere in the middle of it.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "      ? messages.filter((m) => m.isRead !== true)",
+    to: "      ? messages",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["the first run ever falls back to what the mailer calls unread"],
+  },
+  {
+    id: "the-mark-lets-the-message-it-names-back-in",
+    defect:
+      "The high-water comparison went from `>` to `>=`, so the newest message of every turn is delivered again on the next one. The duplicate arrives with no marking to say it is one, and the receiving side answers a question it has already answered.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "      : messages.filter((m) => m.id > mark);",
+    to: "      : messages.filter((m) => m.id >= mark);",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["a message is delivered once and not again"],
+  },
+  {
+    id: "the-high-water-mark-never-moves",
+    defect:
+      "The mark stopped being written. Ids only ever grow, so the guard reads as if it were still the first run forever — and the mailer's `isRead` flag, which a 30-second watcher consumes on its own, becomes the only thing deciding what is new.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "  writeMark(highest);",
+    to: "  if (highest < 0) writeMark(highest);",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["a message is delivered once and not again"],
+  },
+  {
+    id: "a-turn-ends-on-mail-nobody-has-read",
+    defect:
+      "Mail that landed during a turn was answered with `allow` instead of `continue`, so the turn stops with the message delivered to nothing. Neither event fires while a session is idle, so the answer waits for whenever a person next types — which is the exact gap the Stop hook exists to close.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "      decision: \"continue\",",
+    to: "      decision: \"allow\",",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["a turn ending is continued rather than allowed to stop"],
+  },
+  {
+    id: "an-empty-inbox-answers-with-nothing-at-all",
+    defect:
+      "An empty inbox printed nothing rather than an empty step list. The runner reads this output, so a hook that says nothing is not the same as one that says there is nothing.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "    console.log(JSON.stringify({ injectSteps: [] }));",
+    to: "    process.exit(0);",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["an empty inbox still answers, in the shape the event expects"],
+  },
+  {
+    id: "a-mailbox-nobody-is-running-stops-the-turn",
+    defect:
+      "A mailer that is not there stopped being an empty inbox and became a thrown error. No mailer is the normal state on a machine doing no cross-agent work, so this makes every turn on such a machine fail in a hook the work has nothing to do with.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "    return [];",
+    to: "    throw new Error(\"the mailbox is not answering\");",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["the turn is not blocked by a mailbox nobody is running"],
+  },
+  {
+    id: "mail-arrives-with-no-sender-named",
+    defect:
+      "The sender went out of the rendered header. The body arrives with no way to tell who is owed an answer, which in a three-agent mailbox is most of what the header is for.",
+    file: "scripts/fe-mailbox-hook.ts",
+    from: "    return `--- mail #${m.id} from ${m.from} at ${when} ---\\n${m.body}`;",
+    to: "    return `--- mail #${m.id} at ${when} ---\\n${m.body}`;",
+    suite: "test/fe-mailbox-hook.test.ts",
+    expect: ["a turn starting is given the mail as context"],
+  },
+  {
+    id: "every-message-event-reads-the-same",
+    defect:
+      "The lifecycle verb stopped being read off the event type, so every message row says only that a message event was recorded. Sent and waiting-for-delivery then render identically — the log exists to answer whether a message arrived, and this is the field that answers it.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "  switch (eventType) {",
+    to: "  switch (\"mesh.message.unrecognised\") {",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["says what happened to each message rather than that a message event happened"],
+  },
+  {
+    id: "the-event-a-reader-opened-goes-unnamed",
+    defect:
+      "The id of the single audit event somebody read went out of the sentence, leaving `read audit event` with no object. Reading one record and reading the whole list are different amounts of access by the same capability, and the row that distinguishes them is this one.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "        ? `${t(\"audit.event.auditReadOne\", \"read audit event\")} ${item.readTarget}`",
+    to: "        ? t(\"audit.event.auditReadOne\", \"read audit event\")",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["names the single audit event a reader opened, not just that they read"],
   },
 ];
 

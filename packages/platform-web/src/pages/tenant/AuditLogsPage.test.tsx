@@ -751,6 +751,86 @@ describe("event-shaped audit rows", () => {
     expect(screen.getByTestId("audit-raw-json").textContent).toContain('"event_type": "mesh.identity.audit_read"');
   });
 
+  /**
+   * Five message events, five different things that happened to a message.
+   *
+   * The lifecycle verbs share one route and one timestamp, so a screen that
+   * dropped the verb altogether — or picked the generic one for every kind —
+   * still draws a row that reads correctly at a glance. *Sent* and *waiting
+   * for delivery* are opposite answers to the only question worth asking of
+   * this log, which is whether the message got there. Each row is therefore
+   * asked which of the six verbs it contains, and must contain exactly its
+   * own: a page printing all of them, or the fallback for all of them, fails
+   * on the same assertion.
+   */
+  it("says what happened to each message rather than that a message event happened", async () => {
+    const VERBS = [
+      en("audit.event.messageSent"),
+      en("audit.event.messageDelivered"),
+      en("audit.event.messagePending"),
+      en("audit.event.messageRecalled"),
+      en("audit.event.messageReceived"),
+      en("audit.event.messageRecorded"),
+    ];
+    const verbsIn = (subject: string): string[] =>
+      VERBS.filter((verb) => summaryOf(subject).includes(verb));
+    const kinds = [
+      ["sender-mesh-sent", "mesh.message.sent", en("audit.event.messageSent")],
+      ["sender-channel-sent", "channel.message.sent", en("audit.event.messageSent")],
+      ["sender-delivered", "mesh.message.delivered", en("audit.event.messageDelivered")],
+      ["sender-pending", "mesh.message.pending", en("audit.event.messagePending")],
+      ["sender-recalled", "mesh.message.recalled", en("audit.event.messageRecalled")],
+    ] as const;
+
+    auditRoute = answers(200, {
+      ok: true,
+      events: kinds.map(([from, eventType]) => event({
+        event_id: `evt-${from}`,
+        event_type: eventType,
+        identity: from,
+        payload: { message: { from, to: "recipient-b", content: "hello" } },
+      })),
+    });
+    await mount();
+
+    expect(Object.fromEntries(kinds.map(([from]) => [from, verbsIn(from)])))
+      .toEqual(Object.fromEntries(kinds.map(([from, , verb]) => [from, [verb]])));
+    // The route survives the verb: § 8.2's sender → recipient is what makes the
+    // sentence about a message rather than about the log.
+    expect(summaryOf("sender-pending")).toContain("sender-pending → recipient-b");
+  });
+
+  /**
+   * Reading one event and reading the list are different acts by a different
+   * amount of access, and only one of them names what was read.
+   */
+  it("names the single audit event a reader opened, not just that they read", async () => {
+    meRoute = session([METADATA, CONTENT]);
+    auditRoute = answers(200, { ok: true, events: [event({
+      event_id: "evt-read-one",
+      event_type: "mesh.identity.audit_read",
+      identity: "platform-admin",
+      payload: {
+        schema_version: 1,
+        event_id: "evt-read-one",
+        event_type: "mesh.identity.audit_read",
+        occurred_at: "2026-08-25T03:04:05.000Z",
+        identity: "platform-admin",
+        actor: "platform-admin",
+        change: { read: "evt-target-7", query: {} },
+      },
+    })] });
+
+    await mount();
+
+    const summary = summaryOf("platform-admin");
+    expect(summary).toContain(`${en("audit.event.auditReadOne")} evt-target-7`);
+    // Not the list sentence, and not the bare one that names nothing: those are
+    // the two readings this row would collapse into if the target were dropped.
+    expect(summary).not.toContain(en("audit.event.auditReadList"));
+    expect(summary).not.toContain(`${en("audit.event.auditRead")} ·`);
+  });
+
   it("describes an identity type transition without a message route", async () => {
     auditRoute = answers(200, { ok: true, events: [event({
       event_id: "evt-type-1",
