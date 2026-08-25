@@ -339,10 +339,25 @@ and a hook that says nothing is indistinguishable from a repository with
 nothing left to do. It is spawned and named now, and the same question is worth
 putting to any entry point that is a process rather than a page.
 
-What is left is a real question rather than a category: `packages/http/src/ui/
-theme.ts` is a table of constants whose only honest assertion would be a second
-copy of the same table. It stays unnamed until there is a check that is not
-that.
+**The last one left was sorted by what it looks like.** `ui/theme.ts` was held
+here as *a table of constants whose only honest assertion would be a second
+copy of the table*, and that describes its shape rather than its contents. It
+holds a decision — `NODE_ENV === 'development'` — a badge that must render in
+exactly one of two environments, and the build stamp the service worker caches
+under. The values between those are what makes it read as a table.
+
+The check that is not a copy asks for **properties**: that the two environments
+disagree about which they are, that the badge appears in dev and nowhere else,
+and that no palette entry is shared between them. A colour copy-pasted until
+dev matches production fails that without any hex being written down twice. Two
+of the five entries it now carries land on a check that already existed and had
+nothing pointing at it, which is its own small lesson: *unnamed* sometimes
+means the anchor is missing, not the test.
+
+So the rule that survives both corrections is to sort a file by what it
+decides, not by what it looks like. Every file still on this list decides
+nothing — the compiler, the importing test, or a deliberate refusal to plant is
+what stands behind each.
 
 The distinction worth keeping: *unnamed because nothing can go red* is a fact
 about the harness, and *unnamed because nobody looked* is debt. Both this
