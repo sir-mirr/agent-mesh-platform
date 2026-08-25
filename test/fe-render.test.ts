@@ -3115,8 +3115,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const afterCount = await page.locator("tbody tr").count();
       expect(afterCount).toBe(beforeCount);
       const rootText = await page.locator("#root").innerText();
-      expect(rootText).not.toContain("성공적으로 생성");
       expect(rootText).toMatch(/실패|오류|통신/);
+
+      // **What kind of thing it said.** This asserted the absence of
+      // `성공적으로 생성`, which no string in this package has ever been — so
+      // it passed on every build and would have passed on a screen calling a
+      // refused create a success. The two sentences here are one word apart
+      // (`그룹 생성` and `그룹 생성 실패`) and the button says the first of
+      // them, so page text cannot answer this. The toast's own type can.
+      expect(
+        {
+          error: await page.locator('[data-toast="error"]').count(),
+          success: await page.locator('[data-toast="success"]').count(),
+        },
+        "a create the server never accepted was reported as one that happened",
+      ).toEqual({ error: 1, success: 0 });
     });
   });
 
@@ -3129,12 +3142,28 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.locator("input").first().fill("default");
       const submitBtn = page.locator("button[type='submit']:has-text('생성')").first();
       await submitBtn.click();
-      await attemptOver(page);
+
+      // **Wait for what the screen says, not for the network.** `attemptOver`
+      // is `networkidle`, and this file already records three scenarios that
+      // read a value straight after it and saw the state before the render
+      // that answers the request. This was a fourth, and it hid behind the
+      // dead assertion below: with nothing asserted that could fail, a
+      // scenario in which the submit never even fired passed for the same
+      // reason a working one did. The modal is still open at `networkidle` —
+      // `setIsCreateOpen(false)` runs after the await resolves.
+      const toast = page.locator("[data-toast]");
+      await toast.first().waitFor({ timeout: 5000 });
 
       const afterCount = await page.locator("tbody tr").count();
       expect(afterCount).toBe(beforeCount);
-      const rootText = await page.locator("#root").innerText();
-      expect(rootText).not.toContain("성공적으로 생성");
+
+      // The distinction this scenario is actually about. `POST` answers `200`
+      // for a name that already exists, with `created: false`, so what must
+      // not happen is the screen reporting a group it did not create.
+      expect(
+        (await toast.first().innerText()).trim(),
+        "a name that already existed was reported as newly created",
+      ).toContain("이미 있는 그룹");
     });
   });
 

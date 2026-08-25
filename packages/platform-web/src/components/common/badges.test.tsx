@@ -47,6 +47,15 @@ describe("Toast", () => {
     expect(screen.getByText("saved")).toBeDefined();
   });
 
+  it("says which kind of thing it is, where a reader can ask", () => {
+    // The type is what tells a success from a failure when the two sentences
+    // differ by one word. Asserted here so the attribute cannot quietly go:
+    // scenarios locate the toast by it.
+    const { container } = render(<Toast type="error" message="그룹 생성 실패" />);
+    expect(container.querySelector('[data-toast="error"]')).not.toBe(null);
+    expect(container.querySelector('[data-toast="success"]')).toBe(null);
+  });
+
   it("defaults to info rather than nothing", () => {
     const { container } = render(<Toast message="hello" />);
     expect(container.textContent).toContain("hello");

@@ -20,6 +20,13 @@ export function Toast({ type = "info", message, onClose }: ToastProps) {
 
   return (
     <div
+      // **What kind of thing the screen said, not only what it said.** A
+      // success and a failure are one word apart in this console's copy —
+      // `그룹 생성` and `그룹 생성 실패` — and a scenario reading page text
+      // cannot tell them apart without matching on the difference, which is
+      // how three checks ended up asserting the absence of a string nobody
+      // writes. `data-kpi` exists on the cards for the same reason.
+      data-toast={type}
       style={{
         display: "inline-flex",
         alignItems: "center",
