@@ -2489,9 +2489,9 @@ const MUTATIONS: Mutation[] = [
   {
     id: "holding-nothing-is-read-as-holding-everything",
     defect: "an empty capability list stops meaning `nothing` and starts meaning `no answer`, so a session the server granted nothing opens every guarded screen. This is the defect at the end point: narrowing a list stays correct all the way down and inverts at zero, so a check that only asks `fewer capabilities, fewer links` reports health for the one case that is wrong. It shipped once as a role table behind `length > 0 ? server : table`.",
-    file: "packages/platform-web/src/contexts/RbacContext.tsx",
-    from: "    return capabilities.includes(capability);",
-    to: "    return capabilities.length === 0 || capabilities.includes(capability);",
+    file: "packages/platform-web/src/components/layout/Sidebar.tsx",
+    from: "            return userCapabilities.includes(item.requiredCapability);",
+    to: "            return userCapabilities.length === 0 || userCapabilities.includes(item.requiredCapability);",
     suite: "test/fe-render.test.ts",
     expect: ["SC-NAV-03"],
   },
