@@ -3632,23 +3632,28 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           await button.click();
           await attemptOver(page);
         }
-        // **`networkidle` is not "the screen finished".** The first version read
-        // the cell straight after it and saw the optimistic value, so this
-        // reported the screen keeping a rule the server never took — a defect
-        // that was not there. An aborted fetch rejects, the `catch` puts the
-        // cell back, and that render lands after the network has gone quiet.
-        // So: read until two reads agree.
-        const settledAttr = async () => {
-          let last = await cell.getAttribute("data-allowed");
-          for (let i = 0; i < 8; i++) {
-            await page.waitForTimeout(200);
-            const now = await cell.getAttribute("data-allowed");
-            if (now === last) return now;
-            last = now;
-          }
-          return last;
-        };
-        const after = cellThere > 0 ? await settledAttr() : null;
+        // **Wait for the screen to say what happened, then read the cell.**
+        //
+        // `networkidle` is not "the screen finished": an aborted fetch rejects
+        // and the `catch` renders after the network has gone quiet, so reading
+        // straight after it saw the optimistic value and reported a defect that
+        // was not there. Polling until two reads agree fixed that and bought a
+        // worse problem — the answer then depends on how loaded the machine is.
+        // A full-manifest pass caught this entry as *not caught* while running
+        // it alone caught it, which is a verdict about the afternoon rather
+        // than about the code.
+        //
+        // The toast is written in the same `catch` as the put-back, and a
+        // mutation that removes the put-back leaves the toast — so waiting for
+        // the toast is waiting for exactly the render that should have restored
+        // the cell, with no clock in it.
+        const failedToast = /전송 규칙 변경 실패|Could not change the delivery rule/;
+        if (buttonThere > 0 && !writeAnswers) {
+          await page.locator("body").filter({ hasText: failedToast }).first()
+            .waitFor({ timeout: 10_000 })
+            .catch(() => {});
+        }
+        const after = cellThere > 0 ? await cell.getAttribute("data-allowed") : null;
         const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
         // The screen's own sentence, not any word containing 실패 — the first
         // version matched `/실패|failed/i` across the whole body and was true on
