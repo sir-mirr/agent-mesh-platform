@@ -2038,10 +2038,10 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "an-unclassifiable-audit-failure-is-reported-transient",
-    defect: "every audit-store failure the hub cannot classify is answered as `AUDIT_BUSY`, which \u00a7 8.9.3 classes transient \u2014 so a conformant client retries with no maximum attempt count. A missing table, a constraint violation or a bug in the handler fails identically every time, and the event sits in the client's outbox forever while it hammers a path that is already broken.",
+    defect: "an audit store that cannot be read is answered as `AUDIT_BUSY`, which \u00a7 8.9.3 classes transient \u2014 so a conformant client retries with no maximum attempt count. A missing table, a constraint violation or a bug in the handler fails identically on every attempt, and the event sits in the client's outbox forever while it hammers a path that is already broken.",
     file: "packages/hub/src/rpc/audit.ts",
-    from: "    if (/locked|busy/i.test(message)) {",
-    to: "    if (true) {",
+    from: "      reason: \"store_unreadable\",\n      error: message,\n    });\n    return rpcError(id, MESH_ERROR.SERVER_ERROR, `audit append failed: ${message}`, {",
+    to: "      reason: \"store_unreadable\",\n      error: message,\n    });\n    return rpcError(id, AUDIT_BUSY, `audit append failed: ${message}`, {",
     suite: "test/resilience.test.ts",
     expect: ["a store failure the hub cannot classify is permanent, not AUDIT_BUSY"],
   },
