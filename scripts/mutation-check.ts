@@ -2457,7 +2457,7 @@ const MUTATIONS: Mutation[] = [
     from: "      setGeneratedCode(null);\n      setToastNotice({\n        type: \"error\",",
     to: "      setToastNotice({\n        type: \"error\",",
     suite: "test/fe-render.test.ts",
-    expect: ["SC-WRITE-08"],
+    expect: ["SC-WRITE-09"],
   },
   {
     id: "the-e2e-harness-signs-in-as-the-old-admin",

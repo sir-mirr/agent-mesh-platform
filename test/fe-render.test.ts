@@ -3332,6 +3332,48 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30000);
 
+  // SC-WRITE-09: a refused issue does not leave the last code on the screen.
+  //
+  // **Split from `SC-WRITE-08` because that scenario cannot reach this.** It
+  // aborts the first request the page ever makes, so `generatedCode` is still
+  // `null` and the issued panel is absent either way — the failure the code
+  // guards against is *the previous code staying up*, and there is no previous
+  // code in that run. Measured by planting: deleting `setGeneratedCode(null)`
+  // from the failure branch left `SC-WRITE-08`, and all 136 scenarios, green.
+  //
+  // So this one issues a real code first and refuses the second. The credential
+  // is one-time: left on screen it is copied and handed to somebody, already
+  // spent, or belonging to a different identity than the one now named beside
+  // it.
+  it("[SC-WRITE-09] clears the issued code when the next issue is refused", async () => {
+    await withPage("/creator/register", async ({ page }) => {
+      const identityInput = page.locator("input[placeholder*='agt_']").first();
+      await identityInput.waitFor({ timeout: 5000 });
+      const submit = page.locator("button[type='submit']").first();
+
+      // A real issue, against an identity the fixture registers.
+      await identityInput.fill("agent-alpha");
+      await submit.click();
+      await shows(page, "발급된 1회용 인증코드");
+
+      // And now one the server refuses.
+      await page.route("**/api/v1/admin/pairing-codes", (route) =>
+        route.request().method() === "POST" ? route.abort() : route.continue());
+      await identityInput.fill("agent-beta");
+      await submit.click();
+      await shows(page, "연결 코드 발급 실패");
+
+      const held = await eventually(
+        async () => (await page.locator("#root").innerText()).includes("발급된 1회용 인증코드"),
+        (still) => still === false,
+      );
+      expect(
+        { issuedPanelStillUp: held },
+        "a refused issue left the previous one-time code on the screen, under the identity it was not issued for",
+      ).toEqual({ issuedPanelStillUp: false });
+    });
+  }, 30000);
+
   // SC-AUTH-04: an expired session is never reported as an empty one.
   //
   // Split from the pinned half on agent-mesh-local-pm's advice, and the split
