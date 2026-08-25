@@ -4780,12 +4780,12 @@ const MUTATIONS: Mutation[] = [
   {
     id: "audit-screen-shows-bodies-to-a-metadata-holder",
     defect:
-      "§ 11.0's privacy boundary drawn from a constant instead of the grant. A session holding `audit.read.metadata` would read every message body, and the screen's own subtitle would still promise the redaction.",
+      "§ 11.0's privacy boundary drawn from a constant instead of the grant. **What this costs moved.** It used to read every message body; T-041 put the redaction on the server, so the withheld ones stay withheld whatever the screen believes. What is left is the banner: the page tells a session holding only `audit.read.metadata` that original records can include message bodies, and an operator who believes it reads the log as though nothing were hidden. A screen lying about what the account can read is the defect now.",
     file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
     from: '  const canReadContent = hasCapability("audit.read.content");',
     to: "  const canReadContent = true;",
     suite: "test/fe-render.test.ts",
-    expect: ["SC-CAP-09", "the session was refused on the screen it holds"],
+    expect: ["SC-CAP-09", "promised message bodies to an account that may not read them"],
   },
   {
     id: "teardown-offered-to-a-session-that-cannot-use-it",

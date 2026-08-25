@@ -4406,6 +4406,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           rawRecords: await page.locator('[data-testid="audit-raw-json"]').count(),
           bodyLeaked: text.includes("hello security via proxy"),
           blamedPermission: /권한이 없습니다|may not read/.test(text),
+          // **What the screen tells this account it can read.** The server
+          // withholds the bodies either way now, so a page drawing its banner
+          // from a constant instead of the grant no longer leaks anything —
+          // it promises access this session does not have, and an operator
+          // who believes it reads the whole log as though nothing were
+          // hidden. The promise is the part left to check.
+          promisedBodies: text.includes("원문 기록에 메시지 본문이 포함될 수 있습니다"),
+          saidBodiesStayHidden: text.includes("메시지 본문은 숨깁니다"),
         };
       } finally {
         await context.close().catch(() => {});
@@ -4431,13 +4439,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     expect(
       { ...held, ...lacked },
-      "the session was refused on the screen it holds, or told silence where the server refused",
+      "the session was refused on the screen it holds, or told silence where the server refused, " +
+        "or promised message bodies to an account that may not read them",
     ).toEqual({
       drewRows: true,
       withheldCells: 1,
       rawRecords: 0,
       bodyLeaked: false,
       blamedPermission: false,
+      promisedBodies: false,
+      saidBodiesStayHidden: true,
       saysRefused: true,
       leaksMachineKey: false,
       claimsSilence: false,
