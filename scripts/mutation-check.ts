@@ -51,7 +51,7 @@
 
 import { $ } from "bun";
 
-import { holdTree } from "./tree-lock";
+import { assertTreeUsable, holdTree } from "./tree-lock";
 
 interface Mutation {
   id: string;
@@ -10193,6 +10193,46 @@ const MUTATIONS: Mutation[] = [
     suite: "packages/http/src/ui/ui-behaviour.test.ts",
     expect: ["says which of the two things went wrong"],
   },
+  {
+    id: "the-gate-announces-a-window-it-does-not-hold",
+    defect:
+      "The gate goes back to announcing rather than holding. Three windows were open at once on this machine on 2026-08-25 and every one of them broadcast a start, so the other agents were waiting on releases that described nothing — and the runs planted mutations over each other in one tree.",
+    file: "scripts/gate.ts",
+    from: "const dropWindow = takeWindow(label, \"gate\");",
+    to: "const dropWindow = () => {};",
+    suite: "test/window-lock.test.ts",
+    expect: ["refuses a second window, and says so before announcing anything"],
+  },
+  {
+    id: "the-planter-writes-a-marker-it-never-reads",
+    defect:
+      "`mutation-check` stops consulting the tree marker it writes. A second run then overwrites the first's and the two interleave, each planting over the other's mutation — verdicts about a source that never existed, and the marker doing its job for every tool except the one holding the pen.",
+    file: "scripts/mutation-check.ts",
+    from: "assertTreeUsable(\"mutation-check\");",
+    to: "void assertTreeUsable;",
+    suite: "test/tree-lock.test.ts",
+    expect: ["refuses to start while another run holds the tree"],
+  },
+  {
+    id: "a-window-is-taken-from-a-live-holder",
+    defect:
+      "The liveness check stops guarding the take, so a second run walks into a window somebody is measuring in. Both then believe they are alone, which is the one state this file exists to prevent.",
+    file: "scripts/window-lock.ts",
+    from: "    if (alive(held.pid)) {",
+    to: "    if (false) {",
+    suite: "test/window-lock.test.ts",
+    expect: ["a second run is refused, and told who has it"],
+  },
+  {
+    id: "a-late-release-frees-somebody-elses-window",
+    defect:
+      "The release stops checking whose window it is dropping. A run finishing slowly then frees the window the next run has already taken, and two measurements proceed believing the machine is theirs — a lock that is worse than none, because both sides now trust it.",
+    file: "scripts/window-lock.ts",
+    from: "    if (now && now.pid === process.pid) rmSync(WINDOW_FILE, { force: true });",
+    to: "    rmSync(WINDOW_FILE, { force: true });",
+    suite: "test/window-lock.test.ts",
+    expect: ["a late release does not drop the window somebody else now holds"],
+  },
 ];
 
 /**
@@ -10429,6 +10469,18 @@ if (process.env.AGENT_MESH_MUTATING) {
   console.error("cannot run inside another mutation — nothing here would be measuring itself");
   process.exit(2);
 }
+
+// **Before the dirty-tree refusal, not after.** This wrote the marker from its
+// first day and never read it, so a second run overwrote the first's and the
+// two interleaved, planting over each other in one tree.
+//
+// The order is the other half. A held marker means the uncommitted change this
+// is about to see *is somebody else's planted mutation*, and the refusal below
+// tells a reader to `git checkout --` it — advice that destroys a live run's
+// state and reports a guard as not-caught. That is not hypothetical: it is
+// what I did to three of my own runs on 2026-08-25, twice, before finding
+// that the marker existed and nothing consulted it.
+assertTreeUsable("mutation-check");
 
 const before = await dirty();
 if (before) {

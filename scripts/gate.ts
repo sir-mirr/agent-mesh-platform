@@ -39,6 +39,8 @@
 
 import { $ } from "bun";
 
+import { takeWindow } from "./window-lock";
+
 const MAILBOX = process.env.AGENT_MESH_MAILBOX_URL ?? "http://localhost:3300/api/mail";
 const FROM = process.env.AGENT_MESH_AGENT_ID ?? "platform-claude";
 /** Everyone who waits on this machine. Both, always: a release one side misses is a release. */
@@ -119,10 +121,21 @@ function summarise(output: string): string | null {
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
+/**
+ * Taken before anything is announced.
+ *
+ * A window announced by a run that then finds the machine busy is worse than
+ * no announcement: the other side sees a start it will never see released. So
+ * the refusal happens first, and the broadcast only describes a window this
+ * process actually holds.
+ */
+const dropWindow = takeWindow(label, "gate");
+
 let released = false;
 async function release(outcome: string): Promise<void> {
   if (released) return;
   released = true;
+  dropWindow();
   await broadcast(`[측정 종료 · 창 해제] ${label} · ${commit}\n\n${outcome}`);
 }
 

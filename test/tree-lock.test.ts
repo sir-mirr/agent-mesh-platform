@@ -155,3 +155,38 @@ describe("a marker that cannot be read", () => {
     }).toEqual({ code: 2, started: false, kept: true, tellsHow: true });
   }, 20_000);
 });
+
+/**
+ * The planter, against the marker it writes for everybody else.
+ *
+ * `mutation-check` wrote this marker from its first day and never read it, so
+ * a second run overwrote the first's and the two interleaved — each planting
+ * over the other's mutation in one tree. Three of them ran that way on
+ * 2026-08-25 and produced verdicts about sources that never existed. The
+ * marker was doing its job for every other tool and none for the one holding
+ * the pen.
+ */
+describe("the tool that plants mutations", () => {
+  const CHECK = resolve(import.meta.dir, "..", "scripts", "mutation-check.ts");
+
+  test("refuses to start while another run holds the tree", async () => {
+    const sleeper = Bun.spawn(["bun", "-e", "await new Promise(() => {})"], { stdout: "ignore", stderr: "ignore" });
+    try {
+      writeFileSync(
+        MARKER,
+        JSON.stringify({ pid: sleeper.pid, reason: "mutation-check (121 entries)", since: "2026-08-25T04:00:00.000Z" }),
+      );
+      // A planting run, not `--anchors`: reading the manifest touches no files
+      // and is rightly allowed while somebody else is mid-mutation. The refusal
+      // is about the pen, and it fires before any suite is started.
+      const proc = Bun.spawn(["bun", CHECK, "egress-deny"], { stdout: "pipe", stderr: "pipe" });
+      const [complained, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+      expect(code).toBe(2);
+      expect(complained).toContain("mid-mutation");
+      expect(complained).toContain(String(sleeper.pid));
+    } finally {
+      sleeper.kill();
+      rmSync(MARKER, { force: true });
+    }
+  }, 60_000);
+});
