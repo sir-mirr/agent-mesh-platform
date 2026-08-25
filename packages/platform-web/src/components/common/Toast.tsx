@@ -22,10 +22,16 @@ export function Toast({ type = "info", message, onClose }: ToastProps) {
     <div
       // **What kind of thing the screen said, not only what it said.** A
       // success and a failure are one word apart in this console's copy —
-      // `그룹 생성` and `그룹 생성 실패` — and a scenario reading page text
-      // cannot tell them apart without matching on the difference, which is
-      // how three checks ended up asserting the absence of a string nobody
-      // writes. `data-kpi` exists on the cards for the same reason.
+      // `groups.created` and `groups.createFailed` differ by a suffix, and the
+      // button on the page carries the first of them — so a scenario reading
+      // page text cannot tell them apart. That is how three checks ended up
+      // asserting the absence of a string nobody writes. `data-kpi` exists on
+      // the cards for the same reason.
+      //
+      // The keys rather than their copy, deliberately: `SC-I18N-04` counts
+      // Korean in this package's source, and it does not exempt comments —
+      // correctly, since a sentence quoted into one is a second copy that
+      // stops matching the dictionary the moment the copy changes.
       data-toast={type}
       style={{
         display: "inline-flex",
