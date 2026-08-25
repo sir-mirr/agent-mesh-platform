@@ -377,6 +377,45 @@ comes out right** — one mutation was caught by the neighbour of the test it
 named, because every rule in the named case carried a tenant and the guard it
 was aimed at never ran.
 
+### What the browser scenarios turned out to be doing
+
+Sixty-eight of the hundred and twenty-three scenarios in `fe-render.test.ts`
+were named by no entry. Planting against them found seven that could not have
+failed, in four shapes — and every one of them had been green for months, which
+is the only state a check like this is ever seen in.
+
+**An absence must name copy that exists.** Six assertions across four scenarios
+demanded that a screen not say `등록된 테넌트 없음`, `현재 등록된 테넌트 조직
+데이터가 없습니다`, `0 sessions` or `성공적으로 생성`. No string in the package
+has been any of those since the screens they belonged to were rewritten. Each
+passed on every build and would have passed on the screen printing exactly what
+it was written to forbid. `not.toContain` over prose is the easiest vacuous
+check to write, because deleting the copy makes it pass rather than fail.
+
+**A page-wide assertion is satisfied by the neighbour.** `SC-DOWN-01` asked
+that `미측정` appear somewhere on the lease queue. Two counters draw that word,
+so one could print `0` for a mailbox nothing answered about while the other
+carried the check. `SC-DOWN-02` already carried the repair — per card, by
+`data-kpi` — and the scenario beside it did not.
+
+**Reading at `networkidle` is reading before the answer.** The file already
+recorded three scenarios that read a value straight after the network went
+quiet and saw the state before the render. `SC-WRITE-02` was a fourth.
+
+**A dead assertion hides whether the scenario ran at all.** That is the one
+worth keeping. `SC-WRITE-02`'s only live check was a row count, and a row count
+is unchanged when nothing happens — so a scenario whose submit had not yet
+fired passed for exactly the same reason a working one did. Repairing the dead
+assertion is what surfaced it. A check that cannot fail does not merely fail to
+catch defects: it hides the fact that its own subject was never exercised.
+
+The repairs share a shape. Where a screen's two answers differ by a suffix —
+`groups.created` and `groups.createFailed` — no assertion over page text can
+separate them, and the button on the page carries the shorter one. `Toast` now
+carries `data-toast={type}` for the same reason the cards carry `data-kpi`: so
+a scenario can ask what *kind* of thing was said instead of guessing from
+letters.
+
 One suite is left, deliberately. `every-module.test.ts` imports every module in
 `platform-web` and asserts each loads; the defect it catches is a module-scope
 throw, and no one-line edit to existing source produces one — nothing in that
