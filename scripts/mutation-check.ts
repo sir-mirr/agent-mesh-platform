@@ -2155,12 +2155,12 @@ const MUTATIONS: Mutation[] = [
   },
   {
     id: "a-tenant-less-rule-is-joined-across-tenants",
-    defect: "the ambiguity guard stops firing, so an egress rule carrying no tenant is joined to a group id that two tenants both use. The grid then shows one tenant's rule as another's, which is a claim about who may talk to whom \u2014 and both tenants' screens look ordinary.",
+    defect: "the ambiguity guard stops firing, so an old-shaped egress rule \u2014 one carrying no tenant, from a response that predates the field \u2014 is joined to a group id two tenants both use. It is then shown as *both* tenants' rule, which is a claim about who may talk to whom, and both screens look ordinary. A rule whose tenant cannot be known is left unjoined precisely because guessing is worse than saying nothing.",
     file: "packages/platform-web/src/api/groups.ts",
     from: "    && tenantsInResponse.size > 1;",
     to: "    && false;",
     suite: "packages/platform-web/src/api/groups.test.ts",
-    expect: ["does not join equal group ids across different tenants"],
+    expect: ["does not guess a tenant for an old-shaped rule in a multi-tenant response"],
   },
   {
     id: "telemetry-still-collecting-is-drawn-as-a-failure",
