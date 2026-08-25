@@ -183,6 +183,16 @@ export function AuditLogsPage() {
       width: "25%",
       render: (item: AuditEventItem) => {
         const isExpanded = expanded.has(item.id);
+        // **`!item.redacted` is defence, and it is deliberately unplanted.**
+        // `redacted` is derived from what the server actually sent, and since
+        // T-041 the server withholds a body exactly when the reader lacks
+        // `audit.read.content` — so a session that can read content sees
+        // nothing redacted, and the conjunct changes no outcome any fixture
+        // here can produce. Measured: removing it left all 137 scenarios
+        // green. It stays for the case the derivation exists for — a payload
+        // recorded elsewhere that already carries the withheld marker — and
+        // the manifest holds no entry for it, because an entry nothing can
+        // catch is an entry that checks nothing.
         const canRevealOriginal = !item.containsContent || (canReadContent && !item.redacted);
         const panelId = `audit-original-${item.id}`;
         return (
