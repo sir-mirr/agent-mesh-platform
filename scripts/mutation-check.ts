@@ -10113,6 +10113,16 @@ const MUTATIONS: Mutation[] = [
     suite: "test/serve-preview.test.ts",
     expect: ["a file it does not have is a 404, not an empty page"],
   },
+  {
+    id: "the-deployment-config-never-reaches-the-hub",
+    defect:
+      "The § 8.11 configuration stopped being read from the environment, so a deployment behind a proxy runs in socket mode and says so in `/api/v1/capabilities`. Every address it records is then the proxy's, and the attestation that exists to be the hub's own observation quietly becomes a report about one host.",
+    file: "packages/hub/src/observed-config.ts",
+    from: "export const OBSERVED = readObservedConfig(process.env);",
+    to: "export const OBSERVED = readObservedConfig({});",
+    suite: "test/keys.test.ts",
+    expect: ["reports that addresses come from a header this deployment believes"],
+  },
 ];
 
 /**

@@ -702,6 +702,36 @@ describe("the observed source is recorded", () => {
 });
 
 /**
+ * The other half of that answer, which was never asked for.
+ *
+ * Every mesh in this file is started without `AGENT_MESH_TRUSTED_PROXIES`, and
+ * `readObservedConfig` answers `socket` for an empty environment — so the
+ * assertion above holds just as well against a hub that never read its
+ * environment at all. § 8.11 is reported precisely because a control that is
+ * off looks like one that is on; a report that cannot come out any other way
+ * has the same problem one level up.
+ *
+ * Its own mesh, and no http server: `/api/v1/capabilities` is the hub's.
+ */
+describe("a deployment that learns addresses from a proxy", () => {
+  let proxied: Mesh;
+
+  beforeAll(async () => {
+    proxied = await startMesh({
+      withHttp: false,
+      env: { AGENT_MESH_TRUSTED_PROXIES: "127.0.0.1" },
+    });
+  });
+
+  afterAll(() => proxied?.stop());
+
+  test("reports that addresses come from a header this deployment believes", async () => {
+    const body = await (await fetch(`${proxied.hub.url}/api/v1/capabilities`)).json();
+    expect(body.surface.observed_source).toBe("forwarded");
+  });
+});
+
+/**
  * SPEC § 11. The grant is read per request, not carried in the token.
  *
  * The unit tests for scope arithmetic live in
