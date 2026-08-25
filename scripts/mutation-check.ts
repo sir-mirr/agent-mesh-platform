@@ -2451,6 +2451,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-04"],
   },
   {
+    id: "a-refused-pairing-code-leaves-the-last-one-on-screen",
+    defect: "the failed branch stops clearing `generatedCode`, so a refused request leaves the previous code in the issued panel. It is a one-time credential: the operator copies it, hands it to somebody, and it has already been used \u2014 or belongs to a different identity than the one now named on the screen.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: "      setGeneratedCode(null);\n      setToastNotice({\n        type: \"error\",",
+    to: "      setToastNotice({\n        type: \"error\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-08"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
