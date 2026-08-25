@@ -848,7 +848,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // Original payload bytes are not the default reading surface. The first
     // record remains reachable through the explicit disclosure control.
     expect(await page.locator('[data-testid="audit-raw-json"]').count()).toBe(0);
-    await page.getByRole("button", { name: "원문 JSON 보기" }).first().click();
+    const originals = page.getByRole("button", { name: "원문 JSON 보기" });
+    expect(await originals.count()).toBeGreaterThan(0);
+    await originals.first().click();
     expect(await page.locator('[data-testid="audit-raw-json"]').count()).toBe(1);
     expect(await page.locator('[data-testid="audit-raw-json"]').first().innerText()).toContain("14:09:58");
     // D-25 & D-28 assertions:
@@ -989,7 +991,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     // for an original record. Open every seeded message record so this checks
     // the entire page rather than one convenient row.
     const closed = page.getByRole("button", { name: "원문 JSON 보기" });
-    while (await closed.count()) await closed.first().click();
+    const closedCount = await closed.count();
+    expect(closedCount).toBe(summaries);
+    for (let remaining = closedCount; remaining > 0; remaining -= 1) {
+      expect(await closed.count()).toBe(remaining);
+      await closed.first().click();
+    }
+    expect(await closed.count()).toBe(0);
     const withheld = await page.locator('[data-testid="audit-withheld"]').count();
     const safeOriginals = await page.locator('[data-testid="audit-raw-json"]').count();
     // Four seeded message events carry content and stay withheld. Content-free
@@ -4388,7 +4396,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       try {
         await settled(page);
         const rows = await page.locator('[data-testid="audit-summary"]').count();
-        await page.getByRole("button", { name: "원문 JSON 보기" }).first().click();
+        const originals = page.getByRole("button", { name: "원문 JSON 보기" });
+        expect(await originals.count()).toBeGreaterThan(0);
+        await originals.first().click();
         const text = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
         return {
           drewRows: rows > 0,
