@@ -1866,6 +1866,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["the documents come from the root it was given"],
   },
   {
+    id: "the-e2e-harness-signs-in-as-the-old-admin",
+    defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
+    file: "scripts/e2e-harness.ts",
+    from: "const ADMIN_USER = \"platform-admin\";",
+    to: "const ADMIN_USER = \"admin\";",
+    suite: "test/http.test.ts",
+    expect: ["is also the one the e2e harness hands to a runner"],
+  },
+  {
     id: "a-loading-table-reports-an-error-it-does-not-have",
     defect:
       "With both flags set the error wins. A read that is still in flight after a previous failure then shows the old error as though it were this read's answer, and the screen accuses a request that has not finished.",
