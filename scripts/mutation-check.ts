@@ -10233,6 +10233,36 @@ const MUTATIONS: Mutation[] = [
     suite: "test/window-lock.test.ts",
     expect: ["a late release does not drop the window somebody else now holds"],
   },
+  {
+    id: "a-verification-that-cannot-go-red",
+    defect:
+      "The wrapper stops counting a step's exit code, so every verification passes. This is the defect it was written for, in the form it had: a `;` chain of `cmd | tail` reports the last pipeline's status, and a run printing `10 fail` released its window with `exit 0`.",
+    file: "scripts/verify.ts",
+    from: "  if (code !== 0) failed.push(`${step.name} (exit ${code})`);",
+    to: "  void code;",
+    suite: "test/verify.test.ts",
+    expect: ["a failing step makes the whole verification red"],
+  },
+  {
+    id: "a-verification-that-stops-at-the-first-red",
+    defect:
+      "The loop gives up after a step fails. One broken thing and two are different situations — a typecheck error hiding a broken suite means the second one is found only after the first is fixed, one round trip later.",
+    file: "scripts/verify.ts",
+    from: "  if (code !== 0) failed.push(`${step.name} (exit ${code})`);\n}",
+    to: "  if (code !== 0) { failed.push(`${step.name} (exit ${code})`); break; }\n}",
+    suite: "test/verify.test.ts",
+    expect: ["every step runs even after one has failed"],
+  },
+  {
+    id: "a-step-is-judged-by-what-it-printed",
+    defect:
+      "The verdict comes from the output instead of the exit code. A suite that prints a clean summary and exits non-zero — bun does this when a file fails to load — is then read as green, which is the same class of mistake as reading a verdict from the far side of a pipe.",
+    file: "scripts/verify.ts",
+    from: "  if (code !== 0) failed.push(`${step.name} (exit ${code})`);",
+    to: "  if (!/\\b0 fail\\b/.test(said)) failed.push(`${step.name} (exit ${code})`);",
+    suite: "test/verify.test.ts",
+    expect: ["the verdict comes from the exit code, not from what the step printed"],
+  },
 ];
 
 /**

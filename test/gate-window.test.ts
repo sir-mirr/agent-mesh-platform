@@ -14,7 +14,9 @@
  * somebody stopped.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const GATE = resolve(import.meta.dir, "..", "scripts", "gate.ts");
 
@@ -34,14 +36,29 @@ function recorder() {
 }
 
 const servers: Array<{ stop: () => void }> = [];
-afterEach(() => { for (const s of servers.splice(0)) s.stop(); });
+const keyDirs: string[] = [];
+afterEach(() => {
+  for (const s of servers.splice(0)) s.stop();
+  for (const dir of keyDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
+/**
+ * A state directory per gate, so these never contend for the real one.
+ *
+ * The gate holds one measuring window per machine, and this suite runs inside
+ * a window of its own — so a probe pointed at the real marker refuses to start
+ * and every test here fails for a reason that has nothing to do with what it
+ * asserts. Which is what happened the day the lock was added.
+ */
 function runGate(url: string, label: string, command: string[]) {
+  const keyDir = mkdtempSync(join(tmpdir(), "gate-probe-"));
+  keyDirs.push(keyDir);
   return Bun.spawn(["bun", GATE, label, "--", ...command], {
     stdout: "pipe",
     stderr: "pipe",
     env: {
       ...process.env,
+      AGENT_MESH_KEY_DIR: keyDir,
       AGENT_MESH_MAILBOX_URL: url,
       AGENT_MESH_AGENT_ID: "gate-probe",
       AGENT_MESH_GATE_PEERS: "peer-one,peer-two",
