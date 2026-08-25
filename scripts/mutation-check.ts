@@ -2469,6 +2469,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-CAP-04"],
   },
   {
+    id: "every-audit-row-offers-its-original",
+    defect: "the reveal gate collapses, so every row on the audit screen offers its original record to a session holding only `audit.read.metadata`. The seeded message events stop being drawn as withheld and are presented exactly like the records this reader is allowed to open \u2014 the screen no longer distinguishes what it may show from what the server kept back.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "        const canRevealOriginal = !item.containsContent || (canReadContent && !item.redacted);",
+    to: "        const canRevealOriginal = true;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-01"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
