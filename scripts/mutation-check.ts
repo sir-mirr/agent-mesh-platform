@@ -129,7 +129,7 @@ export const SEND_HEAD = `app.post('/api/v1/messages', async (c) => {
   }
   if (!isUserApproved(payload.github_login, payload.role)) {`
 
-const MUTATIONS: Mutation[] = [
+export const MUTATIONS: Mutation[] = [
   {
     id: "egress-deny",
     defect: "A group with no egress rule could send anyway (§ 12).",
@@ -11001,6 +11001,76 @@ const MUTATIONS: Mutation[] = [
     to: "        setIsError(false);",
     suite: "test/fe-render.test.ts",
     expect: ["renders /creator/register safely"],
+  },
+  {
+    id: "the-audit-row-dates-itself-from-the-payload",
+    defect:
+      "The audit row took its time from the payload it carried rather than from the ledger that recorded it. D-67 separates the two because the payload is the subject's own account of when something happened and the ledger's is the mesh's: a producer that lies about its clock, or one whose clock is simply wrong, moves every row on the screen an investigator reads.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: "    const timestamp = stringField(item.occurred_at, item.stored_at, item.timestamp, item.ts) ?? \"—\";",
+    to: "    const timestamp = stringField(payload.ts, item.occurred_at, item.stored_at, item.timestamp) ?? \"—\";",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /tenant/audits with real distinct timestamps"],
+  },
+  {
+    id: "the-group-list-shows-its-first-row-only",
+    defect:
+      "The group list drew one row whatever the directory answered. Every other group — with its agents, its egress rules and its name — is simply absent, and the page says nothing about having truncated anything.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "        (list || []).map((g) => {",
+    to: "        (list || []).slice(0, 1).map((g) => {",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /creator/groups with groups container"],
+  },
+  {
+    id: "the-topology-forgets-the-group-directory",
+    defect:
+      "The topology stopped reading `GET /admin/groups` and drew the mesh from the agent registry alone. The two answer different questions — an empty group exists in the directory and nowhere in the registry — so the picture silently loses every boundary an operator is looking at it to see.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "        setLiveGroups(groups || []);",
+    to: "        setLiveGroups([]);",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /creator/topology with SVG canvas"],
+  },
+  {
+    id: "the-tenant-directory-drops-its-first-row",
+    defect:
+      "The tenant directory dropped the first tenant the platform answered with. A tenant missing from this screen cannot be renamed, soft-deleted or read here at all, and the count beside the table agrees with the truncated list rather than with the platform.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "      setTenants(response.tenants);",
+    to: "      setTenants(response.tenants.slice(1));",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /platform/tenants with isolation table rows"],
+  },
+  {
+    id: "the-egress-matrix-loses-a-group",
+    defect:
+      "The egress matrix dropped a group from both axes, so every rule that group is a source or a target of vanished from the screen that exists to show them. A rule nobody can see is a rule nobody revokes.",
+    file: "packages/platform-web/src/pages/tenant/TenantEgressAclPage.tsx",
+    from: "          setGroups(list.map((g) => ({ id: g.id, name: g.name })));",
+    to: "          setGroups(list.slice(1).map((g) => ({ id: g.id, name: g.name })));",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /tenant/egress-acl with multi-group directional matrix"],
+  },
+  {
+    id: "the-default-tenant-is-offered-for-deletion",
+    defect:
+      "The console offered to soft-delete the default tenant. The server answers `409 DEFAULT_TENANT`, so the button cannot succeed — it can only teach an operator that this console's controls do not mean what they say, and it invites the attempt on the one tenant every other one is created under.",
+    file: "packages/platform-web/src/pages/platform/TenantManagementPage.tsx",
+    from: "              disabled={isDefault || isDeleted || busyKey !== null}",
+    to: "              disabled={isDeleted || busyKey !== null}",
+    suite: "test/fe-render.test.ts",
+    expect: ["does not offer the default one's deletion"],
+  },
+  {
+    id: "an-unkeyed-agent-borrows-a-fingerprint",
+    defect:
+      "An agent with no key on record was drawn with `sha256:verified_mesh_identity` — the constant this column shipped with, the same string for every row, with the word an operator is looking for inside it. The screen's job here is to show nothing: an absent key is the fact.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "            fingerprint: a.fingerprint ?? null,",
+    to: "            fingerprint: a.fingerprint ?? \"sha256:verified_mesh_identity\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["shows no fingerprint on /creator"],
   },
 ];
 
