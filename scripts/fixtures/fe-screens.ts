@@ -326,19 +326,30 @@ console.log(`seeded       ${VIEWER} (audit.read.metadata only) — /auth/me 200,
 const getJson = async (path: string) =>
   (await fetch(`${HTTP}${path}`, { headers: { cookie } })).json() as Promise<any>;
 
+/**
+ * **`keys`, not `pending`.** D-689 renamed this body: two decision queues
+ * answered `{ pending: [...] }` one path segment apart, so a reader holding a
+ * response could not tell the key proposals from the people awaiting
+ * admission. This file kept reading the old name and therefore counted zero of
+ * its own keys — and died saying the route could not account for them, which
+ * blames the read-back for a rename.
+ */
 const pending = await getJson("/api/v1/admin/keys/pending");
+const pendingKeys = (pending.keys ?? []) as Array<Record<string, unknown>>;
 const mailbox = await getJson("/api/v1/admin/mailbox");
 const tenants = await getJson("/api/v1/admin/tenants");
 
-const minePending = (pending.pending ?? []).filter((p: any) =>
+const minePending = pendingKeys.filter((p: any) =>
   pendingFingerprints.includes(p.fingerprint ?? p.key_fingerprint),
 ).length;
 const mineQueued = (mailbox.mailboxes ?? []).find((m: any) => (m.identity ?? m.agent) === recipientId);
 
 if (minePending !== PENDING) {
   throw new Error(
-    `provisioned ${PENDING} pending keys and /api/v1/admin/keys/pending accounts for ${minePending}. ` +
-    `The fixture cannot certify a number it did not read back.`,
+    `provisioned ${PENDING} pending keys and /api/v1/admin/keys/pending accounts for ${minePending} ` +
+    `of the ${pendingKeys.length} it lists. The fixture cannot certify a number it did not read back.\n` +
+    `If that total is 0, check the body's field name before the seeding: this read \`keys\`, and the ` +
+    `queue answered ${JSON.stringify(Object.keys(pending))}.`,
   );
 }
 
@@ -356,7 +367,7 @@ const expectation = {
     // The screen shows the total, not this run's share, so the total is what a
     // checker compares. `mine` is here to tell "the fixture did nothing" apart
     // from "the screen is stale" when the total looks wrong.
-    pendingKeys: { atLeast: (pending.pending ?? []).length, mine: PENDING },
+    pendingKeys: { atLeast: pendingKeys.length, mine: PENDING },
     queuedFor: { identity: recipientId, exactly: QUEUED },
     tenants: { atLeast: 1, includes: "default" },
   },
@@ -371,7 +382,7 @@ const expectation = {
   // screen FAIL — 1.8 minutes old, and the seeder had run inside those minutes
   // (mail #1149). Age is a proxy for staleness; these are staleness itself.
   observed: {
-    pendingTotal: (pending.pending ?? []).length,
+    pendingTotal: pendingKeys.length,
     queuedForRecipient: mineQueued?.pending ?? mineQueued?.depth ?? null,
     tenants: tenants.tenants ?? [],
   },

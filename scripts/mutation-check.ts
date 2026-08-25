@@ -10123,6 +10123,56 @@ const MUTATIONS: Mutation[] = [
     suite: "test/keys.test.ts",
     expect: ["reports that addresses come from a header this deployment believes"],
   },
+  {
+    id: "the-fixture-reads-a-queue-by-its-old-name",
+    defect:
+      "The key queue is read as `pending` again, the name D-689 moved away from so the proposals and the people awaiting admission could be told apart one path segment from each other. The route answers an honest empty array under the old name, so the fixture certifies nothing and blames its own read-back for it — which is how this shipped.",
+    file: "scripts/fixtures/fe-screens.ts",
+    from: "const pendingKeys = (pending.keys ?? []) as Array<Record<string, unknown>>;",
+    to: "const pendingKeys = (pending.pending ?? []) as Array<Record<string, unknown>>;",
+    suite: "test/fe-screens-fixture.test.ts",
+    expect: ["is what the routes say, not what it meant to create"],
+  },
+  {
+    id: "the-fixture-reports-what-it-meant-to-create",
+    defect:
+      "The emitted total becomes the fixture's own variable instead of what the route answered. Every front-end check reads this file, so a screen is then compared against an intention — the exact shape the fixture exists to catch in the screens.",
+    file: "scripts/fixtures/fe-screens.ts",
+    from: "    pendingTotal: pendingKeys.length,",
+    to: "    pendingTotal: PENDING,",
+    suite: "test/fe-screens-fixture.test.ts",
+    expect: ["is what the routes say, not what it meant to create"],
+  },
+  {
+    id: "the-queue-depth-is-emitted-as-nothing",
+    defect:
+      "The depth the route reported is dropped and `null` is written in its place. A consumer cannot then tell a stale expectation from a wrong screen, which is the one distinction this field exists to make.",
+    file: "scripts/fixtures/fe-screens.ts",
+    from: "    queuedForRecipient: mineQueued?.pending ?? mineQueued?.depth ?? null,",
+    to: "    queuedForRecipient: null,",
+    suite: "test/fe-screens-fixture.test.ts",
+    expect: ["is what the routes say, not what it meant to create"],
+  },
+  {
+    id: "every-run-of-the-fixture-seeds-the-same-identities",
+    defect:
+      "The per-run tag becomes a constant, so a second run collides with the identities the first provisioned. The whole argument for random counts is that a screen matching them *twice* is reading the backend; two runs that are the same run cannot make that argument.",
+    file: "scripts/fixtures/fe-screens.ts",
+    from: "const run = randomUUID().slice(0, 6);",
+    to: "const run = \"fixture\";",
+    suite: "test/fe-screens-fixture.test.ts",
+    expect: ["a second run seeds a fresh set rather than colliding with the first"],
+  },
+  {
+    id: "the-fixture-seeds-a-number-a-placeholder-would-reach-for",
+    defect:
+      "The pending count becomes 1 — one of the numbers a hardcoded screen renders by accident. The ranges avoid 0, 1, 2, 3, 5, 10, 24 and 100 precisely so that matching them is evidence; a fixture inside that set makes the screens unjudgeable without saying so.",
+    file: "scripts/fixtures/fe-screens.ts",
+    from: "const PENDING = randomInt(6, 18);   // 6..17",
+    to: "const PENDING = 1;   // 6..17",
+    suite: "test/fe-screens-fixture.test.ts",
+    expect: ["counts land in the range that no placeholder reaches for"],
+  },
 ];
 
 /**
