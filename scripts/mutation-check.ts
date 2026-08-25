@@ -2433,6 +2433,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-02"],
   },
   {
+    id: "a-teardown-that-failed-is-reported-as-one-that-happened",
+    defect: "the failed branch reports itself under the soft-deleted marker, so a `DELETE` that never reached the server tells the operator the identity is gone. The row is still there \u2014 the screen contradicts itself, and the sentence is the half people believe.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "        testId: \"teardown-result-failed\",",
+    to: "        testId: \"teardown-result-soft-deleted\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-WRITE-03"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
