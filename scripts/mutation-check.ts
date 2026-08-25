@@ -2460,6 +2460,15 @@ const MUTATIONS: Mutation[] = [
     expect: ["SC-WRITE-22"],
   },
   {
+    id: "a-withheld-record-is-offered-as-an-original",
+    defect: "the reveal stops asking whether the record was redacted, so every row offers its original to a session holding only `audit.read.metadata`. The server withheld the body \u2014 what opens is the record it sent instead \u2014 but the screen now presents a withheld row and a readable one identically, which is the category error T-041 took off this screen.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "        const canRevealOriginal = !item.containsContent || (canReadContent && !item.redacted);",
+    to: "        const canRevealOriginal = !item.containsContent || canReadContent;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CAP-01"],
+  },
+  {
     id: "the-e2e-harness-signs-in-as-the-old-admin",
     defect: "the harness hands a runner the login name the seed used before T-026, so every scenario needing an admin session dies on `admin login did not return a session (HTTP 302)` \u2014 in whichever repository ran the list, for a rename that happened in this one. Sixty of a hundred and thirty, when it happened.",
     file: "scripts/e2e-harness.ts",
