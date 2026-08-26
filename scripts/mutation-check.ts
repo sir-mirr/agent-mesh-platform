@@ -11185,10 +11185,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-traffic-window-collapses-to-now",
     defect:
-      "The per-tenant traffic window lost its offset, so the query asked for messages carried since the instant it ran and every tenant's figures read zero. An idle mesh and a broken window produce the same screen, which is why the scenario measures a delta rather than a reading: the number has to move when a message is sent.",
+      "The per-tenant traffic window took its sign from nowhere and asked for the messages carried in the *next* twenty-four hours, so every tenant's figures read zero. An idle mesh and a broken window produce the same screen, which is why the scenario makes its own traffic before reading.\n\nThe first version of this mutation dropped the offset instead — `datetime('now')` — and measured as a coin: SQLite's clock here is second-granular, so a row stored in the same second as the query satisfies `ts >= now`. Three runs gave caught, not-caught, caught. A sign flip cannot land inside the window at all. Found by fe-codex, twice: once predicting it and once catching that the correction had not reached this file.",
     file: "packages/http/src/main.ts",
-    from: "        WHERE ts >= datetime('now', ?)",
-    to: "        WHERE ts >= datetime('now')",
+    from: "  const since = `-${hours} hours`",
+    to: "  const since = `+${hours} hours`",
     suite: "test/fe-scenarios.test.ts",
     expect: ["fetches tenant traffic and contains active default tenant"],
   },
