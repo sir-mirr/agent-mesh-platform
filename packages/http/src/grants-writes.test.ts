@@ -328,6 +328,28 @@ describe("the pending-key stream", () => {
     expect(JSON.parse(snapshot.split("data: ")[1]!).keys.map((k: { identity: string }) => k.identity))
       .toContain(waiting);
 
+    /**
+     * **The backlog must not arrive as news, and silence is what says so.**
+     *
+     * This used to rest on the order of two frames: propose `arriving`
+     * immediately, read one frame, and expect it to name `arriving` rather than
+     * `waiting`. With the seeding gone both keys are pending when the first
+     * tick fires, so one tick pushes both, and which one is read first is
+     * whatever order `pendingSince` returned them in. On this machine that was
+     * `waiting` and the guard looked sound; on CI it was the other one, and the
+     * mutation that removes the seeding was reported *not caught* — a guard
+     * that had been passing for the wrong reason, found by planting rather than
+     * by anyone reading it.
+     *
+     * The watcher polls every 500 ms, so an unseeded `reported` set announces
+     * `waiting` within one interval. Reading for three of them and finding
+     * nothing is a fact about the seeding and about nothing else.
+     */
+    expect(
+      await s.next(1_500),
+      "a key that was already waiting when the stream opened arrived on it as news",
+    ).toBeNull();
+
     // Proposed after the stream opened: an arrival, not part of the backlog.
     const arriving = uniq("arriving");
     keys.proposeKey(db, arriving, publicKey(), "grants-writes-test");
