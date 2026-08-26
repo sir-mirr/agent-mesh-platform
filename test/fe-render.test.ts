@@ -5902,7 +5902,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // of the group, so it is asked there.
       const emptyGroup = page.locator("[data-testid='topology-cluster']").filter({ hasText: "빈 그룹" });
       const clusters = await emptyGroup.count();
-      const agentsInside = await emptyGroup.locator("[data-testid='topology-agent']").count();
+      // **By the group the node says drew it, not by containment.** The
+      // repair before this one read `topology-agent` inside the cluster
+      // element — and the nodes are siblings of the clusters, because an SVG
+      // canvas positions by coordinate rather than by nesting. So the count
+      // was zero whatever the page did, and two separate mutations that filled
+      // this group with the whole mesh were both recorded as not caught. The
+      // node carries `data-group` for this.
+      const agentsInside = await page
+        .locator("[data-testid='topology-agent'][data-group='empty-grp']")
+        .count();
       const agentsDrawn = await page.locator("[data-testid='topology-agent']").count();
 
       // The cluster must be there, or "no agents drawn" is just "nothing drawn"

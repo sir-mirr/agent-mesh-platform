@@ -1446,6 +1446,14 @@ export function TopologyPage() {
                 <g
                   key={node.identity}
                   data-testid="topology-agent"
+                  /* Which cluster drew this node. The nodes are siblings of the
+                     cluster circles rather than children of them — an SVG
+                     canvas positions by coordinate — so "inside the group" is
+                     not a DOM relation and cannot be asked for as one. It was
+                     being asked for as one: SC-SCR05-03 counted
+                     `topology-agent` *within* the cluster element and got zero
+                     however the page behaved. */
+                  data-group={node.group}
                   className="node-clickable"
                   onClick={() => focusAndFlyToNode(node)}
                   style={{
