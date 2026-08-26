@@ -9,7 +9,12 @@
  * which name the server sends.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { fetchLocalUsers, admitLocalUserApi, fetchPendingAdmissions } from "./users.ts";
+import {
+  fetchLocalUsers,
+  admitLocalUserApi,
+  fetchPendingAdmissions,
+  reissueLocalUserPasswordApi,
+} from "./users.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -80,9 +85,36 @@ describe("admitLocalUserApi", () => {
     ).toEqual({ username: "acme-newcomer" });
   });
 
+  it("passes the one role the admission contract permits", async () => {
+    const spy = spyOn({ ok: true, user: {}, temporary_password: "x" });
+    await admitLocalUserApi("newcomer", "New Comer", "tenant-b", "member");
+    expect(JSON.parse(String(spy.mock.calls[0]![1]!.body))).toEqual({
+      username: "newcomer",
+      display_name: "New Comer",
+      tenant: "tenant-b",
+      role: "member",
+    });
+  });
+
   it("carries the one-time password back to the caller", async () => {
     spyOn({ ok: true, user: { github_login: "newcomer" }, temporary_password: "shown-once" });
     expect((await admitLocalUserApi("newcomer")).temporary_password).toBe("shown-once");
+  });
+});
+
+describe("reissueLocalUserPasswordApi", () => {
+  it("posts to the named account and carries the one-time value back", async () => {
+    const spy = spyOn({
+      ok: true,
+      username: "admin / ops",
+      temporary_password: "replacement-once",
+      must_change_password: true,
+    });
+    const response = await reissueLocalUserPasswordApi("admin / ops");
+
+    expect(String(spy.mock.calls[0]![0])).toEndWith("/api/v1/admin/users/admin%20%2F%20ops/password");
+    expect(spy.mock.calls[0]![1]?.method).toBe("POST");
+    expect(response.temporary_password).toBe("replacement-once");
   });
 });
 

@@ -197,7 +197,7 @@ export function Sidebar({
         },
         {
           label: t("nav.users", "로컬 계정"),
-          description: t("nav.users.desc", "사람을 들이고 임시 비밀번호를 한 번 발급"),
+          description: t("nav.users.desc", "로컬 계정 생성 및 임시 비밀번호 관리"),
           href: "/platform/users",
           icon: "👤",
           requiredCapability: "user.admit",

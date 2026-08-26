@@ -36,6 +36,7 @@ export async function admitLocalUserApi(
   username: string,
   displayName?: string,
   tenant?: string,
+  role?: "member",
 ): Promise<AdmittedUser> {
   return await apiClient<AdmittedUser>("/api/v1/admin/users", {
     method: "POST",
@@ -43,8 +44,27 @@ export async function admitLocalUserApi(
       username,
       display_name: displayName || undefined,
       tenant: tenant || undefined,
+      role: role || undefined,
     }),
   });
+}
+
+export interface ReissuedPassword {
+  ok: boolean;
+  username: string;
+  temporary_password: string;
+  must_change_password: boolean;
+}
+
+/**
+ * Replace an existing local account's password with a one-time temporary one.
+ * The response is the only read path for the value, exactly as on admission.
+ */
+export async function reissueLocalUserPasswordApi(username: string): Promise<ReissuedPassword> {
+  return await apiClient<ReissuedPassword>(
+    `/api/v1/admin/users/${encodeURIComponent(username)}/password`,
+    { method: "POST" },
+  );
 }
 
 /**

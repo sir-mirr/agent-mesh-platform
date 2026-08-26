@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { fetchLocalUsers, admitLocalUserApi, fetchPendingAdmissions, type LocalUser, type PendingAdmission } from "@/api/users.ts";
+import {
+  fetchLocalUsers,
+  admitLocalUserApi,
+  fetchPendingAdmissions,
+  reissueLocalUserPasswordApi,
+  type LocalUser,
+  type PendingAdmission,
+} from "@/api/users.ts";
 import { fetchTenantDirectory, type TenantDirectoryItem } from "@/api/tenants.ts";
 import { ApiError, failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 
@@ -29,8 +36,11 @@ export function UserAdminPage() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
+  const [issued, setIssued] = useState<{ username: string; password: string; action: "created" | "reissued" } | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [reissueRefusal, setReissueRefusal] = useState<string | null>(null);
+  const [confirmingReissue, setConfirmingReissue] = useState<string | null>(null);
+  const [reissuing, setReissuing] = useState<string | null>(null);
   const [tenants, setTenants] = useState<TenantDirectoryItem[] | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("");
   const [tenantLoading, setTenantLoading] = useState(true);
@@ -122,10 +132,21 @@ export function UserAdminPage() {
     if (!username.trim() || !selectedTenant || tenantLoading || tenants === null || busy) return;
     setBusy(true);
     setRefusal(null);
+    setReissueRefusal(null);
+    setConfirmingReissue(null);
     setIssued(null);
     try {
-      const res = await admitLocalUserApi(username.trim(), displayName.trim(), selectedTenant);
-      setIssued({ username: res.user?.username ?? username.trim(), password: res.temporary_password });
+      const res = await admitLocalUserApi(
+        username.trim(),
+        displayName.trim(),
+        selectedTenant,
+        "member",
+      );
+      setIssued({
+        username: res.user?.username ?? username.trim(),
+        password: res.temporary_password,
+        action: "created",
+      });
       setUsername("");
       setDisplayName("");
       await load();
@@ -139,6 +160,32 @@ export function UserAdminPage() {
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  const reissuePassword = async (user: LocalUser) => {
+    if (reissuing !== null) return;
+    setReissuing(user.username);
+    setReissueRefusal(null);
+    setRefusal(null);
+    setIssued(null);
+    try {
+      const response = await reissueLocalUserPasswordApi(user.username);
+      setIssued({
+        username: response.username,
+        password: response.temporary_password,
+        action: "reissued",
+      });
+      setConfirmingReissue(null);
+      await load();
+    } catch (err: any) {
+      setReissueRefusal(
+        err instanceof ApiError && err.status === null
+          ? t("users.reissue.unreachable", "The server did not answer. The password was not reissued.")
+          : String(err?.message ?? err),
+      );
+    } finally {
+      setReissuing(null);
     }
   };
 
@@ -160,7 +207,30 @@ export function UserAdminPage() {
     {
       key: "role",
       header: t("users.col.role", "Role"),
-      render: (u: LocalUser) => <span data-testid={`user-role-${u.username}`}>{u.role ?? "—"}</span>,
+      render: (u: LocalUser) => {
+        const isAdmin = u.role === "admin";
+        return (
+          <span
+            data-testid={`user-role-${u.username}`}
+            data-privilege={isAdmin ? "high" : "standard"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "3px 8px",
+              borderRadius: 999,
+              border: `1px solid ${isAdmin ? "var(--color-warning)" : "var(--color-border)"}`,
+              background: isAdmin ? "rgba(217, 119, 6, 0.1)" : "var(--color-bg-surface-sub)",
+              color: isAdmin ? "var(--color-warning)" : "var(--color-text-secondary)",
+              fontSize: "0.75rem",
+              fontWeight: 700,
+            }}
+          >
+            {isAdmin
+              ? t("users.role.admin", "Platform administrator")
+              : t("users.role.member", "Standard account")}
+          </span>
+        );
+      },
     },
     {
       key: "tenant",
@@ -178,6 +248,57 @@ export function UserAdminPage() {
         </span>
       ),
     },
+    {
+      key: "password_action",
+      header: t("users.col.passwordAction", "Password action"),
+      render: (u: LocalUser) => confirmingReissue === u.username ? (
+        <div
+          data-testid={`reissue-confirm-${u.username}`}
+          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 210 }}
+        >
+          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
+            {u.role === "admin"
+              ? t("users.reissue.confirmAdmin", "This is a platform administrator. Reissue its temporary password?")
+              : t("users.reissue.confirm", "Reissue this account's temporary password?")}
+          </span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Button
+              type="button"
+              size="sm"
+              variant={u.role === "admin" ? "danger" : "primary"}
+              data-testid={`reissue-confirm-submit-${u.username}`}
+              disabled={reissuing !== null}
+              onClick={() => void reissuePassword(u)}
+            >
+              {reissuing === u.username
+                ? t("users.reissuing", "Reissuing…")
+                : t("users.reissue.confirmAction", "Confirm reissue")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              data-testid={`reissue-cancel-${u.username}`}
+              disabled={reissuing !== null}
+              onClick={() => setConfirmingReissue(null)}
+            >
+              {t("common.cancel", "Cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant={u.role === "admin" ? "outline" : "secondary"}
+          data-testid={`reissue-${u.username}`}
+          disabled={reissuing !== null}
+          onClick={() => setConfirmingReissue(u.username)}
+        >
+          {t("users.reissue", "Reissue temporary password")}
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -187,7 +308,7 @@ export function UserAdminPage() {
         title={t("users.title", "Local accounts")}
         subtitle={t(
           "users.subtitle",
-          "Admit a person and hand them one temporary password. They choose their own before they can do anything else.",
+          "Create and manage accounts used without external sign-in. A temporary password is shown once after creation and must be changed at first sign-in.",
         )}
       />
 
@@ -205,6 +326,15 @@ export function UserAdminPage() {
           padding: 16,
         }}
       >
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 4 }}>
+          <strong>{t("users.create.title", "Create local account")}</strong>
+          <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+            {t(
+              "users.password.help",
+              "After account creation or password reissue, the temporary password appears once in the confirmation panel below.",
+            )}
+          </span>
+        </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
           {t("users.field.username", "Username")}
           <input
@@ -212,12 +342,14 @@ export function UserAdminPage() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder={t("users.field.username.ph", "letters, digits and dashes")}
+            required
             style={{
               padding: "8px 10px",
               borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-bg-surface-sub)",
+              border: "1px solid var(--color-border-strong)",
+              background: "var(--color-bg-surface)",
               color: "var(--color-text-primary)",
+              cursor: "text",
             }}
           />
         </label>
@@ -227,12 +359,14 @@ export function UserAdminPage() {
             data-testid="admit-display"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={t("users.field.display.ph", "Optional display name")}
             style={{
               padding: "8px 10px",
               borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-bg-surface-sub)",
+              border: "1px solid var(--color-border-strong)",
+              background: "var(--color-bg-surface)",
               color: "var(--color-text-primary)",
+              cursor: "text",
             }}
           />
         </label>
@@ -265,12 +399,40 @@ export function UserAdminPage() {
             )}
           </select>
         </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
+          {t("users.field.role", "Initial role")}
+          <select
+            data-testid="admit-role"
+            value="member"
+            disabled
+            aria-describedby="admit-role-help"
+            style={{
+              padding: "8px 10px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--color-border-strong)",
+              background: "var(--color-bg-surface)",
+              color: "var(--color-text-primary)",
+              minWidth: 190,
+            }}
+          >
+            <option value="member">{t("users.role.member", "Standard account")}</option>
+          </select>
+          <span id="admit-role-help" style={{ maxWidth: 260, color: "var(--color-text-muted)", lineHeight: 1.45 }}>
+            {t(
+              "users.role.initialNote",
+              "New accounts start as Standard account. Assign additional permissions after creation on Account permissions.",
+            )}{" "}
+            <a href="/tenant/rbac" style={{ color: "var(--color-primary)", fontWeight: 700 }}>
+              {t("users.role.openPermissions", "Open account permissions")}
+            </a>
+          </span>
+        </label>
         <Button
           type="submit"
           data-testid="admit-submit"
           disabled={busy || tenantLoading || tenants === null || tenants.length === 0 || !selectedTenant}
         >
-          {busy ? t("users.admitting", "Admitting…") : t("users.admit", "Admit")}
+          {busy ? t("users.admitting", "Creating account…") : t("users.admit", "Create account")}
         </Button>
       </form>
 
@@ -306,6 +468,21 @@ export function UserAdminPage() {
         </div>
       )}
 
+      {reissueRefusal && (
+        <div
+          data-testid="reissue-error"
+          style={{
+            padding: 12,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-danger)",
+            color: "var(--color-danger)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {reissueRefusal}
+        </div>
+      )}
+
       {issued && (
         <div
           data-testid="issued-password"
@@ -319,7 +496,9 @@ export function UserAdminPage() {
           }}
         >
           <strong>
-            {t("users.issued.for", "Temporary password for")} {issued.username}
+            {issued.action === "created"
+              ? t("users.issued.created", "Account created — temporary password for")
+              : t("users.issued.reissued", "Password reissued — temporary password for")} {issued.username}
           </strong>
           <code data-testid="issued-value" style={{ fontSize: "1rem", letterSpacing: "0.02em" }}>
             {issued.password}
@@ -327,12 +506,7 @@ export function UserAdminPage() {
           <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
             {t(
               "users.issued.once",
-              // The sentence used to end `— admit the person again to issue a
-              // new one`, and admitting an existing account answers `409` at
-              // `main.ts:2462`. The screen was instructing an operator to do
-              // the one thing the server refuses. It says what is true and
-              // stops; the re-issue route is somebody else's commit.
-              "Shown once. Leaving or reloading this page loses it, and the server will not repeat it.",
+              "Shown once. Deliver it securely now. Leaving or reloading this page removes it; if it is lost, use Reissue temporary password in the account list.",
             )}
           </span>
         </div>
@@ -349,9 +523,12 @@ export function UserAdminPage() {
           borderRadius: 8,
         }}
       >
-        <strong>{t("users.queue.title", "People who asked to be let in")}</strong>
+        <strong>{t("users.queue.title", "Sign-up requests")}</strong>
         <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-          {t("users.queue.hint", "A different queue from the key requests. The bell does not show anyone here.")}
+          {t(
+            "users.queue.hint",
+            "This list shows account sign-up requests. The notification bell shows agent registration key requests.",
+          )}
         </span>
 
         {queueLoading ? (
@@ -360,10 +537,10 @@ export function UserAdminPage() {
           <span data-testid="admission-queue-refused">{refusedText(t, queueMissing)}</span>
         ) : queue === null ? (
           <span data-testid="admission-queue-unreachable">
-            {t("users.queue.unreachable", "The queue could not be read — which is not the same as empty.")}
+            {t("users.queue.unreachable", "Could not load sign-up requests.")}
           </span>
         ) : queue.length === 0 ? (
-          <span data-testid="admission-queue-empty">{t("users.queue.empty", "Nobody is waiting.")}</span>
+          <span data-testid="admission-queue-empty">{t("users.queue.empty", "No sign-up requests are waiting.")}</span>
         ) : (
           <ul data-testid="admission-queue-list" style={{ margin: 0, paddingLeft: 18 }}>
             {queue.map((p) => (
@@ -375,12 +552,11 @@ export function UserAdminPage() {
           </ul>
         )}
 
-        {/* Read-only here on purpose: this commit closes the blindness, not the
-            acting. The routes that decide (`admin/approve`, `admin/deny`) are
-            already driven by the server-rendered admin page, and putting a
-            second actor on them is its own change. */}
         <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-          {t("users.queue.decide", "Decisions are made on the server-rendered admin page.")}
+          {t("users.queue.decide", "Approve or reject requests on the account approval page.")}{" "}
+          <a href="/admin" style={{ color: "var(--color-primary)", fontWeight: 700 }}>
+            {t("users.queue.openApproval", "Open account approval")}
+          </a>
         </span>
       </section>
 

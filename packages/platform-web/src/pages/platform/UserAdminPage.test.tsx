@@ -97,6 +97,7 @@ const restoreLanguage = () => {
 let usersRoute: Answer;
 let queueRoute: Answer;
 let admitRoute: Answer;
+let reissueRoute: Answer;
 let keyQueueRoute: Answer;
 let tenantRoute: Answer;
 
@@ -106,6 +107,12 @@ beforeEach(() => {
   usersRoute = answers(200, { ok: true, users: [] });
   queueRoute = answers(200, { ok: true, users: [] });
   admitRoute = answers(201, { ok: true, user: { username: "someone" }, temporary_password: "unused" });
+  reissueRoute = answers(200, {
+    ok: true,
+    username: "someone",
+    temporary_password: "replacement-unused",
+    must_change_password: true,
+  });
   keyQueueRoute = answers(200, { ok: true, keys: [] });
   tenantRoute = answers(200, {
     ok: true,
@@ -125,6 +132,7 @@ beforeEach(() => {
     if (url.endsWith(KEY_QUEUE)) return await keyQueueRoute();
     if (url.endsWith(QUEUE)) return await queueRoute();
     if (url.endsWith(TENANT_DIRECTORY)) return await tenantRoute();
+    if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/password$/.test(url)) return await reissueRoute();
     if (url.endsWith(USERS)) return method === "POST" ? await admitRoute() : await usersRoute();
     throw new TypeError("Failed to fetch");
   });
@@ -242,6 +250,7 @@ const admit = async (username: string, displayName = "", tenant?: string) => {
   await settle();
 };
 const posts = () => calls.filter((c) => c.method === "POST" && c.url.endsWith(USERS));
+const reissuePosts = () => calls.filter((c) => c.method === "POST" && /\/users\/[^/]+\/password$/.test(c.url));
 const rosterReads = () => calls.filter((c) => c.method === "GET" && c.url.endsWith(USERS));
 
 /** What `GET /api/v1/admin/users` answers with — flags as numbers, as the server sends them. */
@@ -249,6 +258,42 @@ const ROSTER = [
   { username: "ada", display_name: "Ada L", role: "member", tenant: "tenant-a", must_change_password: 1 },
   { username: "grace", role: "admin", tenant: "tenant-b", must_change_password: 0 },
 ];
+
+describe("the account screen uses administrative language", () => {
+  it("does not restore the narrative phrases found in the product review", async () => {
+    // Verbatim review evidence, not a home-grown word blacklist. These are the
+    // exact English and Korean sentences that were visible on /platform/users
+    // when T-045 was filed. Keeping the whole phrases makes this guard narrow:
+    // it rejects the reviewed copy without banning ordinary words elsewhere.
+    const reviewedCopy = [
+      "Admit a person and hand them one temporary password. They choose their own before they can do anything else.",
+      "People who asked to be let in",
+      "A different queue from the key requests. The bell does not show anyone here.",
+      "Decisions are made on the server-rendered admin page.",
+      "사람을 들이고 임시 비밀번호를 한 번 건넨다. 본인이 직접 바꾸기 전에는 그 외에 아무것도 못 한다.",
+      "들여보내달라고 요청한 사람",
+      "이 줄은 키 요청과 다른 대기열이다. 종을 봐도 여기 있는 사람은 안 보인다.",
+      "결정은 서버가 그리는 관리 화면에서 한다.",
+    ];
+    const pageSource = await Bun.file(new URL("./UserAdminPage.tsx", import.meta.url)).text();
+    const shippedCopy = [JSON.stringify(DICTIONARY.en), JSON.stringify(DICTIONARY.ko), pageSource].join("\n");
+
+    expect(reviewedCopy.filter((phrase) => shippedCopy.includes(phrase))).toEqual([]);
+  });
+
+  it("names each visible action and the notification relationship", async () => {
+    await mount();
+    const page = document.body.textContent ?? "";
+
+    expect(submitButton().textContent).toBe(en("users.admit"));
+    expect(page).toContain(en("users.create.title"));
+    expect(page).toContain(en("users.password.help"));
+    expect(page).toContain(en("users.queue.title"));
+    expect(page).toContain(en("users.queue.hint"));
+    expect(page).toContain(en("users.queue.openApproval"));
+    expect(screen.getByTestId("admit-display").getAttribute("placeholder")).toBe(en("users.field.display.ph"));
+  });
+});
 
 describe("the admission queue, in the four states it can be in", () => {
   it("accuses nobody in the frame before either read has been asked for", async () => {
@@ -400,7 +445,7 @@ describe("the roster of local accounts tells the same four apart", () => {
     usersRoute = answers(200, { ok: true, users: ROSTER });
     await mount();
     expect(rosterState().rows.length).toBe(2);
-    expect(cellUnder("ada", en("users.col.role"))).toBe("member");
+    expect(cellUnder("ada", en("users.col.role"))).toBe(en("users.role.member"));
     expect(cellUnder("ada", en("users.col.tenant"))).toBe("tenant-a");
     expect(cellUnder("ada", en("users.col.display"))).toBe("Ada L");
     // The roster is the only place this console learns a role or a name. A
@@ -408,6 +453,9 @@ describe("the roster of local accounts tells the same four apart", () => {
     // subject — is the defect `/tenant/rbac` shipped.
     expect(cellUnder("grace", en("users.col.display"))).toBe("—");
     expect(cellUnder("grace", en("users.col.tenant"))).toBe("tenant-b");
+    expect(cellUnder("grace", en("users.col.role"))).toBe(en("users.role.admin"));
+    expect(screen.getByTestId("user-role-ada").getAttribute("data-privilege")).toBe("standard");
+    expect(screen.getByTestId("user-role-grace").getAttribute("data-privilege")).toBe("high");
     expect(rosterState().empty).toBe(false);
   });
 
@@ -480,7 +528,30 @@ describe("the one temporary password", () => {
     await admit("  newbie  ", "   ");
     // A username created with a leading space is an account whose holder
     // cannot sign in, and nothing on this screen would show the difference.
-    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({ username: "newbie", tenant: "default" });
+    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({
+      username: "newbie",
+      tenant: "default",
+      role: "member",
+    });
+  });
+
+  it("states the member-only initial role and sends it explicitly", async () => {
+    admitRoute = answers(201, ISSUED);
+    await mount();
+    const select = screen.getByTestId("admit-role") as HTMLSelectElement;
+    expect(select.value).toBe("member");
+    expect(select.disabled).toBe(true);
+    expect([...select.options].map((option) => option.value)).toEqual(["member"]);
+    expect(document.getElementById("admit-role-help")?.textContent).toContain(en("users.role.initialNote"));
+    expect(document.querySelector<HTMLAnchorElement>('#admit-role-help a')?.getAttribute("href")).toBe("/tenant/rbac");
+
+    await admit("newbie", "New Bie", "default");
+    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({
+      username: "newbie",
+      display_name: "New Bie",
+      tenant: "default",
+      role: "member",
+    });
   });
 
   it("defaults to the signed-in account's active tenant and sends the selected tenant", async () => {
@@ -493,7 +564,11 @@ describe("the one temporary password", () => {
     expect(select.textContent).not.toContain("Deleted");
 
     await admit("newbie", "", "tenant-b");
-    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({ username: "newbie", tenant: "tenant-b" });
+    expect(JSON.parse(posts()[0]?.body ?? "null")).toEqual({
+      username: "newbie",
+      tenant: "tenant-b",
+      role: "member",
+    });
   });
 
   it("does not guess a tenant or admit when the directory could not be read", async () => {
@@ -648,5 +723,62 @@ describe("the one temporary password", () => {
     // destroys the password just issued.
     expect(submitButton().disabled).toBe(false);
     expect(submitButton().textContent).toBe(en("users.admit"));
+  });
+});
+
+describe("password reissue from the account list", () => {
+  it("requires confirmation, shows the replacement once, and re-reads the account state", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    reissueRoute = answers(200, {
+      ok: true,
+      username: "grace",
+      temporary_password: "replacement-shown-once",
+      must_change_password: true,
+    });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("reissue-grace"));
+    expect(reissuePosts()).toHaveLength(0);
+    expect(textOf("reissue-confirm-grace")).toContain(en("users.reissue.confirmAdmin"));
+
+    usersRoute = answers(200, {
+      ok: true,
+      users: [{ ...ROSTER[1], must_change_password: 1 }],
+    });
+    fireEvent.click(screen.getByTestId("reissue-confirm-submit-grace"));
+    await settle();
+
+    expect(reissuePosts()).toHaveLength(1);
+    expect(reissuePosts()[0]?.url).toEndWith("/api/v1/admin/users/grace/password");
+    expect(textOf("issued-value")).toBe("replacement-shown-once");
+    expect(textOf("issued-password")).toContain(en("users.issued.reissued"));
+    expect(textOf("issued-password")).toContain(en("users.issued.once"));
+    expect(rosterReads()).toHaveLength(2);
+    expect(textOf("user-state-grace")).toBe(en("users.state.temp"));
+  });
+
+  it("cancels without changing the password", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("reissue-ada"));
+    expect(textOf("reissue-confirm-ada")).toContain(en("users.reissue.confirm"));
+    fireEvent.click(screen.getByTestId("reissue-cancel-ada"));
+
+    expect(screen.queryByTestId("reissue-confirm-ada")).toBeNull();
+    expect(reissuePosts()).toHaveLength(0);
+  });
+
+  it("states that no replacement was issued when the server did not answer", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    reissueRoute = noAnswer;
+    await mount();
+
+    fireEvent.click(screen.getByTestId("reissue-ada"));
+    fireEvent.click(screen.getByTestId("reissue-confirm-submit-ada"));
+    await settle();
+
+    expect(textOf("reissue-error")).toBe(en("users.reissue.unreachable"));
+    expect(textOf("issued-password")).toBeNull();
   });
 });
