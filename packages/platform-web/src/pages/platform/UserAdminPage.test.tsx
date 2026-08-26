@@ -506,6 +506,31 @@ describe("opening account approval inside the console", () => {
     expect(textOf("admission-decision-success")).toContain("waiting-2");
   });
 
+  /**
+   * **Backing out is a decision too, and it must reach the server as none.**
+   *
+   * The confirmation exists so that a click on `Approve request` is not itself
+   * the approval; cancelling is the half of that which proves it. Without this
+   * the only evidence the two-step guard works is that a *confirmed* decision
+   * posts — which a screen with no cancel at all would satisfy just as well.
+   */
+  it("posts nothing when a pending decision is taken back", async () => {
+    queueRoute = answers(200, { ok: true, users: [{ github_login: "waiting-4" }] });
+    await mount();
+    fireEvent.click(screen.getByTestId("open-admission-approval"));
+
+    fireEvent.click(screen.getByTestId("approve-admission-waiting-4"));
+    expect(textOf("confirm-admission-waiting-4")).toContain(en("users.queue.confirmApprove"));
+
+    fireEvent.click(screen.getByTestId("confirm-admission-cancel-waiting-4"));
+    await settle();
+
+    expect(decisionPosts(), "cancelling the confirmation still decided the request").toHaveLength(0);
+    expect(screen.queryByTestId("confirm-admission-waiting-4"), "the confirmation stayed open").toBeNull();
+    // The row is still there to decide later, and the buttons came back.
+    expect(screen.queryByTestId("approve-admission-waiting-4")).not.toBeNull();
+  });
+
   it("keeps the request visible and shows the server's refusal when a decision loses the race", async () => {
     queueRoute = answers(200, { ok: true, users: [{ github_login: "waiting-3" }] });
     approveRoute = answers(404, { error: 'No pending approval found for "waiting-3"' });
