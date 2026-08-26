@@ -11372,6 +11372,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["sends direct message between registered agents"],
   },
+  {
+    id: "the-build-reports-a-commit-nobody-can-look-up",
+    defect:
+      "The provenance shortened its commit to four characters. § 13's point is that a deployment can say which build it is: four hex digits collide in any repository this size, so the answer stops identifying anything while still looking like an answer. `unknown` is the honest reply when there is no git — a truncated id is not.",
+    file: "packages/hub/src/provenance.ts",
+    from: "  const commit = git(\"rev-parse\", \"HEAD\");",
+    to: "  const commit = git(\"rev-parse\", \"--short=4\", \"HEAD\");",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["verifies provenance and platform metadata"],
+  },
+  {
+    id: "an-empty-group-draws-every-agent",
+    defect:
+      "A group the server reports as empty was treated as one whose membership is unknown, so the topology drew every agent inside it. The mirror image of the `|| 1` defect removed from the line below: there a known zero became one, here it becomes everybody — and the picture an operator reads for *who is in what* says every agent is in the first empty group on the screen.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "      const members = g.members ?? [];",
+    to: "      const members = g.members?.length ? g.members : liveAgents.map((agent) => agent.identity);",
+    suite: "test/fe-render.test.ts",
+    expect: ["draws no agents inside a group the server reports as empty"],
+  },
 ];
 
 /**
