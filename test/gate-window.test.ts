@@ -35,6 +35,29 @@ function recorder() {
   return { sent, server, url: `http://127.0.0.1:${server.port}/api/mail` };
 }
 
+/**
+ * The release mail, once the recorder has actually taken it.
+ *
+ * **`await proc.exited` says the gate is gone, not that its last POST was
+ * handled.** Every test here read `sent` the instant the child died, which
+ * holds on an idle machine and does not hold inside the full suite — one of
+ * them failed there and passed alone, which is the shape a load-dependent
+ * verdict has. The wait is on the thing being measured rather than on a
+ * duration, so a real regression still fails: nothing arrives, and this says
+ * how many messages did.
+ */
+async function releaseMail(sent: Sent[], within = 5_000): Promise<Sent> {
+  const deadline = Date.now() + within;
+  for (;;) {
+    const end = sent.find((m) => m.body.includes("측정 종료"));
+    if (end) return end;
+    if (Date.now() > deadline) {
+      throw new Error(`the gate released no window within ${within}ms — ${sent.length} message(s) arrived`);
+    }
+    await Bun.sleep(10);
+  }
+}
+
 const servers: Array<{ stop: () => void }> = [];
 const keyDirs: string[] = [];
 afterEach(() => {
@@ -132,7 +155,7 @@ describe("bracketing a run", () => {
     const printed = await new Response(proc.stdout).text();
     expect(await proc.exited).toBe(0);
 
-    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    const end = await releaseMail(sent);
     expect({
       released: end.body.includes("창 해제"),
       counted: end.body.includes("41 pass / 0 fail"),
@@ -154,7 +177,7 @@ describe("bracketing a run", () => {
     await new Response(proc.stdout).text();
     await proc.exited;
 
-    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    const end = await releaseMail(sent);
     expect(end.body).toContain("수치 없음");
     expect(end.body).not.toContain("pass /");
   });
@@ -174,7 +197,7 @@ describe("bracketing a run", () => {
     await new Response(proc.stdout).text();
     await proc.exited;
 
-    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    const end = await releaseMail(sent);
     expect({ says: /5\/5 caught/.test(end.body), quiet: end.body.includes("수치 없음") },
       "a mutation batch released saying it measured nothing, which reads as a run that never started",
     ).toEqual({ says: true, quiet: false });
@@ -189,7 +212,7 @@ describe("bracketing a run", () => {
     await new Response(proc.stdout).text();
     await proc.exited;
 
-    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    const end = await releaseMail(sent);
     expect({
       anchors: /792\/792 anchors/.test(end.body),
       selfCheck: /self-check: 2\/2 failed/.test(end.body),
@@ -208,7 +231,7 @@ describe("bracketing a run", () => {
     await new Response(proc.stdout).text();
     await proc.exited;
 
-    const end = sent.find((m) => m.body.includes("측정 종료"))!;
+    const end = await releaseMail(sent);
     expect(end.body).toContain("lines 99.50 below the floor");
   });
 
