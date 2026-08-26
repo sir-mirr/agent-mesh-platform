@@ -9596,6 +9596,66 @@ export const MUTATIONS: Mutation[] = [
     expect: ["admits members only, and refuses a role it does not know"],
   },
   {
+    id: "a-screen-is-guarded-by-a-capability-nobody-grants",
+    defect:
+      "A route's guard names a capability the server's vocabulary does not contain. Nothing refuses it at build time — the string is a prop — and `hasCapability` answers false for every subject, so the screen is unreachable for everybody including the platform administrator, and all anyone sees is the refusal an unauthorised person gets.",
+    file: "packages/platform-web/src/App.tsx",
+    from: "                  <GuardedRoute requiredCapability=\"role.grant\">",
+    to: "                  <GuardedRoute requiredCapability=\"role.grants\">",
+    suite: "test/fe-render.test.ts",
+    expect: ["verifies guarded route capabilities match backend platform vocabulary"],
+  },
+  {
+    id: "a-design-token-is-renamed-at-its-definition",
+    defect:
+      "The token every surface reads is renamed where it is defined and nowhere else. `var(--color-primary)` then resolves to nothing on every screen at once, and CSS fails quietly — the colour falls back to whatever the property inherits, so the build passes and the console says nothing.",
+    file: "packages/platform-web/src/styles/index.css",
+    from: "  --color-primary: #2563eb;",
+    to: "  --color-brand-primary: #2563eb;",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["verifies theme CSS token existence and variables"],
+  },
+  {
+    id: "a-dictionary-key-exists-in-one-language",
+    defect:
+      "A key is spelled differently in the two dictionaries. `t(key, fallback)` answers the fallback rather than throwing, so the English screen prints the Korean author's fallback string — the failure is invisible in the language the person who wrote it reads.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: "    \"topology.loadingShort\": \"Loading topology…\",",
+    to: "    \"topology.loadingBrief\": \"Loading topology…\",",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["verifies localization dictionary key symmetry"],
+  },
+  {
+    id: "the-socket-card-claims-live-connections-again",
+    defect:
+      "The telemetry card goes back to naming a live-socket count. Nothing in this repository measures one — the number under it is registry rows whose channel is `web` — so the caption describes a measurement that does not exist, which is what the card said for months before it was renamed.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "                label={t(\"tel.sockets\", \"웹 채널 등록 신원\")}",
+    to: "                label={t(\"tel.activeSockets\", \"활성 소켓 연결 수\")}",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /platform/telemetry with telemetry cards"],
+  },
+  {
+    id: "the-groups-listing-renames-its-own-body",
+    defect:
+      "The listing's array is renamed and nothing follows it. Every reader — the topology canvas, the egress matrix, the group picker — asks for `groups`, gets `undefined`, and draws an empty mesh with no error anywhere, which is the same rename that once left a fixture reading `pending` from a route answering `keys`.",
+    file: "packages/http/src/main.ts",
+    from: "    groups: tenants.flatMap((tenant) =>",
+    to: "    group_list: tenants.flatMap((tenant) =>",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["fetches groups list via admin API"],
+  },
+  {
+    id: "the-playground-draws-from-nothing",
+    defect:
+      "The agent mapping stopped reading what the fetch answered. Both pickers on the dispatch console come from this list, so the send screen renders with nobody to send as and nobody to send to — and it renders successfully, with no error anywhere, because an empty list is a legal list.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "      const mapped = agentRegistryEntries(list || []).map((a) => ({",
+    to: "      const mapped = agentRegistryEntries([]).map((a) => ({",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /creator/playground with dispatch console and select options"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",

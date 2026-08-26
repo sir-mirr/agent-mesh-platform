@@ -3898,13 +3898,27 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await withPage("/tenant/egress-acl", async ({ page }) => {
       await page.route("**/api/v1/admin/groups/**/egress**", (r) => r.abort());
 
-      const toggleBtn = page.locator("button:has-text('ALLOW'), button:has-text('DENY'), button[title*='토글']").first();
-      if (await toggleBtn.count() > 0) {
-        await toggleBtn.click();
-        await showsMatch(page, /실패|오류|통신/);
-        const rootText = await page.locator("#root").innerText();
-        expect(rootText).toMatch(/실패|오류|통신/);
-      }
+      // **The whole body used to sit behind `if (count > 0)`.** A matrix that
+      // drew no toggles at all passed this scenario without clicking anything
+      // — the vacuous shape this repository keeps meeting — so the button is
+      // asserted rather than checked for.
+      const toggles = page.locator("button:has-text('ALLOW'), button:has-text('DENY'), button[title*='토글']");
+      await toggles.first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+      expect(await toggles.count(), "the matrix drew no rule toggle, so nothing was clicked").toBeGreaterThan(0);
+
+      await toggles.first().click();
+      await showsMatch(page, /실패|오류|통신/);
+      const rootText = await page.locator("#root").innerText();
+      expect(rootText).toMatch(/실패|오류|통신/);
+
+      // **And it does not also say the rule was written.** This is the half
+      // that separates this scenario from SC-WRITE-11: that one watches the
+      // cell go back, this one watches what the operator is told. The success
+      // toast is `전송 규칙 갱신` — TenantEgressAclPage.tsx writes it on the
+      // path this request never reached — so a screen printing both would be
+      // telling an operator the rule landed.
+      expect(rootText, "the screen reported the rule written and refused in the same breath")
+        .not.toContain("전송 규칙 갱신");
     });
   });
 
@@ -5886,7 +5900,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ groups: [{ group_id: "empty-grp", name: "빈 그룹", members: [] }], egress: [] }),
+          // **Somebody else holds the agents.** With one empty group and
+          // nothing else, every agent is unassigned, the screen draws the
+          // container for those, and its nodes overwrite the empty group's in
+          // a dictionary keyed by identity — so a page filling the empty group
+          // with the whole mesh looked identical to one behaving, and the
+          // mutation that does exactly that was recorded as not caught. A
+          // group that legitimately holds them is what makes the difference
+          // visible.
+          body: JSON.stringify({
+            groups: [
+              { group_id: "held-grp", name: "실제 그룹", members: ["agent-alpha", "agent-beta"] },
+              { group_id: "empty-grp", name: "빈 그룹", members: [] },
+            ],
+            egress: [],
+          }),
         }),
       );
       await page.goto(`${viteBaseUrl}/creator/topology`, { waitUntil: "networkidle" });
