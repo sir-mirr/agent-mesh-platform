@@ -833,7 +833,21 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       }
     };
     walk("packages/platform-web/src");
-    expect(calls.length, "no translated call sites found — the pattern went stale").toBeGreaterThan(50);
+    /**
+     * **Five hundred, not fifty.** The floor was a tenth of the subject: five
+     * hundred and forty-two call sites carry a Korean fallback today, so a
+     * pattern that found a fifth of them still passed, and the keys it stopped
+     * seeing were keys nothing checked against the English dictionary — which
+     * is the one thing this scenario is for.
+     *
+     * A floor rather than a second reader, and the reason is measured: reading
+     * the same files with whitespace collapsed — the reading that sees a
+     * wrapped call the same as an inline one — finds 540 where the two patterns
+     * below find 542. Two call sites differ, so an equality between them would
+     * be a false alarm on arrival. The floor sits just under the count instead,
+     * where a narrowing that loses a quarter of the sites cannot clear it.
+     */
+    expect(calls.length, "no translated call sites found — the pattern went stale").toBeGreaterThan(500);
 
     // **The pattern reads both layouts.** A call site the regex cannot see is
     // a key nothing checks, and the way that happens is formatting: the same
@@ -1471,6 +1485,29 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(missingInEn).toEqual([]);
     expect(missingInKo).toEqual([]);
     expect(koKeys.length).toBeGreaterThan(30);
+
+    /**
+     * The same two blocks, counted by something that is not this regex.
+     *
+     * **The symmetry check cannot see a narrowing.** `extractKeys` runs over
+     * both dictionaries, so a pattern that stops matching some shape of key
+     * drops it from *both* — the two sets still agree, `missingInEn` and
+     * `missingInKo` are still empty, and a floor of thirty over six hundred and
+     * thirty-four keys does not notice either. What is left is a symmetry
+     * assertion over whatever subset the regex still sees, which is the shape
+     * this file has found in four other checks.
+     *
+     * A line reader is the second opinion: one key per line is how this
+     * dictionary is written, so counting lines that open with a quoted key
+     * agrees exactly today (634 and 634) and disagrees the moment the regex
+     * narrows.
+     */
+    const keyLines = (block: string) =>
+      block.split("\n").filter((line) => /^\s*"[^"]+"\s*:/.test(line)).length;
+    expect(
+      { ko: koKeys.length, en: enKeys.length },
+      "the key regex and a line count disagree — the regex is seeing less than the dictionary holds",
+    ).toEqual({ ko: keyLines(koMatch?.[1] ?? ""), en: keyLines(enMatch?.[1] ?? "") });
   });
 
   // GL-06 / SC-THEME-01: Theme system design token integrity

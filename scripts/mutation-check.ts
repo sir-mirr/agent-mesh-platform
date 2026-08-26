@@ -10063,10 +10063,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-screen-walk-stops-descending-into-the-pages",
     defect:
-      "`capability-prose` scans every screen for capability names shown to a person, and derives its own scope by walking the package. The guard on that derivation was `length > 20` over a package of fifty-nine files, so a walk that stopped recursing returns the top level, clears the floor, and stops scanning two thirds of the screens — while the test goes on claiming *every namespaced name shown to a user is in the contract*.",
+      "`capability-prose` scans every screen for capability names shown to a person, and derives its own scope by walking the package. The guard on that derivation was `length > 20` over a package of fifty-nine files, so a walk that narrows returns most of it, clears the floor, and stops scanning the rest. The narrowing planted here drops `.ts` and keeps `.tsx`, which is deliberate: stopping the recursion instead also loses the three anchor files, and the older assertion naming those fires first — the suite goes red for a reason that says nothing about the derivation. This one leaves every anchor in place and forty-two of fifty-nine files, so only the second reader can object — while the test goes on claiming *every namespaced name shown to a user is in the contract*.",
     file: "test/capability-prose.test.ts",
-    from: "      ? screenFiles(full)",
-    to: "      ? []",
+    from: "      : /\\.tsx?$/.test(full) && !/\\.test\\.tsx?$/.test(full)",
+    to: "      : /\\.tsx$/.test(full) && !/\\.test\\.tsx?$/.test(full)",
     suite: "test/capability-prose.test.ts",
     expect: ["the screen walk and git disagree about what is in this package"],
   },
@@ -10089,6 +10089,26 @@ export const MUTATIONS: Mutation[] = [
     to: "const NAVIGATION_BUDGET = 30_000;",
     suite: "test/fe-render-budgets.test.ts",
     expect: ["a navigation cannot outlive the test that started it", "reported against a later scenario"],
+  },
+  {
+    id: "the-dictionary-reader-stops-seeing-the-longer-keys",
+    defect:
+      "`SC-I18N-01` proves the two dictionaries hold the same keys, and reads both with one regex. A narrowing therefore drops keys from both blocks at once: the sets still agree, `missingInEn` and `missingInKo` are still empty, and a floor of thirty over six hundred and thirty-four keys says nothing. What survives is a symmetry assertion over whatever subset the regex still sees. Planted here as a length bound that keeps five hundred and nine keys — above the floor, symmetric, and invisible to every assertion except a reader that counts the dictionary a different way.",
+    file: "test/fe-scenarios.test.ts",
+    from: '      [...block.matchAll(/"([^"]+)":/g)].map((m) => m[1]);',
+    to: '      [...block.matchAll(/"([^"]{1,20})":/g)].map((m) => m[1]);',
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["the key regex and a line count disagree"],
+  },
+  {
+    id: "the-translated-call-site-scan-narrows-to-two-thirds",
+    defect:
+      "The scan for `t(\"key\", \"한국어\")` call sites decides which keys get checked against the English dictionary, and a call site it cannot see is a key nothing checks. The guard was `> 50` over five hundred and forty-two sites, so a pattern finding a fifth of them passed. Planted as a length bound on the key that leaves three hundred and twenty-eight — a loss of two fifths, invisible to every other assertion in the scenario.",
+    file: "test/fe-scenarios.test.ts",
+    from: '        for (const m of src.matchAll(/\\bt\\(\\s*"([^"]+)"\\s*,\\s*"([^"]*)"\\s*,?\\s*\\)/g)) {',
+    to: '        for (const m of src.matchAll(/\\bt\\(\\s*"([^"]{1,15})"\\s*,\\s*"([^"]*)"\\s*,?\\s*\\)/g)) {',
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["no translated call sites found — the pattern went stale"],
   },
   {
     id: "a-seeded-agent-type-goes-missing",
