@@ -348,57 +348,6 @@ export function UserAdminPage() {
       ),
     },
     {
-      key: "password_action",
-      header: t("users.col.passwordAction", "Password action"),
-      render: (u: LocalUser) => confirmingReissue === u.username ? (
-        <div
-          data-testid={`reissue-confirm-${u.username}`}
-          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 210 }}
-        >
-          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-            {u.role === "admin"
-              ? t("users.reissue.confirmAdmin", "This is a platform administrator. Reissue its temporary password?")
-              : t("users.reissue.confirm", "Reissue this account's temporary password?")}
-          </span>
-          <div style={{ display: "flex", gap: 6 }}>
-            <Button
-              type="button"
-              size="sm"
-              variant={u.role === "admin" ? "danger" : "primary"}
-              data-testid={`reissue-confirm-submit-${u.username}`}
-              disabled={reissuing !== null}
-              onClick={() => void reissuePassword(u)}
-            >
-              {reissuing === u.username
-                ? t("users.reissuing", "Reissuing…")
-                : t("users.reissue.confirmAction", "Confirm reissue")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              data-testid={`reissue-cancel-${u.username}`}
-              disabled={reissuing !== null}
-              onClick={() => setConfirmingReissue(null)}
-            >
-              {t("common.cancel", "Cancel")}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button
-          type="button"
-          size="sm"
-          variant={u.role === "admin" ? "outline" : "secondary"}
-          data-testid={`reissue-${u.username}`}
-          disabled={reissuing !== null}
-          onClick={() => setConfirmingReissue(u.username)}
-        >
-          {t("users.reissue", "Reissue temporary password")}
-        </Button>
-      ),
-    },
-    {
       key: "account_access",
       header: t("users.col.accountAccess", "Account access"),
       render: (u: LocalUser) => {
@@ -407,10 +356,8 @@ export function UserAdminPage() {
           : typeof u.disabled_at === "string" && u.disabled_at.length > 0
             ? "deactivated"
             : "unknown";
-        const deactivated = state === "deactivated";
-        const isConfirming = confirmingLifecycle?.username === u.username;
         return (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 7, minWidth: 220 }}>
+          <div data-testid={`user-access-cell-${u.username}`}>
             <span
               data-testid={`user-access-state-${u.username}`}
               data-state={state}
@@ -442,11 +389,81 @@ export function UserAdminPage() {
                   ? t("users.lifecycle.deactivated", "Deactivated")
                   : t("users.lifecycle.unknown", "State unavailable")}
             </span>
-            {state !== "unknown" && !isConfirming ? (
+          </div>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: t("users.col.actions", "Actions"),
+      render: (u: LocalUser) => {
+        const state = u.disabled_at === null
+          ? "active"
+          : typeof u.disabled_at === "string" && u.disabled_at.length > 0
+            ? "deactivated"
+            : "unknown";
+        const deactivated = state === "deactivated";
+        const isConfirmingLifecycle = confirmingLifecycle?.username === u.username;
+        return (
+          <div
+            data-testid={`user-actions-${u.username}`}
+            style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 8, minWidth: 310 }}
+          >
+            {confirmingReissue === u.username ? (
+              <div
+                data-testid={`reissue-confirm-${u.username}`}
+                style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 210 }}
+              >
+                <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
+                  {u.role === "admin"
+                    ? t("users.reissue.confirmAdmin", "This is a platform administrator. Reissue its temporary password?")
+                    : t("users.reissue.confirm", "Reissue this account's temporary password?")}
+                </span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid={`reissue-confirm-submit-${u.username}`}
+                    disabled={reissuing !== null}
+                    onClick={() => void reissuePassword(u)}
+                  >
+                    {reissuing === u.username
+                      ? t("users.reissuing", "Reissuing…")
+                      : t("users.reissue.confirmAction", "Confirm reissue")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    data-testid={`reissue-cancel-${u.username}`}
+                    disabled={reissuing !== null}
+                    onClick={() => setConfirmingReissue(null)}
+                  >
+                    {t("common.cancel", "Cancel")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
               <Button
                 type="button"
                 size="sm"
-                variant={deactivated ? "secondary" : "danger"}
+                variant="outline"
+                data-testid={`reissue-${u.username}`}
+                disabled={reissuing !== null}
+                onClick={() => setConfirmingReissue(u.username)}
+              >
+                {t("users.reissue", "Reissue temporary password")}
+              </Button>
+            )}
+            {state !== "unknown" && !isConfirmingLifecycle ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                style={deactivated ? undefined : {
+                  color: "var(--color-danger)",
+                  borderColor: "var(--color-danger)",
+                }}
                 data-testid={`${deactivated ? "reactivate" : "deactivate"}-user-${u.username}`}
                 disabled={lifecycleWorking !== null}
                 onClick={() => {
@@ -460,7 +477,7 @@ export function UserAdminPage() {
                   : t("users.lifecycle.deactivate", "Deactivate")}
               </Button>
             ) : null}
-            {state !== "unknown" && isConfirming ? (
+            {state !== "unknown" && isConfirmingLifecycle ? (
               <div
                 data-testid={`lifecycle-confirm-${u.username}`}
                 style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}
@@ -527,7 +544,10 @@ export function UserAdminPage() {
     if (queue.length === 0) {
       if (githubSignInConfigured === false) {
         return (
-          <span data-testid="admission-queue-github-disabled">
+          <span
+            data-testid="admission-queue-github-disabled"
+            style={{ fontSize: "0.8rem", lineHeight: 1.5, color: "var(--color-text-muted)" }}
+          >
             {t("users.queue.githubDisabled", "GitHub sign-in is not configured for this deployment.")}
           </span>
         );
@@ -743,16 +763,20 @@ export function UserAdminPage() {
             >
               {t("users.role.member", "Standard account")}
             </span>
-            <span id="admit-role-help" className="admit-role-help">
-              {t(
-                "users.role.initialNote",
-                "New accounts start as Standard account. Assign additional permissions after creation on Account permissions.",
-              )}{" "}
-              <a href="/tenant/rbac" className="admit-permissions-link">
-                {t("users.role.openPermissions", "Open account permissions")}
-              </a>
-            </span>
           </div>
+          <span
+            id="admit-role-help"
+            className="admit-role-help admit-role-help-row"
+            data-testid="admit-role-help"
+          >
+            {t(
+              "users.role.initialNote",
+              "New accounts start as Standard account. Assign additional permissions after creation on Account permissions.",
+            )}{" "}
+            <a href="/tenant/rbac" className="admit-permissions-link">
+              {t("users.role.openPermissions", "Open account permissions")}
+            </a>
+          </span>
         </div>
         <div className="admit-form-actions" data-testid="admit-form-actions">
           <Button
@@ -852,7 +876,9 @@ export function UserAdminPage() {
           borderRadius: 8,
         }}
       >
-        <strong>{t("users.queue.title", "Sign-up requests")}</strong>
+        <strong data-testid="admission-queue-title" style={{ fontSize: "1rem" }}>
+          {t("users.queue.title", "Sign-up requests")}
+        </strong>
         <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
           {t(
             "users.queue.hint",

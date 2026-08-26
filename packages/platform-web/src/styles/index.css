@@ -134,6 +134,11 @@ a:hover {
   word-break: keep-all;
 }
 
+.admit-role-help-row {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+}
+
 .admit-permissions-link {
   display: inline-block;
   color: var(--color-primary);

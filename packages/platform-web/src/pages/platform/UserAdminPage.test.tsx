@@ -329,6 +329,7 @@ describe("the account screen uses administrative language", () => {
       "admit-field-display",
       "admit-field-tenant",
       "admit-field-role",
+      "admit-role-help",
     ]);
     expect(screen.getByTestId("admit-username-required").textContent).toBe("*");
 
@@ -336,7 +337,10 @@ describe("the account screen uses administrative language", () => {
     expect(role.getAttribute("data-presentation")).toBe("static");
     expect(screen.getByTestId("admit-field-role").querySelector("input, select")).toBeNull();
 
-    const permissions = document.querySelector<HTMLAnchorElement>('#admit-role-help a');
+    const roleHelp = screen.getByTestId("admit-role-help");
+    expect(roleHelp.parentElement).toBe(grid);
+    expect(roleHelp.classList.contains("admit-role-help-row")).toBe(true);
+    const permissions = roleHelp.querySelector<HTMLAnchorElement>("a");
     expect(permissions?.classList.contains("admit-permissions-link")).toBe(true);
     const actions = screen.getByTestId("admit-form-actions");
     expect(actions.lastElementChild).toBe(submitButton());
@@ -488,6 +492,10 @@ describe("the admission queue, in the four states it can be in", () => {
 
     expect(textOf("admission-queue-github-disabled")).toBe(en("users.queue.githubDisabled"));
     expect(textOf("admission-queue-empty")).toBeNull();
+    const titleSize = Number.parseFloat(screen.getByTestId("admission-queue-title").style.fontSize);
+    const supportingSize = Number.parseFloat(screen.getByTestId("admission-queue-github-disabled").style.fontSize);
+    expect(supportingSize).toBeLessThan(titleSize);
+    expect(screen.getByTestId("admission-queue-github-disabled").style.color).toBe("var(--color-text-muted)");
   });
 
   it("does not call GitHub disabled when health did not answer", async () => {
@@ -631,6 +639,25 @@ describe("the roster of local accounts tells the same four apart", () => {
     expect(rosterState().empty).toBe(false);
   });
 
+  it("keeps status and row actions in separate columns with quiet, consistent controls", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    await mount();
+
+    const headings = [...document.querySelectorAll("table th")].map((heading) => heading.textContent ?? "");
+    expect(headings).toContain(en("users.col.actions"));
+    expect(headings).not.toContain(en("users.col.passwordAction"));
+
+    for (const username of ["ada", "grace"]) {
+      expect(screen.getByTestId(`user-access-cell-${username}`).querySelectorAll("button")).toHaveLength(0);
+      expect(screen.getByTestId(`user-actions-${username}`).style.flexDirection).toBe("row");
+    }
+
+    const memberReissue = screen.getByTestId("reissue-ada");
+    const adminReissue = screen.getByTestId("reissue-grace");
+    expect(memberReissue.className).toBe(adminReissue.className);
+    expect(document.querySelectorAll("table .btn-danger")).toHaveLength(0);
+  });
+
   it("says a password is still the temporary one when the server says it must change", async () => {
     usersRoute = answers(200, { ok: true, users: ROSTER });
     await mount();
@@ -638,6 +665,7 @@ describe("the roster of local accounts tells the same four apart", () => {
     // it against `true` calls every un-activated account's password chosen —
     // and "chosen" is the state in which an operator stops chasing the person.
     expect(textOf("user-state-ada")).toBe(en("users.state.temp"));
+    expect(textOf("user-state-ada")).toBe("Temporary · change at first sign-in");
     expect(textOf("user-state-grace")).toBe(en("users.state.chosen"));
   });
 

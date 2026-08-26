@@ -6072,6 +6072,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   it("[SC-USER-D4] aligns the four account facts and settles the create action", async () => {
     await withPage("/platform/users", async ({ page, errors }) => {
       await page.getByTestId("admit-fields-grid").waitFor({ state: "visible", timeout: 8000 });
+      await page.locator('[data-testid^="user-actions-"]').first().waitFor({ state: "visible", timeout: 8000 });
 
       const layout = await page.evaluate(() => {
         const byId = (id: string) => {
@@ -6098,6 +6099,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         const link = document.querySelector<HTMLElement>(".admit-permissions-link");
         if (!link) throw new Error("missing permissions link");
         const linkStyle = getComputedStyle(link);
+        const roleHelp = rect("admit-role-help");
+        const statusCells = [...document.querySelectorAll<HTMLElement>('[data-testid^="user-access-cell-"]')];
+        const actionCells = [...document.querySelectorAll<HTMLElement>('[data-testid^="user-actions-"]')];
+        const reissueButtons = [...document.querySelectorAll<HTMLElement>('table [data-testid^="reissue-"]')]
+          .filter((node) => {
+            const id = node.getAttribute("data-testid") ?? "";
+            return !id.startsWith("reissue-confirm-") && !id.startsWith("reissue-cancel-");
+          });
 
         return {
           columns: gridStyle.gridTemplateColumns.split(/\s+/).filter(Boolean).length,
@@ -6110,6 +6119,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           linkWhiteSpace: linkStyle.whiteSpace,
           linkWordBreak: linkStyle.wordBreak,
           linkRects: link.getClientRects().length,
+          roleHelpBelowFields: roleHelp.top >= Math.max(...fields.map((box) => box.bottom)),
+          roleHelpSpansGrid: Math.abs(roleHelp.left - grid.left) < 1 && Math.abs(roleHelp.right - grid.right) < 1,
+          statusCells: statusCells.length,
+          statusButtons: statusCells.reduce((count, cell) => count + cell.querySelectorAll("button").length, 0),
+          actionCells: actionCells.length,
+          horizontalActionCells: actionCells.filter((cell) => getComputedStyle(cell).flexDirection === "row").length,
+          filledDangerButtons: document.querySelectorAll("table .btn-danger").length,
+          reissueStyles: new Set(reissueButtons.map((button) => button.className)).size,
           actionBelowGrid: action.top >= grid.bottom,
           actionRightGap: Math.round(form.right - action.right),
           fieldWidths: fields.map((box) => Math.round(box.width)),
@@ -6131,6 +6148,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         linkWhiteSpace: "nowrap",
         linkWordBreak: "keep-all",
         linkRects: 1,
+        roleHelpBelowFields: true,
+        roleHelpSpansGrid: true,
+        statusCells: layout.actionCells,
+        statusButtons: 0,
+        actionCells: layout.actionCells,
+        horizontalActionCells: layout.actionCells,
+        filledDangerButtons: 0,
+        reissueStyles: 1,
         actionBelowGrid: true,
         errors: [],
       });
