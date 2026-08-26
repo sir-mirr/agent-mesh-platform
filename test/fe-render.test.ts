@@ -3579,6 +3579,22 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           sameSite: "Lax",
         },
       ]);
+
+      // **A session that was never stored cannot be seen to be cleared.** The
+      // assertion at the end of this test reads `agent_mesh_user` and requires
+      // it gone, and until now it read an empty store: the context is new,
+      // nothing had written the key, and deleting the removal from
+      // `AuthContext` left the test green. So the storage is seeded here with
+      // exactly what a previous sign-in leaves behind, which is also what makes
+      // the danger real — the provider hydrates its initial user from this key,
+      // so a session left in it survives the redirect and the next load looks
+      // signed in again.
+      await context.addInitScript(() => {
+        localStorage.setItem(
+          "agent_mesh_user",
+          JSON.stringify({ id: 1, github_login: "expired-operator", role: "platform_admin", capabilities: [] }),
+        );
+      });
       // **`/auth/me` is refused too, because that is what expiry means.**
       // Refusing only `/api/v1/**` leaves the session check succeeding, so the
       // app is right to consider itself signed in — and it re-established the

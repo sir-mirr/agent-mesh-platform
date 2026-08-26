@@ -9836,6 +9836,132 @@ export const MUTATIONS: Mutation[] = [
     expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
   },
   {
+    id: "the-capability-answer-stops-naming-the-checkout",
+    defect:
+      "§ 7's provenance is how a caller tells which checkout is answering. Without it a long-running hub serving a branch ninety-three commits behind `main` is diagnosable only by noticing which routes are missing and reasoning backwards — which was done twice, wrong both times, before `client-claude` proposed reporting it (mail #300).",
+    file: "packages/hub/src/rest/mailbox.ts",
+    from: "      platform: PROVENANCE,",
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR02-01", "aggregates global fleet metrics without mock values"],
+  },
+  {
+    id: "the-group-list-answers-without-saying-it-worked",
+    defect:
+      "Every admin answer carries `ok`, and the console reads it before the payload. A list that omits it is read as a failure that happened to carry groups, so the screen draws its refusal state over data it has.",
+    file: "packages/http/src/main.ts",
+    from: `  return c.json({
+    ok: true,
+    tenant: tenantOfSession(actor),
+    groups: tenants.flatMap((tenant) =>`,
+    to: `  return c.json({
+    tenant: tenantOfSession(actor),
+    groups: tenants.flatMap((tenant) =>`,
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR02-03", "aggregates tenant groups summary list"],
+  },
+  {
+    id: "the-seeded-group-is-hidden-from-the-list",
+    defect:
+      "`default` is a group like any other — it holds members, it has egress rules, and a send from it is decided by them. Treating it as an internal detail and filtering it out of the list leaves the console unable to inspect the one group every unassigned agent is in, while the server keeps routing by it.",
+    file: "packages/http/src/main.ts",
+    from: "      groupsStore.listGroups(db, tenant).map((g) => ({",
+    to: "      groupsStore.listGroups(db, tenant).filter((g) => g.group_id !== 'default').map((g) => ({",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR05-02", "retrieves detailed node inspector properties"],
+  },
+  {
+    id: "the-queue-depth-route-is-renamed-under-its-reader",
+    defect:
+      "A renamed route answers 404 to a console that asks for it by path, and the queue tile draws its empty state — the mesh looks idle rather than unreadable. The reader is generated from nothing: nobody re-derives the path, so the two only agree while somebody remembers.",
+    file: "packages/http/src/main.ts",
+    from: "app.get('/api/v1/admin/mailbox', async (c) => {",
+    to: "app.get('/api/v1/admin/mailboxes', async (c) => {",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR07-02", "tests lease and acknowledge flow on agent mailbox"],
+  },
+  {
+    id: "the-agent-card-counts-a-property-the-list-does-not-have",
+    defect:
+      "A count read off the wrong property renders `undefined` into the card and the screen still looks like a dashboard: one KPI reading `undefined` beside three that read numbers. Nothing throws, the page is 200, and a person reads it as a mesh with no agents rather than as a screen that failed.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "  const totalAgents = agents.length;",
+    to: "  const totalAgents = (agents as unknown as { size?: number }).size;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-RENDER-02", "renders /dashboard with live agent KPI cards"],
+  },
+  {
+    id: "the-page-mounts-on-a-div-that-is-not-there",
+    defect:
+      "`main.tsx` calls `createRoot(document.getElementById(\"root\")!)`, so a container renamed in the document leaves every screen blank with one console error and a served 200 — the shape a health check reads as fine. The scenario reads the document itself rather than a rendered screen, which is what makes it the one that names the cause.",
+    file: "packages/platform-web/index.html",
+    from: '    <div id="root"></div>',
+    to: '    <div id="app"></div>',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-MODULE-01", "serves index.html with mount point"],
+  },
+  {
+    id: "a-seeded-agent-type-goes-missing",
+    defect:
+      "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
+    file: "packages/store/src/schema/agents.ts",
+    from: '  ["ai-codex", "Codex runtime", 1],',
+    to: "",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-HARNESS-03", "a setup write did not succeed"],
+  },
+  {
+    id: "the-heading-counts-the-container-as-a-group",
+    defect:
+      "The unassigned orbit is a place to draw agents the server put in no group, not a group anybody created. Counting it makes the heading say one more group than the canvas holds and than `/api/v1/groups` returned — the same class of defect as `I-064`, where the heading said `6개 에이전트` over a canvas holding two.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "      groupCount: liveGroups.length,",
+    to: "      groupCount: rawClusters.length,",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-CONSIST-01", "states the count of what it drew"],
+  },
+  {
+    id: "the-typed-session-is-assembled-from-the-login-answer",
+    defect:
+      "`POST /auth/local` answers with no capabilities, so a session built from it holds none. The person signs in and sees a sidebar of whatever survives an empty capability set; a reload asks `/auth/me`, gets the real list, and the screen changes under them. The two ways into the same account disagree, and only the reload is right.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: `        const me = await fetchAuthMe();
+        setUser(sessionFrom(me));`,
+    to: `        const me = await fetchAuthMe();
+        setUser(sessionFrom({ ...me, capabilities: res.user.capabilities ?? [] }));`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-08", "the form login and a reload disagree about the session"],
+  },
+  {
+    id: "an-expired-session-keeps-the-stored-user",
+    defect:
+      "The provider computes its first user from `agent_mesh_user` before `/auth/me` has answered, so the key is the session as far as the next load is concerned. Without the removal an expired session is redirected to /login and then hydrated straight back on the following navigation: the screens draw a signed-in operator whose every request is refused.",
+    file: "packages/platform-web/src/contexts/AuthContext.tsx",
+    from: `    } else {
+      localStorage.removeItem("agent_mesh_user");
+    }`,
+    to: `    } else {
+      // the redirect is enough
+    }`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-05", "the signed-out session was left in localStorage"],
+  },
+  {
+    id: "a-signed-in-person-is-left-on-the-form",
+    defect:
+      "Sign-in succeeds, the cookie is set, and the screen stays on the login form — nothing else moves the person off it, because /login is not guarded and the provider does not navigate. The form looks like it did nothing, and pressing it again re-posts a login that is already valid.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: `    } finally {
+      setIsSubmitting(false);
+    }
+    navigate("/dashboard");`,
+    to: `    } finally {
+      setIsSubmitting(false);
+    }`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-01", "verifies session auth and redirect flow"],
+  },
+  {
     id: "the-sign-in-screen-offers-github-regardless",
     defect:
       "The client stops reading the half of the answer it asked for and reports GitHub as available whatever the deployment said. The server-side flag cannot carry this scenario — it serves its own health answer through a route mock, so only the reading is observable from there. A person on a server with no credentials for it is sent to an authorize URL with an empty client id, and the queue that entrance feeds keeps answering an empty list — the two readings D-801 exists to separate, back in one screen.",
