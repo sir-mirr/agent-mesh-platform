@@ -591,6 +591,20 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const moveData = await moveRes.json();
     expect(moveData.ok).toBe(true);
     expect(moveData.to_group).toBe(targetGroup);
+    // **`to_group` is the route repeating the request back.** It is the value
+    // that was sent, so it says nothing about where the identity landed: a
+    // move that writes every agent into `default` answers exactly this. The
+    // membership is read from the listing, which is where every screen reads
+    // it from too.
+    const listed = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    const groups = (await listed.json()).groups as Array<{ group_id?: string; members?: string[] }>;
+    const holder = groups.find((g) => (g.members ?? []).includes(agentId));
+    expect(
+      { placedIn: holder?.group_id ?? null },
+      `the groups the route lists: ${JSON.stringify(groups.map((g) => [g.group_id, g.members]))}`,
+    ).toEqual({ placedIn: targetGroup });
   });
 
   // SCR-03 / SC-SCR03-01: Query registered agents list
@@ -611,6 +625,21 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(typeof data).toBe("object");
+    // **`typeof data === "object"` is true of every JSON body, including an
+    // error one.** What § 11 says about this route is that spend has its own
+    // capability rather than borrowing the audit's: an operator cleared to read
+    // message content is not thereby cleared to read what the deployment
+    // spends. So the shape is named, and a reader holding only the audit's
+    // metadata grant has to be refused.
+    expect(Object.keys(data)).toContain("snapshot");
+    const auditOnly = await capabilityViewer(mesh, "audit.read.metadata");
+    const refused = await fetch(`${mesh.http.url}/api/v1/admin/ai-usage`, {
+      headers: { Cookie: auditOnly },
+    });
+    expect(
+      { status: refused.status },
+      "an account holding only the audit's metadata grant read the spend figures",
+    ).toEqual({ status: 403 });
   });
 
   it("[SC-SCR02-03] aggregates tenant groups summary list", async () => {

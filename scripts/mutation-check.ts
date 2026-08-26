@@ -11202,6 +11202,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["queries hub liveness and dynamically tracks online agent connections"],
   },
+  {
+    id: "an-approved-key-stays-pending",
+    defect:
+      "The approval wrote the decision and left the key `pending`, so the queue never empties and the agent's key never becomes usable — while the route answers 200 with `status` read back from a row it did not change. The operator has approved it, the screen says approved, and the agent still cannot connect.",
+    file: "packages/store/src/keys.ts",
+    from: "      `UPDATE agent_keys SET status = 'approved', decided_at = CURRENT_TIMESTAMP, decided_by = ?",
+    to: "      `UPDATE agent_keys SET status = 'pending', decided_at = CURRENT_TIMESTAMP, decided_by = ?",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["approves a proposed key by fingerprint"],
+  },
+  {
+    id: "the-pending-listing-reads-the-decided",
+    defect:
+      "The pending-key listing selected the keys that had already been decided, so a key waiting for a human was invisible and the queue showed the ones nobody has to look at. A proposal nobody sees is a proposal nobody approves: the agent waits on an operator who has been told there is nothing waiting.",
+    file: "packages/store/src/keys.ts",
+    from: "    .prepare(`SELECT * FROM agent_keys WHERE status = 'pending' ORDER BY proposed_at ASC`)",
+    to: "    .prepare(`SELECT * FROM agent_keys WHERE status = 'approved' ORDER BY proposed_at ASC`)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["submits key proposal and verifies appearance in pending queue"],
+  },
+  {
+    id: "every-move-lands-in-the-default-group",
+    defect:
+      "The membership write ignored the group it was given and put every identity in `default`. The route answers `to_group` from the request, so its reply names the group the operator asked for while the agent is somewhere else — and the group's egress rules, which decide what it may send, are the ones for a group it is not in.",
+    file: "packages/store/src/groups.ts",
+    from: "  ).run(m.tenant ?? DEFAULT_TENANT, m.identity, m.groupId, m.movedBy);",
+    to: "  ).run(m.tenant ?? DEFAULT_TENANT, m.identity, DEFAULT_TENANT, m.movedBy);",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["reassigns agent membership between groups"],
+  },
+  {
+    id: "the-spend-route-borrows-the-audit-grant",
+    defect:
+      "The AI-usage read stopped asking for `usage.read` and took the audit's metadata grant instead. § 11 separates them because they answer different questions: an operator cleared to read message metadata is not thereby cleared to read what the deployment spends, and a capability that stands in for another is one nobody can revoke separately.",
+    file: "packages/http/src/main.ts",
+    from: "app.get('/api/v1/admin/ai-usage', async (c) => {\n  // § 11: spend is not the audit trail and not tenant message traffic, so it\n  // has its own capability rather than borrowing one that answers a different\n  // question.\n  const actor = await requireCapability(c, CAPABILITY.USAGE_READ)",
+    to: "app.get('/api/v1/admin/ai-usage', async (c) => {\n  // § 11: spend is not the audit trail and not tenant message traffic, so it\n  // has its own capability rather than borrowing one that answers a different\n  // question.\n  const actor = await requireCapability(c, CAPABILITY.AUDIT_READ_METADATA)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["queries AI usage & telemetry metrics"],
+  },
 ];
 
 /**
