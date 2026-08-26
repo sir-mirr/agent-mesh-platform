@@ -95,3 +95,22 @@ export async function fetchPendingAdmissions(): Promise<PendingAdmission[]> {
   // `agents.ts` still carries its chain, because `keys/pending` has not moved.
   return Array.isArray(data) ? data : data.users ?? [];
 }
+
+export type AdmissionDecision = "approve" | "deny";
+
+export interface AdmissionDecisionResponse {
+  ok: boolean;
+  github_login: string;
+  status: "approved" | "denied";
+}
+
+/** Decide the GitHub sign-up request named by the operator. */
+export async function decidePendingAdmissionApi(
+  githubLogin: string,
+  decision: AdmissionDecision,
+): Promise<AdmissionDecisionResponse> {
+  return await apiClient<AdmissionDecisionResponse>(`/api/v1/admin/${decision}`, {
+    method: "POST",
+    body: JSON.stringify({ github_login: githubLogin }),
+  });
+}

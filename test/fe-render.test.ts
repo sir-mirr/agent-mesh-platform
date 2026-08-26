@@ -6870,12 +6870,17 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         await settled(page);
         const section = page.getByTestId("admission-queue");
         await section.waitFor({ state: "visible", timeout: 10_000 });
+        if (routeAnswers) {
+          await page.getByTestId("open-admission-approval").click();
+          await page.getByTestId("admission-decision-panel").waitFor({ state: "visible", timeout: 5_000 });
+        }
         const present = async (id: string) => (await page.getByTestId(id).count()) > 0;
         return {
           empty: await present("admission-queue-empty"),
           unreachable: await present("admission-queue-unreachable"),
           refused: await present("admission-queue-refused"),
           list: await present("admission-queue-list"),
+          decisionPanel: await present("admission-decision-panel"),
         };
       } finally {
         await context.close().catch(() => {});
@@ -6888,6 +6893,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(
       {
         answered_says_empty: answered.empty,
+        answered_reaches_decision_panel: answered.decisionPanel,
         answered_does_not_claim_unreadable: !answered.unreachable,
         unanswered_says_unreadable: notAnswered.unreachable,
         unanswered_does_not_claim_empty: !notAnswered.empty,
@@ -6895,6 +6901,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       "the admission queue folded `nobody is waiting` together with `I could not ask`",
     ).toEqual({
       answered_says_empty: true,
+      answered_reaches_decision_panel: true,
       answered_does_not_claim_unreadable: true,
       unanswered_says_unreadable: true,
       unanswered_does_not_claim_empty: true,

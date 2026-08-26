@@ -13,6 +13,7 @@ import {
   fetchLocalUsers,
   admitLocalUserApi,
   fetchPendingAdmissions,
+  decidePendingAdmissionApi,
   reissueLocalUserPasswordApi,
 } from "./users.ts";
 
@@ -48,6 +49,22 @@ describe("fetchPendingAdmissions", () => {
     // would be the alias D-689 refused, arriving by the back door.
     spyOn({ ok: true, pending: [{ github_login: "old-name" }] });
     expect(await fetchPendingAdmissions()).toEqual([]);
+  });
+});
+
+describe("decidePendingAdmissionApi", () => {
+  it("posts each decision to its own route with the named request", async () => {
+    const approve = spyOn({ ok: true, github_login: "asked-to-join", status: "approved" });
+    await decidePendingAdmissionApi("asked-to-join", "approve");
+    expect(String(approve.mock.calls[0]![0])).toEndWith("/api/v1/admin/approve");
+    expect(approve.mock.calls[0]![1]?.method).toBe("POST");
+    expect(JSON.parse(String(approve.mock.calls[0]![1]?.body))).toEqual({ github_login: "asked-to-join" });
+
+    const deny = spyOn({ ok: true, github_login: "not-this-time", status: "denied" });
+    await decidePendingAdmissionApi("not-this-time", "deny");
+    expect(String(deny.mock.calls[0]![0])).toEndWith("/api/v1/admin/deny");
+    expect(deny.mock.calls[0]![1]?.method).toBe("POST");
+    expect(JSON.parse(String(deny.mock.calls[0]![1]?.body))).toEqual({ github_login: "not-this-time" });
   });
 });
 

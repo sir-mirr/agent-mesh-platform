@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import {
   fetchLocalUsers,
   admitLocalUserApi,
   fetchPendingAdmissions,
+  decidePendingAdmissionApi,
   reissueLocalUserPasswordApi,
+  type AdmissionDecision,
   type LocalUser,
   type PendingAdmission,
 } from "@/api/users.ts";
@@ -57,6 +59,18 @@ export function UserAdminPage() {
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueFailure, setQueueFailure] = useState<FailureKind | null>(null);
   const [queueMissing, setQueueMissing] = useState<string | null>(null);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [confirmingDecision, setConfirmingDecision] = useState<{
+    login: string;
+    decision: AdmissionDecision;
+  } | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decisionNotice, setDecisionNotice] = useState<{
+    login: string;
+    decision: AdmissionDecision;
+  } | null>(null);
+  const decisionInFlight = useRef(false);
 
   const load = async () => {
     setIsLoading(true);
@@ -189,6 +203,30 @@ export function UserAdminPage() {
     }
   };
 
+  const decideAdmission = async (login: string, decision: AdmissionDecision) => {
+    if (decisionInFlight.current) return;
+    decisionInFlight.current = true;
+    setDeciding(login);
+    setDecisionError(null);
+    setDecisionNotice(null);
+    try {
+      await decidePendingAdmissionApi(login, decision);
+      setDecisionNotice({ login, decision });
+      setConfirmingDecision(null);
+      await loadQueue();
+    } catch (err: any) {
+      setDecisionError(
+        err instanceof ApiError && err.status === null
+          ? t("users.queue.decisionUnreachable", "The server did not answer. No decision was saved.")
+          : String(err?.message ?? err),
+      );
+      setConfirmingDecision(null);
+    } finally {
+      decisionInFlight.current = false;
+      setDeciding(null);
+    }
+  };
+
   const columns = [
     {
       key: "username",
@@ -300,6 +338,114 @@ export function UserAdminPage() {
       ),
     },
   ];
+
+  const renderQueue = (withDecisions: boolean) => {
+    if (queueLoading) {
+      return <span data-testid="admission-queue-loading">{t("users.queue.loading", "Reading the queue…")}</span>;
+    }
+    if (queueFailure === "refused") {
+      return <span data-testid="admission-queue-refused">{refusedText(t, queueMissing)}</span>;
+    }
+    if (queue === null) {
+      return (
+        <span data-testid="admission-queue-unreachable">
+          {t("users.queue.unreachable", "Could not load sign-up requests.")}
+        </span>
+      );
+    }
+    if (queue.length === 0) {
+      return <span data-testid="admission-queue-empty">{t("users.queue.empty", "No sign-up requests are waiting.")}</span>;
+    }
+
+    return (
+      <ul data-testid="admission-queue-list" style={{ margin: 0, paddingLeft: 18 }}>
+        {queue.map((pending) => {
+          const isConfirming = confirmingDecision?.login === pending.github_login;
+          return (
+            <li key={pending.github_login} data-testid={`admission-row-${pending.github_login}`}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                <span>
+                  {pending.github_login}
+                  {pending.requested_at ? (
+                    <span style={{ color: "var(--color-text-muted)" }}> · {pending.requested_at}</span>
+                  ) : null}
+                </span>
+                {withDecisions && !isConfirming ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      data-testid={`approve-admission-${pending.github_login}`}
+                      disabled={deciding !== null}
+                      onClick={() => {
+                        setConfirmingDecision({ login: pending.github_login, decision: "approve" });
+                        setDecisionError(null);
+                        setDecisionNotice(null);
+                      }}
+                    >
+                      {t("users.queue.approve", "Approve request")}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      data-testid={`reject-admission-${pending.github_login}`}
+                      disabled={deciding !== null}
+                      onClick={() => {
+                        setConfirmingDecision({ login: pending.github_login, decision: "deny" });
+                        setDecisionError(null);
+                        setDecisionNotice(null);
+                      }}
+                    >
+                      {t("users.queue.reject", "Reject request")}
+                    </Button>
+                  </div>
+                ) : null}
+                {withDecisions && isConfirming ? (
+                  <div
+                    data-testid={`confirm-admission-${pending.github_login}`}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}
+                  >
+                    <span style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
+                      {confirmingDecision.decision === "approve"
+                        ? t("users.queue.confirmApprove", "Approve this account sign-up request?")
+                        : t("users.queue.confirmReject", "Reject this account sign-up request?")}
+                    </span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={confirmingDecision.decision === "approve" ? "primary" : "danger"}
+                        data-testid={`confirm-admission-submit-${pending.github_login}`}
+                        disabled={deciding !== null}
+                        onClick={() => void decideAdmission(pending.github_login, confirmingDecision.decision)}
+                      >
+                        {deciding === pending.github_login
+                          ? t("users.queue.deciding", "Saving decision…")
+                          : confirmingDecision.decision === "approve"
+                            ? t("users.queue.confirmApproval", "Confirm approval")
+                            : t("users.queue.confirmRejection", "Confirm rejection")}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        data-testid={`confirm-admission-cancel-${pending.github_login}`}
+                        disabled={deciding !== null}
+                        onClick={() => setConfirmingDecision(null)}
+                      >
+                        {t("common.cancel", "Cancel")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }} data-testid="user-admin">
@@ -530,33 +676,59 @@ export function UserAdminPage() {
           )}
         </span>
 
-        {queueLoading ? (
-          <span data-testid="admission-queue-loading">{t("users.queue.loading", "Reading the queue…")}</span>
-        ) : queueFailure === "refused" ? (
-          <span data-testid="admission-queue-refused">{refusedText(t, queueMissing)}</span>
-        ) : queue === null ? (
-          <span data-testid="admission-queue-unreachable">
-            {t("users.queue.unreachable", "Could not load sign-up requests.")}
-          </span>
-        ) : queue.length === 0 ? (
-          <span data-testid="admission-queue-empty">{t("users.queue.empty", "No sign-up requests are waiting.")}</span>
-        ) : (
-          <ul data-testid="admission-queue-list" style={{ margin: 0, paddingLeft: 18 }}>
-            {queue.map((p) => (
-              <li key={p.github_login} data-testid={`admission-row-${p.github_login}`}>
-                {p.github_login}
-                {p.requested_at ? <span style={{ color: "var(--color-text-muted)" }}> · {p.requested_at}</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
+        {!approvalOpen ? renderQueue(false) : null}
 
         <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-          {t("users.queue.decide", "Approve or reject requests on the account approval page.")}{" "}
-          <a href="/admin" style={{ color: "var(--color-primary)", fontWeight: 700 }}>
-            {t("users.queue.openApproval", "Open account approval")}
-          </a>
+          {t("users.queue.decide", "Approve or reject requests here in the console.")}{" "}
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            data-testid="open-admission-approval"
+            aria-expanded={approvalOpen}
+            aria-controls="admission-decision-panel"
+            onClick={() => {
+              setApprovalOpen((current) => !current);
+              setConfirmingDecision(null);
+              setDecisionError(null);
+            }}
+          >
+            {approvalOpen
+              ? t("users.queue.closeApproval", "Close account approval")
+              : t("users.queue.openApproval", "Open account approval")}
+          </Button>
         </span>
+
+        {approvalOpen ? (
+          <div
+            id="admission-decision-panel"
+            data-testid="admission-decision-panel"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              padding: 12,
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--color-bg-surface-sub)",
+            }}
+          >
+            <strong>{t("users.queue.approvalTitle", "Account approval")}</strong>
+            {decisionError ? (
+              <span data-testid="admission-decision-error" style={{ color: "var(--color-danger)" }}>
+                {decisionError}
+              </span>
+            ) : null}
+            {decisionNotice ? (
+              <span data-testid="admission-decision-success" style={{ color: "var(--color-primary)" }}>
+                {decisionNotice.decision === "approve"
+                  ? t("users.queue.approved", "Request approved:")
+                  : t("users.queue.rejected", "Request rejected:")} {decisionNotice.login}
+              </span>
+            ) : null}
+            {renderQueue(true)}
+          </div>
+        ) : null}
       </section>
 
       <DataTable

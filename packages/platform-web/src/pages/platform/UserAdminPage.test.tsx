@@ -53,6 +53,8 @@ const USERS = "/api/v1/admin/users";
 const TENANT_DIRECTORY = "/api/v1/admin/tenants/directory";
 /** People waiting to be admitted. */
 const QUEUE = "/api/v1/admin/pending";
+const APPROVE = "/api/v1/admin/approve";
+const DENY = "/api/v1/admin/deny";
 /** Keys waiting to be approved — a different queue, one path segment away. */
 const KEY_QUEUE = "/api/v1/admin/keys/pending";
 
@@ -98,6 +100,8 @@ let usersRoute: Answer;
 let queueRoute: Answer;
 let admitRoute: Answer;
 let reissueRoute: Answer;
+let approveRoute: Answer;
+let denyRoute: Answer;
 let keyQueueRoute: Answer;
 let tenantRoute: Answer;
 
@@ -113,6 +117,8 @@ beforeEach(() => {
     temporary_password: "replacement-unused",
     must_change_password: true,
   });
+  approveRoute = answers(200, { ok: true, github_login: "waiting-1", status: "approved" });
+  denyRoute = answers(200, { ok: true, github_login: "waiting-1", status: "denied" });
   keyQueueRoute = answers(200, { ok: true, keys: [] });
   tenantRoute = answers(200, {
     ok: true,
@@ -130,6 +136,8 @@ beforeEach(() => {
     // One route can fail while the others answer — that separation is what
     // tells a refused panel from a backend that is down.
     if (url.endsWith(KEY_QUEUE)) return await keyQueueRoute();
+    if (url.endsWith(APPROVE)) return await approveRoute();
+    if (url.endsWith(DENY)) return await denyRoute();
     if (url.endsWith(QUEUE)) return await queueRoute();
     if (url.endsWith(TENANT_DIRECTORY)) return await tenantRoute();
     if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/password$/.test(url)) return await reissueRoute();
@@ -251,6 +259,7 @@ const admit = async (username: string, displayName = "", tenant?: string) => {
 };
 const posts = () => calls.filter((c) => c.method === "POST" && c.url.endsWith(USERS));
 const reissuePosts = () => calls.filter((c) => c.method === "POST" && /\/users\/[^/]+\/password$/.test(c.url));
+const decisionPosts = () => calls.filter((c) => c.method === "POST" && (c.url.endsWith(APPROVE) || c.url.endsWith(DENY)));
 const rosterReads = () => calls.filter((c) => c.method === "GET" && c.url.endsWith(USERS));
 
 /** What `GET /api/v1/admin/users` answers with — flags as numbers, as the server sends them. */
@@ -431,6 +440,86 @@ describe("the admission queue, in the four states it can be in", () => {
     await mount();
     expect(queueState().rows).toEqual([]);
     expect(queueText()).not.toContain("pre-rename-row");
+  });
+});
+
+describe("opening account approval inside the console", () => {
+  it("reaches a decision panel even when the queue is empty", async () => {
+    queueRoute = answers(200, { ok: true, users: [] });
+    await mount();
+
+    expect(screen.queryByTestId("admission-decision-panel")).toBeNull();
+    fireEvent.click(screen.getByTestId("open-admission-approval"));
+
+    const panel = screen.getByTestId("admission-decision-panel");
+    expect(panel.textContent).toContain(en("users.queue.approvalTitle"));
+    expect(panel.textContent).toContain(en("users.queue.empty"));
+    expect(screen.getByTestId("open-admission-approval").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("approves the named request once, then re-reads the queue", async () => {
+    let reads = 0;
+    queueRoute = () => json(200, {
+      ok: true,
+      users: reads++ === 0 ? [{ github_login: "waiting-1" }] : [],
+    });
+    await mount();
+    fireEvent.click(screen.getByTestId("open-admission-approval"));
+
+    fireEvent.click(screen.getByTestId("approve-admission-waiting-1"));
+    expect(decisionPosts()).toHaveLength(0);
+    expect(textOf("confirm-admission-waiting-1")).toContain(en("users.queue.confirmApprove"));
+
+    const confirm = screen.getByTestId("confirm-admission-submit-waiting-1");
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await settle();
+
+    expect(decisionPosts()).toHaveLength(1);
+    expect(decisionPosts()[0]?.url).toEndWith(APPROVE);
+    expect(JSON.parse(decisionPosts()[0]?.body ?? "{}")).toEqual({ github_login: "waiting-1" });
+    expect(textOf("admission-decision-success")).toContain(en("users.queue.approved"));
+    expect(textOf("admission-decision-success")).toContain("waiting-1");
+    expect(textOf("admission-queue-empty")).toBe(en("users.queue.empty"));
+  });
+
+  it("rejects the named request through the distinct action", async () => {
+    let reads = 0;
+    queueRoute = () => json(200, {
+      ok: true,
+      users: reads++ === 0 ? [{ github_login: "waiting-2" }] : [],
+    });
+    denyRoute = answers(200, { ok: true, github_login: "waiting-2", status: "denied" });
+    await mount();
+    fireEvent.click(screen.getByTestId("open-admission-approval"));
+
+    fireEvent.click(screen.getByTestId("reject-admission-waiting-2"));
+    expect(decisionPosts()).toHaveLength(0);
+    expect(textOf("confirm-admission-waiting-2")).toContain(en("users.queue.confirmReject"));
+    fireEvent.click(screen.getByTestId("confirm-admission-submit-waiting-2"));
+    await settle();
+
+    expect(decisionPosts()).toHaveLength(1);
+    expect(decisionPosts()[0]?.url).toEndWith(DENY);
+    expect(JSON.parse(decisionPosts()[0]?.body ?? "{}")).toEqual({ github_login: "waiting-2" });
+    expect(textOf("admission-decision-success")).toContain(en("users.queue.rejected"));
+    expect(textOf("admission-decision-success")).toContain("waiting-2");
+  });
+
+  it("keeps the request visible and shows the server's refusal when a decision loses the race", async () => {
+    queueRoute = answers(200, { ok: true, users: [{ github_login: "waiting-3" }] });
+    approveRoute = answers(404, { error: 'No pending approval found for "waiting-3"' });
+    await mount();
+    fireEvent.click(screen.getByTestId("open-admission-approval"));
+
+    fireEvent.click(screen.getByTestId("approve-admission-waiting-3"));
+    fireEvent.click(screen.getByTestId("confirm-admission-submit-waiting-3"));
+    await settle();
+
+    expect(decisionPosts()).toHaveLength(1);
+    expect(textOf("admission-decision-error")).toContain('No pending approval found for "waiting-3"');
+    expect(textOf("admission-decision-success")).toBeNull();
+    expect(screen.queryByTestId("admission-row-waiting-3")).not.toBeNull();
   });
 });
 
