@@ -9666,6 +9666,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["names what a person sees rather than what the server calls it"],
   },
   {
+    id: "a-password-change-rehashes-the-old-one",
+    defect:
+      "The change hashes the password the person typed as their current one instead of the one they chose. Every surface says it worked — the route answers ok, the must-change flag clears, the screen moves on — and the account keeps the password it was seeded with, which for a seeded administrator is a password written in a setup document.",
+    file: "packages/http/src/db.ts",
+    from: "  const hash = await Bun.password.hash(next, { algorithm: 'bcrypt' })",
+    to: "  const hash = await Bun.password.hash(current, { algorithm: 'bcrypt' })",
+    suite: "test/fe-render.test.ts",
+    expect: ["stops accepting the password it was seeded with"],
+  },
+  {
+    id: "a-refused-count-answers-zero",
+    defect:
+      "The card drops the branch that says it has no answer, so a read the server refused draws the number the page happens to be holding — zero. Zero agents and zero permission are the same picture, and the second one is the one an operator acts on.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "          value={isLoading ? \"...\" : isError ? \"—\" : String(totalAgents)}",
+    to: "          value={isLoading ? \"...\" : String(totalAgents)}",
+    suite: "test/fe-render.test.ts",
+    expect: ["leaves the count unmeasured rather than answering it from another table"],
+  },
+  {
+    id: "a-refusal-is-drawn-as-silence",
+    defect:
+      "The panel stops telling a refusal from a server that did not answer, and prints the second sentence for both. A person reading `서버가 답하지 않았습니다` goes looking at the mesh; the mesh is fine and their account is missing a capability, which nothing on the screen says.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "          ⚠️ {failure === \"refused\" ? refusedText(t, missing) : t(\"tel.error\", \"운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).\")}",
+    to: "          ⚠️ {t(\"tel.error\", \"운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).\")}",
+    suite: "test/fe-render.test.ts",
+    expect: ["never reports silence on a screen the server answered 403 for"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
