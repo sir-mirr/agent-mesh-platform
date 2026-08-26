@@ -11363,12 +11363,12 @@ export const MUTATIONS: Mutation[] = [
     expect: ["inspects agent conversation history"],
   },
   {
-    id: "a-queued-message-is-recorded-delivered",
+    id: "a-message-is-filed-against-the-wrong-party",
     defect:
-      "A message the hub could not hand over was written down as `delivered`. It is then in nobody's queue — the recipient's mailbox does not hold it, the depth screens do not count it, a lease never offers it — while the sender has been told it arrived. § 8.9.4 keeps `sent` and the outcome as two events precisely so that this pair cannot disagree silently.",
-    file: "packages/hub/src/rpc/send.ts",
-    from: "      stmtUpdateMessageStatus.run(\"pending\", msgId);",
-    to: "      stmtUpdateMessageStatus.run(\"delivered\", msgId);",
+      "The insert's columns were transposed, so every message is stored with sender and recipient swapped. It waits in the sender's own mailbox, the recipient is never offered it, and the conversation an operator reads has both sides pointing the wrong way — while the send answers `pending` and the audit trail, which is built from the arguments rather than from the row, says what really happened. Two records of one message that disagree, with the wrong one on the delivery path.",
+    file: "packages/hub/src/db.ts",
+    from: "  INSERT INTO messages (id, from_agent, to_agent, sent_by, content, reply_to, status, ts, via)",
+    to: "  INSERT INTO messages (id, to_agent, from_agent, sent_by, content, reply_to, status, ts, via)",
     suite: "test/fe-scenarios.test.ts",
     expect: ["sends direct message between registered agents"],
   },
