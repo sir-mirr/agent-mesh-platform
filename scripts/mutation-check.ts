@@ -10128,7 +10128,7 @@ export const MUTATIONS: Mutation[] = [
     from: "if (unparsed.length || ambiguous.length || staleExemptions.length) process.exit(1);",
     to: "if (staleExemptions.length && false) process.exit(1);",
     suite: "test/scenario-anchors.test.ts",
-    expect: ["a header this reader could not read was neither reported nor fatal"],
+    expect: ["the two readings disagreed and the run reported success"],
   },
   {
     id: "an-unauthenticated-admin-read-is-refused-as-forbidden",
