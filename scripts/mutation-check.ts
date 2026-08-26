@@ -9766,6 +9766,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["offers an identity and a lifetime, and issues no code without them"],
   },
   {
+    id: "an-accepted-send-draws-no-receipt",
+    defect:
+      "The send is made and its answer thrown away. The mesh accepted the message, the screen reports no error, and the panel keeps sitting on its prompt — so an operator cannot tell an accepted message from one that never left, which is the state this page exists to show. The receipt is the only evidence the send happened at all.",
+    file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
+    from: "      setReceipt(await sendMessageApi({ to: recipient, text: sent }));",
+    to: "      await sendMessageApi({ to: recipient, text: sent });",
+    suite: "test/fe-render.test.ts",
+    expect: ["draws the receipt for a message the mesh accepted, whatever the body was"],
+  },
+  {
+    id: "group-creation-posts-to-a-route-that-is-not-there",
+    defect:
+      "The create call names a path one letter off the route that serves it. Nothing in the build objects — the URL is a string — and the screen has a refusal to draw, so this looks like the server rejecting the group rather than the client asking the wrong door. It is the rename a fixture already met once here, where a body renamed to `keys` was still being read as `pending`.",
+    file: "packages/platform-web/src/api/groups.ts",
+    from: "  return await apiClient<{ ok: boolean; group_id?: string; created?: boolean; group?: any }>(\"/api/v1/admin/groups\", {",
+    to: "  return await apiClient<{ ok: boolean; group_id?: string; created?: boolean; group?: any }>(\"/api/v1/admin/group\", {",
+    suite: "test/fe-render.test.ts",
+    expect: ["creates a group the server then lists, not only a row on screen"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
