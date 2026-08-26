@@ -538,10 +538,9 @@ describe("the one temporary password", () => {
   it("states the member-only initial role and sends it explicitly", async () => {
     admitRoute = answers(201, ISSUED);
     await mount();
-    const select = screen.getByTestId("admit-role") as HTMLSelectElement;
-    expect(select.value).toBe("member");
-    expect(select.disabled).toBe(true);
-    expect([...select.options].map((option) => option.value)).toEqual(["member"]);
+    const role = screen.getByTestId("admit-role");
+    expect(role.tagName).toBe("SPAN");
+    expect(role.textContent).toBe(en("users.role.member"));
     expect(document.getElementById("admit-role-help")?.textContent).toContain(en("users.role.initialNote"));
     expect(document.querySelector<HTMLAnchorElement>('#admit-role-help a')?.getAttribute("href")).toBe("/tenant/rbac");
 

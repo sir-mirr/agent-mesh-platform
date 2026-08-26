@@ -5652,31 +5652,147 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const shown = await withPage("/platform/users", async ({ page }) => {
       await page.waitForSelector('[data-testid="admit-form"]', { timeout: 8000 });
+
+      // T-045: this is an administration screen, so its visible words name
+      // actions and results. The four strings below are the verbatim English
+      // review evidence, not a broad blacklist somebody invented afterwards.
+      const pageText = await page.locator("#root").innerText();
+      const reviewedCopy = [
+        "Admit a person and hand them one temporary password. They choose their own before they can do anything else.",
+        "People who asked to be let in",
+        "A different queue from the key requests. The bell does not show anyone here.",
+        "Decisions are made on the server-rendered admin page.",
+        "사람을 들이고 임시 비밀번호를 한 번 건넨다. 본인이 직접 바꾸기 전에는 그 외에 아무것도 못 한다.",
+        "들여보내달라고 요청한 사람",
+        "이 줄은 키 요청과 다른 대기열이다. 종을 봐도 여기 있는 사람은 안 보인다.",
+        "결정은 서버가 그리는 관리 화면에서 한다.",
+      ];
+      const reviewedCopyFound = reviewedCopy.filter((phrase) => pageText.includes(phrase));
+      const displayField = await page.locator('[data-testid="admit-display"]').evaluate((node) => {
+        const input = node as HTMLInputElement;
+        const style = getComputedStyle(input);
+        return {
+          disabled: input.disabled,
+          placeholder: input.placeholder,
+          cursor: style.cursor,
+          borderWidth: style.borderWidth,
+          transparent: style.backgroundColor === "rgba(0, 0, 0, 0)",
+        };
+      });
+      const initialRole = page.locator('[data-testid="admit-role"]');
+      const createAction = ((await page.locator('[data-testid="admit-submit"]').textContent()) ?? "").trim();
+      const roleText = ((await initialRole.textContent()) ?? "").trim();
+      const copyState = {
+        reviewedCopyFound,
+        createActionNamed: ["Create account", "계정 생성"].includes(createAction),
+        queueNamed: pageText.includes("Sign-up requests") || pageText.includes("가입 요청"),
+        bellExplained:
+          (pageText.includes("notification bell") && pageText.includes("registration key requests")) ||
+          (pageText.includes("알림 벨") && pageText.includes("등록 키 요청")),
+        roleElement: await initialRole.evaluate((node) => node.tagName),
+        roleNamed: ["Standard account", "일반 계정"].includes(roleText),
+        displayField,
+      };
+
       await page.locator('[data-testid="admit-username"]').fill(person);
       await page.locator('[data-testid="admit-submit"]').click();
       await page.waitForSelector('[data-testid="issued-value"]', { timeout: 8000 });
       const value = ((await page.locator('[data-testid="issued-value"]').textContent()) ?? "").trim();
+
+      // The value worked before it was replaced. A plausible-looking string is
+      // not evidence that the confirmation panel showed what the server wrote.
+      const firstSignIn = await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ username: person, password: value }),
+        redirect: "manual",
+      });
 
       // The other half of "once". A reload is the cheapest thing a person does.
       await page.reload({ waitUntil: "networkidle" });
       await settled(page);
       const afterReload = await page.locator('[data-testid="issued-password"]').count();
       const stillListed = await page.locator(`[data-testid="user-row-${person}"]`).count();
-      return { value, afterReload, stillListed };
+
+      // The recovery path the sentence names is a real write, with an explicit
+      // confirmation. It issues a second one-time value and puts the account
+      // back behind the first-login password-change gate.
+      const reissue = page.locator(`[data-testid="reissue-${person}"]`);
+      const reissueAction = ((await reissue.textContent()) ?? "").trim();
+      await reissue.click();
+      const confirmAction = ((
+        await page.locator(`[data-testid="reissue-confirm-submit-${person}"]`).textContent()
+      ) ?? "").trim();
+      await page.locator(`[data-testid="reissue-confirm-submit-${person}"]`).click();
+      await page.waitForSelector('[data-testid="issued-value"]', { timeout: 8000 });
+      const replacement = ((await page.locator('[data-testid="issued-value"]').textContent()) ?? "").trim();
+
+      return {
+        value,
+        replacement,
+        firstSignIn: firstSignIn.status,
+        afterReload,
+        stillListed,
+        reissueActionNamed: ["Reissue temporary password", "비밀번호 재발급"].includes(reissueAction),
+        confirmActionNamed: ["Confirm reissue", "재발급 확인"].includes(confirmAction),
+        copyState,
+      };
     });
 
-    // Ask the server whether that string is the password. Shape proves nothing.
+    // Ask the server whether the replacement is now the password. The original
+    // already answered 200 before the reissue; both facts are needed to prove
+    // the screen performed a replacement rather than drawing another string.
     const signIn = await fetch(`${mesh.http.url}/auth/local`, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json" },
-      body: JSON.stringify({ username: person, password: shown.value }),
+      body: JSON.stringify({ username: person, password: shown.replacement }),
       redirect: "manual",
     });
 
     expect(
-      { gave: shown.value.length > 0, works: signIn.status, keptAfterReload: shown.afterReload, listed: shown.stillListed },
-      "the screen showed no password, showed one that does not work, or kept it across a reload",
-    ).toEqual({ gave: true, works: 200, keptAfterReload: 0, listed: 1 });
+      {
+        gave: shown.value.length > 0,
+        replacedWithDifferentValue: shown.replacement.length > 0 && shown.replacement !== shown.value,
+        firstWorked: shown.firstSignIn,
+        replacementWorks: signIn.status,
+        keptAfterReload: shown.afterReload,
+        listed: shown.stillListed,
+        reissueActionNamed: shown.reissueActionNamed,
+        confirmActionNamed: shown.confirmActionNamed,
+        reviewedCopyFound: shown.copyState.reviewedCopyFound,
+        createActionNamed: shown.copyState.createActionNamed,
+        queueNamed: shown.copyState.queueNamed,
+        bellExplained: shown.copyState.bellExplained,
+        roleElement: shown.copyState.roleElement,
+        roleNamed: shown.copyState.roleNamed,
+        displayEnabled: !shown.copyState.displayField.disabled,
+        displayPlaceholder: shown.copyState.displayField.placeholder.length > 0,
+        displayCursor: shown.copyState.displayField.cursor,
+        displayBorder: shown.copyState.displayField.borderWidth,
+        displayTransparent: shown.copyState.displayField.transparent,
+      },
+      "the local-account screen hid an action, drew reviewed copy, looked disabled, or issued a password that did not work",
+    ).toEqual({
+      gave: true,
+      replacedWithDifferentValue: true,
+      firstWorked: 200,
+      replacementWorks: 200,
+      keptAfterReload: 0,
+      listed: 1,
+      reissueActionNamed: true,
+      confirmActionNamed: true,
+      reviewedCopyFound: [],
+      createActionNamed: true,
+      queueNamed: true,
+      bellExplained: true,
+      roleElement: "SPAN",
+      roleNamed: true,
+      displayEnabled: true,
+      displayPlaceholder: true,
+      displayCursor: "text",
+      displayBorder: "1px",
+      displayTransparent: false,
+    });
   }, 30000);
 
   it("[SC-USER-D2] repeats the server's refusal rather than composing its own", async () => {

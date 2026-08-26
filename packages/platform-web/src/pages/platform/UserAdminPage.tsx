@@ -399,24 +399,23 @@ export function UserAdminPage() {
             )}
           </select>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
           {t("users.field.role", "Initial role")}
-          <select
+          <span
             data-testid="admit-role"
-            value="member"
-            disabled
             aria-describedby="admit-role-help"
             style={{
               padding: "8px 10px",
               borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border-strong)",
-              background: "var(--color-bg-surface)",
-              color: "var(--color-text-primary)",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-bg-surface-sub)",
+              color: "var(--color-text-secondary)",
               minWidth: 190,
+              fontWeight: 700,
             }}
           >
-            <option value="member">{t("users.role.member", "Standard account")}</option>
-          </select>
+            {t("users.role.member", "Standard account")}
+          </span>
           <span id="admit-role-help" style={{ maxWidth: 260, color: "var(--color-text-muted)", lineHeight: 1.45 }}>
             {t(
               "users.role.initialNote",
@@ -426,7 +425,7 @@ export function UserAdminPage() {
               {t("users.role.openPermissions", "Open account permissions")}
             </a>
           </span>
-        </label>
+        </div>
         <Button
           type="submit"
           data-testid="admit-submit"
