@@ -294,7 +294,7 @@ export function RegisterAgentPage() {
               🔑 {t("reg.gen.title", "1회용 연결 코드 만들기")}
             </h3>
             <p style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", marginTop: 4 }}>
-              {t("reg.gen.body", "특정 에이전트에 전달할 1회용 인증 토큰을 만듭니다 (POST /api/v1/admin/pairing-codes).")}
+              {t("reg.gen.body", "입력한 에이전트가 한 번 사용할 연결 코드를 만듭니다.")}
             </p>
           </div>
 

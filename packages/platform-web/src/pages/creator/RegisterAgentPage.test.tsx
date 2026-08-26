@@ -244,6 +244,22 @@ const bodyText = (): string => document.body.textContent ?? "";
 const PROPOSAL = { identity: "settlement-4", fingerprint: "sha256:a1b2c3d4e5", type: "worker" };
 const OTHER = { identity: "ledger-2", fingerprint: "sha256:b7c8d9e0f1", type: "relay" };
 
+describe("operator-facing generator copy", () => {
+  it("names the action without exposing the route that implements it", async () => {
+    queueAnswers({ ok: true, keys: [] });
+    await mount();
+
+    const reviewedCopy = [
+      "Creates a one-time token for one agent (POST /api/v1/admin/pairing-codes).",
+      "특정 에이전트에 전달할 1회용 인증 토큰을 만듭니다 (POST /api/v1/admin/pairing-codes).",
+    ];
+    const page = bodyText();
+    expect(reviewedCopy.filter((sentence) => page.includes(sentence))).toEqual([]);
+    expect(en("reg.gen.body")).toBe("Create a one-time connection code for the agent you specify.");
+    expect(page).toContain(en("reg.gen.body"));
+  });
+});
+
 describe("the four things the queue read can say", () => {
   it("says it is still asking, and does not answer for the server meanwhile", async () => {
     queueStillOut();
