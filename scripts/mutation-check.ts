@@ -9836,6 +9836,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
   },
   {
+    id: "the-sign-in-screen-offers-github-regardless",
+    defect:
+      "The client stops reading the half of the answer it asked for and reports GitHub as available whatever the deployment said. The server-side flag cannot carry this scenario — it serves its own health answer through a route mock, so only the reading is observable from there. A person on a server with no credentials for it is sent to an authorize URL with an empty client id, and the queue that entrance feeds keeps answering an empty list — the two readings D-801 exists to separate, back in one screen.",
+    file: "packages/platform-web/src/api/auth.ts",
+    from: "  return { local: signIn.local, github: signIn.github };",
+    to: "  return { local: signIn.local, github: true };",
+    suite: "test/fe-render.test.ts",
+    expect: ["offers GitHub sign-in only when health says it is configured"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
