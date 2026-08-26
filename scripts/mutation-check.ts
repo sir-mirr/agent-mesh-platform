@@ -11242,6 +11242,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["queries AI usage & telemetry metrics"],
   },
+  {
+    id: "a-second-create-reports-itself-created",
+    defect:
+      "`createGroup` reported Created for a group that already existed. The insert is `ON CONFLICT DO NOTHING`, so the second call changes no rows and the boolean is the only thing that distinguishes *made it* from *it was already there* — the route's status code is derived from it. An operator retrying after a timeout is told they have just created a group somebody else made, and the description they passed was silently dropped.",
+    file: "packages/store/src/groups.ts",
+    from: "      .run(g.tenant ?? DEFAULT_TENANT, g.groupId, g.description ?? null, g.createdBy).changes > 0",
+    to: "      .run(g.tenant ?? DEFAULT_TENANT, g.groupId, g.description ?? null, g.createdBy).changes >= 0",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["idempotently handles duplicate group creation"],
+  },
+  {
+    id: "a-typo-is-granted-as-a-capability",
+    defect:
+      "The grant route stopped checking the capability against the vocabulary and stored whatever string it was sent. `audit.read.contents` is then a grant that exists, appears on the RBAC screen, is revocable by name — and gates nothing, because no route asks for it. The operator believes they have given an entitlement and the holder is refused; § 11 has a closed list precisely so that this cannot be a typing mistake.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!(ALL_CAPABILITIES as readonly string[]).includes(capability)) {\n    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)\n  }\n\n  // `grantedBy` is the actor, never something the caller states.",
+    to: "  if (typeof capability !== 'string') {\n    return c.json({ ok: false, error: `unknown capability: ${capability}`, capabilities: ALL_CAPABILITIES }, 400)\n  }\n\n  // `grantedBy` is the actor, never something the caller states.",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["refuses typo'd or unsupported capability grant"],
+  },
+  {
+    id: "the-registry-shortens-the-identity-it-lists",
+    defect:
+      "`mesh.list_agents` reported each row's id cut at the first hyphen, so `agent-007-complex` is listed as `agent`. Every kebab-case identity in the mesh collapses onto a handful of prefixes: a client looking for its own name does not find it, two agents can appear to be one, and a send addressed to what the list showed reaches nobody.",
+    file: "packages/hub/src/rpc/agents.ts",
+    from: "    id: r.identity,",
+    to: "    id: r.identity.split(\"-\")[0],",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["preserves complex valid kebab-case agent identity"],
+  },
 ];
 
 /**
