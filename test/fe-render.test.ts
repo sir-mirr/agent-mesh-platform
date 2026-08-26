@@ -2646,7 +2646,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       //
       // So 10 is not one machine's number. It is left overridable anyway,
       // because the next machine is still unmeasured.
-      const RATE = Number(process.env.SC_HARNESS_RATE ?? 10);
+      // **30, measured on two machines rather than assumed on one.**
+      //
+      // 10 reproduced the misread on agent-mesh-local-pm's machine and does
+      // not on this one: at 1/10 the cold page still reaches its terminal
+      // state before the read, so the scenario reports itself unmeasurable and
+      // passes — which is what the sweep below found it doing on every run
+      // here. 30 and 60 both reproduce here, and a heavier throttle can only
+      // make the interim screen more likely, not less, so raising the default
+      // does not cost the machine where 10 already worked.
+      const RATE = Number(process.env.SC_HARNESS_RATE ?? 30);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       const unthrottled = await page.locator("#root").innerText();
@@ -5585,9 +5594,25 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             if (start < 0 || end < 0) throw new Error(`DashboardPage does not import ${file}`);
             return dashboardSource.slice(start, end);
           };
+          // **The same optimize pass for both halves of React.**
+          //
+          // `react-dom_client.js` was loaded by a bare path while React came
+          // from the URL in the page's own source, which carries vite's `?v=`
+          // hash. When the dependency cache is re-optimised — a file changed,
+          // a `--force` restart, a plant between runs — those two resolve to
+          // different builds, and a React-DOM whose internal React is not the
+          // one this test rendered with fails as
+          // `Cannot read properties of null (reading 'useRef')`. Measured:
+          // that error, on this scenario, under a mutation planted in a file
+          // it does not read.
+          //
+          // The query is taken from the URL that is known to be current.
+          const optimizeQuery = dependencyUrl("react.js").includes("?")
+            ? dependencyUrl("react.js").slice(dependencyUrl("react.js").indexOf("?"))
+            : "";
           const [reactModule, domModule, routerModule, i18nModule, authModule, dashboardModule] = await Promise.all([
             load(dependencyUrl("react.js")),
-            load("/node_modules/.vite/deps/react-dom_client.js"),
+            load(`/node_modules/.vite/deps/react-dom_client.js${optimizeQuery}`),
             load(dependencyUrl("react-router-dom.js")),
             load("/src/contexts/I18nContext.tsx"),
             load("/src/contexts/AuthContext.tsx"),

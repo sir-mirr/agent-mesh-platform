@@ -9892,6 +9892,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-DOWN-15", "folded unreachable into another state"],
   },
   {
+    id: "the-agent-table-never-reports-a-failed-read",
+    defect:
+      "The table draws its empty message for a read that failed, so a starved or disconnected screen says the mesh has no agents. It is the same fold D-145 removed everywhere else, one prop deep, and no page error accompanies it.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "        isError={isError}",
+    to: "        isError={false}",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-HARNESS-02", "a starved CPU does not make a disconnected screen read as authenticating"],
+  },
+  {
     id: "a-row-identity-is-invented-each-render",
     defect:
       "A key the client makes up is a new identity on every render, so React unmounts and remounts every row each time the list refreshes: an open menu closes, a selection is dropped, and typing in a row loses focus. `Math.random()` in a front end is the shape of a value the server is the source of, which is why the count of them is ratcheted rather than allowed.",

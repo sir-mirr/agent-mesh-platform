@@ -1207,11 +1207,15 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const { readdirSync, readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const ROOT = "packages/platform-web/src";
-    // Today's two. Both are the same defect at different severities: the modal
-    // shows its dice to a person, `audit.ts` uses them for a React key when the
-    // server sent no id. Listing them here rather than allowing them keeps the
-    // number honest — an allow-list would make the count stop meaning anything.
-    const RATCHET = 2;
+    // Today's one: `AgentPairingModal` shows its dice to a person. `audit.ts`
+    // was the other — it used them for a React key when the server sent no id —
+    // and it is gone, so the number comes down with it. Listing them here
+    // rather than allowing them keeps the count honest, and a ratchet left
+    // above what the tree holds is a ratchet that has stopped ratcheting: at 2
+    // a new synthesised value could be added and this would still be green.
+    // Measured that way — a planted `Math.random()` took the count to 2 and
+    // passed.
+    const RATCHET = 1;
 
     const walk = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
