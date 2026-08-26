@@ -14,6 +14,8 @@ export interface LocalUser {
   tenant?: string;
   created_at?: string;
   must_change_password?: boolean | number;
+  /** `null` while active; an ISO timestamp after D-803 deactivation. */
+  disabled_at?: string | null;
 }
 
 export interface LocalUsersResponse {
@@ -63,6 +65,24 @@ export interface ReissuedPassword {
 export async function reissueLocalUserPasswordApi(username: string): Promise<ReissuedPassword> {
   return await apiClient<ReissuedPassword>(
     `/api/v1/admin/users/${encodeURIComponent(username)}/password`,
+    { method: "POST" },
+  );
+}
+
+export interface LocalUserLifecycleResponse {
+  ok: boolean;
+  username: string;
+  disabled_at: string | null;
+}
+
+/** Deactivate or reactivate one local account without deleting its history. */
+export async function setLocalUserDeactivatedApi(
+  username: string,
+  deactivated: boolean,
+): Promise<LocalUserLifecycleResponse> {
+  const action = deactivated ? "deactivate" : "reactivate";
+  return await apiClient<LocalUserLifecycleResponse>(
+    `/api/v1/admin/users/${encodeURIComponent(username)}/${action}`,
     { method: "POST" },
   );
 }

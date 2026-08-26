@@ -15,6 +15,7 @@ import {
   fetchPendingAdmissions,
   decidePendingAdmissionApi,
   reissueLocalUserPasswordApi,
+  setLocalUserDeactivatedApi,
 } from "./users.ts";
 
 const realFetch = globalThis.fetch;
@@ -132,6 +133,22 @@ describe("reissueLocalUserPasswordApi", () => {
     expect(String(spy.mock.calls[0]![0])).toEndWith("/api/v1/admin/users/admin%20%2F%20ops/password");
     expect(spy.mock.calls[0]![1]?.method).toBe("POST");
     expect(response.temporary_password).toBe("replacement-once");
+  });
+});
+
+describe("setLocalUserDeactivatedApi", () => {
+  it("posts each state change to the encoded account route", async () => {
+    const off = spyOn({ ok: true, username: "admin / ops", disabled_at: "2026-08-26T01:02:03Z" });
+    const deactivated = await setLocalUserDeactivatedApi("admin / ops", true);
+    expect(String(off.mock.calls[0]![0])).toEndWith("/api/v1/admin/users/admin%20%2F%20ops/deactivate");
+    expect(off.mock.calls[0]![1]?.method).toBe("POST");
+    expect(deactivated.disabled_at).toBe("2026-08-26T01:02:03Z");
+
+    const on = spyOn({ ok: true, username: "admin / ops", disabled_at: null });
+    const reactivated = await setLocalUserDeactivatedApi("admin / ops", false);
+    expect(String(on.mock.calls[0]![0])).toEndWith("/api/v1/admin/users/admin%20%2F%20ops/reactivate");
+    expect(on.mock.calls[0]![1]?.method).toBe("POST");
+    expect(reactivated.disabled_at).toBeNull();
   });
 });
 

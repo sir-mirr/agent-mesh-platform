@@ -81,6 +81,85 @@ a:hover {
   flex-direction: column;
 }
 
+/* Local-account admission is one form, not a loose row of unrelated controls. */
+.admit-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admit-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.admit-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.admit-control {
+  width: 100%;
+  min-height: 38px;
+}
+
+.admit-required {
+  margin-left: 3px;
+  color: var(--color-danger);
+  font-weight: 800;
+}
+
+.admit-role-value {
+  display: inline-flex;
+  min-height: 38px;
+  align-self: flex-start;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+  border-radius: var(--radius-full);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admit-role-help {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.admit-permissions-link {
+  display: inline-block;
+  color: var(--color-primary);
+  font-weight: 700;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.admit-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .admit-fields-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .admit-fields-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ── Original Mockup Constellation & Flowing Packet Animations ── */
 .hero-agents-constellation {
   position: absolute;
@@ -278,5 +357,3 @@ a:hover {
   color: #C084FC;
   border-color: rgba(192, 132, 252, 0.4);
 }
-
-

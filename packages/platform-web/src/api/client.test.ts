@@ -38,6 +38,22 @@ describe("ApiError", () => {
     // what the six hand-typed copies were.
     expect(refusedCapability(new Error("plain"))).toBe(null);
   });
+
+  it("carries the refusal code separately from its operator sentence", async () => {
+    stub(mock(async () =>
+      answer(409, {
+        error: "the prose may change without changing the decision",
+        code: "SELF_DEACTIVATION",
+      })));
+
+    const err = await apiClient("/api/v1/admin/users/me/deactivate").then(
+      () => null,
+      (caught) => caught as ApiError,
+    );
+
+    expect(err?.code).toBe("SELF_DEACTIVATION");
+    expect(err?.message).toBe("the prose may change without changing the decision");
+  });
 });
 
 describe("failureKind", () => {

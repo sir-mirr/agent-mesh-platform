@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { HTTP_ADMIN_ERROR } from "@agent-mesh/contracts";
 import { PageHeader, Breadcrumbs, DataTable, Button } from "@/components/index.ts";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import {
@@ -7,6 +8,7 @@ import {
   fetchPendingAdmissions,
   decidePendingAdmissionApi,
   reissueLocalUserPasswordApi,
+  setLocalUserDeactivatedApi,
   type AdmissionDecision,
   type LocalUser,
   type PendingAdmission,
@@ -44,6 +46,17 @@ export function UserAdminPage() {
   const [reissueRefusal, setReissueRefusal] = useState<string | null>(null);
   const [confirmingReissue, setConfirmingReissue] = useState<string | null>(null);
   const [reissuing, setReissuing] = useState<string | null>(null);
+  const [confirmingLifecycle, setConfirmingLifecycle] = useState<{
+    username: string;
+    deactivated: boolean;
+  } | null>(null);
+  const [lifecycleWorking, setLifecycleWorking] = useState<string | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [lifecycleNotice, setLifecycleNotice] = useState<{
+    username: string;
+    deactivated: boolean;
+  } | null>(null);
+  const lifecycleInFlight = useRef(false);
   const [tenants, setTenants] = useState<TenantDirectoryItem[] | null>(null);
   const [selectedTenant, setSelectedTenant] = useState("");
   const [tenantLoading, setTenantLoading] = useState(true);
@@ -81,11 +94,12 @@ export function UserAdminPage() {
       setUsers(res.users ?? []);
       setIsError(false);
       setFailure(null);
+      setMissing(null);
     } catch (err: unknown) {
       setUsers([]);
       setIsError(true);
       setFailure(failureKind(err));
-        setMissing(refusedCapability(err));
+      setMissing(refusedCapability(err));
     } finally {
       setIsLoading(false);
     }
@@ -212,6 +226,41 @@ export function UserAdminPage() {
       );
     } finally {
       setReissuing(null);
+    }
+  };
+
+  const setDeactivated = async (user: LocalUser, deactivated: boolean) => {
+    if (lifecycleInFlight.current) return;
+    lifecycleInFlight.current = true;
+    setLifecycleWorking(user.username);
+    setLifecycleError(null);
+    setLifecycleNotice(null);
+    setIssued(null);
+    setReissueRefusal(null);
+    try {
+      await setLocalUserDeactivatedApi(user.username, deactivated);
+      setLifecycleNotice({ username: user.username, deactivated });
+      setConfirmingLifecycle(null);
+      await load();
+    } catch (err: any) {
+      const message = err instanceof ApiError && err.status === null
+        ? t("users.lifecycle.unreachable", "The server did not answer. The account state is unknown.")
+        : err instanceof ApiError && err.code === HTTP_ADMIN_ERROR.SELF_DEACTIVATION
+          ? t(
+            "users.lifecycle.selfRefused",
+            "The current account was not deactivated. Ask another administrator to deactivate it.",
+          )
+          : err instanceof ApiError && err.code === HTTP_ADMIN_ERROR.PROTECTED_ACCOUNT
+            ? t(
+              "users.lifecycle.protectedRefused",
+              "The recovery administrator was not deactivated. It is protected for installation recovery.",
+            )
+            : String(err?.message ?? err);
+      setLifecycleError(message);
+      setConfirmingLifecycle(null);
+    } finally {
+      lifecycleInFlight.current = false;
+      setLifecycleWorking(null);
     }
   };
 
@@ -349,6 +398,116 @@ export function UserAdminPage() {
         </Button>
       ),
     },
+    {
+      key: "account_access",
+      header: t("users.col.accountAccess", "Account access"),
+      render: (u: LocalUser) => {
+        const state = u.disabled_at === null
+          ? "active"
+          : typeof u.disabled_at === "string" && u.disabled_at.length > 0
+            ? "deactivated"
+            : "unknown";
+        const deactivated = state === "deactivated";
+        const isConfirming = confirmingLifecycle?.username === u.username;
+        return (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 7, minWidth: 220 }}>
+            <span
+              data-testid={`user-access-state-${u.username}`}
+              data-state={state}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "3px 8px",
+                borderRadius: 999,
+                border: `1px solid ${
+                  state === "active"
+                    ? "var(--color-success)"
+                    : state === "deactivated"
+                      ? "var(--color-danger)"
+                      : "var(--color-border-strong)"
+                }`,
+                color: state === "active"
+                  ? "var(--color-success)"
+                  : state === "deactivated"
+                    ? "var(--color-danger)"
+                    : "var(--color-text-muted)",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {state === "active"
+                ? t("users.lifecycle.active", "Active")
+                : state === "deactivated"
+                  ? t("users.lifecycle.deactivated", "Deactivated")
+                  : t("users.lifecycle.unknown", "State unavailable")}
+            </span>
+            {state !== "unknown" && !isConfirming ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={deactivated ? "secondary" : "danger"}
+                data-testid={`${deactivated ? "reactivate" : "deactivate"}-user-${u.username}`}
+                disabled={lifecycleWorking !== null}
+                onClick={() => {
+                  setConfirmingLifecycle({ username: u.username, deactivated: !deactivated });
+                  setLifecycleError(null);
+                  setLifecycleNotice(null);
+                }}
+              >
+                {deactivated
+                  ? t("users.lifecycle.reactivate", "Reactivate")
+                  : t("users.lifecycle.deactivate", "Deactivate")}
+              </Button>
+            ) : null}
+            {state !== "unknown" && isConfirming ? (
+              <div
+                data-testid={`lifecycle-confirm-${u.username}`}
+                style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6 }}
+              >
+                <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: 1.45 }}>
+                  {confirmingLifecycle.deactivated
+                    ? t(
+                      "users.lifecycle.confirmDeactivate",
+                      "Deactivate this account? Sign-in, live sessions, and mesh access will be blocked.",
+                    )
+                    : t(
+                      "users.lifecycle.confirmReactivate",
+                      "Reactivate this account? Sign-in and mesh access will be restored.",
+                    )}
+                </span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={confirmingLifecycle.deactivated ? "danger" : "primary"}
+                    data-testid={`lifecycle-confirm-submit-${u.username}`}
+                    disabled={lifecycleWorking !== null}
+                    onClick={() => void setDeactivated(u, confirmingLifecycle.deactivated)}
+                  >
+                    {lifecycleWorking === u.username
+                      ? t("users.lifecycle.saving", "Saving account state…")
+                      : confirmingLifecycle.deactivated
+                        ? t("users.lifecycle.confirmDeactivation", "Confirm deactivation")
+                        : t("users.lifecycle.confirmReactivation", "Confirm reactivation")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    data-testid={`lifecycle-confirm-cancel-${u.username}`}
+                    disabled={lifecycleWorking !== null}
+                    onClick={() => setConfirmingLifecycle(null)}
+                  >
+                    {t("common.cancel", "Cancel")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    },
   ];
 
   const renderQueue = (withDecisions: boolean) => {
@@ -480,11 +639,8 @@ export function UserAdminPage() {
       <form
         onSubmit={submit}
         data-testid="admit-form"
+        className="admit-form-card"
         style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "flex-end",
           background: "var(--color-bg-surface)",
           border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-md)",
@@ -500,104 +656,113 @@ export function UserAdminPage() {
             )}
           </span>
         </div>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
-          {t("users.field.username", "Username")}
-          <input
-            data-testid="admit-username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder={t("users.field.username.ph", "letters, digits and dashes")}
-            required
-            style={{
-              padding: "8px 10px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border-strong)",
-              background: "var(--color-bg-surface)",
-              color: "var(--color-text-primary)",
-              cursor: "text",
-            }}
-          />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
-          {t("users.field.display", "Name")}
-          <input
-            data-testid="admit-display"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder={t("users.field.display.ph", "Optional display name")}
-            style={{
-              padding: "8px 10px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border-strong)",
-              background: "var(--color-bg-surface)",
-              color: "var(--color-text-primary)",
-              cursor: "text",
-            }}
-          />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
-          {t("users.field.tenant", "Tenant")}
-          <select
-            data-testid="admit-tenant"
-            value={selectedTenant}
-            onChange={(event) => setSelectedTenant(event.target.value)}
-            disabled={tenantLoading || tenants === null || tenants.length === 0}
-            style={{
-              padding: "8px 10px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-bg-surface-sub)",
-              color: "var(--color-text-primary)",
-              minWidth: 180,
-            }}
-          >
-            {tenantLoading ? (
-              <option value="">{t("users.tenants.loading", "Reading tenants…")}</option>
-            ) : tenants?.length ? (
-              tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name} ({tenant.id})
-                </option>
-              ))
-            ) : (
-              <option value="">{t("users.tenants.none", "No tenant can be selected")}</option>
-            )}
-          </select>
-        </label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "0.8rem" }}>
-          {t("users.field.role", "Initial role")}
-          <span
-            data-testid="admit-role"
-            aria-describedby="admit-role-help"
-            style={{
-              padding: "8px 10px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-bg-surface-sub)",
-              color: "var(--color-text-secondary)",
-              minWidth: 190,
-              fontWeight: 700,
-            }}
-          >
-            {t("users.role.member", "Standard account")}
-          </span>
-          <span id="admit-role-help" style={{ maxWidth: 260, color: "var(--color-text-muted)", lineHeight: 1.45 }}>
-            {t(
-              "users.role.initialNote",
-              "New accounts start as Standard account. Assign additional permissions after creation on Account permissions.",
-            )}{" "}
-            <a href="/tenant/rbac" style={{ color: "var(--color-primary)", fontWeight: 700 }}>
-              {t("users.role.openPermissions", "Open account permissions")}
-            </a>
-          </span>
+        <div className="admit-fields-grid" data-testid="admit-fields-grid">
+          <label className="admit-field" data-testid="admit-field-username">
+            <span>
+              {t("users.field.username", "Username")}
+              <span
+                className="admit-required"
+                data-testid="admit-username-required"
+                title={t("common.required", "Required")}
+                aria-hidden="true"
+              >
+                *
+              </span>
+            </span>
+            <input
+              className="admit-control"
+              data-testid="admit-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={t("users.field.username.ph", "letters, digits and dashes")}
+              required
+              style={{
+                padding: "8px 10px",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--color-border-strong)",
+                background: "var(--color-bg-surface)",
+                color: "var(--color-text-primary)",
+                cursor: "text",
+              }}
+            />
+          </label>
+          <label className="admit-field" data-testid="admit-field-display">
+            <span>{t("users.field.display", "Name")}</span>
+            <input
+              className="admit-control"
+              data-testid="admit-display"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={t("users.field.display.ph", "Optional display name")}
+              style={{
+                padding: "8px 10px",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--color-border-strong)",
+                background: "var(--color-bg-surface)",
+                color: "var(--color-text-primary)",
+                cursor: "text",
+              }}
+            />
+          </label>
+          <label className="admit-field" data-testid="admit-field-tenant">
+            <span>{t("users.field.tenant", "Tenant")}</span>
+            <select
+              className="admit-control"
+              data-testid="admit-tenant"
+              value={selectedTenant}
+              onChange={(event) => setSelectedTenant(event.target.value)}
+              disabled={tenantLoading || tenants === null || tenants.length === 0}
+              style={{
+                padding: "8px 10px",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-bg-surface-sub)",
+                color: "var(--color-text-primary)",
+              }}
+            >
+              {tenantLoading ? (
+                <option value="">{t("users.tenants.loading", "Reading tenants…")}</option>
+              ) : tenants?.length ? (
+                tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name} ({tenant.id})
+                  </option>
+                ))
+              ) : (
+                <option value="">{t("users.tenants.none", "No tenant can be selected")}</option>
+              )}
+            </select>
+          </label>
+          <div className="admit-field" data-testid="admit-field-role">
+            <span>{t("users.field.role", "Initial role")}</span>
+            <span
+              className="admit-role-value"
+              data-testid="admit-role"
+              data-presentation="static"
+              aria-describedby="admit-role-help"
+            >
+              {t("users.role.member", "Standard account")}
+            </span>
+            <span id="admit-role-help" className="admit-role-help">
+              {t(
+                "users.role.initialNote",
+                "New accounts start as Standard account. Assign additional permissions after creation on Account permissions.",
+              )}{" "}
+              <a href="/tenant/rbac" className="admit-permissions-link">
+                {t("users.role.openPermissions", "Open account permissions")}
+              </a>
+            </span>
+          </div>
         </div>
-        <Button
-          type="submit"
-          data-testid="admit-submit"
-          disabled={busy || tenantLoading || tenants === null || tenants.length === 0 || !selectedTenant}
-        >
-          {busy ? t("users.admitting", "Creating account…") : t("users.admit", "Create account")}
-        </Button>
+        <div className="admit-form-actions" data-testid="admit-form-actions">
+          <Button
+            type="submit"
+            data-testid="admit-submit"
+            disabled={busy || tenantLoading || tenants === null || tenants.length === 0 || !selectedTenant}
+          >
+            {busy ? t("users.admitting", "Creating account…") : t("users.admit", "Create account")}
+          </Button>
+        </div>
       </form>
 
       {!tenantLoading && tenants === null ? (
@@ -749,6 +914,47 @@ export function UserAdminPage() {
           </div>
         ) : null}
       </section>
+
+      {lifecycleError ? (
+        <div
+          data-testid="user-lifecycle-error"
+          role="alert"
+          style={{
+            padding: 12,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-danger)",
+            color: "var(--color-danger)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {lifecycleError}
+        </div>
+      ) : null}
+
+      {lifecycleNotice ? (
+        <div
+          data-testid="user-lifecycle-success"
+          role="status"
+          style={{
+            padding: 12,
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-success)",
+            color: "var(--color-success)",
+            fontSize: "0.85rem",
+          }}
+        >
+          {lifecycleNotice.deactivated
+            ? t(
+              "users.lifecycle.deactivatedReceipt",
+              "Account deactivated. Sign-in, live sessions, and mesh access are blocked:",
+            )
+            : t(
+              "users.lifecycle.reactivatedReceipt",
+              "Account reactivated. Sign-in and mesh access are restored:",
+            )}{" "}
+          {lifecycleNotice.username}
+        </div>
+      ) : null}
 
       <DataTable
         columns={columns}

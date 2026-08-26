@@ -101,6 +101,8 @@ let usersRoute: Answer;
 let queueRoute: Answer;
 let admitRoute: Answer;
 let reissueRoute: Answer;
+let deactivateRoute: Answer;
+let reactivateRoute: Answer;
 let approveRoute: Answer;
 let denyRoute: Answer;
 let healthRoute: Answer;
@@ -119,6 +121,12 @@ beforeEach(() => {
     temporary_password: "replacement-unused",
     must_change_password: true,
   });
+  deactivateRoute = answers(200, {
+    ok: true,
+    username: "someone",
+    disabled_at: "2026-08-26T01:02:03Z",
+  });
+  reactivateRoute = answers(200, { ok: true, username: "someone", disabled_at: null });
   approveRoute = answers(200, { ok: true, github_login: "waiting-1", status: "approved" });
   denyRoute = answers(200, { ok: true, github_login: "waiting-1", status: "denied" });
   healthRoute = answers(200, { status: "ok", sign_in: { local: true, github: true } });
@@ -145,6 +153,8 @@ beforeEach(() => {
     if (url.endsWith(QUEUE)) return await queueRoute();
     if (url.endsWith(TENANT_DIRECTORY)) return await tenantRoute();
     if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/password$/.test(url)) return await reissueRoute();
+    if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/deactivate$/.test(url)) return await deactivateRoute();
+    if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/reactivate$/.test(url)) return await reactivateRoute();
     if (url.endsWith(USERS)) return method === "POST" ? await admitRoute() : await usersRoute();
     throw new TypeError("Failed to fetch");
   });
@@ -263,13 +273,16 @@ const admit = async (username: string, displayName = "", tenant?: string) => {
 };
 const posts = () => calls.filter((c) => c.method === "POST" && c.url.endsWith(USERS));
 const reissuePosts = () => calls.filter((c) => c.method === "POST" && /\/users\/[^/]+\/password$/.test(c.url));
+const lifecyclePosts = () => calls.filter(
+  (c) => c.method === "POST" && /\/users\/[^/]+\/(?:deactivate|reactivate)$/.test(c.url),
+);
 const decisionPosts = () => calls.filter((c) => c.method === "POST" && (c.url.endsWith(APPROVE) || c.url.endsWith(DENY)));
 const rosterReads = () => calls.filter((c) => c.method === "GET" && c.url.endsWith(USERS));
 
 /** What `GET /api/v1/admin/users` answers with — flags as numbers, as the server sends them. */
 const ROSTER = [
-  { username: "ada", display_name: "Ada L", role: "member", tenant: "tenant-a", must_change_password: 1 },
-  { username: "grace", role: "admin", tenant: "tenant-b", must_change_password: 0 },
+  { username: "ada", display_name: "Ada L", role: "member", tenant: "tenant-a", must_change_password: 1, disabled_at: null },
+  { username: "grace", role: "admin", tenant: "tenant-b", must_change_password: 0, disabled_at: null },
 ];
 
 describe("the account screen uses administrative language", () => {
@@ -305,6 +318,28 @@ describe("the account screen uses administrative language", () => {
     expect(page).toContain(en("users.queue.hint"));
     expect(page).toContain(en("users.queue.openApproval"));
     expect(screen.getByTestId("admit-display").getAttribute("placeholder")).toBe(en("users.field.display.ph"));
+  });
+
+  it("lays the four account facts out as fields, a static role, and a settled action", async () => {
+    await mount();
+
+    const grid = screen.getByTestId("admit-fields-grid");
+    expect([...grid.children].map((field) => field.getAttribute("data-testid"))).toEqual([
+      "admit-field-username",
+      "admit-field-display",
+      "admit-field-tenant",
+      "admit-field-role",
+    ]);
+    expect(screen.getByTestId("admit-username-required").textContent).toBe("*");
+
+    const role = screen.getByTestId("admit-role");
+    expect(role.getAttribute("data-presentation")).toBe("static");
+    expect(screen.getByTestId("admit-field-role").querySelector("input, select")).toBeNull();
+
+    const permissions = document.querySelector<HTMLAnchorElement>('#admit-role-help a');
+    expect(permissions?.classList.contains("admit-permissions-link")).toBe(true);
+    const actions = screen.getByTestId("admit-form-actions");
+    expect(actions.lastElementChild).toBe(submitButton());
   });
 });
 
@@ -939,5 +974,157 @@ describe("password reissue from the account list", () => {
     expect(textOf("reissue-error")).toContain("no local account named 'ada'");
     expect(textOf("reissue-error")).not.toBe(en("users.reissue.unreachable"));
     expect(textOf("issued-password")).toBeNull();
+  });
+});
+
+describe("account deactivation from the account list", () => {
+  const confirm = async (username: string) => {
+    fireEvent.click(screen.getByTestId(`deactivate-user-${username}`));
+    expect(lifecyclePosts()).toHaveLength(0);
+    fireEvent.click(screen.getByTestId(`lifecycle-confirm-submit-${username}`));
+    await settle();
+  };
+
+  it("draws the server's active and deactivated states and offers the reverse action", async () => {
+    usersRoute = answers(200, {
+      ok: true,
+      users: [ROSTER[0], { ...ROSTER[1], disabled_at: "2026-08-26T01:02:03Z" }],
+    });
+    await mount();
+
+    expect(screen.getByTestId("user-access-state-ada").getAttribute("data-state")).toBe("active");
+    expect(textOf("user-access-state-ada")).toBe(en("users.lifecycle.active"));
+    expect(screen.queryByTestId("deactivate-user-ada")).not.toBeNull();
+    expect(screen.getByTestId("user-access-state-grace").getAttribute("data-state")).toBe("deactivated");
+    expect(textOf("user-access-state-grace")).toBe(en("users.lifecycle.deactivated"));
+    expect(screen.queryByTestId("reactivate-user-grace")).not.toBeNull();
+  });
+
+  it("does not invent an active state when the roster omitted disabled_at", async () => {
+    usersRoute = answers(200, { ok: true, users: [{ ...ROSTER[0], disabled_at: undefined }] });
+    await mount();
+
+    expect(screen.getByTestId("user-access-state-ada").getAttribute("data-state")).toBe("unknown");
+    expect(textOf("user-access-state-ada")).toBe(en("users.lifecycle.unknown"));
+    expect(screen.queryByTestId("deactivate-user-ada")).toBeNull();
+    expect(screen.queryByTestId("reactivate-user-ada")).toBeNull();
+  });
+
+  it("cancels the confirmation without changing the account", async () => {
+    usersRoute = answers(200, { ok: true, users: [ROSTER[0]] });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("deactivate-user-ada"));
+    expect(textOf("lifecycle-confirm-ada")).toContain(en("users.lifecycle.confirmDeactivate"));
+    fireEvent.click(screen.getByTestId("lifecycle-confirm-cancel-ada"));
+
+    expect(screen.queryByTestId("lifecycle-confirm-ada")).toBeNull();
+    expect(lifecyclePosts()).toHaveLength(0);
+  });
+
+  it("holds the account controls while a state change is in flight", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    deactivateRoute = stillReading;
+    await mount();
+
+    fireEvent.click(screen.getByTestId("deactivate-user-ada"));
+    fireEvent.click(screen.getByTestId("lifecycle-confirm-submit-ada"));
+
+    const submit = screen.getByTestId("lifecycle-confirm-submit-ada") as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(submit.textContent).toBe(en("users.lifecycle.saving"));
+    expect((screen.getByTestId("lifecycle-confirm-cancel-ada") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("deactivate-user-grace") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(lifecyclePosts()).toHaveLength(1);
+  });
+
+  it("confirms a deactivation once, re-reads the roster, and draws a success receipt", async () => {
+    let reads = 0;
+    usersRoute = () => json(200, {
+      ok: true,
+      users: [{ ...ROSTER[0], disabled_at: reads++ === 0 ? null : "2026-08-26T01:02:03Z" }],
+    });
+    deactivateRoute = answers(200, {
+      ok: true,
+      username: "ada",
+      disabled_at: "2026-08-26T01:02:03Z",
+    });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("deactivate-user-ada"));
+    const submit = screen.getByTestId("lifecycle-confirm-submit-ada");
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await settle();
+
+    expect(lifecyclePosts()).toHaveLength(1);
+    expect(lifecyclePosts()[0]?.url).toEndWith("/api/v1/admin/users/ada/deactivate");
+    expect(rosterReads()).toHaveLength(2);
+    expect(textOf("user-access-state-ada")).toBe(en("users.lifecycle.deactivated"));
+    expect(textOf("user-lifecycle-success")).toContain(en("users.lifecycle.deactivatedReceipt"));
+    expect(textOf("user-lifecycle-error")).toBeNull();
+  });
+
+  it("reactivates a deactivated account and reports the restored state", async () => {
+    let reads = 0;
+    usersRoute = () => json(200, {
+      ok: true,
+      users: [{ ...ROSTER[0], disabled_at: reads++ === 0 ? "2026-08-26T01:02:03Z" : null }],
+    });
+    reactivateRoute = answers(200, { ok: true, username: "ada", disabled_at: null });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("reactivate-user-ada"));
+    fireEvent.click(screen.getByTestId("lifecycle-confirm-submit-ada"));
+    await settle();
+
+    expect(lifecyclePosts()).toHaveLength(1);
+    expect(lifecyclePosts()[0]?.url).toEndWith("/api/v1/admin/users/ada/reactivate");
+    expect(textOf("user-access-state-ada")).toBe(en("users.lifecycle.active"));
+    expect(textOf("user-lifecycle-success")).toContain(en("users.lifecycle.reactivatedReceipt"));
+  });
+
+  it("explains why the current account and the recovery administrator were not deactivated", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    deactivateRoute = answers(409, {
+      ok: false,
+      code: "SELF_DEACTIVATION",
+      error: "an operator cannot deactivate their own account",
+    });
+    await mount();
+    await confirm("ada");
+    expect(textOf("user-lifecycle-error")).toBe(en("users.lifecycle.selfRefused"));
+    expect(textOf("user-lifecycle-success")).toBeNull();
+
+    cleanup();
+    calls.length = 0;
+    deactivateRoute = answers(409, {
+      ok: false,
+      code: "PROTECTED_ACCOUNT",
+      error: "the seeded administrator is how an installation is recovered",
+    });
+    await mount();
+    await confirm("grace");
+    expect(textOf("user-lifecycle-error")).toBe(en("users.lifecycle.protectedRefused"));
+    expect(textOf("user-lifecycle-success")).toBeNull();
+  });
+
+  it("does not call an unanswered or absent account update a success", async () => {
+    usersRoute = answers(200, { ok: true, users: [ROSTER[0]] });
+    deactivateRoute = noAnswer;
+    await mount();
+    await confirm("ada");
+    expect(textOf("user-lifecycle-error")).toBe(en("users.lifecycle.unreachable"));
+    expect(textOf("user-lifecycle-success")).toBeNull();
+    expect(textOf("user-access-state-ada")).toBe(en("users.lifecycle.active"));
+
+    cleanup();
+    calls.length = 0;
+    deactivateRoute = answers(404, { ok: false, error: "no local account named 'ada'" });
+    await mount();
+    await confirm("ada");
+    expect(textOf("user-lifecycle-error")).toBe("no local account named 'ada'");
+    expect(textOf("user-lifecycle-success")).toBeNull();
   });
 });

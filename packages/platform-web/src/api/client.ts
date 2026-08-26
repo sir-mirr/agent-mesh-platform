@@ -22,11 +22,19 @@ export class ApiError extends Error {
    * programmatic handling.
    */
   readonly capability: string | null;
-  constructor(message: string, status: number | null, capability: string | null = null) {
+  /** A stable admin refusal code, when the response names one. */
+  readonly code: string | null;
+  constructor(
+    message: string,
+    status: number | null,
+    capability: string | null = null,
+    code: string | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.capability = capability;
+    this.code = code;
   }
   /** The server answered and refused. A different thing from being unreachable. */
   get refused(): boolean {
@@ -77,6 +85,7 @@ export async function apiClient<T = any>(
       errorMsg,
       response.status,
       typeof errorData.capability === "string" ? errorData.capability : null,
+      typeof errorData.code === "string" ? errorData.code : null,
     );
   }
 

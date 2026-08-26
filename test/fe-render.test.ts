@@ -6030,6 +6030,218 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 30000);
 
   /**
+   * SC-USER-D4 — the local-account form is one aligned form.
+   *
+   * The reviewed screen scattered the four facts across a wrapping flex row,
+   * drew the fixed role like a disabled input, split a Korean action in the
+   * middle of a word, and left the submit button beside helper prose. Text
+   * assertions cannot see any of those. This reads the browser's layout boxes
+   * and computed styles at the desktop width the product review used.
+   */
+  it("[SC-USER-D4] aligns the four account facts and settles the create action", async () => {
+    await withPage("/platform/users", async ({ page, errors }) => {
+      await page.getByTestId("admit-fields-grid").waitFor({ state: "visible", timeout: 8000 });
+
+      const layout = await page.evaluate(() => {
+        const byId = (id: string) => {
+          const node = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+          if (!node) throw new Error(`missing ${id}`);
+          return node;
+        };
+        const rect = (id: string) => byId(id).getBoundingClientRect();
+        const spread = (values: number[]) => Math.max(...values) - Math.min(...values);
+        const fields = [
+          "admit-field-username",
+          "admit-field-display",
+          "admit-field-tenant",
+          "admit-field-role",
+        ].map(rect);
+        const controls = ["admit-username", "admit-display", "admit-tenant", "admit-role"].map(rect);
+        const grid = rect("admit-fields-grid");
+        const form = rect("admit-form");
+        const action = rect("admit-submit");
+        const gridStyle = getComputedStyle(byId("admit-fields-grid"));
+        const role = byId("admit-role");
+        const roleField = byId("admit-field-role");
+        const required = byId("admit-username-required");
+        const link = document.querySelector<HTMLElement>(".admit-permissions-link");
+        if (!link) throw new Error("missing permissions link");
+        const linkStyle = getComputedStyle(link);
+
+        return {
+          columns: gridStyle.gridTemplateColumns.split(/\s+/).filter(Boolean).length,
+          fieldTopSpread: spread(fields.map((box) => box.top)),
+          controlTopSpread: spread(controls.map((box) => box.top)),
+          roleTag: role.tagName,
+          rolePresentation: role.getAttribute("data-presentation"),
+          roleHasControl: roleField.querySelector("input, select") !== null,
+          requiredVisible: required.getBoundingClientRect().width > 0 && required.textContent === "*",
+          linkWhiteSpace: linkStyle.whiteSpace,
+          linkWordBreak: linkStyle.wordBreak,
+          linkRects: link.getClientRects().length,
+          actionBelowGrid: action.top >= grid.bottom,
+          actionRightGap: Math.round(form.right - action.right),
+          fieldWidths: fields.map((box) => Math.round(box.width)),
+        };
+      });
+
+      const { actionRightGap, fieldWidths, ...aligned } = layout;
+      expect(
+        { ...aligned, errors },
+        "the account form wrapped, misaligned its controls, styled the fixed role as input, split the Korean action, or left submit floating",
+      ).toEqual({
+        columns: 4,
+        fieldTopSpread: 0,
+        controlTopSpread: 0,
+        roleTag: "SPAN",
+        rolePresentation: "static",
+        roleHasControl: false,
+        requiredVisible: true,
+        linkWhiteSpace: "nowrap",
+        linkWordBreak: "keep-all",
+        linkRects: 1,
+        actionBelowGrid: true,
+        errors: [],
+      });
+      // The form's box ends at the outside of its 1px border, while the button
+      // is settled against the 16px content padding inside it. Fractional
+      // layout can round that border into either endpoint; a left-aligned
+      // action is hundreds of pixels away and the flex-start probe above was
+      // caught by this exact assertion.
+      expect(
+        actionRightGap >= 16 && actionRightGap <= 17,
+        "the create action is not settled against the card's 16px padding and 1px border",
+      ).toBe(true);
+      expect(Math.min(...fieldWidths), "the four-column grid collapsed a field to no usable width").toBeGreaterThan(120);
+    });
+  }, 30000);
+
+  /**
+   * SC-USER-D5 — account deactivation is visible, reversible, and honest.
+   *
+   * The browser performs both writes against the real server, while sign-in is
+   * checked outside the page between them. It also reaches both 409 decisions
+   * with a non-seeded administrator session, so the two reasons cannot be
+   * collapsed into a generic failure sentence.
+   */
+  it("[SC-USER-D5] deactivates and restores an account, and explains both protected refusals", async () => {
+    const suffix = Date.now().toString(36).slice(-6);
+    const operator = `d5-operator-${suffix}`;
+    const target = `d5-target-${suffix}`;
+    const admin = { Cookie: `mesh_token=${jwtToken}`, "Content-Type": "application/json" };
+    const create = async (username: string) => {
+      const response = await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+        method: "POST",
+        headers: admin,
+        body: JSON.stringify({ username }),
+      });
+      const body = (await response.json()) as { temporary_password?: string };
+      expect(
+        { username, status: response.status, password: typeof body.temporary_password === "string" },
+        "the lifecycle fixture was not admitted",
+      ).toEqual({ username, status: 201, password: true });
+      return body.temporary_password!;
+    };
+
+    const operatorTemporary = await create(operator);
+    const targetPassword = await create(target);
+    const signedIn = await fetch(`${mesh.http.url}/auth/local`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ username: operator, password: operatorTemporary }),
+      redirect: "manual",
+    });
+    const operatorCookie = sessionCookie(operator, signedIn.status, signedIn.headers.get("set-cookie"));
+    const changed = await fetch(`${mesh.http.url}/auth/local/password`, {
+      method: "POST",
+      headers: { cookie: operatorCookie, "content-type": "application/json" },
+      body: JSON.stringify({ current: operatorTemporary, next: `D5-chosen-${suffix}-99` }),
+    });
+    expect(changed.status, "the operator fixture remained behind the first-login gate").toBe(200);
+
+    const granted = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ subject: operator, capability: "user.admit", scope: "*" }),
+    });
+    expect(granted.status, "the operator fixture did not receive user.admit").toBe(201);
+
+    const { page, context, errors } = await createViewerAuthedPage(operatorCookie, "/platform/users");
+    try {
+      const changeState = async (action: "deactivate" | "reactivate", username: string) => {
+        await page.getByTestId(`${action}-user-${username}`).click();
+        await page.getByTestId(`lifecycle-confirm-submit-${username}`).click();
+      };
+      const state = page.getByTestId(`user-access-state-${target}`);
+      await state.waitFor({ state: "visible", timeout: 8000 });
+      expect(await state.getAttribute("data-state")).toBe("active");
+
+      await changeState("deactivate", target);
+      await page.getByTestId("user-lifecycle-success").waitFor({ state: "visible", timeout: 8000 });
+      await page.waitForFunction(
+        (id) => document.querySelector(`[data-testid="${id}"]`)?.getAttribute("data-state") === "deactivated",
+        `user-access-state-${target}`,
+      );
+      const disabledState = await state.getAttribute("data-state");
+      const blocked = await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ username: target, password: targetPassword }),
+        redirect: "manual",
+      });
+      const blockedBody = (await blocked.json()) as { error?: string };
+
+      await changeState("reactivate", target);
+      await page.getByTestId("user-lifecycle-success").waitFor({ state: "visible", timeout: 8000 });
+      await page.waitForFunction(
+        (id) => document.querySelector(`[data-testid="${id}"]`)?.getAttribute("data-state") === "active",
+        `user-access-state-${target}`,
+      );
+      const restored = await fetch(`${mesh.http.url}/auth/local`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify({ username: target, password: targetPassword }),
+        redirect: "manual",
+      });
+
+      await changeState("deactivate", operator);
+      const selfReason = page.getByTestId("user-lifecycle-error");
+      await selfReason.waitFor({ state: "visible", timeout: 8000 });
+      const selfText = ((await selfReason.textContent()) ?? "").trim();
+
+      await changeState("deactivate", SEED_ADMIN);
+      const protectedReason = page.getByTestId("user-lifecycle-error");
+      await protectedReason.waitFor({ state: "visible", timeout: 8000 });
+      const protectedText = ((await protectedReason.textContent()) ?? "").trim();
+
+      expect(
+        {
+          disabledState,
+          blockedStatus: blocked.status,
+          blockedReason: blockedBody.error,
+          restoredState: await state.getAttribute("data-state"),
+          restoredStatus: restored.status,
+          selfText,
+          protectedText,
+          errors,
+        },
+        "the screen lost a lifecycle write, called a refusal success, or collapsed the two protected-account reasons",
+      ).toEqual({
+        disabledState: "deactivated",
+        blockedStatus: 403,
+        blockedReason: "this account is deactivated",
+        restoredState: "active",
+        restoredStatus: 200,
+        selfText: "현재 로그인한 계정은 비활성화할 수 없습니다. 다른 관리자에게 요청하십시오.",
+        protectedText: "복구용 초기 관리자 계정은 비활성화할 수 없습니다.",
+        errors: [],
+      });
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }, 45000);
+
+  /**
    * SC-CONSIST-01 — a screen that states a count states the count of what it drew.
    *
    * `I-064` was this: the topology said `3개 에이전트` in its heading, `Agents: 2`
