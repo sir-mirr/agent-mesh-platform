@@ -9796,6 +9796,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "a-metric-of-zero-is-drawn-as-unmeasured",
+    defect:
+      "Zero is folded into the unknown. `없음` and `재본 적 없음` are the two readings this panel exists to keep apart — a mesh that refused no signature and one whose signature counter was never read look identical the moment they share a cell, and the operator acting on it cannot tell a quiet mesh from a blind one.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "                    {metric.value === null ? (",
+    to: "                    {metric.value === null || metric.value === 0 ? (",
+    suite: "test/fe-render.test.ts",
+    expect: ["draws the six behavioural metrics and marks unread ones as unmeasured"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
