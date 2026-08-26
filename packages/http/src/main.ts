@@ -3645,6 +3645,31 @@ app.post('/api/v1/admin/users', async (c) => {
     return c.json({ ok: false, error: `a local account named '${username}' already exists` }, 409)
   }
 
+  /**
+   * **This route makes members. It does not promote** (owner's decision,
+   * T-045).
+   *
+   * `role` used to reach the store unread, and `admin` is not a label in this
+   * server: `isUserApproved` returns true for it outright and the admin screens
+   * gate on the same string, so one extra field on a request the console never
+   * shows was a working promotion under `user.admit`. Promotion is a separate
+   * act with its own capability, on the RBAC screen, where somebody can see who
+   * is being granted what.
+   *
+   * The vocabulary is **closed**, not filtered. An unknown word was written
+   * through before, and a role no check recognises is an account that opens
+   * nothing with nothing on screen saying why — a 400 at the door is the only
+   * place that difference is still cheap to see.
+   */
+  if ('role' in (body ?? {})) {
+    if (body.role === 'admin') {
+      return c.json({ ok: false, error: "this route admits members; grant the admin role on the RBAC screen" }, 400)
+    }
+    if (body.role !== 'member') {
+      return c.json({ ok: false, error: "role must be 'member'" }, 400)
+    }
+  }
+
   // The admitting operator's own tenant unless they name one. A tenant admin
   // creating people can only put them where they are, and that is enforced by
   // what this reads rather than by what the screen sends.
@@ -3661,7 +3686,7 @@ app.post('/api/v1/admin/users', async (c) => {
     username,
     displayName: typeof body?.display_name === 'string' ? body.display_name : undefined,
     tenant,
-    role: typeof body?.role === 'string' ? body.role : undefined,
+    role: 'member',
   })
   log.info(`${actor} admitted ${username} to tenant ${tenant}`, 'user_admitted', {
     id: username,

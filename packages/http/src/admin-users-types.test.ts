@@ -90,6 +90,44 @@ describe("admitting a person", () => {
   });
 
   /**
+   * **Admission makes members. Promotion is a different act, on a different
+   * screen, under a different capability** (owner's decision, T-045).
+   *
+   * `role` reached the store unread: any string was written, and `admin` is not
+   * a label here — `isUserApproved` returns true for it outright, and this
+   * server's own admin screens gate on the same string. So a `user.admit`
+   * holder could mint an administrator by adding one field to a request the
+   * console never shows, and a typo could write a role no check recognises,
+   * leaving an account that opens nothing with nothing on screen saying why.
+   *
+   * The vocabulary is closed rather than filtered: `admin` is refused here
+   * because it is somebody else's route to grant, and an unknown word is
+   * refused because silently writing it is how the second failure happens.
+   */
+  test("admits members only, and refuses a role it does not know", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+
+    const promoted = await post("/api/v1/admin/users", op.authorization, {
+      username: uniq("would-be-admin"),
+      role: "admin",
+    });
+    expect(promoted.status, "this route minted an administrator").toBe(400);
+    expect((await promoted.json()).error).toContain("role");
+
+    for (const role of ["administrator", "MEMBER", "owner", 7, ""]) {
+      const res = await post("/api/v1/admin/users", op.authorization, { username: uniq("odd-role"), role });
+      expect(res.status, `a role of ${JSON.stringify(role)} was accepted`).toBe(400);
+    }
+
+    // The two shapes that are the same request: `member`, and no role at all.
+    for (const body of [{ role: "member" }, {}]) {
+      const res = await post("/api/v1/admin/users", op.authorization, { username: uniq("newcomer"), ...body });
+      expect(res.status, `${JSON.stringify(body)} was refused`).toBe(201);
+      expect((await res.json()).user.role, "admission wrote a role other than member").toBe("member");
+    }
+  });
+
+  /**
    * **The password is in this response and nowhere else.** The listing, the
    * stored row, and every read are checked for its absence — the way this
    * property breaks is a second route being helpful.
@@ -201,15 +239,25 @@ describe("admitting a person", () => {
     expect((await res.json()).code).toBe("NO_SUCH_TENANT");
   });
 
-  test("ignores a display_name or role that is not a string", async () => {
+  /**
+   * **A name is decoration; a role is access.** They are not held to the same
+   * standard on purpose: a `display_name` that arrives as a number costs the
+   * account a label, so it is dropped and the admission stands, while a role
+   * that arrives as anything but `member` is refused outright — see the
+   * vocabulary test above for why nothing else may be written here.
+   */
+  test("drops a display_name that is not a string, and refuses a role that is not one", async () => {
     const op = await holder(CAPABILITY.USER_ADMIT);
     const username = uniq("odd");
-    const res = await post("/api/v1/admin/users", op.authorization,
-      { username, display_name: 7, role: { not: "a string" } });
+    const res = await post("/api/v1/admin/users", op.authorization, { username, display_name: 7 });
     expect(res.status).toBe(201);
     const { user } = await res.json();
     expect(user.display_name).not.toBe(7);
-    expect(typeof user.role).toBe("string");
+    expect(user.role).toBe("member");
+
+    const typed = await post("/api/v1/admin/users", op.authorization,
+      { username: uniq("odd"), display_name: 7, role: { not: "a string" } });
+    expect(typed.status, "a role that is not even a string was admitted").toBe(400);
   });
 });
 

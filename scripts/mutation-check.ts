@@ -9576,6 +9576,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["it has to exist"],
   },
   {
+    id: "an-admitted-role-arrives-unread",
+    defect:
+      "The role check stopped seeing a role that is not a string, so anything that is not text walks past the vocabulary and into the store. The value written is then whatever the caller sent, and a role no check recognises is an account that opens nothing with nothing on screen saying why \u2014 the failure the closed vocabulary exists to make visible at the door.",
+    file: "packages/http/src/main.ts",
+    from: "  if ('role' in (body ?? {})) {",
+    to: "  if (typeof body?.role === 'string') {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["admits members only, and refuses a role it does not know"],
+  },
+  {
+    id: "the-admit-route-is-forgiving-about-case",
+    defect:
+      "The vocabulary grew a second spelling. `member` is compared as a string everywhere it is read \u2014 the listing, the RBAC screen, `isUserApproved` \u2014 so a row written `MEMBER` is a role none of them match, and the account it belongs to is refused by checks that will not say which one.",
+    file: "packages/http/src/main.ts",
+    from: "    if (body.role !== 'member') {",
+    to: "    if (body.role !== 'member' && body.role !== 'MEMBER') {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["admits members only, and refuses a role it does not know"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
@@ -11410,7 +11430,7 @@ export const MUTATIONS: Mutation[] = [
     from: "          [targetId]: currentAllowed,",
     to: "          [targetId]: nextAllowed,",
     suite: "test/fe-render.test.ts",
-    expect: ["handles egress rule toggle abort"],
+    expect: ["puts the egress cell back when the rule write did not land"],
   },
 ];
 
