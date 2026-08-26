@@ -34,7 +34,18 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MUTATIONS } from "./mutation-check.ts";
 
-const root = join(import.meta.dir, "..");
+/**
+ * The tree to read, so this reader can be pointed at a fixture.
+ *
+ * **Nothing ran this but a person.** It was in no CI job, no `verify` step and
+ * no other script — so the morning its id pattern could not see `SC-USER-D4`,
+ * the only thing that noticed was a total that failed to move, and the only
+ * reason anyone looked was that the number was about to be reported. A reader
+ * whose output goes into a report to the owner needs a test, and a test needs
+ * a tree it controls.
+ */
+const rootFlag = process.argv.indexOf("--root");
+const root = rootFlag >= 0 ? (process.argv[rootFlag + 1] ?? join(import.meta.dir, "..")) : join(import.meta.dir, "..");
 
 /**
  * **A letter in the number is still a number.** The id pattern read
@@ -60,9 +71,30 @@ const unparsed: string[] = [];
 
 for (const suite of suites) {
   const text = readFileSync(join(root, suite), "utf8");
-  const declared = [...text.matchAll(/\bit\([^\n]*\[SC-[A-Z0-9]+-[A-Z]*\d+\]/g)].length;
+  /**
+   * **Widened twice, and the second time by a fixture rather than by luck.**
+   *
+   * It read `SC-[A-Z0-9]+-\d+` and missed every `SC-USER-D4` — a letter in the
+   * number. Widening that to `[A-Z]*\d+` still missed `SC-API-AUTH-01`, which
+   * has three segments, and `SC-DOWN-ALL`, which has no number at all: four
+   * more scenarios absent from a denominator that had just been corrected and
+   * reported. An id is segments joined by hyphens, so that is what this matches
+   * now, and neither reader below carries an opinion about what a segment
+   * contains.
+   *
+   * The two readings differ in kind rather than in quoting: one scans lines
+   * that register a scenario, the other reads titles. A pattern narrowed in one
+   * place therefore shows up as a disagreement instead of as a smaller number
+   * that agrees with itself.
+   */
+  const declared = text
+    .split("\n")
+    .filter((line) => /\bit(?:\.skip)?\(/.test(line) && /\[SC-[A-Z0-9]+(?:-[A-Z0-9]+)+\]/.test(line)).length;
   let read = 0;
-  for (const m of text.matchAll(/\bit\(\s*"(\[(SC-[A-Z0-9]+-[A-Z]*\d+)\][^"]*)"/g)) {
+  // Both quote styles: thirteen `SC-DOWN-ALL` registrations are template
+  // literals because the route is interpolated into the title, and a reader
+  // that requires a double quote calls every one of them unreadable.
+  for (const m of text.matchAll(/\bit\(\s*["`](\[(SC-[A-Z0-9]+(?:-[A-Z0-9]+)+)\][^"`]*)["`]/g)) {
     scenarios.push({ id: m[2]!, title: m[1]!, suite });
     read += 1;
   }
@@ -147,6 +179,12 @@ if (process.argv.includes("--json")) {
       unpinned,
       exempt,
       staleExemptions,
+      // **The tripwires travel with the numbers.** They were printed for a
+      // person and left out of the machine-readable summary, which is the same
+      // shape as the defect they exist to catch: whoever reads the JSON reads a
+      // denominator with no way to ask whether it was complete.
+      unparsed,
+      ambiguous,
       observed: seen?.length ?? null,
     },
     null,
@@ -176,3 +214,15 @@ if (process.argv.includes("--json")) {
   }
   console.log(`\nunpinned:\n${unpinned.join(" ")}`);
 }
+
+/**
+ * Disagreement between this reader's two readings is a failure, not a note.
+ *
+ * `unpinned` is a work queue and stays a report — an unpinned scenario is work
+ * somebody has to do, and failing on it would make every new scenario a red
+ * tree for whoever wrote it. These three are different: they say this file
+ * could not read what it was counting, or that its exemption list has gone
+ * stale. A number produced under either is not a number, and it was being
+ * printed in the same tone as one that is.
+ */
+if (unparsed.length || ambiguous.length || staleExemptions.length) process.exit(1);

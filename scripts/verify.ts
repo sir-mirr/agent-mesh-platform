@@ -54,6 +54,12 @@ const DEFAULT_STEPS: Step[] = [
   { name: "packages/", command: ["bun", "test", "packages/"] },
   { name: "test/", command: ["bun", "test", "test/"] },
   { name: "coverage floor", command: ["bun", "scripts/coverage.ts", "--ratchet", "coverage-floor.json"] },
+  // Reads the scenario inventory and fails only when its own two readings
+  // disagree — an unreadable header, a phrase naming two scenarios, an
+  // exemption that has gone stale. The unpinned list stays a report: it is work
+  // somebody has to do, and a new scenario should not turn the tree red for
+  // whoever wrote it.
+  { name: "scenario inventory", command: ["bun", "scripts/scenario-anchors.ts", "--json"] },
 ];
 
 function steps(): Step[] {

@@ -10111,6 +10111,56 @@ export const MUTATIONS: Mutation[] = [
     expect: ["no translated call sites found — the pattern went stale"],
   },
   {
+    id: "the-scenario-reader-cannot-see-a-letter-in-the-number",
+    defect:
+      "The inventory reader's id pattern was `SC-[A-Z0-9]+-\\d+`, and every `SC-USER-B1…B5` and `SC-USER-D1…D5` fell through it. Widening it to `[A-Z]*\\d+` was not enough either: `SC-API-AUTH-01` has three segments and `SC-DOWN-ALL` has no number at all, so four more scenarios stayed absent from a denominator that had just been corrected and reported to the owner. Planted as that second, narrower pattern: ten scenarios absent from the denominator, none listed as unpinned, and the `unparsed` tripwire silent because it counted headers with the same expression that could not see them. Nothing ran this script, so the only thing that noticed was a total that failed to move on the morning the number was about to be reported to the owner.",
+    file: "scripts/scenario-anchors.ts",
+    from: '  for (const m of text.matchAll(/\\bit\\(\\s*["`](\\[(SC-[A-Z0-9]+(?:-[A-Z0-9]+)+)\\][^"`]*)["`]/g)) {',
+    to: '  for (const m of text.matchAll(/\\bit\\(\\s*["`](\\[(SC-[A-Z0-9]+-[A-Z]*\\d+)\\][^"`]*)["`]/g)) {',
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["a three-segment id or a template-literal title went uncounted"],
+  },
+  {
+    id: "the-inventory-reports-a-tripwire-it-does-not-act-on",
+    defect:
+      "`unparsed`, `ambiguous` and `staleExemptions` say this reader could not read what it was counting, and they were printed in the same tone as the numbers beside them — with a zero exit either way. A denominator produced under any of the three is not a denominator, and the run that produced it reported success.",
+    file: "scripts/scenario-anchors.ts",
+    from: "if (unparsed.length || ambiguous.length || staleExemptions.length) process.exit(1);",
+    to: "if (staleExemptions.length && false) process.exit(1);",
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["a header this reader could not read was neither reported nor fatal"],
+  },
+  {
+    id: "an-unauthenticated-admin-read-is-refused-as-forbidden",
+    defect:
+      "§ 9.1 separates *no session* from *a session without the grant*: `401` tells a browser to sign in, `403` tells it the account it already has is not enough. Answering the first case with `403` sends a signed-out operator to a screen explaining a permission they were never asked for, and the login redirect never happens. `SC-API-AUTH-02` is the only check that reads the status of an unauthenticated admin read.",
+    file: "packages/http/src/main.ts",
+    from: "  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 401)\n  const subject = payload.github_login as string\n  if (!grants.has(agentsDb(), subject, capability, scope)) {",
+    to: "  const payload = await extractJwt(c)\n  if (!payload) return c.json({ error: 'Unauthorized' }, 403)\n  const subject = payload.github_login as string\n  if (!grants.has(agentsDb(), subject, capability, scope)) {",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-API-AUTH-02", "enforces authentication on protected admin routes"],
+  },
+  {
+    id: "a-missing-capability-is-answered-as-success",
+    defect:
+      "The capability gate's refusal is the whole of § 11's middle state — a real session that holds the wrong grant. Answered `200`, the route runs for an account that may not run it and the caller is told it worked; every screen that reads the status draws a success. `SC-API-AUTH-03` is the check that reads it.",
+    file: "packages/http/src/main.ts",
+    from: "    return c.json({ error: `Missing capability: ${capability}`, capability, scope }, 403)",
+    to: "    return c.json({ error: `Missing capability: ${capability}`, capability, scope }, 200)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-API-AUTH-03", "denies unauthorized actions with 403"],
+  },
+  {
+    id: "the-session-is-handed-back-under-another-name",
+    defect:
+      "`extractJwt` reads `mesh_token`, and the sign-in is the only place that writes it. Renamed on the way out, the login answers 200 with a cookie the server itself will not read: every subsequent request is anonymous, and the failure surfaces as *unauthorized* on unrelated routes rather than as a login that did not take. `SC-API-AUTH-01` is the check that reads the name.",
+    file: "packages/http/src/main.ts",
+    from: "  return `mesh_token=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`",
+    to: "  return `session=${jwt}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-API-AUTH-01", "receives session cookie"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
