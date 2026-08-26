@@ -5692,8 +5692,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A string written into a component instead of the dictionary. It renders in Korean with the language set to English, and neither dictionary check sees it: `SC-I18N-01` compares two dictionaries and `SC-I18N-03` checks keys that exist. Text between tags is the shape that walked through the first version of this guard.",
     file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
-    from: '          {t("users.issued.for", "Temporary password for")} {issued.username}',
-    to: "          임시 비밀번호 — {issued.username}",
+    from: `              : t("users.issued.reissued", "Password reissued — temporary password for")} {issued.username}`,
+    to: "              : \"임시 비밀번호 재발급 — \"} {issued.username}",
     suite: "test/fe-scenarios.test.ts",
     expect: ["SC-I18N-04", "a screen on the admission path holds Korean the dictionary never saw"],
   },
@@ -5890,12 +5890,12 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "Keeping the one-time password somewhere a reload can find it. The screen looks the same and the word `once` becomes false — and the place it would be kept, `localStorage`, is readable by anything else running on the origin.",
     file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
-    from: "  const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);",
-    to: `  const [issuedKept, setIssuedKept] = useState<{ username: string; password: string } | null>(
+    from: `  const [issued, setIssued] = useState<{ username: string; password: string; action: "created" | "reissued" } | null>(null);`,
+    to: `  const [issuedKept, setIssuedKept] = useState<{ username: string; password: string; action: "created" | "reissued" } | null>(
     () => JSON.parse(localStorage.getItem("agent_mesh_issued") ?? "null"),
   );
   const issued = issuedKept;
-  const setIssued = (v: { username: string; password: string } | null) => {
+  const setIssued = (v: { username: string; password: string; action: "created" | "reissued" } | null) => {
     localStorage.setItem("agent_mesh_issued", JSON.stringify(v));
     setIssuedKept(v);
   };`,
@@ -5907,8 +5907,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A friendlier sentence than the server's. The duplicate-name case says which name is taken; a screen that replaces it sends somebody to guess, and the same replacement hides every other refusal the route can give.",
     file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
-    from: "          : String(err?.message ?? err),",
-    to: '          : "That did not work. Please try a different username.",',
+    from: `          ? t("users.unreachable", "The server did not answer. Nothing was created.")
+          : String(err?.message ?? err),`,
+    to: `          ? t("users.unreachable", "The server did not answer. Nothing was created.")
+          : "That did not work. Please try a different username.",`,
     suite: "test/fe-render.test.ts",
     expect: ["SC-USER-D2", "the screen invented a refusal, or claimed success on one"],
   },
