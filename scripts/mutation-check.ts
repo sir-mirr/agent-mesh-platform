@@ -11385,12 +11385,32 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "an-empty-group-draws-every-agent",
     defect:
-      "A group the server reports as empty was treated as one whose membership is unknown, so the topology drew every agent inside it. The mirror image of the `|| 1` defect removed from the line below: there a known zero became one, here it becomes everybody — and the picture an operator reads for *who is in what* says every agent is in the first empty group on the screen.",
+      "A group the server reports as empty was treated as one whose membership is unknown, so the topology drew every agent inside it — the defect the comment at this line records, restored. It is drawn from `memberList`, not from the cluster sizing seventy lines above: mutating the sizing changes the circle's radius and not one node, which is how the first version of this entry passed with the suite fully green.",
     file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
-    from: "      const members = g.members ?? [];",
-    to: "      const members = g.members?.length ? g.members : liveAgents.map((agent) => agent.identity);",
+    from: "      const memberList: string[] = groupData?.members ?? [];",
+    to: "      const memberList: string[] = groupData?.members?.length ? groupData.members : [...agentIds];",
     suite: "test/fe-render.test.ts",
     expect: ["draws no agents inside a group the server reports as empty"],
+  },
+  {
+    id: "a-refused-grant-is-announced-as-granted",
+    defect:
+      "The RBAC failure branch reported the success copy, so a capability the server refused to grant is announced as granted. The chips are reloaded from the server and disagree with the sentence the operator just read — and the reading that sticks is the sentence, because it names what they asked for.",
+    file: "packages/platform-web/src/pages/tenant/RbacManagementPage.tsx",
+    from: "      setToastMessage(`${t(\"rbac.toast.failed\", \"권한 변경 실패\")}: ${err.message}`);",
+    to: "      setToastMessage(`${t(\"rbac.toast.granted\", \"권한 부여\")}: ${err.message}`);",
+    suite: "test/fe-render.test.ts",
+    expect: ["handles an RBAC grant abort"],
+  },
+  {
+    id: "a-refused-egress-toggle-keeps-the-new-cell",
+    defect:
+      "The revert wrote the value the operator asked for instead of the one the mesh still holds, so a refused toggle leaves the matrix showing the rule the server never accepted. § 12 decides sends from that rule: the screen then says a group may send where it may not, and the next person to read the matrix has no way to know the difference.",
+    file: "packages/platform-web/src/pages/tenant/TenantEgressAclPage.tsx",
+    from: "          [targetId]: currentAllowed,",
+    to: "          [targetId]: nextAllowed,",
+    suite: "test/fe-render.test.ts",
+    expect: ["handles egress rule toggle abort"],
   },
 ];
 
