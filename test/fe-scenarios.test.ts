@@ -1055,7 +1055,15 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       "the carried-fallback rule reads a wrapped `t(key, fallback)` as copy, or reads copy as carried",
     ).toEqual({ wrapped: 0, writtenIn: 1 });
 
-    const sources = walk(ROOT).filter((f) => /\.tsx?$/.test(f) && !f.includes("I18nContext"));
+    // **A test file is not a screen.** This walked them as product source, so
+    // a red-first guard quoting the copy it forbids — the exact shape the
+    // `/platform/users` rewrite needed — counted as untranslated text and
+    // pushed this ratchet from zero to eight. The suite draws nothing; what it
+    // holds is a fixture, and the runner quotes fixtures back. SC-I18N-06 in
+    // this same file already excluded them, and this one did not.
+    const sources = walk(ROOT).filter(
+      (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.includes("I18nContext"),
+    );
 
     const offendersIn = (file: string, withJsx: boolean): string[] => {
       const raw = readFileSync(file, "utf8");
