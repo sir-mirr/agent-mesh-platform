@@ -780,4 +780,27 @@ describe("password reissue from the account list", () => {
     expect(textOf("reissue-error")).toBe(en("users.reissue.unreachable"));
     expect(textOf("issued-password")).toBeNull();
   });
+
+  /**
+   * **A refusal is not silence, and the screen says the server's words.**
+   *
+   * The unreachable case above is the one branch of this `catch` that had a
+   * test; the other is a refusal that arrives *with* a status, and that is the
+   * one an operator meets — the account was deleted between the roster loading
+   * and the button being pressed. Composing a friendlier sentence here would
+   * hide which account, so the route's own message is what is drawn.
+   */
+  it("draws the server's refusal when the reissue is answered rather than dropped", async () => {
+    usersRoute = answers(200, { ok: true, users: ROSTER });
+    reissueRoute = answers(404, { ok: false, error: "no local account named 'ada'" });
+    await mount();
+
+    fireEvent.click(screen.getByTestId("reissue-ada"));
+    fireEvent.click(screen.getByTestId("reissue-confirm-submit-ada"));
+    await settle();
+
+    expect(textOf("reissue-error")).toContain("no local account named 'ada'");
+    expect(textOf("reissue-error")).not.toBe(en("users.reissue.unreachable"));
+    expect(textOf("issued-password")).toBeNull();
+  });
 });

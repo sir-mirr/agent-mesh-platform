@@ -9728,6 +9728,18 @@ export const MUTATIONS: Mutation[] = [
     expect: ["handles egress rule toggle abort by reverting state and reporting failure"],
   },
   {
+    id: "the-reissue-screen-composes-its-own-refusal",
+    defect:
+      "The reissue path replaces the server's refusal with a sentence of its own. The case an operator actually meets is an account deleted between the roster loading and the button being pressed, and the route says which account — a friendlier sentence sends them to guess, and hides every other refusal the route can give.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: `          ? t("users.reissue.unreachable", "The server did not answer. The password was not reissued.")
+          : String(err?.message ?? err),`,
+    to: `          ? t("users.reissue.unreachable", "The server did not answer. The password was not reissued.")
+          : "That did not work. Try again later.",`,
+    suite: "packages/platform-web/src/pages/platform/UserAdminPage.test.tsx",
+    expect: ["draws the server's refusal when the reissue is answered rather than dropped"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
