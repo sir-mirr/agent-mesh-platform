@@ -1737,7 +1737,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 
 | Method | Path                              | Auth   | Success | Notes |
 |--------|-----------------------------------|--------|---------|-------|
-| GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping. Body in § 9.1a. |
+| GET    | `/api/v1/health`                  | None   | `200`   | Liveness ping, and which sign-ins this deployment can complete. Body in § 9.1a. |
 | GET    | `/api/v1/agents`                  | JWT    | `200`   | List entries from the http-server's own `agent_registry` table in `${AGENT_MESH_STATE_DIR}/agent-mesh.db`. **Which rows exist is that table's answer** — an identity provisioned on the hub and never added here is not listed (see § 10). **Approving a key admits its identity** (§ 10.2, D-747), and a server started against a database where approvals predate that rule admits those identities on boot — the same operator decision, applied to the rows it was made about: the operator has compared a fingerprint and decided this identity is one the console deals with, and that decision is what puts the row here. Denial and revocation do not, and a torn-down identity (§ 9.3) is not admitted. Each row additionally carries what the mesh measured about that identity, keyed on the same string: `last_seen_at` from `agents.last_seen`, `fingerprint` of the approved key, and the registry's own `created_at`. `last_seen_at: null` means the mesh holds no presence record for it, **not** that it is offline, and there is deliberately no `status` field — whether silence means `inactive` is an operating policy and not something this route decides. **`POST /api/v1/agents` is not served here** and answers `404`: provisioning is the hub's route (§ 10.1), on `AGENT_MESH_HUB_PORT`. It is worth saying because finding the `GET` here reasonably suggests the `POST` — `agent-mesh-local-pm` read a `404` on this server as meaning identities cannot be created over HTTP at all, and planned a fixture harness around that, while the same path on the hub answers `201` for a `service` type with no key material. Each row carries `tenant` (§ 11.4) — `default` for an identity the mesh has no row for, never `null` — and `?tenant=` narrows the list to one. The filter narrows what the caller may already see rather than widening it. Superseded the `registry.json` file store; a pre-existing `registry.json` is imported once, on first boot after the upgrade, while the table is still empty. |
 | POST   | `/api/v1/messages`                | JWT    | `201`   | Send a message via hub. **`404` when the recipient is absent from *this server's* `agent_registry`** — `Agent "<id>" not found in registry` — which is a different table from the hub's `agents`, on the same namespace. Provisioning on the hub (§ 10.1) does not populate it: the writers are the one-time `registry.json` import, the web-user approval path, and — since D-747 — key approval (§ 10.2). An identity whose key nobody has approved can therefore exist on the mesh and connect and still not be addressable here, which is the intended reading of *this server decides who its users may address*. `agent-mesh-local-pm` met this `404` three times while seeding (mail #1147), before approval admitted. |
 | GET    | `/api/v1/messages/:agent`         | JWT    | `200`   | Conversation history with one peer. |
@@ -1921,7 +1921,8 @@ Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 #### 9.1a. What `/api/v1/health` answers
 
 ```json
-{ "status": "ok", "version": "20260818041757", "agent_count": 14, "uptime": 51407 }
+{ "status": "ok", "version": "20260818041757", "agent_count": 14, "uptime": 51407,
+  "sign_in": { "local": true, "github": false } }
 ```
 
 | field | meaning |
@@ -1930,10 +1931,21 @@ Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 | `version` | The build stamp of the running process, so two deployments can be told apart. |
 | `agent_count` | Mesh identities in the registry. **Not** people, not online sockets — an operator asking *how many agents exist* is asking this. |
 | `uptime` | Seconds since this process started. |
+| `sign_in` | Which sign-ins this deployment can complete. `local` is always `true`; `github` is `true` only when both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are set, because a client id without a secret sends a person to GitHub and fails the exchange on the way back. |
 
 **Unauthenticated, deliberately.** It is the one answer available before a
 session exists, and a liveness check that needs a credential is one nobody can
-use from a load balancer.
+use from a load balancer. `sign_in` is here for the same reason: the screen
+that needs it is the sign-in screen, which by definition has no session.
+
+**`sign_in` exists because an empty queue means two different things** (D-801).
+`GET /api/v1/admin/pending` answers an empty list when nobody has asked to
+join *and* when nobody can — the only writer of that queue is the GitHub
+callback, so a deployment without those credentials has a queue that cannot
+fill. A console drawing "no requests" there is telling an operator something
+false while behaving correctly, and no response carried the fact that would
+have separated the two. A client may show a GitHub entrance only when
+`sign_in.github` is `true`.
 
 **This body was unspecified until now, and both halves of that cost something.**
 `agent_count` counted the http server's messaging directory rather than the

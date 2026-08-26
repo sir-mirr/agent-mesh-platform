@@ -187,6 +187,50 @@ describe("the http service, imported", () => {
     expect((await res.json()).status).toBeTruthy();
   });
 
+  /**
+   * **"Nobody asked" and "nobody can ask" are different answers** (D-801).
+   *
+   * `GET /api/v1/admin/pending` returns an empty list in both situations, and
+   * the only writer of that queue is the GitHub callback — so on a deployment
+   * with no GitHub credentials the queue cannot fill, and a console drawing
+   * "no requests" is telling an operator something false while working
+   * correctly. Nothing in any response said which deployment this is.
+   *
+   * Asserted through the route rather than against the predicate, because the
+   * question is whether a *client* can read it.
+   */
+  test("says which sign-ins this deployment can complete", async () => {
+    const before = {
+      id: process.env.GITHUB_CLIENT_ID,
+      secret: process.env.GITHUB_CLIENT_SECRET,
+    };
+    try {
+      delete process.env.GITHUB_CLIENT_ID;
+      delete process.env.GITHUB_CLIENT_SECRET;
+      const off = await (await call("/api/v1/health")).json();
+      expect(off.sign_in, "the health body did not say which sign-ins exist").toEqual({
+        local: true,
+        github: false,
+      });
+
+      // **Half-configured is not configured.** A client id with no secret
+      // sends a person to GitHub and fails the token exchange on the way
+      // back, which looks configured and works for nobody.
+      process.env.GITHUB_CLIENT_ID = "iv1.deadbeef";
+      const half = await (await call("/api/v1/health")).json();
+      expect(half.sign_in.github, "a client id with no secret was reported as a sign-in that works").toBe(false);
+
+      process.env.GITHUB_CLIENT_SECRET = "s3cr3t";
+      const on = await (await call("/api/v1/health")).json();
+      expect(on.sign_in.github, "both credentials are set and the route still says GitHub is unavailable").toBe(true);
+    } finally {
+      if (before.id === undefined) delete process.env.GITHUB_CLIENT_ID;
+      else process.env.GITHUB_CLIENT_ID = before.id;
+      if (before.secret === undefined) delete process.env.GITHUB_CLIENT_SECRET;
+      else process.env.GITHUB_CLIENT_SECRET = before.secret;
+    }
+  });
+
   test("refuses an admin route to nobody", async () => {
     // Unauthenticated, so this is the refusal path rather than the work.
     const res = await call("/api/v1/admin/users");

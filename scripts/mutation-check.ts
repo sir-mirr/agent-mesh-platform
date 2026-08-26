@@ -9786,6 +9786,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["creates a group the server then lists, not only a row on screen"],
   },
   {
+    id: "the-health-body-claims-a-sign-in-that-cannot-run",
+    defect:
+      "The sign-in flag is written as a constant instead of read from the deployment. Every console then draws a GitHub entrance on a server with no credentials for it, and the person who clicks it is sent to an authorize URL with an empty client id — while the queue that entrance feeds keeps answering an empty list, which is the confusion D-801 exists to end.",
+    file: "packages/http/src/main.ts",
+    from: "    sign_in: { local: true, github: githubSignInConfigured() },",
+    to: "    sign_in: { local: true, github: true },",
+    suite: "packages/http/src/main.in-process.test.ts",
+    expect: ["says which sign-ins this deployment can complete"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",

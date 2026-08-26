@@ -46,6 +46,23 @@ const CALLBACK_URL =
   process.env.AGENT_MESH_CALLBACK_URL ??
   'http://127.0.0.1:3200/auth/github/callback'
 
+/**
+ * Whether a GitHub sign-in can complete on this deployment.
+ *
+ * **Read from the environment here rather than from the constants above.**
+ * Those are captured once at import, which is right for building the
+ * authorize URL and wrong for a question a caller asks: a test that sets the
+ * variables would otherwise be answered by whatever was set when the module
+ * first loaded, and the answer would be a fact about import order.
+ *
+ * Both halves are required. A client id with no secret gets a person as far
+ * as GitHub and then fails the token exchange on the way back, which is the
+ * worst of the three states to be in and the one that looks configured.
+ */
+export function githubSignInConfigured(): boolean {
+  return (process.env.GITHUB_CLIENT_ID ?? '').length > 0 && (process.env.GITHUB_CLIENT_SECRET ?? '').length > 0
+}
+
 // --- GitHub OAuth helpers ---
 
 export function getGithubAuthUrl(): string {

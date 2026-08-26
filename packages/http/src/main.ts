@@ -71,7 +71,7 @@ import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
 import { renderLandingPage } from './ui/landing'
 import { BUILD_VERSION, IS_DEV, THEME } from './ui/theme'
-import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, signJwt, verifyJwt, type JwtPayload } from './auth'
+import { getGithubAuthUrl, exchangeCodeForToken, getGithubUser, githubSignInConfigured, signJwt, verifyJwt, type JwtPayload } from './auth'
 import { randomUUID } from 'node:crypto'
 
 import { startCounterHeartbeat, withFields } from '@agent-mesh/log'
@@ -1654,6 +1654,21 @@ app.get('/api/v1/health', (c) => {
     version: BUILD_VERSION,
     agent_count: registered.n,
     uptime: uptimeSeconds,
+    /**
+     * **Which sign-ins this deployment can actually complete** (D-801).
+     *
+     * The console had no way to ask, and the cost was a screen that could not
+     * tell two different situations apart: `GET /api/v1/admin/pending` answers
+     * an empty list both when nobody has asked to join and when nobody *can*
+     * — the only writer of that queue is the GitHub callback, and without
+     * credentials that callback is unreachable. An operator reading "no
+     * requests" on a deployment where a request is impossible is being told
+     * the wrong thing by a screen that is working correctly.
+     *
+     * Here because this route is the one answer available before a session
+     * exists, and the screen that needs it is the sign-in screen.
+     */
+    sign_in: { local: true, github: githubSignInConfigured() },
   })
 })
 
