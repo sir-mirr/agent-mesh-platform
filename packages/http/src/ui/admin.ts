@@ -779,25 +779,25 @@ export function renderAdminPage(): string {
     <div class="section">
       <div class="audit-header-row">
         <h2>Chat Audits</h2>
-        <span id="auditLiveIndicator" class="live-indicator" data-state="offline" role="status" aria-live="polite" title="SSE connection state">
+        <span id="auditLiveIndicator" class="live-indicator" data-state="offline" role="status" aria-live="polite" title="실시간 갱신 연결 상태">
           <span class="live-dot" aria-hidden="true"></span>
           <span id="auditLiveLabel">offline</span>
         </span>
       </div>
       <div class="audit-filters">
-        <select id="auditFromAgent" aria-label="Filter by from agent"><option value="">(from: all)</option></select>
-        <select id="auditToAgent" aria-label="Filter by to agent"><option value="">(to: all)</option></select>
-        <input type="text" id="auditSearch" placeholder="Search content..." aria-label="Search content" />
+        <select id="auditFromAgent" aria-label="보낸 신원으로 거르기"><option value="">보낸 신원: 전체</option></select>
+        <select id="auditToAgent" aria-label="받는 신원으로 거르기"><option value="">받는 신원: 전체</option></select>
+        <input type="text" id="auditSearch" placeholder="내용 검색" aria-label="내용 검색" />
         <button onclick="applyAuditFilters()">Apply</button>
-        <button class="clear-btn" id="auditClearBtn" onclick="clearAuditFilters()" aria-label="Clear filters" title="Clear filters">×</button>
+        <button class="clear-btn" id="auditClearBtn" onclick="clearAuditFilters()" aria-label="검색 조건 지우기" title="검색 조건 지우기">×</button>
       </div>
       <div id="auditCounters" class="audit-counters" aria-live="polite"></div>
       <div id="auditTopStatus" class="audit-status"></div>
       <div class="audit-list-wrap">
-        <div id="auditList" class="audit-list" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat audit log">
-          <div class="empty">Select the tab to load messages...</div>
+        <div id="auditList" class="audit-list" role="log" aria-live="polite" aria-relevant="additions" aria-label="메시지 기록">
+          <div class="empty">이 탭을 열면 메시지를 불러옵니다</div>
         </div>
-        <button type="button" id="auditPill" class="audit-pill" onclick="scrollAuditsToBottom()" aria-label="Scroll to newest messages">⬇ 새 메시지 0개 · 바닥으로</button>
+        <button type="button" id="auditPill" class="audit-pill" onclick="scrollAuditsToBottom()" aria-label="가장 최근 메시지로 이동">⬇ 새 메시지 0개 · 바닥으로</button>
       </div>
     </div>
   </div>
@@ -843,7 +843,7 @@ async function loadPending() {
       '</div>'
     ).join('');
   } catch(e) {
-    document.getElementById('pendingList').innerHTML = '<div class="empty">Failed to load</div>';
+    document.getElementById('pendingList').innerHTML = '<div class="empty">불러오지 못했습니다</div>';
   }
 }
 
@@ -970,8 +970,8 @@ async function loadAuditAgents() {
     const toSel = document.getElementById('auditToAgent');
     const fromCur = fromSel.value;
     const toCur = toSel.value;
-    fromSel.innerHTML = '<option value="">(from: all)</option>' + agents.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('');
-    toSel.innerHTML = '<option value="">(to: all)</option>' + agents.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('');
+    fromSel.innerHTML = '<option value="">보낸 신원: 전체</option>' + agents.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('');
+    toSel.innerHTML = '<option value="">받는 신원: 전체</option>' + agents.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('');
     fromSel.value = fromCur;
     toSel.value = toCur;
   } catch(e) { /* ignore */ }
@@ -1110,7 +1110,7 @@ function renderAudits(initialLoad) {
   const topStatus = document.getElementById('auditTopStatus');
 
   if (auditState.messages.length === 0) {
-    list.innerHTML = '<div class="empty">No messages match the current filters.</div>';
+    list.innerHTML = '<div class="empty">검색 조건에 맞는 메시지가 없습니다</div>';
     topStatus.textContent = '';
     return;
   }
@@ -1409,10 +1409,10 @@ async function initAiUsage() {
   aiUsageState.loadTimeoutId = setTimeout(() => {
     if (!aiUsageState.snapshot) {
       const grid = document.getElementById('aiUsageGrid');
-      if (grid) grid.innerHTML = '<div class="empty">수집이 지연되고 있습니다. 다음 cycle(최대 5분)까지 기다려주세요.</div>';
+      if (grid) grid.innerHTML = '<div class="empty">사용량을 아직 받지 못했습니다. 다음 수집까지 최대 5분 걸립니다.</div>';
       const summary = document.getElementById('ai-usage-summary');
       if (summary && !aiUsageState.snapshot) {
-        summary.innerHTML = '<div class="summary-empty">수집이 지연되고 있습니다. 다음 cycle(최대 5분)까지 기다려주세요.</div>';
+        summary.innerHTML = '<div class="summary-empty">사용량을 아직 받지 못했습니다. 다음 수집까지 최대 5분 걸립니다.</div>';
       }
     }
   }, 10000);

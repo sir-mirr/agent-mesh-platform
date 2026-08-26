@@ -9656,6 +9656,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["renders /creator/playground with dispatch console and select options"],
   },
   {
+    id: "the-audit-indicator-names-its-transport-again",
+    defect:
+      "The tooltip on the live indicator goes back to naming the transport. A person hovering it is told `SSE connection state` — the name of the mechanism, not of the thing they are looking at — which is the pattern the owner's wording rule for administration screens forbids (T-045), and it is the shape the rest of this screen's English strings had.",
+    file: "packages/http/src/ui/admin.ts",
+    from: "aria-live=\"polite\" title=\"실시간 갱신 연결 상태\">",
+    to: "aria-live=\"polite\" title=\"SSE connection state\">",
+    suite: "packages/http/src/ui/ui-behaviour.test.ts",
+    expect: ["names what a person sees rather than what the server calls it"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",

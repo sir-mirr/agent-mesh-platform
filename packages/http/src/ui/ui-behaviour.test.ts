@@ -380,3 +380,36 @@ describe("the sign-in page", () => {
     expect(hostile).not.toContain("<img src=x");
   });
 });
+
+/**
+ * **The words on the screen, held to the same rule as the words in the console.**
+ *
+ * The owner's principle for administration screens (T-045): plain language for
+ * what a person does and what happens, no metaphor and no internal vocabulary.
+ * The front end was rewritten for it; these server-rendered pages answer the
+ * same routes to the same people and had drifted the other way — a tooltip
+ * naming the transport, two pickers labelled with the response's field names,
+ * and an instruction to wait for the next `cycle`.
+ *
+ * **The forbidden words are the ones this page actually printed**, not a
+ * guessed list: an assertion of absence over prose that nothing writes passes
+ * loudest when the screen prints exactly what it forbade. Each one below was
+ * removed from a specific line, and the replacement is asserted beside it so
+ * this cannot go green by the page rendering nothing at all.
+ */
+describe("the words on the server-rendered admin screen", () => {
+  test("names what a person sees rather than what the server calls it", () => {
+    const html = renderAdminPage();
+
+    // The page drew these. `git show` for the commit that removed them.
+    for (const internal of ["SSE connection state", "(from: all)", "(to: all)", "다음 cycle"]) {
+      expect(html, `the screen printed internal vocabulary: ${internal}`).not.toContain(internal);
+    }
+
+    // And it says the plain thing instead — without this, a page that stopped
+    // rendering the audit panel would satisfy every line above.
+    for (const plain of ["실시간 갱신 연결 상태", "보낸 신원: 전체", "받는 신원: 전체", "다음 수집까지 최대 5분"]) {
+      expect(html, `the plain wording is missing: ${plain}`).toContain(plain);
+    }
+  });
+});

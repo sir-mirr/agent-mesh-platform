@@ -1458,9 +1458,23 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
   it("[SC-THEME-01] verifies theme CSS token existence and variables", async () => {
     const css = await Bun.file("packages/platform-web/src/styles/index.css").text();
     expect(css).toContain(":root");
-    expect(css).toContain("--color-primary");
-    expect(css).toContain("--color-bg-page");
-    expect(css).toContain("--color-text-primary");
+
+    // **Declared, not merely mentioned.** `toContain("--color-primary")` was
+    // answered by `--color-primary-hover` two lines below it and by
+    // `var(--color-primary)` at every point of use, so a token renamed where
+    // it is declared left this green on a stylesheet where that name resolved
+    // to nothing. CSS fails quietly — the property falls back to whatever it
+    // inherits — so this check was the only thing that could have said so.
+    const declared = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+    for (const token of ["--color-primary", "--color-bg-page", "--color-text-primary"]) {
+      expect([...declared], `${token} is read by this stylesheet but never declared in it`).toContain(token);
+    }
+
+    // The other half of the same rename: it lands on the usage instead, and
+    // the declaration nobody reads keeps this file's token list looking whole.
+    const read = [...css.matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map((m) => m[1]);
+    expect(read.length, "no token is read at all, so a declaration proves nothing").toBeGreaterThan(0);
+    expect(read.filter((t) => !declared.has(t)), "a token is read that this stylesheet never declares").toEqual([]);
   });
 
   // SCR-06 / SC-SCR06-02: Message exchange history inspection
