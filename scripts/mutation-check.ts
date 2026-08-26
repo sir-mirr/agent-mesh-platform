@@ -10161,6 +10161,31 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-API-AUTH-01", "receives session cookie"],
   },
   {
+    id: "an-entry-expects-a-phrase-nothing-prints",
+    defect:
+      "`expect` is what makes a red run evidence: the suite has to fail, and it has to fail saying the thing the entry is about. A phrase nothing in the tree prints can never be found in any output, so the entry is reported not-caught — but only on the night its shard runs, and only if somebody reads that shard. It happened twice in one session, both times because a test was renamed after the entry was written.",
+    file: "scripts/mutation-check.ts",
+    // **Two lines, because one line matches itself.** A `from` that is manifest
+    // text occurs twice in this file the moment it is written: once in the entry
+    // it plants against, and once inside this field. Spanning a line break is
+    // what breaks the tie — the field holds `\n` as two characters, so the entry
+    // above is the only place the real newline appears.
+    from: '    suite: "test/fe-render.test.ts",\n    expect: ["SC-USER-D5", "deactivates and restores an account"],',
+    to: '    suite: "test/fe-render.test.ts",\n    expect: ["SC-USER-D5", "deactivates and restores the account"],',
+    suite: "test/mutation-expect-phrases.test.ts",
+    expect: ["an entry expects a phrase nothing in this repository prints"],
+  },
+  {
+    id: "an-entry-names-a-suite-that-is-not-there",
+    defect:
+      "A renamed suite leaves its entries pointing at nothing, and `bun test <missing>` exits non-zero — which this runner reads as the suite objecting. The mutation is credited with a failure it did not cause, and the guard it was supposed to prove may have been deleted with the file.",
+    file: "scripts/mutation-check.ts",
+    from: '    suite: "test/harness-death.test.ts",\n    expect: ["does not leave its services behind", "they outlive it and hold the machine"],',
+    to: '    suite: "test/harness-death-renamed.test.ts",\n    expect: ["does not leave its services behind", "they outlive it and hold the machine"],',
+    suite: "test/mutation-expect-phrases.test.ts",
+    expect: ["an entry names a suite this tree does not have"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
