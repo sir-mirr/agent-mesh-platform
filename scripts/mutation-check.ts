@@ -11342,6 +11342,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["queries security audit events log"],
   },
+  {
+    id: "approval-admits-nobody",
+    defect:
+      "Approving a key stopped admitting the identity (D-747). The agent's key is approved, the hub lets it connect, and this server's own registry — the list every console screen addresses from, and the one `POST /api/v1/messages` checks — has never heard of it. `soak-claude` was the live case: connected, approved, on the mesh, and absent from the only list that decides whether anyone can write to it.",
+    file: "packages/http/src/keys-admin.ts",
+    from: "  admitRegistryAgent({ id: identity, description: row.description, type: row.type })",
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["queries registered agents from control plane"],
+  },
+  {
+    id: "a-conversation-shows-only-what-was-sent",
+    defect:
+      "The history query dropped its `to_agent` half, so an agent's conversation shows what it sent and nothing it received. An operator reading it sees an agent talking into the void — the same picture a genuinely ignored agent makes — and the count beside it agrees.",
+    file: "packages/http/src/db.ts",
+    from: "    WHERE from_agent = ? OR to_agent = ?",
+    to: "    WHERE from_agent = ? AND ? IS NOT NULL",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["inspects agent conversation history"],
+  },
+  {
+    id: "a-queued-message-is-recorded-delivered",
+    defect:
+      "A message the hub could not hand over was written down as `delivered`. It is then in nobody's queue — the recipient's mailbox does not hold it, the depth screens do not count it, a lease never offers it — while the sender has been told it arrived. § 8.9.4 keeps `sent` and the outcome as two events precisely so that this pair cannot disagree silently.",
+    file: "packages/hub/src/rpc/send.ts",
+    from: "      stmtUpdateMessageStatus.run(\"pending\", msgId);",
+    to: "      stmtUpdateMessageStatus.run(\"delivered\", msgId);",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["sends direct message between registered agents"],
+  },
 ];
 
 /**

@@ -636,6 +636,20 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.agents || data)).toBe(true);
+    // **An empty array is an array.** What this route answers is who the
+    // console may address, and D-747 makes that the identities whose keys an
+    // operator approved — so an approval that admits nobody leaves a mesh full
+    // of agents nobody can name here, with the list still well-formed. The
+    // scenario approves a pair and looks for them.
+    const { from, to } = await seedMessage("registry-list");
+    const listed = await fetch(`${mesh.http.url}/api/v1/agents`, {
+      headers: { Cookie: authCookie },
+    });
+    const ids = (((await listed.json()).agents ?? []) as Array<{ id?: string }>).map((a) => a.id);
+    expect(
+      { sender: ids.includes(from), recipient: ids.includes(to) },
+      `the control plane listed: ${JSON.stringify(ids)}`,
+    ).toEqual({ sender: true, recipient: true });
   });
 
   // SCR-02 / SC-SCR02-02 & SC-SCR02-03: Dashboard telemetry & tenant summaries
@@ -704,7 +718,25 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       }),
     ]);
 
-    // Query messages endpoint
+    // **The scenario is called "sends direct message" and did not send one.**
+    // It registered two identities and then fetched `/api/v1/capabilities`,
+    // which answers the same whether the mesh carries messages or not — so
+    // every defect in the send path was invisible to the check named for it.
+    // The two registrations above are kept because a send needs the identities;
+    // what follows is the send.
+    const carried = await seedMessage("direct-send");
+    const queued = await fetch(`${mesh.http.url}/api/v1/admin/mailbox/${carried.to}`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(queued.status).toBe(200);
+    const held = ((await queued.json()).messages ?? []) as Array<{ from?: string }>;
+    expect(
+      { accepted: carried.sent?.result?.status, waiting: held.some((m) => m.from === carried.from) },
+      `the recipient's mailbox: ${JSON.stringify(held)}`,
+    ).toEqual({ accepted: "pending", waiting: true });
+
+    // The capability document is still read, because the two registrations
+    // above are only meaningful if the hub is the one answering.
     const res = await fetch(`${mesh.hub.url}/api/v1/capabilities`);
     expect(res.status).toBe(200);
   });
@@ -1437,6 +1469,39 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.platform).toBeDefined();
+    // **The name says conversation history and the body read the capability
+    // document**, which answers the same on a mesh that has never carried a
+    // message. A history that shows only what an identity *sent* looks exactly
+    // like a quiet agent, and that is the reading an operator acts on.
+    // **Through the route whose store this is.** The first version seeded over
+    // the hub's RPC and read this endpoint, which serves *this* server's
+    // message table — two stores keyed on the same identities, so the history
+    // came back empty and the check would have been satisfied by a route that
+    // returns `[]` for everyone. The send that this history is the record of
+    // has to be the one this server carried.
+    const { to } = await seedMessage("history");
+    const carried = await fetch(`${mesh.http.url}/api/v1/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: authCookie },
+      body: JSON.stringify({ to, text: "a line for the history" }),
+    });
+    expect(carried.status).toBeLessThan(300);
+    const history = await fetch(`${mesh.http.url}/api/v1/messages/${to}`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(history.status).toBe(200);
+    const body = await history.json();
+    const received = (body.messages ?? []) as Array<{ from?: string; to?: string; content?: string }>;
+    expect(
+      {
+        holds: received.some((m) => m.to === to && m.content === "a line for the history"),
+        count: body.count === received.length,
+      },
+      `the history for ${to}: ${JSON.stringify(received)}`,
+    ).toEqual({ holds: true, count: true });
+    // And it is a session that reads it: no cookie, no history.
+    const anonymous = await fetch(`${mesh.http.url}/api/v1/messages/${to}`);
+    expect(anonymous.status).toBe(401);
   });
 
   // SCR-09 / SC-SCR09-02: Infrastructure KPI cards aggregation
