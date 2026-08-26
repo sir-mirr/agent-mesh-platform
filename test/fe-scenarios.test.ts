@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { createHmac } from "node:crypto";
-import { startMesh, loginAsAdmin, newKeyPair, connectRpc, SEED_ADMIN, type Mesh } from "./harness.ts";
+import { startMesh, loginAsAdmin, newKeyPair, connectRpc, capabilityViewer, provision, SEED_ADMIN, type Mesh } from "./harness.ts";
 
 function hs256(payload: object, secret: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -201,6 +201,13 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(listRes.status).toBe(200);
     const listData = await listRes.json();
     expect(Array.isArray(listData.grants)).toBe(true);
+    // **The three status codes were the whole scenario.** A route that answers
+    // 201 and writes nothing passed it, and so did a revoke that removes
+    // nothing — which is the one of the two that matters, because a capability
+    // an operator believes they took back is worse than one they never gave.
+    const holds = (payload: { grants?: Array<{ subject?: string; capability?: string }> }) =>
+      (payload.grants ?? []).some((g) => g.subject === testSubject && g.capability === testCap);
+    expect({ granted: holds(listData) }).toEqual({ granted: true });
 
     // Revoke capability
     const revokeRes = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
@@ -212,6 +219,11 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       }),
     });
     expect(revokeRes.status).toBe(200);
+    const afterRes = await fetch(`${mesh.http.url}/api/v1/admin/grants`, {
+      headers: { Cookie: authCookie },
+    });
+    expect({ status: afterRes.status, stillHeld: holds(await afterRes.json()) })
+      .toEqual({ status: 200, stillHeld: false });
   });
 
   // SCR-13 / SC-SCR13-01: Audit Logs Stream
@@ -362,6 +374,74 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     events.forEach((evt: any) => {
       expect(evt.event_id || evt.id).toBeDefined();
     });
+
+    // **Every event carries an id whatever the policy does.** That was the
+    // whole check under a name that says redaction, so the thing this scenario
+    // exists for — a reader without `audit.read.content` is not handed the
+    // content — was measured nowhere at this layer. The browser suite asserts
+    // it on the screen; the screen can only show what the route sends.
+    //
+    // **It seeds its own event.** The first version read whatever the suite
+    // happened to have produced by this point in the file, and that is nothing
+    // with a body in it — both arms came back empty and the check would have
+    // called an empty list *withheld*. A scenario whose subject depends on the
+    // order of the tests above it measures the order.
+    const sender = newKeyPair();
+    const recipient = newKeyPair();
+    await provision(mesh.hub, "redaction-sender", "ai-claude", null, sender.publicKey);
+    await provision(mesh.hub, "redaction-recipient", "ai-claude", null, recipient.publicKey);
+    for (const fingerprint of [sender.fingerprint, recipient.fingerprint]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", Cookie: authCookie },
+        body: JSON.stringify({ fingerprint }),
+      });
+    }
+    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+    await rpc.call("mesh.connect", { identity: "redaction-sender" });
+    await rpc.call("mesh.send", { to: "redaction-recipient", content: "a body only one of these readers may have" });
+    rpc.close();
+    await Bun.sleep(300);
+
+    const seeded = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { Cookie: authCookie },
+    });
+    expect(seeded.status).toBe(200);
+    const seededBody = await seeded.json();
+    const metadataOnly = await capabilityViewer(mesh, "audit.read.metadata");
+    const limited = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
+      headers: { Cookie: metadataOnly },
+    });
+    expect(limited.status).toBe(200);
+    const limitedBody = await limited.json();
+    // **Where the bodies actually are.** `shape()` nests the payload under
+    // `payload`, and a message's text under `payload.message.content` — so a
+    // check reading `event.content` finds nothing and calls a leak withheld.
+    // This walks for the key the server's own `stripContent` walks for.
+    const contents = (payload: any): string[] => {
+      const found: string[] = [];
+      const walk = (value: any): void => {
+        if (Array.isArray(value)) return value.forEach(walk);
+        if (!value || typeof value !== "object") return;
+        for (const [key, inner] of Object.entries(value)) {
+          if (key === "content" && typeof inner === "string") found.push(inner);
+          else walk(inner);
+        }
+      };
+      walk(Array.isArray(payload) ? payload : payload.events ?? []);
+      return found;
+    };
+    const full = contents(seededBody);
+    const held = contents(limitedBody);
+    const withheld = (c: string) => /^\[content withheld/i.test(c);
+    expect(
+      {
+        measured: held.length > 0,
+        readable: full.some((c) => !withheld(c)),
+        allWithheld: held.every(withheld),
+      },
+      `admin=${JSON.stringify(full)} metadataOnly=${JSON.stringify(held)}`,
+    ).toEqual({ measured: true, readable: true, allWithheld: true });
   });
 
   // SCR-09 / SC-SCR09-01: Service Infrastructure Liveness & Online Sockets

@@ -11008,7 +11008,7 @@ export const MUTATIONS: Mutation[] = [
       "The audit row took its time from the payload it carried rather than from the ledger that recorded it. D-67 separates the two because the payload is the subject's own account of when something happened and the ledger's is the mesh's: a producer that lies about its clock, or one whose clock is simply wrong, moves every row on the screen an investigator reads.",
     file: "packages/platform-web/src/api/audit.ts",
     from: "    const timestamp = stringField(item.occurred_at, item.stored_at, item.timestamp, item.ts) ?? \"—\";",
-    to: "    const timestamp = stringField(payload.ts, item.occurred_at, item.stored_at, item.timestamp) ?? \"—\";",
+    to: "    const timestamp = stringField(payload.occurred_at, item.occurred_at, item.stored_at, item.timestamp) ?? \"—\";",
     suite: "test/fe-render.test.ts",
     expect: ["renders /tenant/audits with real distinct timestamps"],
   },
@@ -11040,7 +11040,7 @@ export const MUTATIONS: Mutation[] = [
     from: "      setTenants(response.tenants);",
     to: "      setTenants(response.tenants.slice(1));",
     suite: "test/fe-render.test.ts",
-    expect: ["renders /platform/tenants with isolation table rows"],
+    expect: ["lists the platform's tenants"],
   },
   {
     id: "the-egress-matrix-loses-a-group",
@@ -11050,7 +11050,7 @@ export const MUTATIONS: Mutation[] = [
     from: "          setGroups(list.map((g) => ({ id: g.id, name: g.name })));",
     to: "          setGroups(list.slice(1).map((g) => ({ id: g.id, name: g.name })));",
     suite: "test/fe-render.test.ts",
-    expect: ["renders /tenant/egress-acl with multi-group directional matrix"],
+    expect: ["draws each egress cell from the server"],
   },
   {
     id: "the-default-tenant-is-offered-for-deletion",
@@ -11071,6 +11071,86 @@ export const MUTATIONS: Mutation[] = [
     to: "            fingerprint: a.fingerprint ?? \"sha256:verified_mesh_identity\",",
     suite: "test/fe-render.test.ts",
     expect: ["shows no fingerprint on /creator"],
+  },
+  {
+    id: "the-traffic-table-drops-a-tenant",
+    defect:
+      "The per-tenant traffic table dropped the first tenant the route answered with. On a single-tenant deployment that is the whole table, and the screen draws an empty one rather than saying it could not read — the shape this console keeps being wrong in, where *nothing to show* and *nothing was read* look identical.",
+    file: "packages/platform-web/src/pages/platform/TenantTrafficPage.tsx",
+    from: "        setTenants(res.tenants || []);",
+    to: "        setTenants((res.tenants || []).slice(1));",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /platform/tenants with isolation table rows"],
+  },
+  {
+    id: "the-matrix-hides-a-group-by-name",
+    defect:
+      "A group was filtered out of the egress matrix by name — the shape a console acquires when somebody decides one group is infrastructure and not worth drawing. Every rule that group is a source or a target of leaves the screen with it, and the matrix still looks complete, which is why it is drawn from the route's list and not from a list here.",
+    file: "packages/platform-web/src/pages/tenant/TenantEgressAclPage.tsx",
+    from: "          setGroups(list.map((g) => ({ id: g.id, name: g.name })));",
+    to: "          setGroups(list.filter((g) => g.name !== \"engineering\").map((g) => ({ id: g.id, name: g.name })));",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /tenant/egress-acl with multi-group directional matrix"],
+  },
+  {
+    id: "a-wrong-password-signs-in",
+    defect:
+      "`verifyLocalUser` returned the account whether or not the password verified, so any username on the installation signed in with any string. The route above it is unchanged and still looks careful — it refuses without distinguishing *no such user* from *wrong password* — which is exactly why the check one layer down is the one that has to hold.",
+    file: "packages/http/src/db.ts",
+    from: "  return valid ? user : null",
+    to: "  return user",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["refuses invalid login credentials"],
+  },
+  {
+    id: "the-pending-queue-inverts-its-own-guard",
+    defect:
+      "The guard deciding who sees the whole approval queue was inverted, so it did both halves wrong at once: a tenant-wide `key.approve` holder was filtered down to the keys they personally own — nothing, on a fresh installation, while every agent waiting to be admitted sits in the queue and the notification badge agrees there is nothing to do — and an operator scoped to their own agents was handed the queue entire. Asking for `scope = actor` instead would not show this: `grants.has` matches a tenant-wide row for any scope asked, so that mutation reduces to the original.",
+    file: "packages/http/src/main.ts",
+    from: "  if (grants.has(db, actor, CAPABILITY.KEY_APPROVE, SCOPE_TENANT)) {",
+    to: "  if (!grants.has(db, actor, CAPABILITY.KEY_APPROVE, SCOPE_TENANT)) {",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["calculates live notification badge count"],
+  },
+  {
+    id: "the-group-listing-forgets-its-members",
+    defect:
+      "The group listing stopped carrying `members`. `listGroups` selects no such column, so the field is the join and nothing else supplies it — the topology draws its edges from it, and every boundary in the picture disappears while the groups themselves still list. That reads as *this mesh has no structure* rather than as *this response is missing a field*.",
+    file: "packages/http/src/main.ts",
+    from: "        members: groupsStore.membersOf(db, g.group_id, tenant),",
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["provides node and edge relations"],
+  },
+  {
+    id: "teardown-clears-the-column-it-should-stamp",
+    defect:
+      "The soft delete wrote `NULL` into `deleted_at` instead of the current time, so teardown answered 200, revoked the keys, and left the identity listed and usable. § 9.3 makes teardown irreversible in the other direction; this makes it ineffective in silence, which is the worse half — the operator has been told the agent is gone.",
+    file: "packages/store/src/teardown.ts",
+    from: "    db.prepare(`UPDATE agents SET deleted_at = datetime('now') WHERE identity = ? AND deleted_at IS NULL`)",
+    to: "    db.prepare(`UPDATE agents SET deleted_at = NULL WHERE identity = ? AND deleted_at IS NULL`)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["teardown removes registered agent"],
+  },
+  {
+    id: "a-revoke-that-reports-success-and-removes-nothing",
+    defect:
+      "The revoke answered `{ ok: true, action: 'deleted' }` and left the grant in place. Every screen that lists capabilities reads the same store, so the row reappears on the next load and an operator concludes the page is stale rather than that the capability is still held. A grant believed revoked is the one nobody looks at again.",
+    file: "packages/http/src/main.ts",
+    from: "  const removed = grants.revoke(agentsDb(), { subject, capability, scope })",
+    to: "  const removed = grants.has(agentsDb(), subject, capability, scope ?? SCOPE_TENANT)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["grants capability to subject and revokes it"],
+  },
+  {
+    id: "the-audit-strip-misses-the-field-it-strips",
+    defect:
+      "`stripContent` looked for a key no payload carries, so a reader holding `audit.read.metadata` and not `audit.read.content` received the message bodies in full. § 11.0 draws the line there precisely because the audit log is where every message eventually is: this walk is the only thing standing between a metadata-scoped operator and the contents of the whole mesh.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      if (k === 'content') {",
+    to: "      if (k === 'body') {",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["enforces content redaction policy"],
   },
 ];
 
