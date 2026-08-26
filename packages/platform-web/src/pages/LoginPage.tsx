@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "@/api/client.ts";
+import { fetchSignInAvailability } from "@/api/auth.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
@@ -59,6 +60,19 @@ export function LoginPage() {
   // and pressing the button on it did nothing at all, silently.
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [githubSignInConfigured, setGitHubSignInConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void fetchSignInAvailability()
+      .then((signIn) => {
+        if (mounted) setGitHubSignInConfigured(signIn?.github ?? null);
+      })
+      .catch(() => {
+        if (mounted) setGitHubSignInConfigured(null);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -681,56 +695,61 @@ export function LoginPage() {
           </p>
         </div>
 
-        {/* GitHub OAuth Button */}
-        <button
-          type="button"
-          onClick={handleGitHubLogin}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 10,
-            padding: "11px 16px",
-            borderRadius: "var(--radius-md)",
-            background: "#24292f",
-            color: "white",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            border: "none",
-            cursor: "pointer",
-            transition: "background 0.15s ease",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-          }}
-        >
-          <GitHubIcon />
-          {t("login.github", "Continue with GitHub")}
-        </button>
+        {githubSignInConfigured === true ? (
+          <>
+            {/* GitHub OAuth Button */}
+            <button
+              type="button"
+              data-testid="login-github"
+              onClick={handleGitHubLogin}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                padding: "11px 16px",
+                borderRadius: "var(--radius-md)",
+                background: "#24292f",
+                color: "white",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                border: "none",
+                cursor: "pointer",
+                transition: "background 0.15s ease",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+              }}
+            >
+              <GitHubIcon />
+              {t("login.github", "Continue with GitHub")}
+            </button>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            color: "var(--color-text-muted)",
-            fontSize: "0.8rem",
-          }}
-        >
-          <hr
-            style={{
-              flex: 1,
-              border: "none",
-              borderTop: "1px solid var(--color-border)",
-            }}
-          />
-          {t("login.or", "or a local account")}
-          <hr
-            style={{
-              flex: 1,
-              border: "none",
-              borderTop: "1px solid var(--color-border)",
-            }}
-          />
-        </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                color: "var(--color-text-muted)",
+                fontSize: "0.8rem",
+              }}
+            >
+              <hr
+                style={{
+                  flex: 1,
+                  border: "none",
+                  borderTop: "1px solid var(--color-border)",
+                }}
+              />
+              {t("login.or", "or a local account")}
+              <hr
+                style={{
+                  flex: 1,
+                  border: "none",
+                  borderTop: "1px solid var(--color-border)",
+                }}
+              />
+            </div>
+          </>
+        ) : null}
 
         {/* Local ID/PW Form */}
         <form

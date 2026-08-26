@@ -55,6 +55,7 @@ const TENANT_DIRECTORY = "/api/v1/admin/tenants/directory";
 const QUEUE = "/api/v1/admin/pending";
 const APPROVE = "/api/v1/admin/approve";
 const DENY = "/api/v1/admin/deny";
+const HEALTH = "/api/v1/health";
 /** Keys waiting to be approved — a different queue, one path segment away. */
 const KEY_QUEUE = "/api/v1/admin/keys/pending";
 
@@ -102,6 +103,7 @@ let admitRoute: Answer;
 let reissueRoute: Answer;
 let approveRoute: Answer;
 let denyRoute: Answer;
+let healthRoute: Answer;
 let keyQueueRoute: Answer;
 let tenantRoute: Answer;
 
@@ -119,6 +121,7 @@ beforeEach(() => {
   });
   approveRoute = answers(200, { ok: true, github_login: "waiting-1", status: "approved" });
   denyRoute = answers(200, { ok: true, github_login: "waiting-1", status: "denied" });
+  healthRoute = answers(200, { status: "ok", sign_in: { local: true, github: true } });
   keyQueueRoute = answers(200, { ok: true, keys: [] });
   tenantRoute = answers(200, {
     ok: true,
@@ -138,6 +141,7 @@ beforeEach(() => {
     if (url.endsWith(KEY_QUEUE)) return await keyQueueRoute();
     if (url.endsWith(APPROVE)) return await approveRoute();
     if (url.endsWith(DENY)) return await denyRoute();
+    if (url.endsWith(HEALTH)) return await healthRoute();
     if (url.endsWith(QUEUE)) return await queueRoute();
     if (url.endsWith(TENANT_DIRECTORY)) return await tenantRoute();
     if (method === "POST" && /\/api\/v1\/admin\/users\/[^/]+\/password$/.test(url)) return await reissueRoute();
@@ -441,6 +445,24 @@ describe("the admission queue, in the four states it can be in", () => {
     expect(queueState().rows).toEqual([]);
     expect(queueText()).not.toContain("pre-rename-row");
   });
+
+  it("calls an unconfigured GitHub sign-in different from an answered empty queue", async () => {
+    healthRoute = answers(200, { status: "ok", sign_in: { local: true, github: false } });
+    queueRoute = answers(200, { ok: true, users: [] });
+    await mount();
+
+    expect(textOf("admission-queue-github-disabled")).toBe(en("users.queue.githubDisabled"));
+    expect(textOf("admission-queue-empty")).toBeNull();
+  });
+
+  it("does not call GitHub disabled when health did not answer", async () => {
+    healthRoute = noAnswer;
+    queueRoute = answers(200, { ok: true, users: [] });
+    await mount();
+
+    expect(textOf("admission-queue-empty")).toBe(en("users.queue.empty"));
+    expect(textOf("admission-queue-github-disabled")).toBeNull();
+  });
 });
 
 describe("opening account approval inside the console", () => {
@@ -546,6 +568,7 @@ describe("opening account approval inside the console", () => {
     expect(textOf("admission-decision-success")).toBeNull();
     expect(screen.queryByTestId("admission-row-waiting-3")).not.toBeNull();
   });
+
 });
 
 describe("the roster of local accounts tells the same four apart", () => {

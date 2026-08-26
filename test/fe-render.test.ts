@@ -6836,6 +6836,47 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   }, 30_000);
 
   /**
+   * SC-SIGNIN-01 — the public health answer decides whether OAuth is offered.
+   *
+   * A client id without its secret cannot complete the round trip. The server
+   * now answers that deployment fact before authentication, so the login page
+   * must not offer a button whose only outcome is failure. Local sign-in stays
+   * present in both halves; otherwise hiding GitHub could hide the whole form.
+   */
+  it("[SC-SIGNIN-01] offers GitHub sign-in only when health says it is configured", async () => {
+    const read = async (github: boolean) => withUnauthedPage("/login", async ({ page, errors }) => {
+      await page.route("**/api/v1/health", (route) => route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ok", sign_in: { local: true, github } }),
+      }));
+      await page.reload({ waitUntil: "networkidle" });
+      await settled(page);
+      return {
+        github: await page.getByTestId("login-github").count(),
+        local: await page.getByTestId("login-submit").count(),
+        errors,
+      };
+    });
+
+    const disabled = await read(false);
+    const enabled = await read(true);
+    expect({
+      disabled_has_no_github: disabled.github === 0,
+      disabled_keeps_local: disabled.local === 1,
+      enabled_has_github: enabled.github === 1,
+      enabled_keeps_local: enabled.local === 1,
+      page_errors: [...disabled.errors, ...enabled.errors],
+    }).toEqual({
+      disabled_has_no_github: true,
+      disabled_keeps_local: true,
+      enabled_has_github: true,
+      enabled_keeps_local: true,
+      page_errors: [],
+    });
+  }, 30_000);
+
+  /**
    * SC-QUEUE-01 — the other decision queue, and the difference between empty
    * and unread.
    *
@@ -6856,9 +6897,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * anything passes. The pair is the check; either one alone is a decoration.
    */
   it("[SC-QUEUE-01] tells an empty admission queue apart from one it could not read", async () => {
-    const read = async (routeAnswers: boolean) => {
+    const read = async (routeAnswers: boolean, githubConfigured = true) => {
       const { page, context } = await createAuthedPage("/platform/users");
       try {
+        await page.route("**/api/v1/health", (route) => route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ status: "ok", sign_in: { local: true, github: githubConfigured } }),
+        }));
         if (!routeAnswers) {
           // A deployment's backend dies behind a live proxy: the request is
           // answered, and what comes back is not the queue.
@@ -6881,6 +6927,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           refused: await present("admission-queue-refused"),
           list: await present("admission-queue-list"),
           decisionPanel: await present("admission-decision-panel"),
+          githubDisabled: await present("admission-queue-github-disabled"),
         };
       } finally {
         await context.close().catch(() => {});
@@ -6889,6 +6936,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
     const answered = await read(true);
     const notAnswered = await read(false);
+    const githubDisabled = await read(true, false);
 
     expect(
       {
@@ -6897,6 +6945,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         answered_does_not_claim_unreadable: !answered.unreachable,
         unanswered_says_unreadable: notAnswered.unreachable,
         unanswered_does_not_claim_empty: !notAnswered.empty,
+        disabled_names_configuration: githubDisabled.githubDisabled,
+        disabled_does_not_claim_empty: !githubDisabled.empty,
       },
       "the admission queue folded `nobody is waiting` together with `I could not ask`",
     ).toEqual({
@@ -6905,6 +6955,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       answered_does_not_claim_unreadable: true,
       unanswered_says_unreadable: true,
       unanswered_does_not_claim_empty: true,
+      disabled_names_configuration: true,
+      disabled_does_not_claim_empty: true,
     });
   }, 60_000);
 

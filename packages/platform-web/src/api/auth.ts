@@ -60,6 +60,23 @@ export async function fetchAuthMe(): Promise<AuthMeResponse> {
   });
 }
 
+export interface SignInAvailability {
+  local: boolean;
+  github: boolean;
+}
+
+interface HealthSignInResponse {
+  sign_in?: Partial<SignInAvailability>;
+}
+
+/** Read which sign-in round trips this deployment can actually complete. */
+export async function fetchSignInAvailability(): Promise<SignInAvailability | null> {
+  const response = await apiClient<HealthSignInResponse>("/api/v1/health", { method: "GET" });
+  const signIn = response.sign_in;
+  if (typeof signIn?.local !== "boolean" || typeof signIn.github !== "boolean") return null;
+  return { local: signIn.local, github: signIn.github };
+}
+
 export interface PasswordChangeResponse {
   ok: boolean;
   must_change_password: boolean;

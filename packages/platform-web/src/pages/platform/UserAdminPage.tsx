@@ -12,6 +12,7 @@ import {
   type PendingAdmission,
 } from "@/api/users.ts";
 import { fetchTenantDirectory, type TenantDirectoryItem } from "@/api/tenants.ts";
+import { fetchSignInAvailability } from "@/api/auth.ts";
 import { ApiError, failureKind, type FailureKind, refusedCapability, refusedText } from "@/api/client.ts";
 
 /**
@@ -59,6 +60,7 @@ export function UserAdminPage() {
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueFailure, setQueueFailure] = useState<FailureKind | null>(null);
   const [queueMissing, setQueueMissing] = useState<string | null>(null);
+  const [githubSignInConfigured, setGitHubSignInConfigured] = useState<boolean | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [confirmingDecision, setConfirmingDecision] = useState<{
     login: string;
@@ -135,10 +137,20 @@ export function UserAdminPage() {
     }
   };
 
+  const loadSignIn = async () => {
+    try {
+      const signIn = await fetchSignInAvailability();
+      setGitHubSignInConfigured(signIn?.github ?? null);
+    } catch {
+      setGitHubSignInConfigured(null);
+    }
+  };
+
   useEffect(() => {
     void load();
     void loadQueue();
     void loadTenants();
+    void loadSignIn();
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -354,6 +366,13 @@ export function UserAdminPage() {
       );
     }
     if (queue.length === 0) {
+      if (githubSignInConfigured === false) {
+        return (
+          <span data-testid="admission-queue-github-disabled">
+            {t("users.queue.githubDisabled", "GitHub sign-in is not configured for this deployment.")}
+          </span>
+        );
+      }
       return <span data-testid="admission-queue-empty">{t("users.queue.empty", "No sign-up requests are waiting.")}</span>;
     }
 

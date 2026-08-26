@@ -8,7 +8,7 @@
  * side; nothing on this side asserted which of the two this function sends.
  */
 import { describe, it, expect, mock, afterEach } from "bun:test";
-import { loginLocalApi, fetchAuthMe, changePasswordApi } from "./auth.ts";
+import { loginLocalApi, fetchAuthMe, fetchSignInAvailability, changePasswordApi } from "./auth.ts";
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -44,6 +44,19 @@ describe("fetchAuthMe", () => {
     spyOn({ ok: true, user: { github_login: "admin" }, tenant: "acme" });
     const me = await fetchAuthMe();
     expect(me.tenant).toBe("acme");
+  });
+});
+
+describe("fetchSignInAvailability", () => {
+  it("reads the two sign-in flags from the public health answer", async () => {
+    const spy = spyOn({ status: "ok", sign_in: { local: true, github: false } });
+    expect(await fetchSignInAvailability()).toEqual({ local: true, github: false });
+    expect(String(spy.mock.calls[0]![0])).toContain("/api/v1/health");
+  });
+
+  it("does not turn a malformed flag into an enabled sign-in", async () => {
+    spyOn({ status: "ok", sign_in: { local: true, github: "false" } });
+    expect(await fetchSignInAvailability()).toBeNull();
   });
 });
 

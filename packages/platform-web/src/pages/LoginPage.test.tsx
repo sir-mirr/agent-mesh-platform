@@ -59,6 +59,7 @@ const { LoginPage } = await import("./LoginPage.tsx");
 
 const ME = "/auth/me";
 const LOCAL = "/auth/local";
+const HEALTH = "/api/v1/health";
 const LANG_KEY = "agent_mesh_lang";
 
 /**
@@ -513,14 +514,36 @@ describe("the switcher, which is the only control here that is not the form", ()
 });
 
 describe("the GitHub button", () => {
+  it("is absent when this deployment says the OAuth round trip is not configured", async () => {
+    routes = [
+      [ME, NO_SESSION],
+      [HEALTH, answers({ status: "ok", sign_in: { local: true, github: false } })],
+    ];
+    await mount();
+
+    expect(screen.queryByTestId("login-github")).toBeNull();
+    expect(bodyText()).not.toContain(en("login.github"));
+    expect(bodyText()).not.toContain(en("login.or"));
+    expect(stillOnTheForm()).toBe(true);
+  });
+
+  it("does not invent an enabled provider when health did not answer", async () => {
+    routes = [[ME, NO_SESSION], [HEALTH, noAnswer]];
+    await mount();
+
+    expect(screen.queryByTestId("login-github")).toBeNull();
+    expect(stillOnTheForm()).toBe(true);
+  });
+
   it("hands off to the server without sending the form's credential", async () => {
-    routes = [[ME, NO_SESSION]];
+    routes = [
+      [ME, NO_SESSION],
+      [HEALTH, answers({ status: "ok", sign_in: { local: true, github: true } })],
+    ];
     await mount();
     fireEvent.change(field("username"), { target: { value: "operator-1" } });
     fireEvent.change(field("current-password"), { target: { value: "hunter2" } });
-    const github = [...document.querySelectorAll("button")]
-      .find((b) => (b.textContent ?? "").includes(en("login.github")));
-    if (!github) throw new Error("the page offers no GitHub sign-in");
+    const github = screen.getByTestId("login-github");
     fireEvent.click(github);
     await settle();
     // The OAuth handshake belongs to the server, and the password typed into
