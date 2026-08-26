@@ -228,10 +228,15 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const viteBin = path.resolve(import.meta.dir, "../packages/platform-web/node_modules/vite/bin/vite.js");
     const webRoot = path.resolve(import.meta.dir, "../packages/platform-web");
 
-    viteProc = spawn(process.execPath, [viteBin, webRoot, "--host", "127.0.0.1", "--port", String(vitePort), "--strictPort"], {
+    // Preloaded with the same guard the harness gives the services: this one
+    // was among the three found still running two days after the run that
+    // started it.
+    const orphanGuard = path.resolve(import.meta.dir, "orphan-guard.ts");
+    viteProc = spawn(process.execPath, ["--preload", orphanGuard, viteBin, webRoot, "--host", "127.0.0.1", "--port", String(vitePort), "--strictPort"], {
       env: {
         ...process.env,
         API_PROXY_TARGET: mesh.http.url,
+        AGENT_MESH_TEST_PARENT_PID: String(process.pid),
       },
     });
 

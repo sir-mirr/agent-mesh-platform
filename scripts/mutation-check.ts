@@ -10031,6 +10031,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-MODULE-01", "serves index.html with mount point"],
   },
   {
+    id: "the-orphan-guard-stops-noticing-it-was-orphaned",
+    defect:
+      "Three services from a `test/` run that died two days earlier were found at `PPID 1`, still holding the state directory they were started on, on a machine whose measurements only mean anything because nothing else is running. A parent cannot clean up after an exit it does not survive — a `SIGKILL`, an OOM, a gate that gave up — so the check has to be in the child, and a child that stops noticing its own reparenting fails exactly the way the original did: silently, and only visible two days later.",
+    file: "test/orphan-guard.ts",
+    from: "    if (process.ppid === startedBy) return;",
+    to: "    return;",
+    suite: "test/harness-death.test.ts",
+    expect: ["does not leave its services behind", "they outlive it and hold the machine"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",

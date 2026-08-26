@@ -20,6 +20,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { PORT_TAKEN, provision, startMesh, type Mesh } from "./harness";
 
@@ -204,4 +205,83 @@ describe("a mesh that cannot start", () => {
       `a boot that could never happen took ${took}ms — the wait is polling a process that has already exited`,
     ).toEqual({ under5s: true });
   }, 30_000);
+});
+
+/**
+ * A run that is killed does not leave its services behind.
+ *
+ * **Three of them were found at `PPID 1`, two days old.** A hub, an http server
+ * and a vite dev server from a `test/` run nobody remembered, still holding the
+ * `agent-mesh-it-*` state directory they were started on — on a machine whose
+ * measurements are only meaningful because nothing else is running. Every
+ * timing number taken in those two days was taken against unaccounted load, and
+ * nothing in the tree said so.
+ *
+ * `Mesh.stop()` was never the gap. It takes both children down and every suite
+ * calls it. The gap is every exit that runs no handler at all: a `bun test`
+ * killed for exceeding its budget, an OOM, a gate that gave up and sent
+ * `SIGKILL`. A parent cannot clean up after an exit it does not survive, so the
+ * child is the only place the check can live — `test/orphan-guard.ts`, preloaded
+ * into each service, exits when it is reparented away from the run that started
+ * it.
+ *
+ * Killed with `SIGKILL` on purpose. `SIGTERM` is already covered above and is
+ * the easy half: it can be handled. This is the exit nothing can handle.
+ */
+describe("a run that is killed rather than stopped", () => {
+  test("does not leave its services behind", async () => {
+    const started = Bun.spawn(
+      [
+        "bun",
+        "-e",
+        `const { startMesh } = await import(${JSON.stringify(join(import.meta.dir, "harness.ts"))});
+         const mesh = await startMesh();
+         console.log(JSON.stringify({ hub: mesh.hub.pid, http: mesh.http.pid }));
+         await new Promise(() => {});`,
+      ],
+      { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
+    );
+
+    // The pids come out of the child, because the parent of the services is the
+    // process being killed and not this one.
+    let said = "";
+    const reader = (async () => {
+      const decoder = new TextDecoder();
+      for await (const chunk of started.stdout as ReadableStream<Uint8Array>) {
+        said += decoder.decode(chunk);
+        if (said.includes("\n")) return;
+      }
+    })();
+    await Promise.race([reader, Bun.sleep(60_000)]);
+
+    const line = said.split("\n").find((l) => l.trim().startsWith("{"));
+    expect(line, `the child never reported its services. it said: ${said || "(nothing)"}`).toBeTruthy();
+    const { hub, http } = JSON.parse(line!) as { hub: number; http: number };
+    expect({ hubAlive: !isDead(hub), httpAlive: !isDead(http) }, "the mesh under test was not running")
+      .toEqual({ hubAlive: true, httpAlive: true });
+
+    // Nothing runs after this line in that process. No `afterAll`, no `stop()`,
+    // no exit handler — which is the whole point.
+    started.kill("SIGKILL");
+    await started.exited;
+
+    // The guard polls, so give it a bounded number of its own intervals rather
+    // than a guessed sleep.
+    for (let i = 0; i < 100 && (!isDead(hub) || !isDead(http)); i++) await Bun.sleep(100);
+
+    const survivors = [
+      ...(isDead(hub) ? [] : [`hub ${hub}`]),
+      ...(isDead(http) ? [] : [`http ${http}`]),
+    ];
+    // Kill them here as well: a failing assertion that leaves the processes
+    // running reproduces the defect it is reporting.
+    for (const pid of [hub, http]) {
+      try { if (!isDead(pid)) process.kill(pid, "SIGKILL"); } catch {}
+    }
+
+    expect(
+      survivors,
+      "a killed run left its services running; they outlive it and hold the machine the next measurement runs on",
+    ).toEqual([]);
+  }, 90_000);
 });

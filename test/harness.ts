@@ -166,9 +166,10 @@ function spawnService(
   env: Record<string, string>,
 ): Omit<Service, "url"> {
   const chunks: string[] = [];
-  const proc = Bun.spawn(["bun", join(REPO_ROOT, entry)], {
+  const proc = Bun.spawn(["bun", "--preload", join(REPO_ROOT, "test/orphan-guard.ts"), join(REPO_ROOT, entry)], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    // Last, so a suite's own env cannot quietly disarm the guard.
+    env: { ...process.env, ...env, AGENT_MESH_TEST_PARENT_PID: String(process.pid) },
     stdout: "pipe",
     stderr: "pipe",
   });
