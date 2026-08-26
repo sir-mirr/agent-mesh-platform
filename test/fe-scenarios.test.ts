@@ -95,6 +95,13 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(data.platform.commit.length).toBeGreaterThanOrEqual(7);
   });
 
+  /**
+   * **The session for this whole file is taken here, in a test rather than a
+   * hook** — so `bun test -t "[SC-...]"` against any single scenario below
+   * runs with an empty cookie and is answered `401`, which reads exactly like
+   * the route being broken. Run the file, not one of its scenarios; the
+   * mutation harness already does.
+   */
   // GL-01 / SC-AUTH-01: Session authentication & Cookie acquisition
   it("[SC-API-AUTH-01] authenticates admin test handle and receives session cookie", async () => {
     authCookie = await loginAsAdmin(mesh.http);
@@ -1549,12 +1556,32 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(secondData.created).toBe(false);
   });
 
-  // SCR-07 / SC-SCR07-03: Empty mailbox lease safety
-  it("[SC-SCR07-03] safely handles lease on empty mailbox without crash", async () => {
+  /**
+   * SC-SCR07-03 — the queue depth screen's one source, read for its shape.
+   *
+   * **A `200` was the whole check.** This route's own comment records why that
+   * is not enough: the console used to sum a field named `depth` that the
+   * route has never emitted, so the "messages queued" tile read `0` on an idle
+   * mesh and on a backed-up one alike, and every request behind it answered
+   * `200` throughout. So the total is read here, and compared against the rows
+   * it is a total of — the two disagreeing is the shape that defect had.
+   */
+  it("[SC-SCR07-03] answers the queue depth with a total of the rows it returns", async () => {
     const res = await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, {
       headers: { Cookie: authCookie },
     });
     expect(res.status).toBe(200);
+    const body = await res.json();
+    const mailboxes = (body.mailboxes ?? []) as Array<{ identity?: string; pending?: number }>;
+    expect(
+      {
+        ok: body.ok,
+        rows: Array.isArray(body.mailboxes),
+        total: typeof body.total_queued,
+        agrees: body.total_queued === mailboxes.reduce((n, m) => n + Number(m.pending ?? 0), 0),
+      },
+      `the queue depth and the rows it groups disagree: ${JSON.stringify(body)}`,
+    ).toEqual({ ok: true, rows: true, total: "number", agrees: true });
   });
 
   // SCR-08 / SC-SCR08-03: Registration form validation

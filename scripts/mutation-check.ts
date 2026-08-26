@@ -9688,12 +9688,42 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "a-refusal-is-drawn-as-silence",
     defect:
-      "The panel stops telling a refusal from a server that did not answer, and prints the second sentence for both. A person reading `서버가 답하지 않았습니다` goes looking at the mesh; the mesh is fine and their account is missing a capability, which nothing on the screen says.",
+      "The partial-refusal notice is replaced by the generic failure sentence. Two of the four endpoints behind this screen are ungated, so a viewer without § 11 gets a page that draws — and this notice is the only thing on it that says the empty panels are a permission and not an idle mesh. A person reading `서버가 답하지 않았습니다` goes looking at a mesh that is fine.",
     file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
-    from: "          ⚠️ {failure === \"refused\" ? refusedText(t, missing) : t(\"tel.error\", \"운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).\")}",
-    to: "          ⚠️ {t(\"tel.error\", \"운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).\")}",
+    from: "              {t(\"tel.partial\", \"일부 지표는 볼 권한이 없습니다\")} ({telemetry.refused.length}).{\" \"}",
+    to: "              {t(\"tel.error\", \"운영 지표를 불러오지 못했습니다 (서버가 답하지 않았습니다).\")} ({telemetry.refused.length}).{\" \"}",
     suite: "test/fe-render.test.ts",
     expect: ["never reports silence on a screen the server answered 403 for"],
+  },
+  {
+    id: "the-online-count-ships-as-text",
+    defect:
+      "The hub's health count is serialised as a string. Every reader that adds to it concatenates instead, and every reader that compares it compares lexically — `\"10\" < \"9\"` — so a dashboard threshold on the number of online agents fires in the wrong direction on a mesh that is answering correctly.",
+    file: "packages/hub/src/main.ts",
+    from: "          online_agents: agentCount,",
+    to: "          online_agents: String(agentCount),",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["aggregates infrastructure health KPI card values"],
+  },
+  {
+    id: "the-queue-total-is-selected-under-another-name",
+    defect:
+      "The total's column is aliased to a name the reader below does not use, so `total_queued` leaves as `undefined` and disappears from the JSON entirely. The screen that draws it then has no number rather than a wrong one, which it renders as calm — the same failure the comment beside this query describes, one rename further along.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare(`SELECT count(*) AS n FROM messages WHERE status = 'pending'`)",
+    to: "    .prepare(`SELECT count(*) AS total FROM messages WHERE status = 'pending'`)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["answers the queue depth with a total of the rows it returns"],
+  },
+  {
+    id: "a-refused-rule-is-announced-as-written",
+    defect:
+      "The catch reports the success message. The request was refused, the cell goes back to what the mesh still holds, and the person is told the rule was updated — so the screen contradicts itself in two places at once and the reading an operator carries away is the wrong one. § 12 decides sends from that rule.",
+    file: "packages/platform-web/src/pages/tenant/TenantEgressAclPage.tsx",
+    from: "      setToastMessage(`${t(\"egress.toast.failed\", \"전송 규칙 변경 실패\")}: ${err.message || t(\"overview.down\", \"통신 불가\")}`);",
+    to: "      setToastMessage(`${t(\"egress.toast.updated\", \"전송 규칙 갱신\")}: ${err.message || t(\"overview.down\", \"통신 불가\")}`);",
+    suite: "test/fe-render.test.ts",
+    expect: ["handles egress rule toggle abort by reverting state and reporting failure"],
   },
   {
     id: "the-group-listing-reads-one-tenant",
