@@ -30,6 +30,15 @@ import { startMesh, newKeyPair, capabilityViewer, capabilityViewerName, freePort
  */
 setDefaultTimeout(20_000);
 
+/**
+ * What a single navigation may spend, below the budget of the test around it.
+ *
+ * Named rather than inlined so `test/fe-render-budgets.test.ts` can read both
+ * numbers and refuse the ordering that lets a navigation report its timeout
+ * after its test has already failed for a different reason.
+ */
+const NAVIGATION_BUDGET = 15_000;
+
 describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", () => {
   /** What the setup's own writes answered, when they did not answer OK.
    *
@@ -608,6 +617,23 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    */
   async function newContext(lang: "ko" | "en" | null = "ko") {
     const ctx = await browser.newContext();
+    /**
+     * A navigation may not outlive the test that started it.
+     *
+     * Playwright's navigation default is thirty seconds and `setDefaultTimeout`
+     * above gives a test twenty, so every `goto` in this file had a budget half
+     * again larger than the test holding it. The failure that produces is not
+     * the one that happened: the test dies at twenty naming itself, the
+     * navigation rejects ten seconds later with nobody awaiting it, and bun
+     * reports `Unhandled error between tests` against whichever test is running
+     * by then. Measured — a `/platform/tenants` navigation under load ended as
+     * a timeout attributed to a scenario that had not started when it began.
+     *
+     * Fifteen leaves five seconds for the assertions after the navigation, and
+     * it is checked against the test budget by `NAVIGATION_BUDGET` below rather
+     * than left as two numbers in different files that agree by habit.
+     */
+    ctx.setDefaultNavigationTimeout(NAVIGATION_BUDGET);
     // **What writes this suite actually issues, when asked.**
     //
     // Off unless `WRITE_PROBE=1`, because a banner printed every run is a

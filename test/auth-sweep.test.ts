@@ -147,6 +147,25 @@ describe("§ 9.1 auth", () => {
   test("the SPEC table parses into the routes this sweeps", () => {
     const routes = routesFromSpec();
     expect(routes.length).toBeGreaterThanOrEqual(32);
+    // **Thirty-two over a table of sixty-eight.** The floor says the parse
+    // returned something, not that it returned the table: a regex narrowed at
+    // the path or the auth cell drops half the rows, clears this line, and the
+    // sweeps below then check a smaller § 9.1 than the one written down —
+    // silently, because a route that is never swept cannot fail a sweep.
+    //
+    // The second reader is deliberately dumber: the method at the start of a
+    // row, and nothing about what follows it. It shares no opinion with the
+    // parser about paths, backticks, trailing prose or auth markers, so a
+    // narrowing there shows up here as a disagreement about the count.
+    const spec = readFileSync(join(REPO_ROOT, "SPEC.md"), "utf8");
+    const section = spec.slice(spec.indexOf("### 9.1."), spec.indexOf("### 9.2."));
+    const rows = section
+      .split("\n")
+      .filter((line) => /^\|\s*(GET|POST|PUT|DELETE|PATCH)\s*\|/.test(line)).length;
+    expect(
+      { parsed: routes.length, rows },
+      "the § 9.1 parser and a plain row count disagree — the parser is narrower than the table",
+    ).toEqual({ parsed: rows, rows });
     expect(new Set(routes.map((r) => r.auth))).toEqual(
       new Set(["None", "JWT", "JWT*", "JWT †", "JWT ¶", "Token", "Sig"]),
     );

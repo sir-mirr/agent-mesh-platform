@@ -478,3 +478,48 @@ describe("what the documentation says to install", () => {
       .toEqual([version]);
   });
 });
+
+/**
+ * The page declares a mount point and the app mounts on it.
+ *
+ * Two files, one id, and nothing compared them. `index.html` carries
+ * `<div id="root">`, `main.tsx` calls `getElementById("root")!`, and the `!` is
+ * the part that matters: a rename on either side leaves the other asserting a
+ * null it never checks. React throws `Target container is not a DOM element`,
+ * the page is blank, and every browser scenario fails on a timeout naming the
+ * screen it was waiting for rather than the mount it never got.
+ *
+ * `SC-MODULE-01` covers the page's half — it fetches `index.html` and looks for
+ * the div. Nothing read the other half, which is why `main.tsx` was the only
+ * product file in the tree with no anchor pointing at it and no behaviour of
+ * its own under test.
+ *
+ * Static on purpose. The behavioural version is a full browser suite in which
+ * every scenario times out against a blank page: half an hour to learn that one
+ * string does not match another.
+ */
+describe("the mount point", () => {
+  test("is the same id in the page and in the app", async () => {
+    const { readFileSync } = await import("node:fs");
+    const html = readFileSync(`${REPO_ROOT}packages/platform-web/index.html`, "utf8");
+    const entry = readFileSync(`${REPO_ROOT}packages/platform-web/src/main.tsx`, "utf8");
+
+    const declared = [...html.matchAll(/<div\s+id="([^"]+)"/g)].map((m) => m[1]!);
+    const mounted = [...entry.matchAll(/getElementById\("([^"]+)"\)/g)].map((m) => m[1]!);
+
+    // An empty list agrees with anything, and that is how a reader survives the
+    // rename it exists to catch — so say which half went missing before
+    // comparing them.
+    expect(
+      { declaresOne: declared.length > 0, mountsOnOne: mounted.length === 1 },
+      `the page declares [${declared.join(", ") || "nothing"}] and the app mounts on ` +
+        `[${mounted.join(", ") || "nothing"}] — one half was not found at all`,
+    ).toEqual({ declaresOne: true, mountsOnOne: true });
+
+    const target = mounted[0] ?? "";
+    expect(
+      declared,
+      `the app mounts on #${target}, which index.html does not declare`,
+    ).toContain(target);
+  });
+});

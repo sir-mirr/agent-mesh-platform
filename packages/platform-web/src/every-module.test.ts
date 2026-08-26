@@ -20,6 +20,8 @@
 import { describe, expect, test, afterAll } from "bun:test";
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 import { registerDom } from "./register-dom";
 
 // Components reach for `document` at module scope by way of React; registered
@@ -47,6 +49,48 @@ describe("every module in this package", () => {
     // A floor: a walk that stopped matching would make every assertion below
     // vacuous, which is the failure mode of a test that derives its own subject.
     expect(MODULES.length).toBeGreaterThan(40);
+  });
+
+  /**
+   * The same list, read by something that does not share this walk's opinions.
+   *
+   * **The floor above cannot see half of a miss.** This package is 42 `.tsx`
+   * modules and 16 `.ts` ones, so a walk that stopped matching `.ts` still
+   * returns 42 and clears a floor of 40 — sixteen modules leave the import list
+   * and nothing says so. The coverage number does not say so either: a
+   * denominator that shrinks makes a ratcheted 100% *easier* to hold, which is
+   * the direction no check is watching.
+   *
+   * git is the second reader because it fails differently: it knows what is
+   * tracked and nothing about extensions or directory walks. The exclusions are
+   * restated here rather than shared with `everyModule` — a filter both readers
+   * import is one reader wearing two hats.
+   */
+  test("agrees with what git says is in this package", () => {
+    const tracked = new Set(
+      Bun.spawnSync(["git", "ls-files", "packages/platform-web/src"], { cwd: REPO_ROOT })
+        .stdout.toString()
+        .split("\n")
+        .filter((line) => /\.tsx?$/.test(line))
+        .filter((line) => !/\.test\.tsx?$/.test(line) && !line.endsWith("main.tsx"))
+        .map((line) => line.replace("packages/platform-web/src/", "")),
+    );
+    const walked = new Set(MODULES.map((file) => relative(SRC, file)));
+
+    // Both directions. Missing files are the defect this exists for; extra ones
+    // mean the walk is reaching outside the package, which is its own bug.
+    expect(
+      {
+        walkedButUntracked: [...walked].filter((f) => !tracked.has(f)).sort(),
+        trackedButUnwalked: [...tracked].filter((f) => !walked.has(f)).sort(),
+      },
+      "the module walk and git disagree about what is in this package",
+    ).toEqual({ walkedButUntracked: [], trackedButUnwalked: [] });
+
+    // And that the second reader found anything at all — an empty set agrees
+    // with every walk, including one that returns nothing.
+    expect(tracked.size, "git listed no modules, so the comparison above is vacuous")
+      .toBeGreaterThan(40);
   });
 
   for (const file of MODULES) {

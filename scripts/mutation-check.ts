@@ -10041,6 +10041,56 @@ export const MUTATIONS: Mutation[] = [
     expect: ["does not leave its services behind", "they outlive it and hold the machine"],
   },
   {
+    id: "the-app-mounts-on-an-element-the-page-does-not-declare",
+    defect:
+      "`index.html` and `main.tsx` name the same id and nothing compared them. The mount is written `getElementById(\"root\")!`, so a rename on either side is a null the non-null assertion waves through: React throws `Target container is not a DOM element`, the page is blank, and every browser scenario fails on a timeout naming the screen it waited for rather than the mount it never got. `SC-MODULE-01` reads the page's half only.",
+    file: "packages/platform-web/src/main.tsx",
+    from: 'createRoot(document.getElementById("root")!).render(',
+    to: 'createRoot(document.getElementById("app")!).render(',
+    suite: "test/greppable.test.ts",
+    expect: ["is the same id in the page and in the app", "which index.html does not declare"],
+  },
+  {
+    id: "the-module-walk-stops-seeing-half-the-package",
+    defect:
+      "`every-module.test.ts` exists to fix the coverage denominator: bun reports the files a test loaded, so a module nobody imports is absent rather than `0%`. The walk deriving that list guarded itself with `length > 40` — and this package is 42 `.tsx` modules to 16 `.ts` ones, so a walk that stops matching `.ts` still returns 42 and clears the floor. Sixteen modules leave the import list, the denominator shrinks, and a ratcheted 100% gets *easier* to hold, which is the direction nothing is watching.",
+    file: "packages/platform-web/src/every-module.test.ts",
+    from: "    if (!/\\.tsx?$/.test(full)) return [];",
+    to: "    if (!/\\.tsx$/.test(full)) return [];",
+    suite: "packages/platform-web/src/every-module.test.ts",
+    expect: ["agrees with what git says is in this package", "the module walk and git disagree about what is in this package"],
+  },
+  {
+    id: "the-screen-walk-stops-descending-into-the-pages",
+    defect:
+      "`capability-prose` scans every screen for capability names shown to a person, and derives its own scope by walking the package. The guard on that derivation was `length > 20` over a package of fifty-nine files, so a walk that stopped recursing returns the top level, clears the floor, and stops scanning two thirds of the screens — while the test goes on claiming *every namespaced name shown to a user is in the contract*.",
+    file: "test/capability-prose.test.ts",
+    from: "      ? screenFiles(full)",
+    to: "      ? []",
+    suite: "test/capability-prose.test.ts",
+    expect: ["the screen walk and git disagree about what is in this package"],
+  },
+  {
+    id: "the-spec-route-parser-narrows-to-half-the-table",
+    defect:
+      "`auth-sweep` reads § 9.1's route table and sweeps what it parsed. The floor was `>= 32` over sixty-eight rows, so a regex narrowed at the path cell drops half the table, clears the floor, and every sweep below then measures a smaller § 9.1 than the one written down — a route that is never swept cannot fail a sweep, and nothing else counts them.",
+    file: "test/auth-sweep.test.ts",
+    from: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
+    to: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`(\\/api[^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
+    suite: "test/auth-sweep.test.ts",
+    expect: ["the § 9.1 parser and a plain row count disagree"],
+  },
+  {
+    id: "a-navigation-outlives-the-test-that-started-it",
+    defect:
+      "`setDefaultTimeout(20_000)` gives each scenario twenty seconds and Playwright gives each navigation thirty, so a `goto` could not report its own timeout: the test failed first on its own budget and the navigation rejected ten seconds later as `Unhandled error between tests`, which bun attributes to whichever scenario is running when it lands. A `/platform/tenants` navigation was read as a failure of a scenario that had not started when the navigation began.",
+    file: "test/fe-render.test.ts",
+    from: "const NAVIGATION_BUDGET = 15_000;",
+    to: "const NAVIGATION_BUDGET = 30_000;",
+    suite: "test/fe-render-budgets.test.ts",
+    expect: ["a navigation cannot outlive the test that started it", "reported against a later scenario"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",

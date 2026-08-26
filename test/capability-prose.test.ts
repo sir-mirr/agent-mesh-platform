@@ -119,6 +119,28 @@ describe("capability names in text a person reads", () => {
     // The loop below reports nothing for a directory it did not walk, and
     // nothing is what a clean tree also reports.
     expect(FILES.length, "no screen files found — the walk is the whole scope").toBeGreaterThan(20);
+    // **A floor of twenty over a package of fifty-nine.** The number was
+    // written as "not empty" and reads as "the walk is working", which are
+    // different claims: a walk that stopped descending into `pages/` returns
+    // thirty-odd files, clears this line, and quietly stops scanning two thirds
+    // of the screens the rule is about. git is asked the same question in a way
+    // that shares none of this walk's opinions — it knows what is tracked and
+    // nothing about extensions, directories or recursion.
+    const tracked = Bun.spawnSync(["git", "ls-files", "packages/platform-web/src"], {
+      cwd: new URL("..", import.meta.url).pathname,
+    })
+      .stdout.toString()
+      .split("\n")
+      .filter((line) => /\.tsx?$/.test(line) && !/\.test\.tsx?$/.test(line))
+      .map((line) => line.replace("packages/platform-web/src/", ""));
+    expect(
+      {
+        walkedButUntracked: FILES.filter((f) => !tracked.includes(f)).sort(),
+        trackedButUnwalked: tracked.filter((f) => !FILES.includes(f)).sort(),
+      },
+      "the screen walk and git disagree about what is in this package",
+    ).toEqual({ walkedButUntracked: [], trackedButUnwalked: [] });
+    expect(tracked.length, "git listed nothing, so the comparison above is vacuous").toBeGreaterThan(20);
     for (const anchor of ANCHORS) {
       expect(FILES, `${anchor} is gone or moved; the case it covers needs a new home`).toContain(anchor);
     }
