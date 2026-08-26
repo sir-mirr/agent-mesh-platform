@@ -22,7 +22,7 @@ defined in RFC 2119 / RFC 8174.
 ### What 0.2 changes, and what does not exist yet
 
 0.2 carries the decisions taken while reviewing the audit ingestion proposal.
-**13 of the 15 rows below are built** in this repository; the 2 that are not
+**14 of the 16 rows below are built** in this repository; the 2 that are not
 are lane components, and they are built in the lane repository rather than
 here. This section is the list, so a reader can tell a settled contract from
 running code without inferring either from the other.
@@ -45,6 +45,7 @@ counts the rows and fails when the count here stops matching them.
 | 8.9 | `mesh.audit.*` methods | **yes** |
 | 8.10 | Socketless transport: signed JSON-RPC over HTTP, `mesh.receive` | **yes** |
 | 9.1 | Audit blob upload and audit query routes | **yes** |
+| 9.2c | A local account is deactivated and restored, never deleted | **yes** |
 | 9.3 | Identity teardown is a soft delete | **yes** |
 | 10.1 | `POST /api/v1/agents` accepts `public_key`; approval procedure | **yes** |
 | 10.1 | Identity format loosened; kebab-case advisory, case-sensitive | **yes** |
