@@ -804,13 +804,44 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     }
   });
 
-  // SCR-08 / SC-RENDER-08: Agent Registration Page Live Render (D-31)
-  it("[SC-RENDER-08] renders /creator/register with registration form inputs", async () => {
+  /**
+   * SC-RENDER-08 — the pairing form has the two things a code needs, and
+   * issues nothing without them.
+   *
+   * **`input, textarea` at least once** was the whole check, and the console's
+   * shell carries a search box on every route, so this passed on a page whose
+   * form had gone missing entirely. What the screen is for is one field and
+   * one lifetime, and the lifetimes are a closed list the server enforces — a
+   * picker that lost its options offers a person nothing to choose.
+   *
+   * Submitting empty is asserted too: `required` is the browser's rule, and a
+   * form that lost the attribute would post an empty identity and draw a code
+   * bound to nobody.
+   */
+  it("[SC-RENDER-08] offers an identity and a lifetime, and issues no code without them", async () => {
     const { page, context, errors } = await createAuthedPage("/creator/register");
-    const inputs = await page.locator("input, textarea").count();
-    expect(inputs).toBeGreaterThanOrEqual(1);
-    expect(errors).toEqual([]);
-    await context.close();
+    try {
+      const identity = page.locator("input[type='text'], input:not([type])").first();
+      const ttl = page.locator("select").first();
+
+      await identity.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
+      const before = ((await page.locator("#root").innerText()) ?? "").replace(/\s+/g, " ");
+      await page.locator("button[type='submit']").first().click().catch(() => {});
+      await settled(page);
+      const after = ((await page.locator("#root").innerText()) ?? "").replace(/\s+/g, " ");
+
+      expect(
+        {
+          identityDrawn: await identity.count(),
+          lifetimes: await ttl.locator("option").count(),
+          issuedNothing: after.replace(before, "").trim().length === 0,
+          errors,
+        },
+        "the pairing form lost a control, or issued a code for an identity nobody typed",
+      ).toEqual({ identityDrawn: 1, lifetimes: 4, issuedNothing: true, errors: [] });
+    } finally {
+      await context.close().catch(() => {});
+    }
   });
 
   // SCR-09 / SC-RENDER-09: Platform Infrastructure Overview Live Render with Server Nodes Table (D-31)

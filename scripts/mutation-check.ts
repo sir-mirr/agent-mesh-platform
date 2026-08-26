@@ -9756,6 +9756,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["states the queue depth as a total of the mailboxes it drew"],
   },
   {
+    id: "the-pairing-form-offers-one-lifetime",
+    defect:
+      "The lifetime picker is reduced to a single choice. The server enforces a maximum of an hour and the four options are the vocabulary an operator picks from; with one left, every code issued from this screen carries whatever that one says — and a five-minute default handed to a CI deployment expires before it is used, which reads as the pairing route being broken.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: "                <option value={900}>{t(\"reg.ttl.900\", \"15분 (900초 - 서버 셋업용)\")}</option>",
+    to: "",
+    suite: "test/fe-render.test.ts",
+    expect: ["offers an identity and a lifetime, and issues no code without them"],
+  },
+  {
     id: "the-group-listing-reads-one-tenant",
     defect:
       "`GET /api/v1/admin/groups` went back to listing `default` and only `default` \u2014 the state every version of this route was in until T-026. A group created in another tenant is written, is real, decides sends, and is invisible to the one screen that would have shown it.",
