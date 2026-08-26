@@ -11272,6 +11272,46 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["preserves complex valid kebab-case agent identity"],
   },
+  {
+    id: "the-login-password-is-typed-in-the-clear",
+    defect:
+      "The password field lost its `type`, so the credential is drawn in plain text: on the screen behind whoever is signing in, and into the browser's autofill store for every text field afterwards. The form still works, which is why nothing else notices.",
+    file: "packages/platform-web/src/pages/LoginPage.tsx",
+    from: "              type=\"password\"",
+    to: "              type=\"text\"",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /login with live form controls"],
+  },
+  {
+    id: "the-server-row-says-healthy-whatever-was-read",
+    defect:
+      "The server row's badge went back to the constant this screen shipped with — `HEALTHY`, a word no route has ever answered — beside a health check it had really read. The KPI a few lines up still draws the route's own status, so the page contains the true word somewhere and reads as correct to anything asking about the page rather than about the badge.",
+    file: "packages/platform-web/src/pages/platform/PlatformOverviewPage.tsx",
+    from: "          statusLabel: telemetry.health_status,",
+    to: "          statusLabel: \"HEALTHY\",",
+    suite: "test/fe-render.test.ts",
+    expect: ["renders /platform with node health status"],
+  },
+  {
+    id: "the-admin-page-opens-signed-out",
+    defect:
+      "`/admin` stopped redirecting an unauthenticated caller and rendered the console instead. The page this server draws itself is the one that approves keys and admits accounts; the API calls behind it still refuse, so what a stranger gets is every control and every label — the shape of the deployment — and a screen that looks like it is theirs.",
+    file: "packages/http/src/main.ts",
+    from: "  if (!payload) return c.redirect('/')",
+    to: "  if (!payload) return c.html(renderAdminPage())",
+    suite: "test/fe-render.test.ts",
+    expect: ["serves its own admin and chat pages"],
+  },
+  {
+    id: "the-locked-account-is-exempted-from-the-api",
+    defect:
+      "The must-change-password gate exempted everything under `/api/v1`, on the reading that those are the console's own calls. They are the whole product: an account the platform has locked until it chooses a password can then read agents, audit events and tenants, and the only thing it cannot do is the one thing the lock exists to make it do. § 11 puts the refusal on the session, not on the screen.",
+    file: "packages/http/src/main.ts",
+    from: "  if (OPEN_WHILE_FLAGGED.has(path) || path.startsWith('/auth/local') || path === '/login') return next()",
+    to: "  if (OPEN_WHILE_FLAGGED.has(path) || path.startsWith('/auth/local') || path.startsWith('/api/v1') || path === '/login') return next()",
+    suite: "test/fe-render.test.ts",
+    expect: ["is refused by the server, not by the screen"],
+  },
 ];
 
 /**

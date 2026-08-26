@@ -672,7 +672,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     page.on("pageerror", (err) => errors.push(err.message));
 
     await page.goto(`${viteBaseUrl}/login`, { waitUntil: "networkidle" });
-    expect(await page.locator("input").count()).toBeGreaterThanOrEqual(1);
+    // **A field called password that is not masked is what this ought to
+    // catch.** Counting inputs proves a form was drawn and nothing else: it
+    // cannot tell a masked credential field from a plain one, and `type="text"`
+    // here puts the operator's password on the screen behind them and into the
+    // browser's autofill for every text field afterwards.
+    const inputs = await page.locator("input").count();
+    const masked = await page.locator("input[type='password']").count();
+    expect({ inputs: inputs >= 1, masked }).toEqual({ inputs: true, masked: 1 });
     expect(errors).toEqual([]);
     await context.close();
   });
@@ -787,6 +794,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     const rowCount = await page.locator("table tbody tr").count();
     expect({ rows: rowCount >= 1, endpoint: mainText.includes("/api/v1/health") })
       .toEqual({ rows: true, endpoint: true });
+    // **Both places that say it, each read where it is drawn.** The health word
+    // appears twice on this screen — the KPI and the badge in the server row —
+    // and a page-wide `toContain` is answered by whichever one is still honest.
+    // The constant this scenario was written for (`HEALTHY`, which no route has
+    // ever answered) can be planted on either half and leave the other one
+    // carrying the assertion.
+    const kpi = await page.locator('[data-testid="platform-health-status"]').innerText();
+    const row = await page.locator("table tbody tr", { hasText: "/api/v1/health" }).first().innerText();
+    expect({ kpi: kpi.includes(health.status), row: row.includes(health.status) })
+      .toEqual({ kpi: true, row: true });
     expect(errors).toEqual([]);
     await context.close();
   });

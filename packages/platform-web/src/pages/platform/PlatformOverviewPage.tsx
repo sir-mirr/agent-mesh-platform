@@ -119,6 +119,10 @@ export function PlatformOverviewPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
           label={t("server.kpi.health", "허브 헬스체크")}
+          // Named, because the only other way to reach this card is its label,
+          // and the label is translated: a scenario keyed on the copy asserts
+          // whatever the dictionary last said.
+          valueTestId="platform-health-status"
           value={telemetry?.health_status ?? (isOnline ? t("common.unmeasured", "— 미측정") : "OFFLINE")}
           color={isHealthy ? "var(--color-success)" : "var(--color-danger)"}
           icon={isHealthy ? "💓" : "⚠️"}
