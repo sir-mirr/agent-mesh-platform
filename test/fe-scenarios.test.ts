@@ -166,23 +166,27 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     // **The title says "contains active default tenant" and nothing here asked.**
     // An empty array satisfied every line above.
     //
-    // Asked as a delta, because this route is traffic and not the directory:
-    // its rows are `message_stats` grouped by tenant inside a window, so an
-    // empty answer is what an idle mesh looks like *and* what a collapsed
-    // window looks like, and no single reading can tell them apart. One message
-    // is sent and the tenant's `received` has to move — which is the sentence
-    // the screen above it makes.
-    const receivedByDefault = async () => {
-      const again = await fetch(`${mesh.http.url}/api/v1/admin/tenants`, {
-        headers: { Cookie: authCookie },
-      });
-      const rows = ((await again.json()).tenants ?? []) as Array<{ tenant?: string; received?: number }>;
-      return rows.find((r) => r.tenant === "default")?.received ?? 0;
-    };
-    const before = await receivedByDefault();
+    // This route is traffic and not the directory: its rows are `message_stats`
+    // grouped by tenant inside a window, so an empty answer is what an idle
+    // mesh looks like *and* what a collapsed window looks like. The scenario
+    // makes the traffic itself and then requires the route to report it, which
+    // separates the two without depending on anything else in this file.
+    //
+    // **Not a delta.** The first repair read the count, sent a message, and
+    // read again — and the pair flapped across three runs of the same
+    // mutation, because both readings depend on traffic other tests happened
+    // to produce and on when their rows land. A verdict that depends on the
+    // run is not a verdict. One reading, after the send this scenario made.
     await seedMessage("tenant-traffic");
-    const after = await receivedByDefault();
-    expect({ moved: after > before }, `received went ${before} -> ${after}`).toEqual({ moved: true });
+    const reread = await fetch(`${mesh.http.url}/api/v1/admin/tenants`, {
+      headers: { Cookie: authCookie },
+    });
+    const rows = ((await reread.json()).tenants ?? []) as Array<{ tenant?: string; received?: number }>;
+    const row = rows.find((r) => r.tenant === "default");
+    expect(
+      { reported: row !== undefined, counted: (row?.received ?? 0) > 0 },
+      `the traffic the route reported: ${JSON.stringify(rows)}`,
+    ).toEqual({ reported: true, counted: true });
   });
 
   // SCR-04 / SC-SCR04-01 & SC-SCR04-02: Group Management
