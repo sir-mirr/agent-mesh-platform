@@ -324,12 +324,29 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
 
   // SCR-13 / SC-SCR13-01: Audit Logs Stream
   it("[SC-SCR13-01] queries security audit events log", async () => {
+    // **`Array.isArray(x) || typeof data === "object"` is true of every JSON
+    // body**, so the whole check was the status code — on the route § 8.9 makes
+    // the record of what the mesh did. The trail has to hold the event this
+    // scenario just caused, and each row has to carry the id the cursor pages
+    // by and an investigator cites.
+    const { from, to } = await seedMessage("audit-list");
     const res = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
       headers: { Cookie: authCookie },
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(Array.isArray(data.events || data) || typeof data === "object").toBe(true);
+    const events = (Array.isArray(data) ? data : data.events ?? []) as Array<{
+      event_id?: string;
+      payload?: { message?: { from?: string; to?: string } };
+    }>;
+    const mine = events.filter((e) => e.payload?.message?.from === from && e.payload?.message?.to === to);
+    expect(
+      {
+        recorded: mine.length > 0,
+        identified: events.length > 0 && events.every((e) => typeof e.event_id === "string" && e.event_id.length > 0),
+      },
+      `${events.length} events, ${mine.length} of them this scenario's`,
+    ).toEqual({ recorded: true, identified: true });
   });
 
   // SCR-08 / SC-SCR08-01: Key Proposal Approval flow

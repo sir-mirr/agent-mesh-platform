@@ -11312,6 +11312,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["is refused by the server, not by the screen"],
   },
+  {
+    id: "an-identity-with-spaces-is-registered",
+    defect:
+      "The identity pattern let a space through, so `INVALID CAPITALIZED IDENTITY` becomes an agent. § 3.1 names are used in paths (`/api/v1/admin/agents/:identity`), in egress rules and in every audit row: a name that cannot round-trip through a URL is one whose teardown route cannot be addressed and whose rows cannot be looked up by the string the operator was shown.",
+    file: "packages/hub/src/rest/agents.ts",
+    from: "const IDENTITY_RE = /^[A-Za-z0-9][A-Za-z0-9-]*$/;",
+    to: "const IDENTITY_RE = /^[A-Za-z0-9][A-Za-z0-9- ]*$/;",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["refuses invalid agent identity registration"],
+  },
+  {
+    id: "a-revoke-takes-the-rule-and-its-mirror",
+    defect:
+      "The revoke deleted the rule and its inverse, so revoking `a -> b` silently cut `b -> a` as well. § 12 rules are directional: two groups that may each send to the other are two decisions, and this makes one of them undoable only by making the other one disappear. The route answers `{ ok: true, action: 'deleted' }`, which is true of the rule it was asked about.",
+    file: "packages/store/src/groups.ts",
+    from: "      .prepare(`DELETE FROM group_egress WHERE tenant = ? AND from_group = ? AND to_group = ?`)",
+    to: "      .prepare(`DELETE FROM group_egress WHERE tenant = ?1 AND ((from_group = ?2 AND to_group = ?3) OR (from_group = ?3 AND to_group = ?2))`)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["preserves inverse direction egress rule"],
+  },
+  {
+    id: "an-audit-row-arrives-without-its-id",
+    defect:
+      "The events came back with no `event_id`. The cursor pages by `(stored_at, event_id)`, `GET /api/v1/audit/events/:event_id` is how a single row is fetched, and an id is what an investigator cites — so a trail whose rows cannot be named is a list of things that happened to nobody in particular. The array is still the right length, which is what makes it quiet.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    event_id: row.event_id,",
+    to: "    event_id: null,",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["queries security audit events log"],
+  },
 ];
 
 /**
