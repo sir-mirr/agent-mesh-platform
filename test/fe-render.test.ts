@@ -3476,23 +3476,31 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
   }, 30000);
 
-  // SC-AUTH-04: an expired session is never reported as an empty one.
+  // SC-AUTH-04: a refused read is never drawn as an empty list.
   //
   // Split from the pinned half on agent-mesh-local-pm's advice, and the split
-  // did its job — but **one of the two things I called decision-independent was
-  // not.** The pair was:
+  // did its job — but **both of the things I called decision-independent
+  // turned out not to be.** The pair was:
   //
-  //   nothing is claimed to be empty      still true, and asserted below
+  //   nothing is claimed to be empty      true, and asserted below
   //   the screen says it could not read   **only true if you stay on it**
   //
-  // The decision was to redirect, and you cannot read a message on a screen you
-  // have left. That assertion was decision-dependent all along and I did not
-  // see it until the redirect landed and this test failed on the login page.
+  // The decision was to redirect, and you cannot read a message on a screen
+  // you have left. That much was found when the redirect landed. What was not
+  // found until this scenario was audited for what could make it fail is that
+  // the surviving half had gone the same way: with `/auth/me` refused the app
+  // leaves for /login immediately, so the text this test read was the login
+  // form. A form with no list on it claims nothing about a list, and **no
+  // defect in the product could turn this red.**
   //
-  // What survives is the half that has to be true wherever you end up: a
-  // refused read is never rendered as an empty list. The redirect target does
-  // not claim emptiness either, which is what makes it still checkable here.
-  it("[SC-AUTH-04] an expired session reports a failed read and does not claim empty", async () => {
+  // So it measures the state it was always about, on the screen it happens on.
+  // A refusal is not an expiry: `/auth/me` answers, the session is real, and
+  // the person stays where they are while the list they came for is refused.
+  // That is the branch `err.refused` exists for, and it is the one no other
+  // scenario here reaches — every other member of this family aborts the
+  // request, which is the *unreachable* side of the same split. SC-AUTH-05
+  // keeps the expiry, redirect and all.
+  it("[SC-AUTH-04] a refused read is not drawn as an empty list", async () => {
     const context = await newContext();
     try {
       const page = await context.newPage();
@@ -3508,36 +3516,49 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         },
       ]);
 
-      // The session is refused the way an expired one is: the cookie is still
-      // sent, and the server rejects it. Aborting instead would test the
-      // disconnected axis, which SC-DOWN-ALL already covers.
-      // **`/auth/me` is refused too, because that is what expiry means.**
-      // Refusing only `/api/v1/**` leaves the session check succeeding, so the
-      // app is right to consider itself signed in — and it re-established the
-      // stored user on the very next load, which is what this assertion caught.
-      // The cookie an expired session sends is rejected everywhere, not on some
-      // routes.
+      // **`/auth/me` is left answering, deliberately.** Refusing it too is
+      // expiry, and expiry leaves this screen — which is what made the earlier
+      // form of this scenario unable to fail. The session here is good and the
+      // list is refused, which is what a capability the account does not hold
+      // looks like from the browser.
       let refused = 0;
-      const expire = (route: import("playwright").Route) => {
+      await page.route("**/api/v1/**", (route) => {
         refused += 1;
         return route.fulfill({
-          status: 401,
+          status: 403,
           contentType: "application/json",
-          body: JSON.stringify({ error: "Unauthorized" }),
+          body: JSON.stringify({ error: "not allowed", capability: "agent.read" }),
         });
-      };
-      await page.route("**/api/v1/**", expire);
-      await page.route("**/auth/me", expire);
+      });
 
       await page.goto(`${viteBaseUrl}/creator`, { waitUntil: "networkidle" });
       await settled(page);
-      await page.waitForURL("**/login", { timeout: 10_000 }).catch(() => {});
 
       expect(refused, "no API call was made, so nothing was refused and nothing is being measured")
         .toBeGreaterThan(0);
+      // Staying is the precondition. A run that redirected would compare a
+      // login page against a list it never drew.
+      expect(page.url(), "the refused read left the screen, so there is no list to read")
+        .toContain("/creator");
 
       const text = await page.locator("#root").innerText();
-      expect(text, "an unreadable list was reported as an empty one").not.toMatch(ZERO_REGEX);
+      // **The empty message by name, not `ZERO_REGEX`.** That pattern wants a
+      // negation right after the noun — `등록된 없` — and this table's empty
+      // state reads `등록된 에이전트가 없습니다`, which it does not match. A
+      // scenario whose only assertion is a pattern that cannot match the
+      // sentence it exists to refuse is the shape this file keeps finding.
+      //
+      // And what the screen says instead is asserted too: without it a page
+      // that drew nothing at all — no list, no message — would pass for having
+      // refused to claim emptiness.
+      expect(
+        {
+          claimedEmpty: text.includes("등록된 에이전트가 없습니다"),
+          saidRefused: text.includes("이 계정에는 이 화면을 볼 권한이 없습니다"),
+          zeroClaim: ZERO_REGEX.test(text),
+        },
+        "an unreadable list was reported as an empty one",
+      ).toEqual({ claimedEmpty: false, saidRefused: true, zeroClaim: false });
     } finally {
       await context.close().catch(() => {});
     }

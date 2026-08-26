@@ -9836,6 +9836,96 @@ export const MUTATIONS: Mutation[] = [
     expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
   },
   {
+    id: "the-shell-draws-a-role-instead-of-the-session-s",
+    defect:
+      "The sidebar filters its own items by the role it was handed, so a shell that hands it a constant does two things at once: it labels a platform administrator as an operator and hides every platform-only entry from them. The screen is not broken in any way a page error would show — it is a smaller console than the account is entitled to.",
+    file: "packages/platform-web/src/layouts/RootLayout.tsx",
+    from: '        userRole={user?.role || "AGENT_OPERATOR"}',
+    to: '        userRole={"AGENT_OPERATOR"}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-RENDER-14", "renders /tenant/rbac with capability chips and table rows"],
+  },
+  {
+    id: "an-oversized-audit-limit-is-refused-rather-than-bounded",
+    defect:
+      "A page size larger than the maximum is the ordinary shape of a caller that does not know the maximum — a console asking for everything. Bounding it answers; refusing it makes the caller parse an error to learn a number the answer could have carried, and every screen that asked wide gets nothing at all.",
+    file: "packages/http/src/audit-query.ts",
+    from: "  const limit = Math.min(Math.max(Number(q.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1), MAX_LIMIT)",
+    to: `  const asked = Number(q.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT
+  if (asked > MAX_LIMIT) return { status: 400, body: { error: \`limit must be at most \${MAX_LIMIT}\` } } as any
+  const limit = Math.max(asked, 1)`,
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR13-03", "bounds oversized audit log query limit cleanly without error"],
+  },
+  {
+    id: "a-key-is-defined-in-korean-and-nowhere-else",
+    defect:
+      "A dictionary entry added on one side only leaves the English screen rendering the Korean fallback the call site carries — no error, no missing text, just one card in the wrong language. The card here is the dashboard's agent count, which is on the first screen after sign-in.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: '    "dash.pa.nodes": "Registered agents",',
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-I18N-03", "a screen falls back to Korean because its key is defined nowhere"],
+  },
+  {
+    id: "an-unmeasured-digest-is-drawn-as-a-match",
+    defect:
+      "`integrity` absent means the server did not measure this record, and folding that into the pass reads as verification nobody performed. The row then says the body matches a hash nothing compared — on the audit screen, which exists to be believed.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '            data-digest={item.digestMatches === null ? "unmeasured" : item.digestMatches ? "matches" : "broken"}',
+    to: '            data-digest={item.digestMatches === false ? "broken" : "matches"}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-02", "shows the integrity verdict it was given"],
+  },
+  {
+    id: "an-unreadable-group-panel-says-there-are-no-groups",
+    defect:
+      "The panel has five readings and this gives it four: a read that never arrived is drawn with the words for a tenant that has no groups. The operator is told a fact about their mesh instead of about the connection, and D-145 exists because that is the answer people act on.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: `  const state = read.kind === "ready"
+    ? read.groups.length > 0 ? "present" : "empty"
+    : read.kind;`,
+    to: `  const state = read.kind === "ready"
+    ? read.groups.length > 0 ? "present" : "empty"
+    : read.kind === "unreachable" ? "empty" : read.kind;`,
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-DOWN-15", "folded unreachable into another state"],
+  },
+  {
+    id: "a-row-identity-is-invented-each-render",
+    defect:
+      "A key the client makes up is a new identity on every render, so React unmounts and remounts every row each time the list refreshes: an open menu closes, a selection is dropped, and typing in a row loses focus. `Math.random()` in a front end is the shape of a value the server is the source of, which is why the count of them is ratcheted rather than allowed.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "        keyExtractor={(item) => item.id}",
+    to: "        keyExtractor={() => String(Math.random())}",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-INVENT-07", "the front end synthesises values in"],
+  },
+  {
+    id: "an-unrouted-path-answers-ok",
+    defect:
+      "A path nothing serves answering `200` makes a typo indistinguishable from an answer. A caller reading `ok` on a route that does not exist proceeds as though the write happened, and the console's own probes — which decide whether a feature is present by asking for it — report every feature present on every deployment.",
+    file: "packages/http/src/main.ts",
+    from: `app.notFound((c) => {
+  return c.json({ error: 'Not found' }, 404)
+})`,
+    to: `app.notFound((c) => {
+  return c.json({ ok: false, error: 'Not found' }, 200)
+})`,
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-SCR07-04", "has no admin ACK route to refuse an invalid lease with"],
+  },
+  {
+    id: "a-refused-read-is-drawn-as-an-empty-list",
+    defect:
+      "*Refused* and *unreachable* were split so the screen could say which happened, and this folds the first of them back into the empty state: a 401 or 403 on the list draws the words for a mesh with no agents. The unreachable half keeps working, so every scenario that aborts the request still passes — only a refusal shows it.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "        isError={isError}",
+    to: '        isError={isError && failure !== "refused"}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-AUTH-04", "an unreadable list was reported as an empty one"],
+  },
+  {
     id: "the-capability-answer-stops-naming-the-checkout",
     defect:
       "§ 7's provenance is how a caller tells which checkout is answering. Without it a long-running hub serving a branch ninety-three commits behind `main` is diagnosable only by noticing which routes are missing and reasoning backwards — which was done twice, wrong both times, before `client-claude` proposed reporting it (mail #300).",
