@@ -93,8 +93,36 @@ for (const entry of MUTATIONS) {
   }
 }
 
+/**
+ * Scenarios no product mutation can take down, with the reason each one is
+ * exempt rather than owed.
+ *
+ * **The unpinned list is a work queue, and a work queue with permanent
+ * residents stops being read.** These do not assert anything about the
+ * product: mutate any line of it and they stay green, correctly, because what
+ * they check is the harness that runs everything else. Counting them as debt
+ * says there is work here that nobody can do.
+ *
+ * Kept short and reasoned on purpose — this is an exemption list, which is the
+ * shape a check gets weakened through. Two rules keep it honest, both enforced
+ * below: an id that is not a scenario is a typo, and an id that some entry
+ * *does* pin means the exemption was wrong and is reported rather than
+ * silently obeyed.
+ */
+const NOT_A_PRODUCT_GUARD: Record<string, string> = {
+  "SC-HARNESS-01": "asserts the harness object itself — that `mesh.http.url` and `mesh.hub.url` were handed over. No line of the product appears in it.",
+};
+
 const ids = [...new Set(scenarios.map((s) => s.id))].sort();
-const unpinned = ids.filter((id) => !proofs.has(id));
+const unpinnedAll = ids.filter((id) => !proofs.has(id));
+const unpinned = unpinnedAll.filter((id) => !(id in NOT_A_PRODUCT_GUARD));
+const exempt = unpinnedAll.filter((id) => id in NOT_A_PRODUCT_GUARD);
+/** An exemption that names nothing, or names something an entry already pins. */
+const staleExemptions = Object.keys(NOT_A_PRODUCT_GUARD).flatMap((id) => {
+  if (!ids.includes(id)) return [`${id}: no scenario by that id`];
+  if (proofs.has(id)) return [`${id}: pinned by ${(proofs.get(id) ?? []).join(", ")} — the exemption is wrong`];
+  return [];
+});
 /** Pinned by an entry some run in the given log recorded as caught. */
 const seen = observed === null
   ? null
@@ -102,12 +130,30 @@ const seen = observed === null
 
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify(
-    { scenarios: ids.length, pinned: ids.length - unpinned.length, unpinned, observed: seen?.length ?? null },
+    {
+      scenarios: ids.length,
+      pinned: ids.length - unpinnedAll.length,
+      unpinned,
+      exempt,
+      staleExemptions,
+      observed: seen?.length ?? null,
+    },
     null,
     2,
   ));
 } else {
-  console.log(`scenarios: ${ids.length}  pinned: ${ids.length - unpinned.length}  unpinned: ${unpinned.length}`);
+  console.log(
+    `scenarios: ${ids.length}  pinned: ${ids.length - unpinnedAll.length}  unpinned: ${unpinned.length}` +
+      (exempt.length ? `  (+${exempt.length} no product mutation can reach)` : ""),
+  );
+  if (staleExemptions.length) {
+    console.log("\nexemptions that are wrong:");
+    for (const line of staleExemptions) console.log(`  ${line}`);
+  }
+  if (exempt.length) {
+    console.log("\nnot a product guard:");
+    for (const id of exempt) console.log(`  ${id} — ${NOT_A_PRODUCT_GUARD[id]}`);
+  }
   if (seen !== null) console.log(`observed caught in that log: ${seen.length}`);
   if (unparsed.length) {
     console.log("\nheaders this parse could not read:");
