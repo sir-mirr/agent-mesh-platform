@@ -754,12 +754,54 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
-  // SCR-07 / SC-RENDER-07: Lease Queue Monitor Page Live Render (D-31)
-  it("[SC-RENDER-07] renders /creator/lease-queue with queue monitor", async () => {
-    const { page, context, errors } = await createAuthedPage("/creator/lease-queue");
-    expect(await page.locator("table, .card, [role='region']").count()).toBeGreaterThanOrEqual(1);
-    expect(errors).toEqual([]);
-    await context.close();
+  /**
+   * SC-RENDER-07 — the queue screen's two totals are totals of the rows it drew.
+   *
+   * **`table, .card, [role='region']` was the whole check**, and the shell
+   * satisfies that on every route in this console — a page that fetched
+   * nothing and drew nothing but its own furniture passed. The screen states
+   * two numbers above a table it derives them from, which is the one thing
+   * only this page can be asked.
+   *
+   * The rows come from a mocked answer rather than whatever the mesh happens
+   * to be holding: with an idle mesh every number is zero, and `0 === 0` is
+   * the agreement this repository has been fooled by most often. The two
+   * columns are given different totals so a card reading the wrong one is a
+   * different number and not the same one.
+   */
+  it("[SC-RENDER-07] states the queue depth as a total of the mailboxes it drew", async () => {
+    const context = await newContext();
+    await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
+    const page = await context.newPage();
+    try {
+      await page.route("**/api/v1/admin/mailbox", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            mailboxes: [
+              { identity: "agent-alpha", pending: 3, leased: 1, oldest: null },
+              { identity: "agent-beta", pending: 4, leased: 5, oldest: null },
+            ],
+            total_queued: 7,
+          }),
+        }),
+      );
+      await page.goto(`${viteBaseUrl}/creator/lease-queue`, { waitUntil: "networkidle" });
+      await settled(page);
+
+      const rows = await page.locator("[data-testid^='pending-']").count();
+      const available = ((await page.locator("[data-testid='lease-available']").innerText()) ?? "").trim();
+      const leased = ((await page.locator("[data-testid='lease-leased']").innerText()) ?? "").trim();
+
+      expect(
+        { rows, available, leased },
+        `the queue screen drew ${rows} mailboxes and stated ${JSON.stringify({ available, leased })}`,
+      ).toEqual({ rows: 2, available: "7", leased: "6" });
+    } finally {
+      await context.close().catch(() => {});
+    }
   });
 
   // SCR-08 / SC-RENDER-08: Agent Registration Page Live Render (D-31)

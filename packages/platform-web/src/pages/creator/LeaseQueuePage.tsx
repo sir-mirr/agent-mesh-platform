@@ -185,6 +185,7 @@ export function LeaseQueuePage() {
         <KpiCard
           label={t("lease.kpi.leased", "처리 중인 메시지")}
           value={isLoading ? "..." : isError ? t("common.unmeasured", "— 미측정") : String(leasedCount)}
+          valueTestId="lease-leased"
           subValue={isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("lease.down", "서버 연결 불가")) : t("lease.working", "작업자가 처리 중이며, 끝나지 않으면 5분 뒤 다시 배달됩니다")}
           color="var(--color-leased)"
           icon="⚙️"

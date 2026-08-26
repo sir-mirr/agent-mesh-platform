@@ -5900,7 +5900,13 @@ export const MUTATIONS: Mutation[] = [
     setIssuedKept(v);
   };`,
     suite: "test/fe-render.test.ts",
-    expect: ["SC-USER-D1", "kept it across a reload"],
+    // **The clause, not just the scenario.** SC-USER-D1 asserts eighteen
+    // things about this screen in one object, so its own name going red says
+    // only that something on the account page broke. `keptAfterReload` is the
+    // key this defect moves, and bun prints the changed key in the diff — so
+    // the entry is refused if the screen fails for one of the other
+    // seventeen reasons.
+    expect: ["SC-USER-D1", "keptAfterReload"],
   },
   {
     id: "admit-screen-composes-its-own-refusal",
@@ -9738,6 +9744,16 @@ export const MUTATIONS: Mutation[] = [
           : "That did not work. Try again later.",`,
     suite: "packages/platform-web/src/pages/platform/UserAdminPage.test.tsx",
     expect: ["draws the server's refusal when the reissue is answered rather than dropped"],
+  },
+  {
+    id: "the-queue-screen-totals-the-wrong-column",
+    defect:
+      "The waiting count is summed from the leased column. Both numbers come from the same rows, so the screen stays self-consistent and plausible while the tile an operator watches for backlog reports work already in progress — and a mailbox with nothing waiting and several messages in flight reads as busy rather than drained.",
+    file: "packages/platform-web/src/pages/creator/LeaseQueuePage.tsx",
+    from: "  const availableCount = queue.reduce((n, m) => n + m.pending, 0);",
+    to: "  const availableCount = queue.reduce((n, m) => n + m.leased, 0);",
+    suite: "test/fe-render.test.ts",
+    expect: ["states the queue depth as a total of the mailboxes it drew"],
   },
   {
     id: "the-group-listing-reads-one-tenant",
