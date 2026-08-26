@@ -9878,6 +9878,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-02", "shows the integrity verdict it was given"],
   },
   {
+    id: "a-revoked-capability-is-answered-as-removed-and-kept",
+    defect:
+      "The route answers `{ ok: true, action: 'deleted' }` and the row stays. The operator sees the control work, the screen redraws without the capability, and the account keeps reaching the route it was supposed to lose — until somebody checks the server rather than the answer.",
+    file: "packages/http/src/main.ts",
+    from: "  const removed = grants.revoke(agentsDb(), { subject, capability, scope })",
+    to: "  const removed = false",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["SC-USER-B5", "granting or revoking did not change what the account may do"],
+  },
+  {
+    id: "restoring-an-account-deactivates-it-again",
+    defect:
+      "One call site builds both paths from a boolean, so a collapsed branch sends every lifecycle change to `/deactivate`. The reactivate control then reports success — the route answers `200` for an account that is already deactivated — and the person stays locked out while the screen says they were restored.",
+    file: "packages/platform-web/src/api/users.ts",
+    from: '  const action = deactivated ? "deactivate" : "reactivate";',
+    to: '  const action = "deactivate";',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D5", "deactivates and restores an account"],
+  },
+  {
+    id: "the-create-action-floats-away-from-the-cards-edge",
+    defect:
+      "The submit control is settled against the card's padding by one declaration; without it the action drifts to the other end of its row and the four account facts no longer read as one form. `fe-codex` measured this exact mutation red and its restore green (mail #5897, #5901) before the tolerance was widened, which is what makes the widened check evidence rather than a looser green.",
+    file: "packages/platform-web/src/styles/index.css",
+    from: "  justify-content: flex-end;",
+    to: "  justify-content: flex-start;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "the create action is not settled against the card"],
+  },
+  {
     id: "an-unreadable-group-panel-says-there-are-no-groups",
     defect:
       "The panel has five readings and this gives it four: a read that never arrived is drawn with the words for a tenant that has no groups. The operator is told a fact about their mesh instead of about the connection, and D-145 exists because that is the answer people act on.",

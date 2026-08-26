@@ -36,6 +36,17 @@ import { MUTATIONS } from "./mutation-check.ts";
 
 const root = join(import.meta.dir, "..");
 
+/**
+ * **A letter in the number is still a number.** The id pattern read
+ * `SC-[A-Z0-9]+-\d+` and every `SC-USER-B1 … B5` and `SC-USER-D1 … D5` fell
+ * through it — ten scenarios, none of them counted, none of them reported as
+ * unpinned, and none of them named by the `unparsed` guard either, because
+ * that guard counted headers with the same pattern that could not see them.
+ * A denominator and its own tripwire derived from one expression agree with
+ * each other whatever they miss.
+ *
+ * Found when `fe-codex` landed `SC-USER-D4`/`D5` and the total did not move.
+ */
 /** Every suite that holds scenarios, found rather than listed. */
 const suites: string[] = [];
 for (const file of readdirSync(join(root, "test"))) {
@@ -49,9 +60,9 @@ const unparsed: string[] = [];
 
 for (const suite of suites) {
   const text = readFileSync(join(root, suite), "utf8");
-  const declared = [...text.matchAll(/\bit\([^\n]*\[SC-[A-Z0-9]+-\d+\]/g)].length;
+  const declared = [...text.matchAll(/\bit\([^\n]*\[SC-[A-Z0-9]+-[A-Z]*\d+\]/g)].length;
   let read = 0;
-  for (const m of text.matchAll(/\bit\(\s*"(\[(SC-[A-Z0-9]+-\d+)\][^"]*)"/g)) {
+  for (const m of text.matchAll(/\bit\(\s*"(\[(SC-[A-Z0-9]+-[A-Z]*\d+)\][^"]*)"/g)) {
     scenarios.push({ id: m[2]!, title: m[1]!, suite });
     read += 1;
   }
