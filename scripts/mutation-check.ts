@@ -10186,6 +10186,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["an entry names a suite this tree does not have"],
   },
   {
+    id: "the-suite-writes-to-a-real-state-directory",
+    defect:
+      "`scripts/test-state-dir.ts` is the reason a test run cannot open somebody's actual mesh: it puts `AGENT_MESH_STATE_DIR` under `tmpdir()` before any test file loads, and the database paths are computed at module load. Without it `stateDir()` answers the default, and a suite opens the deployment that is running — on this machine the standing hub, http and console. Nothing would go red: the tests pass, writing rows into a live deployment, and the first sign is data nobody put there.",
+    file: "scripts/test-state-dir.ts",
+    from: "if (!process.env.AGENT_MESH_STATE_DIR) {\n  process.env.AGENT_MESH_STATE_DIR = mkdtempSync(join(tmpdir(), \"agent-mesh-test-state-\"));\n}",
+    to: "if (!process.env.AGENT_MESH_STATE_DIR && false) {\n  process.env.AGENT_MESH_STATE_DIR = mkdtempSync(join(tmpdir(), \"agent-mesh-test-state-\"));\n}",
+    suite: "test/test-state-dir.test.ts",
+    expect: ["no state directory was set, so every path falls back to a real one"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
