@@ -1752,7 +1752,9 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval: `{ users: [{ github_login, github_id, status, requested_at }] }`. **`users`, not `pending`** — key proposals wait on `/api/v1/admin/keys/pending` and answer `{ keys }` (§ 9.2, below), so a caller asking whether anything is waiting could reach for either route, receive an honest empty array, and be reading the answer to the other question. Both said `pending` until `agent-mesh-local-pm` found the pair by counting routes that share a last segment. The shape was absent here, which is how the implementation and this table came to disagree without either being wrong — an unstated shape is filled in by whoever reads the code next. |
 | POST   | `/api/v1/admin/users`             | JWT\*  | `201`   | Admit a local account. Answers a generated password **once** — it is in this response and in no listing, read or log, and only its hash is stored. The account is created with `must_change_password`, so its first login lands on the change screen and can do nothing else until it passes. Gated on `user.admit`. |
 | POST   | `/api/v1/admin/users/{username}/password` | JWT\*  | `200`   | Issue a **new temporary password** for an existing local account and put it back behind the first-login gate (§ 9.2b). Behind `user.admit`. The value is returned once and is not readable again, as at admission. `404` when there is no such account — admission's `409` refuses because somebody is already there, this refuses because nobody is, and answering both the same way sends an operator looking for the wrong thing. Exists because admission was the only issuer and refuses an existing name, so an account whose holder forgot their password had no route at all. |
-| GET    | `/api/v1/admin/users`             | JWT\*  | `200`   | Local accounts, with no password material of any kind. Gated on `user.admit`. |
+| GET    | `/api/v1/admin/users`             | JWT\*  | `200`   | Local accounts, with no password material of any kind, each carrying `disabled_at` (§ 9.2c). Gated on `user.admit`. |
+| POST   | `/api/v1/admin/users/{username}/deactivate` | JWT\*  | `200`   | Deactivate a local account (§ 9.2c). Gated on `user.admit`. `404` when there is no such account; `409 SELF_DEACTIVATION` for the caller's own account; `409 PROTECTED_ACCOUNT` for the seeded administrator. |
+| POST   | `/api/v1/admin/users/{username}/reactivate` | JWT\*  | `200`   | Undo a deactivation (§ 9.2c). Same gate, same `404`. |
 | DELETE | `/api/v1/admin/agents/{identity}` | JWT\*  | `200`   | Identity teardown — a soft delete (§ 9.3). |
 | GET    | `/api/v1/admin/agent-types`       | JWT\*  | `200`   | The type registry (§ 10.3). |
 | POST   | `/api/v1/admin/agent-types`       | JWT\*  | `201`   | Add a type (§ 10.3). Create-only; `409` if it exists. |
@@ -1917,6 +1919,49 @@ pending.
 Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 `admin` role for a `JWT*` route) MUST return `403`.
 
+
+### 9.2c. Deactivating an account, and what it reaches
+
+An account is **deactivated**, never deleted (D-803). The reason is the two
+properties a removed row does not have: the act can be undone, and the account
+stays visible to whoever asks later what became of it.
+
+Deactivation MUST reach all three of these, or the account is only partly
+gone:
+
+| | |
+|---|---|
+| the password | A sign-in with the correct password is refused `403`. |
+| the sessions already issued | Refused from the next request, not at token expiry. |
+| the mesh identity | Its registry approval is withdrawn. |
+
+**The sessions are the half that is easy to miss.** A login refused while a
+cookie already in somebody's browser keeps answering is a locked front door
+with the back one open, and § 11.1 already forbids it in general terms: the
+token carries *who* and the store answers *what*, because the moment access is
+withdrawn is an incident and nobody can wait out a thirty-day cookie. An
+implementation MUST therefore read the account's state where it reads the
+session, not only where it checks a password.
+
+**The mesh identity is the half that comes back.** An approved registry row is
+re-registered on every hub connect by the provisioning backfill, so an account
+whose login was refused while its registry row stayed approved reappears as a
+mesh identity on the next restart — observed on a deployment where the person
+had been removed by hand, in a boot log reporting them as freshly provisioned.
+Reactivation restores the row, and with it the identity.
+
+**Refusing the deactivation is part of the contract**, because both refusals
+are states an operator can reach by accident: an operator MUST NOT deactivate
+their own account (`409 SELF_DEACTIVATION`), and no caller may deactivate the
+seeded administrator (`409 PROTECTED_ACCOUNT`), which is the account an
+installation is recovered through. Both are decided before the account is
+looked up, because neither depends on a row existing.
+
+**What a refused sign-in says depends on who is asking.** The refusal names the
+deactivation only after the password matched; a wrong password is answered
+exactly as it was before, because a route that distinguishes *deactivated* from
+*no such account* without a password is an account enumerator. The owner of the
+account learns why the door is shut; nobody else learns that the door exists.
 
 #### 9.1a. What `/api/v1/health` answers
 
@@ -2212,6 +2257,7 @@ its absence is `400` with a message naming the field.
 | `POST /api/v1/admin/agent-types` | `{ type, description, requires_key }` |
 | `POST /api/v1/admin/pairing-codes` | `{ identity, ttl_seconds? }` |
 | `POST /api/v1/admin/keys/{approve,deny,revoke}` | `{ fingerprint, reason? }` |
+| `POST /api/v1/admin/users/{username}/{deactivate,reactivate}` | none — the account is in the path |
 | `GET /api/v1/files` | `?path=` — required, `400` without it |
 
 **The key decisions are addressed by fingerprint, never by identity**, and that is
@@ -2928,6 +2974,17 @@ until expiry, and the one moment revocation matters is an incident, which is
 exactly when nobody can wait out a TTL.
 
 The token carries **who**; the store answers **what**.
+
+**A session with no local account reads as the default tenant on writes, by
+fallback rather than by assignment** (D-802). Approving a GitHub sign-up writes
+no tenant anywhere — `pending_approvals`, the GitHub account table and the
+agent registry have no such column — so the resolver finds nothing and answers
+the default. Nothing decided that tenant, and no route moves an account to
+another one afterwards; an implementation MUST NOT describe it to an operator
+as an assignment, because the difference is what tells them whether asking for
+a different tenant is possible. `/auth/me` reports `null` for the same session
+on purpose: *no local account* and *the default tenant* are different facts,
+and only the write path collapses them.
 
 A refusal MUST name the missing capability. An operator told which grant they
 lack can ask for that one; an operator told "forbidden" asks for everything.

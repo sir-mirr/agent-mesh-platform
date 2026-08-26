@@ -65,7 +65,7 @@ import { auditAgents } from './audit-agents'
 import { listChatAudits } from './chat-audits'
 import { parseSqliteUtc, readBehaviour } from './telemetry-behaviour'
 import { runShutdown } from './shutdown'
-import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, SEED_ADMIN_USERNAME, LEGACY_SEED_ADMIN_USERNAME, type DbMessage } from './db'
+import { insertMessage, getMessageHistory, getConversation, searchMessages, closeDb, upsertUser, getUser, isAllowedToMessage, createPendingApproval, getPendingApproval, listPendingApprovals, approveUser as dbApproveUser, denyUser as dbDenyUser, getDb, savePushSubscription, getPushSubscriptions, deletePushSubscription, verifyLocalUser, seedLocalUsers, setLocalPassword, mustChangePassword, admitLocalUser, issueTemporaryPassword, listLocalUsers, getLocalUser, setLocalUserDisabled, localUserIsDisabled, listRegistryAgents, getRegistryAgent, listRegistryAgentIds, listApprovedWebUserIds, isRegistryAgentApproved, upsertApprovedWebUser, SEED_ADMIN_USERNAME, LEGACY_SEED_ADMIN_USERNAME, type DbMessage } from './db'
 import webpush from 'web-push'
 import { renderAdminPage } from './ui/admin'
 import { renderAgentNotFoundPage, renderChatPage, renderPendingApprovalPage } from './ui/chat'
@@ -1292,7 +1292,7 @@ app.post('/auth/local', async (c) => {
    */
   const sentJson = (c.req.header('content-type') ?? '').includes('application/json')
   const wantsJson = sentJson || (c.req.header('accept') ?? '').includes('application/json')
-  const fail = (status: 400 | 401, error: string, redirect: string) =>
+  const fail = (status: 400 | 401 | 403, error: string, redirect: string) =>
     wantsJson ? c.json({ ok: false, error }, status) : c.redirect(redirect)
 
   // **A body that parses is not a body with fields.** `null` is valid JSON, and
@@ -1313,6 +1313,16 @@ app.post('/auth/local', async (c) => {
   }
 
   const user = await verifyLocalUser(username, password)
+  // **Named only to somebody who proved they own the account** (T-047). The
+  // refusal below deliberately does not distinguish a wrong password from an
+  // account that does not exist, because that difference is how accounts get
+  // enumerated. This one is answered *after* the password matched, so it costs
+  // an attacker the password and tells the actual owner why the door is shut —
+  // which is the whole reason deactivation is visible rather than silent.
+  if (user && localUserIsDisabled(username)) {
+    refusedSignIn(username, 'deactivated')
+    return fail(403, 'this account is deactivated', '/?error=deactivated')
+  }
   if (!user) {
     // Deliberately not distinguishing "no such user" from "wrong password",
     // which would turn this into a way to enumerate accounts. The log does not
@@ -1584,13 +1594,28 @@ app.get('/auth/me', async (c) => {
  * `set-cookie-survives.test.ts` exists to hold shut. So the function is reached
  * directly instead, with a context that carries the header and no `Request`.
  */
+/**
+ * A verified token whose subject may still be refused.
+ *
+ * **Deactivation has to reach the sessions already handed out** (T-047), and
+ * § 11.1 says why in general terms: the token carries *who*, the store answers
+ * *what*, because the moment access is withdrawn is an incident and nobody can
+ * wait out a thirty-day cookie. So the session is read here, once, and every
+ * route that asks who the caller is gets `null` for a deactivated account from
+ * the next request onwards.
+ */
+function sessionIsRefused(payload: JwtPayload | null): boolean {
+  return payload !== null && localUserIsDisabled(payload.github_login as string)
+}
+
 export async function extractJwt(c: any): Promise<JwtPayload | null> {
   // Try Authorization header first
   const authHeader = c.req.header('Authorization')
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
     try {
-      return await verifyJwt(token)
+      const payload = await verifyJwt(token)
+      return sessionIsRefused(payload) ? null : payload
     } catch {
       return null
     }
@@ -1600,7 +1625,8 @@ export async function extractJwt(c: any): Promise<JwtPayload | null> {
   const cookieToken = getCookie(c, 'mesh_token')
   if (cookieToken) {
     try {
-      return await verifyJwt(cookieToken)
+      const payload = await verifyJwt(cookieToken)
+      return sessionIsRefused(payload) ? null : payload
     } catch {
       return null
     }
@@ -3735,6 +3761,50 @@ app.post('/api/v1/admin/users', async (c) => {
  * The account goes back behind the first-login gate. An operator reading a
  * password out loud is handing over a way in for one login, not a password.
  */
+/**
+ * Deactivate a local account, and reactivate one (T-047, D-803).
+ *
+ * **The owner chose deactivation over a delete route** for two properties a
+ * removed row does not have: it can be undone, and the account stays visible
+ * to whoever asks later what happened to it.
+ *
+ * Gated on `user.admit` — the same boundary as admission, in the opposite
+ * direction. A second capability for the reverse of an act already gated is
+ * two declarations of one rule, and they only have to disagree once.
+ *
+ * Two refusals here are this repository's judgement, approved by the PM and
+ * left for the owner to reverse: an operator cannot deactivate themselves,
+ * and nobody can deactivate the seeded administrator, which is the account an
+ * installation recovers through. Both are answered before the account is
+ * looked up, because neither depends on a row existing.
+ */
+const setDeactivated = (disabled: boolean) => async (c: any) => {
+  const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
+  if (typeof actor !== 'string') return actor
+  const username = c.req.param('username')
+
+  if (disabled && username === actor) {
+    return c.json({ ok: false, code: 'SELF_DEACTIVATION', error: 'an operator cannot deactivate their own account' }, 409)
+  }
+  if (disabled && (username === SEED_ADMIN_USERNAME || username === LEGACY_SEED_ADMIN_USERNAME)) {
+    return c.json({ ok: false, code: 'PROTECTED_ACCOUNT', error: 'the seeded administrator is how an installation is recovered' }, 409)
+  }
+
+  if (!setLocalUserDisabled(username, disabled)) {
+    return c.json({ ok: false, error: `no local account named '${username}'` }, 404)
+  }
+  log.info(
+    `${actor} ${disabled ? 'deactivated' : 'reactivated'} ${username}`,
+    disabled ? 'user_deactivated' : 'user_reactivated',
+    { id: username, actor },
+  )
+  const user = getLocalUser(username)
+  return c.json({ ok: true, username, disabled_at: user?.disabled_at ?? null })
+}
+
+app.post('/api/v1/admin/users/:username/deactivate', setDeactivated(true))
+app.post('/api/v1/admin/users/:username/reactivate', setDeactivated(false))
+
 app.post('/api/v1/admin/users/:username/password', async (c) => {
   const actor = await requireCapability(c, CAPABILITY.USER_ADMIT)
   if (typeof actor !== 'string') return actor

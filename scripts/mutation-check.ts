@@ -521,8 +521,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The cookie path's `catch` returned the unverified payload instead of `null`, so a token nobody signed is a session. The header path has its own copy of the same three lines, which is why this is worth a mutation rather than a reading: one of the two can stop without the other.",
     file: "packages/http/src/main.ts",
-    from: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return null\n    }\n  }",
-    to: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return { github_id: 0, github_login: 'unverified', role: 'member' } as any\n    }\n  }",
+    from: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      const payload = await verifyJwt(cookieToken)\n      return sessionIsRefused(payload) ? null : payload\n    } catch {\n      return null\n    }\n  }",
+    to: "  const cookieToken = getCookie(c, 'mesh_token')\n  if (cookieToken) {\n    try {\n      const payload = await verifyJwt(cookieToken)\n      return sessionIsRefused(payload) ? null : payload\n    } catch {\n      return { github_id: 0, github_login: 'unverified', role: 'member' } as any\n    }\n  }",
     suite: "packages/http/src/pages-and-form.test.ts",
     expect: ["refuses a cookie that does not verify"],
   },
@@ -2995,8 +2995,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The form's failed sign-in stopped using one redirect for both causes, so `?error=` distinguishes an unknown username from a wrong password. That turns the landing page into an account enumerator: a caller learns which names exist without ever holding a credential.",
     file: "packages/http/src/main.ts",
-    from: "  const user = await verifyLocalUser(username, password)\n  if (!user) {",
-    to: "  const user = await verifyLocalUser(username, password)\n  if (!user) {\n    if (!getLocalUser(username)) return fail(401, 'no such user', '/?error=nouser')",
+    from: "    refusedSignIn(username, 'bad_credentials')\n    return fail(401, 'invalid username or password', '/?error=invalid')",
+    to: "    refusedSignIn(username, 'bad_credentials')\n    if (!getLocalUser(username)) return fail(401, 'no such user', '/?error=nouser')\n    return fail(401, 'invalid username or password', '/?error=invalid')",
     suite: "packages/http/src/pages-and-form.test.ts",
     expect: ["does not say which half of the credential was wrong"],
   },
@@ -4643,8 +4643,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The cookie branch verified without a `catch`, so a cookie that is not a token throws out of `extractJwt` and every authenticated route answers 500. A stale cookie in one browser then reads as the server being broken rather than as a session that expired.",
     file: "packages/http/src/main.ts",
-    from: "    try {\n      return await verifyJwt(cookieToken)\n    } catch {\n      return null\n    }",
-    to: "    return await verifyJwt(cookieToken)",
+    from: "    try {\n      const payload = await verifyJwt(cookieToken)\n      return sessionIsRefused(payload) ? null : payload\n    } catch {\n      return null\n    }",
+    to: "    const payload = await verifyJwt(cookieToken)\n    return sessionIsRefused(payload) ? null : payload",
     suite: "packages/http/src/pages-and-form.test.ts",
     expect: ["and refuses a cookie that does not verify, rather than throwing"],
   },
@@ -8418,8 +8418,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A reissue for a name nobody holds answered 409, the same as admission refusing a name somebody does. Two different absences with one answer sends an operator looking for the wrong thing \u2014 and it is how the missing reissue route hid: the attempt came back 409 and read as *already exists*.",
     file: "packages/http/src/main.ts",
-    from: "    return c.json({ ok: false, error: `no local account named '${username}'` }, 404)",
-    to: "    return c.json({ ok: false, error: `no local account named '${username}'` }, 409)",
+    from: "  if (temporary === null) {\n    return c.json({ ok: false, error: `no local account named '${username}'` }, 404)",
+    to: "  if (temporary === null) {\n    return c.json({ ok: false, error: `no local account named '${username}'` }, 409)",
     suite: "packages/http/src/admin-users-types.test.ts",
     expect: ["answers a different absence than admission does"],
   },
@@ -9804,6 +9804,36 @@ export const MUTATIONS: Mutation[] = [
     to: "                    {metric.value === null || metric.value === 0 ? (",
     suite: "test/fe-render.test.ts",
     expect: ["draws the six behavioural metrics and marks unread ones as unmeasured"],
+  },
+  {
+    id: "a-deactivated-account-keeps-its-live-session",
+    defect:
+      "Deactivation stops at the password and never reaches the sessions already handed out. The account cannot sign in again and the cookie in somebody's browser keeps working for up to thirty days — a locked front door with the back one open, and § 11.1 forbids exactly this: the moment access is withdrawn is an incident, and nobody can wait out a token's lifetime.",
+    file: "packages/http/src/main.ts",
+    from: "function sessionIsRefused(payload: JwtPayload | null): boolean {\n  return payload !== null && localUserIsDisabled(payload.github_login as string)\n}",
+    to: "function sessionIsRefused(_payload: JwtPayload | null): boolean {\n  return false\n}",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
+  },
+  {
+    id: "a-deactivated-account-keeps-its-mesh-identity",
+    defect:
+      "The registry row is left approved when the account is deactivated. Login is refused and the identity stays a participant, so the person still sends and receives — and the provisioning backfill re-registers them on the next hub connect, which is how somebody removed by hand came back in a boot log as freshly provisioned.",
+    file: "packages/http/src/db.ts",
+    from: "  db.prepare(`UPDATE agent_registry SET approved = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)\n    .run(disabled ? 0 : 1, username)",
+    to: "  db.prepare(`UPDATE agent_registry SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`)\n    .run(username)",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
+  },
+  {
+    id: "a-wrong-password-says-the-account-is-deactivated",
+    defect:
+      "The deactivation is named before the password is checked, so anyone can ask this route whether an account exists and get an answer — the enumeration the generic refusal below it was written to prevent. The owner of the account learns nothing new; everybody else learns the account list.",
+    file: "packages/http/src/main.ts",
+    from: "  if (user && localUserIsDisabled(username)) {",
+    to: "  if (localUserIsDisabled(username)) {",
+    suite: "packages/http/src/admin-users-types.test.ts",
+    expect: ["refuses the login, the live session, and the mesh identity, and gives all three back"],
   },
   {
     id: "the-group-listing-reads-one-tenant",

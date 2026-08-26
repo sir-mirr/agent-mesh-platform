@@ -115,6 +115,13 @@ export function getDb(): Database {
     if (!columns.some((c) => c.name === 'tenant')) {
       _db.exec(`ALTER TABLE local_users ADD COLUMN tenant TEXT NOT NULL DEFAULT 'default'`)
     }
+    // **Deactivated, not deleted** (T-047, D-803). The owner chose this over a
+    // delete route for two properties a removed row does not have: it can be
+    // undone, and it leaves the account visible to whoever asks later what
+    // happened to it. `NULL` is an account that may sign in.
+    if (!columns.some((c) => c.name === 'disabled_at')) {
+      _db.exec(`ALTER TABLE local_users ADD COLUMN disabled_at DATETIME`)
+    }
   }
 
   ensureAgentRegistrySchema(_db)
@@ -546,6 +553,8 @@ export type DbLocalUser = {
   must_change_password?: number
   /** Which tenant this account administers or belongs to. `default` until somebody says otherwise. */
   tenant?: string
+  /** When this account was deactivated, or `null` while it may sign in (T-047). */
+  disabled_at?: string | null
 }
 
 export function createLocalUser(username: string, passwordHash: string, displayName?: string, role?: string): DbLocalUser {
@@ -833,13 +842,51 @@ export async function admitLocalUser(input: {
 export function listLocalUsers(): Array<Pick<DbLocalUser, 'username' | 'display_name' | 'role' | 'created_at'> & {
   tenant: string
   must_change_password: number
+  disabled_at: string | null
 }> {
   return getDb()
     .prepare(
       `SELECT username, display_name, role, created_at,
               COALESCE(tenant, 'default') AS tenant,
-              COALESCE(must_change_password, 0) AS must_change_password
+              COALESCE(must_change_password, 0) AS must_change_password,
+              disabled_at
          FROM local_users ORDER BY username ASC`,
     )
     .all() as any
+}
+
+/**
+ * Deactivate or reactivate a local account, and move its mesh identity with it.
+ *
+ * **Both halves, or the account is only half gone.** An approved registry row
+ * is re-registered on every hub connect by the provisioning backfill, so an
+ * account whose login was refused while its registry row stayed approved came
+ * back as a mesh identity on the next restart — measured, as
+ * `people_provisioned`, on a deployment where the person had been removed by
+ * hand.
+ *
+ * Returns `false` when there is no such local account, so the caller answers
+ * `404` rather than reporting a change nothing made.
+ */
+export function setLocalUserDisabled(username: string, disabled: boolean): boolean {
+  const db = getDb()
+  const moved = db
+    .prepare(
+      disabled
+        ? `UPDATE local_users SET disabled_at = CURRENT_TIMESTAMP WHERE username = ?`
+        : `UPDATE local_users SET disabled_at = NULL WHERE username = ?`,
+    )
+    .run(username)
+  if (moved.changes === 0) return false
+  db.prepare(`UPDATE agent_registry SET approved = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(disabled ? 0 : 1, username)
+  return true
+}
+
+/** Whether this account has been deactivated (T-047). Unknown accounts are not. */
+export function localUserIsDisabled(username: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT disabled_at FROM local_users WHERE username = ?`)
+    .get(username) as { disabled_at: string | null } | null
+  return row?.disabled_at != null
 }

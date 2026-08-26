@@ -26,7 +26,7 @@ import { describe, expect, test } from "bun:test";
 process.env.JWT_SECRET ||= "admin-users-probe";
 
 const { app } = await import("./main.ts");
-const { upsertUser, approveUser, createPendingApproval, getLocalUser, getDb } = await import("./db");
+const { upsertUser, approveUser, createPendingApproval, getLocalUser, getDb, SEED_ADMIN_USERNAME } = await import("./db");
 const { signJwt } = await import("./auth");
 const { STORE_FILES, agentsSchema, grants, openAt, stateDir, tenants } = await import("@agent-mesh/store");
 const { CAPABILITY } = await import("@agent-mesh/contracts");
@@ -151,7 +151,11 @@ describe("admitting a person", () => {
     const row = listed.users.find((u: any) => u.username === username);
     expect(row).toBeDefined();
     expect(Object.keys(row).sort()).toEqual([
-      "created_at", "display_name", "must_change_password", "role", "tenant", "username",
+      // `disabled_at` joined this list with T-047 and belongs here for the same
+      // reason `must_change_password` does: it is a state an operator acts on.
+      // A hash would not, and a listing that names its columns cannot start
+      // carrying one by accident.
+      "created_at", "disabled_at", "display_name", "must_change_password", "role", "tenant", "username",
     ]);
 
     // Not recoverable from the row either — what is stored is a hash.
@@ -258,6 +262,113 @@ describe("admitting a person", () => {
     const typed = await post("/api/v1/admin/users", op.authorization,
       { username: uniq("odd"), display_name: 7, role: { not: "a string" } });
     expect(typed.status, "a role that is not even a string was admitted").toBe(400);
+  });
+});
+
+/** A request that carries a browser session rather than a bearer token. */
+const withSession = (method: string, path: string, cookie: string) =>
+  app.fetch(new Request(`http://aut-probe${path}`, { method, headers: { cookie } }));
+
+/** What the registry says about a person, which deactivation has to move too. */
+const registryApproval = (id: string): number | null =>
+  (getDb().prepare("SELECT approved FROM agent_registry WHERE id = ?").get(id) as { approved: number } | null)
+    ?.approved ?? null;
+
+describe("deactivating an account", () => {
+  /**
+   * **Deactivation, not deletion** (T-047, D-803). The owner's reason for
+   * choosing it is that it can be undone and that it leaves a record; a
+   * deleted row has neither property.
+   *
+   * The two halves are asserted together because either alone is a working
+   * account: a login that is refused while the session already in somebody's
+   * browser keeps answering is not a deactivated account, it is a locked front
+   * door with the back one open. § 11.1 already requires this — the token
+   * carries who and the store answers what, precisely so that revoking access
+   * does not have to wait out a token's lifetime.
+   */
+  test("refuses the login, the live session, and the mesh identity, and gives all three back", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    const username = uniq("leaver");
+    const created = await post("/api/v1/admin/users", op.authorization, { username });
+    expect(created.status).toBe(201);
+    const password = (await created.json()).temporary_password as string;
+
+    // A session in hand, established before the account is deactivated.
+    const signedIn = await post("/auth/local", "", { username, password });
+    expect(signedIn.status, "the new account could not sign in even before deactivation").toBe(200);
+    const cookie = (signedIn.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    expect(cookie).toContain("mesh_token");
+    expect((await withSession("GET", "/auth/me", cookie)).status, "the session did not work before deactivation").toBe(200);
+
+    const off = await post(`/api/v1/admin/users/${username}/deactivate`, op.authorization);
+    expect(off.status).toBe(200);
+
+    // ① The password that worked a moment ago is refused, and says why.
+    const refused = await post("/auth/local", "", { username, password });
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).error).toContain("deactivated");
+
+    // **A wrong password says what it said before.** Naming the state to
+    // somebody who cannot prove they own the account turns this route into a
+    // way to enumerate accounts, which the refusal above deliberately avoids
+    // by requiring the password first.
+    const wrong = await post("/auth/local", "", { username, password: "not-the-password" });
+    expect(wrong.status, "a wrong password revealed that the account exists").toBe(401);
+    expect((await wrong.json()).error).not.toContain("deactivated");
+
+    // ② The session already issued stops at the next request.
+    expect((await withSession("GET", "/auth/me", cookie)).status, "a session issued before deactivation kept working").toBe(401);
+
+    // ③ And the mesh identity goes with it, or the account is only half gone:
+    // an approved registry row is re-provisioned on every hub connect, which
+    // is how a removed person came back on the next restart.
+    expect(registryApproval(username), "the mesh identity stayed approved").toBe(0);
+
+    // Reactivation returns all three.
+    const on = await post(`/api/v1/admin/users/${username}/reactivate`, op.authorization);
+    expect(on.status).toBe(200);
+    const back = await post("/auth/local", "", { username, password });
+    expect(back.status, "the account could not sign in again after reactivation").toBe(200);
+    expect(registryApproval(username), "the mesh identity was not restored").toBe(1);
+  });
+
+  test("refuses a deactivation of somebody who is not there", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    const res = await post(`/api/v1/admin/users/${uniq("ghost")}/deactivate`, op.authorization);
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * **Two refusals that are this repository's judgement, approved by the PM
+   * and open to the owner reversing them.** Deactivating yourself is a door
+   * locked from the inside with the key still in it; deactivating the seeded
+   * administrator is the same act performed on the account an installation
+   * recovers through.
+   */
+  test("refuses to deactivate the caller or the seeded administrator", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    const self = await post(`/api/v1/admin/users/${op.login}/deactivate`, op.authorization);
+    expect(self.status, "an operator deactivated their own account").toBe(409);
+    expect((await self.json()).code).toBe("SELF_DEACTIVATION");
+
+    const seed = await post(`/api/v1/admin/users/${SEED_ADMIN_USERNAME}/deactivate`, op.authorization);
+    expect(seed.status, "the installation's recovery account was deactivated").toBe(409);
+    expect((await seed.json()).code).toBe("PROTECTED_ACCOUNT");
+  });
+
+  test("says which accounts are deactivated when it lists them", async () => {
+    const op = await holder(CAPABILITY.USER_ADMIT);
+    const username = uniq("listed");
+    expect((await post("/api/v1/admin/users", op.authorization, { username })).status).toBe(201);
+    const before = ((await (await get("/api/v1/admin/users", op.authorization)).json()).users as any[])
+      .find((u) => u.username === username);
+    expect(before?.disabled_at ?? null, "a new account was listed as already deactivated").toBeNull();
+
+    await post(`/api/v1/admin/users/${username}/deactivate`, op.authorization);
+    const after = ((await (await get("/api/v1/admin/users", op.authorization)).json()).users as any[])
+      .find((u) => u.username === username);
+    expect(typeof after?.disabled_at, "the listing does not say the account is deactivated").toBe("string");
   });
 });
 
