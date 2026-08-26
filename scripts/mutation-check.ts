@@ -11152,6 +11152,56 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-scenarios.test.ts",
     expect: ["enforces content redaction policy"],
   },
+  {
+    id: "the-queue-depth-counts-the-wrong-state",
+    defect:
+      "The mailbox total counted delivered messages instead of pending ones, so the depth an operator reads to tell an idle mesh from a backed-up one is `0` exactly when the queue is full. The console had the same defect against the same route from the other side — it summed a `depth` field nobody sends — and `0` is the answer that looks calm.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare(`SELECT count(*) AS n FROM messages WHERE status = 'pending'`)",
+    to: "    .prepare(`SELECT count(*) AS n FROM messages WHERE status = 'delivered'`)",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["queries mailbox queue depth"],
+  },
+  {
+    id: "a-created-group-lands-in-another-tenant",
+    defect:
+      "The group was written under a tenant the caller is not in. The route answers `201 created`, the row exists, and every screen the operator can reach lists their own tenant — so the group they just made is nowhere, and making it again answers 201 again.",
+    file: "packages/store/src/groups.ts",
+    from: "      .run(g.tenant ?? DEFAULT_TENANT, g.groupId, g.description ?? null, g.createdBy).changes > 0",
+    to: "      .run(\"other-tenant\", g.groupId, g.description ?? null, g.createdBy).changes > 0",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["creates a new agent group"],
+  },
+  {
+    id: "the-egress-revoke-deletes-the-other-direction",
+    defect:
+      "The revoke swapped its endpoints, so revoking `a -> b` deleted `b -> a`. § 12 rules are directional and that is their whole content: the send the operator just refused is still permitted, and one they never touched is now refused. The route answers `{ ok: true, action: 'deleted' }` to both.",
+    file: "packages/store/src/groups.ts",
+    from: "      .run(e.tenant ?? DEFAULT_TENANT, e.fromGroup, e.toGroup).changes > 0",
+    to: "      .run(e.tenant ?? DEFAULT_TENANT, e.toGroup, e.fromGroup).changes > 0",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["adds and deletes directional egress rule"],
+  },
+  {
+    id: "the-traffic-window-collapses-to-now",
+    defect:
+      "The per-tenant traffic window lost its offset, so the query asked for messages carried since the instant it ran and every tenant's figures read zero. An idle mesh and a broken window produce the same screen, which is why the scenario measures a delta rather than a reading: the number has to move when a message is sent.",
+    file: "packages/http/src/main.ts",
+    from: "        WHERE ts >= datetime('now', ?)",
+    to: "        WHERE ts >= datetime('now')",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["fetches tenant traffic and contains active default tenant"],
+  },
+  {
+    id: "a-connected-agent-is-never-marked-online",
+    defect:
+      "`mesh.connect` answered `ok` and never recorded the socket, so the hub believes nobody is connected. Presence is what `/health` reports and what delivery reads: every screen shows the mesh empty while messages are flowing through it, and the agent that just connected is told nothing is wrong.",
+    file: "packages/hub/src/rpc/connect.ts",
+    from: "  onlineAgents.set(identity, ws);",
+    to: "",
+    suite: "test/fe-scenarios.test.ts",
+    expect: ["queries hub liveness and dynamically tracks online agent connections"],
+  },
 ];
 
 /**

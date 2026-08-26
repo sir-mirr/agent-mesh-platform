@@ -52,6 +52,38 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     mesh?.stop();
   });
 
+  /**
+   * One message, produced the way messages are produced.
+   *
+   * Three scenarios here need a real message to look at — a queue depth, an
+   * audit body, a delivery — and the first version of each read whatever the
+   * tests above it happened to leave behind. That measures the order of the
+   * file: `SC-SCR13-02` came back with nothing in either arm and would have
+   * called an empty list withheld. Each seeds its own now, and the recipient
+   * never connects, so the message stays where it was put.
+   */
+  const seedMessage = async (label: string) => {
+    const sender = newKeyPair();
+    const recipient = newKeyPair();
+    const from = `${label}-sender`;
+    const to = `${label}-recipient`;
+    await provision(mesh.hub, from, "ai-claude", null, sender.publicKey);
+    await provision(mesh.hub, to, "ai-claude", null, recipient.publicKey);
+    for (const fingerprint of [sender.fingerprint, recipient.fingerprint]) {
+      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", Cookie: authCookie },
+        body: JSON.stringify({ fingerprint }),
+      });
+    }
+    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
+    await rpc.call("mesh.connect", { identity: from });
+    const sent = await rpc.call("mesh.send", { to, content: `${label} body` });
+    rpc.close();
+    await Bun.sleep(300);
+    return { from, to, sent };
+  };
+
   // GL-00 / SC-HARNESS-01: Harness Precondition & Provenance Guard
   it("[SC-PROV-01] verifies provenance and platform metadata", async () => {
     const res = await fetch(`${mesh.hub.url}/api/v1/capabilities`);
@@ -100,12 +132,26 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
 
   // SCR-07 / SC-SCR07-01: Mailbox Queue Depth monitoring
   it("[SC-SCR07-01] queries mailbox queue depth via admin endpoint", async () => {
+    // **`typeof data === "object"` is true of every JSON body this route could
+    // possibly return, and the field beside it — `queue` — is not one the route
+    // has ever emitted.** So the whole check was `status === 200`, on a screen
+    // whose reason for existing is telling an idle mesh from a backed-up one.
+    // The console had the same defect against the same route: it summed a
+    // `depth` field nobody sends and drew `0` either way.
+    const { to } = await seedMessage("queue-depth");
     const res = await fetch(`${mesh.http.url}/api/v1/admin/mailbox`, {
       headers: { Cookie: authCookie },
     });
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(Array.isArray(data.queue) || typeof data === "object").toBe(true);
+    const mine = (data.mailboxes ?? []).find((m: { identity?: string }) => m.identity === to) as
+      | { pending?: number }
+      | undefined;
+    expect(
+      { queued: data.total_queued, pending: mine?.pending ?? 0 },
+      `the queue the route reported: ${JSON.stringify(data)}`,
+    ).toEqual({ queued: expect.any(Number), pending: 1 });
+    expect(data.total_queued).toBeGreaterThanOrEqual(1);
   });
 
   // SCR-11 / SC-SCR11-01: Tenant Traffic list
@@ -117,6 +163,26 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(Array.isArray(data.tenants)).toBe(true);
+    // **The title says "contains active default tenant" and nothing here asked.**
+    // An empty array satisfied every line above.
+    //
+    // Asked as a delta, because this route is traffic and not the directory:
+    // its rows are `message_stats` grouped by tenant inside a window, so an
+    // empty answer is what an idle mesh looks like *and* what a collapsed
+    // window looks like, and no single reading can tell them apart. One message
+    // is sent and the tenant's `received` has to move — which is the sentence
+    // the screen above it makes.
+    const receivedByDefault = async () => {
+      const again = await fetch(`${mesh.http.url}/api/v1/admin/tenants`, {
+        headers: { Cookie: authCookie },
+      });
+      const rows = ((await again.json()).tenants ?? []) as Array<{ tenant?: string; received?: number }>;
+      return rows.find((r) => r.tenant === "default")?.received ?? 0;
+    };
+    const before = await receivedByDefault();
+    await seedMessage("tenant-traffic");
+    const after = await receivedByDefault();
+    expect({ moved: after > before }, `received went ${before} -> ${after}`).toEqual({ moved: true });
   });
 
   // SCR-04 / SC-SCR04-01 & SC-SCR04-02: Group Management
@@ -146,6 +212,18 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     expect(res.status).toBe(201);
     const data = await res.json();
     expect(data.ok).toBe(true);
+    // **201 and `ok: true` describe the answer, not the store.** A route that
+    // replies Created and writes nowhere the caller can read — into another
+    // tenant, say — passed this, and the group is missing from the only screen
+    // that would show it.
+    const listed = await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+      headers: { Cookie: authCookie },
+    });
+    const groups = (await listed.json()).groups as Array<{ group_id?: string }>;
+    expect(
+      { found: groups.some((g) => g.group_id === groupName) },
+      `the groups the route lists: ${JSON.stringify(groups.map((g) => g.group_id))}`,
+    ).toEqual({ found: true });
   });
 
   // SCR-12 / SC-SCR12-01: Egress ACL Matrix & Directional Policy
@@ -170,12 +248,26 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     const addData = await addRes.json();
     expect(addData.ok).toBe(true);
 
+    // **Both writes are read back, and the direction is part of the read.**
+    // The rule decides whether a send is refused, so a delete that removes the
+    // opposite direction leaves the mesh permitting what an operator has just
+    // revoked — and answers 200 while doing it. Neither status said anything
+    // about the store.
+    const rules = async () =>
+      ((await (await fetch(`${mesh.http.url}/api/v1/admin/groups`, {
+        headers: { Cookie: authCookie },
+      })).json()).egress ?? []) as Array<{ from_group?: string; to_group?: string }>;
+    const holds = (list: Array<{ from_group?: string; to_group?: string }>) =>
+      list.some((r) => r.from_group === srcGroup && r.to_group === targetGroup);
+    expect({ added: holds(await rules()) }).toEqual({ added: true });
+
     // Delete egress rule
     const delRes = await fetch(`${mesh.http.url}/api/v1/admin/groups/${srcGroup}/egress/${targetGroup}`, {
       method: "DELETE",
       headers: { Cookie: authCookie },
     });
     expect(delRes.status).toBe(200);
+    expect({ stillThere: holds(await rules()) }).toEqual({ stillThere: false });
   });
 
   // SCR-14 / SC-SCR14-01: RBAC Grant and Revoke
@@ -302,6 +394,22 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
       headers: { Cookie: authCookie },
     });
     expect(delRes.status).toBe(200);
+    // **200 answers "did the route run", not "is the agent gone".** A soft
+    // delete that wrote `NULL` into `deleted_at` — revoking the keys, leaving
+    // the identity live — passed this, and the operator has been told the agent
+    // is torn down. § 9.3 makes that irreversible in the other direction, so
+    // silence here is the expensive half.
+    //
+    // Asked of the teardown's own answer rather than of the console's list:
+    // `agent_registry` is this server's list of who can be addressed, an
+    // identity registered at the hub is not in it, and "the listing no longer
+    // names it" is therefore true before the teardown as well as after. The
+    // stamp is what the store actually writes.
+    const torn = await delRes.json();
+    expect(
+      { action: torn.action, stamped: typeof torn.deleted_at === "string" && torn.deleted_at.length > 0 },
+      `the teardown answered: ${JSON.stringify(torn)}`,
+    ).toEqual({ action: "soft-deleted", stamped: true });
   });
 
   // SCR-02 / SC-SCR02-01: Global KPI metrics aggregation
@@ -386,22 +494,7 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     // with a body in it — both arms came back empty and the check would have
     // called an empty list *withheld*. A scenario whose subject depends on the
     // order of the tests above it measures the order.
-    const sender = newKeyPair();
-    const recipient = newKeyPair();
-    await provision(mesh.hub, "redaction-sender", "ai-claude", null, sender.publicKey);
-    await provision(mesh.hub, "redaction-recipient", "ai-claude", null, recipient.publicKey);
-    for (const fingerprint of [sender.fingerprint, recipient.fingerprint]) {
-      await fetch(`${mesh.http.url}/api/v1/admin/keys/approve`, {
-        method: "POST",
-        headers: { "content-type": "application/json", Cookie: authCookie },
-        body: JSON.stringify({ fingerprint }),
-      });
-    }
-    const rpc = await connectRpc(mesh.hub, { kid: sender.fingerprint, privateKey: sender.privateKey });
-    await rpc.call("mesh.connect", { identity: "redaction-sender" });
-    await rpc.call("mesh.send", { to: "redaction-recipient", content: "a body only one of these readers may have" });
-    rpc.close();
-    await Bun.sleep(300);
+    const seeded_ = await seedMessage("redaction");
 
     const seeded = await fetch(`${mesh.http.url}/api/v1/audit/events`, {
       headers: { Cookie: authCookie },
@@ -414,34 +507,34 @@ describe("Frontend E2E Scenarios (COVERAGE_INVENTORY.md)", () => {
     });
     expect(limited.status).toBe(200);
     const limitedBody = await limited.json();
-    // **Where the bodies actually are.** `shape()` nests the payload under
-    // `payload`, and a message's text under `payload.message.content` — so a
-    // check reading `event.content` finds nothing and calls a leak withheld.
-    // This walks for the key the server's own `stripContent` walks for.
-    const contents = (payload: any): string[] => {
-      const found: string[] = [];
-      const walk = (value: any): void => {
-        if (Array.isArray(value)) return value.forEach(walk);
-        if (!value || typeof value !== "object") return;
-        for (const [key, inner] of Object.entries(value)) {
-          if (key === "content" && typeof inner === "string") found.push(inner);
-          else walk(inner);
-        }
-      };
-      walk(Array.isArray(payload) ? payload : payload.events ?? []);
-      return found;
+    // **The same event in both arms, not every body on the page.** `shape()`
+    // nests the payload under `payload` and a message's text under
+    // `payload.message.content`, so a check reading `event.content` finds
+    // nothing and calls a leak withheld. Aggregating across events has the
+    // other failure: a readable body from one event and a withheld one from
+    // another satisfy both halves while neither is about the message this
+    // scenario made. Found by fe-codex reading the first version.
+    const seededContents = (payload: any): string[] => {
+      const events = (Array.isArray(payload) ? payload : payload.events ?? []) as Array<{
+        payload?: { message?: { from?: string; to?: string; content?: unknown } };
+      }>;
+      return events
+        .filter((e) => e.payload?.message?.from === seeded_.from && e.payload?.message?.to === seeded_.to)
+        .map((e) => e.payload!.message!.content)
+        .filter((c): c is string => typeof c === "string");
     };
-    const full = contents(seededBody);
-    const held = contents(limitedBody);
-    const withheld = (c: string) => /^\[content withheld/i.test(c);
+    const full = seededContents(seededBody);
+    const held = seededContents(limitedBody);
+    const unique = (list: string[]) => [...new Set(list)].sort();
     expect(
       {
-        measured: held.length > 0,
-        readable: full.some((c) => !withheld(c)),
-        allWithheld: held.every(withheld),
+        seen: full.length > 0,
+        sameEvents: held.length === full.length,
+        admin: unique(full),
+        withheld: held.length > 0 && held.every((c) => c.startsWith("[content withheld")),
       },
       `admin=${JSON.stringify(full)} metadataOnly=${JSON.stringify(held)}`,
-    ).toEqual({ measured: true, readable: true, allWithheld: true });
+    ).toEqual({ seen: true, sameEvents: true, admin: ["redaction body"], withheld: true });
   });
 
   // SCR-09 / SC-SCR09-01: Service Infrastructure Liveness & Online Sockets
