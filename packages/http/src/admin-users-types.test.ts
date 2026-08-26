@@ -265,10 +265,6 @@ describe("admitting a person", () => {
   });
 });
 
-/** A request that carries a browser session rather than a bearer token. */
-const withSession = (method: string, path: string, cookie: string) =>
-  app.fetch(new Request(`http://aut-probe${path}`, { method, headers: { cookie } }));
-
 /** What the registry says about a person, which deactivation has to move too. */
 const registryApproval = (id: string): number | null =>
   (getDb().prepare("SELECT approved FROM agent_registry WHERE id = ?").get(id) as { approved: number } | null)
@@ -295,11 +291,19 @@ describe("deactivating an account", () => {
     const password = (await created.json()).temporary_password as string;
 
     // A session in hand, established before the account is deactivated.
+    //
+    // **Carried as a bearer token, not as the cookie the browser would send.**
+    // A `Request` built in this process keeps a `cookie` header here and loses
+    // it on the runtime CI runs — measured four ways in
+    // `set-cookie-survives.test.ts`, which forbids the header in this package
+    // for that reason. The token is the same session material either way, and
+    // `extractJwt` reads both paths through one check.
     const signedIn = await post("/auth/local", "", { username, password });
     expect(signedIn.status, "the new account could not sign in even before deactivation").toBe(200);
-    const cookie = (signedIn.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
-    expect(cookie).toContain("mesh_token");
-    expect((await withSession("GET", "/auth/me", cookie)).status, "the session did not work before deactivation").toBe(200);
+    expect(signedIn.headers.get("set-cookie") ?? "", "the sign-in handed back no session").toContain("mesh_token");
+    const local = getLocalUser(username)!;
+    const session = `Bearer ${await signJwt({ github_id: -local.id, github_login: username, role: local.role })}`;
+    expect((await get("/auth/me", session)).status, "the session did not work before deactivation").toBe(200);
 
     const off = await post(`/api/v1/admin/users/${username}/deactivate`, op.authorization);
     expect(off.status).toBe(200);
@@ -318,7 +322,7 @@ describe("deactivating an account", () => {
     expect((await wrong.json()).error).not.toContain("deactivated");
 
     // ② The session already issued stops at the next request.
-    expect((await withSession("GET", "/auth/me", cookie)).status, "a session issued before deactivation kept working").toBe(401);
+    expect((await get("/auth/me", session)).status, "a session issued before deactivation kept working").toBe(401);
 
     // ③ And the mesh identity goes with it, or the account is only half gone:
     // an approved registry row is re-provisioned on every hub connect, which

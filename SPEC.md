@@ -2257,7 +2257,8 @@ its absence is `400` with a message naming the field.
 | `POST /api/v1/admin/agent-types` | `{ type, description, requires_key }` |
 | `POST /api/v1/admin/pairing-codes` | `{ identity, ttl_seconds? }` |
 | `POST /api/v1/admin/keys/{approve,deny,revoke}` | `{ fingerprint, reason? }` |
-| `POST /api/v1/admin/users/{username}/{deactivate,reactivate}` | none — the account is in the path |
+| `POST /api/v1/admin/users/{username}/deactivate` | none — the account is in the path |
+| `POST /api/v1/admin/users/{username}/reactivate` | none — the account is in the path |
 | `GET /api/v1/files` | `?path=` — required, `400` without it |
 
 **The key decisions are addressed by fingerprint, never by identity**, and that is
