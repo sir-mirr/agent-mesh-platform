@@ -12592,6 +12592,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/mesh-mail.test.ts",
     expect: ["the client did not register, so there is no fingerprint to compare"],
   },
+  {
+    id: "a-pin-no-run-can-plant-is-counted-as-one-a-night-can-answer",
+    defect:
+      "The count a night is measured against goes back to every pinned scenario, retired entries included. A retired entry carries no `from`, so no run ticks it and no log observes the scenario resting on it — and the nightly's summary then fails on the nights when everything worked. A summary that cries wolf is one somebody switches off, which costs what the silence costs.",
+    file: "scripts/scenario-anchors.ts",
+    from: "const provableIds = ids.filter((id) => (proofs.get(id) ?? []).some((entry) => plantable.has(entry)));",
+    to: "const provableIds = ids.filter((id) => proofs.has(id));",
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["the summary would fail on a perfect night"],
+  },
 ];
 
 /**

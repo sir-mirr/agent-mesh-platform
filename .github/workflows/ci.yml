@@ -340,10 +340,16 @@ jobs:
           for log in $logs; do args="$args --from-log $log"; done
           bun scripts/scenario-anchors.ts $args | tee /tmp/observed.txt
           bun scripts/scenario-anchors.ts $args --json > /tmp/observed.json
-          pinned=$(bun -e 'const j = await Bun.file("/tmp/observed.json").json(); console.log(j.pinned)')
+          # `provable`, not `pinned`. A scenario whose only entry is retired
+          # carries no `from`, so no run can tick it and no night can observe
+          # it — measured before this job ever ran: a simulated perfect night
+          # answered 173 against a pinned count of 174, which would have failed
+          # this step every green night. A summary that cries wolf is one
+          # somebody switches off.
+          provable=$(bun -e 'const j = await Bun.file("/tmp/observed.json").json(); console.log(j.provable)')
           seen=$(bun -e 'const j = await Bun.file("/tmp/observed.json").json(); console.log(j.observed)')
-          echo "pinned $pinned · observed $seen · shards green: $SHARDS_GREEN"
-          if [ "$SHARDS_GREEN" = "true" ] && [ "$seen" -lt "$pinned" ]; then
-            echo "every shard passed and $((pinned - seen)) pinned scenario(s) were never observed — the pin does not reach the entry that claims it"
+          echo "provable $provable · observed $seen · shards green: $SHARDS_GREEN"
+          if [ "$SHARDS_GREEN" = "true" ] && [ "$seen" -lt "$provable" ]; then
+            echo "every shard passed and $((provable - seen)) scenario(s) a run can answer for were never observed — the pin does not reach the entry that claims it"
             exit 1
           fi

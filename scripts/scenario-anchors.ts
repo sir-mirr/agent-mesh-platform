@@ -171,6 +171,26 @@ const staleExemptions = Object.keys(NOT_A_PRODUCT_GUARD).flatMap((id) => {
   if (proofs.has(id)) return [`${id}: pinned by ${(proofs.get(id) ?? []).join(", ")} — the exemption is wrong`];
   return [];
 });
+/**
+ * Pinned by an entry a run could actually plant.
+ *
+ * **A retired entry pins nothing a night can confirm.** `retired` keeps the
+ * reasoning where somebody looking for that defect will find it, and it carries
+ * no `from` — so no run ever ticks it, and a scenario whose only pin is retired
+ * can never be observed however green the night was. `SC-INVENT-01` is in
+ * exactly that state, and comparing `observed` against `pinned` would have
+ * failed the nightly's summary on every perfect night: 173 against 174.
+ *
+ * That is the difference this file exists to draw, one level in. `pinned` is
+ * the claim; this is the part of the claim a run can answer.
+ */
+const plantable = new Set(MUTATIONS.filter((m) => m.from).map((m) => m.id));
+const provableIds = ids.filter((id) => (proofs.get(id) ?? []).some((entry) => plantable.has(entry)));
+/** Pinned, and only by entries no run can plant. */
+const pinnedOnlyByRetired = ids.filter(
+  (id) => proofs.has(id) && !(proofs.get(id) ?? []).some((entry) => plantable.has(entry)),
+);
+
 /** Pinned by an entry some run in the given log recorded as caught. */
 const seen = observed === null
   ? null
@@ -190,6 +210,11 @@ if (process.argv.includes("--json")) {
       // denominator with no way to ask whether it was complete.
       unparsed,
       ambiguous,
+      // What a night can answer. `pinned` counts a scenario whose only entry
+      // is retired; no run can tick that entry, so a summary comparing an
+      // observation against `pinned` fails on a perfect night.
+      provable: provableIds.length,
+      pinnedOnlyByRetired,
       observed: seen?.length ?? null,
     },
     null,
@@ -208,7 +233,11 @@ if (process.argv.includes("--json")) {
     console.log("\nnot a product guard:");
     for (const id of exempt) console.log(`  ${id} — ${NOT_A_PRODUCT_GUARD[id]}`);
   }
-  if (seen !== null) console.log(`observed caught in that log: ${seen.length}`);
+  if (pinnedOnlyByRetired.length) {
+    console.log("\npinned only by an entry no run can plant:");
+    for (const id of pinnedOnlyByRetired) console.log(`  ${id} — ${(proofs.get(id) ?? []).join(", ")} carries no \`from\``);
+  }
+  if (seen !== null) console.log(`observed caught in that log: ${seen.length} of ${provableIds.length} a run can answer for`);
   if (unparsed.length) {
     console.log("\nheaders this parse could not read:");
     for (const line of unparsed) console.log(`  ${line}`);

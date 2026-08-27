@@ -152,7 +152,7 @@ describe("the inventory of this repository", () => {
     const proc = Bun.spawnSync(["bun", SCRIPT, "--json"], { stdout: "pipe", stderr: "pipe" });
     const json = JSON.parse(proc.stdout.toString());
     expect(Object.keys(json).sort()).toEqual(
-      ["ambiguous", "exempt", "observed", "pinned", "scenarios", "staleExemptions", "unparsed", "unpinned"],
+      ["ambiguous", "exempt", "observed", "pinned", "pinnedOnlyByRetired", "provable", "scenarios", "staleExemptions", "unparsed", "unpinned"],
     );
     expect(
       { unparsed: json.unparsed, ambiguous: json.ambiguous, stale: json.staleExemptions },
@@ -219,5 +219,59 @@ describe("a night read out of its shards", () => {
       { one: observed(one), both: observed(both) },
       "a second shard's log added nothing, so a night would be read from an eighth of itself",
     ).toEqual({ one: 1, both: 2 });
+  });
+});
+
+
+/**
+ * What a night can answer for, against what is merely pinned.
+ *
+ * The nightly's summary compares an observation to a count, and picking the
+ * wrong count makes it fail on the nights when everything worked. A scenario
+ * whose only entry is `retired` carries no `from`: no run can plant it, no log
+ * can tick it, and it is pinned in the sense that somebody wrote down why —
+ * which is not the sense a run can confirm.
+ */
+describe("the count a night is measured against", () => {
+  /** Every entry a run could actually plant, read out of a child. */
+  const plantable: string[] = (() => {
+    const dump =
+      'const { MUTATIONS } = await import("./scripts/mutation-check.ts");' +
+      "console.log(JSON.stringify(MUTATIONS.filter((m) => m.from).map((m) => m.id)));";
+    const proc = Bun.spawnSync(["bun", "-e", dump], { cwd: join(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
+    const said = proc.stdout.toString();
+    if (!said.trim()) throw new Error(`the manifest would not load: ${proc.stderr.toString().slice(0, 400)}`);
+    return JSON.parse(said);
+  })();
+
+  const inventory = (extra: string[] = []) => {
+    const proc = Bun.spawnSync(["bun", SCRIPT, "--json", ...extra], { stdout: "pipe", stderr: "pipe" });
+    return JSON.parse(proc.stdout.toString());
+  };
+
+  test("a perfect night observes every scenario a run can answer for", () => {
+    // The invariant the nightly's summary rests on. Measured here rather than
+    // discovered in CI: with `pinned` on the right-hand side this comparison
+    // came out 173 against 174 and would have failed every green night.
+    const dir = mkdtempSync(join(tmpdir(), "scenario-anchors-perfect-"));
+    trees.push(dir);
+    const log = join(dir, "perfect.log");
+    writeFileSync(log, plantable.map((id) => `✓ ${id}`).join("\n") + "\n");
+    const said = inventory(["--from-log", log]);
+    expect(plantable.length, "no plantable entries were read, so the log below ticks nothing").toBeGreaterThan(100);
+    expect(
+      { observed: said.observed, provable: said.provable },
+      "a night in which every entry was caught still leaves scenarios unobserved — the summary would fail on a perfect night",
+    ).toEqual({ observed: said.provable, provable: said.provable });
+  });
+
+  test("names the scenarios no run can answer for, rather than counting them as answered", () => {
+    const said = inventory();
+    expect(said.pinned - said.provable, "the retired-only pins are not accounted for")
+      .toBe(said.pinnedOnlyByRetired.length);
+    // Not asserted as empty: a retired entry is how the reasoning behind a
+    // defect stays readable after the code moved, and a scenario left resting
+    // on one is a fact to see rather than a rule to break.
+    expect(Array.isArray(said.pinnedOnlyByRetired)).toBe(true);
   });
 });
