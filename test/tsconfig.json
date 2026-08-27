@@ -29,6 +29,9 @@
     // The coverage floor. It imports node builtins and nothing else, for the
     // same reason as the line above.
     "../scripts/coverage.ts",
+    // The nightly-freshness reader. Node builtins and Bun globals only, same
+    // reason as the two above.
+    "../scripts/nightly-freshness.ts",
     // The sentence both mailbox hooks end on. `mailbox-hooks.test.ts` imports
     // it rather than restating it, for the same reason the hooks do: a second
     // copy is a second thing that can disagree.

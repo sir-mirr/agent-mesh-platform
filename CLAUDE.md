@@ -312,8 +312,17 @@ nothing; the fixture was given a deactivated account instead.
 ### Read the nightly before starting work
 
 ```bash
+bun run nightly                             # did it run at all, and what did it conclude
 gh issue list --label nightly-mutation      # a red shard files one, with the run URL
 ```
+
+**In that order, because an empty issue list has two meanings.** It is what a
+quiet night looks like and it is also what a schedule that stopped firing looks
+like — and the second takes every anchor in the manifest with it while
+reporting nothing wrong. `bun run nightly` asks the runs instead of the issues:
+it exits non-zero when the last scheduled run is red, older than a day and a
+half, or absent altogether, and exits 2 rather than silently when it could not
+reach GitHub at all.
 
 **A nightly nobody reads is not a check.** This is not a hypothetical here: main
 CI was red for fifteen consecutive pushes while three agents worked, because

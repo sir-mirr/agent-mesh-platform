@@ -12300,6 +12300,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/anchor-coverage.test.ts",
     expect: ["prose about code was read as code"],
   },
+  {
+    id: "the-nightly-may-be-a-fortnight-gone-and-still-current",
+    defect:
+      "The age a scheduled run is allowed to reach goes an order of magnitude past the schedule that produces it. A nightly that stopped firing two weeks ago still reads as current, and the empty issue list it leaves behind reads as a quiet fortnight — 1181 anchors measured by nothing, reported as nothing wrong. The same shape as the six floors set below their subject that this repository swept last week.",
+    file: "scripts/nightly-freshness.ts",
+    from: "export const MAX_AGE_HOURS = 36;",
+    to: "export const MAX_AGE_HOURS = 360;",
+    suite: "test/nightly-freshness.test.ts",
+    expect: ["hours past the limit was accepted as current"],
+  },
+  {
+    id: "the-freshest-run-is-whichever-github-returned-first",
+    defect:
+      "The verdict is taken from the first run in the list rather than the newest in it. gh answers newest-first today, so nothing shows — until the order changes or a re-run lands out of sequence, and then a stale run decides for a repository whose nightly is fine, or the reverse.",
+    file: "scripts/nightly-freshness.ts",
+    from: "  const newest = [...runs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]!;",
+    to: "  const newest = runs[0]!;",
+    suite: "test/nightly-freshness.test.ts",
+    expect: ["the older of two runs decided the verdict"],
+  },
+  {
+    id: "a-nightly-that-concluded-failure-reads-as-a-quiet-night",
+    defect:
+      "Every conclusion that is not success is read as success. A red nightly then answers green, and the shard issues it filed are the only trace left — which is exactly the trace this reader exists to stop depending on.",
+    file: "scripts/nightly-freshness.ts",
+    from: '  if (newest.conclusion === "success") return { kind: "green", ran: newest.createdAt };',
+    to: '  if (newest.conclusion !== null) return { kind: "green", ran: newest.createdAt };',
+    suite: "test/nightly-freshness.test.ts",
+    expect: ["a nightly that concluded failure was read as a quiet night"],
+  },
 ];
 
 /**
