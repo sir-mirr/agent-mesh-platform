@@ -265,6 +265,14 @@ bun test packages/
 bun test test/
 ```
 
+`bun scripts/verify.ts` runs those three and two more: the coverage ratchet
+(`coverage-floor.json`, held at 100% of functions and lines) and the scenario
+inventory. The inventory step fails only when its own two readings disagree —
+a registration it cannot parse, a phrase naming two scenarios, an exemption
+that has gone stale. The unpinned list stays a report: an unpinned scenario is
+work somebody has to do, and failing on it would turn the tree red for whoever
+writes the next one.
+
 When the change adds or alters a **checker** — a test, a linter, a scope guard —
 also add its mutation to `scripts/mutation-check.ts` and run that entry:
 
@@ -285,6 +293,21 @@ A full pass is one suite per entry, seventy-two of which name the browser suite,
 so it is hours and belongs on a clock rather than in front of a change. CI runs
 `--anchors` and `--self-check` on every push and the whole manifest nightly, in
 eight shards.
+
+**`expect` is checked statically too.** `test/mutation-expect-phrases.test.ts`
+refuses a phrase that appears nowhere — in the entry's suite, in the tree, or in
+`@agent-mesh/contracts`, whose `E2E_SCENARIOS` supply the ids some entries pin.
+A renamed title otherwise leaves an entry expecting the old one, and the only
+thing that says so is the night its shard runs.
+
+**"Not caught" can mean the fixture cannot express the defect.** Before treating
+it as a guard that stopped holding, ask what the check is counting. `SC-USER-D4`
+asserts the reissue control has one appearance down the column, and every row it
+drew was an active account with the same role — a set of one, whose distinct
+count is 1 as arithmetic rather than as a claim about the screen. Two mutations
+were planted and neither was caught, because neither axis varied. Retargeting
+the mutation would have turned the entry green while leaving the check saying
+nothing; the fixture was given a deactivated account instead.
 
 ### Read the nightly before starting work
 
