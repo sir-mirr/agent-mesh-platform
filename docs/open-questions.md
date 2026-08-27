@@ -171,7 +171,28 @@ throttling, a background process, the sleep/wake cycle the machine went through
 at 12:45, or something else — is left here rather than pursued, because the
 time it would take is time the work costs more than the answer is worth today.
 
-**What would settle it** is a measurement nobody has taken yet: the same suite,
+**One mechanism is measured now, and it is not playwright's pipe.** `bun test`
+kills every subprocess it spawned when a test times out, and prints one line
+about it: `killed N dangling processes`. Measured directly on 2026-08-27, with
+a fixture holding two children — one of them `unref`ed, which does not help:
+a two-second budget slept through took both, and every test after it ran
+against nothing.
+
+The services a suite starts are those subprocesses. So one slow scenario does
+not merely lose its own navigation; it takes the mesh down mid-file, and the
+hundred failures after it are requests against a port nobody is listening on.
+That does not answer *why this host has slow periods* — it answers *why one
+slow scenario reddens a hundred*, which is the half that costs measurement.
+
+Two things followed, both landed. `readVerdict` reads that line as
+**inconclusive rather than as a finding** when the expected failure is absent:
+a mutation run met the reaper, came back with thirty reds, and the entry it was
+measuring was written down as *not caught* when it had never been reached. And
+every service the harness spawns now says on its way out whether the stop came
+from outside, because a shutdown it was told to do and one it chose leave the
+same two lines in a log.
+
+**What would settle the rest** is a measurement nobody has taken yet: the same suite,
 same commit, on an otherwise idle host, sampled across a day with `powermetrics`
 or equivalent beside it. Written down so the next person finds a method rather
 than a mood.
