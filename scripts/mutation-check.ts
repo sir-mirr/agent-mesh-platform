@@ -1741,6 +1741,46 @@ export const MUTATIONS: Mutation[] = [
     expect: ["the holder takes its marker with it"],
   },
   {
+    id: "the-smallest-reap-reads-as-a-clean-run",
+    defect:
+      "the rule matched only `dangling processes`, so `killed 1 dangling process` — bun's own singular — read as a run that kept its children. The one case where a single service was taken is the one where the rest of the file looks most like an ordinary red.",
+    file: "scripts/reaped.ts",
+    from: "const REAPER = /killed (\\d+) dangling process/g;",
+    to: "const REAPER = /killed (\\d+) dangling processes/g;",
+    suite: "test/reaped.test.ts",
+    expect: ["the singular is the same event, and one process is still a reap"],
+  },
+  {
+    id: "the-size-of-a-reap-is-not-counted",
+    defect:
+      "each reaper line counted as one process however many it took, so a run that lost eight services across three files reported three. The number is what tells a nick from a wipe-out, and it was the wrong number in the direction that reads as harmless.",
+    file: "scripts/reaped.ts",
+    from: "    processes += Number(match[1]);",
+    to: "    processes += 1;",
+    suite: "test/reaped.test.ts",
+    expect: ["several files each reaping is counted as several, and the losses summed"],
+  },
+  {
+    id: "a-clean-log-answers-a-shell-the-way-a-reaped-one-does",
+    defect:
+      "the command answered `0` for a log with no reap in it, which is the answer meaning *this run measured nothing*. CI's coverage step retries on that answer, so an honest failure would have been run a second time and reported as a machine problem — the exact inversion this reading exists to prevent.",
+    file: "scripts/reaped.ts",
+    from: '    out("reaped: no — the runner kept its children for the whole run");\n    return 1;',
+    to: '    out("reaped: no — the runner kept its children for the whole run");\n    return 0;',
+    suite: "test/reaped.test.ts",
+    expect: ["0 for a reaped log, 1 for a clean one, 2 for one it could not read"],
+  },
+  {
+    id: "a-block-step-is-read-as-its-pipe-character",
+    defect:
+      "the workflow reader took one line per `run:` key, which for a block step is `|`. Every command inside a multi-line step was invisible to the drift check, so a verify step CI performs in a block read as *CI does not run this*, and a step CI stopped running would have read the same way.",
+    file: "test/ci-covers-verify.test.ts",
+    from: '    if (rest !== "" && !/^[|>][-+]?$/.test(rest)) {',
+    to: '    if (rest !== "") {',
+    suite: "test/ci-covers-verify.test.ts",
+    expect: ["reads the commands inside a block step, not the pipe character"],
+  },
+  {
     id: "a-child-verdict-loses-the-stream-it-failed-on",
     defect:
       "`runChild` returned only the stream the child succeeded on, so a test that failed and printed its reason on stderr came back with an exit code and no evidence. That is the pipe defect this helper replaced, reintroduced one field in: the verdict survives and the reason for it does not.",
@@ -11144,8 +11184,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The workflow went back to a fixed floor, at a number no tree can fall below. From outside — a green check named `Coverage floor` — it is indistinguishable from the real one, which is the exact shape of `lint-preview.ts`: a good check nobody ran, and a manifest that decayed like the documentation it replaced. D-749's condition reopens the track automatically or it does not reopen it, and automatic means CI.",
     file: ".github/workflows/ci.yml",
-    from: "        run: bun scripts/coverage.ts --ratchet coverage-floor.json",
-    to: "        run: bun scripts/coverage.ts --floor 0",
+    from: "          bun scripts/coverage.ts --ratchet coverage-floor.json 2>&1 | tee /tmp/coverage-1.log && exit 0",
+    to: "          bun scripts/coverage.ts --floor 0 2>&1 | tee /tmp/coverage-1.log && exit 0",
     suite: "test/coverage-floor.test.ts",
     expect: ["CI does not run the ratchet, or runs it against a record below D-751's minimum"],
   },
@@ -12311,8 +12351,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A run whose services the test runner killed under it is read as a statement about a guard. bun reaps the subprocesses it spawned when a test times out, so one slow scenario takes the mesh down and thirty later ones fail to connect — and the entry being measured is recorded as not caught when it was never reached. Measured once for real: a morning in the wrong file and two wrong attributions.",
     file: "scripts/mutation-verdict.ts",
-    from: '  if (!expected && /killed \\d+ dangling process/.test(output)) {',
-    to: '  if (false && /killed \\d+ dangling process/.test(output)) {',
+    from: "  const reaped = !expected ? reapedMidRun(output) : null;",
+    to: "  const reaped = null as ReturnType<typeof reapedMidRun>;",
     suite: "test/mutation-verdict.test.ts",
     expect: ["a run that lost its services was read as a finding about a guard"],
   },
@@ -12321,8 +12361,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The reap silences a run even when the expected failure is in its output. A guard that objected and then had the runner tidy up behind it is thrown away as unmeasured, so a caught mutation is re-measured for ever and never believed — the same shape as the hook and network rules, which are read only when the expected message is absent.",
     file: "scripts/mutation-verdict.ts",
-    from: '  if (!expected && /killed \\d+ dangling process/.test(output)) {',
-    to: '  if (/killed \\d+ dangling process/.test(output)) {',
+    from: "  const reaped = !expected ? reapedMidRun(output) : null;",
+    to: "  const reaped = reapedMidRun(output);",
     suite: "test/mutation-verdict.test.ts",
     expect: ["a caught mutation was thrown away because the runner tidied up afterwards"],
   },

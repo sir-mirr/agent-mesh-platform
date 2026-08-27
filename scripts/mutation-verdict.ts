@@ -140,11 +140,9 @@ export function readVerdict(output: string, expect: string[], exitCode: number, 
   //
   // Only when the expected message is absent, for the same reason as the two
   // rules above: a guard that objected before the reaper arrived still decides.
-  if (!expected && /killed \d+ dangling process/.test(output)) {
-    return {
-      kind: "inconclusive",
-      why: "the runner reaped the services mid-run, so everything after that ran against nothing",
-    };
+  const reaped = !expected ? reapedMidRun(output) : null;
+  if (reaped) {
+    return { kind: "inconclusive", why: sayReaped(reaped) };
   }
   return exitCode !== 0 && expected ? { kind: "caught" } : { kind: "not-caught" };
 }
@@ -219,6 +217,8 @@ export function markFor(kind: FailureKindName): string {
 import { open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { reapedMidRun, say as sayReaped } from "./reaped.ts";
 
 /**
  * How much of each end of a run's output is kept when it has to be condensed.

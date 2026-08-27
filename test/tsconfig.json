@@ -33,6 +33,9 @@
     "../scripts/caught-in-log.ts",
     // The round-robin split the nightly is sharded by. Imports nothing.
     "../scripts/shard.ts",
+    // The reading that tells a run which measured nothing from a run that
+    // failed. Imports nothing, and `mutation-verdict.ts` imports it.
+    "../scripts/reaped.ts",
     // The nightly-freshness reader. Node builtins and Bun globals only, same
     // reason as the two above.
     "../scripts/nightly-freshness.ts",

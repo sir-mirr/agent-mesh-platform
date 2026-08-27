@@ -159,8 +159,33 @@ jobs:
       # whenever the measurement is higher — failing when it does, because the
       # raise is written into this checkout and this checkout is thrown away.
       # A ratchet that raised quietly here would raise nothing.
+      # **Two things make this step red, and only one of them is about the
+      # tree.** `bun test` kills every subprocess it spawned when a test times
+      # out — `killed 4 dangling processes` — and the services this suite starts
+      # are those subprocesses, so one slow scenario takes the mesh down and
+      # everything after it fails to connect. Measured locally the same day this
+      # landed: 46 failures after `[SC-QUEUE-01] ... [997773.49ms]` and three
+      # reaper lines, then 0 failures on the re-run with nothing changed.
+      #
+      # So the log is kept and read. A red with the children intact is a
+      # finding and fails here. A red that lost them measured nothing after that
+      # point, and is run once more rather than reported as a defect. Twice in a
+      # row still fails — that is a machine this job cannot get an answer out
+      # of, which is worth knowing, and it is said in those words.
       - name: Coverage floor
-        run: bun scripts/coverage.ts --ratchet coverage-floor.json
+        shell: bash
+        run: |
+          set -o pipefail
+          bun scripts/coverage.ts --ratchet coverage-floor.json 2>&1 | tee /tmp/coverage-1.log && exit 0
+          if ! bun scripts/reaped.ts /tmp/coverage-1.log; then
+            echo "the suite failed with its children intact — this is a finding about the tree"
+            exit 1
+          fi
+          echo "::warning::the coverage run lost its services mid-run and measured nothing after that — running it once more"
+          set -o pipefail
+          bun scripts/coverage.ts --ratchet coverage-floor.json 2>&1 | tee /tmp/coverage-2.log && exit 0
+          bun scripts/reaped.ts /tmp/coverage-2.log && echo "reaped twice in a row — this job measured nothing, and that is about the machine rather than the tree"
+          exit 1
 
   # **Planting the whole manifest, on a clock.**
   #

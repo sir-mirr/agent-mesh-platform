@@ -617,10 +617,15 @@ describe("a run the test runner cut off at the knees", () => {
     ].join("\n");
     const verdict = readVerdict(output, EXPECT, 1, 30);
     expect(verdict.kind, "a run that lost its services was read as a finding about a guard").toBe("inconclusive");
-    expect(verdict).toHaveProperty(
-      "why",
-      "the runner reaped the services mid-run, so everything after that ran against nothing",
-    );
+    // The sentence is `reaped.ts`'s, and it carries the size of the loss —
+    // one line taking four processes reads differently from three taking
+    // eight. Asserted by what it has to say rather than word for word, so
+    // improving the wording is not a red.
+    expect(
+      { names: (verdict as { why?: string }).why ?? "" },
+      "the reason does not say what was lost, so a reader cannot tell a nick from a wipe-out",
+    ).toEqual({ names: expect.stringContaining("4 process(es)") as unknown as string });
+    expect((verdict as { why?: string }).why).toContain("ran against nothing");
   });
 
   test("a guard that objected before the reaper arrived still decides", () => {
