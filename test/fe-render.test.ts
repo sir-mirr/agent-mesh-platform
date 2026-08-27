@@ -6070,6 +6070,38 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * and computed styles at the desktop width the product review used.
    */
   it("[SC-USER-D4] aligns the four account facts and settles the create action", async () => {
+    /**
+     * A roster with both kinds of account in it.
+     *
+     * **`reissueStyles` counted a set of one.** The scenario asserts that the
+     * reissue control has a single appearance down the column, and every row
+     * this screen rendered was an active account with the same role — so the
+     * set had nothing to be distinct *from*, and a mutation styling the button
+     * by `disabled_at` left the suite green. Measured twice: by `disabled_at`
+     * and again by `role`, neither caught, because neither varied.
+     *
+     * One deactivated account is what a real operator's table has, and it is
+     * what makes the assertion a claim rather than an arithmetic fact about a
+     * one-element set. Created through the routes, like every other fixture
+     * here.
+     */
+    const suffix = Date.now().toString(36).slice(-6);
+    const dormant = `d4-dormant-${suffix}`;
+    const admin = { Cookie: `mesh_token=${jwtToken}`, "Content-Type": "application/json" };
+    const admitted = await fetch(`${mesh.http.url}/api/v1/admin/users`, {
+      method: "POST",
+      headers: admin,
+      body: JSON.stringify({ username: dormant }),
+    });
+    const deactivated = await fetch(
+      `${mesh.http.url}/api/v1/admin/users/${encodeURIComponent(dormant)}/deactivate`,
+      { method: "POST", headers: admin },
+    );
+    expect(
+      { admitted: admitted.status, deactivated: deactivated.status },
+      "the roster fixture was not admitted and deactivated, so the appearance check below counts a set of one",
+    ).toEqual({ admitted: 201, deactivated: 200 });
+
     await withPage("/platform/users", async ({ page, errors }) => {
       await page.getByTestId("admit-fields-grid").waitFor({ state: "visible", timeout: 8000 });
       await page.locator('[data-testid^="user-actions-"]').first().waitFor({ state: "visible", timeout: 8000 });
