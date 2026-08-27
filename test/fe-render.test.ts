@@ -6165,7 +6165,21 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         };
       });
 
-      const { actionRightGap, fieldWidths, ...aligned } = layout;
+      /**
+       * `actionCells` is pulled out because it was being compared to itself.
+       *
+       * The expected object read `actionCells: layout.actionCells` — the
+       * measurement on both sides, true whatever the screen drew, including a
+       * screen that drew no rows at all. The two keys beside it are relations
+       * and stay: every action cell has a status cell, and every action cell
+       * lays out in a row. Those say something only if there are cells, which
+       * is what the line below is for.
+       */
+      const { actionRightGap, fieldWidths, actionCells, ...aligned } = layout;
+      expect(
+        { rows: actionCells >= 2 },
+        `the roster drew ${actionCells} action cells — with fewer than two rows the counts below are arithmetic about a single row, and the appearance check above counts a set of one`,
+      ).toEqual({ rows: true });
       expect(
         { ...aligned, errors },
         "the account form wrapped, misaligned its controls, styled the fixed role as input, split the Korean action, or left submit floating",
@@ -6182,10 +6196,9 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         linkRects: 1,
         roleHelpBelowFields: true,
         roleHelpSpansGrid: true,
-        statusCells: layout.actionCells,
+        statusCells: actionCells,
         statusButtons: 0,
-        actionCells: layout.actionCells,
-        horizontalActionCells: layout.actionCells,
+        horizontalActionCells: actionCells,
         filledDangerButtons: 0,
         reissueStyles: 1,
         actionBelowGrid: true,
