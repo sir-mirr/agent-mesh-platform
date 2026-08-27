@@ -80,7 +80,8 @@ describe("the key an agent registers with", () => {
     const keys = mkdtempSync(join(tmpdir(), "mesh-mail-mode-"));
     const { server, url } = hub();
     try {
-      await run(["register", "probe-two"], url, keys);
+      const registered = await run(["register", "probe-two"], url, keys);
+      expect(registered.code, `the client did not register: ${registered.said.trim() || "(nothing)"}`).toBe(0);
       // A private key readable by the machine's other accounts is an identity
       // anyone on the box can sign as.
       expect(statSync(join(keys, "probe-two.pem")).mode & 0o777).toBe(0o600);
@@ -93,8 +94,18 @@ describe("the key an agent registers with", () => {
     const keys = mkdtempSync(join(tmpdir(), "mesh-mail-print-"));
     const { seen, server, url } = hub();
     try {
-      const said = (await run(["register", "probe-three"], url, keys)).said;
-      const sent = seen.find((s) => s.path === "/api/v1/agents")!.body.public_key as string;
+      const { code, said } = await run(["register", "probe-three"], url, keys);
+      // **The client has to have registered before its output means anything.**
+      // Without this the next line reads `undefined.body` and the run dies
+      // with a TypeError naming neither the client nor what it said — which is
+      // what a full-suite run produced once, and it took a re-run to learn the
+      // register had simply not happened.
+      const proposal = seen.find((s) => s.path === "/api/v1/agents");
+      expect(
+        { code, proposed: Boolean(proposal) },
+        `the client did not register, so there is no fingerprint to compare — it said: ${said.trim() || "(nothing)"}`,
+      ).toEqual({ code: 0, proposed: true });
+      const sent = proposal!.body.public_key as string;
       // The fingerprint of the key that was actually proposed — not of some
       // other key, and not a value the client made up.
       expect(said).toContain(keyFingerprint(sent));

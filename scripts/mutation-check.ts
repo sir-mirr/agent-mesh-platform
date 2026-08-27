@@ -12582,6 +12582,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/claude-md.test.ts",
     expect: ["package.json has no such script"],
   },
+  {
+    id: "the-reference-client-proposes-its-key-to-the-wrong-route",
+    defect:
+      "`mesh-mail register` posts the key proposal to a route the hub does not serve. The client prints a fingerprint either way, and an operator comparing it is comparing against a proposal the hub never received — presenting as \"approval is broken\" rather than as a client that never asked.",
+    file: "scripts/mesh-mail.ts",
+    from: "    const res = await fetch(`${HUB}/api/v1/agents`, {",
+    to: "    const res = await fetch(`${HUB}/api/v1/agent`, {",
+    suite: "test/mesh-mail.test.ts",
+    expect: ["the client did not register, so there is no fingerprint to compare"],
+  },
 ];
 
 /**
