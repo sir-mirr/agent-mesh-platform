@@ -177,9 +177,18 @@ const staleExemptions = Object.keys(NOT_A_PRODUCT_GUARD).flatMap((id) => {
  * **A retired entry pins nothing a night can confirm.** `retired` keeps the
  * reasoning where somebody looking for that defect will find it, and it carries
  * no `from` — so no run ever ticks it, and a scenario whose only pin is retired
- * can never be observed however green the night was. `SC-INVENT-01` is in
- * exactly that state, and comparing `observed` against `pinned` would have
- * failed the nightly's summary on every perfect night: 173 against 174.
+ * can never be observed however green the night was. `SC-INVENT-01` was in
+ * exactly that state when this was written, and comparing `observed` against
+ * `pinned` would have failed the nightly's summary on every perfect night: 173
+ * against 174.
+ *
+ * **It is not in that state now**, and the difference is a written entry rather
+ * than a rule change: `presence-invented-for-an-identity-nobody-saw` plants the
+ * defect that scenario guards, so the list below is empty today. The distinction
+ * stays because emptiness is a reading and not a property — the next retirement
+ * puts a scenario back in it, and a count that quietly absorbed one would report
+ * the same number for *a night that observed everything* and for *a night that
+ * could not reach something*.
  *
  * That is the difference this file exists to draw, one level in. `pinned` is
  * the claim; this is the part of the claim a run can answer.

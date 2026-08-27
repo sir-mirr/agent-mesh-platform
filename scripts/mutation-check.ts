@@ -6308,6 +6308,31 @@ export const MUTATIONS: Mutation[] = [
     expect: ["shows no fingerprint on /creator, rather than a constant that says verified"],
   },
   {
+    /**
+     * **Written to give `SC-INVENT-01` a pin a run can plant.** The scenario had
+     * exactly one entry beside it — the retired one below — and a retired entry
+     * carries no `from`, so no night ever ticked it. `scenario-anchors.ts`
+     * counted it as pinned and `--from-log` could never observe it: 173 of 174
+     * on a perfect night, which is the shape of a number nobody can act on.
+     *
+     * **`AgentsPage.test.tsx` catches this defect too, and faster.** That is not
+     * a reason to leave the scenario unpinned: the unit test proves the
+     * component composes the right sentence from a stubbed `fetch`, and
+     * `SC-INVENT-01` proves the screen an operator opens draws absence as
+     * absence — the pair of renders, in a browser, through the served bundle.
+     * The defect below is visible to both, and this entry names the one whose
+     * subject is the screen.
+     */
+    id: "presence-invented-for-an-identity-nobody-saw",
+    defect:
+      "`fetchAgents` folded a missing `last_seen_at` to the moment the page loaded, so an identity the mesh had never seen was drawn as one seen seconds ago. That is `I-062`'s own shape — a row filled in from the client's clock — and the field it fills in is the one SPEC § 9.1 leaves `null` to mean *no presence record was kept*, which is not the same claim as *offline*.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "    last_seen_at: a.last_seen_at ?? null,",
+    to: "    last_seen_at: a.last_seen_at ?? new Date().toISOString(),",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-INVENT-01"],
+  },
+  {
     id: "absent-status-reads-healthy",
     // **은퇴 2026-08-20 — 이 결함은 갈 자리가 없어졌다.**
     //
