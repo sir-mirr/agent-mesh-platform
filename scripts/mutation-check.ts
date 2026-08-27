@@ -10211,7 +10211,7 @@ export const MUTATIONS: Mutation[] = [
       "One control, one appearance. Styling the reissue button by account state gives the same action two looks down a single column, and the reader has to learn that the difference means nothing. `SC-USER-D4` counts the distinct class names among the table's reissue buttons and expects one.",
     file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
     from: '                variant="outline"\n                data-testid={`reissue-${u.username}`}',
-    to: '                variant={u.disabled_at ? "ghost" : "outline"}\n                data-testid={`reissue-${u.username}`}',
+    to: '                variant={u.role === "platform_admin" ? "ghost" : "outline"}\n                data-testid={`reissue-${u.username}`}',
     suite: "test/fe-render.test.ts",
     expect: ["SC-USER-D4", "reissueStyles"],
   },
