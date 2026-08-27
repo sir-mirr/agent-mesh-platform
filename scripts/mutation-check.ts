@@ -10246,6 +10246,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-USER-D4", "roleHelpSpansGrid"],
   },
   {
+    id: "the-reissue-button-is-styled-by-role",
+    defect:
+      "One control, one appearance. Styling the reissue button by role gives the same action two looks down a single column — an operator has to learn that the difference means nothing, and the row that looks different is the administrator's. This is the axis the defect was originally found on, and `UserAdminPage.test.tsx` holds a roster that states it: `ada` is a member and `grace` is an admin, so the two class names are comparable without a browser or a mesh.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '                variant="outline"\n                data-testid={`reissue-${u.username}`}',
+    to: '                variant={u.role === "admin" ? "ghost" : "outline"}\n                data-testid={`reissue-${u.username}`}',
+    suite: "packages/platform-web/src/pages/platform/UserAdminPage.test.tsx",
+    expect: ["keeps status and row actions in separate columns with quiet, consistent controls"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
