@@ -12223,10 +12223,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-identity-field-moves-out-from-under-the-scenario-that-finds-it",
     defect:
-      "The example in the identity placeholder is rewritten, which is a copy change and looks like one. SC-WRITE-08 finds that field by the placeholder — the shared Input sets no type, so there is nothing else to find it by — and agent-mesh-local-pm named this exact edit: the scenario stops writing anything and reports a pass for ever.",
-    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
-    from: `placeholder={t("reg.field.identity.ph", "예: agt_settlement_04")}`,
-    to: `placeholder={t("reg.field.identity.ph", "예: 정산-04")}`,
+      "The example in the identity placeholder is rewritten, which is a copy change and looks like one. SC-WRITE-08 finds that field by the placeholder — the shared Input sets no type, so there is nothing else to find it by — and agent-mesh-local-pm named this exact edit: before the exits became assertions the scenario stopped writing anything and reported a pass for ever. Mutated in the resource table rather than in the page: the page passes a fallback to `t()`, the key exists, and the fallback is dead text the screen never draws — an earlier version of this anchor changed it and the mutated run came back 140 pass / 0 fail.",
+    file: "packages/platform-web/src/contexts/I18nContext.tsx",
+    from: `    "reg.field.identity.ph": "예: agt_settlement_04",`,
+    to: `    "reg.field.identity.ph": "예: 정산-04",`,
     suite: "test/fe-render.test.ts",
     expect: ["no identity field is rendered on /creator/register"],
   },
