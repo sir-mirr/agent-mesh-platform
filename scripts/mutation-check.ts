@@ -12230,6 +12230,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["no identity field is rendered on /creator/register"],
   },
+  {
+    id: "the-witness-to-an-outside-stop-is-computed-and-dropped",
+    defect:
+      "A service that is signalled logs its own clean shutdown and nothing else, so a run whose services were taken down under it is indistinguishable in the log from one that finished. Thirty scenarios then fail to connect and read as findings. This cost a morning once already: a mutation run met bun's dangling-process reaper and recorded an anchor as not caught when nothing had been measured.",
+    file: "test/orphan-guard.ts",
+    from: "    console.error(\n      `[orphan-guard] ${signal} arrived from outside at",
+    to: "    String(\n      `[orphan-guard] ${signal} arrived from outside at",
+    suite: "test/orphan-guard.test.ts",
+    expect: ["says only what a clean exit says"],
+  },
+  {
+    id: "watching-a-signal-turns-into-ignoring-it",
+    defect:
+      "The guard listens for SIGTERM and leaves the disposition at that. A listener replaces the default, so a service with no shutdown handler of its own now survives every SIGTERM sent to it — the immortal service the rest of that file exists to prevent, reintroduced by the line meant to explain deaths.",
+    file: "test/orphan-guard.ts",
+    from: '    if (process.listenerCount(signal) === 1) process.exit(signal === "SIGTERM" ? 143 : 130);',
+    to: "    // the process decides for itself what to do about the signal",
+    suite: "test/orphan-guard.test.ts",
+    expect: ["watching the signal turned into ignoring it"],
+  },
+  {
+    id: "the-witness-cannot-say-whether-the-run-was-still-going",
+    defect:
+      "The witness names the signal and the time but reports the starter as gone whatever the truth is. A kill during a run and the harness tidying up after one then leave the same line, which is the distinction the line exists to draw.",
+    file: "test/orphan-guard.ts",
+    from: '${process.ppid === startedBy ? "still running" : "already gone"}',
+    to: '${"already gone"}',
+    suite: "test/orphan-guard.test.ts",
+    expect: ["says only what a clean exit says"],
+  },
 ];
 
 /**
