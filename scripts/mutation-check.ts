@@ -11190,6 +11190,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["CI does not run the ratchet, or runs it against a record below D-751's minimum"],
   },
   {
+    id: "the-floor-check-reads-one-invocation-and-stops",
+    defect:
+      "The CI floor guard asked whether `--ratchet coverage-floor.json` appears *somewhere* in the workflow. The step names the command twice — the run and the retry after a reaped one — so changing the run that decides the job to `--floor 0` left the check green on the second line. Measured, not imagined: retargeting `a-floor-ci-runs-at-zero` onto the first line produced exactly that, an anchor that could no longer be caught.",
+    file: "test/coverage-floor.test.ts",
+    from: "  return coverageInvocations(workflow).every((flags) => /^ --ratchet coverage-floor\\.json\\b/.test(flags));",
+    to: "  return coverageInvocations(workflow).some((flags) => /^ --ratchet coverage-floor\\.json\\b/.test(flags));",
+    suite: "test/coverage-floor.test.ts",
+    expect: ["a workflow with one drifted invocation was read as running the ratchet"],
+  },
+  {
     id: "the-ratchet-honours-a-record-below-the-minimum",
     defect:
       "The clamp went, so the recorded floor is whatever the file says. A record reading 40 then makes the check pass at 40 — the check that cannot fail again — and the file is a place a bad merge or a hand edit can put a smaller number without anyone reading it as a decision. D-751's 99 is the floor under the floor for that reason.",

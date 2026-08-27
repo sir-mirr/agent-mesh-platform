@@ -342,12 +342,45 @@ describe("the coverage run", () => {
   });
 });
 
+/** Every way the workflow calls the coverage script, as the flags each was given. */
+export function coverageInvocations(workflow: string): string[] {
+  return [...workflow.matchAll(/bun scripts\/coverage\.ts([^\n]*)/g)].map((match) => match[1]!);
+}
+
+/**
+ * **Every one of them, not one of them.**
+ *
+ * The floor step names the command twice — the run, and the retry after a run
+ * whose services were reaped. A check asking whether `--ratchet` appears
+ * *somewhere* in the workflow passes while the invocation that decides the job
+ * has been changed to `--floor 0`. That is not hypothetical: pointing
+ * `a-floor-ci-runs-at-zero` at the first line left it uncaught, because the
+ * second line still said `--ratchet`.
+ */
+export function everyInvocationRatchets(workflow: string): boolean {
+  return coverageInvocations(workflow).every((flags) => /^ --ratchet coverage-floor\.json\b/.test(flags));
+}
+
 describe("the workflow", () => {
+  test("is read as every invocation it makes, not as the first one that looks right", () => {
+    // The synthetic pair the real file cannot provide: today both of its
+    // invocations ratchet, so `some` and `every` agree there and a check
+    // written either way passes. Here they do not agree.
+    const oneOfEach = ["run: |", "  bun scripts/coverage.ts --ratchet coverage-floor.json | tee a.log", "  bun scripts/coverage.ts --floor 0 | tee b.log"].join("\n");
+    const bothRatchet = ["run: |", "  bun scripts/coverage.ts --ratchet coverage-floor.json | tee a.log", "  bun scripts/coverage.ts --ratchet coverage-floor.json | tee b.log"].join("\n");
+    expect(
+      { counted: coverageInvocations(oneOfEach).length, oneDrifted: everyInvocationRatchets(oneOfEach), bothHeld: everyInvocationRatchets(bothRatchet) },
+      "a workflow with one drifted invocation was read as running the ratchet",
+    ).toEqual({ counted: 2, oneDrifted: false, bothHeld: true });
+  });
+
   test("runs the ratchet, so the reopen condition has something to fire it", () => {
     const ci = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "ci.yml"), "utf8");
     const recorded = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "coverage-floor.json"), "utf8"),
     ) as { funcs: number; lines: number };
+
+    const invocations = coverageInvocations(ci);
 
     // The record as well as the flag. A ratchet pointed at a file that is not
     // there fails loudly, but one pointed at a record below the minimum is a
@@ -355,11 +388,16 @@ describe("the workflow", () => {
     // two commands read the same.
     expect(
       {
-        invokes: /bun scripts\/coverage\.ts --ratchet coverage-floor\.json\b/.test(ci),
+        invocations: invocations.length,
+        everyOneRatchets: everyInvocationRatchets(ci),
         atLeastTheMinimum: recorded.funcs >= 99 && recorded.lines >= 99,
       },
       "CI does not run the ratchet, or runs it against a record below D-751's minimum",
-    ).toEqual({ invokes: true, atLeastTheMinimum: true });
+    ).toEqual({ invocations: invocations.length, everyOneRatchets: true, atLeastTheMinimum: true });
+
+    // The denominator: a workflow that stopped running coverage at all would
+    // make `every` above true over nothing.
+    expect(invocations.length, "the workflow does not run the coverage script anywhere").toBeGreaterThan(0);
   });
 });
 
