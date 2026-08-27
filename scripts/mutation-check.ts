@@ -12532,6 +12532,36 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/readme.test.ts",
     expect: ["these headings define a section this check cannot see"],
   },
+  {
+    id: "the-document-walk-stops-descending",
+    defect:
+      "The walk over `docs/` stops recursing into subdirectories. `docs/decisions/` is most of the documents, so the heading check quietly covers a third of what it says it covers — and the floor it used to have, ten against thirty-four, is cleared by what remains.",
+    file: "test/readme.test.ts",
+    from: "      if (entry.isDirectory()) return entry.name === \"node_modules\" ? [] : markdown(full);",
+    to: "      if (entry.isDirectory()) return [];",
+    suite: "test/readme.test.ts",
+    expect: ["the document walk and git disagree about what this repository keeps"],
+  },
+  {
+    id: "a-package-drops-out-of-the-version-walk",
+    defect:
+      "One package stops being read. Its manifest declares which SPEC version it targets, and § 13 is what tells a client whether the service it is talking to implements the contract it was built against — a package nobody reads declares nothing, and every loop below passes over the absence.",
+    file: "test/versioning.test.ts",
+    from: "  for (const entry of readdirSync(packagesDir)) {",
+    to: "  for (const entry of readdirSync(packagesDir).slice(1)) {",
+    suite: "test/versioning.test.ts",
+    expect: ["the manifest walk and git disagree about which packages this workspace has"],
+  },
+  {
+    id: "git-quoting-turns-a-tracked-file-into-an-invention",
+    defect:
+      "The comparison reads git's default output, which quotes any path with non-ASCII in it. `docs/디자인시스템.md` comes back as an escape sequence, does not match what the walk found, and the check reports a document the repository does not have — a false red, which is the failure that gets a check switched off rather than fixed.",
+    file: "test/readme.test.ts",
+    from: '    const tracked = Bun.spawnSync(["git", "ls-files", "-z", "docs", "README.md", "SPEC.md"], { cwd: REPO_ROOT })\n      .stdout.toString()\n      .split("\\0")',
+    to: '    const tracked = Bun.spawnSync(["git", "ls-files", "docs", "README.md", "SPEC.md"], { cwd: REPO_ROOT })\n      .stdout.toString()\n      .split("\\n")',
+    suite: "test/readme.test.ts",
+    expect: ["the document walk and git disagree about what this repository keeps"],
+  },
 ];
 
 /**

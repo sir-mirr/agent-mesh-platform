@@ -63,6 +63,21 @@ describe("§ 13 version declarations", () => {
     const names = manifests().map((m) => m.name);
     expect(names.length, "no manifests found — every check below is vacuous").toBeGreaterThan(4);
     expect(names, "the workspace root is the one entry that is not walked").toContain("root");
+    // **A floor of four over eight packages.** git is asked the same question
+    // without sharing this walk's assumptions about where a package lives: a
+    // manifest that stopped being read — malformed, moved, or in a directory
+    // this loop no longer visits — is a package whose declared SPEC version
+    // nothing checks, and the loops below pass over its absence in silence.
+    const tracked = Bun.spawnSync(["git", "ls-files", "package.json", "packages/*/package.json"], { cwd: REPO_ROOT })
+      .stdout.toString()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => (line === "package.json" ? "root" : line.split("/")[1]!));
+    expect(tracked.length, "git listed no manifests, so the comparison below is vacuous").toBeGreaterThan(4);
+    expect(
+      { walkedButUntracked: names.filter((n) => !tracked.includes(n)).sort(), trackedButUnwalked: tracked.filter((n) => !names.includes(n)).sort() },
+      "the manifest walk and git disagree about which packages this workspace has",
+    ).toEqual({ walkedButUntracked: [], trackedButUnwalked: [] });
   });
 
   test("every manifest declares the SPEC version it targets", () => {

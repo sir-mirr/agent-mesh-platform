@@ -126,11 +126,14 @@ describe("capability names in text a person reads", () => {
     // of the screens the rule is about. git is asked the same question in a way
     // that shares none of this walk's opinions — it knows what is tracked and
     // nothing about extensions, directories or recursion.
-    const tracked = Bun.spawnSync(["git", "ls-files", "packages/platform-web/src"], {
+    // `-z` for the same reason `readme.test.ts` needs it: git quotes a path
+    // with non-ASCII in it, and a quoted path is one this comparison would
+    // report as a file the walk invented.
+    const tracked = Bun.spawnSync(["git", "ls-files", "-z", "packages/platform-web/src"], {
       cwd: new URL("..", import.meta.url).pathname,
     })
       .stdout.toString()
-      .split("\n")
+      .split("\0")
       .filter((line) => /\.tsx?$/.test(line) && !/\.test\.tsx?$/.test(line))
       .map((line) => line.replace("packages/platform-web/src/", ""));
     expect(

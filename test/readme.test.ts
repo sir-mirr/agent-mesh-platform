@@ -225,7 +225,29 @@ describe("no document says the same heading twice in one section", () => {
       join(REPO_ROOT, "README.md"),
       join(REPO_ROOT, "SPEC.md"),
     ];
-    expect(files.length, "no documents found — the walk broke").toBeGreaterThan(10);
+    // **git is asked the same question, in a way that shares none of this
+    // walk's opinions.** The floor here was 10 against 34: a walk that stopped
+    // descending — into `docs/decisions/` alone, which is most of them — clears
+    // it and quietly stops checking two thirds of the documents. The screen
+    // walk in `capability-prose.test.ts` had the same floor and the same
+    // repair.
+    // `-z`: git quotes a path with non-ASCII in it by default, so
+    // `docs/디자인시스템.md` comes back as `"docs/\\353\\224…"` and the
+    // comparison reports a document the walk invented. NUL-separated output is
+    // the raw bytes — measured, on the first run of this check.
+    const tracked = Bun.spawnSync(["git", "ls-files", "-z", "docs", "README.md", "SPEC.md"], { cwd: REPO_ROOT })
+      .stdout.toString()
+      .split("\0")
+      .filter((line) => line.endsWith(".md"))
+      .map((line) => join(REPO_ROOT, line));
+    expect(tracked.length, "git listed no documents, so the comparison below is vacuous").toBeGreaterThan(10);
+    expect(
+      {
+        walkedButUntracked: files.filter((f) => !tracked.includes(f)).sort(),
+        trackedButUnwalked: tracked.filter((f) => !files.includes(f)).sort(),
+      },
+      "the document walk and git disagree about what this repository keeps",
+    ).toEqual({ walkedButUntracked: [], trackedButUnwalked: [] });
 
     const repeated: string[] = [];
     for (const file of files) {
