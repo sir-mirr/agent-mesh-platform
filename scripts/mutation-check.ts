@@ -12389,6 +12389,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/held-uncovered.test.ts",
     expect: ["the table parsed as empty and the document does not say it is"],
   },
+  {
+    id: "an-entry-that-missed-is-read-as-an-observation",
+    defect:
+      "The log reader counts the crosses as well as the ticks. Every entry a night ran then reads as an entry that objected, and the one tool that turns a pin into a verdict reports the manifest's own claim back as its confirmation.",
+    file: "scripts/caught-in-log.ts",
+    from: "    const m = /^\\s*✓\\s+(\\S+)/.exec(line);",
+    to: "    const m = /^\\s*[✓✗]\\s+(\\S+)/.exec(line);",
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["an entry that missed was counted as an observation"],
+  },
+  {
+    id: "a-night-is-read-from-an-eighth-of-itself",
+    defect:
+      "Only the first log given is read. The nightly is eight shards and each answers for an eighth of the manifest, so a night summarised this way reports the scenarios one shard happened to cover and says nothing about the other seven — while looking like a full reading.",
+    file: "scripts/scenario-anchors.ts",
+    from: "  for (const path of paths) {",
+    to: "  for (const path of paths.slice(0, 1)) {",
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["a second shard's log added nothing"],
+  },
 ];
 
 /**

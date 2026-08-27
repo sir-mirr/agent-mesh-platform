@@ -22,6 +22,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { caughtInLog } from "../scripts/caught-in-log";
+
 const SCRIPT = join(import.meta.dir, "..", "scripts", "scenario-anchors.ts");
 
 /**
@@ -157,5 +159,65 @@ describe("the inventory of this repository", () => {
       "this repository's scenario inventory cannot be read completely",
     ).toEqual({ unparsed: [], ambiguous: [], stale: [] });
     expect(json.scenarios, "the inventory found no scenarios at all").toBeGreaterThan(150);
+  });
+});
+
+
+/**
+ * Turning *pinned* into *observed*.
+ *
+ * An entry pins a scenario the moment somebody writes it; whether the mutation
+ * actually takes that scenario down is known only after a run. `--from-log`
+ * is what carries one back, and until now it was the part of this reader that
+ * nothing had read — a claim-versus-verdict tool with an unmeasured verdict.
+ */
+describe("what a mutation-check log records as caught", () => {
+  test("takes the ticked entries and nothing else", () => {
+    expect([...caughtInLog("✓ alpha\n✗ beta: not caught\n")]).toEqual(["alpha"]);
+  });
+
+  test("does not read the summary line, which names the misses too", () => {
+    // A run ends by naming every id it was filtered to, caught and uncaught
+    // alike. Reading ids from that line turns an entry that missed into an
+    // observation that it did not.
+    const log = [
+      "✓ alpha",
+      "✗ beta: not caught, or caught by the wrong check",
+      "1/2 caught · 1 not caught — filtered to alpha, beta, of 1189 in the manifest",
+      "",
+    ].join("\n");
+    expect([...caughtInLog(log)], "an entry that missed was counted as an observation").toEqual(["alpha"]);
+  });
+
+  test("reads a line the runner indented", () => {
+    expect(caughtInLog("  ✓ alpha\n").has("alpha")).toBe(true);
+  });
+
+  test("says nothing about a log with no ticks in it", () => {
+    expect([...caughtInLog("✗ beta: not caught\nverification failed\n")]).toEqual([]);
+  });
+});
+
+describe("a night read out of its shards", () => {
+  const logFile = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "scenario-anchors-log-"));
+    trees.push(dir);
+    const path = join(dir, "shard.log");
+    writeFileSync(path, body);
+    return path;
+  };
+
+  test("counts every log it was given, not the first", () => {
+    // The nightly is eight shards and a night is measured only once all eight
+    // are read together. One shard answers for an eighth of the manifest.
+    const first = logFile("✓ the-queue-screen-totals-the-wrong-column\n");
+    const second = logFile("✓ a-refused-egress-toggle-keeps-the-new-cell\n");
+    const one = Bun.spawnSync(["bun", SCRIPT, "--json", "--from-log", first], { stdout: "pipe", stderr: "pipe" });
+    const both = Bun.spawnSync(["bun", SCRIPT, "--json", "--from-log", first, "--from-log", second], { stdout: "pipe", stderr: "pipe" });
+    const observed = (proc: { stdout: Buffer }) => JSON.parse(proc.stdout.toString()).observed as number;
+    expect(
+      { one: observed(one), both: observed(both) },
+      "a second shard's log added nothing, so a night would be read from an eighth of itself",
+    ).toEqual({ one: 1, both: 2 });
   });
 });

@@ -33,6 +33,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MUTATIONS } from "./mutation-check.ts";
+import { caughtInLog } from "./caught-in-log.ts";
 
 /**
  * The tree to read, so this reader can be pointed at a fixture.
@@ -101,19 +102,23 @@ for (const suite of suites) {
   if (read !== declared) unparsed.push(`${suite}: ${declared} headers, ${read} read`);
 }
 
-/** Entry ids a mutation-check log recorded as caught, when one is given. */
+/**
+ * Entry ids recorded as caught across every log given, when any is.
+ *
+ * Repeatable, because the nightly is eight shards and a night is only measured
+ * once all eight have been read together. One shard's log answers for an
+ * eighth of the manifest and says nothing about the rest.
+ */
 const observed = (() => {
-  const flag = process.argv.indexOf("--from-log");
-  if (flag < 0) return null;
-  const path = process.argv[flag + 1];
-  if (!path) {
-    console.error("--from-log needs a file");
-    process.exit(2);
-  }
+  const paths = process.argv.flatMap((arg, i) => (arg === "--from-log" ? [process.argv[i + 1]] : []));
+  if (paths.length === 0) return null;
   const caught = new Set<string>();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    const m = /^\s*✓\s+(\S+)/.exec(line);
-    if (m) caught.add(m[1]!);
+  for (const path of paths) {
+    if (!path) {
+      console.error("--from-log needs a file");
+      process.exit(2);
+    }
+    for (const id of caughtInLog(readFileSync(path, "utf8"))) caught.add(id);
   }
   return caught;
 })();
