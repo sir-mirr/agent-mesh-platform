@@ -12475,10 +12475,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-nights-split-leaves-a-hole-in-the-manifest",
     defect:
-      "The shard index is off by one. Entries at one position run in no shard and entries at another run in two, and the nightly reports eight green jobs either way — a manifest measured with a hole in it looks exactly like a manifest measured.",
+      "The shard index loses its offset. `i % n === k` gives shards 1..7 an eighth each, gives shard 8 nothing, and gives the entries at every eighth position to no shard at all — one eighth of the manifest measured by nobody, under eight jobs that all pass.\n\nThe first mutation written here was `k % n`, which is not this defect: it relabels which shard takes which entries and every entry still runs exactly once. The test said so by staying green, and it was right to.",
     file: "scripts/shard.ts",
     from: "  return entries.filter((_, i) => i % n === k - 1);",
-    to: "  return entries.filter((_, i) => i % n === k % n);",
+    to: "  return entries.filter((_, i) => i % n === k);",
     suite: "test/shard.test.ts",
     expect: ["an entry runs twice or never"],
   },
