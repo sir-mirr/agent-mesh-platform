@@ -50,6 +50,7 @@
  */
 
 import { $ } from "bun";
+import { shardOf } from "./shard.ts";
 
 import { assertTreeUsable, holdTree } from "./tree-lock";
 
@@ -12471,6 +12472,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/hooks-are-registered.test.ts",
     expect: ["names a hook file that does not exist"],
   },
+  {
+    id: "the-nights-split-leaves-a-hole-in-the-manifest",
+    defect:
+      "The shard index is off by one. Entries at one position run in no shard and entries at another run in two, and the nightly reports eight green jobs either way — a manifest measured with a hole in it looks exactly like a manifest measured.",
+    file: "scripts/shard.ts",
+    from: "  return entries.filter((_, i) => i % n === k - 1);",
+    to: "  return entries.filter((_, i) => i % n === k % n);",
+    suite: "test/shard.test.ts",
+    expect: ["an entry runs twice or never"],
+  },
+  {
+    id: "the-night-is-split-into-contiguous-blocks",
+    defect:
+      "The split goes back to contiguous blocks. The manifest is grouped by subject and the expensive suites cluster inside a group, so one shard takes every browser entry and another takes none: the night's wall-clock becomes one job's, seven sit idle, and the timeout that job hits is read as a broken guard.",
+    file: "scripts/shard.ts",
+    from: "  return entries.filter((_, i) => i % n === k - 1);",
+    to: "  return entries.slice(Math.ceil(entries.length / n) * (k - 1), Math.ceil(entries.length / n) * k);",
+    suite: "test/shard.test.ts",
+    expect: ["one job would carry the night"],
+  },
 ];
 
 /**
@@ -12620,7 +12641,7 @@ const chosen = selfCheck
   : filter.length
     ? MUTATIONS.filter((m) => filter.some((f) => m.id.includes(f)))
     : MUTATIONS;
-const selected = shard ? chosen.filter((_, i) => i % shard.n === shard.k - 1) : chosen;
+const selected = shard ? shardOf(chosen, shard.k, shard.n) : chosen;
 
 if (selected.length === 0) {
   console.error(
