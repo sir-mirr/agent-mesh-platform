@@ -89,20 +89,56 @@ export function say(freshness: Freshness): { line: string; code: number } {
   }
 }
 
-if (import.meta.main) {
-  const proc = Bun.spawnSync(
-    ["gh", "run", "list", "--workflow", "ci.yml", "--event", "schedule", "--limit", "10", "--json", "databaseId,conclusion,createdAt,headSha"],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const out = proc.stdout.toString().trim();
-  if (proc.exitCode !== 0 || !out) {
-    // **Not silence, and not a pass.** Whatever this run could not ask, it did
-    // not learn — and a tool that says nothing when it could not measure is the
-    // shape this script exists to remove.
-    console.error(`nightly: could not ask GitHub — ${proc.stderr.toString().trim().slice(0, 300) || "gh printed nothing"}`);
-    process.exit(2);
+/** How this asks the outside world, so a test can hand it a different one. */
+export type Spawn = (command: string[]) => { exitCode: number; stdout: string; stderr: string };
+
+/** The one question. Newest ten so an out-of-order re-run cannot decide alone. */
+export const GH_QUERY = [
+  "gh", "run", "list",
+  "--workflow", "ci.yml",
+  "--event", "schedule",
+  "--limit", "10",
+  "--json", "databaseId,conclusion,createdAt,headSha",
+];
+
+export const bunSpawn: Spawn = (command) => {
+  const proc = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe" });
+  return { exitCode: proc.exitCode, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+};
+
+/**
+ * Ask, and say what came back.
+ *
+ * **Two is not one and not zero.** A run that could not reach GitHub has
+ * learned nothing, and answering 0 would make "I could not look" identical to
+ * "I looked and it was fine" — the whole failure this file exists for, one
+ * layer down. Answering 1 would make it identical to a red nightly and send
+ * the reader to the shard issues for a shard that never ran.
+ */
+export function ask(spawn: Spawn, now: Date): { line: string; code: number } {
+  const proc = spawn(GH_QUERY);
+  if (proc.exitCode !== 0 || !proc.stdout.trim()) {
+    return {
+      line: `nightly: could not ask GitHub — ${proc.stderr.trim().slice(0, 300) || "gh printed nothing"}`,
+      code: 2,
+    };
   }
-  const said = say(readFreshness(JSON.parse(out) as ScheduledRun[], new Date()));
-  console.log(said.line);
-  process.exit(said.code);
+  let runs: ScheduledRun[];
+  try {
+    runs = JSON.parse(proc.stdout) as ScheduledRun[];
+  } catch (err) {
+    return {
+      line: `nightly: gh answered something that is not a run list — ${String(err).slice(0, 200)}`,
+      code: 2,
+    };
+  }
+  return say(readFreshness(runs, now));
 }
+
+/** Print it, and hand back the code that says the same thing. */
+export function report(said: { line: string; code: number }, write: (line: string) => void = console.log): number {
+  write(said.line);
+  return said.code;
+}
+
+if (import.meta.main) process.exit(report(ask(bunSpawn, new Date())));

@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { MAX_AGE_HOURS, readFreshness, say, type ScheduledRun } from "../scripts/nightly-freshness";
+import { GH_QUERY, MAX_AGE_HOURS, ask, bunSpawn, readFreshness, report, say, type ScheduledRun, type Spawn } from "../scripts/nightly-freshness";
 
 const NOW = new Date("2026-08-27T15:00:00Z");
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString();
@@ -28,7 +28,14 @@ describe("what the last scheduled run says", () => {
   });
 
   test("a run still going has not said anything yet", () => {
-    expect(readFreshness([run({ conclusion: null })], NOW).kind).toBe("running");
+    const verdict = readFreshness([run({ conclusion: null })], NOW);
+    expect(verdict.kind).toBe("running");
+    // Zero: a nightly that is halfway through is not a nightly that failed,
+    // and a reader who runs this at 17:30 should not be sent to shard issues
+    // that do not exist yet.
+    const said = say(verdict);
+    expect({ code: said.code, line: said.line }, "a run still in flight was reported as a problem")
+      .toEqual({ code: 0, line: `nightly: started ${hoursAgo(2)} and has not concluded` });
   });
 
   test("a red run is red whether or not it managed to file an issue", () => {
@@ -68,5 +75,56 @@ describe("what the last scheduled run says", () => {
     expect({ green: green.code, stale: stale.code }, "the exit code and the line disagree about the same run")
       .toEqual({ green: 0, stale: 1 });
     expect(green.line).toContain("every shard passed");
+  });
+});
+
+describe("asking, and what comes back", () => {
+  const answering = (over: Partial<{ exitCode: number; stdout: string; stderr: string }>): Spawn =>
+    () => ({ exitCode: 0, stdout: "[]", stderr: "", ...over });
+
+  test("asks about scheduled runs of this repository's workflow", () => {
+    let asked: string[] = [];
+    const spy: Spawn = (command) => {
+      asked = command;
+      return { exitCode: 0, stdout: JSON.stringify([run()]), stderr: "" };
+    };
+    expect(ask(spy, NOW).code).toBe(0);
+    // The question decides the answer: dropping --event would count every push
+    // as a nightly, and the freshest run would always be the last commit.
+    expect(asked, "the question stopped naming scheduled runs of ci.yml").toEqual(GH_QUERY);
+    expect(GH_QUERY.join(" ")).toContain("--event schedule");
+  });
+
+  test("a gh that could not answer is neither green nor red", () => {
+    // Two, deliberately. Zero would make "I could not look" identical to "I
+    // looked and it was fine"; one would send the reader to shard issues for a
+    // shard that never ran.
+    const said = ask(answering({ exitCode: 1, stdout: "", stderr: "gh: not logged in" }), NOW);
+    expect({ code: said.code, named: said.line.includes("not logged in") }, `the line was: ${said.line}`)
+      .toEqual({ code: 2, named: true });
+  });
+
+  test("a gh that answered nothing at all is the same case", () => {
+    expect(ask(answering({ exitCode: 0, stdout: "   " }), NOW).code, "an empty answer was parsed as no runs and reported as a verdict")
+      .toBe(2);
+  });
+
+  test("an answer that is not a run list is not read as one", () => {
+    const said = ask(answering({ stdout: "<html>rate limited</html>" }), NOW);
+    expect(said.code, "html was parsed into a verdict about the nightly").toBe(2);
+  });
+
+  test("reports the line and the code together", () => {
+    const written: string[] = [];
+    const code = report({ line: "nightly: something", code: 2 }, (l) => written.push(l));
+    expect({ code, written }, "the reader was handed a code without the line that explains it")
+      .toEqual({ code: 2, written: ["nightly: something"] });
+  });
+
+  test("the real spawn returns what the command actually printed", () => {
+    // The adapter between this file and the outside. Untested it is four lines
+    // nobody has run, sitting between a tested reader and the only caller.
+    const said = bunSpawn(["echo", "ok"]);
+    expect({ code: said.exitCode, out: said.stdout.trim() }).toEqual({ code: 0, out: "ok" });
   });
 });

@@ -12330,6 +12330,33 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/nightly-freshness.test.ts",
     expect: ["a nightly that concluded failure was read as a quiet night"],
   },
+  {
+    id: "could-not-look-answers-the-same-as-looked-and-it-was-fine",
+    defect:
+      "A run that could not reach GitHub exits zero. The reader gets the same answer for 'I asked and the nightly is fine' and 'I could not ask', which is the failure this whole reader exists for, one layer down and inside the tool itself.",
+    file: "scripts/nightly-freshness.ts",
+    from: `      code: 2,
+    };
+  }
+  let runs: ScheduledRun[];`,
+    to: `      code: 0,
+    };
+  }
+  let runs: ScheduledRun[];`,
+    suite: "test/nightly-freshness.test.ts",
+    expect: ["the line was:"],
+  },
+  {
+    id: "every-push-counts-as-a-nightly",
+    defect:
+      "The question stops naming scheduled runs, so every push to main answers it. The freshest run is then whatever landed last, the age check passes on any active day, and a schedule that has not fired in a month reads as current — measured against a workflow that runs on push, pull_request and schedule alike.",
+    file: "scripts/nightly-freshness.ts",
+    from: `  "--event", "schedule",
+`,
+    to: "",
+    suite: "test/nightly-freshness.test.ts",
+    expect: ["the question stopped naming scheduled runs of ci.yml"],
+  },
 ];
 
 /**
