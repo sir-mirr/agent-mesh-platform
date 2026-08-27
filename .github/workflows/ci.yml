@@ -95,6 +95,15 @@ jobs:
       - name: Mutation check — self-check
         run: bun run mutation-check -- --self-check
 
+      # **A step `verify.ts` runs and CI did not.** The inventory fails when its
+      # two readings of the scenario list disagree — an unreadable header, a
+      # phrase naming two scenarios, an exemption that has gone stale — and it
+      # ran only where somebody happened to run `verify`. Anyone landing a
+      # scenario through CI got a green tree from a check that never looked.
+      # `ci-covers-verify.test.ts` now refuses the two lists drifting again.
+      - name: Scenario inventory
+        run: bun scripts/scenario-anchors.ts --json
+
   # **D-749's reopen condition, given something that fires it.**
   #
   # The coverage track closed on a number with a condition attached: any

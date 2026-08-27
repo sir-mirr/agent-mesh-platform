@@ -12357,6 +12357,28 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/nightly-freshness.test.ts",
     expect: ["the question stopped naming scheduled runs of ci.yml"],
   },
+  {
+    id: "ci-stops-running-a-step-verify-runs",
+    defect:
+      "A step drops out of the workflow while `verify.ts` goes on running it. Both files stay individually right and nothing says they disagree — which is the state this repository was actually in: the scenario inventory ran only where somebody typed `verify`, so anything landing through a pull request got a green tree from a check that never looked.",
+    file: ".github/workflows/ci.yml",
+    from: `      - name: Scenario inventory
+        run: bun scripts/scenario-anchors.ts --json
+`,
+    to: "",
+    suite: "test/ci-covers-verify.test.ts",
+    expect: ["verify runs these and CI does not"],
+  },
+  {
+    id: "the-alias-ci-calls-a-step-by-stops-being-read",
+    defect:
+      "The comparison stops expanding `bun run <script>` through package.json, so every step CI writes the short way reads as missing. The check then reports drift on a workflow that is correct, and a check that cries wolf is a check somebody switches off — the failure is the noise, not the silence.",
+    file: "test/ci-covers-verify.test.ts",
+    from: '    return named && scripts[named[1]!] ? `${scripts[named[1]!]}${named[2] ?? ""}` : line;',
+    to: "    return line;",
+    suite: "test/ci-covers-verify.test.ts",
+    expect: ["was not recognised as the typecheck step"],
+  },
 ];
 
 /**
