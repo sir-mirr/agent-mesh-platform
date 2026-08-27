@@ -12280,6 +12280,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/mutation-verdict.test.ts",
     expect: ["a caught mutation was thrown away because the runner tidied up afterwards"],
   },
+  {
+    id: "a-file-with-a-body-reads-as-having-nothing-to-break",
+    defect:
+      "The reading that decides whether a file is exempt from carrying an anchor stops recognising an arrow function. A barrel that grows a body then keeps its exemption, and the one check that would have asked for an anchor there goes on passing — the exemption list becomes a list of files nobody measures for a reason that stopped being true.",
+    file: "test/anchor-coverage.test.ts",
+    from: "  return !/=>|\\bfunction\\b|\\bif\\s*\\(|\\bfor\\s*\\(|\\bwhile\\s*\\(|\\breturn\\b/.test(withoutComments);",
+    to: "  return !/\\bfunction\\b|\\bif\\s*\\(|\\bfor\\s*\\(|\\bwhile\\s*\\(/.test(withoutComments);",
+    suite: "test/anchor-coverage.test.ts",
+    expect: ["a file with a function in it was read as having nothing to break"],
+  },
+  {
+    id: "prose-about-code-is-read-as-code",
+    defect:
+      "The reading stops stripping line comments before looking for a body, so a file whose comment explains the function it used to hold is refused an exemption it deserves. The failure is the other direction from the one above and just as bad: the list starts collecting entries that are wrong, and a wrong entry is argued about instead of measured.",
+    file: "test/anchor-coverage.test.ts",
+    from: "    .replace(/^\\s*\\/\\/.*$/gm, \"\");",
+    to: "    .replace(/^$/gm, \"\");",
+    suite: "test/anchor-coverage.test.ts",
+    expect: ["prose about code was read as code"],
+  },
 ];
 
 /**
