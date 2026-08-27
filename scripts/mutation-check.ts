@@ -12409,6 +12409,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/scenario-anchors.test.ts",
     expect: ["a second shard's log added nothing"],
   },
+  {
+    id: "the-shard-writes-one-name-and-the-artifact-keeps-another",
+    defect:
+      "The file a shard tees its output into and the path the artifact keeps stop being the same name. The upload finds nothing, the summary downloads nothing, and the reading it prints is about no logs at all — a rename in one of two places, with nothing between them that objects.",
+    file: ".github/workflows/ci.yml",
+    from: "          path: mutation-shard-${{ matrix.shard }}.log",
+    to: "          path: mutation-${{ matrix.shard }}.log",
+    suite: "test/nightly-observation.test.ts",
+    expect: ["and the artifact keeps"],
+  },
+  {
+    id: "the-night-is-summarised-without-reading-its-logs",
+    defect:
+      "The summary job stops feeding the shard logs to the inventory. It still runs, still prints a scenario count, and the count is the manifest's own claim — pinned reported as though it had been observed, which is the exact confusion scenario-anchors.ts exists to prevent.",
+    file: ".github/workflows/ci.yml",
+    from: '          for log in $logs; do args="$args --from-log $log"; done',
+    to: '          for log in $logs; do args="$args"; done',
+    suite: "test/nightly-observation.test.ts",
+    expect: ["the summary stopped feeding the logs to the reader that observes them"],
+  },
 ];
 
 /**

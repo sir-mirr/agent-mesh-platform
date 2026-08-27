@@ -218,8 +218,22 @@ jobs:
 
       # It edits tracked files and restores with `git checkout --`, which is
       # safe on a fresh checkout and refuses outright on a dirty tree.
+      # Written down as well as printed. The log is what `scenario-anchors.ts
+      # --from-log` reads to turn *pinned* into *observed*, and the summary job
+      # below cannot do that from a run's console output. `pipefail` is on by
+      # default in these shells, so `tee` does not swallow the exit code.
       - name: Mutation check
-        run: bun run mutation-check -- --shard ${{ matrix.shard }}/8
+        run: bun run mutation-check -- --shard ${{ matrix.shard }}/8 | tee mutation-shard-${{ matrix.shard }}.log
+
+      # `always()`: a shard that went red still measured seven eighths of its
+      # entries, and the night's reading is worth more with them than without.
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-log-${{ matrix.shard }}
+          path: mutation-shard-${{ matrix.shard }}.log
+          retention-days: 14
 
       # **A nightly nobody reads is not a check.** `agent-mesh-local-pm` made
       # that the condition for moving the pass off the push path, and they are
@@ -273,3 +287,63 @@ jobs:
           title="nightly mutation shard ${{ matrix.shard }}/8 is red"
           gh issue create --title "$title" --label nightly-mutation --body-file /tmp/nightly-mutation-body.md \
             || gh issue create --title "$title" --body-file /tmp/nightly-mutation-body.md
+
+  # **What the night actually observed.**
+  #
+  # `scenario-anchors.ts` keeps a claim and a verdict apart: an entry *pins* a
+  # scenario the moment somebody writes it, and whether that mutation takes the
+  # scenario down is known only after a run. Nothing carried a run's answer
+  # back, so the pinned count — 174 of 175 — had never been confronted with an
+  # observation, and reading it as proven is the error the file was written to
+  # name.
+  #
+  # Eight shards, read together. One shard's log answers for an eighth of the
+  # manifest; a night is measured only when all eight are in the same reading.
+  #
+  # It fails only when every shard was green and the two numbers still
+  # disagree, because that is the case with no other explanation: if every
+  # entry was caught, every scenario an entry pins must have been observed. A
+  # red shard already filed its own issue and is not made louder here.
+  observed:
+    needs: mutation
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-log-*
+          path: mutation-logs
+
+      - name: What the night observed
+        env:
+          SHARDS_GREEN: ${{ needs.mutation.result == 'success' }}
+        run: |
+          logs=$(find mutation-logs -name '*.log' | sort)
+          echo "logs read:"; echo "$logs"
+          count=$(echo "$logs" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            echo "no shard log was kept — the reading below would be about nothing"
+            exit 1
+          fi
+          args=""
+          for log in $logs; do args="$args --from-log $log"; done
+          bun scripts/scenario-anchors.ts $args | tee /tmp/observed.txt
+          bun scripts/scenario-anchors.ts $args --json > /tmp/observed.json
+          pinned=$(bun -e 'const j = await Bun.file("/tmp/observed.json").json(); console.log(j.pinned)')
+          seen=$(bun -e 'const j = await Bun.file("/tmp/observed.json").json(); console.log(j.observed)')
+          echo "pinned $pinned · observed $seen · shards green: $SHARDS_GREEN"
+          if [ "$SHARDS_GREEN" = "true" ] && [ "$seen" -lt "$pinned" ]; then
+            echo "every shard passed and $((pinned - seen)) pinned scenario(s) were never observed — the pin does not reach the entry that claims it"
+            exit 1
+          fi
