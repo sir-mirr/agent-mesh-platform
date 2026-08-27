@@ -12562,6 +12562,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/readme.test.ts",
     expect: ["the document walk and git disagree about what this repository keeps"],
   },
+  {
+    id: "claude-md-sends-a-session-to-a-file-that-moved",
+    defect:
+      "The one document every session reads before anything else names a script that is not there. The session follows the pointer, finds nothing, and either guesses or asks — and the guess is what the document exists to prevent. Nothing else in the repository fails: a stale pointer is prose until somebody follows it.",
+    file: "CLAUDE.md",
+    from: "`bun scripts/verify.ts`",
+    to: "`bun scripts/verify-all.ts`",
+    suite: "test/claude-md.test.ts",
+    expect: ["CLAUDE.md sends a session to these and they are not there"],
+  },
+  {
+    id: "claude-md-names-a-command-package-json-does-not-have",
+    defect:
+      "The nightly reading is documented under a command name package.json never defines. `bun run nightly` was added with the reader; a rename on either side leaves the other pointing at nothing, and the session that follows the document gets an error instead of the state of last night's run.",
+    file: "CLAUDE.md",
+    from: "bun run nightly    ",
+    to: "bun run nightly-check    ",
+    suite: "test/claude-md.test.ts",
+    expect: ["package.json has no such script"],
+  },
 ];
 
 /**
