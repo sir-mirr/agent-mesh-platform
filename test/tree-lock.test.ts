@@ -16,6 +16,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { runChild } from "./child-output.ts";
 
 const MARKER = resolve(import.meta.dir, "..", ".agent-mesh-mutating");
 const LOCK = resolve(import.meta.dir, "..", "scripts", "tree-lock.ts");
@@ -37,17 +38,20 @@ afterEach(() => rmSync(MARKER, { force: true }));
  * not the default a process exits with when it does nothing at all.
  */
 const STARTED = 7;
+/**
+ * **And it is read from a file, not a pipe.** This read both streams with
+ * `new Response(child.stdout).text()`, and CI's coverage job answered
+ * `EBADF: bad file descriptor, epoll_ctl` — thrown out of the read, failing the
+ * test, while the child had run correctly and exited `7`. Two pushes to
+ * `main` went red that way, both pointing at the tree lock, which was fine.
+ * `runChild` is the same call with the streams landing in files.
+ */
 async function ask(): Promise<{ code: number; said: string }> {
-  const child = Bun.spawn(
-    [
-      "bun",
-      "-e",
-      `import { assertTreeUsable } from ${JSON.stringify(LOCK)}; assertTreeUsable("a-probe"); process.exit(${STARTED});`,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-  const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-  return { code: await child.exited, said: out + err };
+  return await runChild([
+    "bun",
+    "-e",
+    `import { assertTreeUsable } from ${JSON.stringify(LOCK)}; assertTreeUsable("a-probe"); process.exit(${STARTED});`,
+  ]);
 }
 
 /** Wait for the marker to appear, rather than for the holder to finish. */

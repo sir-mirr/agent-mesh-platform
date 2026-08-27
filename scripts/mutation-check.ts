@@ -1741,6 +1741,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["the holder takes its marker with it"],
   },
   {
+    id: "a-child-verdict-loses-the-stream-it-failed-on",
+    defect:
+      "`runChild` returned only the stream the child succeeded on, so a test that failed and printed its reason on stderr came back with an exit code and no evidence. That is the pipe defect this helper replaced, reintroduced one field in: the verdict survives and the reason for it does not.",
+    file: "test/child-output.ts",
+    from: "    return { code, stdout, stderr, said: stdout + stderr };",
+    to: "    return { code, stdout, stderr, said: stdout };",
+    suite: "test/child-output.test.ts",
+    expect: ["carries output the child wrote before failing, not only the code"],
+  },
+  {
+    id: "a-child-leaves-its-scratch-directory-behind",
+    defect:
+      "the helper stopped removing the temporary directory it made per call, so a suite that runs children in a loop fills the machine's temp space with two-file directories nobody will look for. The tree-lock marker is in this repository because a leak nobody was watching went red somewhere else.",
+    file: "test/child-output.ts",
+    from: "    rmSync(dir, { recursive: true, force: true });",
+    to: "    void dir;",
+    suite: "test/child-output.test.ts",
+    expect: ["takes its temporary directories with it, and leaves the ones it did not make"],
+  },
+  {
     id: "a-bar-is-drawn-past-the-end-of-its-track",
     defect: "the telemetry bar stops clamping the percentage it was given, so a value over its maximum draws past the track and a negative one draws backwards \u2014 a reading that cannot be true, presented as a measurement",
     file: "packages/platform-web/src/components/data/TelemetryCard.tsx",
