@@ -56,7 +56,10 @@ const SUITES: string[] = Bun.spawnSync(["git", "ls-files"], { cwd: ROOT })
 const SOURCES: string[] = Bun.spawnSync(["git", "ls-files"], { cwd: ROOT })
   .stdout.toString()
   .split("\n")
-  .filter((path) => /^(packages\/[^/]+\/src\/|scripts\/|test\/)/.test(path))
+  // `.claude/hooks/` is in this denominator because it was not: five hook
+  // files ship in this repository, four carried anchors, and the fifth was
+  // invisible to the count that was supposed to notice.
+  .filter((path) => /^(packages\/[^/]+\/src\/|scripts\/|test\/|\.claude\/hooks\/)/.test(path))
   .filter((path) => /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) && !/\.d\.ts$/.test(path));
 
 /**

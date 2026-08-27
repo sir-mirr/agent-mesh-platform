@@ -208,4 +208,25 @@ describe("the two components agree", () => {
         .not.toContain("Mail is a wake");
     }
   });
+
+  /**
+   * **What the sentence has to say, not that both files say the same thing.**
+   *
+   * Every check above compares the hooks *against the constant*, so the
+   * constant could be edited down to a greeting and all of them would go on
+   * passing — both components would agree, on nothing. The sentence is the
+   * artifact here: it is what stops a wake being read as an assignment, and
+   * the clause that does the work is the one telling the reader that deciding
+   * what happens next is theirs.
+   */
+  test("the sentence still says the thing it exists to say", () => {
+    expect(
+      {
+        wake: STANDING_ORDER.includes("Mail is a wake, not an assignment"),
+        decide: STANDING_ORDER.includes("decide the next step of the standing work yourself"),
+        notAStop: STANDING_ORDER.includes("A report is not a stopping point"),
+      },
+      `the standing order no longer tells the reader that deciding is theirs — it reads: ${STANDING_ORDER}`,
+    ).toEqual({ wake: true, decide: true, notAStop: true });
+  });
 });

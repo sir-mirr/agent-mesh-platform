@@ -12429,6 +12429,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/nightly-observation.test.ts",
     expect: ["the summary stopped feeding the logs to the reader that observes them"],
   },
+  {
+    id: "the-standing-order-stops-saying-who-decides",
+    defect:
+      "The sentence both mailbox components end on is softened into a request for a report. A wake then reads as an assignment again — answer the message, say what you did, stop — with the standing work parked and nobody typing, which is the failure the constant was written for. Every other check compares the hooks against the constant, so all of them keep passing while the two components agree on nothing.",
+    file: ".claude/hooks/standing-order.ts",
+    from: '  "owed, then decide the next step of the standing work yourself and do it.",',
+    to: '  "owed, then report what you did and wait.",',
+    suite: "test/mailbox-hooks.test.ts",
+    expect: ["the standing order no longer tells the reader that deciding is theirs"],
+  },
 ];
 
 /**
