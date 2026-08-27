@@ -291,15 +291,29 @@ describe("SPEC self-consistency", () => {
     // A citation that resolves to nothing still reads as authority. This one
     // found `§ 0`, which was not a wrong number but a rule the document never
     // stated — the sentence rested on a premise no reader could check.
-    const defined = new Set(
-      [...SPEC.matchAll(/^#{2,4}\s+(\d+(?:\.\d+)*)[.a-z]?\s/gm)].map((m) => m[1]!),
-    );
-    expect(defined.size).toBeGreaterThan(50);
+    // **Every numbered heading has to be read, not fifty of them.**
+    //
+    // The pattern here was `(\d+(?:\.\d+)*)[.a-z]?\s`, which cannot read a
+    // lettered section: `### 9.2c. Deactivating an account` gives up at the
+    // `.` after the letter. Seven headings — 8.1a, 8.2a, 9.1a, 9.2a, 9.2c and
+    // two more — were missing from `defined`, and a reference to any of them
+    // was let through by the *reference* pattern stopping at `9.2` as well.
+    // Two blind spots cancelling, under a floor of 50 against 88.
+    const headingLines = SPEC.split("\n").filter((line) => /^#{2,4}\s+\d/.test(line));
+    expect(headingLines.length, "SPEC has no numbered headings — the citation check below is about nothing")
+      .toBeGreaterThan(50);
+    const HEADING = /^#{2,4}\s+(\d+(?:\.\d+)*[A-Za-z]?)\.?\s/;
+    const unread = headingLines.filter((line) => !HEADING.test(line));
+    expect(unread, "these headings define a section this check cannot see, so a citation of one reads as a citation of nothing")
+      .toEqual([]);
+    const defined = new Set(headingLines.map((line) => HEADING.exec(line)![1]!));
 
-    const referenced = new Set([...SPEC.matchAll(/§\s*(\d+(?:\.\d+)*)/g)].map((m) => m[1]!));
-    expect(referenced.size).toBeGreaterThan(30);
+    const referenced = new Set([...SPEC.matchAll(/§\s*(\d+(?:\.\d+)*[A-Za-z]?)/g)].map((m) => m[1]!));
+    expect(referenced.size, "no § citations were found, so nothing below is being checked").toBeGreaterThan(30);
 
-    const dangling = [...referenced].filter((r) => !defined.has(r));
+    // `§ 9.2c` is satisfied by the lettered section and by `9.2`, since the
+    // letter marks a subsection of it rather than a different number.
+    const dangling = [...referenced].filter((r) => !defined.has(r) && !defined.has(r.replace(/[A-Za-z]$/, "")));
     expect(dangling).toEqual([]);
   });
 

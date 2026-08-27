@@ -12522,6 +12522,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/auth-sweep.test.ts",
     expect: ["are swept by nothing"],
   },
+  {
+    id: "a-lettered-section-is-invisible-to-the-citation-check",
+    defect:
+      "The heading pattern goes back to one that cannot read a lettered section. `### 9.2c.` and six others stop counting as defined, and a citation of one is only let through because the reference pattern is blind in the same place — two holes cancelling, under a floor that was set at fifty against eighty-eight.",
+    file: "test/readme.test.ts",
+    from: "    const HEADING = /^#{2,4}\\s+(\\d+(?:\\.\\d+)*[A-Za-z]?)\\.?\\s/;",
+    to: "    const HEADING = /^#{2,4}\\s+(\\d+(?:\\.\\d+)*)[.a-z]?\\s/;",
+    suite: "test/readme.test.ts",
+    expect: ["these headings define a section this check cannot see"],
+  },
 ];
 
 /**
