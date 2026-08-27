@@ -596,6 +596,49 @@ describe("a browser that could not reach anything", () => {
   });
 });
 
+describe("a run the test runner cut off at the knees", () => {
+  /**
+   * `bun test` kills the subprocesses it spawned when a test times out. The
+   * services a suite started are those subprocesses, so one slow test takes
+   * the mesh down and every scenario after it fails to connect — with the
+   * suite still printing a summary as though it had measured them.
+   */
+  test("a reaped run is not a guard that stayed quiet", () => {
+    const output = [
+      "killed 4 dangling processes",
+      "(fail) some scenario > draws the thing",
+      "  ^ this test timed out after 30000ms.",
+      "(fail) another scenario > connects",
+      "  error: packages/http/src/main.ts exited on its own (code 0, signal none)",
+      "",
+      " 4 pass",
+      " 30 fail",
+      "",
+    ].join("\n");
+    const verdict = readVerdict(output, EXPECT, 1, 30);
+    expect(verdict.kind, "a run that lost its services was read as a finding about a guard").toBe("inconclusive");
+    expect(verdict).toHaveProperty(
+      "why",
+      "the runner reaped the services mid-run, so everything after that ran against nothing",
+    );
+  });
+
+  test("a guard that objected before the reaper arrived still decides", () => {
+    // The reap is not a veto. When the expected message is in the output the
+    // guard was reached and said its piece, whatever happened afterwards.
+    const output = [
+      "(fail) a socket that dropped the frame",
+      "killed 4 dangling processes",
+      "",
+      " 12 pass",
+      " 1 fail",
+      "",
+    ].join("\n");
+    expect(readVerdict(output, EXPECT, 1, 1), "a caught mutation was thrown away because the runner tidied up afterwards")
+      .toEqual({ kind: "caught" });
+  });
+});
+
 describe("a run whose output was cut short", () => {
   test("fewer failures named than counted decides nothing", () => {
     const output = "(fail) one\n\n 0 pass\n 2 fail\n";

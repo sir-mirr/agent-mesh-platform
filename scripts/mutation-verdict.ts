@@ -126,6 +126,26 @@ export function readVerdict(output: string, expect: string[], exitCode: number, 
   if (!expected && /net::ERR_[A-Z_]+/.test(output)) {
     return { kind: "inconclusive", why: "the browser could not reach the network, so nothing was drawn" };
   }
+  // **A run whose services were killed under it measured nothing after that
+  // point.** `bun test` reaps every subprocess it spawned when a test times
+  // out, and says so in one line: `killed N dangling processes`. Measured on a
+  // fixture holding two children, one of them `unref`ed — a 2s timeout took
+  // both, and every test after it ran against nothing.
+  //
+  // The browser suite met this once. The mesh went down mid-file, thirty
+  // scenarios failed to connect, and the anchor being measured was written
+  // down as *not caught* when it had never been reached — a morning spent
+  // looking for a fixture problem that was not there, and two wrong
+  // attributions on the way.
+  //
+  // Only when the expected message is absent, for the same reason as the two
+  // rules above: a guard that objected before the reaper arrived still decides.
+  if (!expected && /killed \d+ dangling process/.test(output)) {
+    return {
+      kind: "inconclusive",
+      why: "the runner reaped the services mid-run, so everything after that ran against nothing",
+    };
+  }
   return exitCode !== 0 && expected ? { kind: "caught" } : { kind: "not-caught" };
 }
 

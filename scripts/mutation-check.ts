@@ -12260,6 +12260,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/orphan-guard.test.ts",
     expect: ["says only what a clean exit says"],
   },
+  {
+    id: "a-reaped-run-is-written-down-as-a-finding",
+    defect:
+      "A run whose services the test runner killed under it is read as a statement about a guard. bun reaps the subprocesses it spawned when a test times out, so one slow scenario takes the mesh down and thirty later ones fail to connect — and the entry being measured is recorded as not caught when it was never reached. Measured once for real: a morning in the wrong file and two wrong attributions.",
+    file: "scripts/mutation-verdict.ts",
+    from: '  if (!expected && /killed \\d+ dangling process/.test(output)) {',
+    to: '  if (false && /killed \\d+ dangling process/.test(output)) {',
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a run that lost its services was read as a finding about a guard"],
+  },
+  {
+    id: "the-reaper-vetoes-a-guard-that-already-spoke",
+    defect:
+      "The reap silences a run even when the expected failure is in its output. A guard that objected and then had the runner tidy up behind it is thrown away as unmeasured, so a caught mutation is re-measured for ever and never believed — the same shape as the hook and network rules, which are read only when the expected message is absent.",
+    file: "scripts/mutation-verdict.ts",
+    from: '  if (!expected && /killed \\d+ dangling process/.test(output)) {',
+    to: '  if (/killed \\d+ dangling process/.test(output)) {',
+    suite: "test/mutation-verdict.test.ts",
+    expect: ["a caught mutation was thrown away because the runner tidied up afterwards"],
+  },
 ];
 
 /**
