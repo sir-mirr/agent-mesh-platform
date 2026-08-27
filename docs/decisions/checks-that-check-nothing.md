@@ -317,13 +317,16 @@ form this harness takes, which is *a mutation that makes a named suite go red*.
 
 (How many there are moves with the manifest, and stating it here would be a
 second declaration of something already true elsewhere — the failure mode this
-document is about. `comm` against the manifest's `file:` values answers it in
-one line. What is worth keeping is the sorting below.)
+document is about. `anchor-coverage.test.ts` answers it against the tree on
+every run: every source file either carries an entry or is named in a list with
+a reason, and the reasons are *read* rather than declared — a barrel that grows
+a body loses its exemption the moment it does. What is worth keeping here is
+the sorting below.)
 
 | | |
 |---|---|
 | barrels, type-only files, `vite.config.ts` | the compiler is the checker. Deleting an export or widening a type fails `tsc`, and no suite goes red — `typecheck-scope.test.ts` reads the project's `include` globs on purpose rather than running a second compile, which would double the slowest check in CI |
-| `standing-order.ts` | the test imports the constant it asserts, so a mutation moves both sides at once. That is not a weak test: the same file also asserts each hook *uses* the constant and holds no second copy of the sentence, which is the property worth having |
+| ~~`standing-order.ts`~~ | **this row was wrong, and it is named now.** The reasoning was that the test imports the constant it asserts, so a mutation moves both sides at once — true, and it means every check around that file compares the hooks *against* the constant. The sentence could have been edited down to a greeting and all of them would have passed: both components agreeing, on nothing. What was missing is an assertion about the *content* — that the sentence still tells the reader deciding the next step is theirs — and with that, the entry plants a softening into "report what you did and wait", which is the failure the constant was written to prevent |
 | `test-state-dir.ts` | the mutation's blast radius is somebody's real mesh. It exists so a suite cannot write to the default state directory, and the mutation that proves it works is the one that lets a suite do exactly that. Left unplanted deliberately |
 | browser entry points (`main.tsx`) | no process under test reaches those lines, and the answer where such glue was worth measuring was to split the question out of the entry point — see [what the coverage number leaves out](what-the-coverage-number-leaves-out.md) — not to plant against a line that never runs |
 
@@ -429,6 +432,65 @@ The distinction worth keeping: *unnamed because nothing can go red* is a fact
 about the harness, and *unnamed because nobody looked* is debt. Both this
 section's list and the two defects above came out of asking which one a given
 file was.
+
+## A parser and its subject, in two files
+
+The sharpest shape found so far is not a weak assertion. It is two files that
+are each individually right, with nothing between them:
+
+| the parser | its subject | what the silence looked like |
+|---|---|---|
+| `scripts/verify.ts`'s step list | `ci.yml`'s steps | verify ran the scenario inventory from the day it was written and CI never did, so anything landing through a pull request got a green tree from a check that never looked |
+| `remaining-work.ts`'s `undecided()` | `docs/proposals/README.md`'s **Still undecided** | the section was deleted when D-753 closed the last open item, so the Stop hook's second question had been answering *nothing undecided* by reading a heading that was not there |
+| the hook tests | `.claude/settings.json` | every test spawns the hooks directly; all of them pass with the registrations emptied, and an unregistered mailbox hook is indistinguishable from an empty inbox |
+| `readme.test.ts`'s § citation check | SPEC's numbered headings | seven lettered sections — `9.2c` and six others — were not in the *defined* set, and nothing failed because the *reference* pattern was blind in the same place. Two holes cancelling |
+
+None of these is a missing test. Each is a test that was written, is run, and
+had quietly stopped being about its subject. What finds them is asking a
+second reader the same question — git instead of a directory walk, the workflow
+instead of the script, the document instead of the fixture — and failing when
+the two disagree.
+
+### A floor is not that reader
+
+Four of the checks above defended themselves with a floor: *at least twenty
+routes*, *at least fifty headings*, *at least ten documents*, *more than four
+manifests*. Against 68, 88, 34 and 8. A floor set well under its subject
+measures that the parser produced **something**, which is not what anyone is
+relying on it for — the regex could have dropped two thirds of § 9.1's routes
+and the sweep would have gone on running, quieter and green, over what was
+left.
+
+The repair is the same in every case and it is not a bigger number: *every line
+that looks like a row must have parsed into one*, and the failure names the
+ones that did not. A number has to be lowered whenever the work goes well;
+completeness does not.
+
+### The second reader can be wrong too
+
+The first run of the document-walk comparison went red on
+`docs/디자인시스템.md`: git quotes any path with non-ASCII in it, so a tracked
+file came back as `"docs/\353\224…"` and the check reported a document the
+repository does not have. That is a **false** red, and a false red is what gets
+a check switched off rather than fixed — the same cost as silence, arriving
+from the other direction. `git ls-files -z` is the raw bytes.
+
+### And the run itself can stop being evidence
+
+`bun test` kills every subprocess it spawned when a test times out, and says
+so in one line: `killed N dangling processes`. The services a suite starts are
+those subprocesses, so one slow scenario takes the mesh down mid-file and every
+scenario after it fails to connect — while the summary still prints a count as
+though it had measured them. A mutation run met this, came back with thirty
+reds, and the entry it was measuring was written down as *not caught* when it
+had never been reached.
+
+The verdict reader treats that line the way it already treats a dead hook and
+an offline browser: **inconclusive, not a finding** — and only when the
+expected failure is absent, so a guard that objected before the tidy-up still
+decides. The services now say when they were stopped from outside, too, because
+a clean shutdown they were told to do and a clean shutdown they chose look
+identical in a log.
 
 ## What this does not say
 
