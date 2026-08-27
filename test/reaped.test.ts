@@ -13,7 +13,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { reapedMidRun, report, say } from "../scripts/reaped.ts";
+import { readLog, reapedMidRun, report, say } from "../scripts/reaped.ts";
 import { runChild } from "./child-output.ts";
 
 const SCRIPT = join(import.meta.dir, "..", "scripts", "reaped.ts");
@@ -69,6 +69,17 @@ describe("the answer a shell gets", () => {
     expect(said[0]).toContain("reaped: yes");
     expect(said[1]).toContain("reaped: no");
     expect(said[2]).toContain("could not read");
+  });
+
+  test("reads a log off disk, and answers null for the two ways there is none", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "reaped-read-"));
+    const log = join(dir, "run.log");
+    writeFileSync(log, "killed 2 dangling processes\n");
+    expect({
+      read: await readLog(log),
+      missing: await readLog(join(dir, "not-here.log")),
+      unnamed: await readLog(undefined),
+    }).toEqual({ read: "killed 2 dangling processes\n", missing: null, unnamed: null });
   });
 
   test("run as a command, it answers about a file on disk", async () => {

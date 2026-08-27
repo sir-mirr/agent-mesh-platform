@@ -74,15 +74,24 @@ export function report(text: string | null, out: (line: string) => void): number
   return 0;
 }
 
-if (import.meta.main) {
-  const path = process.argv[2];
-  let text: string | null = null;
-  if (path !== undefined) {
-    try {
-      text = await Bun.file(path).text();
-    } catch {
-      text = null;
-    }
+/**
+ * The log, or `null` when there is no reading it.
+ *
+ * Exported and separate from the line below for a measured reason: a coverage
+ * run only instruments the process it is in, so anything reachable solely by
+ * spawning this file as a command counts as uncovered source however
+ * thoroughly a test drives it. Nine lines of `import.meta.main` body took the
+ * floor from 100.00 to 99.95 — and the floor was right to complain, because a
+ * missing file and an unreadable one were being told apart by code no case
+ * here executed.
+ */
+export async function readLog(path: string | undefined): Promise<string | null> {
+  if (path === undefined) return null;
+  try {
+    return await Bun.file(path).text();
+  } catch {
+    return null;
   }
-  process.exit(report(text, console.log.bind(console)));
 }
+
+if (import.meta.main) process.exit(report(await readLog(process.argv[2]), console.log.bind(console)));
