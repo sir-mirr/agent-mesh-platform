@@ -57,7 +57,26 @@ function routesFromSpec(): Route[] {
     const auth = m[3]!.replace(/\\/g, "").replace(/[‡§]/g, "").trim();
     routes.push({ method: m[1]!, path: m[2]!.replace(/\s*\(SSE\)\s*/, ""), auth: auth as Auth });
   }
-  if (routes.length < 20) throw new Error(`only parsed ${routes.length} routes from § 9.1`);
+  // **Every line that looks like a route has to have parsed.**
+  //
+  // The floor here was `routes.length < 20` against a table of 68: the regex
+  // could have dropped forty-seven rows and this sweep would have gone on
+  // running, quieter and green, against whatever was left. That is the shape
+  // `held-uncovered.test.ts` removed for the same reason — a floor set well
+  // under its subject measures that the parser produced *something*, which is
+  // not what anyone is relying on it for.
+  //
+  // It has already happened once here: a regex that required the cell to end
+  // at the backtick dropped the `(SSE)` row silently, and the routes that
+  // stopped being swept were not visible anywhere.
+  const rowish = table.split("\n").filter((line) => /^\|\s*(GET|POST|PUT|DELETE|PATCH)\b/.test(line));
+  if (rowish.length === 0) throw new Error("§ 9.1's route table is gone from SPEC.md, or no longer starts its rows with a method");
+  if (routes.length !== rowish.length) {
+    const missed = rowish.filter((line) => !/^\|\s*(GET|POST|PUT|DELETE|PATCH)\s*\|\s*`([^`]+)`[^|]*\|\s*([^|]+)\|/.test(line));
+    throw new Error(
+      `§ 9.1 has ${rowish.length} route rows and this parsed ${routes.length} — these are swept by nothing:\n${missed.join("\n")}`,
+    );
+  }
   return routes;
 }
 

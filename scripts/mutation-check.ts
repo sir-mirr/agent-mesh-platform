@@ -12512,6 +12512,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/more-work.test.ts",
     expect: ["the undecided section is empty and does not say it is"],
   },
+  {
+    id: "a-route-row-with-prose-after-it-stops-being-swept",
+    defect:
+      "The § 9.1 row parser goes back to requiring the path cell to end at the backtick. The one row with prose after it — the SSE stream — drops out, and every auth assertion in the sweep goes on passing about the sixty-seven that remain. This is the defect that was actually here; it was invisible because the only guard was a floor of 20 against 68 rows.",
+    file: "test/auth-sweep.test.ts",
+    from: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
+    to: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`\\s*\\|\\s*([^|]+)\\|/.exec(line);",
+    suite: "test/auth-sweep.test.ts",
+    expect: ["are swept by nothing"],
+  },
 ];
 
 /**
