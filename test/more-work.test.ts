@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { $ } from "bun";
 import { tmpdir } from "node:os";
@@ -127,4 +128,60 @@ describe("which tree it reads", () => {
     const said = await remainingWork(root);
     expect(said).toContain("1 commit(s) not on `origin/main`");
   }, 20_000);
+});
+
+
+/**
+ * The two documents the question is asked of, in this repository.
+ *
+ * Every case above hands the reader a fixture, so all of them pass while the
+ * real documents say nothing the parsers can see. That is not hypothetical:
+ * `docs/proposals/README.md` lost its **Still undecided** section when D-753
+ * closed the last open item, and `undecided()` keys on that heading — so the
+ * hook's second question had been answering *nothing undecided* by reading a
+ * section that was not there, and would have gone on doing it if the section
+ * came back under another name. The document's own opening paragraph still
+ * pointed at it.
+ *
+ * A parser and its subject in two files is the same shape as verify and CI, or
+ * the manifest and the tree: each is individually right, and nothing compares
+ * them.
+ */
+describe("the documents this repository actually keeps", () => {
+  const read = (path: string) => readFileSync(join(import.meta.dir, "..", path), "utf8");
+
+  test("the deferred list still has entries in the form the reader looks for", () => {
+    const deferred = read("docs/deferred.md");
+    const headings = deferred.split("\n").filter((line) => line.startsWith("### "));
+    expect(headings.length, "docs/deferred.md holds no ### entries, so the reader has nothing to read")
+      .toBeGreaterThan(0);
+  });
+
+  test("the proposal index still has the section the reader keys on", () => {
+    const index = read("docs/proposals/README.md");
+    expect(
+      index,
+      "the section undecided() reads is gone from docs/proposals/README.md, so the hook reports nothing undecided whatever the file says",
+    ).toContain("### Still undecided");
+  });
+
+  test("an empty section says so in words", () => {
+    // A section that is gone and a section with nothing in it are the same
+    // silence to a parser, and only one of them is a claim somebody made.
+    const index = read("docs/proposals/README.md");
+    const start = index.indexOf("### Still undecided");
+    const rest = index.slice(start + 1);
+    const end = rest.indexOf("\n### ");
+    const section = end === -1 ? rest : rest.slice(0, end);
+    const bullets = section.split("\n").filter((line) => line.startsWith("- **"));
+    if (bullets.length === 0) {
+      expect(
+        section,
+        "the undecided section is empty and does not say it is — which is what a heading nobody maintains looks like",
+      ).toContain("Nothing in this set is undecided");
+    } else {
+      expect(section, "the section lists items and claims emptiness at the same time")
+        .not.toContain("Nothing in this set is undecided");
+    }
+  });
 });

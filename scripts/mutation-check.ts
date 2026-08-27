@@ -12492,6 +12492,26 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/shard.test.ts",
     expect: ["one job would carry the night"],
   },
+  {
+    id: "the-section-the-stop-hook-reads-is-renamed",
+    defect:
+      "The heading `remaining-work.ts` keys on is renamed. `undecided()` finds nothing, the Stop hook stops asking about undecided proposals, and the answer it gives — nothing undecided — is the same one it gives when there really is nothing. This is not hypothetical: the section was deleted when D-753 closed the last open item, and the question had been dead ever since.",
+    file: "docs/proposals/README.md",
+    from: "### Still undecided",
+    to: "### What is still open",
+    suite: "test/more-work.test.ts",
+    expect: ["the section undecided() reads is gone"],
+  },
+  {
+    id: "an-empty-section-stops-saying-it-is-empty",
+    defect:
+      "The sentence claiming the set has nothing undecided is removed, leaving a heading with nothing under it. A section that is empty because everything is settled and a section that is empty because nobody maintains it are the same silence to a parser; only one of them is a claim a person made.",
+    file: "docs/proposals/README.md",
+    from: "**Nothing in this set is undecided.** The last open item was",
+    to: "The last open item was",
+    suite: "test/more-work.test.ts",
+    expect: ["the undecided section is empty and does not say it is"],
+  },
 ];
 
 /**

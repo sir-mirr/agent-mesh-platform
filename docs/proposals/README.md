@@ -100,6 +100,22 @@ reopens this:
 2. **Measured `-32017` false positives from legitimate users accumulating**,
    which turns the trade above from an argument into data.
 
+### Still undecided
+
+**Nothing in this set is undecided.** The last open item was `prefix` against
+`ASN`, closed above as D-753, and everything else the four documents raised is
+either settled or built.
+
+The heading stays with that sentence under it rather than being deleted,
+because it is what `.claude/hooks/remaining-work.ts` reads to ask whether a
+turn has left something open. A section that is gone and a section with nothing
+in it are the same silence to a parser, and only one of them is a claim
+somebody made — the same reason `what-the-coverage-number-leaves-out.md` says
+**The table is empty.** in words instead of leaving an empty table.
+
+When something in this set stops being decided, it goes here as a `- **name**`
+bullet and the sentence above comes out.
+
 ### Two deployment properties the hub cannot check itself
 
 Both come from assuming a proxy, and both fail open if wrong:
