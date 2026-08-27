@@ -9,6 +9,7 @@ import { openTestDb, sessionCookie } from "./harness";
 import { chromium, type Browser } from "playwright";
 import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, capabilityViewerName, freePort, SEED_ADMIN } from "./harness.ts";
+import { reportInconclusive, type Inconclusive } from "./inconclusive.ts";
 
 /**
  * **Twenty seconds, so a red here means a defect rather than a slow machine.**
@@ -432,18 +433,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
    * that says a check exists while nothing is checked. That is the shape of the
    * scenario deleted earlier tonight, coming back through a different door.
    *
-   * So they are collected and printed together at the end, where a count is
-   * legible. Not failed on: the honest reason for most of them is that this
-   * machine cannot reproduce the condition, and turning a property of the
-   * machine into a red is the thing this suite spent the night removing.
+   * So they are collected, printed together at the end where a count is
+   * legible, and then **failed on unless the reason is about this machine**.
+   * `INCONCLUSIVE_BY_DESIGN` in `./inconclusive.ts` names the machine-shaped
+   * ones; every other reason a scenario might give — the field is gone, the
+   * form never left `/login`, the mesh refused the write — is the subject
+   * broken, and those are assertions at the site now rather than exits.
    */
   /** Filled only under `WRITE_PROBE=1`; see `newContext`. */
   const writesSeen = new Set<string>();
 
-  const inconclusive: string[] = [];
+  const inconclusive: Inconclusive[] = [];
 
   function cannotMeasure(scenario: string, why: string): void {
-    inconclusive.push(`${scenario} — ${why}`);
+    inconclusive.push({ scenario, why });
     console.warn(`[${scenario}] inconclusive: ${why}`);
   }
 
@@ -455,12 +458,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           `\n─── a write the front end can make and this list does not name is exercised by nothing ───\n`,
       );
     }
-    if (inconclusive.length === 0) return;
-    console.warn(
-      `\n─── ${inconclusive.length} scenario(s) ran without measuring anything ───\n` +
-        inconclusive.map((line) => `  ${line}`).join("\n") +
-        `\n─── each of these is reported above as a pass ───\n`,
-    );
+    // **The list is the argument.** A machine-shaped reason is named in
+    // `INCONCLUSIVE_BY_DESIGN` and survives; anything else measured nothing
+    // because the subject is broken, and a broken subject is a red. The body
+    // is in `./inconclusive.ts` because on a machine with nothing inconclusive
+    // it never runs here, and code that never runs is code nobody has shown to
+    // work — `inconclusive.test.ts` runs it.
+    reportInconclusive(inconclusive);
   });
 
   async function createAuthedPage(route: string, lang: "ko" | "en" | null = "ko") {
@@ -2823,18 +2827,18 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
   it("[SC-WRITE-17] draws the receipt for a message the mesh accepted, whatever the body was", async () => {
     await withPage("/creator/playground", async ({ page }) => {
       const box = page.locator("textarea").first();
-      if ((await box.count()) === 0) {
-        cannotMeasure("SC-WRITE-17", "no payload field on /creator/playground");
-        return;
-      }
+      expect(
+        await box.count(),
+        "no payload field on /creator/playground — the screen this scenario writes through is gone, which is the subject broken and not a reason to skip",
+      ).toBeGreaterThan(0);
       // **A blank page after the click means nothing unless it was not blank
       // before.** A crash and a screen that never rendered leave the same
       // body length, and reading only the second one calls both the same thing.
       const before = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ").length;
-      if (before <= 200) {
-        cannotMeasure("SC-WRITE-17", `the playground drew ${before} characters before the send, so there is no working screen to break`);
-        return;
-      }
+      expect(
+        before,
+        `the playground drew ${before} characters before the send, so there is no working screen to break`,
+      ).toBeGreaterThan(200);
       // Not JSON. The field accepts it and so does the route.
       await box.fill("hello");
       await page.locator("button[type='submit']").first().click();
@@ -2842,12 +2846,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
       const body = ((await page.locator("body").textContent()) ?? "").replace(/\s+/g, " ");
       const errored = /실패|failed|error/i.test(body) && !/보낸 본문|Dispatched/i.test(body);
-      if (errored) {
-        // The mesh refused it. That is a different scenario and this one has
-        // nothing to say about it.
-        cannotMeasure("SC-WRITE-17", "the mesh did not accept the message, so there is no accepted write to check");
-        return;
-      }
+      // The mesh refusing a body its own field accepts is the write axis
+      // broken, and the receipt read below would then be a receipt for
+      // nothing. Named separately from the receipt assertion so a failure says
+      // which half went.
+      expect(
+        { refused: errored },
+        `the mesh refused a message the playground's own field accepts, so there is no accepted write for the receipt to be about — the screen read: ${body.slice(0, 300)}`,
+      ).toEqual({ refused: false });
 
       // A receipt panel, and a page still standing. `chars` is the other half:
       // a fix that renders an empty panel would satisfy the first alone.
@@ -2867,12 +2873,13 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await page.locator("input[type='password']").first().fill("admin");
       await page.locator("button[type='submit']").first().click();
       await page.waitForURL((u) => !u.pathname.endsWith("/login"), { timeout: 8000 }).catch(() => {});
-      if (page.url().endsWith("/login")) {
-        // Landing is the precondition, not the result. A run that never left
-        // the form would otherwise compare two login pages and call them equal.
-        cannotMeasure("SC-AUTH-08", "the form never left /login, so there is no session to compare");
-        return;
-      }
+      // Landing is the precondition, not the result — but a run that never
+      // leaves the form has found the password path broken, and the
+      // comparison below would otherwise call two login pages equal.
+      expect(
+        page.url().endsWith("/login"),
+        `the password form never left /login (${page.url()}), so there is no session to compare with the cookie's`,
+      ).toBe(false);
 
       // A first read here returns zero links on this machine — the page has not
       // finished. Zero would have been reported as every link missing.
@@ -3413,10 +3420,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // `input[type='text']` matches nothing here — the first version of this
       // reported inconclusive for that reason rather than for a real absence.
       const identityInput = page.locator("input[placeholder*='agt_']").first();
-      if (await identityInput.count() === 0) {
-        cannotMeasure("SC-WRITE-08", "no identity field is rendered, so no write was attempted");
-        return;
-      }
+      expect(
+        await identityInput.count(),
+        "no identity field is rendered on /creator/register — this is the exit agent-mesh-local-pm named: change the placeholder and the scenario skips for ever while staying green",
+      ).toBeGreaterThan(0);
       await identityInput.fill("pairing-abort-probe");
 
       // **Counted, because "the control exists" is not "the write happened".**
@@ -3434,10 +3441,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       });
 
       const submit = page.locator("button[type='submit']").first();
-      if (await submit.count() === 0) {
-        cannotMeasure("SC-WRITE-08", "no submit control is rendered");
-        return;
-      }
+      expect(
+        await submit.count(),
+        "no submit control is rendered on /creator/register, so the abort below has nothing to abort",
+      ).toBeGreaterThan(0);
       await submit.click();
       // **Wait for either outcome, not for the one that should happen.**
       // Waiting only for the failure text means that when the screen wrongly
@@ -3462,10 +3469,10 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       const CLAIMED = "발급된 1회용 인증코드";
       await showsMatch(page, new RegExp(`${FAILED}|${CLAIMED}`));
 
-      if (writes === 0) {
-        cannotMeasure("SC-WRITE-08", "the submit never produced a pairing-code request");
-        return;
-      }
+      expect(
+        writes,
+        "the submit never produced a pairing-code request, so the screen below is being read after nothing happened — the state this scenario exists to tell from a real abort",
+      ).toBeGreaterThan(0);
 
       const text = await page.locator("#root").innerText();
       expect(text, "the screen announced a pairing code the server never issued")

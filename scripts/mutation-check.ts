@@ -12173,6 +12173,63 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/fe-render.test.ts",
     expect: ["puts the egress cell back when the rule write did not land"],
   },
+  {
+    id: "the-inconclusive-list-exempts-everything-except-what-it-names",
+    defect:
+      "The filter that decides which scenarios may measure nothing is inverted, so the one reason that is about this machine fails the run and every reason that is about the subject being broken passes it. The screen suite then reports a green line for a scenario that found no field to type in.",
+    file: "test/inconclusive.ts",
+    from: "  return entries.filter((entry) => !INCONCLUSIVE_BY_DESIGN.has(entry.scenario));",
+    to: "  return entries.filter((entry) => INCONCLUSIVE_BY_DESIGN.has(entry.scenario));",
+    suite: "test/inconclusive.test.ts",
+    expect: ["is a failure when the reason is not about this machine"],
+  },
+  {
+    id: "a-scenario-that-measured-nothing-is-softened-to-a-warning",
+    defect:
+      "The unexplained scenarios are printed instead of thrown. This is the state the suite was in: a console.warn is one line inside six hundred, bun has no verdict but pass for a scenario that ran, and a screen that lost the field a scenario types into goes green for ever.",
+    file: "test/inconclusive.ts",
+    from: `  if (unexplained.length > 0) {
+    throw new Error(`,
+    to: `  if (unexplained.length > 0) {
+    warn(`,
+    suite: "test/inconclusive.test.ts",
+    expect: ["is a failure when the reason is not about this machine"],
+  },
+  {
+    id: "the-screen-suite-collects-what-it-could-not-measure-and-never-reads-it",
+    defect:
+      "The end of the screen run stops consulting what it could not measure. Every scenario still records its own inconclusive exit and the list is still built, so the collection reads as a working guard while nothing is ever failed on — the shape the guard was written to remove.",
+    file: "test/fe-render.test.ts",
+    from: "    reportInconclusive(inconclusive);",
+    to: "    void inconclusive;",
+    suite: "test/inconclusive.test.ts",
+    expect: ["the screen suite no longer reports what it could not measure"],
+  },
+  {
+    id: "a-skip-appears-under-a-name-nobody-argued-for",
+    defect:
+      "A scenario exits without measuring under an id that is on no list. Nothing about the run says so — it is reported as a pass — and the exemption list still names an id that no scenario uses, so the policy holds in the file and not in the suite.",
+    file: "test/fe-render.test.ts",
+    from: `        cannotMeasure(
+          "SC-HARNESS-02",`,
+    to: `        cannotMeasure(
+          "SC-HARNESS-09",`,
+    suite: "test/inconclusive.test.ts",
+    expect: [
+      "these are exempt from failing and no scenario asks for it",
+      "these scenarios exit without measuring for a reason nobody argued for",
+    ],
+  },
+  {
+    id: "the-identity-field-moves-out-from-under-the-scenario-that-finds-it",
+    defect:
+      "The example in the identity placeholder is rewritten, which is a copy change and looks like one. SC-WRITE-08 finds that field by the placeholder — the shared Input sets no type, so there is nothing else to find it by — and agent-mesh-local-pm named this exact edit: the scenario stops writing anything and reports a pass for ever.",
+    file: "packages/platform-web/src/pages/creator/RegisterAgentPage.tsx",
+    from: `placeholder={t("reg.field.identity.ph", "예: agt_settlement_04")}`,
+    to: `placeholder={t("reg.field.identity.ph", "예: 정산-04")}`,
+    suite: "test/fe-render.test.ts",
+    expect: ["no identity field is rendered on /creator/register"],
+  },
 ];
 
 /**
