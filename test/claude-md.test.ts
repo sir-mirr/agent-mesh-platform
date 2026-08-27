@@ -27,13 +27,25 @@ const BASENAMES = new Set(TRACKED.map((path) => path.split("/").pop()!));
 
 const backticked = (pattern: RegExp) => [...new Set([...CLAUDE.matchAll(pattern)].map((m) => m[1]!))];
 
+/**
+ * Path-like tokens, read from anywhere in the document.
+ *
+ * **Not "a backtick, then a path".** That was the first version, and it could
+ * not see `\`bun scripts/verify.ts\`` — the span starts with the command, so the
+ * path sits in the middle of it and the pattern never reached it. An anchor
+ * planting exactly that rename came back uncaught, which is what a check with
+ * a hole in it looks like from the outside: green, and about less than it
+ * says. Commands in fenced blocks are read for the same reason — those are the
+ * lines a session copies.
+ */
+const PATHS = [...new Set([...CLAUDE.matchAll(/[\w.-]+(?:\/[\w.-]+)+\.(?:md|ts|json)/g)].map((m) => m[0]))];
+
 describe("what CLAUDE.md points at", () => {
   test("names paths, commands and files at all", () => {
     // Four denominators, because each list below is compared to nothing when
     // its pattern stops matching — and a document that names nothing passes
     // every check about what it names.
-    expect(backticked(/`([\w./-]+\/[\w./-]+\.(?:md|ts|json))`/g).length, "no paths were read out of CLAUDE.md")
-      .toBeGreaterThan(5);
+    expect(PATHS.length, "no paths were read out of CLAUDE.md").toBeGreaterThan(5);
     expect(backticked(/bun run ([\w:-]+)/g).length, "no `bun run` commands were read out of CLAUDE.md")
       .toBeGreaterThan(1);
     // One today — `mailbox-watch.ts`, the file CLAUDE.md discusses by name
@@ -44,9 +56,8 @@ describe("what CLAUDE.md points at", () => {
   });
 
   test("every path it names is a file this repository has", () => {
-    const named = backticked(/`([\w./-]+\/[\w./-]+\.(?:md|ts|json))`/g);
     expect(
-      named.filter((path) => !existsSync(join(ROOT, path))),
+      PATHS.filter((path) => !existsSync(join(ROOT, path))),
       "CLAUDE.md sends a session to these and they are not there",
     ).toEqual([]);
   });
