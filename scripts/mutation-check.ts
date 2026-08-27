@@ -12439,6 +12439,38 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/mailbox-hooks.test.ts",
     expect: ["the standing order no longer tells the reader that deciding is theirs"],
   },
+  {
+    id: "the-stop-hook-stops-being-registered",
+    defect:
+      "Mail delivery loses its Stop registration. Mail that lands during a turn then waits for somebody to type, which is the case the Stop hook exists for — and every test around the hooks spawns them directly, so all of it goes on passing. An unregistered mailbox hook reads exactly like an empty inbox.",
+    file: ".claude/settings.json",
+    from: `    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \\"\${CLAUDE_PROJECT_DIR}/.claude/hooks/mailbox.ts\\"",
+            "timeout": 10,
+            "statusMessage": "Checking agent mailbox"
+          },
+`,
+    to: `    "Stop": [
+      {
+        "hooks": [
+`,
+    suite: "test/hooks-are-registered.test.ts",
+    expect: ["an unregistered mailbox hook reads exactly like an empty inbox"],
+  },
+  {
+    id: "a-registered-hook-names-a-file-that-is-not-there",
+    defect:
+      "A registered command points at a hook file this repository does not have. The event fires, the command fails, and the session carries on — the same silence as no registration at all, arriving through a path instead of through an absence.",
+    file: ".claude/settings.json",
+    from: '"command": "bun \\"\${CLAUDE_PROJECT_DIR}/.claude/hooks/more-work.ts\\"",',
+    to: '"command": "bun \\"\${CLAUDE_PROJECT_DIR}/.claude/hooks/more_work.ts\\"",',
+    suite: "test/hooks-are-registered.test.ts",
+    expect: ["names a hook file that does not exist"],
+  },
 ];
 
 /**
