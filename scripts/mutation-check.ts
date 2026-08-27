@@ -10196,6 +10196,56 @@ export const MUTATIONS: Mutation[] = [
     expect: ["no state directory was set, so every path falls back to a real one"],
   },
   {
+    id: "a-table-row-carries-a-filled-danger-button",
+    defect:
+      "The deactivate control is an outline button wearing the danger colour, because a filled red button in a populated table reads as the row's primary action — an operator scanning twenty rows sees twenty invitations to deactivate. `SC-USER-D4` counts `table .btn-danger` and expects none; a `variant` of `danger` puts one in every row and nothing else objects.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '                variant="outline"\n                style={deactivated ? undefined : {',
+    to: '                variant="danger"\n                style={deactivated ? undefined : {',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "filledDangerButtons"],
+  },
+  {
+    id: "the-reissue-button-is-styled-two-ways",
+    defect:
+      "One control, one appearance. Styling the reissue button by account state gives the same action two looks down a single column, and the reader has to learn that the difference means nothing. `SC-USER-D4` counts the distinct class names among the table's reissue buttons and expects one.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '                variant="outline"\n                data-testid={`reissue-${u.username}`}',
+    to: '                variant={u.disabled_at ? "ghost" : "outline"}\n                data-testid={`reissue-${u.username}`}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "reissueStyles"],
+  },
+  {
+    id: "the-status-cell-grows-a-control",
+    defect:
+      "T-049 split the row into a cell that *says* what the account is and a cell that *does* something to it. A control back in the status cell undoes the split: the column that was safe to read becomes a column where a click changes an account, which is the arrangement the separation was made to remove.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: "          <div data-testid={`user-access-cell-${u.username}`}>",
+    to: "          <div data-testid={`user-access-cell-${u.username}`}>\n            <button type=\"button\">{t(\"users.lifecycle.deactivate\", \"Deactivate\")}</button>",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "statusButtons"],
+  },
+  {
+    id: "the-action-cell-stacks-instead-of-lining-up",
+    defect:
+      "The action cell lays its controls out in a row so a row of the table stays one line tall. Stacked, every row grows to the height of its controls and a table of twenty accounts stops fitting on a screen — the layout regression T-049 was measuring for.",
+    file: "packages/platform-web/src/pages/platform/UserAdminPage.tsx",
+    from: '            style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 8, minWidth: 310 }}',
+    to: '            style={{ display: "flex", flexDirection: "column", flexWrap: "wrap", alignItems: "flex-start", gap: 8, minWidth: 310 }}',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "horizontalActionCells"],
+  },
+  {
+    id: "the-role-help-stops-spanning-the-form",
+    defect:
+      "The role help sits under the admission form's fields and spans it, because a sentence explaining what a role means is about the whole choice rather than about the column it happens to land in. Confined to one grid column it wraps into a narrow ribbon beside the fields, which is where the first version of this form put it.",
+    file: "packages/platform-web/src/styles/index.css",
+    from: ".admit-role-help-row {\n  grid-column: 1 / -1;",
+    to: ".admit-role-help-row {\n  grid-column: auto;",
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-USER-D4", "roleHelpSpansGrid"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",
