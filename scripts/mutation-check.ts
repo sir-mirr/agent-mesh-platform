@@ -12379,6 +12379,16 @@ export const MUTATIONS: Mutation[] = [
     suite: "test/ci-covers-verify.test.ts",
     expect: ["was not recognised as the typecheck step"],
   },
+  {
+    id: "the-empty-coverage-table-stops-saying-it-is-empty",
+    defect:
+      "The sentence a person writes to claim the table is empty is edited away. Zero rows is the ending D-751 wanted and it is also what a parser that stopped matching produces, and the two cannot be told apart by counting — so the document's own claim is the only thing separating a finished table from a check that has gone blind.",
+    file: "docs/decisions/what-the-coverage-number-leaves-out.md",
+    from: "**The table is empty.** Every row that was in it has left",
+    to: "Every row that was in it has left",
+    suite: "test/held-uncovered.test.ts",
+    expect: ["the table parsed as empty and the document does not say it is"],
+  },
 ];
 
 /**
