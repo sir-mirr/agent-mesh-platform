@@ -10256,6 +10256,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["keeps status and row actions in separate columns with quiet, consistent controls"],
   },
   {
+    id: "the-caller-scan-stops-reading-a-whole-root",
+    defect:
+      "`dropped-fields` compares what a caller sends against what the route reads, and derives its callers by walking four roots. The guard on that derivation was `> 20` over a hundred and twenty-three call sites, so a walk that lost a root kept clearing it: `packages/platform-web` contributes ten, and losing all ten leaves a hundred and thirteen. The screens are then sending bodies nothing compares against any route, which is the silence this file exists to break.",
+    file: "test/dropped-fields.test.ts",
+    from: 'const SOURCES = ["test", join("packages", "platform-web", "src"), "scripts", join("packages", "http", "src")]',
+    to: 'const SOURCES = ["test", "scripts", join("packages", "http", "src")]',
+    suite: "test/dropped-fields.test.ts",
+    expect: ["a root it stopped reading is a caller nobody checks"],
+  },
+  {
     id: "a-seeded-agent-type-goes-missing",
     defect:
       "The fixtures this suite reads are written through the real routes, and `POST /api/v1/agents` refuses a `type` the seeded table does not name — measured, as `type must be one of: ai-antigravity, ai-claude, ai-codex, human, service`. Drop a runtime from the seed and the write for that agent is refused, every scenario naming it reads a mesh without it, and nothing else says so: the writes answered and the answers were thrown away for four months.",

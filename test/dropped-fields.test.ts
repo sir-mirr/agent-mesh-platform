@@ -422,6 +422,32 @@ describe("a request body field the route never reads", () => {
   test("read both sides before comparing them", () => {
     expect(ROUTES.size, "no write route in main.ts was parsed — the handler pattern stopped matching").toBeGreaterThan(10);
     expect(SENT.length, "no request body was matched to a route — the caller pattern stopped matching").toBeGreaterThan(20);
+    /**
+     * **Twenty was a tenth of the subject.** The scan finds a hundred and
+     * twenty-three call sites across thirty-two files, so a pattern that lost a
+     * hundred of them cleared the line above and the comparison below went on
+     * running against what was left — quietly, which is the failure this file
+     * is named for.
+     *
+     * Counting alone is still not enough. The four roots contribute unevenly —
+     * `test` ninety-three, `packages/http` seventeen, `packages/platform-web`
+     * ten, `scripts` three — so a walk that stopped descending into the web
+     * sources loses ten of a hundred and twenty-three and clears any floor
+     * worth setting. Every root is named here for that reason: which callers
+     * are read is the claim, and the total is the coarser half of it.
+     */
+    const from = (root: string) => SENT.filter((s) => s.file.startsWith(root)).length;
+    expect(
+      {
+        total: SENT.length >= 100,
+        test: from("test") > 0,
+        web: from(join("packages", "platform-web")) > 0,
+        http: from(join("packages", "http")) > 0,
+        scripts: from("scripts") > 0,
+      },
+      `the caller scan reads ${SENT.length} sites: test ${from("test")}, web ${from(join("packages", "platform-web"))}, ` +
+        `http ${from(join("packages", "http"))}, scripts ${from("scripts")} — a root it stopped reading is a caller nobody checks`,
+    ).toEqual({ total: true, test: true, web: true, http: true, scripts: true });
     expect(new Set(SENT.map((s) => s.path)).size, "every body matched one route, so the scan is narrower than it looks").toBeGreaterThan(4);
   });
 
