@@ -13398,6 +13398,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["refuses to hide a malformed decision history behind an empty list", "'decisions' array"],
   },
   {
+    id: "an-overdue-decision-never-reaches-the-server",
+    defect:
+      "The decision call becomes a GET. The browser treats the list response as a successful write, clears the approval and refreshes, but the server never records replay or skip. The held row remains actionable while the operator has been given no write failure to correct.",
+    file: "packages/platform-web/src/api/reminders.ts",
+    from: '      method: "POST",',
+    to: '      method: "GET",',
+    suite: "test/fe-render.test.ts",
+    expect: ["SC-REMINDER-01"],
+  },
+  {
     id: "an-overdue-replay-targets-the-hold-time-instead-of-the-slot",
     defect:
       "The decision POST sends held_since as scheduled_at. The value is a well-formed instant, so request-shape validation passes, but it names a slot the operator never selected and the server answers NO_SUCH_HOLD.",
