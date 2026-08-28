@@ -93,7 +93,23 @@ is a surface for making it, not removing the hold.
 direction meanwhile: a one-shot that never fires is better than one that fires
 at 3am for a moment that passed on Friday.
 
-### Only GitHub OAuth can produce an approved non-admin account
+### ~~Only GitHub OAuth can produce an approved non-admin account~~
+
+**Closed.** `POST /api/v1/admin/users` now lets a caller holding `user.admit`
+create a member account for a tenant without GitHub. It returns a generated
+temporary password once, puts the account behind the first-login password
+change, and admits the same identity to the web registry. The React console
+lists and creates those accounts, reissues temporary passwords, and deactivates
+or reactivates them without deleting their history (SPEC § 9.1 and § 9.2c).
+
+GitHub approval remains a separate entrance rather than the only one. The
+health response says whether that entrance is configured (`sign_in.github`,
+D-801), so an empty GitHub approval queue no longer has to stand in for a
+deployment where nobody can ask to join.
+
+The original entry follows.
+
+#### Original entry — Only GitHub OAuth can produce an approved non-admin account
 
 `isUserApproved` passes an admin implicitly and everyone else only via a
 `pending_approvals` row — which is written **only** by the GitHub OAuth
