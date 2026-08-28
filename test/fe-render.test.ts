@@ -942,11 +942,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     });
 
     const slot = "2026-08-29T01:02:03.000Z";
-    let posted: Record<string, unknown> | null = null;
+    const posts: Array<Record<string, unknown>> = [];
     await page.route("**/api/v1/admin/reminders/overdue**", async (route) => {
       const request = route.request();
       if (request.method() === "POST") {
-        posted = request.postDataJSON() as Record<string, unknown>;
+        const posted = request.postDataJSON() as Record<string, unknown>;
+        posts.push(posted);
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -965,7 +966,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
-          reminders: posted === null ? [{
+          reminders: posts.length === 0 ? [{
             reminder_id: "once-browser",
             agent_id: "agent-alpha",
             scheduled_at: slot,
@@ -973,11 +974,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             overdue_ms: 3_661_000,
             status: "active",
           }] : [],
-          decisions: posted === null ? [] : [{
+          decisions: posts.length === 0 ? [] : [{
             reminder_id: "once-browser",
             scheduled_at: slot,
-            decision: posted.decision,
-            approval_ref: posted.approval_ref,
+            decision: posts[0]!.decision,
+            approval_ref: posts[0]!.approval_ref,
             decided_at: "2026-08-29T03:00:00.000Z",
             decided_by: "admin",
           }],
@@ -999,11 +1000,11 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       await heldPanel.getByRole("button", { name: "Replay" }).click();
       await shows(page, "APPROVED: browser-72");
 
-      expect(posted).toEqual({
+      expect(posts).toEqual([{
         scheduled_at: slot,
         decision: "replay",
         approval_ref: "APPROVED: browser-72",
-      });
+      }]);
       const history = await page.locator('[data-testid="overdue-decision-history"]').innerText();
       expect(history).toContain("Replay");
       expect(history).toContain("admin");
