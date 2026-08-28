@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { caughtInLog } from "../scripts/caught-in-log";
+import { provableFrom } from "../scripts/provable.ts";
 
 const SCRIPT = join(import.meta.dir, "..", "scripts", "scenario-anchors.ts");
 
@@ -263,6 +264,28 @@ describe("the count a night is measured against", () => {
       { observed: said.observed, provable: said.provable },
       "a night in which every entry was caught still leaves scenarios unobserved — the summary would fail on a perfect night",
     ).toEqual({ observed: said.provable, provable: said.provable });
+  });
+
+  test("tells a retired-only pin from a plantable one, on inputs the manifest no longer has", () => {
+    // **This is why the reading lives in its own module.** The distinction only
+    // shows on a scenario pinned solely by an entry no run can plant, and the
+    // manifest has none today — `SC-INVENT-01` was the last, and it was given
+    // a plantable pin. Against the real manifest `provable` and `pinned` now
+    // agree, so the guard for the distinction could not fail: the nightly of
+    // 2026-08-28 reported this very anchor as **not caught**.
+    //
+    // The manifest must not be asked to keep a hole open for a test, so the
+    // hole is synthetic and lives here.
+    const proofs = new Map<string, readonly string[]>([
+      ["SC-A", ["a-live-entry"]],
+      ["SC-B", ["a-retired-entry"]],
+      ["SC-C", ["a-retired-entry", "a-live-entry"]],
+    ]);
+    const plantable = new Set(["a-live-entry"]);
+    expect(
+      provableFrom(["SC-A", "SC-B", "SC-C", "SC-D"], proofs, plantable),
+      "a scenario whose only entry is retired was counted as one a night can answer for",
+    ).toEqual({ provable: ["SC-A", "SC-C"], onlyRetired: ["SC-B"] });
   });
 
   test("names the scenarios no run can answer for, rather than counting them as answered", () => {

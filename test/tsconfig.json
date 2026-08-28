@@ -36,6 +36,10 @@
     // The reading that tells a run which measured nothing from a run that
     // failed. Imports nothing, and `mutation-verdict.ts` imports it.
     "../scripts/reaped.ts",
+    // The claim a run can answer for, apart from the claim itself. Imports
+    // nothing; it is separate so a synthetic case can hold the state the real
+    // manifest no longer has.
+    "../scripts/provable.ts",
     // The nightly-freshness reader. Node builtins and Bun globals only, same
     // reason as the two above.
     "../scripts/nightly-freshness.ts",

@@ -31,6 +31,7 @@
  * so a log is the only record of an observation short of adding one.
  */
 import { readdirSync, readFileSync } from "node:fs";
+import { provableFrom } from "./provable.ts";
 import { join } from "node:path";
 import { MUTATIONS } from "./mutation-check.ts";
 import { caughtInLog } from "./caught-in-log.ts";
@@ -194,11 +195,7 @@ const staleExemptions = Object.keys(NOT_A_PRODUCT_GUARD).flatMap((id) => {
  * the claim; this is the part of the claim a run can answer.
  */
 const plantable = new Set(MUTATIONS.filter((m) => m.from).map((m) => m.id));
-const provableIds = ids.filter((id) => (proofs.get(id) ?? []).some((entry) => plantable.has(entry)));
-/** Pinned, and only by entries no run can plant. */
-const pinnedOnlyByRetired = ids.filter(
-  (id) => proofs.has(id) && !(proofs.get(id) ?? []).some((entry) => plantable.has(entry)),
-);
+const { provable: provableIds, onlyRetired: pinnedOnlyByRetired } = provableFrom(ids, proofs, plantable);
 
 /** Pinned by an entry some run in the given log recorded as caught. */
 const seen = observed === null

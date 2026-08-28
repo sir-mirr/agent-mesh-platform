@@ -24,6 +24,81 @@ import { join } from "node:path";
 
 const ci = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "ci.yml"), "utf8");
 
+/**
+ * Every step whose command ends in a pipe, and whether its exit code survives.
+ *
+ * Returns one entry per `run:` step whose script pipes into something, with
+ * whether that script turns on `pipefail`. A step that does not is a step whose
+ * status is the *last* command's — for `| tee`, always success.
+ */
+export function pipedSteps(workflow: string): Array<{ name: string; pipefail: boolean }> {
+  const steps: Array<{ name: string; pipefail: boolean }> = [];
+  const lines = workflow.split("\n");
+  let name = "(unnamed)";
+  for (let i = 0; i < lines.length; i++) {
+    const named = /^\s*-?\s*name:\s*(.+)$/.exec(lines[i]!);
+    if (named) name = named[1]!.trim();
+    const key = /^(\s*(?:-\s+)?)run:\s*(.*)$/.exec(lines[i]!);
+    if (!key) continue;
+    const rest = key[2]!.trim();
+    let script = rest;
+    if (rest === "" || /^[|>][-+]?$/.test(rest)) {
+      const indent = key[1]!.length;
+      const body: string[] = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j]!;
+        if (line.trim() !== "" && line.length - line.trimStart().length <= indent) break;
+        body.push(line);
+        i = j;
+      }
+      script = body.join("\n");
+    }
+    // A pipe into a pager or a filter is the same exposure; `||` and `|>` are
+    // not pipes at all and must not be counted, or this reports on steps that
+    // have nothing to lose.
+    if (!/[^|]\|[^|]/.test(script)) continue;
+    steps.push({ name, pipefail: /set -o pipefail/.test(script) });
+  }
+  return steps;
+}
+
+describe("a command whose exit code has somewhere to get lost", () => {
+  test("every piped step turns on pipefail", () => {
+    // **Measured, not feared.** On the night of 2026-08-28 the mutation step
+    // was `bun run mutation-check … | tee shard.log` with no `pipefail`, and a
+    // comment beside it asserting that pipefail was on by default. It is not:
+    // a step with no `shell:` runs under `bash -e {0}`. Shard 8 exited 1 and
+    // shard 5 reported one entry not caught, and all eight jobs were green.
+    const piped = pipedSteps(ci);
+    expect(piped.length, "no piped step was found, so the check below is about nothing").toBeGreaterThan(0);
+    expect(
+      piped.filter((step) => !step.pipefail).map((step) => step.name),
+      "these steps pipe without pipefail, so their exit code is the last command's and the step cannot fail",
+    ).toEqual([]);
+  });
+
+  test("reads a piped step apart from one that only looks piped", () => {
+    // The reading itself, against cases the real file does not contain: `||`
+    // is not a pipe, and a step that pipes inside a block is still a step that
+    // pipes.
+    const workflow = [
+      "    steps:",
+      "      - name: Or, not pipe",
+      "        run: bun test || echo done",
+      "      - name: Piped, guarded",
+      "        run: |",
+      "          set -o pipefail",
+      "          bun x | tee a.log",
+      "      - name: Piped, bare",
+      "        run: bun y | tee b.log",
+    ].join("\n");
+    expect(pipedSteps(workflow)).toEqual([
+      { name: "Piped, guarded", pipefail: true },
+      { name: "Piped, bare", pipefail: false },
+    ]);
+  });
+});
+
 describe("what CI does with the mutation manifest", () => {
   test("every push reads the anchors, and none of them plants the whole manifest", () => {
     const beforeJobs = ci.slice(0, ci.indexOf("\n  coverage-floor:"));

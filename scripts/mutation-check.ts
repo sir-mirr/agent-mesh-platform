@@ -1801,6 +1801,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["lets every other failure through untouched"],
   },
   {
+    id: "a-mutation-shard-cannot-fail-again",
+    defect:
+      "The nightly's mutation step goes back to piping into `tee` with no `pipefail`, so the step's status is `tee`'s and `tee` always succeeds. This is not hypothetical: on 2026-08-28 shard 8 exited 1 with an unmeasured entry and shard 5 reported one **not caught**, and all eight jobs came back green — the pass that exists to find checks which cannot fail could not fail, because of the tee added to feed the summary job.",
+    file: ".github/workflows/ci.yml",
+    from: "          set -o pipefail\n          bun run mutation-check -- --shard ${{ matrix.shard }}/8 | tee mutation-shard-${{ matrix.shard }}.log",
+    to: "          bun run mutation-check -- --shard ${{ matrix.shard }}/8 | tee mutation-shard-${{ matrix.shard }}.log",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["these steps pipe without pipefail"],
+  },
+  {
+    id: "a-piped-step-is-read-as-an-unpiped-one",
+    defect:
+      "The reading that finds piped steps stops recognising a pipe inside a block scalar, so every multi-line step — which is every step where a pipeline is worth writing — is exempt from the check without saying so. The list comes back empty and the workflow reads as safe.",
+    file: "test/ci-mutation-job.test.ts",
+    from: "    if (!/[^|]\\|[^|]/.test(script)) continue;",
+    to: "    if (!/[^|]\\|[^|]/.test(rest)) continue;",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["reads a piped step apart from one that only looks piped"],
+  },
+  {
+    id: "a-retired-only-pin-is-counted-as-answerable",
+    defect:
+      "`provableFrom` stops asking whether the entry pinning a scenario is one a run can plant, so a scenario resting only on a retired entry is counted as one a night can answer for. The nightly's summary then compares an observation against a number no perfect night can reach. The manifest has no such scenario today, which is exactly why this reading was moved somewhere a synthetic case can hold one.",
+    file: "scripts/provable.ts",
+    from: "  const canPlant = (id: string) => (proofs.get(id) ?? []).some((entry) => plantable.has(entry));",
+    to: "  const canPlant = (id: string) => (proofs.get(id) ?? []).length > 0;",
+    suite: "test/scenario-anchors.test.ts",
+    expect: ["a scenario whose only entry is retired was counted as one a night can answer for"],
+  },
+  {
     id: "a-suite-goes-back-to-reading-a-pipe",
     defect:
       "The sweep's own guard stops looking at the files it is for. Twenty-three call sites moved off `new Response(child.stdout)` because an `EBADF` out of that read failed `main`'s CI twice with the children running correctly, and nothing stopped the twenty-fourth from being written — a scan that reads no file passes over any repository at all.",
@@ -12731,9 +12761,20 @@ export const MUTATIONS: Mutation[] = [
     id: "a-pin-no-run-can-plant-is-counted-as-one-a-night-can-answer",
     defect:
       "The count a night is measured against goes back to every pinned scenario, retired entries included. A retired entry carries no `from`, so no run ticks it and no log observes the scenario resting on it — and the nightly's summary then fails on the nights when everything worked. A summary that cries wolf is one somebody switches off, which costs what the silence costs.",
+    // **은퇴 2026-08-28 — 이 검사는 실제 매니페스트에서 실패할 수 없게 됐다.**
+    //
+    // 이 엔트리가 심던 자리는 `provable` 과 `pinned` 을 가르는 계산이고, 둘을
+    // 가르는 유일한 경우는 *은퇴한 엔트리로만 핀된 시나리오* 다. 어젯밤
+    // `SC-INVENT-01` 에 심을 수 있는 핀을 주면서 그런 시나리오가 0 이 됐고,
+    // 그러자 두 수가 174 로 같아져 이 변이는 초록으로 끝났다 — 8/28 야간 판이
+    // 이 엔트리를 **not caught** 로 보고한 이유다.
+    //
+    // 매니페스트에 검사를 위한 구멍을 남겨둘 수는 없으므로, 계산이
+    // `scripts/provable.ts` 로 나가고 그 자리를 `a-retired-only-pin-is-counted-as-answerable`
+    // 이 이어받는다. 그쪽 케이스는 합성이라 실제 매니페스트의 상태와 무관하게
+    // 빨개질 수 있다.
+    retired: "the distinction it planted into now moved to scripts/provable.ts, where a synthetic case can hold the state the manifest no longer has",
     file: "scripts/scenario-anchors.ts",
-    from: "const provableIds = ids.filter((id) => (proofs.get(id) ?? []).some((entry) => plantable.has(entry)));",
-    to: "const provableIds = ids.filter((id) => proofs.has(id));",
     suite: "test/scenario-anchors.test.ts",
     expect: ["the summary would fail on a perfect night"],
   },

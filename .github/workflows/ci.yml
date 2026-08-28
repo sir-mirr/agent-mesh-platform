@@ -243,12 +243,25 @@ jobs:
 
       # It edits tracked files and restores with `git checkout --`, which is
       # safe on a fresh checkout and refuses outright on a dirty tree.
+      #
       # Written down as well as printed. The log is what `scenario-anchors.ts
       # --from-log` reads to turn *pinned* into *observed*, and the summary job
-      # below cannot do that from a run's console output. `pipefail` is on by
-      # default in these shells, so `tee` does not swallow the exit code.
+      # below cannot do that from a run's console output.
+      #
+      # **`set -o pipefail`, because it is not on by default here.** The comment
+      # this replaces claimed it was, and that claim was wrong: a step with no
+      # `shell:` runs under `bash -e {0}`, not `bash -eo pipefail {0}`, so the
+      # step's status was `tee`'s and `tee` always succeeds. Measured on the
+      # night of 2026-08-28: shard 8 exited 1 with an unmeasured entry and
+      # shard 5 reported one **not caught**, and every one of the eight jobs
+      # came back green — the mutation pass could not fail, which is the defect
+      # it exists to find, sitting in the tee that was added to feed the
+      # summary job below.
       - name: Mutation check
-        run: bun run mutation-check -- --shard ${{ matrix.shard }}/8 | tee mutation-shard-${{ matrix.shard }}.log
+        shell: bash
+        run: |
+          set -o pipefail
+          bun run mutation-check -- --shard ${{ matrix.shard }}/8 | tee mutation-shard-${{ matrix.shard }}.log
 
       # `always()`: a shard that went red still measured seven eighths of its
       # entries, and the night's reading is worth more with them than without.
@@ -351,9 +364,13 @@ jobs:
           path: mutation-logs
 
       - name: What the night observed
+        shell: bash
         env:
           SHARDS_GREEN: ${{ needs.mutation.result == 'success' }}
         run: |
+          # Same reason as the mutation step: without this the `| tee` below
+          # reports `tee`'s success however the reading went.
+          set -o pipefail
           logs=$(find mutation-logs -name '*.log' | sort)
           echo "logs read:"; echo "$logs"
           count=$(echo "$logs" | grep -c . || true)
