@@ -645,26 +645,30 @@ describe("the scenarios the specification cites", () => {
 });
 
 /**
- * The operator decision that no operator can make (T-053).
+ * The operator decision that no operator could make, until T-053 (D-810).
  *
  * `ReminderScheduler.recordOverdueDecision` writes the row `shouldHoldOverdue`
- * reads, requires an `APPROVED:` reference, and is covered by its own unit
- * tests. Its doc comment says the rest: *no production call site invokes this
- * method*. The daemon has no HTTP surface — it speaks to the hub over a socket
- * and nothing else — so a `once` reminder that goes more than `overdueHoldMs`
- * past its slot is held with no way to release it short of editing SQLite.
+ * reads, requires an `APPROVED:` reference, and was covered by its own unit
+ * tests — and by *nothing else*. The daemon has no HTTP surface, it speaks to
+ * the hub over a socket and nothing else, so a `once` reminder that went more
+ * than `overdueHoldMs` past its slot was held with no way to release it short
+ * of editing SQLite.
  *
- * **A held reminder is silent**, which is why this is written down rather than
+ * **A held reminder is silent**, which is why this was written down rather than
  * left to be noticed: with no screen, "nothing is held" and "something is held
  * and nobody can see it" are the same view. The ledger's phrase for T-053 is
- * `부재≠성공` — absence is not success — and this is the shape it names.
+ * `부재≠성공` — absence is not success — and this is the shape it named.
  *
- * Pinned as a gap, not as a property. The day an admin route calls this, the
- * assertion below flips, and flipping it is the point: it is the marker that
- * the gap closed rather than a rule anybody wants kept.
+ * **This check asserted the gap, and now asserts the property.** It held
+ * `production === []` for as long as no route reached the mechanism; the two
+ * admin routes flipped it, and flipping it was the point. What it pins now is
+ * that the path stays reachable and stays split: reading which reminders are
+ * held is one capability, deciding what happens to one is another, and a route
+ * that gated both on the reading capability would hand every operator who may
+ * look the power to send.
  */
 describe("the overdue reminder decision path", () => {
-  test("[T-053] nothing outside the scheduler and its tests can record one", async () => {
+  test("[T-053] an operator path reaches it, and reading is not deciding", async () => {
     const { readdirSync, readFileSync, statSync } = await import("node:fs");
 
     const walk = (dir: string): string[] =>
@@ -681,24 +685,45 @@ describe("the overdue reminder decision path", () => {
       .filter((file) => readFileSync(file, "utf8").includes("recordOverdueDecision"))
       .map((file) => file.slice(REPO_ROOT.length));
 
-    // The method exists and is spelled this way — otherwise a rename would
-    // empty this list and read as "the gap closed".
+    // The scheduler's own method still exists and is spelled this way. It is a
+    // different function from the http surface's — same name, same table, two
+    // sides of a boundary — and a rename there would empty the search below
+    // while leaving this reading as if the path were intact.
     // Asserted as a boolean, not with `toContain` on the file: a failing
     // `toContain` prints the whole received string, and a 400-line source file
     // in a failure message buries the one sentence that says what broke.
     const scheduler = readFileSync(`${REPO_ROOT}packages/self-reminder/src/scheduler.ts`, "utf8");
     expect(
       scheduler.includes("recordOverdueDecision("),
-      "recordOverdueDecision is gone or renamed, so the search below proves nothing",
+      "the scheduler's recordOverdueDecision is gone or renamed, so the search below proves nothing",
     ).toBe(true);
 
-    // Tests may reach it; that is how the mechanism is known to work at all.
-    // Production code reaching it is the change this waits for.
+    // **The flip.** This asserted `[]` until D-810 put a route on the hold: a
+    // held reminder could only be released by editing SQLite, and "nothing is
+    // held" and "something is held and nobody can see it" were the same view.
+    // The gap is closed, so what is pinned now is that it stays closed.
     const production = callers.filter((file) => !file.includes(".test."));
     expect(
       production,
-      `an operator path exists now — ${production.join(", ")} — so this check has done its job and should be replaced by one asserting the route`,
-    ).toEqual([]);
+      `no production file records a decision, so the operator path T-053 built is gone: ${callers.join(", ") || "nothing at all"}`,
+    ).toContain("packages/http/src/main.ts");
+
+    // Two capabilities, not one. Seeing that a reminder is held is a different
+    // authorisation question from deciding what happens to it, and a route that
+    // gated both on the reading capability would hand every operator who may
+    // look the power to send. Checked as a pair, because either one alone is
+    // satisfied by a file that names the same capability twice.
+    const main = readFileSync(`${REPO_ROOT}packages/http/src/main.ts`, "utf8");
+    const gate = (route: string): string | null => {
+      const at = main.indexOf(route);
+      if (at === -1) return null;
+      return /requireCapability\(c, CAPABILITY\.([A-Z_]+)\)/.exec(main.slice(at, at + 400))?.[1] ?? null;
+    };
+    expect({
+      read: gate("app.get('/api/v1/admin/reminders/overdue'"),
+      decide: gate("app.post('/api/v1/admin/reminders/overdue/:id/decision'"),
+    }).toEqual({ read: "REMINDER_READ_HELD", decide: "REMINDER_DECIDE" });
+
     expect(
       callers.filter((file) => file.includes(".test.")).length,
       "not even a test records a decision, so the mechanism is unexercised",

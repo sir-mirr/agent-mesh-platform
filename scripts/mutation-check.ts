@@ -7090,6 +7090,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["a schedule type outside the three"],
   },
   {
+    id: "the-store-stops-declaring-the-operator-tables",
+    defect:
+      "`migrate` stopped calling `migrateSchedulerState`, so `scheduler_health`, `scheduler_events` and `overdue_decisions` exist only where the reminder daemon has run \u2014 the shape D-810 moved them out of. An admin route asking a hub-only directory what is held gets `no such table`, and a screen turning that into an empty page reports a mesh with nothing waiting when the truth is that nothing declared the table.",
+    file: "packages/store/src/schema/self-reminder.ts",
+    from: "  migrateSchedulerState(db);",
+    to: "  // the scheduler declares its own state",
+    suite: "packages/store/src/schema/self-reminder-tables.test.ts",
+    expect: ["the operator tables are among them"],
+  },
+  {
     id: "delivery-status-stops-being-constrained",
     defect:
       "`audit_log.delivery_status` stopped constraining itself to the six outcomes. This column is the delivery record for a reminder (\u00a7 3.3), and a value outside the set is a row that reads as neither delivered nor failed \u2014 an audit trail that answers a question nobody can act on.",
@@ -8669,7 +8679,7 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A store's closer was imported and left out of the shutdown list \u2014 the exact omission that left `audit.db`'s read-write handle unfolded, and the exact thing no runtime test can see, because an uncalled import leaves nothing behind.",
     file: "packages/http/src/main.ts",
-    from: "  ['audit (access log)', closeAuditAccessLog],\n]",
+    from: "  ['reminders (overdue)', closeReminderOverdue],\n]",
     to: "]",
     suite: "packages/http/src/shutdown.test.ts",
     expect: ["every closer main.ts imports is one it closes"],
