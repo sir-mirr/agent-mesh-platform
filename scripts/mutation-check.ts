@@ -1811,6 +1811,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["these steps pipe without pipefail"],
   },
   {
+    id: "the-mechanism-check-stops-using-the-shell-ci-uses",
+    defect:
+      "The case that measures what a missing `pipefail` costs runs its probe under a shell that already has it, so it measures nothing and passes. The workflow check beside it would then be guarding a mechanism nobody has run — which is the exact state the false comment left this repository in on 2026-08-28.",
+    file: "test/ci-mutation-job.test.ts",
+    from: '    const bare = await runChild(["bash", "-e", "-c", "false | tee /dev/null"]);',
+    to: '    const bare = await runChild(["bash", "-eo", "pipefail", "-c", "false | tee /dev/null"]);',
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["a failing command piped into tee now reports its own status"],
+  },
+  {
     id: "a-piped-step-is-read-as-an-unpiped-one",
     defect:
       "The reading that finds piped steps stops recognising a pipe inside a block scalar, so every multi-line step — which is every step where a pipeline is worth writing — is exempt from the check without saying so. The list comes back empty and the workflow reads as safe.",

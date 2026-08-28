@@ -22,6 +22,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const ci = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "ci.yml"), "utf8");
 
 /**
@@ -76,6 +78,23 @@ describe("a command whose exit code has somewhere to get lost", () => {
       "these steps pipe without pipefail, so their exit code is the last command's and the step cannot fail",
     ).toEqual([]);
   });
+
+  test("loses a failing command's exit code under the shell CI actually uses", async () => {
+    // **The mechanism, not the spelling.** The check above reads the workflow
+    // for `set -o pipefail`; this measures what its absence does. Both halves
+    // are needed, because what went wrong on 2026-08-28 was a *comment*
+    // asserting the mechanism — "pipefail is on by default in these shells" —
+    // which nobody had run.
+    //
+    // `bash -e` is not a guess either: the run log for a step with no
+    // `shell:` prints `shell: /usr/bin/bash -e {0}`.
+    const bare = await runChild(["bash", "-e", "-c", "false | tee /dev/null"]);
+    const guarded = await runChild(["bash", "-e", "-c", "set -o pipefail; false | tee /dev/null"]);
+    expect(
+      { bare: bare.code, guarded: guarded.code },
+      "a failing command piped into tee now reports its own status, so the workflow check above is guarding against nothing",
+    ).toEqual({ bare: 0, guarded: 1 });
+  }, 20_000);
 
   test("reads a piped step apart from one that only looks piped", () => {
     // The reading itself, against cases the real file does not contain: `||`
