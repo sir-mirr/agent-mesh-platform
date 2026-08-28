@@ -607,3 +607,39 @@ describe("the filters the documents tell an operator to send", () => {
     expect(claimed, "a document tells an operator to send a filter the route does not read").toEqual([]);
   });
 });
+
+/**
+ * Conformance scenario ids named in the specification.
+ *
+ * § 9.1b calls `event_type` required and gives the reason as two named
+ * scenarios. That is a stronger sentence than "the conformance suite depends on
+ * it" — it can be checked — but only while the names still exist. The scenarios
+ * live in `@agent-mesh/contracts`, on the other side of a pinned tag, so a
+ * rename there leaves this side citing a scenario that no longer answers to the
+ * name, and a reason nobody can follow reads as a reason nobody checked.
+ *
+ * agent-mesh-local-pm split "measured" from "cited" on exactly this sentence
+ * and was right to: it was a code comment repeated, until it was counted.
+ */
+describe("the scenarios the specification cites", () => {
+  test("every E2E id named in SPEC exists in the pinned contracts", async () => {
+    const { readFileSync } = await import("node:fs");
+    const spec = readFileSync(`${REPO_ROOT}SPEC.md`, "utf8");
+    const scenarios = readFileSync(
+      `${REPO_ROOT}node_modules/@agent-mesh/contracts/src/e2e-scenarios.ts`,
+      "utf8",
+    );
+
+    const declared = new Set([...scenarios.matchAll(/\bid: "(E2E-[A-Z0-9-]+)"/g)].map((m) => m[1]!));
+    expect(declared.size, "no scenarios were read, so nothing was compared").toBeGreaterThan(10);
+
+    const cited = [...new Set([...spec.matchAll(/\b(E2E-[A-Z0-9-]+)\b/g)].map((m) => m[1]!))];
+    // An empty citation list agrees with any suite. § 9.1b alone names two.
+    expect(cited.length, "SPEC cites no scenario at all any more").toBeGreaterThan(2);
+
+    expect(
+      cited.filter((id) => !declared.has(id)),
+      "SPEC gives a reason that points at a scenario the pinned contracts do not have",
+    ).toEqual([]);
+  });
+});

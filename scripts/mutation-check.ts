@@ -10054,6 +10054,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "the-spec-cites-a-scenario-that-does-not-exist",
+    defect:
+      "\u00a7 9.1b's reason points at a scenario id the pinned contracts do not have. A citation is what makes \"required\" checkable rather than asserted, and one that names nothing is worse than none: it reads as verified. The scenarios live behind a pinned tag, so the realistic version of this is a rename on the other side rather than a typo here.",
+    file: "SPEC.md",
+    from: "`E2E-TYPE-001` (\u00a7 8.9.5)",
+    to: "`E2E-TYPE-002` (\u00a7 8.9.5)",
+    suite: "test/greppable.test.ts",
+    expect: ["every E2E id named in SPEC exists in the pinned contracts"],
+  },
+  {
     id: "a-document-sends-an-operator-to-a-retired-filter",
     defect:
       "The operator footnote names `?provider=`, which the route no longer reads. An ignored parameter does not fail \u2014 the route answers with the whole trail, so an operator following the document gets a wide search that looks like a narrow one. This is the same shape the parameter itself had: reachable, answering, and not selecting what its name says.",

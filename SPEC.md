@@ -1957,7 +1957,7 @@ reader would not guess from the name.
 | Parameter | Selects | Notes |
 |---|---|---|
 | `identity` | the event's `identity` | Whose activity the event is *about*, which for an § 11.0.1 access record is the operator who read, not the service that recorded the read. |
-| `event_type` | the event's `event_type`, exactly | One type, no prefix matching. **Required**: the conformance scenarios assert a trace through this route rather than by reading a hub's own storage, and an implementation without this filter cannot serve them. |
+| `event_type` | the event's `event_type`, exactly | One type, no prefix matching. **Required**: two conformance scenarios send it — `E2E-AUDIT-001` (§ 11.0, § 11.0.1) and `E2E-TYPE-001` (§ 8.9.5) — because a trace has to be asserted through the operator's own route rather than against a hub's storage, which only one runner can open. An implementation without this filter cannot serve them. |
 | `recorded_by_kind` | `recorded_by.kind` | The **only** way to select hub-recorded events, which carry no recorder identity. |
 | `recorded_by_identity` | `recorded_by.identity` | Selects nothing when the kind is `hub`; there is no identity to match. |
 | `correlation_id` | the event's `correlation_id` | |
