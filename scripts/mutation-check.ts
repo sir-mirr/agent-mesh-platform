@@ -10145,8 +10145,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`decided_by` is written empty. Every other field of the record survives, so the decision looks complete \u2014 and the one question an audit of it asks, *who decided this*, has no answer. \u00a7 11.0.1's precedent is the opposite: the value of a record is that a person can be asked about it.",
     file: "packages/http/src/reminder-overdue.ts",
-    from: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, decidedBy)",
-    to: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, '')",
+    from: "    .run(reminderId, slot, decision, approvalRef, decidedAt, decidedBy)",
+    to: "    .run(reminderId, slot, decision, approvalRef, decidedAt, '')",
     suite: "test/reminder-overdue.test.ts",
     expect: ["the persisted decision has no decider"],
   },
