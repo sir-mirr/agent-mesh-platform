@@ -140,6 +140,42 @@ describe("what the scheduler is holding", () => {
 });
 
 describe("recording a decision", () => {
+  test("the slot the list published is a slot this accepts, and stores as the scheduler will read it", () => {
+    // **The round trip, taking the value from the list rather than from this
+    // test.** Every other case here hands `recordOverdueDecision` the SQLite
+    // shape, which is the shape the scheduler wrote — so they agreed with the
+    // implementation by construction and said nothing about the screen.
+    //
+    // The screen has only one sensible source for `scheduled_at`: the row the
+    // operator clicked. That row carries ISO-8601, because § 9.1 puts ISO on
+    // the wire. Fed back, it built a hold key that matched nothing, and every
+    // held reminder answered `404 NO_SUCH_HOLD`.
+    const id = uniq("roundtrip");
+    reminder(id, "agent-e", "active");
+    hold(id, "2026-07-14 09:00:00", "2026-07-14 09:30:00");
+
+    const [listed] = mine([id])(listHeldOverdue());
+    expect(listed?.scheduled_at, "the list stopped publishing an instant").toBe("2026-07-14T09:00:00.000Z");
+
+    const decided = recordOverdueDecision(id, listed!.scheduled_at, "replay", "APPROVED:ops-rt", "alice");
+    expect(decided, `the list's own value was refused: ${JSON.stringify(decided)}`).toMatchObject({ ok: true });
+
+    // And the other side of the boundary. The scheduler finds its decision with
+    // `WHERE scheduled_at = ?` over `reminders.next_fire_at`, which is this
+    // column's shape — so a row stored in any other shape is a decision the
+    // route reported and the daemon will never see.
+    const stored = store
+      .prepare(`SELECT scheduled_at FROM overdue_decisions WHERE reminder_id = ?`)
+      .get(id) as { scheduled_at: string };
+    const key = store
+      .prepare(`SELECT key FROM scheduler_health WHERE key LIKE ?`)
+      .get(`${HOLD}${id}:%`) as { key: string };
+    expect(
+      stored.scheduled_at,
+      "the row the route wrote and the slot the scheduler is holding are different strings",
+    ).toBe(key.key.slice(`${HOLD}${id}:`.length));
+  });
+
   test("a decision outside the two is refused", () => {
     const r = recordOverdueDecision(uniq("bad"), "2026-07-14 09:00:00", "maybe" as never, "APPROVED:x", "alice");
     expect({ ok: r.ok, code: (r as { code?: string }).code }).toEqual({

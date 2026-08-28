@@ -778,6 +778,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["runChild opened a descriptor again"],
   },
   {
+    id: "the-decision-route-stops-canonicalising-the-slot",
+    defect:
+      "The slot arrives in whatever shape the caller sent and is used verbatim, so the value this route *published* is not one it accepts back. The list puts ISO-8601 on the wire (\u00a7 9.1) and the scheduler holds SQLite's `YYYY-MM-DD HH:MM:SS`, so a console echoing the row the operator clicked gets `404 NO_SUCH_HOLD` for every held reminder — and any row that did get written would be one the daemon's own `WHERE scheduled_at = ?` never finds.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "  const slot = storedSlot(scheduledAt)",
+    to: "  const slot = scheduledAt",
+    suite: "packages/http/src/reminder-overdue.test.ts",
+    expect: ["the list's own value was refused"],
+  },
+  {
     id: "a-hold-key-is-cut-at-its-last-colon",
     defect:
       "The hold key `overdue_hold:<id>:<slot>` stopped being split on the slot's shape and went back to cutting at the last colon — which lands inside `HH:MM:SS`. The reminder id came back with half the date attached and the slot as `00`, which `new Date` reads as the year 2000, so the screen listed plausible rows about nothing and no operator decision could reach the slot it named. Nothing threw: this is the defect that hid behind a passing route test.",
