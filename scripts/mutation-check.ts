@@ -10054,6 +10054,46 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "the-teardown-field-is-dropped-from-the-row",
+    defect:
+      "`deleted_at` stops being sent. The row is still there and still looks healthy \u2014 `last_seen_at: null`, no marker \u2014 which is exactly the state D-809 ended: indistinguishable from an identity that has never connected, while the hub answers 409 for the name forever. A console then offers an addressee that can never answer, and the operator screen cannot say what happened to the name.",
+    file: "packages/http/src/main.ts",
+    from: "    deleted_at: isoOrNull(deletedAt.get(entry.id) ?? null),",
+    to: "",
+    suite: "test/registry-canon.test.ts",
+    expect: ["a torn-down identity carries no deleted_at"],
+  },
+  {
+    id: "every-identity-is-marked-torn-down",
+    defect:
+      "`deleted_at` is sent for every row. The opposite shape of the anchor above and the reason there are two: a field that is always set satisfies any check that only looks for it on a torn-down identity, and a consumer branching on it marks the whole mesh deleted.",
+    file: "packages/http/src/main.ts",
+    from: "    deleted_at: isoOrNull(deletedAt.get(entry.id) ?? null),",
+    to: "    deleted_at: isoOrNull(deletedAt.get(entry.id) ?? '2026-01-01 00:00:00'),",
+    suite: "test/registry-canon.test.ts",
+    expect: ["a live identity is marked torn down"],
+  },
+  {
+    id: "the-sighting-goes-out-in-the-stores-format",
+    defect:
+      "`last_seen_at` is passed through as SQLite wrote it \u2014 `YYYY-MM-DD HH:MM:SS`, a space and no zone. Nothing errors: it is a string where a string was expected. Engines then disagree, and the ones that parse it read it as local time, so the same sighting renders hours apart in two browsers and a sort mixing the two formats orders them wrongly.",
+    file: "packages/http/src/main.ts",
+    from: "    last_seen_at: isoOrNull(lastSeen.get(entry.id) ?? null),",
+    to: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
+    suite: "test/registry-canon.test.ts",
+    expect: ["the sighting is not ISO-8601"],
+  },
+  {
+    id: "the-time-conversion-invents-a-zone",
+    defect:
+      "The converter appends `Z` without the `T`, producing `2026-08-28 12:34:10Z`. Still a string, still nearly right, and parsed by nothing consistently \u2014 the failure this whole change exists to stop, reintroduced one character short of correct.",
+    file: "packages/http/src/sqlite-time.ts",
+    from: "  return `${m[1]}T${m[2]}Z`",
+    to: "  return `${m[1]} ${m[2]}Z`",
+    suite: "test/registry-canon.test.ts",
+    expect: ["created_at is not ISO-8601"],
+  },
+  {
     id: "a-torn-down-identity-keeps-its-presence",
     defect:
       "The presence join stops excluding soft-deleted identities, so a torn-down agent comes back carrying the timestamp it had when it was alive. \u00a7 9.3 is irreversible and the hub answers 409 for the name forever; a console row that still shows a recent sighting invites an operator to address something that can never answer.",
@@ -10074,14 +10114,14 @@ export const MUTATIONS: Mutation[] = [
     expect: ["approving its key admits it, so the two agree from then on"],
   },
   {
-    id: "provisioning-stops-stamping-a-sighting",
+    id: "provisioning-stamps-a-sighting-again",
     defect:
-      "Provisioning writes `NULL` into `last_seen` instead of the current time. The statement is `stmtUpsertAgentTyped`, not the `IfAbsent` one beside it \u2014 the first version of this anchor mutated the wrong writer, changed nothing, and was reported as not caught, which is how the manifest says \"your line is not the line\". **This is the direction T-054 is expected to go**, and the anchor exists so the observer that pins today's behaviour is known to be watching this line rather than passing on something else \u2014 a pinned defect whose test cannot see the fix is indistinguishable from a test that pins nothing.",
+      "Provisioning stamps `last_seen` again, so an identity that has never opened a socket reports a sighting equal to its `created_at`. This is I-062 in the field added to end it, and it is silent: the value is a valid timestamp and every type still holds. The statement is `stmtUpsertAgentTyped`, not the `IfAbsent` one beside it \u2014 the first version of this anchor mutated the wrong writer, changed nothing, and came back not caught, which is how the manifest says \"your line is not the line\".",
     file: "packages/hub/src/db.ts",
-    from: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, datetime('now'), datetime('now'))",
-    to: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, NULL, datetime('now'))",
+    from: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, NULL, datetime('now'))",
+    to: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, datetime('now'), datetime('now'))",
     suite: "test/registry-canon.test.ts",
-    expect: ["a never-connected identity reported no presence"],
+    expect: ["a never-connected identity reported a sighting"],
   },
   {
     id: "the-spec-cites-a-scenario-that-does-not-exist",

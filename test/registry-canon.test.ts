@@ -17,7 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-import { loginAsAdmin, provision, startMesh, type Mesh } from "./harness";
+import { connectRpc, loginAsAdmin, newKeyPair, provision, startMesh, type Mesh } from "./harness";
 
 let mesh: Mesh;
 let admin: string;
@@ -90,33 +90,56 @@ describe("the two registries, on one namespace", () => {
     expect(row, "approving the key did not admit the identity").toBeDefined();
     expect(row!.fingerprint, "the approved fingerprint did not join").toBe(fingerprint);
 
-    // **[T-054] `last_seen_at` is not a sighting.** This identity has never
-    // opened a socket, and the route reports a timestamp for it — because
-    // `stmtUpsertAgentTyped` writes `last_seen = datetime('now')` at
-    // provisioning (`packages/hub/src/db.ts`, the statement `rest/agents.ts`
-    // actually runs — the `IfAbsent` one beside it serves `createOnly`). So a
-    // non-null value here means "the row exists", not "the mesh saw it".
+    // **[T-054/D-809] `last_seen_at` is a sighting now, and only that.** It
+    // used to be stamped at provisioning (`stmtUpsertAgentTyped`), so this
+    // identity — which has never opened a socket — came back with a timestamp
+    // equal to its `created_at` to the second. That was I-062 arriving through
+    // the field added to end it: the console drew every agent ONLINE until this
+    // route carried presence, and then drew a never-connected agent as seen
+    // moments ago.
     //
-    // That is I-062 in a new field. The console drew every agent as `ONLINE`
-    // until this route started carrying presence; a screen reading this value
-    // now draws a never-connected agent as seen seconds ago, which is the same
-    // false liveness arriving through the field that was meant to end it.
-    // § 9.1 and the contract both fix what `null` means and neither says what a
-    // value means, so nothing was contradicted — it was never stated.
-    //
-    // Pinned as it is, and named as a defect rather than a property, so the
-    // decision moves it deliberately.
+    // Nothing had been contradicted. § 9.1 and the contract both fixed what
+    // `null` means and neither said what a value means, so the meaning was
+    // never stated — which is why D-809's prescription is a sentence in SPEC as
+    // well as a change here.
     console.log(`[T-054] never-connected identity reports last_seen_at=${JSON.stringify(row!.last_seen_at)}`);
-    expect(row!.last_seen_at, "a never-connected identity reported no presence — the defect is fixed").not.toBeNull();
+    expect(row!.last_seen_at, "a never-connected identity reported a sighting").toBeNull();
   });
 
-  test("[T-054] and the timestamp it reports is not the format the others are", async () => {
-    // The same value again, on a second axis. `last_seen` is a SQLite
-    // `datetime('now')` string — `YYYY-MM-DD HH:MM:SS`, a space and no zone —
-    // while every other timestamp this API sends is ISO-8601 with `T` and `Z`.
-    // `new Date("2026-08-28 11:53:05")` is not portable: engines differ on
-    // whether it parses at all, and the ones that do read it as local time, so
-    // the same row renders hours apart in two browsers.
+  test("[T-054] a sighting is still recorded once the identity connects", async () => {
+    // **The other direction, and the whole reason the test above is not enough.**
+    // A route that answered `null` for everybody would satisfy it, and would be
+    // a worse defect than the one being fixed: `null` would then mean nothing
+    // at all rather than "not seen". Provisioning stopped stamping; connecting
+    // must still stamp.
+    const identity = `canon-seen-${Bun.randomUUIDv7().slice(0, 8)}`;
+    const pair = newKeyPair();
+    const created = await provision(mesh.hub, identity, "ai-claude", null, pair.publicKey);
+    expect(created.status).toBe(201);
+    await approveKey(pair.fingerprint);
+
+    expect((await listed()).get(identity)!.last_seen_at, "seen before connecting").toBeNull();
+
+    const rpc = await connectRpc(mesh.hub, { kid: pair.fingerprint, privateKey: pair.privateKey });
+    const res = await rpc.call("mesh.connect", { identity });
+    expect(res.error, `connect refused: ${JSON.stringify(res.error)}`).toBeUndefined();
+    rpc.close();
+
+    const seen = (await listed()).get(identity)!.last_seen_at;
+    console.log(`[T-054] after connecting, last_seen_at=${JSON.stringify(seen)}`);
+    expect(seen, "connecting did not record a sighting").not.toBeNull();
+    expect(String(seen), "the sighting is not ISO-8601").toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
+  });
+
+  test("[T-054] the timestamps it reports are ISO-8601", async () => {
+    // `last_seen` and `created_at` are SQLite `datetime('now')` strings —
+    // `YYYY-MM-DD HH:MM:SS`, a space and no zone — and this route used to pass
+    // them through. `new Date("2026-08-28 11:53:05")` is not portable: engines
+    // differ on whether it parses, and the ones that accept it read it as local
+    // time, so one row rendered hours apart in two browsers.
+    //
+    // The column keeps its format. A storage format is not a wire format, which
+    // is the rule `recorded_by` settled under.
     const identity = `canon-stamp-${Bun.randomUUIDv7().slice(0, 8)}`;
     await provision(mesh.hub, identity, "ai-claude");
     const keys = (await onHub(identity)).body as { keys?: Array<{ fingerprint: string }> };
@@ -124,13 +147,14 @@ describe("the two registries, on one namespace", () => {
 
     const row = (await listed()).get(identity)!;
     expect(row, "the identity was not admitted, so no timestamp was read").toBeDefined();
-    const stamp = String(row.last_seen_at);
-    console.log(`[T-054] last_seen_at=${JSON.stringify(stamp)} · created_at=${JSON.stringify(row.created_at)}`);
+    const stamp = String(row.created_at);
+    console.log(`[T-054] created_at=${JSON.stringify(row.created_at)} · last_seen_at=${JSON.stringify(row.last_seen_at)}`);
 
-    // Today's shape, pinned. Both halves asserted: the value is a timestamp
-    // (so this is not passing on an empty string) and it is not ISO-8601.
+    // Both halves: it is a timestamp at all, and it is ISO. Asserting only the
+    // pattern would pass on an empty string under a looser regexp.
     expect(stamp, "not a timestamp at all").toMatch(/^\d{4}-\d{2}-\d{2}/);
-    expect(stamp.includes("T"), "`last_seen_at` became ISO-8601 — the defect is fixed").toBe(false);
+    expect(stamp, "created_at is not ISO-8601").toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
+    expect(Number.isNaN(new Date(stamp).getTime()), "the value does not parse as a date").toBe(false);
   });
 
   test("[T-054] what teardown leaves behind, in each of the two", async () => {
@@ -158,20 +182,44 @@ describe("the two registries, on one namespace", () => {
     const after = (await listed()).get(identity);
     console.log(
       `[T-054] after teardown — console list: ${after ? "still listed" : "gone"}` +
-        (after ? ` (last_seen_at=${JSON.stringify(after.last_seen_at)}, fingerprint=${JSON.stringify(after.fingerprint)})` : ""),
+        (after
+          ? ` (deleted_at=${JSON.stringify(after.deleted_at)}, last_seen_at=${JSON.stringify(after.last_seen_at)})`
+          : ""),
     );
 
-    // Today's answer, pinned so the decision moves it deliberately. A row that
-    // survives teardown is not merely stale: the presence join excludes
-    // soft-deleted identities, so it comes back with `last_seen_at: null` — the
-    // same shape as a healthy identity that has never connected. The console
-    // cannot tell a torn-down agent from a new one by looking.
-    expect(after, "teardown left no row — the list and the hub agree").toBeDefined();
-    expect(after!.last_seen_at, "a torn-down identity is drawn as never-seen, not as deleted").toBeNull();
-    expect(
-      "deleted" in after! || "deleted_at" in after!,
-      "the row carries nothing that says it was torn down",
-    ).toBe(false);
+    // **D-809: the row stays and says so.** A row that vanished would leave a
+    // later reader unable to tell a teardown from a name that never existed —
+    // the same reason § 9.2c keeps a deactivated account. What was wrong was
+    // not that it stayed: it was that it stayed *silent*, coming back with
+    // `last_seen_at: null` and nothing else, the same shape as a healthy
+    // identity that has never connected.
+    //
+    // Which screen shows it is a separate question, and deliberately not this
+    // route's: one answering *who can I address* drops these rows, one
+    // answering *what happened to this name* keeps them. The route's job is to
+    // make both answerable, which means saying it rather than implying it.
+    expect(after, "teardown removed the row, so nothing can say it was torn down").toBeDefined();
+    expect(after!.deleted_at, "a torn-down identity carries no deleted_at").not.toBeNull();
+    expect(String(after!.deleted_at), "deleted_at is not ISO-8601")
+      .toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
+    // Still null, and now that is unambiguous: the mesh is not seeing it.
+    expect(after!.last_seen_at, "a torn-down identity reported a sighting").toBeNull();
+  });
+
+  test("[T-054] a live identity says it is not torn down, so the field is read and not assumed", async () => {
+    // The negative half. `deleted_at` that were always non-null would satisfy
+    // the assertion above, and a consumer branching on it would mark every
+    // agent deleted. Asserted on a fresh identity rather than on whatever the
+    // list happens to hold.
+    const identity = `canon-live-${Bun.randomUUIDv7().slice(0, 8)}`;
+    await provision(mesh.hub, identity, "ai-claude");
+    const keys = (await onHub(identity)).body as { keys?: Array<{ fingerprint: string }> };
+    await approveKey(keys!.keys![0]!.fingerprint);
+
+    const row = (await listed()).get(identity)!;
+    expect(row, "the identity was not admitted").toBeDefined();
+    expect("deleted_at" in row, "the field is absent, so a reader cannot tell absence from live").toBe(true);
+    expect(row.deleted_at, "a live identity is marked torn down").toBeNull();
   });
 
   test("[T-054] and the hub says the name is taken, so the two cannot both be right", async () => {

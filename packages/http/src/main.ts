@@ -50,6 +50,7 @@ import {
   SCOPE_TENANT,
   type Capability,
 } from '@agent-mesh/contracts'
+import { isoOrNull } from './sqlite-time'
 import { renameLocalAccount } from './rename-account'
 import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestBase } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb, admitApprovedIdentities } from './keys-admin'
@@ -1723,6 +1724,23 @@ app.get('/api/v1/agents', async (c) => {
     .prepare(`SELECT identity, last_seen, tenant FROM agents WHERE deleted_at IS NULL`)
     .all() as Array<{ identity: string; last_seen: string | null; tenant: string | null }>
   const lastSeen = new Map(presence.map(row => [row.identity, row.last_seen] as const))
+  // **Teardown is said, not inferred** (D-809). § 9.3 is irreversible and the
+  // hub answers `409 IDENTITY_DELETED` for the name forever, but the row here
+  // comes from `agent_registry`, which teardown does not touch — so a torn-down
+  // identity used to arrive with `last_seen_at: null` and nothing else, the
+  // same shape as a healthy identity that has never connected. One field was
+  // carrying three meanings: provisioned-at, actually-seen, and torn-down.
+  //
+  // A second query rather than a join on `presence`, because that one excludes
+  // exactly the rows this needs.
+  const deletedAt = new Map(
+    (
+      mesh.prepare(`SELECT identity, deleted_at FROM agents WHERE deleted_at IS NOT NULL`).all() as Array<{
+        identity: string
+        deleted_at: string
+      }>
+    ).map(row => [row.identity, row.deleted_at] as const),
+  )
   // § 11.4 puts an identity in a tenant, and until now no route said which. A
   // screen picking agents for a group of tenant X had the group's tenant and a
   // list of every agent it could see, with nothing to join them on — so it
@@ -1857,7 +1875,7 @@ app.get('/api/v1/agents', async (c) => {
     description: entry.description,
     channel: entry.channel,
     type: entry.type,
-    created_at: entry.created_at,
+    created_at: isoOrNull(entry.created_at),
     // `null` means the mesh holds no presence record for this identity — a web
     // user who has never connected has none — and it does not mean offline.
     //
@@ -1866,7 +1884,13 @@ app.get('/api/v1/agents', async (c) => {
     // ship a judgement dressed as a measurement. That is the defect the screens
     // were fixed for in `71afcdb` and `189f4ab`; putting it in the server moves
     // the invention one layer up rather than removing it.
-    last_seen_at: lastSeen.get(entry.id) ?? null,
+    last_seen_at: isoOrNull(lastSeen.get(entry.id) ?? null),
+    // **Explicit, and never inferred from a shape** (D-809). `null` here is
+    // "not torn down"; a string is when § 9.3 ran. A screen answering *who can
+    // I address* drops these rows, and one answering *what happened to this
+    // name* keeps them and says so — a row that simply vanished would leave a
+    // later reader unable to tell a teardown from a name that never existed.
+    deleted_at: isoOrNull(deletedAt.get(entry.id) ?? null),
     fingerprint: fingerprints.get(entry.id) ?? null,
     // `default` for an identity the mesh has no row for — a web user who has
     // never connected. Not `null`: § 11.4's rule is that every identity has a

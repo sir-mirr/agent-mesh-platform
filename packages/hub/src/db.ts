@@ -186,15 +186,28 @@ export const stmtAgentExists = agentsDb.prepare(`
  * caller registers between the two, which is precisely the race a lane
  * onboarding must not lose.
  */
+/**
+ * **Provisioning does not stamp a sighting** (D-809).
+ *
+ * These two wrote `last_seen = datetime('now')` on insert, so an identity that
+ * had never opened a socket came back from `GET /api/v1/agents` with a
+ * timestamp equal to its `created_at` to the second. A console reading it drew
+ * a never-connected agent as seen moments ago — the same false liveness that
+ * `status: ONLINE` used to invent, arriving through the field added to end it.
+ *
+ * `NULL` is the honest value: `stmtUpdateLastSeen` is what a sighting is, and
+ * it runs on connect and on the heartbeat. With this, `null` means the mesh has
+ * not seen this identity and a value means it has. Both were false before.
+ */
 export const stmtInsertAgentIfAbsent = agentsDb.prepare(`
   INSERT INTO agents (identity, type, description, last_seen, created_at)
-  VALUES (?, ?, ?, datetime('now'), datetime('now'))
+  VALUES (?, ?, ?, NULL, datetime('now'))
   ON CONFLICT(identity) DO NOTHING
 `);
 
 export const stmtUpsertAgentTyped = agentsDb.prepare(`
   INSERT INTO agents (identity, type, description, last_seen, created_at)
-  VALUES (?, ?, ?, datetime('now'), datetime('now'))
+  VALUES (?, ?, ?, NULL, datetime('now'))
   ON CONFLICT(identity) DO UPDATE SET
     type        = excluded.type,
     description = excluded.description
