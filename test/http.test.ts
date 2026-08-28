@@ -597,9 +597,18 @@ describe("agent registry", () => {
     const body = await (await get("/api/v1/agents", adminCookie)).json();
     const entry = body.agents.find((a: any) => a.id === SEED_ADMIN);
 
-    expect(entry.last_seen_at).toBe("2026-01-02 03:04:05");
+    // **Written in the store's format, sent in the wire's** (D-809). The seed
+    // above puts SQLite's own `YYYY-MM-DD HH:MM:SS` into the column, which is
+    // what `datetime('now')` writes; the route converts on the way out. This
+    // assertion read `"2026-01-02 03:04:05"` until then — it was pinning the
+    // shape that made one row render hours apart in two browsers, because the
+    // engines that accept a space-separated stamp read it as local time.
+    expect(entry.last_seen_at).toBe("2026-01-02T03:04:05Z");
     expect(entry.fingerprint).toBe("sha256:deadbeef");
     expect(entry.created_at).toBeTruthy();
+    // Live, and saying so rather than leaving it to be inferred from the row
+    // being present at all.
+    expect(entry.deleted_at, "a live identity is marked torn down").toBeNull();
 
     // The judgement stays out of the server. `active`/`inactive` is a policy
     // about how long silence may last, and a route that answered it would be
