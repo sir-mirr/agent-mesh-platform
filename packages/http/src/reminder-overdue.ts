@@ -111,6 +111,31 @@ function iso(value: string | null | undefined): string | null {
 }
 
 /**
+ * A slot in the shape the scheduler stores it, whichever shape it arrived in.
+ *
+ * **The screen cannot send back what this route gave it, and that was a bug.**
+ * `listHeldOverdue` publishes `scheduled_at` as ISO-8601 because that is what
+ * § 9.1 puts on the wire; the scheduler writes `reminder.next_fire_at`
+ * verbatim into the hold key and into `overdue_decisions`, and that column is
+ * SQLite's `YYYY-MM-DD HH:MM:SS`. So a console doing the only sensible thing —
+ * echoing the value from the row the operator clicked — built a hold key that
+ * matched nothing and got `404 NO_SUCH_HOLD` for every held reminder.
+ *
+ * Both directions matter. The lookup has to find the scheduler's key, and the
+ * row this writes has to be found by the scheduler's own
+ * `WHERE scheduled_at = ?`, which uses that same column. One shape, chosen
+ * here, is what makes those two the same string.
+ *
+ * Anything that is not an instant is passed through untouched, so a nonsense
+ * slot fails to match a hold — rather than being normalised into one.
+ */
+function storedSlot(value: string): string {
+  const d = asDate(value)
+  if (!d) return value
+  return d.toISOString().slice(0, 19).replace("T", " ")
+}
+
+/**
  * Every slot the scheduler is holding and nobody has decided.
  *
  * A decided slot leaves the list because the scheduler will act on it: `replay`
@@ -228,10 +253,11 @@ export function recordOverdueDecision(
   // The hold must exist. Deciding a slot nobody is holding writes a row the
   // scheduler will never read, and answering `ok` to it tells an operator a
   // reminder was released when nothing was.
+  const slot = storedSlot(scheduledAt)
   const held = storeExists()
     ? readDb()
         .prepare(`SELECT 1 FROM scheduler_health WHERE key = ?`)
-        .get(`${HOLD_PREFIX}${reminderId}:${scheduledAt}`)
+        .get(`${HOLD_PREFIX}${reminderId}:${slot}`)
     : null
   if (!held) {
     return {
@@ -250,12 +276,12 @@ export function recordOverdueDecision(
          decision = excluded.decision, approval_ref = excluded.approval_ref,
          decided_at = excluded.decided_at, decided_by = excluded.decided_by`,
     )
-    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, decidedBy)
+    .run(reminderId, slot, decision, approvalRef, decidedAt, decidedBy)
 
   return {
     ok: true,
     reminder_id: reminderId,
-    scheduled_at: iso(scheduledAt) ?? scheduledAt,
+    scheduled_at: iso(slot) ?? slot,
     decision,
     approval_ref: approvalRef,
     decided_by: decidedBy,

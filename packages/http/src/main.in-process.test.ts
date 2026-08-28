@@ -3064,8 +3064,19 @@ describe("deciding a held reminder", () => {
   });
 
   test("a decision is recorded against the session that made it", async () => {
+    // **The slot comes from the list, not from this file.** A console has one
+    // sensible source for `scheduled_at` — the row the operator clicked — and
+    // the list publishes ISO while the scheduler holds SQLite's shape. A test
+    // that echoed the constant above would agree with the implementation and
+    // say nothing about the screen; this one 404'd until the route accepted
+    // back what it had published.
+    const listed = await asAdmin("/api/v1/admin/reminders/overdue", "GET");
+    const row = (await listed.json()).reminders
+      .find((r: { reminder_id: string }) => r.reminder_id === HELD) as { scheduled_at: string };
+    expect(row?.scheduled_at, "the held row this walk decides is gone from the list").toBeTruthy();
+
     const res = await asAdmin(`/api/v1/admin/reminders/overdue/${HELD}/decision`, "POST",
-      { scheduled_at: SLOT, decision: "skip", approval_ref: "APPROVED:ops-in-process" });
+      { scheduled_at: row.scheduled_at, decision: "skip", approval_ref: "APPROVED:ops-in-process" });
     expect(res.status).toBe(200);
     const body = await res.json();
     // The decider is the authenticated actor, not something the body supplied:
