@@ -1230,8 +1230,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A `last_seen_at` the client cannot parse is reported as *never seen*. The server did send something; collapsing that into no-record-at-all turns a client-side parsing fault into a statement about the mesh, and § 9.1 keeps those two apart on purpose.",
     file: "packages/platform-web/src/api/agents.ts",
-    from: "  if (Number.isNaN(seen)) return { kind: \"invalid\" };",
-    to: "  if (Number.isNaN(seen)) return { kind: \"never\" };",
+    from: "  if (seen === null) return { kind: \"invalid\" };",
+    to: "  if (seen === null) return { kind: \"never\" };",
     suite: "packages/platform-web/src/api/agents.test.ts",
     expect: ["calls no record `never`, which is not the same as offline"],
   },
@@ -5637,8 +5637,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "An irreversible control drawn for everybody. Measured with a member holding nothing: the modal opened on the `admin` identity, took the typed confirmation, and the server refused at the last step — honest, and a person had still been walked all the way there.",
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
-    from: "          {canTeardown && item.id !== user?.name && (",
-    to: "          {true && item.id !== user?.name && (",
+    from: "          {canTeardown && item.lifecycle === \"live\" && item.id !== user?.name && (",
+    to: "          {true && item.lifecycle === \"live\" && item.id !== user?.name && (",
     suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
     expect: ["does not open teardown to a session holding some other capability"],
   },
@@ -5647,8 +5647,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The other way to pass: hide it from every session, including the one the server gave `agent.teardown`. A console where nothing dangerous is possible also cannot do the job.",
     file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
-    from: "          {canTeardown && item.id !== user?.name && (",
-    to: "          {false && item.id !== user?.name && (",
+    from: "          {canTeardown && item.lifecycle === \"live\" && item.id !== user?.name && (",
+    to: "          {false && item.lifecycle === \"live\" && item.id !== user?.name && (",
     suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
     expect: ["offers it to the session the server gave `agent.teardown`"],
   },
@@ -5728,10 +5728,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`agents` starts empty and the card reads its length, so on a slow link the panel says \"Agents 0 registered\" and then jumps to fourteen. The window is short on a fast machine and is the whole experience on a bad connection.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: '          value={isLoading ? "..." : isError ? "—" : String(agents.length)}',
-    to: '          value={isError ? "—" : String(agents.length)}',
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-LOAD-06", "answered 0 before the answer arrived"],
+    from: '          value={isLoading ? "..." : isError ? "—" : String(liveAgents.length)}',
+    to: '          value={isError ? "—" : String(liveAgents.length)}',
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["says the question is still out, and does not answer it with zero"],
   },
   {
     id: "member-panel-never-stops-waiting",
@@ -5794,12 +5794,12 @@ export const MUTATIONS: Mutation[] = [
       "The panel an ordinary account lands on, telling them they own nothing when the read was refused. The platform admin's panel has said `—` for months; this one drew `0`, and every existing SC-DOWN scenario measures the admin's.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
     // 재앵커 2026-08-20: 로딩 상태가 두 삼항 앞에 붙었다. 심는 결함은 같다.
-    from: `          value={isLoading ? "..." : isError ? "\u2014" : String(agents.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}`,
-    to: `          value={String(agents.length)}
-          subValue={t("dash.kpi.agentsSub", "개 등록됨")}`,
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-DOWN-13", "drew 0 for a read that was refused"],
+    from: `          value={isLoading ? "..." : isError ? "\u2014" : String(liveAgents.length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : dashboardAgentCaption(t, t("dash.kpi.agentsSub", "개 활성 등록"), deletedAgentCount)}`,
+    to: `          value={String(liveAgents.length)}
+          subValue={dashboardAgentCaption(t, t("dash.kpi.agentsSub", "개 활성 등록"), deletedAgentCount)}`,
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["does not call a refused registry an empty one"],
   },
   {
     id: "catch-empties-a-list-and-says-nothing",
@@ -7224,10 +7224,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`lastSeen` folded its `invalid` branch into `never`, so a timestamp the mesh *did* send but that will not parse is drawn as *no presence record*. \u00a7 9.1 makes those two different facts \u2014 `null` means the mesh holds no record, and a malformed value means something upstream is broken \u2014 and collapsing them hides the second behind a sentence that reads as normal.",
     file: "packages/platform-web/src/api/agents.ts",
-    from: '  if (Number.isNaN(seen)) return { kind: "invalid" };',
-    to: '  if (Number.isNaN(seen)) return { kind: "never" };',
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-INVENT-08"],
+    from: '  if (seen === null) return { kind: "invalid" };',
+    to: '  if (seen === null) return { kind: "never" };',
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["calls no record `never`, which is not the same as offline"],
   },
   {
     id: "the-agent-list-grows-a-status",
@@ -9959,10 +9959,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The agent mapping stopped reading what the fetch answered. Both pickers on the dispatch console come from this list, so the send screen renders with nobody to send as and nobody to send to — and it renders successfully, with no error anywhere, because an empty list is a legal list.",
     file: "packages/platform-web/src/pages/creator/PlaygroundPage.tsx",
-    from: "      const mapped = agentRegistryEntries(list || []).map((a) => ({",
-    to: "      const mapped = agentRegistryEntries([]).map((a) => ({",
-    suite: "test/fe-render.test.ts",
-    expect: ["renders /creator/playground with dispatch console and select options"],
+    from: "      const mapped = callableAgentRegistryEntries(list || []).map((a) => ({",
+    to: "      const mapped = callableAgentRegistryEntries([]).map((a) => ({",
+    suite: "packages/platform-web/src/pages/creator/PlaygroundPage.test.tsx",
+    expect: ["keeps the live unseen identity and removes the torn-down row with the same absent sighting"],
   },
   {
     id: "the-audit-indicator-names-its-transport-again",
@@ -10596,10 +10596,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "A count read off the wrong property renders `undefined` into the card and the screen still looks like a dashboard: one KPI reading `undefined` beside three that read numbers. Nothing throws, the page is 200, and a person reads it as a mesh with no agents rather than as a screen that failed.",
     file: "packages/platform-web/src/pages/DashboardPage.tsx",
-    from: "  const totalAgents = agents.length;",
-    to: "  const totalAgents = (agents as unknown as { size?: number }).size;",
-    suite: "test/fe-render.test.ts",
-    expect: ["SC-RENDER-02", "renders /dashboard with live agent KPI cards"],
+    from: "  const totalAgents = liveAgents.length;",
+    to: "  const totalAgents = (liveAgents as unknown as { size?: number }).size;",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["does not combine live and torn-down registry rows into one platform count"],
   },
   {
     id: "the-page-mounts-on-a-div-that-is-not-there",
@@ -12309,10 +12309,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The audit log refresh stopped issuing its request. An audit screen is read while something is happening, and the events that matter are the ones that arrived since it was opened — a button that redraws the same page is worse than an absent one, because the reader concludes nothing new happened.",
     file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
-    from: "          <Button variant=\"secondary\" size=\"sm\" onClick={loadAuditEvents}>",
+    from: "          <Button variant=\"secondary\" size=\"sm\" onClick={() => loadAuditEvents()}>",
     to: "          <Button variant=\"secondary\" size=\"sm\" onClick={() => {}}>",
-    suite: "test/fe-render.test.ts",
-    expect: ["clicks audit logs refresh"],
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["asks the route once on mount and once more for the refresh"],
   },
   {
     id: "the-create-group-button-opens-nothing",
@@ -13202,6 +13202,110 @@ export const MUTATIONS: Mutation[] = [
     file: "scripts/scenario-anchors.ts",
     suite: "test/scenario-anchors.test.ts",
     expect: ["the summary would fail on a perfect night"],
+  },
+  {
+    id: "a-torn-down-agent-returns-to-the-address-pickers",
+    defect:
+      "The callable projection stops reading deleted_at and returns the historical row beside the live one. The registry is still accurate, but both sender and recipient controls offer a name the hub will reject forever, which turns history into an available destination.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: "  return agentRegistryEntries(entries).filter((entry) => entry.deleted_at === null);",
+    to: "  return agentRegistryEntries(entries);",
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["keeps teardown history in inventory and removes it only from callable choices"],
+  },
+  {
+    id: "the-agent-history-drops-the-torn-down-row",
+    defect:
+      "The management list reuses the address-picker projection. A torn-down name then vanishes from the one screen answering what happened to it, so an operator cannot distinguish teardown from an identity that never existed.",
+    file: "packages/platform-web/src/pages/creator/AgentsPage.tsx",
+    from: "      const list = agentRegistryEntries(agentResponse);",
+    to: "      const list = agentRegistryEntries(agentResponse).filter((entry) => entry.deleted_at === null);",
+    suite: "packages/platform-web/src/pages/creator/AgentsPage.test.tsx",
+    expect: ["retains a torn-down row as marked history"],
+  },
+  {
+    id: "a-local-clock-string-becomes-a-mesh-sighting",
+    defect:
+      "The agent timestamp parser delegates every string to Date.parse. A value without T or Z then borrows the browser's local zone and is drawn as a measured sighting at a different instant, even though this route promises UTC wire time only.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: `  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$/.test(value)) return null;
+  const millis = Date.parse(value);
+  if (!Number.isFinite(millis)) return null;
+  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19) ? millis : null;`,
+    to: `  const millis = Date.parse(value);
+  return Number.isFinite(millis) ? millis : null;`,
+    suite: "packages/platform-web/src/api/agents.test.ts",
+    expect: ["calls no record `never`"],
+  },
+  {
+    id: "the-audit-event-filter-never-reaches-the-server",
+    defect:
+      "The event-type selection changes on screen but is left out of the request. Choosing audit-list reads therefore reloads the same unfiltered trail, leaving the access records buried under the reads that created them.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: '  if (filters.eventType) params.set("event_type", filters.eventType);',
+    to: "  // event type was selected only in the browser",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["sends the server's event-type and recorder-kind filters"],
+  },
+  {
+    id: "the-audit-recorder-filter-never-reaches-the-server",
+    defect:
+      "The recorder-kind selection is omitted from the query. Hub, adapter and HTTP access observations are folded back together even after an operator selected the one contract field that can distinguish them.",
+    file: "packages/platform-web/src/api/audit.ts",
+    from: '  if (filters.recordedByKind) params.set("recorded_by_kind", filters.recordedByKind);',
+    to: "  // recorder kind was selected only in the browser",
+    suite: "packages/platform-web/src/api/audit.test.ts",
+    expect: ["sends the server's event-type and recorder-kind filters"],
+  },
+  {
+    id: "strict-mode-records-the-same-audit-read-twice",
+    defect:
+      "The mount effect stops recognising React StrictMode's development replay. One visit then issues two GETs milliseconds apart, and because this route records its own reads the screen manufactures two access events for one human visit.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "    if (didInitialRead.current) return;",
+    to: "    if (false) return;",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["asks once when React StrictMode replays the mount effect"],
+  },
+  {
+    id: "a-torn-down-agent-returns-to-the-group-assignment-picker",
+    defect:
+      "The group assignment caller switches from the callable projection back to registry history. The modal then offers a torn-down identity even though the hub will never admit or address that name again.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "      const agents = callableAgentRegistryEntries(registry).filter(",
+    to: "      const agents = agentRegistryEntries(registry).filter(",
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["never offers the contract fixture's torn-down identity as an assignment target"],
+  },
+  {
+    id: "a-torn-down-group-member-loses-its-history-marker",
+    defect:
+      "The management row keeps the historical member name but removes the only word that distinguishes teardown from a live assignment. The row remains plausible while saying the opposite lifecycle.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: '              {member.lifecycle === "deleted" && (',
+    to: '              {false && member.lifecycle === "deleted" && (',
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["keeps a torn-down member in group history and marks that lifecycle explicitly"],
+  },
+  {
+    id: "the-topology-draws-a-torn-down-agent-as-current-terrain",
+    defect:
+      "The topology reuses registry history instead of the callable projection. A torn-down node reappears on the current mesh and its drawer offers quick-send to a name the hub rejects forever.",
+    file: "packages/platform-web/src/pages/creator/TopologyPage.tsx",
+    from: "        setLiveAgents(callableAgentRegistryEntries(agents || []));",
+    to: '        setLiveAgents((agents || []).filter((agent) => agent.type !== "user"));',
+    suite: "packages/platform-web/src/pages/creator/TopologyPage.test.tsx",
+    expect: ["draws and addresses only the live row beside the contract fixture's torn-down row"],
+  },
+  {
+    id: "the-dashboard-adds-torn-down-history-to-the-live-total",
+    defect:
+      "The dashboard's active projection becomes the full historical inventory. Its headline adds torn-down rows to live rows, producing the one combined number D-809 says answers neither current capacity nor teardown history.",
+    file: "packages/platform-web/src/pages/DashboardPage.tsx",
+    from: "  callableAgentRegistryEntries(agents);",
+    to: "  agentRegistryEntries(agents);",
+    suite: "packages/platform-web/src/pages/DashboardPage.test.tsx",
+    expect: ["does not combine live and torn-down registry rows into one platform count"],
   },
 ];
 

@@ -1,4 +1,8 @@
-import type { RestAuditEvent, RestAuditEventsResponse } from "@agent-mesh/contracts";
+import type {
+  RestAuditEvent,
+  RestAuditEventsResponse,
+  RestAuditRecordedBy,
+} from "@agent-mesh/contracts";
 
 import { apiClient, listOf } from "./client.ts";
 
@@ -35,6 +39,13 @@ export interface AuditEventItem {
 
 }
 
+export type AuditRecorderKind = RestAuditRecordedBy["kind"];
+
+export interface AuditEventFilters {
+  eventType?: string;
+  recordedByKind?: AuditRecorderKind;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -57,8 +68,12 @@ function payloadHasWithheldContent(value: unknown): boolean {
     || payloadHasWithheldContent(nested));
 }
 
-export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
-  const data = await apiClient<RestAuditEventsResponse>("/api/v1/audit/events");
+export async function fetchAuditEvents(filters: AuditEventFilters = {}): Promise<AuditEventItem[]> {
+  const params = new URLSearchParams();
+  if (filters.eventType) params.set("event_type", filters.eventType);
+  if (filters.recordedByKind) params.set("recorded_by_kind", filters.recordedByKind);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  const data = await apiClient<RestAuditEventsResponse>(`/api/v1/audit/events${query}`);
   // The bare-array branch went — this route answers `{ ok, events, next_cursor }`.
   // A body without an `events` array is refused rather than drawn as an empty
   // log: an empty audit screen is indistinguishable from a quiet mesh, which

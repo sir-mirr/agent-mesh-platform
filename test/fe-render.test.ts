@@ -5597,7 +5597,20 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
         };
         const presentBody: Record<Resource, unknown> = {
           groups: { groups: [{ group_id: "t019-group", members: [], description: "state witness" }], egress: [] },
-          agents: { agents: [{ id: "t019-agent", name: "T-019 agent", channel: "web", type: "worker" }] },
+          agents: {
+            agents: [{
+              id: "t019-agent",
+              name: "T-019 agent",
+              description: null,
+              channel: "web",
+              type: "worker",
+              created_at: "2026-08-28T00:00:00.000Z",
+              last_seen_at: null,
+              deleted_at: null,
+              fingerprint: null,
+              tenant: "tenant_default",
+            }],
+          },
           keys: { keys: [{ identity: "t019-key", fingerprint: "sha256:t019" }] },
         };
         const answerRead = async (route: any, routed: Resource) => {

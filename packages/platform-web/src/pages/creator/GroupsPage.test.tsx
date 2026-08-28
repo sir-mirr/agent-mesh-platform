@@ -47,6 +47,7 @@ const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 const { GroupsPage } = await import("./GroupsPage.tsx");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 
 const ME = "/auth/me";
 const GROUPS = "/api/v1/admin/groups";
@@ -54,6 +55,10 @@ const AGENTS = "/api/v1/agents";
 const TENANTS = "/api/v1/admin/tenants/directory";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while groups fails. */
 const BELL = "/api/v1/admin/keys/pending";
+const CONTRACT_AGENT_BODY = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === AGENTS)!.body as {
+    agents: Array<{ id: string; type: string; tenant: string | null; deleted_at: string | null }>;
+  };
 
 // Taken from the contract rather than typed: a capability name this mesh does
 // not define is as wrong in a fixture as on a screen, because it makes the test
@@ -81,8 +86,24 @@ const ASSIGN_EMPTY = DICTIONARY.en["groups.modal.assignEmpty"]!;
 const ASSIGN_UNAVAILABLE = DICTIONARY.en["groups.modal.assignUnavailable"]!;
 const CANCEL = DICTIONARY.en["common.cancel"]!;
 
+const v035Body = (body: unknown): unknown => {
+  if (typeof body !== "object" || body === null || !("agents" in body)) return body;
+  const agents = (body as { agents?: unknown }).agents;
+  if (!Array.isArray(agents)) return body;
+  return {
+    ...(body as Record<string, unknown>),
+    // Legacy scenarios in this file predate the required D-809 field. Keep
+    // them as explicit live rows instead of teaching the product that a
+    // missing lifecycle field means live.
+    agents: agents.map((agent) => (
+      typeof agent === "object" && agent !== null && !("deleted_at" in agent)
+        ? { ...agent, deleted_at: null }
+        : agent
+    )),
+  };
+};
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  new Response(JSON.stringify(v035Body(body)), { status, headers: { "content-type": "application/json" } });
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand — a
@@ -493,6 +514,22 @@ describe("what a row says about a group", () => {
     expect(row[3]).not.toContain("operator-1");
   });
 
+  it("keeps a torn-down member in group history and marks that lifecycle explicitly", async () => {
+    const live = CONTRACT_AGENT_BODY.agents.find((agent) => agent.deleted_at === null)!;
+    const retired = CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!;
+    readAgents = () => json(200, CONTRACT_AGENT_BODY);
+    readGroups = () => json(200, { groups: [{
+      ...SUPPORT,
+      members: [live.id, retired.id],
+    }] });
+    await mount();
+
+    const members = cellsOf(rowFor(SUPPORT.group_id))[3]!;
+    expect(members).toContain(live.id);
+    expect(members).toContain(retired.id);
+    expect(members).toContain("Torn down");
+  });
+
   it("keeps equal group ids in different tenants as two visible rows", async () => {
     readGroups = () => json(200, { groups: [
       { ...BILLING, tenant: "acme", description: "acme row" },
@@ -762,9 +799,12 @@ describe("assigning an agent to a group", () => {
     readAgents = () => json(200, { agents: [
       { id: "operator-1", type: "user", tenant: "default" },
       { id: "agt_same", type: "agent", tenant: "default" },
+      { id: "agt_assigned", type: "agent", tenant: "default" },
       { id: "agt_other", type: "agent", tenant: "acme" },
     ] });
-    readGroups = () => json(200, { groups: [BILLING] });
+    readGroups = () => json(200, {
+      groups: [{ ...BILLING, members: ["agt_assigned"], member_count: 1 }],
+    });
     await mount();
     await openAssignFor(BILLING.group_id);
 
@@ -773,8 +813,23 @@ describe("assigning an agent to a group", () => {
     const offered = [...select.options].map((option) => option.value).filter(Boolean);
     expect(offered).toEqual(["agt_same"]);
     expect(offered).not.toContain("operator-1");
+    expect(offered).not.toContain("agt_assigned");
     expect(offered).not.toContain("agt_other");
     expect(calls.map((call) => call.url)).toContain(`${AGENTS}?tenant=default`);
+  });
+
+  it("never offers the contract fixture's torn-down identity as an assignment target", async () => {
+    const live = CONTRACT_AGENT_BODY.agents.find((agent) => agent.deleted_at === null)!;
+    const retired = CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!;
+    readAgents = () => json(200, CONTRACT_AGENT_BODY);
+    readGroups = () => json(200, { groups: [BILLING] });
+    await mount();
+    await openAssignFor(BILLING.group_id);
+
+    const select = screen.getByLabelText(AGENT_LABEL) as HTMLSelectElement;
+    const offered = [...select.options].map((option) => option.value).filter(Boolean);
+    expect(offered).toContain(live.id);
+    expect(offered).not.toContain(retired.id);
   });
 
   it("keeps the tenant guard in the handler if the DOM select is tampered with", async () => {

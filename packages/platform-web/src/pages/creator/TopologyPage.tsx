@@ -4,7 +4,7 @@ import { PageHeader, Breadcrumbs, Button, Toast, type ToastType } from "@/compon
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import { sendMessageApi, type MessageReceipt } from "@/api/messages.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
-import { agentRegistryEntries, fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
+import { callableAgentRegistryEntries, fetchAgents, type RegistryAgent, hasBeenSeen } from "@/api/agents.ts";
 
 interface ClusterConfig {
   id: string;
@@ -107,7 +107,11 @@ export function TopologyPage() {
     Promise.all([fetchGroups(), fetchAgents()])
       .then(([groups, agents]) => {
         setLiveGroups(groups || []);
-        setLiveAgents(agentRegistryEntries(agents || []));
+        // This canvas answers what is in the mesh now, and its drawer can send
+        // to every node it draws. A retained registry-history row is therefore
+        // neither terrain nor an address target. D-809 makes `deleted_at` the
+        // only lifecycle branch used here.
+        setLiveAgents(callableAgentRegistryEntries(agents || []));
       })
       .catch((err) => {
         console.warn("[Topology] API load error:", err);

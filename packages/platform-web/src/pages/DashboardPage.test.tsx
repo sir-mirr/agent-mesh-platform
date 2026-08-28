@@ -61,6 +61,7 @@ const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 const { DashboardPage } = await import("./DashboardPage.tsx");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 
 const ME = "/auth/me";
 const AGENTS = "/api/v1/agents";
@@ -71,6 +72,10 @@ const HEALTH = "/api/v1/health";
 const USAGE = "/api/v1/admin/ai-usage";
 const BEHAVIOUR = "/api/v1/admin/telemetry/behaviour";
 const USER_KEY = "agent_mesh_user";
+const CONTRACT_AGENT_BODY = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === AGENTS)!.body as {
+    agents: Array<{ id: string; deleted_at: string | null }>;
+  };
 
 /**
  * The English word this screen would draw, or a failure naming the key.
@@ -85,8 +90,23 @@ const en = (key: string): string => {
   return word;
 };
 
+const v035Body = (body: unknown): unknown => {
+  if (typeof body !== "object" || body === null || !("agents" in body)) return body;
+  const agents = (body as { agents?: unknown }).agents;
+  if (!Array.isArray(agents)) return body;
+  return {
+    ...(body as Record<string, unknown>),
+    // Pre-v0.35 scenarios here are live inventory controls. The product must
+    // not infer that from absence, so the fixture adapter says it explicitly.
+    agents: agents.map((agent) => (
+      typeof agent === "object" && agent !== null && !("deleted_at" in agent)
+        ? { ...agent, deleted_at: null }
+        : agent
+    )),
+  };
+};
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  new Response(JSON.stringify(v035Body(body)), { status, headers: { "content-type": "application/json" } });
 
 /** § 11.3's refusal: the server answered, and named what is missing. */
 const refusal = (capability: string) => () => json(403, { error: "not allowed", capability });
@@ -268,6 +288,18 @@ describe("the operator panel, while the registry has not answered", () => {
 });
 
 describe("the operator panel, on an answer", () => {
+  it("counts live identities and annotates the torn-down inventory separately", async () => {
+    routes = [
+      [ME, NO_SESSION],
+      [AGENTS, answers(CONTRACT_AGENT_BODY)],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.kpi.agents"))).toBe("1");
+    expect(kpiSub(en("dash.kpi.agents"))).toContain("Torn down: 1");
+  });
+
   it("does not count or list a person as an agent", async () => {
     routes = [[ME, NO_SESSION], [AGENTS, answers({ agents: [USER_ROW] })], [MAILBOX, answers({ mailboxes: [], total_queued: 0 })]];
     await mount();
@@ -806,6 +838,21 @@ describe("the platform panel, while nothing has answered", () => {
 });
 
 describe("the platform panel, on an answer", () => {
+  it("does not combine live and torn-down registry rows into one platform count", async () => {
+    remember("PLATFORM_ADMIN");
+    routes = [
+      [ME, ADMIN_ME],
+      [AGENTS, answers(CONTRACT_AGENT_BODY)],
+      [GROUPS, answers({ groups: [] })],
+      [HEALTH, answers({ status: "ok", agent_count: 1, uptime: 900, version: "0.2.0" })],
+      [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
+    ];
+    await mount();
+
+    expect(kpiValue(en("dash.pa.nodes"))).toBe("1");
+    expect(kpiSub(en("dash.pa.nodes"))).toContain("Torn down: 1");
+  });
+
   it("reports zero registered agents when the unified registry contains only admin", async () => {
     remember("PLATFORM_ADMIN");
     routes = [

@@ -60,6 +60,7 @@ const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { RbacProvider } = await import("@/contexts/RbacContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 const { AgentsPage } = await import("./AgentsPage.tsx");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 
 const ME = "/auth/me";
 const AGENTS = "/api/v1/agents";
@@ -68,6 +69,10 @@ const MAILBOX = "/api/v1/admin/mailbox";
 const TEARDOWN_PATH = "/api/v1/admin/agents/";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while agents fails. */
 const BELL = "/api/v1/admin/keys/pending";
+const CONTRACT_AGENT_BODY = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === AGENTS)!.body as {
+    agents: Array<{ id: string; deleted_at: string | null }>;
+  };
 
 // Taken from the contract rather than typed as strings: a capability name this
 // mesh does not define is as wrong in a fixture as it is on a screen, because
@@ -90,6 +95,7 @@ const UNREACHABLE = DICTIONARY.en["agents.error"]!;
 const REFUSED = DICTIONARY.en["common.refusedRead"]!;
 const NEVER_SEEN = DICTIONARY.en["agents.neverSeen"]!;
 const INVALID_LAST_SEEN = DICTIONARY.en["agents.invalidLastSeen"]!;
+const LIFECYCLE_UNKNOWN = DICTIONARY.en["agents.state.unknown"]!;
 const AGO = DICTIONARY.en["agents.ago"]!;
 const HOUR = DICTIONARY.en["agents.unit.hour"]!;
 const NOT_REPORTED = DICTIONARY.en["agents.notReported"]!;
@@ -292,6 +298,7 @@ const ALPHA = {
   type: "worker",
   created_at: "2026-08-01T10:00:00Z",
   last_seen_at: null,
+  deleted_at: null,
   fingerprint: null,
 };
 const beta = () => ({
@@ -302,6 +309,7 @@ const beta = () => ({
   type: "relay",
   created_at: "2026-08-02T11:30:00Z",
   last_seen_at: twoHoursAgo(),
+  deleted_at: null,
   fingerprint: "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
 });
 const PERSON = {
@@ -312,6 +320,7 @@ const PERSON = {
   type: "user",
   created_at: "2026-08-01T00:00:00Z",
   last_seen_at: null,
+  deleted_at: null,
   fingerprint: null,
 };
 
@@ -413,6 +422,48 @@ describe("the four things the table can be saying", () => {
 });
 
 describe("a row says only what the server sent", () => {
+  it("retains a torn-down row as marked history but offers actions only on the live row", async () => {
+    const live = CONTRACT_AGENT_BODY.agents.find((agent) => agent.deleted_at === null)!;
+    const retired = CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!;
+    readAgents = () => json(200, CONTRACT_AGENT_BODY);
+    await mount();
+
+    expect(rows()).toHaveLength(2);
+    expect(rowFor(live.id).querySelector('[data-testid="agent-lifecycle-live"]')?.textContent)
+      .toBe("Not torn down");
+    const history = rowFor(retired.id);
+    expect(history.querySelector('[data-testid="agent-lifecycle-deleted"]')?.textContent)
+      .toContain("Torn down");
+    expect(history.textContent).toContain(retired.deleted_at!);
+    expect(history.querySelector(`[data-testid="teardown-${retired.id}"]`)).toBe(null);
+    expect(history.textContent).not.toContain(PLAYGROUND);
+  });
+
+  it("marks a non-T/Z teardown timestamp invalid instead of supplying a browser zone", async () => {
+    const retired = {
+      ...CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!,
+      deleted_at: "2026-08-28 05:00:00",
+    };
+    readAgents = () => json(200, { agents: [retired] });
+    await mount();
+
+    const lifecycle = rowFor(retired.id).querySelector('[data-testid="agent-lifecycle-deleted"]');
+    expect(lifecycle?.textContent).toContain("Torn down");
+    expect(lifecycle?.textContent).toContain("Invalid teardown timestamp");
+    expect(lifecycle?.textContent).not.toContain(retired.deleted_at);
+  });
+
+  it("does not promote a legacy row with no lifecycle field to a live identity", async () => {
+    const { deleted_at, ...legacy } = ALPHA;
+    expect(deleted_at).toBeNull();
+    readAgents = () => json(200, { agents: [legacy] });
+    await mount();
+
+    const lifecycle = rowFor(legacy.id).querySelector('[data-testid="agent-lifecycle-unknown"]');
+    expect(lifecycle?.textContent).toBe(LIFECYCLE_UNKNOWN);
+    expect(rowFor(legacy.id).querySelector(`[data-testid="teardown-${legacy.id}"]`)).toBeNull();
+  });
+
   it("keeps people out of the agent registry while retaining agent and service rows", async () => {
     readAgents = () => json(200, { agents: [PERSON, ALPHA, beta()] });
     await mount();
@@ -451,14 +502,14 @@ describe("a row says only what the server sent", () => {
     const other = cellsOf(rowFor(found.id));
     expect(other[0]).toBe(`${found.description}${found.id}`);
     expect(other[1]).toBe(found.type);
-    expect(other[3]).toContain(found.fingerprint);
+    expect(other[4]).toContain(found.fingerprint);
 
     // `GET /api/v1/agents` carries no queue depth for anybody, so this cell is
     // the same absence on a row that is otherwise fully populated. `0` is what
     // it used to say, and zero backlog is the answer an operator hopes for.
-    expect(alpha[4]).toBe(NOT_REPORTED);
-    expect(other[4]).toBe(NOT_REPORTED);
-    expect(other[4]).not.toContain("0");
+    expect(alpha[5]).toBe(NOT_REPORTED);
+    expect(other[5]).toBe(NOT_REPORTED);
+    expect(other[5]).not.toContain("0");
     expect(screen.getAllByTestId("inbox-unknown")).toHaveLength(2);
     // This session was not granted the depth capability, so "unreported" is
     // not the result of making a request the server was bound to refuse.
@@ -477,17 +528,17 @@ describe("a row says only what the server sent", () => {
     // not entitled to decide. The cell is compared whole rather than searched,
     // because any status word added beside the sentence is exactly the
     // judgement being guarded against.
-    expect(cellsOf(unseen)[2]).toBe(NEVER_SEEN);
+    expect(cellsOf(unseen)[3]).toBe(NEVER_SEEN);
     expect(unseen.querySelector('[data-testid="never-seen"]')).not.toBe(null);
     expect(unseen.querySelector('[data-testid="last-seen"]')).toBe(null);
 
     // The other row was measured, and says how long ago in the operator's own
     // language. Borrowing this row's time for the one above would make an
     // identity nobody has ever seen look like one seen this afternoon.
-    expect(cellsOf(seen)[2]).toBe(`2${HOUR} ${AGO}`);
+    expect(cellsOf(seen)[3]).toBe(`2${HOUR} ${AGO}`);
     expect(seen.querySelector('[data-testid="last-seen"]')).not.toBe(null);
     expect(seen.querySelector('[data-testid="never-seen"]')).toBe(null);
-    expect(cellsOf(unseen)[2]).not.toBe(cellsOf(seen)[2]);
+    expect(cellsOf(unseen)[3]).not.toBe(cellsOf(seen)[3]);
   });
 
   it("puts an unparsable last_seen_at in its own invalid-value place and sentence", async () => {
@@ -495,7 +546,7 @@ describe("a row says only what the server sent", () => {
     await mount();
 
     const row = rowFor(ALPHA.id);
-    expect(cellsOf(row)[2]).toBe(INVALID_LAST_SEEN);
+    expect(cellsOf(row)[3]).toBe(INVALID_LAST_SEEN);
     expect(row.querySelector('[data-testid="invalid-last-seen"]')).not.toBe(null);
     expect(row.querySelector('[data-testid="never-seen"]')).toBe(null);
     expect(row.querySelector('[data-testid="last-seen"]')).toBe(null);
@@ -513,9 +564,9 @@ describe("a row says only what the server sent", () => {
     // a real mismatch was invisible; whatever stands here for "the server sent
     // none" may not be mistakable for a key, and above all may not equal the
     // key on the row beside it.
-    expect(unkeyed[3]).toBe(FP_ABSENT);
-    expect(unkeyed[3]).not.toContain("sha256:");
-    expect(unkeyed[3]).not.toBe(keyed[3]);
+    expect(unkeyed[4]).toBe(FP_ABSENT);
+    expect(unkeyed[4]).not.toContain("sha256:");
+    expect(unkeyed[4]).not.toBe(keyed[4]);
     expect(rowFor(ALPHA.id).querySelector('[data-testid="fingerprint-absent"]')).not.toBe(null);
     expect(rowFor(beta().id).querySelector('[data-testid="fingerprint-absent"]')).toBe(null);
   });
@@ -532,10 +583,10 @@ describe("a row says only what the server sent", () => {
     readAgents = () => json(200, { agents: swapped });
     await mount();
 
-    expect(cellsOf(rowFor(ALPHA.id))[2]).toBe(`2${HOUR} ${AGO}`);
-    expect(cellsOf(rowFor(ALPHA.id))[3]).toBe(FP_ABSENT);
-    expect(cellsOf(rowFor(beta().id))[2]).toBe(NEVER_SEEN);
-    expect(cellsOf(rowFor(beta().id))[3]).toContain("99aabbccddeeff0011223344556677");
+    expect(cellsOf(rowFor(ALPHA.id))[3]).toBe(`2${HOUR} ${AGO}`);
+    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe(FP_ABSENT);
+    expect(cellsOf(rowFor(beta().id))[3]).toBe(NEVER_SEEN);
+    expect(cellsOf(rowFor(beta().id))[4]).toContain("99aabbccddeeff0011223344556677");
   });
 });
 
@@ -556,8 +607,8 @@ describe("mailbox depth comes from its protected producer", () => {
     await mount();
 
     expect(mailboxReads().map((c) => c.url)).toEqual([MAILBOX]);
-    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe("0");
-    expect(cellsOf(rowFor(beta().id))[4]).toBe("7");
+    expect(cellsOf(rowFor(ALPHA.id))[5]).toBe("0");
+    expect(cellsOf(rowFor(beta().id))[5]).toBe("7");
     expect(screen.queryByTestId("inbox-unknown")).toBe(null);
 
     const idle = screen.getByTestId(`inbox-depth-${ALPHA.id}`);
@@ -573,7 +624,7 @@ describe("mailbox depth comes from its protected producer", () => {
     await mount();
 
     expect(rows()).toHaveLength(1);
-    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe(NOT_REPORTED);
+    expect(cellsOf(rowFor(ALPHA.id))[5]).toBe(NOT_REPORTED);
     expect(status()).not.toContain(REFUSED);
     expect(status()).not.toContain(UNREACHABLE);
     expect(mailboxReads()).toHaveLength(1);
@@ -586,7 +637,7 @@ describe("mailbox depth comes from its protected producer", () => {
     await mount();
 
     expect(rows()).toHaveLength(1);
-    expect(cellsOf(rowFor(ALPHA.id))[4]).toBe(NOT_REPORTED);
+    expect(cellsOf(rowFor(ALPHA.id))[5]).toBe(NOT_REPORTED);
     expect(status()).not.toContain(REFUSED);
     expect(status()).not.toContain(UNREACHABLE);
     expect(mailboxReads()).toHaveLength(1);
@@ -615,7 +666,7 @@ describe("teardown is offered only where the server granted it", () => {
     // capability, not because the table is empty — and the read-only control
     // beside it is still offered.
     expect(rows()).toHaveLength(1);
-    expect(cellsOf(rowFor(ALPHA.id))[5]).toContain(PLAYGROUND);
+    expect(cellsOf(rowFor(ALPHA.id))[6]).toContain(PLAYGROUND);
     // Walked with a member holding nothing: the button was there, the modal
     // opened, the typed confirmation was accepted, and the server refused at
     // the last step — a person walked all the way through an irreversible flow

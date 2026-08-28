@@ -58,7 +58,7 @@ registerDom();
 // registration above and would load React's DOM entry into a process with no
 // document.
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
-const { useLayoutEffect } = await import("react");
+const { StrictMode, useLayoutEffect } = await import("react");
 const { MemoryRouter } = await import("react-router-dom");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
@@ -109,7 +109,7 @@ const CONTENT = CAPABILITY.AUDIT_READ_CONTENT;
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-type Answer = () => Response | Promise<Response>;
+type Answer = (url?: string) => Response | Promise<Response>;
 const answers = (status: number, body: unknown): Answer => () => json(status, body);
 /** No answer at all — offline, DNS, connection refused. Not a status. */
 const noAnswer: Answer = () => { throw new TypeError("Failed to fetch"); };
@@ -173,12 +173,13 @@ beforeEach(() => {
   stub(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: (init?.method ?? "GET").toUpperCase() });
+    const path = new URL(url, "http://console.test").pathname;
     // Answered per-URL so one route can fail while the others succeed — a
     // refusal on the audit read is told from the backend being down only when
     // the session route is still answering.
-    if (url.endsWith(KEY_QUEUE)) return await keyQueueRoute();
-    if (url.endsWith(ME)) return await meRoute();
-    if (url.endsWith(AUDIT)) return await auditRoute();
+    if (path === KEY_QUEUE) return await keyQueueRoute();
+    if (path === ME) return await meRoute();
+    if (path === AUDIT) return await auditRoute(url);
     throw new TypeError("Failed to fetch");
   });
 });
@@ -244,7 +245,8 @@ const logState = () => {
 };
 const quiet = { loading: false, refused: false, unreachable: false, empty: false };
 
-const auditReads = () => calls.filter((c) => c.method === "GET" && c.url.endsWith(AUDIT));
+const auditReads = () => calls.filter((c) =>
+  c.method === "GET" && new URL(c.url, "http://console.test").pathname === AUDIT);
 
 const refresh = async () => {
   fireEvent.click(screen.getByText(REFRESH_BUTTON));
@@ -436,6 +438,14 @@ describe("the four things the screen can say about the log", () => {
 });
 
 describe("reading it again", () => {
+  it("asks once when React StrictMode replays the mount effect", async () => {
+    auditRoute = answers(200, { ok: true, events: [event()] });
+    render(<StrictMode>{page}</StrictMode>);
+    await settle();
+
+    expect(auditReads()).toHaveLength(1);
+  });
+
   it("asks the route once on mount and once more for the refresh", async () => {
     auditRoute = answers(200, { ok: true, events: [event()] });
     await mount();
@@ -445,6 +455,53 @@ describe("reading it again", () => {
     // whenever the tab was opened, on the one screen where staleness is the
     // question being asked.
     expect(auditReads().length).toBe(2);
+  });
+
+  it("narrows audit-list reads by event type and recorder kind on the server", async () => {
+    const mixed = [
+      event({
+        event_id: "evt-audit-list-read",
+        event_type: "mesh.identity.audit_read",
+        identity: "operator-1",
+        recorded_by: { kind: "http", identity: "agent-mesh-http" },
+        payload: { actor: "operator-1", change: { read: "list", query: {} } },
+      }),
+      event({
+        event_id: "evt-message-received",
+        event_type: "channel.message.received",
+        identity: "sender-a",
+        recorded_by: { kind: "adapter", identity: "sender-a" },
+      }),
+    ];
+    auditRoute = (url = AUDIT) => {
+      const query = new URL(url, "http://console.test").searchParams;
+      const eventType = query.get("event_type");
+      const recorderKind = query.get("recorded_by_kind");
+      const events = mixed.filter((item) =>
+        (eventType === null || item.event_type === eventType)
+        && (recorderKind === null
+          || (item as typeof item & { recorded_by: { kind: string } }).recorded_by.kind === recorderKind));
+      return json(200, { ok: true, events, next_cursor: null });
+    };
+    await mount();
+    expect(logState().rows).toBe(2);
+
+    fireEvent.change(screen.getByTestId("audit-event-type-filter"), {
+      target: { value: "mesh.identity.audit_read" },
+    });
+    fireEvent.change(screen.getByTestId("audit-recorder-kind-filter"), {
+      target: { value: "http" },
+    });
+    fireEvent.click(screen.getByTestId("audit-filter-apply"));
+    await settle();
+
+    const request = new URL(auditReads().at(-1)!.url, "http://console.test");
+    expect([...request.searchParams.entries()]).toEqual([
+      ["event_type", "mesh.identity.audit_read"],
+      ["recorded_by_kind", "http"],
+    ]);
+    expect(logState().rows).toBe(1);
+    expect(summaryOf("operator-1")).toContain("read the audit list");
   });
 
   it("takes the refusal back down when a later read succeeds", async () => {

@@ -39,8 +39,11 @@ interface AgentItem {
    * checked was also the one nobody would question.
    */
   inboxDepth: number | null;
-  /** When, in words. "접속 기록 없음" when the mesh has no record. */
+  /** When, in words. "본 적 없음" when the mesh has no record. */
   lastSeen: string;
+  /** Lifecycle comes only from `deleted_at`; presence is not a substitute. */
+  lifecycle: "live" | "deleted" | "unknown";
+  deletedAt: string | null;
 }
 
 interface TeardownNotice {
@@ -53,6 +56,7 @@ import {
   agentRegistryEntries,
   fetchAgents,
   teardownAgentApi,
+  isoUtcMillis,
   lastSeen,
   lastSeenText,
   type TeardownAction,
@@ -97,6 +101,10 @@ export function AgentsPage() {
       setAgents(
         (list || []).map((a) => {
           const seen = lastSeen(a.last_seen_at);
+          // Keep a malformed old response separate from live. `null` is the
+          // contract's positive fact that teardown has not happened; an
+          // omitted field cannot be promoted to that fact.
+          const deletedAt = (a as { deleted_at?: string | null }).deleted_at;
           return {
             id: a.identity,
             name: a.description || a.identity,
@@ -105,6 +113,11 @@ export function AgentsPage() {
             // measured is when it last saw the identity.
             lastSeen: lastSeenText(t, a.last_seen_at),
             lastSeenKind: seen.kind,
+            lifecycle:
+              deletedAt === null ? "live"
+              : typeof deletedAt === "string" ? "deleted"
+              : "unknown",
+            deletedAt: typeof deletedAt === "string" ? deletedAt : null,
             // Absent, not invented — see `fetchAgents`.
             fingerprint: a.fingerprint ?? null,
             // Kept absent when the protected mailbox read did not answer, was
@@ -245,6 +258,44 @@ export function AgentsPage() {
       ),
     },
     {
+      key: "lifecycle",
+      header: t("agents.col.lifecycle", "신원 상태"),
+      render: (item: AgentItem) =>
+        item.lifecycle === "deleted" ? (
+          <div
+            data-testid="agent-lifecycle-deleted"
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}
+          >
+            <StatusBadge
+              status="danger"
+              size="sm"
+              label={t("agents.state.deleted", "철거됨")}
+            />
+            <span style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>
+              {item.deletedAt !== null && isoUtcMillis(item.deletedAt) !== null
+                ? item.deletedAt
+                : t("agents.state.deletedAtInvalid", "철거 시각 형식 오류")}
+            </span>
+          </div>
+        ) : item.lifecycle === "live" ? (
+          <span data-testid="agent-lifecycle-live">
+            <StatusBadge
+              status="neutral"
+              size="sm"
+              label={t("agents.state.live", "철거되지 않음")}
+            />
+          </span>
+        ) : (
+          <span data-testid="agent-lifecycle-unknown">
+            <StatusBadge
+              status="warning"
+              size="sm"
+              label={t("agents.state.unknown", "상태 미보고")}
+            />
+          </span>
+        ),
+    },
+    {
       key: "lastSeenKind",
       header: t("agents.col.lastSeen", "마지막 접속"),
       render: (item: AgentItem) =>
@@ -306,11 +357,13 @@ export function AgentsPage() {
       align: "right" as const,
       render: (item: AgentItem) => (
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <Link to="/creator/playground">
-            <Button variant="secondary" size="sm">
-              {t("nav.playground", "메시지 테스트")}
-            </Button>
-          </Link>
+          {item.lifecycle === "live" && (
+            <Link to="/creator/playground">
+              <Button variant="secondary" size="sm">
+                {t("nav.playground", "메시지 테스트")}
+              </Button>
+            </Link>
+          )}
           {/*
             **Shown only to a session the server gave `agent.teardown`.**
             Measured with a member holding nothing: the button was there, the
@@ -326,7 +379,7 @@ export function AgentsPage() {
               equality as a second, independent guard: a malformed or migrated
               registry row must never offer the signed-in person a control that
               destroys their own identity from an agent-management screen. */}
-          {canTeardown && item.id !== user?.name && (
+          {canTeardown && item.lifecycle === "live" && item.id !== user?.name && (
             <Button
               variant="danger"
               size="sm"
@@ -338,6 +391,11 @@ export function AgentsPage() {
             >
               {t("agents.teardownBtn", "Teardown")}
             </Button>
+          )}
+          {item.lifecycle !== "live" && (
+            <span style={{ color: "var(--color-text-muted)", fontSize: "0.75rem" }}>
+              {t("agents.state.noActions", "사용 가능한 작업 없음")}
+            </span>
           )}
         </div>
       ),

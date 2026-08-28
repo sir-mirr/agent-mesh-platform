@@ -11,7 +11,7 @@
 import { describe, it, expect, mock, afterEach } from "bun:test";
 import { setSystemTime } from "bun:test";
 import {
-  agentMemberIdentities, agentRegistryEntries, fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
+  agentMemberIdentities, agentRegistryEntries, callableAgentRegistryEntries, fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
   createPairingCodeApi, teardownAgentApi, lastSeen, lastSeenText, hasBeenSeen,
   type TeardownAction, type TeardownResponse,
 } from "./agents.ts";
@@ -34,9 +34,9 @@ afterEach(() => { globalThis.fetch = realFetch; setSystemTime(); });
 describe("fetchAgents", () => {
   it("keeps the unified response intact and lets agent-labelled views remove people", async () => {
     spyOn({ agents: [
-      { id: "admin", type: "user", tenant: "default" },
-      { id: "worker-1", type: "worker", tenant: "acme" },
-      { id: "relay-1", type: "service", tenant: "acme" },
+      { id: "admin", type: "user", tenant: "default", deleted_at: null },
+      { id: "worker-1", type: "worker", tenant: "acme", deleted_at: null },
+      { id: "relay-1", type: "service", tenant: "acme", deleted_at: null },
     ] });
 
     const registry = await fetchAgents();
@@ -45,6 +45,32 @@ describe("fetchAgents", () => {
     // The view rule is narrower: a person never becomes an agent count or row.
     expect(agentRegistryEntries(registry).map((entry) => entry.identity)).toEqual(["worker-1", "relay-1"]);
     expect(registry.map((entry) => entry.tenant)).toEqual(["default", "acme", "acme"]);
+  });
+
+  it("keeps teardown history in inventory and removes it only from callable choices", async () => {
+    spyOn({ agents: [
+      { id: "never-seen-live", type: "worker", tenant: "acme", last_seen_at: null, deleted_at: null },
+      {
+        id: "seen-then-torn-down",
+        type: "worker",
+        tenant: "acme",
+        last_seen_at: "2026-08-28T01:00:00Z",
+        deleted_at: "2026-08-28T02:00:00Z",
+      },
+    ] });
+
+    const registry = await fetchAgents();
+    expect(registry.map((entry) => [entry.identity, entry.deleted_at])).toEqual([
+      ["never-seen-live", null],
+      ["seen-then-torn-down", "2026-08-28T02:00:00Z"],
+    ]);
+    // Inventory answers what happened to a name, so both rows remain.
+    expect(agentRegistryEntries(registry).map((entry) => entry.identity))
+      .toEqual(["never-seen-live", "seen-then-torn-down"]);
+    // A destination answers who can be called. The live-but-never-seen row is
+    // retained, proving this branches on deleted_at and not last_seen_at.
+    expect(callableAgentRegistryEntries(registry).map((entry) => entry.identity))
+      .toEqual(["never-seen-live"]);
   });
 
   it("asks the registry for one tenant when a group picker names it", async () => {
@@ -176,6 +202,9 @@ describe("lastSeen", () => {
     expect(lastSeen(null)).toEqual({ kind: "never" });
     expect(lastSeen(undefined)).toEqual({ kind: "never" });
     expect(lastSeen("not a date")).toEqual({ kind: "invalid" });
+    expect(lastSeen("2026-08-20 12:00:00")).toEqual({ kind: "invalid" });
+    expect(lastSeen("2026-08-20T12:00:00+09:00")).toEqual({ kind: "invalid" });
+    expect(lastSeen("2026-02-30T12:00:00Z")).toEqual({ kind: "invalid" });
     expect(hasBeenSeen({ last_seen_at: null })).toBe(false);
     // Presence was reported even though its time cannot be parsed. Callers
     // needing that distinction use `lastSeen`, not this boolean projection.
