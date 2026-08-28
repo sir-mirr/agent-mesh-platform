@@ -10076,10 +10076,10 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "provisioning-stops-stamping-a-sighting",
     defect:
-      "Provisioning writes `NULL` into `last_seen` instead of the current time. **This is the direction T-054 is expected to go**, and the anchor exists so the observer that pins today's behaviour is known to be watching this line rather than passing on something else \u2014 a pinned defect whose test cannot see the fix is indistinguishable from a test that pins nothing.",
+      "Provisioning writes `NULL` into `last_seen` instead of the current time. The statement is `stmtUpsertAgentTyped`, not the `IfAbsent` one beside it \u2014 the first version of this anchor mutated the wrong writer, changed nothing, and was reported as not caught, which is how the manifest says \"your line is not the line\". **This is the direction T-054 is expected to go**, and the anchor exists so the observer that pins today's behaviour is known to be watching this line rather than passing on something else \u2014 a pinned defect whose test cannot see the fix is indistinguishable from a test that pins nothing.",
     file: "packages/hub/src/db.ts",
-    from: "export const stmtInsertAgentIfAbsent = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, datetime('now'), datetime('now'))",
-    to: "export const stmtInsertAgentIfAbsent = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, NULL, datetime('now'))",
+    from: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+    to: "export const stmtUpsertAgentTyped = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, NULL, datetime('now'))",
     suite: "test/registry-canon.test.ts",
     expect: ["a never-connected identity reported no presence"],
   },

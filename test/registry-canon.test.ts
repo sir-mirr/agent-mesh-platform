@@ -92,9 +92,10 @@ describe("the two registries, on one namespace", () => {
 
     // **[T-054] `last_seen_at` is not a sighting.** This identity has never
     // opened a socket, and the route reports a timestamp for it — because
-    // `stmtInsertAgentIfAbsent` writes `last_seen = datetime('now')` at
-    // provisioning (`packages/hub/src/db.ts:190`). So a non-null value here
-    // means "the row exists", not "the mesh saw it".
+    // `stmtUpsertAgentTyped` writes `last_seen = datetime('now')` at
+    // provisioning (`packages/hub/src/db.ts`, the statement `rest/agents.ts`
+    // actually runs — the `IfAbsent` one beside it serves `createOnly`). So a
+    // non-null value here means "the row exists", not "the mesh saw it".
     //
     // That is I-062 in a new field. The console drew every agent as `ONLINE`
     // until this route started carrying presence; a screen reading this value
