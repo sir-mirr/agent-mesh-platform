@@ -5576,7 +5576,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           keys: { keys: [] },
         };
         const presentBody: Record<Resource, unknown> = {
-          groups: { groups: [{ group_id: "t019-group", name: "T-019 group", members: [], description: "state witness" }], egress: [] },
+          groups: { groups: [{ group_id: "t019-group", members: [], description: "state witness" }], egress: [] },
           agents: { agents: [{ id: "t019-agent", name: "T-019 agent", channel: "web", type: "worker" }] },
           keys: { keys: [{ identity: "t019-key", fingerprint: "sha256:t019" }] },
         };
@@ -6480,9 +6480,12 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
           // group that legitimately holds them is what makes the difference
           // visible.
           body: JSON.stringify({
+            // No `name`: `GET /api/v1/admin/groups` does not send one, so the
+            // cluster is labelled with the group id and this fixture used to
+            // invent the label it then searched for.
             groups: [
-              { group_id: "held-grp", name: "실제 그룹", members: ["agent-alpha", "agent-beta"] },
-              { group_id: "empty-grp", name: "빈 그룹", members: [] },
+              { group_id: "held-grp", members: ["agent-alpha", "agent-beta"] },
+              { group_id: "empty-grp", members: [] },
             ],
             egress: [],
           }),
@@ -6499,7 +6502,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // for agents the server placed nowhere (`9e0a8d2`), a global zero
       // forbade that place existing. The question was always about the inside
       // of the group, so it is asked there.
-      const emptyGroup = page.locator("[data-testid='topology-cluster']").filter({ hasText: "빈 그룹" });
+      const emptyGroup = page.locator("[data-testid='topology-cluster']").filter({ hasText: "empty-grp" });
       const clusters = await emptyGroup.count();
       // **By the group the node says drew it, not by containment.** The
       // repair before this one read `topology-agent` inside the cluster

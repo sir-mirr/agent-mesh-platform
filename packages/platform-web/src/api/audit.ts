@@ -1,6 +1,6 @@
 import type { RestAuditEvent, RestAuditEventsResponse } from "@agent-mesh/contracts";
 
-import { apiClient } from "./client.ts";
+import { apiClient, listOf } from "./client.ts";
 
 export interface SignatureFact {
   signed: boolean;
@@ -60,7 +60,10 @@ function payloadHasWithheldContent(value: unknown): boolean {
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
   const data = await apiClient<RestAuditEventsResponse>("/api/v1/audit/events");
   // The bare-array branch went — this route answers `{ ok, events, next_cursor }`.
-  const list: RestAuditEvent[] = Array.isArray(data?.events) ? data.events : [];
+  // A body without an `events` array is refused rather than drawn as an empty
+  // log: an empty audit screen is indistinguishable from a quiet mesh, which
+  // is the one thing an audit screen must not be.
+  const list = listOf<RestAuditEvent>(data?.events, "/api/v1/audit/events", "events");
   return list.map((item, index: number) => {
     const rawPayload: unknown = item.payload ?? null;
     const payload = isRecord(rawPayload) ? rawPayload : {};

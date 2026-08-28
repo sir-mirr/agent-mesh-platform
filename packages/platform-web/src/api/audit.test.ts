@@ -108,6 +108,11 @@ describe("fetchAuditEvents", () => {
   });
 
   it("survives an attestation that is not JSON", async () => {
+    // A string is not an attestation on this wire — the route parses the
+    // column before answering, so what arrives is an object or `null`. This
+    // used to check that a guarded `JSON.parse` survived a bad string; it now
+    // checks that a string is not read as a signature, which is the same
+    // promise against the shape the route actually sends.
     answer({ events: [{ event_id: "e1", payload: {}, attestation: "{not json" }] });
     expect((await fetchAuditEvents())[0]!.signature.signed).toBe(false);
   });
@@ -120,10 +125,12 @@ describe("fetchAuditEvents", () => {
     expect((await fetchAuditEvents())[0]!.digestMatches).toBe(false);
   });
 
-  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+  it("refuses a body it does not recognise instead of drawing an empty log", async () => {
     // This asked for a bare array to be read. The route has always answered
-    // `{ ok, events, next_cursor }`.
+    // `{ ok, events, next_cursor }` — and an empty audit screen is
+    // indistinguishable from a quiet mesh, which is the one thing an audit
+    // screen must not be. So an unrecognised body is a failed read, not none.
     answer([{ event_id: "e1", payload: {} }]);
-    expect(await fetchAuditEvents()).toEqual([]);
+    expect(fetchAuditEvents()).rejects.toThrow(/does not know that shape/);
   });
 });

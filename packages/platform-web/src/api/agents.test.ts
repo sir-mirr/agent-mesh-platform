@@ -93,13 +93,13 @@ describe("fetchAgents", () => {
     expect((await fetchAgents()).map((a) => a.identity)).toEqual(["by-id"]);
   });
 
-  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
-    // A type is a claim about a correct server. An old build, a proxy or an
-    // error page can still answer anything, and `undefined.map` takes the
-    // screen down — so the shape is checked even though the name is not
-    // guessed at.
+  it("refuses a body it does not recognise instead of reporting an empty mesh", async () => {
+    // A type is a claim about a correct server; an old build, a proxy or an
+    // error page can still answer anything. `[]` here would be a claim about
+    // the mesh made out of a fact about the read, and the screen has a
+    // separate state for a read that failed.
     spyOn([{ identity: "a-1" }]);
-    expect(await fetchAgents()).toEqual([]);
+    expect(fetchAgents()).rejects.toThrow(/does not know that shape/);
   });
 });
 
@@ -109,12 +109,13 @@ describe("fetchPendingKeys", () => {
     expect((await fetchPendingKeys())[0]!.identity).toBe("joiner");
   });
 
-  it("draws nothing rather than reading the other queue's name", async () => {
+  it("refuses the body rather than reading the other queue's name", async () => {
     // `admin/pending` (people) and `admin/keys/pending` (keys) answered the
     // same body one path segment apart. Reading `pending` here would make this
-    // queue silently show that one.
+    // queue silently show that one — and answering `[]` would make a server
+    // still on the old name look like a queue with nothing in it.
     spyOn({ ok: true, pending: [{ identity: "wrong-queue" }] });
-    expect(await fetchPendingKeys()).toEqual([]);
+    expect(fetchPendingKeys()).rejects.toThrow(/does not know that shape/);
   });
 });
 

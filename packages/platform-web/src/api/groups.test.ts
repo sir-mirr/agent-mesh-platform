@@ -222,12 +222,13 @@ describe("fetchGroups", () => {
     expect(rows[0]!.egress_allowed).toBe(null);
   });
 
-  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+  it("refuses a body it does not recognise instead of reporting a mesh with no groups", async () => {
     // This asked for a bare array to be mapped. The route has never sent one,
-    // so the branch could not run against the server — but a body of the wrong
-    // shape must still not take the screen down.
+    // so the branch could not run against the server. What replaces it is the
+    // distinction the test below already makes for egress: an empty list is a
+    // claim about the tenant, and a body this reader cannot read is not.
     spyOn([{ group_id: "ops", members: ["a-1"] }]);
-    expect(await fetchGroups()).toEqual([]);
+    expect(fetchGroups()).rejects.toThrow(/does not know that shape/);
   });
 
   it("hands a refusal on rather than drawing a mesh with no groups", async () => {

@@ -128,9 +128,12 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
     throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
   }
 
-  // The bare-array branch went — `/api/v1/agents` answers `{ agents }` — and
-  // the array check stays, because nothing about a socket is guaranteed by a
-  // type.
+  // The bare-array branch went — `/api/v1/agents` answers `{ agents }`. This
+  // one does not throw the way the api readers do: a panel that could not be
+  // read is already `null` here, and a malformed body is the same fact, so it
+  // joins the panel that did not answer rather than taking the other three
+  // down with it.
+  const agentsUnreadable = agents !== null && !Array.isArray(agents.agents);
   const agentList = Array.isArray(agents?.agents) ? agents.agents : [];
   // **Two tables, two questions.** `health.agent_count` counts mesh identities
   // that are alive (`agents`, `deleted_at IS NULL`); `agentList.length` counts
@@ -140,7 +143,7 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   // label and nothing says it changed. Measured on the standing stack the day
   // this was written: 12 against 13.
   const totalAgents = health?.agent_count ?? null;
-  const webChannelIdentities = agents === null
+  const webChannelIdentities = agents === null || agentsUnreadable
     ? null
     : agentList.filter((a) => a.channel === "web").length;
 

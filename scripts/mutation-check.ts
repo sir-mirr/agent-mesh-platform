@@ -1140,7 +1140,7 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The redaction sentinel stops being recognised, so the string the server sends *instead of* content is rendered as content. The row then shows `[content withheld …]` as though somebody had written it, and the screen stops distinguishing a body it may not see from a body that says that.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "    const redacted = payloadHasWithheldContent(rawPayload)\n      || (typeof item.content === \"string\" && /^\\[content withheld\\b/i.test(item.content));",
+    from: "    const redacted = payloadHasWithheldContent(rawPayload);",
     to: "    const redacted = false;",
     suite: "packages/platform-web/src/api/audit.test.ts",
     expect: ["marks a server redaction token as data, not operator-facing content"],
@@ -1180,8 +1180,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "Pending keys are read under `pending`, which is the *admission* queue's name — a different route about different rows. The bell then draws nothing, or worse draws people waiting to be admitted as keys waiting to be approved.",
     file: "packages/platform-web/src/api/agents.ts",
-    from: "  return Array.isArray(data) ? data : data.keys ?? [];",
-    to: "  return Array.isArray(data) ? data : data.pending ?? [];",
+    from: '  const { keys } = await apiClient<RestKeyProposalsResponse>("/api/v1/admin/keys/pending");',
+    to: '  const { pending: keys } = await apiClient<any>("/api/v1/admin/keys/pending");',
     suite: "packages/platform-web/src/api/agents.test.ts",
     expect: ["reads `keys`, the name D-689 moved the route to"],
   },
@@ -1230,8 +1230,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The pending queue is read under `pending` again. D-689 moved the route to `{ users }` and refused an alias precisely so a reader could tell which name the server sends; reading the old one brings the alias back by the door the decision closed, and the screen draws a queue from a shape the route no longer produces.",
     file: "packages/platform-web/src/api/users.ts",
-    from: "  return Array.isArray(data) ? data : data.users ?? [];",
-    to: "  return Array.isArray(data) ? data : data.pending ?? [];",
+    from: '  const { users } = await apiClient<RestPendingAdmissionsResponse>("/api/v1/admin/pending");',
+    to: '  const { pending: users } = await apiClient<any>("/api/v1/admin/pending");',
     suite: "packages/platform-web/src/api/users.test.ts",
     expect: ["reads the queue under the name the route sends today"],
   },
@@ -2822,24 +2822,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["calls an unsigned row unsigned rather than unknown"],
   },
   {
-    id: "a-bare-array-of-events-reads-as-none",
+    id: "an-unreadable-body-draws-an-empty-audit-log",
     defect:
-      "Only `{ events: [...] }` is accepted, so a route answering a bare array shows an empty audit log. An empty audit screen is indistinguishable from a quiet mesh, which is the one thing an audit screen must not be.",
+      "A body the reader does not recognise is mapped to an empty list instead of refused. An empty audit screen is indistinguishable from a quiet mesh, which is the one thing an audit screen must not be \u2014 and the shape that produces it is a deployment still answering under an older name, which is exactly when an operator needs to be told rather than reassured.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "  const list = Array.isArray(data) ? data : data.events ?? [];",
-    to: "  const list = data.events ?? [];",
+    from: '  const list = listOf<RestAuditEvent>(data?.events, "/api/v1/audit/events", "events");',
+    to: "  const list: RestAuditEvent[] = Array.isArray(data?.events) ? data.events : [];",
     suite: "packages/platform-web/src/api/audit.test.ts",
-    expect: ["takes a bare array as well as { events }"],
+    expect: ["refuses a body it does not recognise instead of drawing an empty log"],
   },
   {
     id: "one-unparseable-attestation-empties-the-log",
+    // **Retired 2026-08-28: there is no parse left to unguard.**
+    //
+    // The reader used to `JSON.parse` the attestation, guarded by a `try`, and
+    // this planted the guard away so one malformed row would take the whole log
+    // off the screen. Typing the call site from the contract showed the branch
+    // could not run: `packages/http/src/audit-query.ts` parses `attestation`
+    // before answering, so it arrives as an object or `null` and never as a
+    // string. The reader now takes the object and ignores anything else.
+    //
+    // The behaviour the entry protected is still checked — "survives an
+    // attestation that is not JSON" is still in that file, and now records that
+    // a string is not read as an attestation rather than that a parse survives
+    // one. What is gone is the mutation, because the code it edited is gone.
+    retired: "the reader no longer parses the attestation; the route parses it first, so the guarded parse this planted into does not exist",
     defect:
       "The parse is no longer guarded, so a single row whose attestation is not JSON throws inside the map and the whole fetch rejects. One malformed row takes the entire audit log off the screen — the failure mode where the least trustworthy row hides all the others.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "      try { attestationObj = JSON.parse(item.attestation); } catch {}",
-    to: "      attestationObj = JSON.parse(item.attestation);",
     suite: "packages/platform-web/src/api/audit.test.ts",
-    expect: ["survives an attestation that is not JSON"],
+    expect: ["survives an attestation that is not JSON", "retired"],
   },
   {
     id: "a-senior-role-widens-a-short-list",
@@ -6297,8 +6309,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`/platform/telemetry` rendered the same page whether its panels were refused or the mesh was idle. Two of its four endpoints are ungated — none of § 11's twelve capabilities names reading the registry — so they always answer, the `all four failed` throw was unreachable for a refusal, and the cells simply read `—`. agent-mesh-local-pm measured 999 bytes before the refusal and 999 after: the screen made no statement about the backend at all.",
     file: "packages/platform-web/src/api/telemetry.ts",
-    from: "          refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });",
-    to: "          void p;",
+    from: "        refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });",
+    to: "        void p;",
     suite: "test/fe-render.test.ts",
     expect: ["names the refused panels on /platform/telemetry instead of rendering blanks"],
   },
@@ -12014,8 +12026,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The audit row took its time from the payload it carried rather than from the ledger that recorded it. D-67 separates the two because the payload is the subject's own account of when something happened and the ledger's is the mesh's: a producer that lies about its clock, or one whose clock is simply wrong, moves every row on the screen an investigator reads.",
     file: "packages/platform-web/src/api/audit.ts",
-    from: "    const timestamp = stringField(item.occurred_at, item.stored_at, item.timestamp, item.ts) ?? \"—\";",
-    to: "    const timestamp = stringField(payload.occurred_at, item.occurred_at, item.stored_at, item.timestamp) ?? \"—\";",
+    from: "    const timestamp = stringField(item.occurred_at, item.stored_at) ?? \"—\";",
+    to: "    const timestamp = stringField(payload.occurred_at, item.occurred_at, item.stored_at) ?? \"—\";",
     suite: "test/fe-render.test.ts",
     expect: ["renders /tenant/audits with real distinct timestamps"],
   },

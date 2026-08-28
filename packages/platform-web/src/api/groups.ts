@@ -1,6 +1,6 @@
 import type { RestEgressRow, RestGroupRow, RestGroupsResponse } from "@agent-mesh/contracts";
 
-import { apiClient } from "./client.ts";
+import { apiClient, listOf } from "./client.ts";
 
 export interface GroupItem {
   id: string;
@@ -17,9 +17,10 @@ export interface GroupItem {
 export async function fetchGroups(): Promise<GroupItem[]> {
   const data = await apiClient<RestGroupsResponse>("/api/v1/admin/groups");
   // The bare-array branch went: this route has always answered `{ ok, tenant,
-  // groups, egress }`. The array check stays one level in, because a type is a
-  // claim about a correct server and not a guarantee from the network.
-  const list: RestGroupRow[] = Array.isArray(data?.groups) ? data.groups : [];
+  // groups, egress }`. A body without a `groups` array is refused rather than
+  // drawn as a mesh with no groups — that is a claim about the tenant made out
+  // of a fact about the read, and this screen has a separate state for it.
+  const list = listOf<RestGroupRow>(data?.groups, "/api/v1/admin/groups", "groups");
   // Whether the route answered with egress rules at all, kept apart from the
   // rules being empty. Without it every group on a response carrying no
   // `egress` reads as "allowed to reach nothing", which is a claim.

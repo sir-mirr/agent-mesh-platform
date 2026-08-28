@@ -40,22 +40,25 @@ describe("fetchPendingAdmissions", () => {
     expect((await fetchPendingAdmissions()).map((u) => u.github_login)).toEqual(["asked-to-join"]);
   });
 
-  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+  it("refuses a body it does not recognise instead of reporting an empty queue", async () => {
     // This asked for a bare array to be accepted. The route has never sent one
     // — SPEC § 9.1 and `main.ts` both answer `{ users }` — so the branch that
     // satisfied it could not run against the server, and a test written from a
     // reader's fallback checks that the fallback is still there rather than
-    // that the reader is right. What survives is the half that matters: a body
-    // of the wrong shape must not take the screen down.
+    // that the reader is right. What replaces it is the distinction that
+    // matters here: nobody waiting, and could not tell, are different answers.
     spyOn([{ github_login: "older-shape" }]);
-    expect(await fetchPendingAdmissions()).toEqual([]);
+    expect(fetchPendingAdmissions()).rejects.toThrow(/does not know that shape/);
   });
 
-  it("draws nothing rather than guessing when the body uses the old name", async () => {
+  it("refuses the body rather than guessing when it uses the old name", async () => {
     // Deliberate. `pending` is the name this route left behind; reading both
-    // would be the alias D-689 refused, arriving by the back door.
+    // would be the alias D-689 refused, arriving by the back door. It is a
+    // refusal rather than an empty list because a server still answering the
+    // old name is a deployment mismatch, and "nobody is waiting" is the one
+    // sentence that hides it.
     spyOn({ ok: true, pending: [{ github_login: "old-name" }] });
-    expect(await fetchPendingAdmissions()).toEqual([]);
+    expect(fetchPendingAdmissions()).rejects.toThrow(/does not know that shape/);
   });
 });
 

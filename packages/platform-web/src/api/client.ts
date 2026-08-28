@@ -57,6 +57,28 @@ export class ApiError extends Error {
  * The nine call sites that take the default all discard the value, so this
  * costs them nothing.
  */
+/**
+ * The list a route promised, or a refusal to guess.
+ *
+ * **`[]` is a claim about the mesh; this is a fact about the read.** A body
+ * that is not the agreed shape used to be mapped to an empty array, and an
+ * empty audit log is indistinguishable from a quiet mesh — the one thing an
+ * audit screen must not be. Every screen here already distinguishes a failed
+ * read from an empty answer, so throwing reaches the operator as "could not
+ * read" instead of as "nothing happened".
+ *
+ * Not the same as trusting the type: `apiClient<T>` is a claim about a correct
+ * server, and an old build, a proxy or an error page can still put anything on
+ * the wire. This is where that is noticed rather than absorbed.
+ */
+export function listOf<T>(value: unknown, route: string, key: string): T[] {
+  if (Array.isArray(value)) return value as T[];
+  throw new Error(
+    `${route} answered without a '${key}' array. This reader does not know that shape, ` +
+      `and an empty list here would read as an empty mesh.`,
+  );
+}
+
 export async function apiClient<T = unknown>(
   path: string,
   options: RequestInit = {}

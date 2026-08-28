@@ -178,11 +178,17 @@ describe("which queue the bell reads", () => {
     // The shape both routes used to answer with. Reading `pending` here would
     // put people waiting for an account under a bell about agent keys, and
     // nothing about the response would have looked wrong.
+    //
+    // **And it now says it could not read, rather than showing a quiet bell.**
+    // The reader refuses a body without a `keys` array instead of answering
+    // `[]`, so this reaches the operator as a failed read. A plain bell here
+    // would be the same sentence a server on the old name produces: nothing
+    // waiting.
     queueAnswers({ ok: true, pending: [{ identity: "person-awaiting-account", fingerprint: "sha256:ff" }] });
     await mount();
     openDropdown();
     expect(dropdownText()).not.toContain("person-awaiting-account");
-    expect(bellFace()).toBe("\u{1F514}");
+    expect(bellFace()).toBe("\u{1F514}?");
   });
 
   it("reads the stream's snapshot under the name the rename left it at", async () => {

@@ -1,6 +1,6 @@
 import type { RestPendingAdmission, RestPendingAdmissionsResponse } from "@agent-mesh/contracts";
 
-import { apiClient } from "./client";
+import { apiClient, listOf } from "./client";
 
 /**
  * Local accounts — the people a platform admin admitted, as opposed to the
@@ -120,7 +120,7 @@ export async function fetchPendingAdmissions(): Promise<PendingAdmission[]> {
   // The array check stays: a type is a claim about a correct server, not a
   // guarantee from the network.
   const { users } = await apiClient<RestPendingAdmissionsResponse>("/api/v1/admin/pending");
-  return Array.isArray(users) ? users : [];
+  return listOf<PendingAdmission>(users, "/api/v1/admin/pending", "users");
 }
 
 export type AdmissionDecision = "approve" | "deny";

@@ -1,10 +1,11 @@
 import type {
   RestAgentListResponse,
+  RestAgentRow,
   RestKeyProposalsResponse,
   TeardownResponse,
 } from "@agent-mesh/contracts";
 
-import { apiClient } from "./client.ts";
+import { apiClient, listOf } from "./client.ts";
 
 /**
  * A row as `GET /api/v1/agents` actually sends it.
@@ -102,13 +103,13 @@ export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
   // to be read as `Array.isArray(data) ? data : data.agents ?? []`, and the
   // first branch has never run: this route has always answered `{ agents }`.
   //
-  // The array check stays, one level in. A type is a claim about a correct
-  // server and not a guarantee from the network — an old build, a proxy or an
-  // error page can still put anything here, and `undefined.map` would take the
-  // screen down. What does not stay is guessing at *names*: the shape is
-  // checked, the field names are not re-invented.
+  // The shape is still checked, one level in — a type is a claim about a
+  // correct server and not a guarantee from the network. What is not done is
+  // guessing at *names*, and what is not done is answering `[]`: an empty list
+  // is a claim about the mesh, and a body this reader does not recognise is a
+  // fact about the read.
   const { agents } = await apiClient<RestAgentListResponse>(`/api/v1/agents${query}`);
-  return (Array.isArray(agents) ? agents : []).map((a) => ({
+  return listOf<RestAgentRow>(agents, "/api/v1/agents", "agents").map((a) => ({
     // **`id`, and nothing before it.** This read `a.identity || a.id || a.name
     // || "unknown"` — three of those four are names this route has never sent,
     // so the chain always reached the second link, and `"unknown"` was a row
@@ -168,7 +169,7 @@ export async function fetchPendingKeys(): Promise<KeyProposal[]> {
   // thing a reader consults when deciding whether the fallback beside it can
   // go — so the fallbacks and the sentence come out together.
   const { keys } = await apiClient<RestKeyProposalsResponse>("/api/v1/admin/keys/pending");
-  return Array.isArray(keys) ? keys : [];
+  return listOf<KeyProposal>(keys, "/api/v1/admin/keys/pending", "keys");
 }
 
 export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {
