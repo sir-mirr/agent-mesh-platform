@@ -533,6 +533,32 @@ by mutating the judgement itself instead of the assertion around it. **A
 mutation that ends green has found something: either a check with no
 denominator, or an assertion that is not where the decision is made.**
 
+### A true sentence, applied to the wrong step
+
+The nightly's mutation shards ran for weeks unable to fail. Eight jobs, all
+green, while the log said `1 not caught` in one and `exited with code 1` in
+another. The step was `mutation-check … | tee shard.log`, and beside it a
+comment: *`pipefail` is on by default in these shells, so `tee` does not
+swallow the exit code.*
+
+That sentence is true. It is true of a step that writes `shell: bash`, which
+GitHub resolves to `bash --noprofile --norc -e -o pipefail {0}`. The step it
+was written beside did not, and a step with no `shell:` is `bash -e {0}`. So
+the claim was accurate, adjacent, and load-bearing for something it did not
+cover — which is harder to catch than a plainly wrong claim, because reading it
+against the documentation confirms it.
+
+Both halves were then measured rather than argued: `false | tee /dev/null`
+under `bash -e` exits `0` and under `pipefail` exits `1`, checked locally; and
+`pipefail-probe.yml` asks the runner itself, where the two steps print their
+own resolved shells. The probe requires the unguarded step to **succeed**, so
+the day GitHub changes that default this run goes red — which is the
+notification, not a failure.
+
+The rule this leaves is narrower than *check your comments*. It is: **a claim
+about the harness is a claim about one configuration**, and the configuration
+it is written next to is the one that has to be checked.
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
