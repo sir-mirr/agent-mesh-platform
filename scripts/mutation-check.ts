@@ -6329,8 +6329,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The same rule at the screen. The shaping can return `{value: null}` correctly and the page still print `0` — `null` renders as nothing in JSX and a numeric cell would show an empty box, or a `?? 0` anywhere between would turn it into the number the reader is hoping for. agent-mesh-local-pm measured the data half by SIGSTOPping the hub and named this half as the last square.",
     file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
-    from: "                    {metric.value === null ? (",
-    to: "                    {false ? (",
+    from: "                      {value == null ? (",
+    to: "                      {false ? (",
     suite: "test/fe-render.test.ts",
     expect: ["draws an unreadable metric as unmeasured, never as 0"],
   },
