@@ -4562,7 +4562,14 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     };
 
     const refused = await load(null);
-    const answeredEmpty = await load(JSON.stringify({ ok: true, pending: [] }));
+    // **`keys`, which is the name this route answers with.** This fed
+    // `{ ok: true, pending: [] }` — the *admission* queue's name, one path
+    // segment away, and a shape `GET /api/v1/admin/keys/pending` has not sent
+    // since D-689. The reader now refuses a body without a `keys` array
+    // instead of drawing it as an empty queue, so this fixture was feeding
+    // *could not read* into the slot that is supposed to be *nothing waiting* —
+    // in the one scenario that exists to hold those two apart.
+    const answeredEmpty = await load(JSON.stringify({ ok: true, keys: [] }));
 
     // **거절은 침묵이 아니다 — 벨에서도.** `audit.read.metadata` 하나만 든 세션으로
     // 걸어보니 벨이 `403` 을 받고 "물어보지 못했습니다" 라고 말했다: 서버는 답했고

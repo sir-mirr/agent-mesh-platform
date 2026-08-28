@@ -470,15 +470,47 @@ describe("what the documentation says to install", () => {
     // A pin that stopped being a tag would make every comparison below vacuous.
     expect(version, `the manifest pin is not a tag: ${JSON.stringify(pinned)}`).toMatch(/^v\d+\.\d+\.\d+$/);
 
-    const doc = readFileSync(join(REPO_ROOT, "docs/running-locally.md"), "utf8");
-    const mentioned = [...doc.matchAll(/agent-mesh-contracts[/#][^\s"`]*?(v\d+\.\d+\.\d+)/g)].map(m => m[1]!);
-    // The document names it more than once — as the line to expect and as a
-    // request that should answer 200 — and a check that found none of them
-    // would pass while the document said anything at all.
-    expect(mentioned.length, "the document stopped naming the contracts version").toBeGreaterThan(1);
+    // **Every document that states the pin, not the one that was found first.**
+    // This read `docs/running-locally.md` alone, and `docs/architecture.md`
+    // said "pinned to `v0.4.0`" for twenty-nine tags — free to drift because
+    // the guard was written against the copy that had already gone wrong once.
+    // One of two copies checked, and the unchecked one is the one that rotted:
+    // the shape this repository keeps meeting.
+    const { readdirSync, statSync } = await import("node:fs");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((entry) => {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) return entry === "proposals" ? [] : walk(full);
+        return full.endsWith(".md") ? [full] : [];
+      });
+    // `docs/proposals/` is excluded on purpose: a proposal is a dated argument,
+    // and `audit-ingestion-response.md` names `#v0.3.0` because that is what
+    // was current when it was written. Forcing those to the pin would rewrite
+    // the reasoning rather than keep it true.
+    const docs = [...walk(join(REPO_ROOT, "docs")), join(REPO_ROOT, "README.md")]
+      .filter((f) => { try { return statSync(f).isFile(); } catch { return false; } });
 
-    expect([...new Set(mentioned)], "the document names a contracts version the manifest does not pin")
-      .toEqual([version]);
+    // Two present-tense forms: the manifest line copied into prose, and the
+    // sentence that says what this repository pins. A past-tense mention of an
+    // old tag is history and is left alone.
+    const CLAIMS = [
+      /agent-mesh-contracts[/#][^\s"`]*?(v\d+\.\d+\.\d+)/g,
+      /pinned to `(v\d+\.\d+\.\d+)`/g,
+    ];
+    const mentioned: Array<{ file: string; version: string }> = [];
+    for (const file of docs) {
+      const text = readFileSync(file, "utf8");
+      for (const pattern of CLAIMS) {
+        for (const m of text.matchAll(pattern)) mentioned.push({ file, version: m[1]! });
+      }
+    }
+    // Found nothing means the patterns stopped matching, not that the tree is
+    // clean — the vacuous pass this file exists to refuse.
+    expect(mentioned.length, "no document states the contracts pin any more").toBeGreaterThan(2);
+    expect(
+      mentioned.filter((m) => m.version !== version),
+      "a document states a contracts pin the manifest does not have",
+    ).toEqual([]);
   });
 });
 

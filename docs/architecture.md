@@ -470,9 +470,11 @@ It ships TypeScript source with no build step, for the same reason the pages
 are inline: both consumers run Bun with TypeScript 7, so there is nothing to
 compile and nothing that can drift from its source.
 
-This repository depends on it as of 0.2, pinned to `v0.4.0`. It supplies the
+This repository depends on it as of 0.2, pinned to `v0.33.0`. It supplies the
 signature preimages, the key fingerprint, the identity pattern and the blob key
-rule — every value both sides must derive identically. The fixtures run in this
+rule — every value both sides must derive identically — and, since, the § 11
+capability vocabulary, the error codes, what a teardown answers (§ 9.3) and the
+shapes of the REST routes the console reads (§ 9.1). The fixtures run in this
 repository's CI as well as the contract repository's, which is the point of
 them: two implementations agreeing is only tested where both are present.
 
