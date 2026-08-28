@@ -13375,7 +13375,17 @@ export const MUTATIONS: Mutation[] = [
     from: "              data={state.decisions}",
     to: "              data={[]}",
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", '"recordedDecision"'],
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "recordedDecision"],
+  },
+  {
+    id: "malformed-overdue-history-is-called-empty",
+    defect:
+      "The combined read silently replaces an absent decisions array with an empty one. A malformed server response then looks exactly like a scheduler with no recorded decisions.",
+    file: "packages/platform-web/src/api/reminders.ts",
+    from: '    decisions: listOf<OverdueDecisionRecord>(response.decisions, OVERDUE_ROUTE, "decisions"),',
+    to: '    decisions: listOf<OverdueDecisionRecord>(response.decisions ?? [], OVERDUE_ROUTE, "decisions"),',
+    suite: "packages/platform-web/src/api/reminders.test.ts",
+    expect: ["refuses to hide a malformed decision history behind an empty list", "'decisions' array"],
   },
   {
     id: "an-overdue-replay-targets-the-hold-time-instead-of-the-slot",
