@@ -23,6 +23,8 @@ import { join, resolve } from "node:path";
 
 import { keyFingerprint, requestSignaturePreimage } from "@agent-mesh/contracts";
 
+import { runChild } from "./child-output.ts";
+
 const CLIENT = resolve(import.meta.dir, "..", "scripts", "mesh-mail.ts");
 
 interface Seen {
@@ -46,14 +48,14 @@ function hub() {
 }
 
 async function run(args: string[], url: string, keyDir: string, stdin = "") {
-  const proc = Bun.spawn(["bun", CLIENT, ...args], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", CLIENT, ...args], {
     env: { ...process.env, AGENT_MESH_HUB_API_URL: url, AGENT_MESH_KEY_DIR: keyDir },
-    stdin: new TextEncoder().encode(stdin),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin,
   });
-  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  return { code: await proc.exited, said: out + err };
+  return { code: ran.code, said: ran.said };
 }
 
 describe("the key an agent registers with", () => {

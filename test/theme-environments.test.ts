@@ -24,6 +24,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const UI = resolve(import.meta.dir, "..", "packages", "http", "src", "ui");
 
 /** The badge as it reaches a browser — a bare "DEV" would match prose. */
@@ -48,16 +50,11 @@ const probe = (() => {
 })();
 
 async function under(nodeEnv: string): Promise<Seen> {
-  const proc = Bun.spawn(["bun", probe], {
-    env: { ...process.env, NODE_ENV: nodeEnv },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", probe], { env: { ...process.env, NODE_ENV: nodeEnv } });
+  const { code, stdout: out, stderr: err } = ran;
   expect(code, `probe under NODE_ENV=${nodeEnv} failed: ${err}`).toBe(0);
   return JSON.parse(out.trim());
 }

@@ -16,6 +16,8 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const CLIENT = resolve(import.meta.dir, "..", "scripts", "fe-mailbox.ts");
 const AGENT = "platform-fe-antigravity";
 
@@ -53,17 +55,14 @@ function mailer(messages: Mail[], status = 200) {
 }
 
 async function run(url: string, stateDir: string, args: string[], stdin = "") {
-  const proc = Bun.spawn(["bun", CLIENT, ...args], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", CLIENT, ...args], {
     env: { ...process.env, AGENT_MESH_MAILBOX_URL: url, AGENT_MESH_KEY_DIR: stateDir },
-    stdin: new TextEncoder().encode(stdin),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin,
   });
-  const [said, complained] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { code: await proc.exited, said, complained };
+  return { code: ran.code, said: ran.stdout, complained: ran.stderr };
 }
 
 const letter = (id: number, body: string, isRead = false): Mail => ({

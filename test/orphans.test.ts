@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 import { openTestDb, startMesh, type Mesh } from "./harness";
 
+import { runChild } from "./child-output.ts";
+
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const SCRIPT = join(REPO_ROOT, "scripts/collect-orphan-blobs.ts");
 
@@ -34,18 +36,14 @@ interface Run {
 }
 
 async function collect(stateDir: string, args: string[] = []): Promise<Run> {
-  const proc = Bun.spawn(["bun", SCRIPT, ...args], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", SCRIPT, ...args], {
     cwd: REPO_ROOT,
     env: { ...process.env, AGENT_MESH_STATE_DIR: stateDir },
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, out: stdout + stderr };
+  return { code: ran.code, out: ran.said };
 }
 
 /** A blob file with a controllable age. */

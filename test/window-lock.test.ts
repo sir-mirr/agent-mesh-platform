@@ -16,6 +16,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const LOCK = resolve(import.meta.dir, "..", "scripts", "window-lock.ts");
 const HELD = 7;
 
@@ -44,18 +46,16 @@ function holder(dir: string, label: string) {
 
 /** A child that tries to take it and reports what happened. */
 async function contender(dir: string) {
-  const proc = Bun.spawn(
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(
     ["bun", "-e", `import { takeWindow } from ${JSON.stringify(LOCK)};
        takeWindow("the second run", "contender");
        process.exit(${HELD});`],
-    { env: { ...process.env, AGENT_MESH_KEY_DIR: dir }, stdout: "pipe", stderr: "pipe" },
+    { env: { ...process.env, AGENT_MESH_KEY_DIR: dir } },
   );
-  const [said, complained, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, said, complained };
+  return { code: ran.code, said: ran.stdout, complained: ran.stderr };
 }
 
 describe("taking the window", () => {
@@ -178,22 +178,15 @@ describe("the gate", () => {
       },
     });
     try {
-      const proc = Bun.spawn(["bun", GATE, label, "--", ...command], {
+      const ran = await runChild(["bun", GATE, label, "--", ...command], {
         env: {
           ...process.env,
           AGENT_MESH_KEY_DIR: dir,
           AGENT_MESH_MAILBOX_URL: `http://127.0.0.1:${mailer.port}/api/mail`,
           AGENT_MESH_GATE_PEERS: "nobody-at-all",
         },
-        stdout: "pipe",
-        stderr: "pipe",
       });
-      const [said, complained, code] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-      return { code, said, complained, seen };
+      return { code: ran.code, said: ran.stdout, complained: ran.stderr, seen };
     } finally {
       mailer.stop();
     }

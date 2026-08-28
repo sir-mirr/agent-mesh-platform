@@ -14,20 +14,18 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const VERIFY = resolve(import.meta.dir, "..", "scripts", "verify.ts");
 
 async function verify(steps: Array<{ name: string; command: string[] }>) {
-  const proc = Bun.spawn(["bun", VERIFY], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", VERIFY], {
     env: { ...process.env, AGENT_MESH_VERIFY_STEPS: JSON.stringify(steps) },
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const [said, complained, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, said, complained };
+  return { code: ran.code, said: ran.stdout, complained: ran.stderr };
 }
 
 const passes = (name: string) => ({ name, command: ["bun", "-e", `console.log("${name}: 3 pass\\n 0 fail")`] });

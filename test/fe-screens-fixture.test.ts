@@ -22,6 +22,8 @@ import { join, resolve } from "node:path";
 
 import { loginAsAdmin, newKeyPair, provision, SEED_ADMIN, startMesh, type Mesh } from "./harness";
 
+import { runChild } from "./child-output.ts";
+
 const FIXTURE = resolve(import.meta.dir, "..", "scripts", "fixtures", "fe-screens.ts");
 
 let mesh: Mesh;
@@ -63,16 +65,11 @@ interface Emitted {
 /** Runs the fixture once and returns what it wrote. */
 async function seed(label: string): Promise<Emitted> {
   const emit = join(scratch, `expect-${label}.json`);
-  const proc = Bun.spawn(["bun", FIXTURE, "--ready-file", readyFile(), "--emit", emit], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (code !== 0) throw new Error(`the fixture exited ${code}\n${out}\n${err}`);
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", FIXTURE, "--ready-file", readyFile(), "--emit", emit]);
+  if (ran.code !== 0) throw new Error(`the fixture exited ${ran.code}\n${ran.stdout}\n${ran.stderr}`);
   return JSON.parse(readFileSync(emit, "utf8")) as Emitted;
 }
 

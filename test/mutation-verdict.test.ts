@@ -28,6 +28,8 @@ import { join } from "node:path";
 
 import { captureRun, condenseRun, gitRestore, markFor, readVerdict, restoreFile, summarise, verdictsAgree } from "../scripts/mutation-verdict";
 
+import { runChild } from "./child-output.ts";
+
 const EXPECT = ["a socket that dropped the frame"];
 
 /**
@@ -63,13 +65,11 @@ const EXPECT = ["a socket that dropped the frame"];
  */
 describe("the manifest's anchors", () => {
   test("every entry names exactly one place", async () => {
-    const proc = Bun.spawn(["bun", "scripts/mutation-check.ts", "--anchors"], {
+    const ran = await runChild(["bun", "scripts/mutation-check.ts", "--anchors"], {
       cwd: new URL("..", import.meta.url).pathname,
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const out = (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text());
-    const code = await proc.exited;
+    const out = ran.said;
+    const code = ran.code;
     // The tool prints `N/M anchors …`. A run that printed nothing decided
     // nothing — the failure this file exists to name, one level up.
     const counted = out.match(/(\d+)\/(\d+) anchors point at exactly one place/);
@@ -99,10 +99,7 @@ describe("a run that is killed while a mutation is planted", () => {
   test("puts the file back before it goes", async () => {
     const root = new URL("..", import.meta.url).pathname;
     const status = async (...paths: string[]) => {
-      const p = Bun.spawn(["git", "status", "--porcelain", ...paths], {
-        cwd: root, stdout: "pipe", stderr: "pipe",
-      });
-      return (await new Response(p.stdout).text()).trim();
+      return (await runChild(["git", "status", "--porcelain", ...paths], { cwd: root })).stdout.trim();
     };
 
     // **Asked before the spawn, because the tool refuses a tree with edits.**
@@ -132,10 +129,7 @@ describe("a run that is killed while a mutation is planted", () => {
       stderr: "pipe",
     });
     const dirty = async () => {
-      const p = Bun.spawn(["git", "status", "--porcelain", ".github/workflows/ci.yml"], {
-        cwd: root, stdout: "pipe", stderr: "pipe",
-      });
-      return (await new Response(p.stdout).text()).trim();
+      return (await runChild(["git", "status", "--porcelain", ".github/workflows/ci.yml"], { cwd: root })).stdout.trim();
     };
 
     // Wait for the plant, then kill it there. A test that killed before the

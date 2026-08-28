@@ -1781,6 +1781,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["reads the commands inside a block step, not the pipe character"],
   },
   {
+    id: "a-suite-goes-back-to-reading-a-pipe",
+    defect:
+      "The sweep's own guard stops looking at the files it is for. Twenty-three call sites moved off `new Response(child.stdout)` because an `EBADF` out of that read failed `main`'s CI twice with the children running correctly, and nothing stopped the twenty-fourth from being written — a scan that reads no file passes over any repository at all.",
+    file: "test/child-output.test.ts",
+    from: '      if (!name.endsWith(".ts") || name.startsWith("child-output")) continue;',
+    to: '      if (!name.endsWith(".ts") || true) continue;',
+    suite: "test/child-output.test.ts",
+    expect: ["a suite went back to reading a child through a pipe"],
+  },
+  {
+    id: "a-pipe-exception-keeps-its-licence-after-it-stops-needing-it",
+    defect:
+      "The list of files allowed to read a live child's pipe stops being checked against those files. An exemption that outlives its reason is the shape this repository keeps meeting: the next person reads a licence rather than a fact, and the sweep quietly ungoes itself one file at a time.",
+    file: "test/child-output.test.ts",
+    from: '      return !text.split("\\n").some((line) => /new Response\\(\\w+\\.std(out|err)\\)/.test(line) && !/^\\s*(\\/\\/|\\*)/.test(line));',
+    to: '      return text.split("\\n").some((line) => /new Response\\(\\w+\\.std(out|err)\\)/.test(line) && !/^\\s*(\\/\\/|\\*)/.test(line));',
+    suite: "test/child-output.test.ts",
+    expect: ["these are listed as needing a pipe and no longer read one"],
+  },
+  {
     id: "a-child-verdict-loses-the-stream-it-failed-on",
     defect:
       "`runChild` returned only the stream the child succeeded on, so a test that failed and printed its reason on stderr came back with an exit code and no evidence. That is the pipe defect this helper replaced, reintroduced one field in: the verdict survives and the reason for it does not.",

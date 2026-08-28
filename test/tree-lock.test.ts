@@ -183,9 +183,9 @@ describe("the tool that plants mutations", () => {
       // A planting run, not `--anchors`: reading the manifest touches no files
       // and is rightly allowed while somebody else is mid-mutation. The refusal
       // is about the pen, and it fires before any suite is started.
-      const proc = Bun.spawn(["bun", CHECK, "egress-deny"], { stdout: "pipe", stderr: "pipe" });
-      const [complained, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-      expect(code).toBe(2);
+      const ran = await runChild(["bun", CHECK, "egress-deny"]);
+      const complained = ran.stderr;
+      expect(ran.code).toBe(2);
       expect(complained).toContain("mid-mutation");
       expect(complained).toContain(String(sleeper.pid));
     } finally {

@@ -13,10 +13,62 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { runChild } from "./child-output.ts";
+
+/**
+ * The two places a pipe is still the only thing that can answer.
+ *
+ * Both read a child that is **still running** — one waits for a boot message
+ * before killing the service, the other for a mutation to land before killing
+ * the tool. A file cannot answer *has it said this yet*, so these keep the
+ * pipe, and the exposure is named rather than left to be rediscovered.
+ *
+ * Keyed by file and by what makes it the exception, so a file that stops being
+ * one is a red here rather than a line nobody revisits.
+ */
+const STILL_RUNNING: Record<string, string> = {
+  "misconfigured-boot.test.ts": "waits for a service to say it came up, then kills it — the read is before the exit",
+  "mutation-verdict.test.ts": "waits for the mutation to appear in `git status`, then kills the tool mid-plant",
+};
+
+describe("the sweep off pipes", () => {
+  test("leaves a pipe only where the child is still running", () => {
+    const dir = import.meta.dir;
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".ts") || name.startsWith("child-output")) continue;
+      scanned++;
+      const text = readFileSync(join(dir, name), "utf8");
+      const reads = text
+        .split("\n")
+        .filter((line) => /new Response\(\w+\.std(out|err)\)/.test(line) && !/^\s*(\/\/|\*)/.test(line));
+      if (reads.length > 0 && !(name in STILL_RUNNING)) offenders.push(`${name} (${reads.length})`);
+    }
+    expect(
+      offenders,
+      "a suite went back to reading a child through a pipe — EBADF out of that read failed main's CI twice, with the child running correctly",
+    ).toEqual([]);
+    // The denominator. A scan that read nothing reports the same empty list as
+    // a repository with nothing wrong in it, which is the failure this whole
+    // file is about, one level up.
+    expect(scanned, "the scan read no test files, so the empty list above is about nothing").toBeGreaterThan(50);
+  });
+
+  test("names no exception that has stopped being one", () => {
+    // The other direction, and the one an allow-list rots in: a file listed
+    // here that no longer reads a pipe keeps its licence for the next person.
+    const stale = Object.keys(STILL_RUNNING).filter((name) => {
+      const text = readFileSync(join(import.meta.dir, name), "utf8");
+      return !text.split("\n").some((line) => /new Response\(\w+\.std(out|err)\)/.test(line) && !/^\s*(\/\/|\*)/.test(line));
+    });
+    expect(stale, "these are listed as needing a pipe and no longer read one").toEqual([]);
+  });
+});
 
 describe("reading a child through files", () => {
   test("carries the exit code, and both streams, unmixed", async () => {
