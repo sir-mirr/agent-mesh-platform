@@ -3955,10 +3955,23 @@ export const MUTATIONS: Mutation[] = [
     id: "registry-last-seen-null",
     defect: "An identity the mesh has no presence row for reported undefined rather than null, and the console drew ONLINE for everyone.",
     file: "packages/http/src/main.ts",
-    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
-    to: "    last_seen_at: lastSeen.get(entry.id),",
     suite: "packages/http/src/main.in-process.test.ts",
     expect: ["carries the mesh's last_seen"],
+    // The mutation deleted the `?? null` so a missing presence row came back as
+    // `undefined` — absent rather than known-absent, which JSON drops entirely
+    // and a reader then fills in.
+    //
+    // D-809 wrapped this value in `isoOrNull`, which answers `null` for both
+    // `null` and `undefined`. So the `?? null` is now redundant and removing it
+    // changes nothing: the defect this planted is unreachable rather than
+    // unwatched. Structure took over from a guard, which is the good version of
+    // an anchor going quiet — but only because it was checked, since a
+    // mutation that cannot change behaviour and one that nothing notices report
+    // identically.
+    //
+    // Kept with its reason rather than deleted: a deleted entry reads as
+    // nobody having thought about the case.
+    retired: "isoOrNull answers null for undefined, so dropping the `?? null` beside it is no longer a behaviour change",
   },
   {
     id: "registry-fingerprint-unapproved",
@@ -4840,10 +4853,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`GET /api/v1/agents` answered five columns of the http server's own registry and none of the mesh's, so the console had no way to learn when an agent was last seen and drew `ONLINE` for everyone. The server knew — the heartbeat writes `agents.last_seen`, before the registry on a disconnect (SPEC § 3.1) — and the route did not carry it.",
     file: "packages/http/src/main.ts",
-    from: "    last_seen_at: lastSeen.get(entry.id) ?? null,",
+    from: "    last_seen_at: isoOrNull(lastSeen.get(entry.id) ?? null),",
     to: "    last_seen_at: null,",
     suite: "test/http.test.ts",
-    expect: ["carries what the mesh measured", "2026-01-02 03:04:05"],
+    expect: ["carries what the mesh measured", "2026-01-02T03:04:05Z"],
   },
   {
     id: "agents-listing-invents-a-fingerprint",
