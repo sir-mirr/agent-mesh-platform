@@ -756,11 +756,13 @@ describe("recorded_by, on the wire", () => {
     expect(seen.length, "no events came back, so nothing was checked").toBeGreaterThan(1);
 
     for (const { kind, other } of seen) {
-      // `http` names the service rather than an identity — the constant
-      // `agent-mesh-http` — so it is not null and it is not a mesh identity
-      // either. Left with the `adapter` branch here because what this rule is
-      // about is *null exactly for the hub*; what the non-null value means per
-      // kind is § 8.9.3's business, not this assertion's.
+      // `http` sits with `adapter` here. Its value is the constant
+      // `agent-mesh-http`, which *is* a registered identity — it is a declared
+      // proxy and registers itself after connecting
+      // (`packages/hub/src/db.ts:67`) — so the non-null branch is the right one
+      // for it. What this rule is about is *null exactly for the hub*; what the
+      // non-null value means per kind is § 8.9.3's business, not this
+      // assertion's.
       if (kind === "hub") {
         // Null is the complete answer here, not a missing adapter: the hub
         // records under its own authority and has no separate reporting
@@ -785,5 +787,117 @@ describe("recorded_by, on the wire", () => {
     const members = new Set(events.flatMap((e) => Object.keys(e.recorded_by ?? {})));
     expect([...members].sort()).toEqual(["id", "kind"]);
     expect(events.length, "no events came back, so no member name was read").toBeGreaterThan(1);
+  });
+});
+
+/**
+ * What the filters on `GET /api/v1/audit/events` actually select (§ 9.1).
+ *
+ * SPEC line 1752 lists five by name — `identity`, `provider`, `correlation_id`,
+ * `from`, `to` — and says what none of them selects. A name is not a contract:
+ * two of these do something an operator would not guess from the name, and one
+ * the route implements is not listed at all.
+ *
+ * Written before the rename in D-808 addendum 2, so that it records today's
+ * behaviour rather than the behaviour the rename is supposed to produce. A
+ * filter observer written afterwards can only confirm the change; this one can
+ * contradict it.
+ */
+describe("what the audit filters select", () => {
+  const pageOf = async (qs: string): Promise<Record<string, any>[]> => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=200&${qs}`, {
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status, `?${qs} was refused: ${await res.clone().text()}`).toBe(200);
+    return ((await res.json()) as { events?: Record<string, any>[] }).events ?? [];
+  };
+
+  test("`event_type` selects one type, and SPEC § 9.1 does not list it", async () => {
+    // **Implemented, relied on, undocumented.** `audit-query.ts` filters on it
+    // and the comment there says the conformance scenarios assert a trace
+    // through this route because of it — so a second implementation built from
+    // SPEC alone passes the spec and fails conformance. That gap is the finding;
+    // this test holds the behaviour still while § 9.1 catches up.
+    const kind = `channel.observed.${Bun.randomUUIDv7().slice(0, 8)}`;
+    await rpc.call("mesh.audit.append", event({ event_type: kind }));
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+
+    const got = await pageOf(`event_type=${encodeURIComponent(kind)}`);
+    expect(got.length, "the seeded type came back empty, so nothing was selected").toBe(1);
+    expect([...new Set(got.map((e) => e.event_type))]).toEqual([kind]);
+  });
+
+  test("`from` and `to` bracket `stored_at`, not the `occurred_at` the client sent", async () => {
+    // The two are far apart on purpose. `occurred_at` is a request field
+    // (§ 8.9.3) and `stored_at` is set by the store, so filtering on the first
+    // would let a recorded party move its own events out of an operator's
+    // window by choosing a timestamp. Nothing in § 9.1 says which one `from`
+    // and `to` mean, and the names read like the event's own time.
+    const eventId = `evt_${Bun.randomUUIDv7()}`;
+    const longAgo = "2020-01-01T00:00:00.000Z";
+    await rpc.call("mesh.audit.append", event({ event_id: eventId, occurred_at: longAgo }));
+
+    const [stored] = rows(`SELECT stored_at FROM audit_events WHERE event_id = ?`, eventId);
+    expect(stored?.stored_at, "the seeded event was not stored").toBeDefined();
+    const storedAt = String(stored.stored_at);
+    expect(storedAt.startsWith("2020-"), "stored_at took the client's occurred_at").toBe(false);
+
+    const has = (list: Record<string, any>[]) => list.some((e) => e.event_id === eventId);
+
+    // A window that contains `stored_at` finds it, and one that contains
+    // `occurred_at` does not. Either assertion alone is satisfied by a filter
+    // that matches everything or nothing.
+    expect(has(await pageOf(`from=${encodeURIComponent(storedAt)}`)), "not found in its stored_at window").toBe(true);
+    expect(has(await pageOf(`to=2020-12-31T23:59:59.999Z`)), "found in its occurred_at window").toBe(false);
+  });
+
+  test("`provider` cannot reach a hub-recorded event, whatever it is given", async () => {
+    // **The trap § 9.1's one-word entry hides.** `provider` compares
+    // `recorded_by_id`, and § 8.9.4 events carry null there — so the filter is
+    // unsatisfiable for exactly the events the audit trail calls its strongest
+    // evidence, and an operator narrowing a trail by provider is handed a view
+    // with the hub's observations silently removed. There is no value that
+    // selects them, which is why D-808 adds a filter on `kind`.
+    const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "filter observer" });
+    expect(sent.error, "the hub refused the send that seeds its own event").toBeUndefined();
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+
+    const all = await pageOf("");
+    const hubEvents = all.filter((e) => e.recorded_by?.kind === "hub");
+    expect(hubEvents.length, "no hub-recorded events, so the claim below is vacuous").toBeGreaterThan(0);
+
+    // Every value the store actually holds, plus the two an operator would
+    // reach for: the identity a hub event is *about*, and the hub itself.
+    const candidates = [
+      ...new Set(
+        all
+          .map((e) => e.recorded_by?.id)
+          .filter((v): v is string => typeof v === "string" && v.length > 0)
+          .concat(hubEvents.map((e) => String(e.identity)))
+          .concat(["hub"]),
+      ),
+    ];
+    expect(candidates.length, "nothing to try the filter with").toBeGreaterThan(2);
+
+    let reached = 0;
+    for (const value of candidates) {
+      const got = await pageOf(`provider=${encodeURIComponent(value)}`);
+      reached += got.filter((e) => e.recorded_by?.kind === "hub").length;
+    }
+    console.log(
+      `[T-055] provider= tried ${candidates.length} values against ${hubEvents.length} hub events, reached ${reached}`,
+    );
+    expect(reached, "a provider value reached a hub event, so this filter is not what it was").toBe(0);
+  });
+
+  test("`provider` does select the events it can reach, so the test above is not passing on an empty filter", async () => {
+    // The other half of the trap. A `provider` clause that matched nothing at
+    // all would satisfy the assertion above for the wrong reason, and the
+    // finding would be "the filter is broken" rather than "the filter cannot
+    // express the hub".
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+    const mine = await pageOf(`provider=${encodeURIComponent(IDENTITY)}`);
+    expect(mine.length, "the adapter's own events were not selected by provider").toBeGreaterThan(0);
+    expect([...new Set(mine.map((e) => e.recorded_by?.id))]).toEqual([IDENTITY]);
   });
 });

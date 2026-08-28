@@ -10054,6 +10054,49 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "the-provider-filter-selects-on-the-recorder-kind",
+    defect:
+      "`?provider=` compares `recorded_by_kind` instead of `recorded_by_id`. The filter still answers, and the answers are still audit events, so nothing looks broken \u2014 but an operator narrowing a trail to one adapter now gets every adapter, and `?provider=hub` starts working, which reads as the filter having been fixed rather than repointed.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    where.push('recorded_by_id = ?')",
+    to: "    where.push('recorded_by_kind = ?')",
+    suite: "test/audit.test.ts",
+    expect: [
+      "`provider` cannot reach a hub-recorded event, whatever it is given",
+      "`provider` does select the events it can reach, so the test above is not passing on an empty filter",
+    ],
+  },
+  {
+    id: "the-audit-window-opens-on-the-time-the-client-sent",
+    defect:
+      "`?from=` brackets `occurred_at` rather than `stored_at`. `occurred_at` is a request field (\u00a7 8.9.3), so a recorded party choosing its own timestamp can put its events outside an operator's window \u2014 the trail keeps every row and the query stops finding them, which is worse than deletion because it leaves the count intact.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    where.push('stored_at >= ?')",
+    to: "    where.push('occurred_at >= ?')",
+    suite: "test/audit.test.ts",
+    expect: ["`from` and `to` bracket `stored_at`, not the `occurred_at` the client sent"],
+  },
+  {
+    id: "the-audit-window-closes-on-the-time-the-client-sent",
+    defect:
+      "The other end of the same window. `?to=` on `occurred_at` lets a backdated event answer a query about a period it was not stored in, so an operator reading a window sees rows that arrived after it closed.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    where.push('stored_at <= ?')",
+    to: "    where.push('occurred_at <= ?')",
+    suite: "test/audit.test.ts",
+    expect: ["`from` and `to` bracket `stored_at`, not the `occurred_at` the client sent"],
+  },
+  {
+    id: "the-undocumented-filter-is-removed-as-dead",
+    defect:
+      "The `event_type` filter is deleted. It is the plausible mutation precisely because SPEC \u00a7 9.1 does not list it \u2014 someone reconciling the route against the spec removes what the spec does not name. The route then answers every query with the whole trail: no error, no empty page, just a filter silently ignored, and the conformance scenarios that assert a trace through this route start passing on events they did not select.",
+    file: "packages/http/src/audit-query.ts",
+    from: "  if (q.event_type) {\n    where.push('event_type = ?')\n    args.push(q.event_type)\n  }\n",
+    to: "",
+    suite: "test/audit.test.ts",
+    expect: ["`event_type` selects one type, and SPEC \u00a7 9.1 does not list it"],
+  },
+  {
     id: "the-access-recorder-signs-itself-as-the-hub",
     defect:
       "The HTTP service records its own audit reads as `kind: \"hub\"`. The whole point of `recorded_by` (\u00a7 8.9.4) is that a hub observation is stronger evidence than a self-report, and the read log is the most self-interested writer there is \u2014 the component recording that it read is now indistinguishable from the component observing someone else. It also breaks the null rule silently, since this writer sets an id and the hub never does.",
