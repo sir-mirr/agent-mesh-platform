@@ -51,6 +51,7 @@ import {
   type Capability,
 } from '@agent-mesh/contracts'
 import { isoOrNull } from './sqlite-time'
+import { closeReminderOverdue, listHeldOverdue, listOverdueDecisions, recordOverdueDecision } from './reminder-overdue'
 import { renameLocalAccount } from './rename-account'
 import { provisionAllHumans, provisionHuman, provisionSelf, restBase as hubRestBase } from './provision'
 import { listPending as listPendingKeys, keyHistory, decide as decideKey, closeAgentsDb, agentsDb, admitApprovedIdentities } from './keys-admin'
@@ -3925,6 +3926,62 @@ app.delete('/api/v1/admin/agent-types/:type', async (c) => {
  * bookkeeping: § 10.2 requires each transition to say who caused it, and the
  * unauthenticated version could only ever write `"hub"`.
  */
+// --- Overdue reminder decisions (SPEC § 3.3, D-810) -------------------------
+//
+// A `once` reminder more than the scheduler's hold window past its slot waits
+// for a person: the moment it was for has passed, there is no later slot, and
+// delivering it late may be worse than dropping it. The mechanism to answer has
+// existed since the hold did; nothing could reach it, so a held reminder waited
+// silently and forever.
+//
+// **Two capabilities, not one.** Seeing that a reminder is held is a different
+// authorisation question from deciding what happens to it — the same split
+// § 11 draws between reading a queue's depth and reading what is in it. Folding
+// them would hand every operator who may look the power to send.
+
+app.get('/api/v1/admin/reminders/overdue', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.REMINDER_READ_HELD)
+  if (typeof actor !== 'string') return actor
+  // Decisions come back beside the holds rather than on a second route. The
+  // screen's question is "what is waiting, and what has been answered" — split
+  // across two calls, a reader can render a hold as unanswered because the
+  // other call had not returned yet.
+  return c.json({ ok: true, reminders: listHeldOverdue(), decisions: listOverdueDecisions() })
+})
+
+app.post('/api/v1/admin/reminders/overdue/:id/decision', async (c) => {
+  const actor = await requireCapability(c, CAPABILITY.REMINDER_DECIDE)
+  if (typeof actor !== 'string') return actor
+
+  let body: Record<string, unknown>
+  try {
+    body = (await c.req.json()) as Record<string, unknown>
+  } catch {
+    return c.json({ ok: false, error: 'body must be JSON', code: 'INVALID_DECISION' }, 400)
+  }
+
+  // `scheduled_at` is in the body and not derived from the reminder, because a
+  // decision belongs to **one fire**. Between the screen rendering a hold and
+  // this request arriving, the scheduler may have moved on; keyed on the
+  // reminder alone, the operator's decision would land on a slot they never saw.
+  const scheduledAt = body.scheduled_at
+  if (typeof scheduledAt !== 'string' || scheduledAt === '') {
+    return c.json({ ok: false, error: 'scheduled_at is required', code: 'INVALID_DECISION' }, 400)
+  }
+
+  const recorded = recordOverdueDecision(
+    c.req.param('id'),
+    scheduledAt,
+    body.decision as any,
+    typeof body.approval_ref === 'string' ? body.approval_ref : '',
+    // Who decided (D-810). The record answers it, so the screen can: a decision
+    // with no decider is a decision nobody can be asked about.
+    actor,
+  )
+  if (!recorded.ok) return c.json(recorded, recorded.code === 'NO_SUCH_HOLD' ? 404 : 400)
+  return c.json(recorded)
+})
+
 app.delete('/api/v1/admin/agents/:identity', async (c) => {
   const identity = c.req.param('identity')
 
@@ -3987,6 +4044,10 @@ const SHUTDOWN_CLOSERS: ReadonlyArray<readonly [string, () => void]> = [
   ['blobs', closeBlobDb],
   ['audit (reads)', closeAuditDb],
   ['audit (access log)', closeAuditAccessLog],
+  // Two handles on one file — the read-only query and the one-statement write.
+  // Both, or the writer's WAL goes out unfolded and the store looks fine until
+  // the next open.
+  ['reminders (overdue)', closeReminderOverdue],
 ]
 
 /** The agents store, named short because these routes use it constantly. */

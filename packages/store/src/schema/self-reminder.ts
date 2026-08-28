@@ -128,6 +128,22 @@ export function migrateSchedulerState(db: Database): void {
       PRIMARY KEY (reminder_id, scheduled_at)
     );
   `);
+
+  // `decided_by` — D-810. Who made the call, not just that a call was made.
+  //
+  // Added rather than declared inline above so a database written before this
+  // gains it: `CREATE TABLE IF NOT EXISTS` would skip the existing table and
+  // leave the column absent, which is the silence this file has already been
+  // caught by twice.
+  //
+  // Nullable, and deliberately: rows written before the column existed have no
+  // decider, and inventing one — the service, the first admin, anybody — would
+  // put a name against a decision that person did not make. `null` here means
+  // *recorded before deciders were recorded*, which is a true statement.
+  const decisions = db.prepare(`PRAGMA table_info(overdue_decisions)`).all() as Array<{ name: string }>;
+  if (!decisions.some((c) => c.name === "decided_by")) {
+    db.exec(`ALTER TABLE overdue_decisions ADD COLUMN decided_by TEXT`);
+  }
 }
 
 export type ReminderStatus =
