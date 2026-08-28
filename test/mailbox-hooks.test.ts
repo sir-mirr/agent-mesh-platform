@@ -23,6 +23,8 @@ import { join, resolve } from "node:path";
 
 import { STANDING_ORDER } from "../.claude/hooks/standing-order";
 
+import { runChild } from "./child-output.ts";
+
 const HOOKS = resolve(import.meta.dir, "..", ".claude", "hooks");
 const AGENT = "hooks-probe-agent";
 
@@ -49,10 +51,11 @@ async function deliver(
 ): Promise<{ stdout: string; code: number }> {
   const server = standInMailer(messages);
   servers.push(server);
-  const proc = Bun.spawn(["bun", join(HOOKS, "mailbox.ts")], {
-    stdin: new TextEncoder().encode(JSON.stringify({ hook_event_name: event })),
-    stdout: "pipe",
-    stderr: "pipe",
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", join(HOOKS, "mailbox.ts")], {
+    stdin: JSON.stringify({ hook_event_name: event }),
     env: {
       ...process.env,
       AGENT_MESH_MAILBOX_URL: `http://127.0.0.1:${server.port}/api/mail`,
@@ -60,8 +63,7 @@ async function deliver(
       AGENT_MESH_KEY_DIR: mkdtempSync(join(tmpdir(), "mailbox-hook-")),
     },
   });
-  const stdout = await new Response(proc.stdout).text();
-  return { stdout, code: await proc.exited };
+  return { stdout: ran.stdout, code: ran.code };
 }
 
 describe("delivering mail", () => {

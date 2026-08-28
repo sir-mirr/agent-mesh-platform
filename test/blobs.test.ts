@@ -12,6 +12,8 @@ import { createHash, sign as edSign } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 import {
   deriveBlobKey, formatUploadAuthorization, uploadSignaturePreimage,
 } from "@agent-mesh/contracts";
@@ -349,14 +351,14 @@ describe("size", () => {
  */
 describe("orphan collection", () => {
   const collect = async (extra: string[] = []) => {
-    const proc = Bun.spawn(
-      ["bun", "scripts/collect-orphan-blobs.ts", ...extra],
-      { cwd: process.cwd(), env: { ...process.env, AGENT_MESH_STATE_DIR: mesh.stateDir }, stdout: "pipe", stderr: "pipe" },
-    );
-    const out = await new Response(proc.stdout).text();
-    const err = await new Response(proc.stderr).text();
-    await proc.exited;
-    return { out, err, code: proc.exitCode };
+    // Read from files, not pipes: `new Response(child.stdout).text()` threw
+    // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+    // child had run correctly. See `test/child-output.ts`.
+    const ran = await runChild(["bun", "scripts/collect-orphan-blobs.ts", ...extra], {
+      cwd: process.cwd(),
+      env: { ...process.env, AGENT_MESH_STATE_DIR: mesh.stateDir },
+    });
+    return { out: ran.stdout, err: ran.stderr, code: ran.code };
   };
 
   test("leaves a referenced blob alone whatever its age", async () => {

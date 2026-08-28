@@ -33,7 +33,7 @@ export interface ChildSaid {
 
 export async function runChild(
   cmd: readonly string[],
-  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
+  options: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string | Uint8Array } = {},
 ): Promise<ChildSaid> {
   const dir = mkdtempSync(join(tmpdir(), "child-said-"));
   const outPath = join(dir, "stdout");
@@ -42,7 +42,13 @@ export async function runChild(
   const err = openSync(errPath, "w");
   try {
     const child = Bun.spawn([...cmd], {
-      stdin: "ignore",
+      // A hook reads its turn off stdin; `"ignore"` gives it an immediate end
+      // of file, which several of these children treat as *no input given*.
+      stdin: options.stdin === undefined
+        ? "ignore"
+        : typeof options.stdin === "string"
+          ? new TextEncoder().encode(options.stdin)
+          : options.stdin,
       stdout: out,
       stderr: err,
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),

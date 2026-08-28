@@ -19,6 +19,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const HOOK = resolve(import.meta.dir, "..", ".claude", "hooks", "more-work.ts");
 
 /**
@@ -42,15 +44,15 @@ const CLOSED = "### ~~the poller repeats a row~~\n\nClosed.\n";
 
 /** Run the hook the way Claude Code runs it: JSON on stdin, JSON or nothing out. */
 async function fire(root: string, input: unknown): Promise<{ out: string; code: number }> {
-  const proc = Bun.spawn(["bun", HOOK], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", HOOK], {
     cwd: root,
     env: { ...process.env, CLAUDE_PROJECT_DIR: root },
-    stdin: new TextEncoder().encode(JSON.stringify(input)),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: JSON.stringify(input),
   });
-  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  return { out: out.trim(), code };
+  return { out: ran.stdout.trim(), code: ran.code };
 }
 
 describe("the hook that keeps a turn from ending", () => {
@@ -96,15 +98,12 @@ describe("the hook that keeps a turn from ending", () => {
         `console.log(JSON.stringify({ read: text, question: typeof remainingWork }));\n`,
     );
 
-    const proc = Bun.spawn(["bun", probe], {
+    const ran = await runChild(["bun", probe], {
       cwd: root,
       env: { ...process.env, CLAUDE_PROJECT_DIR: root },
-      stdin: new TextEncoder().encode("the turn's own input"),
-      stdout: "pipe",
-      stderr: "pipe",
+      stdin: "the turn's own input",
     });
-    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 
-    expect(JSON.parse(out.trim())).toEqual({ read: "the turn's own input", question: "function" });
+    expect(JSON.parse(ran.stdout.trim())).toEqual({ read: "the turn's own input", question: "function" });
   });
 });

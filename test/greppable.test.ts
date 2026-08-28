@@ -36,14 +36,17 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { runChild } from "./child-output.ts";
+
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
 /** Everything git tracks, since a file git does not know is not one anyone greps. */
 async function trackedFiles(): Promise<string[]> {
-  const proc = Bun.spawn(["git", "ls-files", "-z"], { cwd: REPO_ROOT, stdout: "pipe" });
-  const out = await new Response(proc.stdout).text();
-  await proc.exited;
-  return out.split("\0").filter(Boolean);
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["git", "ls-files", "-z"], { cwd: REPO_ROOT });
+  return ran.stdout.split("\0").filter(Boolean);
 }
 
 /** Extensions whose content is expected to be text a person greps. */

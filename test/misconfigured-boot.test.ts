@@ -26,6 +26,8 @@ import { join } from "node:path";
 
 import { bootRetryable, freePort, openTestDb, startMesh, type Mesh } from "./harness";
 
+import { runChild } from "./child-output.ts";
+
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const UNITS = join(REPO_ROOT, "ops", "systemd");
 
@@ -103,18 +105,12 @@ test("the http server refuses to start without a JWT secret", async () => {
     env.AGENT_MESH_STATE_DIR = stateDir;
     env.AGENT_MESH_HTTP_PORT = String(await freePort());
 
-    const proc = Bun.spawn(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], {
-      cwd: REPO_ROOT,
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [out, err, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    const said = out + err;
+    // Read from files, not pipes: `new Response(child.stdout).text()` threw
+    // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+    // child had run correctly. See `test/child-output.ts`.
+    const ran = await runChild(["bun", join(REPO_ROOT, "packages/http/src/main.ts")], { cwd: REPO_ROOT, env });
+    const code = ran.code;
+    const said = ran.said;
 
     expect({ code, tail: said.slice(-500) }).toMatchObject({ code: 1 });
 

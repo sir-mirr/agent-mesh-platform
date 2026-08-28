@@ -16,6 +16,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const HOOK = resolve(import.meta.dir, "..", "scripts", "fe-mailbox-hook.ts");
 const AGENT = "platform-fe-antigravity";
 
@@ -42,14 +44,19 @@ function mailer(messages: Mail[]) {
 }
 
 async function fire(url: string, stateDir: string, input: unknown) {
-  const proc = Bun.spawn(["bun", HOOK], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", HOOK], {
     env: { ...process.env, AGENT_MESH_MAILBOX_URL: url, AGENT_MESH_KEY_DIR: stateDir },
-    stdin: new TextEncoder().encode(JSON.stringify(input)),
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: JSON.stringify(input),
   });
-  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  return { code: await proc.exited, said: out, complained: err, answer: out.trim() ? JSON.parse(out) : null };
+  return {
+    code: ran.code,
+    said: ran.stdout,
+    complained: ran.stderr,
+    answer: ran.stdout.trim() ? JSON.parse(ran.stdout) : null,
+  };
 }
 
 const letter = (id: number, body: string, isRead = false): Mail => ({

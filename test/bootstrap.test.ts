@@ -19,6 +19,8 @@ import { join } from "node:path";
 
 import { startMesh, type Mesh, type Service } from "./harness";
 
+import { runChild } from "./child-output.ts";
+
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 const SCRIPT = join(REPO_ROOT, "ops/bin/bootstrap-hub-service-identities.sh");
 
@@ -49,22 +51,18 @@ interface Run {
 }
 
 async function run(env: Record<string, string>): Promise<Run> {
-  const proc = Bun.spawn(["bash", SCRIPT], {
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bash", SCRIPT], {
     cwd: REPO_ROOT,
     env: {
       PATH: process.env.PATH!,
       HOME: process.env.HOME!,
       ...env,
     },
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, stdout, stderr };
+  return { code: ran.code, stdout: ran.stdout, stderr: ran.stderr };
 }
 
 /**

@@ -22,6 +22,8 @@ import { join, resolve } from "node:path";
 // right — an exception is a copy of the setting that is missing.
 import { openTestDb } from "./harness";
 
+import { runChild } from "./child-output.ts";
+
 const REPAIR = resolve(import.meta.dir, "..", "scripts", "orphan-grants.ts");
 
 interface Grant {
@@ -70,13 +72,11 @@ function deployment(opts: {
 }
 
 async function run(dir: string, ...args: string[]) {
-  const proc = Bun.spawn(["bun", REPAIR, "--state-dir", dir, ...args], { stdout: "pipe", stderr: "pipe" });
-  const [said, complained, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { code, said, complained };
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["bun", REPAIR, "--state-dir", dir, ...args]);
+  return { code: ran.code, said: ran.stdout, complained: ran.stderr };
 }
 
 const subjects = (dir: string): string[] => {
@@ -174,12 +174,7 @@ describe("repairing", () => {
   }, 60_000);
 
   test("refuses to guess which deployment it is pointed at", async () => {
-    const proc = Bun.spawn(["bun", REPAIR], {
-      env: { ...process.env, AGENT_MESH_STATE_DIR: "" },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [complained, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-    expect({ code, complained: complained.includes("will not guess") }).toEqual({ code: 2, complained: true });
+    const ran = await runChild(["bun", REPAIR], { env: { ...process.env, AGENT_MESH_STATE_DIR: "" } });
+    expect({ code: ran.code, complained: ran.stderr.includes("will not guess") }).toEqual({ code: 2, complained: true });
   }, 60_000);
 });

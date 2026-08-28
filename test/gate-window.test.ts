@@ -18,6 +18,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const GATE = resolve(import.meta.dir, "..", "scripts", "gate.ts");
 
 interface Sent { from: string; to: string; body: string }
@@ -89,6 +91,28 @@ function runGate(url: string, label: string, command: string[]) {
   });
 }
 
+/**
+ * The same gate, run to completion, with its output read from a file.
+ *
+ * `new Response(proc.stdout).text()` threw `EBADF: bad file descriptor` out of
+ * a reader in CI and failed a test whose child had run correctly — twice, on
+ * `main`. Every case below that only wants the finished run uses this;
+ * `runGate` stays for the one that has to kill a gate that is still going.
+ */
+async function gate(url: string, label: string, command: string[]) {
+  const keyDir = mkdtempSync(join(tmpdir(), "gate-probe-"));
+  keyDirs.push(keyDir);
+  return await runChild(["bun", GATE, label, "--", ...command], {
+    env: {
+      ...process.env,
+      AGENT_MESH_KEY_DIR: keyDir,
+      AGENT_MESH_MAILBOX_URL: url,
+      AGENT_MESH_AGENT_ID: "gate-probe",
+      AGENT_MESH_GATE_PEERS: "peer-one,peer-two",
+    },
+  });
+}
+
 /** A command that prints a bun-test-shaped summary and exits with `code`. */
 const printing = (pass: number, fail: number, code = 0) => [
   "bun", "-e",
@@ -100,9 +124,8 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "test/ 전수", printing(936, 0));
-    await new Response(proc.stdout).text();
-    expect(await proc.exited).toBe(0);
+    const ran = await gate(url, "test/ 전수", printing(936, 0));
+    expect(ran.code).toBe(0);
 
     const starts = sent.filter((m) => m.body.includes("측정 출발"));
     const ends = sent.filter((m) => m.body.includes("측정 종료"));
@@ -123,9 +146,8 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "test/ 전수", printing(930, 6, 1));
-    await new Response(proc.stdout).text();
-    expect(await proc.exited).toBe(1);
+    const ran = await gate(url, "test/ 전수", printing(930, 6, 1));
+    expect(ran.code).toBe(1);
 
     const end = sent.find((m) => m.body.includes("측정 종료"));
     expect(end).toBeDefined();
@@ -151,9 +173,9 @@ describe("bracketing a run", () => {
       "bun", "-e",
       'for (let i = 0; i < 24; i++) console.log("x".repeat(100_000)); console.log("\\n 41 pass\\n 0 fail\\n");',
     ];
-    const proc = runGate(url, "a run that floods", flood);
-    const printed = await new Response(proc.stdout).text();
-    expect(await proc.exited).toBe(0);
+    const ran = await gate(url, "a run that floods", flood);
+    const printed = ran.stdout;
+    expect(ran.code).toBe(0);
 
     const end = await releaseMail(sent);
     expect({
@@ -173,9 +195,7 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "a run that says nothing", ["bun", "-e", "console.log('quiet')"]);
-    await new Response(proc.stdout).text();
-    await proc.exited;
+    await gate(url, "a run that says nothing", ["bun", "-e", "console.log('quiet')"]);
 
     const end = await releaseMail(sent);
     expect(end.body).toContain("수치 없음");
@@ -192,10 +212,8 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "mutation: five entries", ["bun", "-e",
+    await gate(url, "mutation: five entries", ["bun", "-e",
       `console.log("\\n5/5 caught — filtered to a, b, c, d, e, of 792 in the manifest")`]);
-    await new Response(proc.stdout).text();
-    await proc.exited;
 
     const end = await releaseMail(sent);
     expect({ says: /5\/5 caught/.test(end.body), quiet: end.body.includes("수치 없음") },
@@ -207,10 +225,8 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "the other shapes", ["bun", "-e",
+    await gate(url, "the other shapes", ["bun", "-e",
       `console.log("792/792 anchors point at exactly one place\\nself-check: 2/2 failed for the declared reason\\nratchet 100 funcs · 100 lines: held, with nothing to raise.")`]);
-    await new Response(proc.stdout).text();
-    await proc.exited;
 
     const end = await releaseMail(sent);
     expect({
@@ -226,10 +242,8 @@ describe("bracketing a run", () => {
     const { sent, server, url } = recorder();
     servers.push(server);
 
-    const proc = runGate(url, "a floor that fell", ["bun", "-e",
+    await gate(url, "a floor that fell", ["bun", "-e",
       `console.error("coverage: lines at 99.50 is below the recorded floor of 100"); process.exit(1)`]);
-    await new Response(proc.stdout).text();
-    await proc.exited;
 
     const end = await releaseMail(sent);
     expect(end.body).toContain("lines 99.50 below the floor");
@@ -260,10 +274,8 @@ describe("bracketing a run", () => {
   test("passes the run's output through", async () => {
     const { server, url } = recorder();
     servers.push(server);
-    const proc = runGate(url, "noisy", ["bun", "-e", "console.log('a line the operator needs')"]);
-    const out = await new Response(proc.stdout).text();
-    await proc.exited;
-    expect(out).toContain("a line the operator needs");
+    const ran = await gate(url, "noisy", ["bun", "-e", "console.log('a line the operator needs')"]);
+    expect(ran.stdout).toContain("a line the operator needs");
   });
 
   /**
@@ -271,9 +283,8 @@ describe("bracketing a run", () => {
    * and the broadcast is the courtesy.
    */
   test("runs anyway when nobody is listening", async () => {
-    const proc = runGate("http://127.0.0.1:1/api/mail", "no mailer", printing(1, 0));
-    const out = await new Response(proc.stdout).text();
-    expect(await proc.exited).toBe(0);
-    expect(out).toContain("1 pass");
+    const ran = await gate("http://127.0.0.1:1/api/mail", "no mailer", printing(1, 0));
+    expect(ran.code).toBe(0);
+    expect(ran.stdout).toContain("1 pass");
   }, 20_000);
 });

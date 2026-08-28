@@ -28,6 +28,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runChild } from "./child-output.ts";
+
 const MIGRATION = join(import.meta.dir, "..", "ops", "migrations", "0002_drop_autonomy_tables.sql");
 
 /**
@@ -39,13 +41,11 @@ const MIGRATION = join(import.meta.dir, "..", "ops", "migrations", "0002_drop_au
  */
 async function apply(dbPath: string) {
   const sql = await Bun.file(MIGRATION).text();
-  const proc = Bun.spawn(["sqlite3", dbPath], {
-    stdin: new TextEncoder().encode(sql),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-  return { code, stderr };
+  // Read from files, not pipes: `new Response(child.stdout).text()` threw
+  // `EBADF: bad file descriptor` out of a reader in CI and failed a test whose
+  // child had run correctly. See `test/child-output.ts`.
+  const ran = await runChild(["sqlite3", dbPath], { stdin: sql });
+  return { code: ran.code, stderr: ran.stderr };
 }
 
 function scratch(): string {

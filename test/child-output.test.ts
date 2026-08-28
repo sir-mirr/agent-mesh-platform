@@ -52,6 +52,20 @@ describe("reading a child through files", () => {
     expect(withEnv.stdout).toBe("handed-over");
   }, 20_000);
 
+  test("hands the child what it was told to write on its stdin, and an end of file otherwise", async () => {
+    // A hook reads its turn off stdin. Handed nothing, it must still see a
+    // closed stream rather than waiting for one that never ends.
+    const read = `process.stdout.write(await new Response(Bun.stdin.stream()).text() || "nothing-was-piped")`;
+    const piped = await runChild(["bun", "-e", read], { stdin: "the turn's own input" });
+    const bytes = await runChild(["bun", "-e", read], { stdin: new TextEncoder().encode("as bytes") });
+    const none = await runChild(["bun", "-e", read]);
+    expect({ piped: piped.stdout, bytes: bytes.stdout, none: none.stdout }).toEqual({
+      piped: "the turn's own input",
+      bytes: "as bytes",
+      none: "nothing-was-piped",
+    });
+  }, 20_000);
+
   test("takes its temporary directories with it, and leaves the ones it did not make", async () => {
     // A helper that leaks a directory per call is one nobody can run in a loop.
     // Counted rather than inspected: the name is an implementation detail, but
