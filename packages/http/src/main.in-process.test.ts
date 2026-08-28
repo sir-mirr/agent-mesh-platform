@@ -22,7 +22,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { join } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Database } from "bun:sqlite";
-import { agentsSchema, auditSchema, groups, hubSchema, ownership } from "@agent-mesh/store";
+import { agentsSchema, auditSchema, groups, hubSchema, ownership, selfReminderSchema } from "@agent-mesh/store";
 import { createHash, generateKeyPairSync, randomUUID, sign as edSign } from "node:crypto";
 import { formatRestAuthorization, keyFingerprint, restSignaturePreimage, SIGNATURE_FRESHNESS_WINDOW_SECONDS }
   from "@agent-mesh/contracts";
@@ -47,6 +47,11 @@ for (const [file, migrate] of [
   // swallowed open is exactly the kind of thing this file makes visible.
   ["hub.db", hubSchema.migrate],
   ["audit.db", auditSchema.migrate],
+  // The reminder daemon's. The two overdue routes read it, and a directory
+  // where nobody has scheduled anything is a *true* empty rather than an error
+  // — so with the file absent those routes answer `[]` without executing a
+  // line of what they are for.
+  ["self-reminder.db", selfReminderSchema.migrate],
 ] as const) {
   const db = new Database(join(STATE, file), { create: true, readwrite: true });
   migrate(db);
@@ -2998,5 +3003,82 @@ describe("sending through the hub", () => {
   test("an accepted send answers the id the hub gave", async () => {
     expect(await mod.sendViaHubOrSay("agent-beta", "hello", "admin", undefined, async () => "msg-7"))
       .toBe("msg-7");
+  });
+});
+
+/**
+ * The two overdue-reminder routes, called where they can be counted.
+ *
+ * `test/reminder-overdue.test.ts` drives the same pair through a spawned
+ * service and asserts what they answer; that is the check that matters and it
+ * sees none of this code, because coverage only watches this process. The
+ * walks below are thin on purpose — what they add is that the handler stack
+ * runs, including the three refusals, which a route test can assert and an
+ * instrument cannot see.
+ */
+describe("deciding a held reminder", () => {
+  const HELD = "in-process-held";
+  const SLOT = "2026-07-14 09:00:00";
+
+  beforeAll(() => {
+    const db = new Database(join(STATE, "self-reminder.db"), { create: true, readwrite: true });
+    db.prepare(
+      `INSERT OR REPLACE INTO reminders (id, agent_id, type, schedule_spec, payload, status, created_at, created_by)
+       VALUES (?, 'in-process-agent', 'once', '2026-07-14T09:00:00Z', '{}', 'active', '2026-07-14 08:00:00', 'ops')`,
+    ).run(HELD);
+    db.prepare(
+      `INSERT OR REPLACE INTO scheduler_health (key, value, updated_at) VALUES (?, ?, ?)`,
+    ).run(`overdue_hold:${HELD}:${SLOT}`, "2026-07-14 11:00:00", "2026-07-14 11:00:00");
+    db.close();
+  });
+
+  test("lists what is held beside what has been decided", async () => {
+    const res = await asAdmin("/api/v1/admin/reminders/overdue", "GET");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Both in one answer: split across two calls a reader draws a hold as
+    // unanswered because the other call had not returned yet.
+    expect({ ok: body.ok, held: Array.isArray(body.reminders), decided: Array.isArray(body.decisions) })
+      .toEqual({ ok: true, held: true, decided: true });
+    expect(body.reminders.some((r: { reminder_id: string }) => r.reminder_id === HELD)).toBe(true);
+  });
+
+  test("refuses a body that is not JSON, and one that names no slot", async () => {
+    const notJson = await call("/api/v1/admin/reminders/overdue/x/decision", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: cookie },
+      body: "{",
+    });
+    const noSlot = await asAdmin(`/api/v1/admin/reminders/overdue/${HELD}/decision`, "POST",
+      { decision: "replay", approval_ref: "APPROVED:ops" });
+    expect({ body: notJson.status, slot: noSlot.status }).toEqual({ body: 400, slot: 400 });
+    expect([(await notJson.json()).code, (await noSlot.json()).code])
+      .toEqual(["INVALID_DECISION", "INVALID_DECISION"]);
+  });
+
+  test("a slot nobody is holding is 404, not a row the scheduler never reads", async () => {
+    const res = await asAdmin("/api/v1/admin/reminders/overdue/in-process-unheld/decision", "POST",
+      { scheduled_at: SLOT, decision: "skip", approval_ref: "APPROVED:ops-x" });
+    expect(res.status).toBe(404);
+    expect((await res.json()).code).toBe("NO_SUCH_HOLD");
+  });
+
+  test("a decision is recorded against the session that made it", async () => {
+    const res = await asAdmin(`/api/v1/admin/reminders/overdue/${HELD}/decision`, "POST",
+      { scheduled_at: SLOT, decision: "skip", approval_ref: "APPROVED:ops-in-process" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The decider is the authenticated actor, not something the body supplied:
+    // a decision nobody can be asked about is the one this column exists for.
+    expect({ ok: body.ok, decision: body.decision, by: body.decided_by })
+      .toEqual({ ok: true, decision: "skip", by: SEED_ADMIN });
+
+    // And it leaves the held list, because it is no longer a question.
+    const after = await asAdmin("/api/v1/admin/reminders/overdue", "GET");
+    const list = await after.json();
+    expect({
+      held: list.reminders.some((r: { reminder_id: string }) => r.reminder_id === HELD),
+      decided: list.decisions.some((d: { reminder_id: string }) => d.reminder_id === HELD),
+    }).toEqual({ held: false, decided: true });
   });
 });

@@ -768,6 +768,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["withholds the content, and gives its length"],
   },
   {
+    id: "a-hold-key-is-cut-at-its-last-colon",
+    defect:
+      "The hold key `overdue_hold:<id>:<slot>` stopped being split on the slot's shape and went back to cutting at the last colon — which lands inside `HH:MM:SS`. The reminder id came back with half the date attached and the slot as `00`, which `new Date` reads as the year 2000, so the screen listed plausible rows about nothing and no operator decision could reach the slot it named. Nothing threw: this is the defect that hid behind a passing route test.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "    const parsed = /^(.*):(\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z?)$/.exec(rest)",
+    to: "    const parsed = /^(.*):(.*)$/.exec(rest)",
+    suite: "packages/http/src/reminder-overdue.test.ts",
+    expect: ["a held slot is listed with how late it already was"],
+  },
+  {
     id: "audit-query-redacts-only-the-top-level",
     defect:
       "Redaction stopped recursing, so a secret one level down comes back whole. The payload is stored verbatim because the digest is over those bytes \u2014 removing it on the way out is the only place it can be removed at all, which makes a shallow pass the difference between redacted and published.",
