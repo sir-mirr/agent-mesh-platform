@@ -643,3 +643,65 @@ describe("the scenarios the specification cites", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * The operator decision that no operator can make (T-053).
+ *
+ * `ReminderScheduler.recordOverdueDecision` writes the row `shouldHoldOverdue`
+ * reads, requires an `APPROVED:` reference, and is covered by its own unit
+ * tests. Its doc comment says the rest: *no production call site invokes this
+ * method*. The daemon has no HTTP surface — it speaks to the hub over a socket
+ * and nothing else — so a `once` reminder that goes more than `overdueHoldMs`
+ * past its slot is held with no way to release it short of editing SQLite.
+ *
+ * **A held reminder is silent**, which is why this is written down rather than
+ * left to be noticed: with no screen, "nothing is held" and "something is held
+ * and nobody can see it" are the same view. The ledger's phrase for T-053 is
+ * `부재≠성공` — absence is not success — and this is the shape it names.
+ *
+ * Pinned as a gap, not as a property. The day an admin route calls this, the
+ * assertion below flips, and flipping it is the point: it is the marker that
+ * the gap closed rather than a rule anybody wants kept.
+ */
+describe("the overdue reminder decision path", () => {
+  test("[T-053] nothing outside the scheduler and its tests can record one", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        if (name === "node_modules" || name === ".git" || name === "dist") return [];
+        const full = `${dir}/${name}`;
+        if (statSync(full).isDirectory()) return walk(full);
+        return /\.(ts|tsx)$/.test(name) ? [full] : [];
+      });
+
+    const callers = walk(`${REPO_ROOT}packages`)
+      .concat(walk(`${REPO_ROOT}test`))
+      .filter((file) => !file.endsWith("scheduler.ts"))
+      .filter((file) => readFileSync(file, "utf8").includes("recordOverdueDecision"))
+      .map((file) => file.slice(REPO_ROOT.length));
+
+    // The method exists and is spelled this way — otherwise a rename would
+    // empty this list and read as "the gap closed".
+    // Asserted as a boolean, not with `toContain` on the file: a failing
+    // `toContain` prints the whole received string, and a 400-line source file
+    // in a failure message buries the one sentence that says what broke.
+    const scheduler = readFileSync(`${REPO_ROOT}packages/self-reminder/src/scheduler.ts`, "utf8");
+    expect(
+      scheduler.includes("recordOverdueDecision("),
+      "recordOverdueDecision is gone or renamed, so the search below proves nothing",
+    ).toBe(true);
+
+    // Tests may reach it; that is how the mechanism is known to work at all.
+    // Production code reaching it is the change this waits for.
+    const production = callers.filter((file) => !file.includes(".test."));
+    expect(
+      production,
+      `an operator path exists now — ${production.join(", ")} — so this check has done its job and should be replaced by one asserting the route`,
+    ).toEqual([]);
+    expect(
+      callers.filter((file) => file.includes(".test.")).length,
+      "not even a test records a decision, so the mechanism is unexercised",
+    ).toBeGreaterThan(0);
+  });
+});
