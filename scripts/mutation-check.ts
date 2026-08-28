@@ -10067,6 +10067,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "the-metadata-caller-loses-the-access-record",
+    defect:
+      "`stripContent` withholds `change` rather than `content`, so \u00a7 11.0.1 access records arrive empty for a caller holding only `audit.read.metadata` \u2014 which is the platform operator, the person the compliance access log exists for. The route still answers, the rows are still there, and every one of them says nothing about what was read.",
+    file: "packages/http/src/audit-query.ts",
+    from: "      if (k === 'content') {",
+    to: "      if (k === 'change') {",
+    suite: "test/audit.test.ts",
+    expect: ["what was reached is not on the record"],
+  },
+  {
+    id: "the-access-record-forgets-what-was-asked-for",
+    defect:
+      "The access record stops carrying the query that selected the read. It still says somebody read something, which is the part that looks like an audit trail, and drops the part that says how much \u2014 one event by id and the whole tenant's trail become the same entry.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "    change: { read: r.target, query: r.query },",
+    to: "    change: { read: r.target },",
+    suite: "test/audit.test.ts",
+    expect: ["the query that selected it is not on the record"],
+  },
+  {
+    id: "the-access-record-names-the-service-as-the-reader",
+    defect:
+      "The record's `identity` becomes the reading service instead of the operator. Every access then reads as `agent-mesh-http` looking at itself, and the one question this log exists to answer \u2014 *which person saw this* \u2014 has the name of a process as its answer for every row.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "    identity: r.actor,\n    actor: r.actor,",
+    to: "    identity: 'agent-mesh-http',\n    actor: r.actor,",
+    suite: "test/audit.test.ts",
+    expect: ["the operator and the service are the same value"],
+  },
+  {
     id: "the-teardown-field-is-dropped-from-the-row",
     defect:
       "`deleted_at` stops being sent. The row is still there and still looks healthy \u2014 `last_seen_at: null`, no marker \u2014 which is exactly the state D-809 ended: indistinguishable from an identity that has never connected, while the hub answers 409 for the name forever. A console then offers an addressee that can never answer, and the operator screen cannot say what happened to the name.",

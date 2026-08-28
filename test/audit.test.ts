@@ -944,3 +944,76 @@ describe("what the audit filters select", () => {
       .toEqual(unfiltered.map((e) => e.event_id));
   });
 });
+
+/**
+ * What an access-log screen could show, measured before one is built (T-053).
+ *
+ * § 11.0.1 has been recording every content read since it landed, and
+ * `deliverables.md` row 34 — *Internal audit_read_events Compliance Access Log*
+ * — is still `content` rather than `wired`. So the most sensitive axis the
+ * trail has (who read what) exists in the store and on no screen, and a
+ * deployment showing nothing is indistinguishable from one nobody has looked at.
+ *
+ * This asks whether the route can answer the four questions such a screen puts,
+ * rather than assuming it. Written before the screen because a check written
+ * after one only confirms what got built.
+ */
+describe("what an access log could be drawn from", () => {
+  const page = async (qs: string): Promise<Record<string, any>[]> => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=200&${qs}`, {
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status, `?${qs} was refused: ${await res.clone().text()}`).toBe(200);
+    return ((await res.json()) as { events?: Record<string, any>[] }).events ?? [];
+  };
+
+  test("the four questions a compliance screen asks are all answered", async () => {
+    // Seed one read, then look for it. The read that seeds it cannot see
+    // itself: § 11.0.1 records before serving, so the record lands after the
+    // page it would appear on has been assembled.
+    await page("");
+    const records = await page("recorded_by_kind=http");
+    expect(records.length, "no access records at all").toBeGreaterThan(0);
+
+    const one = records[records.length - 1]!;
+    const payload = one.payload as Record<string, any> | null;
+    expect(payload, "the access record carries no payload for a metadata caller").toBeTruthy();
+
+    // **Who**, **what they reached**, **what they asked for**, **when** — and
+    // each named here rather than checked as a lump, so a missing one says
+    // which question stops being answerable.
+    expect(one.identity, "who read is not on the record").toBeTruthy();
+    expect(payload!.change?.read, "what was reached is not on the record").toBeTruthy();
+    expect(payload!.change?.query, "the query that selected it is not on the record").toBeDefined();
+    expect(one.stored_at, "when is not on the record").toBeTruthy();
+
+    // The reading service is `recorded_by`; the operator is the event's own
+    // identity. A screen showing only the first answers "who looked" with the
+    // name of a process.
+    expect(one.recorded_by?.kind).toBe("http");
+    expect(one.recorded_by?.identity, "the recording service is unnamed").toBeTruthy();
+    expect(one.identity, "the operator and the service are the same value").not.toBe(one.recorded_by?.identity);
+  });
+
+  test("[T-053] the screen writes to what it reads, and here is how much", async () => {
+    // **The design problem, measured rather than argued.** Opening this screen
+    // is a content read, so it records one; refreshing records another. A naive
+    // screen shows mostly its own visits, and an operator looking for who read
+    // a tenant's messages pages through their own footprints to find it.
+    //
+    // Not a defect — § 11.0.1 requires the record and requires failing closed —
+    // but the number decides whether the screen needs its own filter, and the
+    // number is not guessable.
+    const before = (await page("recorded_by_kind=http")).length;
+    for (let i = 0; i < 3; i++) await page("recorded_by_kind=http");
+    const after = (await page("recorded_by_kind=http")).length;
+
+    const selfWrites = after - before;
+    console.log(`[T-053] three refreshes of the access log added ${selfWrites} records to it`);
+    // One per read, which is what § 11.0.1 says. Asserted as a range rather
+    // than an equality because the shared mesh may be read by another test in
+    // the same file, and a flake here would say nothing about the rule.
+    expect(selfWrites, "reading the log left no trace of having read it").toBeGreaterThan(0);
+    expect(selfWrites, "one read wrote more than one access record").toBeLessThanOrEqual(5);
+  });
+});
