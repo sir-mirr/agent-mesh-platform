@@ -36,9 +36,9 @@ export interface SystemTelemetry {
   server_uptime_seconds?: number | undefined;
   build_version?: string | undefined;
   /**
-   * The six behavioural metrics § D-1 chose over CPU and memory gauges
+   * The eight behavioural metrics § D-1 chose over CPU and memory gauges
    * (`SC-SCR10-01`). `null` inside each one means it could not be read — never
-   * a stand-in, because four of the six read `0` when all is well.
+   * a stand-in, because several of the eight read `0` when all is well.
    */
   behaviour: BehaviourMetrics | null;
   /**
@@ -74,8 +74,8 @@ export type Metric = RestMetric;
  * names all eight — and this copy could not see either. A narrower copy does
  * not fail: it compiles, and the two metrics arrive and are dropped, so a
  * screen cannot show how many people are waiting to be admitted or how long the
- * oldest has waited. Both files' prose still says "the six", which is what the
- * count was when § D-1 chose them.
+ * oldest has waited. The local copy also left prose saying "the six", which
+ * was the count when § D-1 first chose them.
  *
  * Taking the contract's declaration is what makes a ninth metric a compile
  * error here instead of a field nobody notices.

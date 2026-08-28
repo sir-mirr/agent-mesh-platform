@@ -40,6 +40,7 @@ registerDom();
 // document.
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 const { TelemetryPage, formatElapsed } = await import("./TelemetryPage.tsx");
@@ -116,11 +117,16 @@ const WEB_CHANNEL_IDENTITIES = 1;
 const HEALTH_OK = { status: "ok", agent_count: 5, uptime: 900, version: "0.2.0" };
 
 const COUNTING_SINCE = "2026-08-19T10:00:00.000Z";
-/** Every one of the six read, four of them zero — what a healthy hub looks like. */
+const RECORDED_BEHAVIOUR = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === BEHAVIOUR)!.body;
+/** Every one of the eight read — what a healthy hub looks like. */
 const BEHAVIOUR_MEASURED = {
+  ...RECORDED_BEHAVIOUR,
   counting_since: COUNTING_SINCE,
   pending_keys: { value: 0 },
   oldest_pending_ms: { value: 0 },
+  pending_users: { value: 2 },
+  oldest_pending_user_ms: { value: 5_400_000 },
   signature_refusals: { value: 0 },
   rate_limited: { value: 0 },
   egress_refusals: { value: 0 },
@@ -255,7 +261,7 @@ describe("the four things a blank telemetry screen can mean", () => {
     expect(screen.queryByTestId("behaviour-metrics")).toBe(null);
     expect(screen.queryByTestId("behaviour-unreachable")).toBe(null);
     // A gauge reading zero is the single most dangerous thing this page can
-    // draw before an answer: four of the six counters read zero when all is
+    // draw before an answer: several of the eight counters read zero when all is
     // well, so a placeholder zero is the number the operator is hoping for.
     expect(socketsValue()).toBe(null);
   });
@@ -405,6 +411,8 @@ describe("a counter that was not read is not a counter reading zero", () => {
     counting_since: COUNTING_SINCE,
     pending_keys: { value: 0 },
     oldest_pending_ms: { value: null, unavailable: "no key has been waiting since the hub started" },
+    pending_users: { value: 2 },
+    oldest_pending_user_ms: { value: 5_400_000 },
     signature_refusals: { value: 4 },
     rate_limited: { value: 0 },
     egress_refusals: { value: null, unavailable: "egress counters are off on this hub" },
@@ -414,7 +422,7 @@ describe("a counter that was not read is not a counter reading zero", () => {
   it("draws an unread counter as unmeasured and a measured zero as zero", async () => {
     behaviourRoute = answers(200, MIXED);
     await mount();
-    // Four of the six read zero when all is well, which is what makes an unread
+    // Several of the eight read zero when all is well, which is what makes an unread
     // source dangerous here: a zero drawn because nothing answered is the number
     // an operator is hoping for and will not question.
     expect(metricText(en("tel.m.pending"))).toBe(`${en("tel.m.pending")}0`);
@@ -428,6 +436,30 @@ describe("a counter that was not read is not a counter reading zero", () => {
     expect(metricText(en("tel.m.oldest"))).not.toContain("0");
     expect(metricText(en("tel.m.oldest"))).not.toContain("ms");
     expect(metricText(en("tel.m.egress"))).toBe(`${en("tel.m.egress")}${en("common.unmeasured")}`);
+  });
+
+  it("draws both user admission queue facts from the server", async () => {
+    await mount();
+    expect(metricText(en("tel.m.pendingUsers")))
+      .toBe(`${en("tel.m.pendingUsers")}${BEHAVIOUR_MEASURED.pending_users.value}`);
+    const oldest = metricText(en("tel.m.oldestPendingUser"));
+    expect(oldest).toContain(formatElapsed(BEHAVIOUR_MEASURED.oldest_pending_user_ms.value, "en"));
+    expect(oldest).not.toContain(String(BEHAVIOUR_MEASURED.oldest_pending_user_ms.value));
+    expect(oldest).not.toContain("ms");
+  });
+
+  it("does not invent the two user-queue metrics when the response omitted their keys", async () => {
+    const withoutUserQueue: Record<string, unknown> = { ...BEHAVIOUR_MEASURED };
+    delete withoutUserQueue.pending_users;
+    delete withoutUserQueue.oldest_pending_user_ms;
+    behaviourRoute = answers(200, withoutUserQueue);
+    await mount();
+
+    expect(metricText(en("tel.m.pendingUsers")))
+      .toBe(`${en("tel.m.pendingUsers")}${en("common.unmeasured")}`);
+    expect(metricText(en("tel.m.oldestPendingUser")))
+      .toBe(`${en("tel.m.oldestPendingUser")}${en("common.unmeasured")}`);
+    expect(screen.getAllByTestId("metric-unmeasured")).toHaveLength(2);
   });
 
   it("turns a long wait into human time instead of raw milliseconds", async () => {
@@ -486,7 +518,7 @@ describe("a counter that was not read is not a counter reading zero", () => {
     expect(since).not.toContain(en("tel.since.unknown"));
   });
 
-  it("replaces the six counters with a notice rather than removing them", async () => {
+  it("replaces the eight counters with a notice rather than removing them", async () => {
     behaviourRoute = refuses(USAGE_READ);
     await mount();
     // Measured with only this route refusing and the rest healthy: eighteen

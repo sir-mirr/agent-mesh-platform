@@ -437,7 +437,7 @@ describe("the four things the list can be saying", () => {
 });
 
 describe("what a row says about a group", () => {
-  it("puts each field the server sent in its own column", async () => {
+  it("draws the server's group id once and puts each other field in its own column", async () => {
     readGroups = () => json(200, { groups: [SUPPORT, BILLING] });
     await mount();
 
@@ -448,10 +448,11 @@ describe("what a row says about a group", () => {
     // that shows one group's members under another group's name is a row where
     // every word came from the server and the row is still untrue.
     const support = cellsOf(rowFor(SUPPORT.group_id));
-    // The id twice, because the route sends no name and the first cell draws
-    // both. Written out rather than hidden behind a `name` the server does not
-    // have: the duplication is what an operator actually sees.
-    expect(support[0]).toBe(`${SUPPORT.group_id}${SUPPORT.group_id}`);
+    expect([...tableEl().querySelectorAll("thead th")][0]?.textContent).toBe("Group ID");
+    expect(DICTIONARY.ko["groups.col.name"]).toBe("그룹 ID");
+    // The route sends no display name. One server-sent id is the whole first
+    // cell; drawing it twice invents the appearance of two distinct fields.
+    expect(support[0]).toBe(SUPPORT.group_id);
     expect(support[1]).toBe(SUPPORT.description);
     expect(support[2]).toBe(String(SUPPORT.members.length));
     expect(support[3]).toBe(SUPPORT.members.join(""));
@@ -902,7 +903,7 @@ describe("a field the route did not send", () => {
     // operator reading this column had no way to tell a group the mesh dated
     // from one it did not. `api/groups.ts` keeps `created_at` as `null`; the
     // screen said otherwise in one line.
-    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops" }] });
+    readGroups = () => json(200, { groups: [{ group_id: "ops" }] });
     await mount();
     const row = [...tableEl().querySelectorAll("tbody tr")]
       .find((tr) => (tr.textContent ?? "").includes("ops"));
@@ -932,7 +933,7 @@ describe("a field the route did not send", () => {
   it("draws no member count rather than nought", async () => {
     // `member_count: null` means the route did not report one. Nought is a
     // measurement, and this column made it out of an absence.
-    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: null }] });
+    readGroups = () => json(200, { groups: [{ group_id: "ops", member_count: null }] });
     await mount();
     expect(memberCountCell().textContent).toContain(ABSENT);
   });
@@ -942,7 +943,7 @@ describe("a field the route did not send", () => {
     // group that really holds nobody answered `member_count: 0` and fell
     // through to the next fallback anyway, so *unknown* and *nobody* left this
     // mapping by the same road.
-    readGroups = () => json(200, { groups: [{ group_id: "ops", name: "ops", member_count: 0, members: [] }] });
+    readGroups = () => json(200, { groups: [{ group_id: "ops", member_count: 0, members: [] }] });
     await mount();
     expect(memberCountCell().textContent).toContain("0");
   });

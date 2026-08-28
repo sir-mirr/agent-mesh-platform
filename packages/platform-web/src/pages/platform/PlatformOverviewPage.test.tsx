@@ -101,9 +101,12 @@ const MAILBOX_OK = {
 };
 const USAGE_OK = { ok: true, accounts: [], schema_version: 1, source: "test", ts: "2026-08-20T00:00:00.000Z" };
 const BEHAVIOUR_OK = {
+  ok: true,
   counting_since: "2026-08-20T00:00:00.000Z",
   pending_keys: { value: 0 },
   oldest_pending_ms: { value: 0 },
+  pending_users: { value: 0 },
+  oldest_pending_user_ms: { value: 0 },
   signature_refusals: { value: 0 },
   rate_limited: { value: 0 },
   egress_refusals: { value: 0 },

@@ -6538,8 +6538,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The other half, and the one that matters: a wrong capability name on a page **outside** the three the check was built against. `GroupsPage.tsx` writes `group.manage` into a subtitle a person reads; yesterday that file was not scanned at all, so this mutation would have passed green. It is here rather than on an anchor file because an anchor proves the rule works, not that the scope does.",
     file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
-    from: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID\"),",
-    to: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 \uba85 / ID (group.manage \ud544\uc694)\"),",
+    from: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 ID\"),",
+    to: "      header: t(\"groups.col.name\", \"\uadf8\ub8f9 ID (group.manage \ud544\uc694)\"),",
     suite: "test/capability-prose.test.ts",
     expect: ["an internal permission identifier is being shown to a person"],
   },
@@ -6712,6 +6712,16 @@ export const MUTATIONS: Mutation[] = [
     to: "      es.onerror = () => { setStreamLost(true); setFailure(\"unreachable\"); };",
     suite: "packages/platform-web/src/components/layout/NotificationBell.test.tsx",
     expect: ["does not turn a dropped stream into a queue it could not read"],
+  },
+  {
+    id: "the-groups-table-draws-the-id-twice",
+    defect:
+      "The group route has no display name, so the screen repeats `group_id` as though a name and an id were two server facts. Every glyph came from the response and the row is still misleading: one identity appears as two fields, under a label that promises both.",
+    file: "packages/platform-web/src/pages/creator/GroupsPage.tsx",
+    from: "          {item.id}",
+    to: "          {item.id}{item.id}",
+    suite: "packages/platform-web/src/pages/creator/GroupsPage.test.tsx",
+    expect: ["draws the server's group id once and puts each other field in its own column"],
   },
   {
     id: "groups-page-invents-a-creation-time",
@@ -10048,10 +10058,20 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "Zero is folded into the unknown. `없음` and `재본 적 없음` are the two readings this panel exists to keep apart — a mesh that refused no signature and one whose signature counter was never read look identical the moment they share a cell, and the operator acting on it cannot tell a quiet mesh from a blind one.",
     file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
-    from: "                    {metric.value === null ? (",
-    to: "                    {metric.value === null || metric.value === 0 ? (",
+    from: "                      {value == null ? (",
+    to: "                      {value == null || value === 0 ? (",
     suite: "test/fe-render.test.ts",
-    expect: ["draws the six behavioural metrics and marks unread ones as unmeasured"],
+    expect: ["draws the eight behavioural metrics and marks unread ones as unmeasured"],
+  },
+  {
+    id: "a-missing-user-queue-metric-is-drawn-as-zero",
+    defect:
+      "A behaviour response that predates the two user-admission keys is folded to zero. The page then says nobody is waiting and nobody has waited, even though the server supplied neither measurement; an absent field and a measured empty queue become the same operational claim.",
+    file: "packages/platform-web/src/pages/platform/TelemetryPage.tsx",
+    from: "                  const value = metric?.value;",
+    to: "                  const value = metric?.value ?? 0;",
+    suite: "packages/platform-web/src/pages/platform/TelemetryPage.test.tsx",
+    expect: ["does not invent the two user-queue metrics when the response omitted their keys"],
   },
   {
     id: "a-deactivated-account-keeps-its-live-session",

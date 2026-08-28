@@ -16,7 +16,6 @@ import { useRbac } from "@/contexts/RbacContext.tsx";
 
 interface AgentGroup {
   id: string;
-  name: string;
   tenant: string | null;
   description: string;
   /** `null` when the route did not report one, which is not the same as none. */
@@ -107,7 +106,6 @@ export function GroupsPage() {
           const counted = g.member_count ?? null;
           return {
             id: g.id,
-            name: g.name,
             tenant: g.tenant ?? null,
             description: g.description ?? "",
             // `null` still means the route never supplied a member list. Once
@@ -266,10 +264,10 @@ export function GroupsPage() {
         selectedGroup.tenant ?? undefined,
       );
       const assigned = assignAgentId;
-      const groupName = selectedGroup.name;
+      const groupId = selectedGroup.id;
       closeAssignModal(true);
       setToastType("success");
-      setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assigned} → ${groupName}`);
+      setToastMessage(`${t("groups.assigned", "배속 완료")}: ${assigned} → ${groupId}`);
       await loadGroups();
     } catch (err: any) {
       setToastType("error");
@@ -282,23 +280,18 @@ export function GroupsPage() {
 
   const columns = [
     {
-      key: "name",
-      header: t("groups.col.name", "그룹 명 / ID"),
+      key: "id",
+      header: t("groups.col.name", "그룹 ID"),
       render: (item: AgentGroup) => (
-        <div>
-          <div style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
-            {item.name}
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.75rem",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            {item.id}
-          </div>
-        </div>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
+            color: "var(--color-text-primary)",
+          }}
+        >
+          {item.id}
+        </span>
       ),
     },
     {
@@ -514,7 +507,7 @@ export function GroupsPage() {
         <Modal
           isOpen={isAssignOpen}
           onClose={() => closeAssignModal()}
-          title={`${t("groups.modal.assignTitle", "에이전트 배속 및 이동")} - ${selectedGroup.name}`}
+          title={`${t("groups.modal.assignTitle", "에이전트 배속 및 이동")} - ${selectedGroup.id}`}
         >
           <form onSubmit={handleAssignAgent} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)" }}>

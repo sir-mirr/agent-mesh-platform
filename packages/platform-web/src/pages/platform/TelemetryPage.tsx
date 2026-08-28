@@ -111,7 +111,7 @@ export function TelemetryPage() {
             § D-1 chose these over CPU and memory: a hub at 4% CPU refusing
             every signature is not healthy, and a process gauge cannot say so.
 
-            **Four of the six read `0` when all is well**, which is what makes
+            **Several of the eight read `0` when all is well**, which is what makes
             an unread source dangerous here — a zero drawn because nothing
             answered is the number an operator is hoping for and will not
             question. So `null` is drawn as "미측정", never as `0`, and the
@@ -121,7 +121,7 @@ export function TelemetryPage() {
           {/*
             **A panel that cannot be drawn says so.** `behaviour` is `null` when
             that one route did not answer, and this used to render nothing at
-            all: on a monitoring screen the six counters simply vanished, which
+            all: on a monitoring screen the eight counters simply vanished, which
             is the moment an operator most needs to be told. Measured with only
             `/api/v1/admin/telemetry/behaviour` refusing and the rest healthy —
             eighteen fragments of the page disappeared and nothing replaced them.
@@ -145,27 +145,35 @@ export function TelemetryPage() {
                 {([
                   [t("tel.m.pending", "등록 대기"), telemetry.behaviour.pending_keys, false],
                   [t("tel.m.oldest", "가장 오래 기다린 시간"), telemetry.behaviour.oldest_pending_ms, true],
+                  [t("tel.m.pendingUsers", "가입 대기자 수"), telemetry.behaviour.pending_users, false],
+                  [t("tel.m.oldestPendingUser", "최장 가입 대기 시간"), telemetry.behaviour.oldest_pending_user_ms, true],
                   [t("tel.m.sig", "서명 확인 실패"), telemetry.behaviour.signature_refusals, false],
                   [t("tel.m.rate", "요청 제한"), telemetry.behaviour.rate_limited, false],
                   [t("tel.m.egress", "전송 규칙으로 차단"), telemetry.behaviour.egress_refusals, false],
                   [t("tel.m.accepted", "수락한 작업"), telemetry.behaviour.accepted, false],
-                ] as const).map(([label, metric, isElapsed]) => (
-                  <div
-                    key={label}
-                    style={{ padding: "12px 14px", background: "var(--color-bg-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}
-                  >
-                    <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>{label}</div>
-                    {metric.value === null ? (
-                      <div data-testid="metric-unmeasured" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }} title={metric.unavailable}>
-                        {t("common.unmeasured", "— 미측정")}
-                      </div>
-                    ) : (
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.15rem", fontWeight: 700 }}>
-                        {isElapsed ? formatElapsed(metric.value, language) : metric.value}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                ] as const).map(([label, metric, isElapsed]) => {
+                  // A pre-v0.33.0 or malformed response can omit either user
+                  // queue field at runtime even though the current contract
+                  // requires both. Absence is not a measured zero.
+                  const value = metric?.value;
+                  return (
+                    <div
+                      key={label}
+                      style={{ padding: "12px 14px", background: "var(--color-bg-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}
+                    >
+                      <div style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>{label}</div>
+                      {value == null ? (
+                        <div data-testid="metric-unmeasured" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }} title={metric?.unavailable}>
+                          {t("common.unmeasured", "— 미측정")}
+                        </div>
+                      ) : (
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: "1.15rem", fontWeight: 700 }}>
+                          {isElapsed ? formatElapsed(value, language) : value}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -1245,18 +1245,16 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   // SC-SCR10-01: the behavioural metrics § D-1 chose, and the zero they must
   // not invent
-  it("[SC-SCR10-01] draws the six behavioural metrics and marks unread ones as unmeasured", async () => {
+  it("[SC-SCR10-01] draws the eight behavioural metrics and marks unread ones as unmeasured", async () => {
     await withPage("/platform/telemetry", async ({ page }) => {
       const panel = page.locator("[data-testid='behaviour-metrics']");
       await panel.waitFor({ state: "visible", timeout: 10_000 });
 
       const said = (await panel.textContent()) ?? "";
-      // The six by the names the inventory gives them. Not a count of tiles —
-      // six tiles with the wrong labels would pass that.
-      // The six by `tel.m.*`, which the console rewrote from shorthand into
-      // what each number is. Not a count of tiles — six tiles with the wrong
+      // The eight by `tel.m.*`, which the console rewrote from shorthand into
+      // what each number is. Not a count of tiles — eight tiles with the wrong
       // labels would pass that.
-      for (const label of ["등록 대기", "가장 오래 기다린 시간", "서명 확인 실패", "요청 제한", "전송 규칙으로 차단", "수락한 작업"]) {
+      for (const label of ["등록 대기", "가장 오래 기다린 시간", "가입 대기자 수", "최장 가입 대기 시간", "서명 확인 실패", "요청 제한", "전송 규칙으로 차단", "수락한 작업"]) {
         expect({ label, drawn: said.includes(label) }).toEqual({ label, drawn: true });
       }
 
@@ -1297,6 +1295,8 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
             counting_since: null,
             pending_keys: { value: 4 },
             oldest_pending_ms: { value: null, unavailable: "message store could not be read" },
+            pending_users: { value: 2 },
+            oldest_pending_user_ms: { value: 5_400_000 },
             signature_refusals: { value: null, unavailable: "hub did not answer /api/v1/limits" },
             rate_limited: { value: null, unavailable: "hub did not answer /api/v1/limits" },
             egress_refusals: { value: null, unavailable: "hub did not answer /api/v1/limits" },
