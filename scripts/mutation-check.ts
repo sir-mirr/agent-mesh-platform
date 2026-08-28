@@ -1811,6 +1811,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["these steps pipe without pipefail"],
   },
   {
+    id: "the-pipefail-rule-reads-one-workflow",
+    defect:
+      "The rule that every piped step turns on `pipefail` goes back to reading `ci.yml` alone. A second workflow file is then exempt without saying so — and there is one, added the same day. A rule that looks at one file is a rule the next file does not have.",
+    file: "test/ci-mutation-job.test.ts",
+    from: "      if (!name.endsWith(\".yml\") && !name.endsWith(\".yaml\")) continue;",
+    to: "      if (name !== \"ci.yml\") continue;",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["the walk never reached a step this list exempts"],
+  },
+  {
+    id: "the-probe-quietly-acquires-the-guard-it-demonstrates",
+    defect:
+      "The step whose whole purpose is to pipe *without* `pipefail` — the runner probe's subject — gets the guard, so the probe measures two guarded pipelines and reports that both fail, which is not the question. An exemption that stops being needed and is not noticed is how a measurement becomes a ritual.",
+    file: ".github/workflows/pipefail-probe.yml",
+    from: "        run: false | tee /dev/null",
+    to: "        run: set -o pipefail; false | tee /dev/null",
+    suite: "test/ci-mutation-job.test.ts",
+    expect: ["these are listed as demonstrating the missing pipefail and no longer do"],
+  },
+  {
     id: "the-mechanism-check-stops-using-the-shell-ci-uses",
     defect:
       "The case that measures what a missing `pipefail` costs runs its probe under a shell that already has it, so it measures nothing and passes. The workflow check beside it would then be guarding a mechanism nobody has run — which is the exact state the false comment left this repository in on 2026-08-28.",

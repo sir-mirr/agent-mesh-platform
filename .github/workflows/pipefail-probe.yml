@@ -1,0 +1,54 @@
+# **What a pipe does to an exit code on this runner.**
+#
+# Not part of CI. It runs only when somebody dispatches it, and it exists to
+# measure one thing that a comment in `ci.yml` asserted for months without
+# anybody running it: that `pipefail` is on by default in a `run:` step. It is
+# not, and the cost was the whole nightly mutation pass reporting success while
+# two shards said otherwise.
+#
+# `test/ci-mutation-job.test.ts` measures the same mechanism under `bash -e`
+# locally. That leaves one assumption it cannot check — that a step with no
+# `shell:` is `bash -e` on a GitHub runner. This closes it, on the runner.
+#
+# Both probes are `continue-on-error`, so their failing is data rather than a
+# red run. The step after them is the one that decides.
+name: pipefail probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # The defect, on purpose: a failing command piped into `tee`, in a step
+      # written the ordinary way. `pipedSteps` in the test suite knows about
+      # this one step by name and checks that it still has no `pipefail` — a
+      # demonstration that quietly got fixed would demonstrate nothing.
+      - id: bare
+        name: A failing pipeline in a step with no shell
+        continue-on-error: true
+        run: false | tee /dev/null
+
+      - id: guarded
+        name: The same pipeline with pipefail
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          false | tee /dev/null
+
+      - name: What the runner did
+        run: |
+          echo "bare=${{ steps.bare.outcome }}  guarded=${{ steps.guarded.outcome }}"
+          if [ "${{ steps.bare.outcome }}" != "success" ]; then
+            echo "a bare pipeline reported its failure here — the default shell has changed, and the pipefail this repository now writes everywhere is belt without braces rather than the load-bearing thing it was"
+            exit 1
+          fi
+          if [ "${{ steps.guarded.outcome }}" != "failure" ]; then
+            echo "pipefail did not propagate the failure on this runner — every piped step in ci.yml is trusting something that does not hold"
+            exit 1
+          fi
+          echo "measured: without pipefail a failing pipeline succeeds; with it, it fails"

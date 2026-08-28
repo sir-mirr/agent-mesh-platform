@@ -19,7 +19,7 @@
  * and the other half never, and every job is green.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { runChild } from "./child-output.ts";
@@ -64,8 +64,59 @@ export function pipedSteps(workflow: string): Array<{ name: string; pipefail: bo
   return steps;
 }
 
+/**
+ * The one step allowed to pipe without `pipefail`, and why.
+ *
+ * `pipefail-probe.yml` measures what the absence costs, on a real runner. Its
+ * first step *is* the defect, so requiring `pipefail` there would delete the
+ * measurement. Keyed by workflow and step, and checked in both directions
+ * below: a demonstration that quietly acquired a guard demonstrates nothing.
+ */
+const DEMONSTRATES_THE_DEFECT: Record<string, string> = {
+  "pipefail-probe.yml :: A failing pipeline in a step with no shell":
+    "the probe's subject — it exists to show that this step reports success while its command fails",
+};
+
 describe("a command whose exit code has somewhere to get lost", () => {
-  test("every piped step turns on pipefail", () => {
+  test("every piped step in every workflow turns on pipefail", () => {
+    // **Every workflow, not just `ci.yml`.** A rule that looks at one file is
+    // a rule the next file does not have.
+    const dir = join(import.meta.dir, "..", ".github", "workflows");
+    const offenders: string[] = [];
+    const seen: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".yml") && !name.endsWith(".yaml")) continue;
+      for (const step of pipedSteps(readFileSync(join(dir, name), "utf8"))) {
+        const key = `${name} :: ${step.name}`;
+        seen.push(key);
+        if (!step.pipefail && !(key in DEMONSTRATES_THE_DEFECT)) offenders.push(key);
+      }
+    }
+    expect(seen.length, "no piped step was found in any workflow, so the check below is about nothing").toBeGreaterThan(0);
+    // **The exempt steps have to be among what was read.** Narrowing the walk
+    // to one file leaves the offender list empty for the honest reason and for
+    // the dishonest one alike; this separates them.
+    expect(
+      Object.keys(DEMONSTRATES_THE_DEFECT).filter((key) => !seen.includes(key)),
+      "the walk never reached a step this list exempts, so the list is excusing something the scan cannot see",
+    ).toEqual([]);
+    expect(
+      offenders,
+      "these steps pipe without pipefail, so their exit code is the last command's and the step cannot fail",
+    ).toEqual([]);
+  });
+
+  test("the step that demonstrates the defect still demonstrates it", () => {
+    const dir = join(import.meta.dir, "..", ".github", "workflows");
+    const stale = Object.keys(DEMONSTRATES_THE_DEFECT).filter((key) => {
+      const [file, step] = key.split(" :: ");
+      const found = pipedSteps(readFileSync(join(dir, file!), "utf8")).find((s) => s.name === step);
+      return found === undefined || found.pipefail;
+    });
+    expect(stale, "these are listed as demonstrating the missing pipefail and no longer do").toEqual([]);
+  });
+
+  test("ci.yml's own piped steps turn on pipefail", () => {
     // **Measured, not feared.** On the night of 2026-08-28 the mutation step
     // was `bun run mutation-check … | tee shard.log` with no `pipefail`, and a
     // comment beside it asserting that pipefail was on by default. It is not:
