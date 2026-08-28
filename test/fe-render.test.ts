@@ -929,6 +929,91 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     await context.close();
   });
 
+  // SC-REMINDER-01: one held slot, its exact key, and the persisted decision
+  // returned by the same combined read.
+  it("[SC-REMINDER-01] decides the exact overdue slot and draws the persistent record", async () => {
+    const context = await newContext();
+    await context.addCookies([{ name: "mesh_token", value: jwtToken, url: viteBaseUrl }]);
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+
+    const slot = "2026-08-29T01:02:03.000Z";
+    const posts: Array<Record<string, unknown>> = [];
+    await page.route("**/api/v1/admin/reminders/overdue**", async (route) => {
+      const request = route.request();
+      if (request.method() === "POST") {
+        const posted = request.postDataJSON() as Record<string, unknown>;
+        posts.push(posted);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            reminder_id: "once-browser",
+            ...posted,
+            decided_at: "2026-08-29T03:00:00.000Z",
+            decided_by: "admin",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          reminders: posts.length === 0 ? [{
+            reminder_id: "once-browser",
+            agent_id: "agent-alpha",
+            scheduled_at: slot,
+            held_since: "2026-08-29T02:03:04.000Z",
+            overdue_ms: 3_661_000,
+            status: "active",
+          }] : [],
+          decisions: posts.length === 0 ? [] : [{
+            reminder_id: "once-browser",
+            scheduled_at: slot,
+            decision: posts[0]!.decision,
+            approval_ref: posts[0]!.approval_ref,
+            decided_at: "2026-08-29T03:00:00.000Z",
+            decided_by: "admin",
+          }],
+        }),
+      });
+    });
+
+    try {
+      const route = "/platform/reminders/overdue";
+      await page.goto(`${viteBaseUrl}${route}`, { waitUntil: "networkidle" });
+      await settled(page);
+      await shows(page, "once-browser");
+      const heldPanel = page.locator('[data-testid="overdue-held-list"]');
+      const heldText = await heldPanel.innerText();
+      expect(heldText).toContain(slot);
+      expect(heldText).toContain("1시간 1분");
+
+      await heldPanel.getByRole("textbox").fill("APPROVED: browser-72");
+      await heldPanel.getByRole("button", { name: "Replay" }).click();
+      await shows(page, "APPROVED: browser-72");
+
+      expect(posts).toEqual([{
+        scheduled_at: slot,
+        decision: "replay",
+        approval_ref: "APPROVED: browser-72",
+      }]);
+      const history = await page.locator('[data-testid="overdue-decision-history"]').innerText();
+      expect(history).toContain("Replay");
+      expect(history).toContain("admin");
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close().catch(() => {});
+    }
+  });
+
   // SCR-11 / SC-RENDER-11: Tenant Traffic Page Live Render with Rows > 0 (D-31)
   it("[SC-RENDER-11] renders /platform/tenants with isolation table rows", async () => {
     const { page, context, errors } = await createAuthedPage("/platform/tenants");
@@ -3163,6 +3248,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     "/creator/register",
     "/platform",
     "/platform/telemetry",
+    "/platform/reminders/overdue",
     "/platform/tenants",
     "/platform/tenant-directory",
     "/tenant/egress-acl",

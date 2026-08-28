@@ -22,6 +22,7 @@ import { RegisterAgentPage } from "@/pages/creator/RegisterAgentPage.tsx";
 // Platform Suite Pages
 import { PlatformOverviewPage } from "@/pages/platform/PlatformOverviewPage.tsx";
 import { TelemetryPage } from "@/pages/platform/TelemetryPage.tsx";
+import { ReminderOverduePage } from "@/pages/platform/ReminderOverduePage.tsx";
 import { TenantTrafficPage } from "@/pages/platform/TenantTrafficPage.tsx";
 import { UserAdminPage } from "@/pages/platform/UserAdminPage.tsx";
 import { TenantManagementPage } from "@/pages/platform/TenantManagementPage.tsx";
@@ -67,6 +68,10 @@ export function App() {
               {/* 2. 실시간 서버 모니터링 콘솔 (인증된 사용자/운영자) */}
               <Route path="/platform" element={<PlatformOverviewPage />} />
               <Route path="/platform/telemetry" element={<TelemetryPage />} />
+              {/* The page itself must receive and draw the read route's 403.
+                  A capability guard here would redirect before the server could
+                  distinguish "nothing is held" from "you may not inspect it". */}
+              <Route path="/platform/reminders/overdue" element={<ReminderOverduePage />} />
               <Route
                 path="/platform/users"
                 element={

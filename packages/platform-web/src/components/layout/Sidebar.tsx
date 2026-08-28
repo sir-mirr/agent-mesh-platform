@@ -163,6 +163,15 @@ export function Sidebar({
           // gates, so the honest form is a partial render, not one name.
         },
         {
+          label: t("nav.overdue", "지연 리마인더"),
+          description: t("nav.overdue.desc", "억류된 일회성 슬롯의 replay 또는 skip 결정"),
+          href: "/platform/reminders/overdue",
+          icon: "⏳",
+          // Session-only like the route. The page asks the read endpoint so its
+          // refusal remains a visible refusal; decision controls are separately
+          // derived from `reminder.decide` and the POST's own response.
+        },
+        {
           label: t("nav.tenants", "그룹 메시지 현황"),
           description: t("nav.tenants.desc", "그룹별 수신·발신 주체와 메일함 경유 건수"),
           href: "/platform/tenants",

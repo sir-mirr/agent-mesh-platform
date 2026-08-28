@@ -1,12 +1,13 @@
 # Agent Mesh Platform Web (FE) — E2E Test & Coverage Inventory (T-150)
 
-> **문서 목적**: 14개 전체 화면, 위젯, 표시 데이터, 백엔드 API 소스, 상태별 기대 동작 및 E2E 시나리오 매핑을 정의하여 누락 없는 100% 전수 커버리지의 분모를 확정합니다.
+> **문서 목적**: 16개 전체 화면, 위젯, 표시 데이터, 백엔드 API 소스, 상태별 기대 동작 및 E2E 시나리오 매핑을 정의하여 누락 없는 100% 전수 커버리지의 분모를 확정합니다.
 
 ---
 
 ## 0. 이 문서가 분모인 것과 아닌 것
 
-**분모는 화면 × 위젯입니다.** `SC-SCR01`~`SC-SCR14` 와 `GL-*` 가 그것이고, 그
+**분모는 화면 × 위젯입니다.** `SC-SCR01`~`SC-SCR14` · `SC-TDIR-*` ·
+`SC-REMINDER-*` 와 `GL-*` 가 그것이고, 그
 축에서는 실제로 전수에 가깝습니다.
 
 **축(axis) 시나리오는 여기 없습니다.** 한 화면이 아니라 모든 화면을 가로지르는
@@ -36,6 +37,7 @@
 | `SC-USER-*` | **사람을 들이고 접근을 거두는 길** — 임시 비번을 한 번만 · 바꾸기 전엔 그것 말고 아무것도 · 권한 없이 시작 · 부여하면 열리고 회수하면 닫힌다 · 들이는 화면이 한 번만 보여주고 서버의 거절을 그대로 옮긴다 · 역할·권한 축은 서버가 말한 것 · 계정 생성 네 필드와 작업이 한 카드 안에서 정렬되는가 · 비활성화가 로그인까지 막고 재활성화가 복구하며 자기 자신·복구 계정 거절을 구분하는가 | 10 |
 | `SC-PWCHG-*` | **첫 로그인이 비밀번호 변경 말고 아무것도 못 하는가** — 막는 것은 서버이고 화면은 말한다 · **그 화면이 읽히는가** | 5 |
 | `SC-INVENT-*` | **서버가 안 보낸 필드를 값으로 그리지 않는가** — 같은 필드를 보낸 판·뺀 판 둘로 잰다 · **한 라벨 아래 다른 표의 수를 답하지 않는가** · **요약 라우트의 행을 메시지로 지어내지 않는가** · **서버가 발급하는 값을 클라이언트가 주사위로 만들지 않는가**(소스 래칫) | 8 |
+| `SC-REMINDER-*` | **스케줄러가 억류한 일회성 슬롯을 보고 결정할 수 있는가** — 목록이 발행한 슬롯 키를 그대로 replay/skip에 쓰고, 결정·결정자·근거를 같은 화면의 영속 기록으로 다시 읽는가 | 1 |
 | `SC-RENDER-*` | **열네 화면이 실제로 그려지는가** — 화면당 하나씩, 살아 있는 데이터와 페이지 오류 0 으로. 다른 축이 *무엇을 말하는가* 를 재는 동안 이것은 *그리기는 하는가* 를 잰다 | 14 |
 | `SC-BELL-*` | 알림 배지 수가 대기 중인 키 큐와 맞는가 | 1 |
 | `SC-THEME-*` | 테마 CSS 토큰이 존재하는가 | 1 |
@@ -73,15 +75,15 @@
 |---|---|---|---|---|---|---|---|
 | **GL-00** | 하네스 신뢰성 전제조건 | `ready.platform.dirty` | `ready.platform.dirty === true` 시 테스트 실행 즉시 거부 (재현 불가능한 dirty 트리 측정 방지) | - | Harness Guard | `SC-HARNESS-01` | fail-fast 무효화 가드 |
 | **GL-01** | 세션 인증 & 쿠키 주입 | `/auth/login`, `/auth/me` | 302 리다이렉트 및 `mesh_token` 쿠키 설정. 유효 세션 없을 시 `/login` 이동 | "로그인" / "Login" | Public | `SC-AUTH-01` | 자동 세션 복구 |
-| **GL-02** | 미인증 라우트 가드 | `ProtectedRoute.tsx` | 미로그인 사용자가 보호된 URL 접근 시 `/login` 강제 이동 | - | All Protected | `SC-AUTH-02` | 14개 화면 보호 |
+| **GL-02** | 미인증 라우트 가드 | `ProtectedRoute.tsx` | 미로그인 사용자가 보호된 URL 접근 시 `/login` 강제 이동 | - | All Protected | `SC-AUTH-02` | 16개 화면 보호 |
 | **GL-03** | Capability 권한 가드 | `ProtectedRoute.tsx` | 필수 권한(예: `role.grant`, `audit.read.metadata`) 미보유 시 접근 거부 화면 렌더링 | "권한 부족" / "Forbidden" | RBAC Caps | `SC-AUTH-03` | SPEC § 11.3 |
 | **GL-04** | 상단 알림 벨 (`NotificationBell`) | `GET /api/v1/admin/keys/pending`, SSE `/stream` | 대기 0건일 때 `0` 배지(숨김), 대기 n건일 때 `n` 배지 표시 및 페어링 모달 연동 | "대기 n건" / "Pending n" | All Authenticated | `SC-BELL-01` | T-134 고정 목 박멸 확인 |
-| **GL-05** | 다국어(i18n) 스위처 | `I18nContext.tsx` | 한국어 ⇄ 영어 실시간 전환 시 14개 화면 전 라벨 동기화 | "한국어" ⇄ "English" | Public | `SC-I18N-01` | T-139, T-140 확인 |
+| **GL-05** | 다국어(i18n) 스위처 | `I18nContext.tsx` | 한국어 ⇄ 영어 실시간 전환 시 16개 화면 전 라벨 동기화 | "한국어" ⇄ "English" | Public | `SC-I18N-01` | T-139, T-140 확인 |
 | **GL-06** | 다크 / 라이트 테마 | `index.css`, CSS Tokens | CSS 변수 토글 시 UI 시인성 및 콘트라스트 보존 | - | Public | `SC-THEME-01` | 토큰 시스템 검증 |
 
 ---
 
-## 2. 15개 화면별 전수 인벤토리 매트릭스 (15 Screens x Widgets x States)
+## 2. 16개 화면별 전수 인벤토리 매트릭스 (16 Screens x Widgets x States)
 
 ### 1) `/login` (로그인 화면)
 - **화면 ID**: `SCR-01`
@@ -304,11 +306,24 @@
 
 ---
 
+### 16) `/platform/reminders/overdue` (지연 리마인더 결정)
+- **화면 ID**: `SCR-16`
+- **라우트**: `/platform/reminders/overdue`
+- **권한 요건**: 라우트는 세션만 요구하고 `GET`의 `reminder.read.held` 거절을 화면에 그대로 그립니다. 결정 입력·버튼은 별도 `reminder.decide`가 있어야 표시되며, POST의 403도 동작을 제거하는 서버 기준입니다.
+- **데이터 소스**: `GET /api/v1/admin/reminders/overdue`, `POST /api/v1/admin/reminders/overdue/{id}/decision`
+
+| 위젯 / 요소 | 표시 데이터 | 소스 API | 상태별 기대 동작 (Loading / Error / Empty / Success) | 시나리오 ID |
+|---|---|---|---|---|
+| 억류 슬롯과 결정 이력 | reminder id, agent, `scheduled_at`, `held_since`, 지연 시간, 상태 · 결정, 결정자, 근거, 결정 시각 | `fetchOverdueReminders()` | • 로딩: 아직 목록을 단정하지 않음<br>• 403: 빈 목록이 아니라 읽기 거절<br>• 무응답: 서버가 답하지 않았다고 표시<br>• 정상: 억류와 이미 기록된 결정을 한 응답·한 화면에 표시 | `SC-REMINDER-01` |
+| Replay / Skip 결정 | 목록 행의 슬롯 키와 `APPROVED:` 근거 | `decideOverdueReminder()` | • 목록이 준 `scheduled_at`을 바꾸지 않고 POST<br>• replay와 skip을 서로 다른 값으로 전송<br>• 성공 뒤 합친 목록을 다시 읽어 결정·결정자·근거를 영속 표시 | `SC-REMINDER-01` |
+
 ---
 
-## 3. 프론트엔드 실 렌더링 검증 매트릭스 (14 Screens Live DOM/Render Verification)
+---
 
-> **검증 원칙**: 백엔드 API 응답 검증에 그치지 않고, 14개 전 화면의 컴포넌트 렌더링, `#root` DOM 생성, 콘솔/런타임 에러 부재, 실측 텍스트 출력을 보증합니다.
+## 3. 프론트엔드 실 렌더링 검증 매트릭스 (Live DOM/Render Verification)
+
+> **검증 원칙**: 백엔드 API 응답 검증에 그치지 않고, 16개 전 화면의 컴포넌트 렌더링, `#root` DOM 생성, 콘솔/런타임 에러 부재, 실측 텍스트 출력을 보증합니다.
 
 | 화면 ID | 라우트 | 주요 렌더 컴포넌트 | 최소 검증 기준 (DOM / Errors / Texts) | 시나리오 ID |
 |---|---|---|---|---|
@@ -326,13 +341,15 @@
 | `SCR-12` | `/tenant/egress-acl` | `TenantEgressAclPage` | 방향성 Egress ACL 매트릭스 그리드, ALLOW/DENY 토글 버튼 렌더 | `SC-RENDER-12` |
 | `SCR-13` | `/tenant/audits` | `AuditLogsPage` | 보안 감사 스트림 테이블, 프라이버시 리댁션 배지, 갱신 버튼 렌더 | `SC-RENDER-13` |
 | `SCR-14` | `/tenant/rbac` | `RbacManagementPage` | RBAC 관리 테이블, Capability 토글 칩, 조직원 목록 렌더 | `SC-RENDER-14` |
+| `SCR-15` | `/platform/tenant-directory` | `TenantManagementPage` | 테넌트 목록, 기본 테넌트 보호 상태와 사유 렌더 | `SC-TDIR-01` |
+| `SCR-16` | `/platform/reminders/overdue` | `ReminderOverduePage` | 억류 슬롯·지연 시간 렌더, exact slot replay와 영속 결정 기록 재조회 | `SC-REMINDER-01` |
 
 ---
 
 ## 4. 요약 및 시나리오 분모 통계
 
-- **대상 화면**: 총 15개
-- **이 문서가 등록한 시나리오 ID**: **61개**
+- **대상 화면**: 총 16개
+- **이 문서가 등록한 시나리오 ID**: **62개**
 
 > 여기 있던 *기능/위젯 24 · API 39 · 렌더 14 · 총합 53* 을 지웠습니다.
 > **네 숫자 중 셋이 틀려 있었습니다**(실측 위젯 64 · ID 54). 이 절의 제목이
@@ -351,4 +368,4 @@
   - [x] 로딩 상태 (Loading / Skeleton)
   - [x] 권한 가드 / 인가 분기 (`audit.read.content`, `role.grant`, `key.approve` 등)
   - [x] 다국어(i18n) 양방향 일치 (KO / EN)
-  - [x] 실 렌더링 & DOM 트리 무결성 (14 Screens Render Integrity)
+  - [x] 실 렌더링 & DOM 트리 무결성 (16 Screens Render Integrity)

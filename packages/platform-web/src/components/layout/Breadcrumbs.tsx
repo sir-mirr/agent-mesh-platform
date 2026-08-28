@@ -71,6 +71,12 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           { label: t("bc.platform", "실시간 서버 모니터링"), href: "/platform" },
           { label: t("bc.telemetry", "운영 동작 지표") },
         ];
+      case "/platform/reminders/overdue":
+        return [
+          { label: t("bc.home", "홈"), href: "/" },
+          { label: t("bc.platform", "실시간 서버 모니터링"), href: "/platform" },
+          { label: t("bc.overdue", "지연 리마인더 결정") },
+        ];
       case "/platform/tenants":
         return [
           { label: t("bc.home", "홈"), href: "/" },

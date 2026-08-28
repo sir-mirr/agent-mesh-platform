@@ -13278,6 +13278,231 @@ export const MUTATIONS: Mutation[] = [
     expect: ["asks once when React StrictMode replays the mount effect"],
   },
   {
+    id: "the-access-record-calls-the-service-the-reader",
+    defect:
+      "The person field is filled from recorded_by.identity. Every HTTP access then names agent-mesh-http as the reader, erasing the operator whose capability authorised the read.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.reader", "Reader")}: {item.identity ?? "—"}',
+    to: '{t("audit.access.reader", "Reader")}: {item.recordedByIdentity ?? "—"}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-hides-the-reading-service",
+    defect:
+      "The service field repeats the operator. A row still contains two plausible names, but no longer says which HTTP service wrote the observation independently of the person who read.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.recorder", "Reading service")}: {item.recordedByIdentity ?? "—"}',
+    to: '{t("audit.access.recorder", "Reading service")}: {item.identity ?? "—"}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-forgets-the-requested-scope",
+    defect:
+      "change.query is discarded before rendering. A list read then says only that a list was reached and loses the filters that answer what the operator actually requested.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "  const query = Object.entries(item.readQuery ?? {});",
+    to: "  const query: Array<[string, unknown]> = [];",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "my-access-records-open-themselves-by-default",
+    defect:
+      "The native disclosure is born open. The current viewer's own reads take over the trail instead of starting as the explicit, reversible 'My accesses N' group the decision requires.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '        <details\n          data-testid="audit-own-accesses"',
+    to: '        <details open\n          data-testid="audit-own-accesses"',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "my-access-records-vanish-instead-of-collapsing",
+    defect:
+      "The self-access group is filtered out of the render altogether. The quiet screen looks cleaner by recreating the unobservable read this log exists to prevent.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "      {!isError && !isLoading && ownAccesses.length > 0 && (",
+    to: "      {false && !isError && !isLoading && ownAccesses.length > 0 && (",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-replaces-store-time-with-event-time",
+    defect:
+      "The access row reports occurred_at where the decision requires stored_at. A delayed write then answers when the payload claimed to happen, not when the audit store actually accepted the observation.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.storedAt", "Stored at")}: {item.storedAt}',
+    to: '{t("audit.access.storedAt", "Stored at")}: {item.timestamp}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-single-access-record-drops-the-event-id",
+    defect:
+      "A single-record read is labelled only as a generic audit event. It remains visually different from a list read but no longer answers which event change.read says was reached.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: ': `${t("audit.access.one", "single audit event")}: ${item.readTarget ?? "—"}`}',
+    to: ': t("audit.access.one", "single audit event")}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-overdue-screen-hides-the-held-slot",
+    defect:
+      "The held row replaces scheduled_at with held_since. Both are valid timestamps and nothing throws, but the operator no longer sees the slot key their replay or skip will target.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: '<span data-testid="overdue-slot">{row.scheduled_at}</span>',
+    to: '<span data-testid="overdue-slot">{row.held_since}</span>',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "2026-08-29T01:02:03.000Z"],
+  },
+  {
+    id: "the-overdue-screen-forgets-how-late-the-slot-is",
+    defect:
+      "A measured overdue duration is drawn as unmeasured. The reminder remains visible and looks safe to inspect, but the screen removes the fact an operator uses to prioritise it.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: '{formatOverdue(row.overdue_ms, language)}',
+    to: '{formatOverdue(null, language)}',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "1d 1h 1m"],
+  },
+  {
+    id: "the-overdue-screen-drops-the-decision-history",
+    defect:
+      "The combined response is read but its decisions array is discarded at render time. A replay or skip then vanishes from the only screen meant to show that the silent hold was answered.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "              data={state.decisions}",
+    to: "              data={[]}",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "recordedDecision"],
+  },
+  {
+    id: "malformed-overdue-history-is-called-empty",
+    defect:
+      "The combined read silently replaces an absent decisions array with an empty one. A malformed server response then looks exactly like a scheduler with no recorded decisions.",
+    file: "packages/platform-web/src/api/reminders.ts",
+    from: '    decisions: listOf<OverdueDecisionRecord>(response.decisions, OVERDUE_ROUTE, "decisions"),',
+    to: '    decisions: listOf<OverdueDecisionRecord>(response.decisions ?? [], OVERDUE_ROUTE, "decisions"),',
+    suite: "packages/platform-web/src/api/reminders.test.ts",
+    expect: ["refuses to hide a malformed decision history behind an empty list", "'decisions' array"],
+  },
+  {
+    id: "an-overdue-replay-targets-the-hold-time-instead-of-the-slot",
+    defect:
+      "The decision POST sends held_since as scheduled_at. The value is a well-formed instant, so request-shape validation passes, but it names a slot the operator never selected and the server answers NO_SUCH_HOLD.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "        scheduled_at: row.scheduled_at,",
+    to: "        scheduled_at: row.held_since,",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["posts replay with the exact listed scheduled_at and then draws the persisted record", "scheduled_at"],
+  },
+  {
+    id: "an-overdue-replay-is-posted-as-skip",
+    defect:
+      "Both action buttons now send skip. The POST still succeeds and the screen refreshes, leaving a permanent skip record for an operator who explicitly chose delivery.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "        decision,\n        approval_ref: approvalRef,",
+    to: '        decision: "skip",\n        approval_ref: approvalRef,',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["posts replay with the exact listed scheduled_at and then draws the persisted record", "replay"],
+  },
+  {
+    id: "an-overdue-skip-is-posted-as-replay",
+    defect:
+      "The skip control calls replay. The original content is then delivered even though the operator chose the one decision whose meaning is that it never arrives.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: 'onClick={() => void submit(row, "skip")}',
+    to: 'onClick={() => void submit(row, "replay")}',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["posts skip as skip instead of folding it into replay", "skip"],
+  },
+  {
+    id: "the-overdue-screen-posts-an-empty-approval",
+    defect:
+      "The client-side substance check is disabled. A blank, a bare APPROVED: prefix, and an unprefixed string all leave the browser even though none can justify releasing somebody else's reminder.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "    if (!hasSubstantiveApproval(approvalRef)) {",
+    to: "    if (false) {",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["blocks a blank, bare-prefix, or unprefixed approval before any POST", '"posts": 0'],
+  },
+  {
+    id: "an-empty-approval-ref-looks-like-a-generic-write-failure",
+    defect:
+      "The server's EMPTY_APPROVAL_REF code stops reaching its user-error branch. A well-formed refusal about missing substance is reported as an undifferentiated failed write, so the operator is not told what to correct.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "      if (error instanceof ApiError && error.code === HTTP_ADMIN_ERROR.EMPTY_APPROVAL_REF) {",
+    to: "      if (false) {",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws EMPTY_APPROVAL_REF as a user error rather than a network failure", "substantive approval reference"],
+  },
+  {
+    id: "a-refused-overdue-read-looks-like-two-empty-lists",
+    defect:
+      "A 403 from the combined read is replaced with empty holds and empty decisions. The exact ambiguity D-810 removes returns: the operator cannot distinguish a quiet scheduler from a list they were forbidden to inspect.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: `      setFailure(failureKind(error));
+      setMissing(refusedCapability(error));
+      setState(null);`,
+    to: `      setFailure(null);
+      setMissing(refusedCapability(error));
+      setState({ reminders: [], decisions: [] });`,
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["calls a missing read capability a refusal, not an empty queue or an outage", '"refused": true'],
+  },
+  {
+    id: "the-overdue-screen-offers-decisions-without-the-capability",
+    defect:
+      "The local capability check is replaced with true. A read-only operator receives replay and skip controls that the server can only refuse, making the screen claim an authority the account does not hold.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE) && !decisionRefused;",
+    to: "  const canDecide = true;",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["removes every decision control when the account may read but may not decide", '"controls": false'],
+  },
+  {
+    id: "a-server-refused-decision-keeps-the-controls-live",
+    defect:
+      "The POST's 403 is drawn once but ignored when deciding whether actions remain. A stale session can keep issuing writes the server has authoritatively said this account may not make.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE) && !decisionRefused;",
+    to: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE);",
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["uses the server's 403 as the final authority and removes stale controls", '"controls": false'],
+  },
+  {
+    id: "an-overdue-decision-forgets-its-approval",
+    defect:
+      "The history row replaces approval_ref with a dash. A decision still looks recorded, but nobody can read back the substantive reason that made replay or skip accountable.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: '<span data-testid="overdue-recorded-approval">{row.approval_ref}</span>',
+    to: '<span data-testid="overdue-recorded-approval">—</span>',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "APPROVED: incident-71"],
+  },
+  {
+    id: "an-overdue-decision-forgets-who-made-it",
+    defect:
+      "The history row always calls the decider unrecorded. The server's decided_by survives on the wire but the screen removes the person who can be asked about the decision.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: '            {row.decided_by ?? t("overdue.decider.unknown", "결정자 미기록")}',
+    to: '            {t("overdue.decider.unknown", "결정자 미기록")}',
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "operator-kim"],
+  },
+  {
+    id: "a-recorded-overdue-decision-is-never-read-back",
+    defect:
+      "A successful write stops refreshing the combined list. The decision exists on the server but the held row remains actionable and the persistent decision, decider, and approval never appear on screen.",
+    file: "packages/platform-web/src/pages/platform/ReminderOverduePage.tsx",
+    from: `      setDrafts((current) => ({ ...current, [key]: "" }));
+      await load(false);`,
+    to: `      setDrafts((current) => ({ ...current, [key]: "" }));`,
+    suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
+    expect: ["posts replay with the exact listed scheduled_at and then draws the persisted record", "replay"],
+  },
+  {
     id: "a-torn-down-agent-returns-to-the-group-assignment-picker",
     defect:
       "The group assignment caller switches from the callable projection back to registry history. The modal then offers a torn-down identity even though the hub will never admit or address that name again.",

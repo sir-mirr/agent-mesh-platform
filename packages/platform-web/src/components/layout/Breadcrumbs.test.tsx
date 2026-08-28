@@ -161,6 +161,7 @@ const ROUTES: Array<[string, Array<[string, string | null]>]> = [
   ["/creator/register", [["bc.home", "/"], ["bc.studio", "/creator"], ["bc.register", null]]],
   ["/platform", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.server", null]]],
   ["/platform/telemetry", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.telemetry", null]]],
+  ["/platform/reminders/overdue", [["bc.home", "/"], ["bc.platform", "/platform"], ["bc.overdue", null]]],
   ["/platform/tenants", [["bc.home", "/"], ["bc.governance", "/platform/tenants"], ["bc.tenants", null]]],
   ["/platform/tenant-directory", [["bc.home", "/"], ["bc.governance", "/platform/tenant-directory"], ["bc.tenantDirectory", null]]],
   ["/platform/users", [["bc.home", "/"], ["bc.governance", "/platform/users"], ["bc.users", null]]],

@@ -76,6 +76,7 @@ const UNGATED = [
   "/creator/register",
   "/platform",
   "/platform/telemetry",
+  "/platform/reminders/overdue",
 ];
 
 /** Each guarded destination and the one capability that reveals it. */

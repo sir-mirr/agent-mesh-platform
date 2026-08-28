@@ -19,6 +19,13 @@ export interface AuditEventItem {
   identity: string | null;
   actor: string | null;
   readTarget: string | null;
+  /** The query the operator asked for, not the rows the server returned. */
+  readQuery: Record<string, unknown> | null;
+  /** When the audit store accepted the event. Access-log UI must use this. */
+  storedAt: string;
+  /** The service that wrote the record, kept separate from `identity`. */
+  recordedByKind: AuditRecorderKind | null;
+  recordedByIdentity: string | null;
   changeFrom: string | null;
   changeTo: string | null;
   isMessage: boolean;
@@ -131,9 +138,13 @@ export async function fetchAuditEvents(filters: AuditEventFilters = {}): Promise
     // store took it) — stay in that order, because the first is the fact and
     // the second is the fallback.
     const timestamp = stringField(item.occurred_at, item.stored_at) ?? "—";
+    const storedAt = stringField(item.stored_at) ?? "—";
     const identity = stringField(item.identity, payload.identity, item.producer_id);
     const actor = stringField(payload.actor, identity);
     const change = isRecord(payload.change) ? payload.change : {};
+    const readQuery = isRecord(change.query) ? change.query : null;
+    const recordedByKind = item.recorded_by?.kind ?? null;
+    const recordedByIdentity = stringField(item.recorded_by?.identity);
     
     // The route parses `attestation` before sending it (`audit-query.ts`
     // `JSON.parse(row.attestation)`), so it arrives as an object or `null` and
@@ -178,6 +189,10 @@ export async function fetchAuditEvents(filters: AuditEventFilters = {}): Promise
       identity,
       actor,
       readTarget: typeof change.read === "string" ? change.read : null,
+      readQuery,
+      storedAt,
+      recordedByKind,
+      recordedByIdentity,
       changeFrom: typeof change.from === "string" ? change.from : null,
       changeTo: typeof change.to === "string" ? change.to : null,
       isMessage,
