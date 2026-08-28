@@ -1781,6 +1781,26 @@ export const MUTATIONS: Mutation[] = [
     expect: ["reads the commands inside a block step, not the pipe character"],
   },
   {
+    id: "a-run-nobody-could-watch-comes-back-as-a-zero",
+    defect:
+      "A child whose exit the runtime could not watch — `EBADF` out of `epoll_ctl`, twice on `main` — is reported as having succeeded. The child did run; this process lost the ability to be told how it ended, which is *measured nothing* and not *passed*. A silent zero here is a green test about a question nobody answered.",
+    file: "test/child-output.ts",
+    from: "    throw new Error(",
+    to: "    return 0; throw new Error(",
+    suite: "test/child-output.test.ts",
+    expect: ["refuses to invent a zero for a run nobody could observe"],
+  },
+  {
+    id: "every-spawn-failure-is-read-as-a-lost-watcher",
+    defect:
+      "The catch stops asking which error it caught, so a command that is not there, or a runtime that died for a reason worth seeing, is quietly treated as a watcher problem and waited out. A rule written for one errno that swallows all of them is how a narrow allowance becomes a blanket one.",
+    file: "test/child-output.ts",
+    from: "    if (!isEbadf(error)) throw error;",
+    to: "    if (false) throw error;",
+    suite: "test/child-output.test.ts",
+    expect: ["lets every other failure through untouched"],
+  },
+  {
     id: "a-suite-goes-back-to-reading-a-pipe",
     defect:
       "The sweep's own guard stops looking at the files it is for. Twenty-three call sites moved off `new Response(child.stdout)` because an `EBADF` out of that read failed `main`'s CI twice with the children running correctly, and nothing stopped the twenty-fourth from being written — a scan that reads no file passes over any repository at all.",

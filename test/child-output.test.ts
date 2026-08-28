@@ -17,7 +17,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runChild } from "./child-output.ts";
+import { awaitExit, runChild } from "./child-output.ts";
 
 /**
  * The two places a pipe is still the only thing that can answer.
@@ -34,6 +34,47 @@ const STILL_RUNNING: Record<string, string> = {
   "misconfigured-boot.test.ts": "waits for a service to say it came up, then kills it — the read is before the exit",
   "mutation-verdict.test.ts": "waits for the mutation to appear in `git status`, then kills the tool mid-plant",
 };
+
+describe("a child the runtime stopped being able to watch", () => {
+  /** A child that throws the CI failure out of `exited`, as bun does. */
+  const losing = (exitCode: number | null, pid = process.pid) => ({
+    exited: Promise.reject(Object.assign(new Error("EBADF: bad file descriptor, epoll_ctl"), { code: "EBADF" })),
+    exitCode,
+    pid,
+  });
+
+  test("takes the code the runtime did record, rather than failing a test about something else", async () => {
+    // The real event: the child ran, exited 7, and the parent lost the
+    // descriptor it was watching with. That is not a finding about the child.
+    expect(await awaitExit(losing(7, 1))).toBe(7);
+  });
+
+  test("waits for a pid that is still there before giving up on it", async () => {
+    // `exitCode` arrives late: null while the process is alive, then the code.
+    let polls = 0;
+    const child = {
+      exited: Promise.reject(Object.assign(new Error("EBADF"), { code: "EBADF" })),
+      get exitCode() {
+        return polls++ < 2 ? null : 3;
+      },
+      pid: process.pid,
+    };
+    expect(await awaitExit(child)).toBe(3);
+    expect(polls, "the code was taken without ever polling for it").toBeGreaterThan(1);
+  });
+
+  test("refuses to invent a zero for a run nobody could observe", async () => {
+    // The failure that must stay loud. A child whose pid is gone and whose
+    // code was never recorded is a run that measured nothing — reporting it as
+    // success is the shape this whole file exists against.
+    await expect(awaitExit(losing(null, 2 ** 30))).rejects.toThrow("measured nothing");
+  });
+
+  test("lets every other failure through untouched", async () => {
+    const other = { exited: Promise.reject(new Error("the command was not found")), exitCode: null, pid: 1 };
+    await expect(awaitExit(other)).rejects.toThrow("the command was not found");
+  });
+});
 
 describe("the sweep off pipes", () => {
   test("leaves a pipe only where the child is still running", () => {
