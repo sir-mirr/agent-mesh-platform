@@ -138,14 +138,20 @@ describe("overdue reminder read states", () => {
     expect(waiting).toContain(held.agent_id);
     expect(waiting).toContain(held.scheduled_at);
     expect(waiting).toContain(held.held_since);
-    expect(screen.getByTestId("overdue-duration").textContent).toBe("1d 1h 1m");
-
     const history = historySection().textContent ?? "";
     expect(history).toContain(recorded.reminder_id);
     expect(history).toContain(recorded.scheduled_at);
-    expect(screen.getByTestId("overdue-recorded-decision").getAttribute("data-decision")).toBe("skip");
-    expect(screen.getByTestId("overdue-recorded-approval").textContent).toBe(recorded.approval_ref);
-    expect(screen.getByTestId("overdue-recorded-decider").textContent).toBe(recorded.decided_by);
+    expect({
+      duration: screen.queryByTestId("overdue-duration")?.textContent ?? null,
+      recordedDecision: screen.queryByTestId("overdue-recorded-decision")?.getAttribute("data-decision") ?? null,
+      approval: screen.queryByTestId("overdue-recorded-approval")?.textContent ?? null,
+      decider: screen.queryByTestId("overdue-recorded-decider")?.textContent ?? null,
+    }).toEqual({
+      duration: "1d 1h 1m",
+      recordedDecision: "skip",
+      approval: recorded.approval_ref,
+      decider: recorded.decided_by,
+    });
   });
 
   it("calls a missing read capability a refusal, not an empty queue or an outage", async () => {
@@ -156,9 +162,11 @@ describe("overdue reminder read states", () => {
     });
     await mount();
 
-    expect(screen.queryByTestId("overdue-refused")).not.toBe(null);
-    expect(screen.queryByTestId("overdue-unreachable")).toBe(null);
-    expect(screen.queryByTestId("overdue-held-list")).toBe(null);
+    expect({
+      refused: screen.queryByTestId("overdue-refused") !== null,
+      unreachable: screen.queryByTestId("overdue-unreachable") !== null,
+      heldList: screen.queryByTestId("overdue-held-list") !== null,
+    }).toEqual({ refused: true, unreachable: false, heldList: false });
     expect(document.body.textContent).toContain(`${en("common.refusedRead")}.`);
     expect(document.body.textContent).not.toContain(CAPABILITY.REMINDER_READ_HELD);
   });
@@ -166,8 +174,10 @@ describe("overdue reminder read states", () => {
   it("calls no server answer unreachable rather than refused", async () => {
     overdueAnswer = () => { throw new TypeError("Failed to fetch"); };
     await mount();
-    expect(screen.queryByTestId("overdue-unreachable")).not.toBe(null);
-    expect(screen.queryByTestId("overdue-refused")).toBe(null);
+    expect({
+      unreachable: screen.queryByTestId("overdue-unreachable") !== null,
+      refused: screen.queryByTestId("overdue-refused") !== null,
+    }).toEqual({ unreachable: true, refused: false });
     expect(document.body.textContent).toContain(en("overdue.readFailed"));
   });
 
@@ -184,12 +194,19 @@ describe("the separate decision capability", () => {
     capabilities = [CAPABILITY.REMINDER_READ_HELD];
     await mount();
 
-    expect(screen.queryByTestId("overdue-decision-controls")).toBe(null);
-    expect(screen.queryByRole("textbox")).toBe(null);
-    expect(screen.queryByRole("button", { name: en("overdue.replay") })).toBe(null);
-    expect(screen.queryByRole("button", { name: en("overdue.skip") })).toBe(null);
-    expect(screen.getByTestId("overdue-decision-unavailable").textContent)
-      .toBe(en("overdue.decision.unavailable"));
+    expect({
+      controls: screen.queryByTestId("overdue-decision-controls") !== null,
+      textbox: screen.queryByRole("textbox") !== null,
+      replay: screen.queryByRole("button", { name: en("overdue.replay") }) !== null,
+      skip: screen.queryByRole("button", { name: en("overdue.skip") }) !== null,
+      notice: screen.queryByTestId("overdue-decision-unavailable")?.textContent ?? null,
+    }).toEqual({
+      controls: false,
+      textbox: false,
+      replay: false,
+      skip: false,
+      notice: en("overdue.decision.unavailable"),
+    });
   });
 
   it("uses the server's 403 as the final authority and removes stale controls", async () => {
@@ -201,10 +218,15 @@ describe("the separate decision capability", () => {
     fireEvent.click(within(heldRow()).getByRole("button", { name: en("overdue.replay") }));
     await settle();
 
-    expect(screen.getByTestId("overdue-action-error").textContent)
-      .toContain(en("overdue.decision.refused"));
-    expect(screen.queryByTestId("overdue-decision-controls")).toBe(null);
-    expect(screen.getByTestId("overdue-decision-unavailable")).not.toBe(null);
+    expect({
+      error: screen.queryByTestId("overdue-action-error")?.textContent ?? null,
+      controls: screen.queryByTestId("overdue-decision-controls") !== null,
+      unavailable: screen.queryByTestId("overdue-decision-unavailable") !== null,
+    }).toEqual({
+      error: en("overdue.decision.refused"),
+      controls: false,
+      unavailable: true,
+    });
   });
 });
 
@@ -259,9 +281,15 @@ describe("recording a decision for the slot the operator saw", () => {
     expect(new URL(postCalls()[0]!.url, "http://console.test").pathname).toBe(
       "/api/v1/admin/reminders/overdue/once%3Abilling%2F7/decision",
     );
-    expect(screen.getByTestId("overdue-recorded-decision").getAttribute("data-decision")).toBe("replay");
-    expect(screen.getByTestId("overdue-recorded-approval").textContent).toBe("APPROVED: incident-72");
-    expect(screen.getByTestId("overdue-recorded-decider").textContent).toBe("operator-1");
+    expect({
+      recordedDecision: screen.queryByTestId("overdue-recorded-decision")?.getAttribute("data-decision") ?? null,
+      approval: screen.queryByTestId("overdue-recorded-approval")?.textContent ?? null,
+      decider: screen.queryByTestId("overdue-recorded-decider")?.textContent ?? null,
+    }).toEqual({
+      recordedDecision: "replay",
+      approval: "APPROVED: incident-72",
+      decider: "operator-1",
+    });
   });
 
   it("posts skip as skip instead of folding it into replay", async () => {
@@ -288,9 +316,10 @@ describe("recording a decision for the slot the operator saw", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "APPROVED: incident-72" } });
     fireEvent.click(within(heldRow()).getByRole("button", { name: en("overdue.replay") }));
     await settle();
-    expect(screen.getByTestId("overdue-action-error").textContent)
-      .toContain(en("overdue.approval.serverRefused"));
-    expect(screen.queryByTestId("overdue-unreachable")).toBe(null);
+    expect({
+      error: screen.queryByTestId("overdue-action-error")?.textContent ?? null,
+      unreachable: screen.queryByTestId("overdue-unreachable") !== null,
+    }).toEqual({ error: en("overdue.approval.serverRefused"), unreachable: false });
   });
 
   it("sends only one request when the same decision is clicked twice while pending", async () => {

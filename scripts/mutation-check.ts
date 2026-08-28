@@ -13365,7 +13365,7 @@ export const MUTATIONS: Mutation[] = [
     from: "              data={state.decisions}",
     to: "              data={[]}",
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", "overdue-recorded-decision"],
+    expect: ["draws each held slot, how late it is, and recorded decisions on one screen", '"recordedDecision"'],
   },
   {
     id: "an-overdue-replay-targets-the-hold-time-instead-of-the-slot",
@@ -13429,7 +13429,7 @@ export const MUTATIONS: Mutation[] = [
       setMissing(refusedCapability(error));
       setState({ reminders: [], decisions: [] });`,
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["calls a missing read capability a refusal, not an empty queue or an outage", "overdue-refused"],
+    expect: ["calls a missing read capability a refusal, not an empty queue or an outage", '"refused": true'],
   },
   {
     id: "the-overdue-screen-offers-decisions-without-the-capability",
@@ -13439,7 +13439,7 @@ export const MUTATIONS: Mutation[] = [
     from: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE) && !decisionRefused;",
     to: "  const canDecide = true;",
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["removes every decision control when the account may read but may not decide", "expected null"],
+    expect: ["removes every decision control when the account may read but may not decide", '"controls": false'],
   },
   {
     id: "a-server-refused-decision-keeps-the-controls-live",
@@ -13449,7 +13449,7 @@ export const MUTATIONS: Mutation[] = [
     from: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE) && !decisionRefused;",
     to: "  const canDecide = hasCapability(CAPABILITY.REMINDER_DECIDE);",
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["uses the server's 403 as the final authority and removes stale controls", "expected null"],
+    expect: ["uses the server's 403 as the final authority and removes stale controls", '"controls": false'],
   },
   {
     id: "an-overdue-decision-forgets-its-approval",
