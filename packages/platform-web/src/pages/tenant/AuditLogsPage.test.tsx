@@ -820,8 +820,17 @@ describe("event-shaped audit rows", () => {
       },
     });
     auditRoute = answers(200, { ok: true, events: [
-      access("evt-own", "operator-1", "list", { event_type: "mesh.message.sent", limit: "20" },
-        "2026-08-25T03:04:08.000Z"),
+      access(
+        "evt-own",
+        "operator-1",
+        "list",
+        {
+          event_type: "mesh.message.sent",
+          limit: "20",
+          filters: { status: ["failed", "held"] },
+        },
+        "2026-08-25T03:04:08.000Z",
+      ),
       access("evt-other", "reader-2", "evt-target-7", {}, "2026-08-25T03:04:09.000Z"),
     ] });
 
@@ -843,6 +852,8 @@ describe("event-shaped audit rows", () => {
       .toContain("event_type = mesh.message.sent");
     expect(own.querySelector("[data-testid='audit-access-scope']")?.textContent)
       .toContain("limit = 20");
+    expect(own.querySelector("[data-testid='audit-access-scope']")?.textContent)
+      .toContain('filters = {"status":["failed","held"]}');
     expect(own.querySelector("[data-testid='audit-access-stored-at']")?.textContent)
       .toBe("Stored at: 2026-08-25T03:04:08.000Z");
 

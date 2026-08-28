@@ -187,6 +187,23 @@ describe("overdue reminder read states", () => {
     expect(heldSection().textContent).toContain(en("overdue.held.empty"));
     expect(historySection().textContent).toContain(en("overdue.history.empty"));
   });
+
+  it("re-reads the combined state when the operator refreshes", async () => {
+    let reads = 0;
+    overdueAnswer = () => {
+      reads += 1;
+      return json(200, reads === 1 ? state() : state([], []));
+    };
+    await mount();
+    fireEvent.click(screen.getByRole("button", { name: en("overdue.refresh") }));
+    await settle();
+
+    expect({
+      reads,
+      held: heldSection().textContent?.includes(en("overdue.held.empty")) ?? false,
+      history: historySection().textContent?.includes(en("overdue.history.empty")) ?? false,
+    }).toEqual({ reads: 2, held: true, history: true });
+  });
 });
 
 describe("the separate decision capability", () => {
@@ -320,6 +337,54 @@ describe("recording a decision for the slot the operator saw", () => {
       error: screen.queryByTestId("overdue-action-error")?.textContent ?? null,
       unreachable: screen.queryByTestId("overdue-unreachable") !== null,
     }).toEqual({ error: en("overdue.approval.serverRefused"), unreachable: false });
+  });
+
+  it("refreshes a slot the server says is no longer held", async () => {
+    let reads = 0;
+    overdueAnswer = (method) => {
+      if (method === "POST") {
+        return json(404, { error: "hold gone", code: HTTP_ADMIN_ERROR.NO_SUCH_HOLD });
+      }
+      reads += 1;
+      return json(200, state());
+    };
+    await mount();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "APPROVED: incident-72" } });
+    fireEvent.click(within(heldRow()).getByRole("button", { name: en("overdue.replay") }));
+    await settle();
+
+    expect({
+      error: screen.queryByTestId("overdue-action-error")?.textContent ?? null,
+      reads,
+      posts: postCalls().length,
+    }).toEqual({ error: en("overdue.slot.stale"), reads: 2, posts: 1 });
+  });
+
+  it("calls a decision write with no server answer unreachable", async () => {
+    overdueAnswer = (method) => {
+      if (method === "POST") throw new TypeError("Failed to fetch");
+      return json(200, state());
+    };
+    await mount();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "APPROVED: incident-72" } });
+    fireEvent.click(within(heldRow()).getByRole("button", { name: en("overdue.replay") }));
+    await settle();
+
+    expect(screen.queryByTestId("overdue-action-error")?.textContent)
+      .toBe(en("overdue.decision.unreachable"));
+  });
+
+  it("keeps an answered decision failure distinct from no server answer", async () => {
+    overdueAnswer = (method) => method === "POST"
+      ? json(500, { error: "write failed" })
+      : json(200, state());
+    await mount();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "APPROVED: incident-72" } });
+    fireEvent.click(within(heldRow()).getByRole("button", { name: en("overdue.replay") }));
+    await settle();
+
+    expect(screen.queryByTestId("overdue-action-error")?.textContent)
+      .toBe(en("overdue.decision.failed"));
   });
 
   it("sends only one request when the same decision is clicked twice while pending", async () => {
