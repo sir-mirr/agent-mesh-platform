@@ -54,12 +54,17 @@ const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { AuthProvider } = await import("@/contexts/AuthContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 const { PlaygroundPage } = await import("./PlaygroundPage.tsx");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 
 const ME = "/auth/me";
 const AGENTS = "/api/v1/agents";
 const MESSAGES = "/api/v1/messages";
 /** The bell inside `<Breadcrumbs>`; it must keep answering while agents fails. */
 const BELL = "/api/v1/admin/keys/pending";
+const CONTRACT_AGENT_BODY = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === AGENTS)!.body as {
+    agents: Array<{ id: string; description: string | null; type: string; deleted_at: string | null }>;
+  };
 
 /**
  * The name a refusal carries in the fixtures below.
@@ -131,6 +136,7 @@ const row = (id: string, over: Record<string, unknown> = {}) => ({
   description: null,
   created_at: null,
   last_seen_at: null,
+  deleted_at: null,
   fingerprint: null,
   ...over,
 });
@@ -403,6 +409,20 @@ describe("four readings of the registry, and only ever one of them", () => {
 });
 
 describe("what a picker says about an identity nobody measured", () => {
+  it("keeps the live unseen identity and removes the torn-down row with the same absent sighting", async () => {
+    const live = CONTRACT_AGENT_BODY.agents.find((agent) => agent.deleted_at === null)!;
+    const retired = CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!;
+    readAgents = () => json(200, CONTRACT_AGENT_BODY);
+    await mount();
+
+    for (const select of [senderSelect(), recipientSelect()]) {
+      expect(optionTexts(select)).toEqual([
+        `${UNSEEN_DOT} ${live.description ?? live.id} (${live.id}) — [${live.type}]`,
+      ]);
+      expect(optionTexts(select).join(" ")).not.toContain(retired.id);
+    }
+  });
+
   it("keeps an unseen identity unseen, in the dot and in both details", async () => {
     readAgents = () => json(200, { agents: [LANE_A] });
     await mount();

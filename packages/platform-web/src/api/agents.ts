@@ -27,6 +27,8 @@ export interface RegistryAgent {
   description: string | null;
   created_at: string | null;
   last_seen_at: string | null;
+  /** `null` while retained; the ISO teardown time after § 9.3. */
+  deleted_at: string | null;
   fingerprint: string | null;
 }
 
@@ -44,6 +46,22 @@ export interface RegistryAgent {
  */
 export function agentRegistryEntries<T extends Pick<RegistryAgent, "type">>(entries: readonly T[]): T[] {
   return entries.filter((entry) => entry.type !== "user");
+}
+
+/**
+ * Agent rows that may appear in an address picker.
+ *
+ * The registry is also history, so `agentRegistryEntries` deliberately keeps a
+ * torn-down identity. A sender or recipient selector answers a different
+ * question: who may be addressed now. D-809 requires this exact field to make
+ * that split — neither a missing row nor `last_seen_at: null` says teardown.
+ * Comparing to `null` rather than testing truthiness also keeps an old or
+ * malformed response with no `deleted_at` from being guessed live.
+ */
+export function callableAgentRegistryEntries<
+  T extends Pick<RegistryAgent, "type" | "deleted_at">,
+>(entries: readonly T[]): T[] {
+  return agentRegistryEntries(entries).filter((entry) => entry.deleted_at === null);
 }
 
 /**
@@ -139,6 +157,9 @@ export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
     // moment the page loaded.
     created_at: a.created_at ?? null,
     last_seen_at: a.last_seen_at ?? null,
+    // Required by contracts v0.35.0. Do not default an absent field to null:
+    // `null` is the positive fact that this identity has not been torn down.
+    deleted_at: a.deleted_at,
     // **No fallback.** `GET /api/v1/agents` returns id, name, description,
     // channel and type — no fingerprint; the only route that carries one is the
     // key-proposal flow, which is a different thing behind `key.approve`. So
@@ -221,10 +242,26 @@ export type LastSeen =
   | { kind: "invalid" }
   | { kind: "ago"; unit: "second" | "minute" | "hour" | "day"; value: number };
 
+/**
+ * Parse the timestamp grammar promised by `GET /api/v1/agents`.
+ *
+ * `Date.parse("2026-08-20 12:00:00")` silently supplies the browser's local
+ * zone, and an explicit `+09:00` is valid ISO but not this route's UTC wire
+ * form. Requiring both `T` and terminal `Z` before parsing prevents either from
+ * being turned into a plausible relative time. The normalized date prefix
+ * catches values such as February 30 that JavaScript otherwise rolls forward.
+ */
+export function isoUtcMillis(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)) return null;
+  const millis = Date.parse(value);
+  if (!Number.isFinite(millis)) return null;
+  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19) ? millis : null;
+}
+
 export function lastSeen(lastSeenAt: string | null | undefined): LastSeen {
   if (!lastSeenAt) return { kind: "never" };
-  const seen = new Date(lastSeenAt).getTime();
-  if (Number.isNaN(seen)) return { kind: "invalid" };
+  const seen = isoUtcMillis(lastSeenAt);
+  if (seen === null) return { kind: "invalid" };
   const secs = Math.max(0, Math.round((Date.now() - seen) / 1000));
   if (secs < 60) return { kind: "ago", unit: "second", value: secs };
   if (secs < 3600) return { kind: "ago", unit: "minute", value: Math.floor(secs / 60) };

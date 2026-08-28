@@ -93,7 +93,7 @@ describe("operator-facing vocabulary", () => {
       .map((file) => ({ file, source: readFileSync(file, "utf8") }))
       .filter(({ source }) => /\bfetchAgents\s*\(/u.test(source));
     const missing = consumers
-      .filter(({ source }) => !/\b(?:agentRegistryEntries|agentMemberIdentities)\s*\(/u.test(source))
+      .filter(({ source }) => !/\b(?:agentRegistryEntries|callableAgentRegistryEntries|agentMemberIdentities)\s*\(/u.test(source))
       .map(({ file }) => file.slice(WEB.length + 1));
 
     // This is a screen-boundary rule, not a change to `/api/v1/agents`: every

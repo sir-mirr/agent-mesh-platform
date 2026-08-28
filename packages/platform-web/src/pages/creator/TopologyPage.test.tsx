@@ -37,11 +37,16 @@ registerDom();
 const { render, screen, cleanup, fireEvent, act } = await import("@testing-library/react");
 const { MemoryRouter } = await import("react-router-dom");
 const { TopologyPage } = await import("./TopologyPage.tsx");
+const { CONSOLE_RESPONSE_FIXTURES } = await import("@agent-mesh/contracts/fixtures");
 const { I18nProvider, DICTIONARY } = await import("@/contexts/I18nContext.tsx");
 const { CAPABILITY } = await import("@/types/auth.ts");
 
 const GROUPS = "/api/v1/admin/groups";
 const AGENTS = "/api/v1/agents";
+const CONTRACT_AGENT_BODY = CONSOLE_RESPONSE_FIXTURES
+  .find((fixture) => fixture.path === AGENTS)!.body as {
+    agents: Array<{ id: string; deleted_at: string | null }>;
+  };
 /** `Breadcrumbs` renders the bell, which reads this on mount. Answered so the
  *  bell's own four states never put their words on the page under test. */
 const KEYS_PENDING = "/api/v1/admin/keys/pending";
@@ -61,8 +66,23 @@ const say = (key: string): string => {
   return value;
 };
 
+const v035Body = (body: unknown): unknown => {
+  if (typeof body !== "object" || body === null || !("agents" in body)) return body;
+  const agents = (body as { agents?: unknown }).agents;
+  if (!Array.isArray(agents)) return body;
+  return {
+    ...(body as Record<string, unknown>),
+    // The older topology scenarios describe live nodes. Make that v0.35 fact
+    // explicit while the contract fixture below supplies the opposite row.
+    agents: agents.map((agent) => (
+      typeof agent === "object" && agent !== null && !("deleted_at" in agent)
+        ? { ...agent, deleted_at: null }
+        : agent
+    )),
+  };
+};
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  new Response(JSON.stringify(v035Body(body)), { status, headers: { "content-type": "application/json" } });
 
 const realFetch = globalThis.fetch;
 /** bun:test has no global stubber, so the original goes back by hand below; a
@@ -499,6 +519,28 @@ describe("empty is what the server said, and only that", () => {
 });
 
 describe("the heading counts what is actually on the canvas", () => {
+  it("draws and addresses only the live row beside the contract fixture's torn-down row", async () => {
+    const live = CONTRACT_AGENT_BODY.agents.find((agent) => agent.deleted_at === null)!;
+    const retired = CONTRACT_AGENT_BODY.agents.find((agent) => typeof agent.deleted_at === "string")!;
+    serve({
+      [GROUPS]: () => json(200, { groups: [{
+        group_id: "default",
+        members: [live.id, retired.id],
+      }] }),
+      [AGENTS]: () => json(200, CONTRACT_AGENT_BODY),
+      [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
+    });
+    await mount();
+
+    const nodes = screen.queryAllByTestId("topology-agent");
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.textContent).toContain(live.id);
+    expect(document.body.textContent ?? "").not.toContain(retired.id);
+    expect(subtitle()).toBe(
+      say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "1"),
+    );
+  });
+
   it("does not draw or count a person that shares the unified registry and group namespace", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: [

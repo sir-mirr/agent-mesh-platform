@@ -9,7 +9,7 @@ import {
 } from "@/components/index.ts";
 import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
-import { agentRegistryEntries, fetchAgents, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+import { callableAgentRegistryEntries, fetchAgents, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { sendMessageApi, NO_RECEIPT, type MessageReceipt } from "@/api/messages.ts";
 
 interface RegisteredAgent {
@@ -19,7 +19,7 @@ interface RegisteredAgent {
   group: string;
   /** Whether the mesh has ever seen this identity. Measured; not "online". */
   seen: boolean;
-  /** When, in words — "접속 기록 없음" when there is no record. */
+  /** When, in words — "본 적 없음" when there is no record. */
   lastSeen: string;
   fingerprint: string | null;
 }
@@ -79,7 +79,10 @@ export function PlaygroundPage() {
     setIsError(false);
       setFailure(null);
     fetchAgents().then((list) => {
-      const mapped = agentRegistryEntries(list || []).map((a) => ({
+      // A registry row is history as well as inventory. Pickers answer the
+      // narrower question "who may I address", so contracts v0.35.0's
+      // `deleted_at` — and only that field — removes torn-down identities.
+      const mapped = callableAgentRegistryEntries(list || []).map((a) => ({
         id: a.identity,
         name: a.description || a.identity,
         // `type` is the kind of agent, not a membership. See AgentsPage.

@@ -13,13 +13,31 @@ import { useAuth } from "@/contexts/AuthContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 import type { UserRole } from "@/types/auth.ts";
 
-import { agentMemberIdentities, agentRegistryEntries, fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
+import { agentMemberIdentities, agentRegistryEntries, callableAgentRegistryEntries, fetchAgents, fetchPendingKeys, type KeyProposal, type RegistryAgent, lastSeenText, hasBeenSeen } from "@/api/agents.ts";
 import { fetchAdminMailbox, type AdminMailboxResponse } from "@/api/mailbox.ts";
 import { fetchGroups, type GroupItem } from "@/api/groups.ts";
 
 /** One stable loader for every dashboard panel labelled "agents". */
 const fetchDashboardAgents = async (): Promise<RegistryAgent[]> =>
   agentRegistryEntries(await fetchAgents());
+
+const liveDashboardAgents = (agents: readonly RegistryAgent[]): RegistryAgent[] =>
+  callableAgentRegistryEntries(agents);
+
+/** Dashboard totals answer "how many are active now" while retaining the
+ * registry's teardown inventory as a separate, explainable number. Both
+ * branches read only D-809's lifecycle field. */
+const deletedDashboardAgentCount = (agents: readonly RegistryAgent[]): number =>
+  agents.filter((agent) => typeof agent.deleted_at === "string").length;
+
+function dashboardAgentCaption(
+  t: (key: string, fallback: string) => string,
+  base: string,
+  deletedCount: number,
+): string {
+  if (deletedCount === 0) return base;
+  return `${base} · ${t("dash.agents.deletedNote", "철거됨: {count}").replace("{count}", String(deletedCount))}`;
+}
 
 /**
  * The queue card's three states, in one place because two panels draw it.
@@ -348,7 +366,9 @@ function PlatformAdminDashboard() {
   // telemetry's `total_agents`, which counts mesh identities, and then to `0`;
   // three different answers under one label, and `||` meant an empty registry
   // took the second of them.
-  const totalAgents = agents.length;
+  const liveAgents = liveDashboardAgents(agents);
+  const deletedAgentCount = deletedDashboardAgentCount(agents);
+  const totalAgents = liveAgents.length;
   return (
     <>
       {/* Top Global KPI Metrics */}
@@ -356,7 +376,7 @@ function PlatformAdminDashboard() {
         <KpiCard
           label={t("dash.pa.nodes", "등록된 에이전트")}
           value={isLoading ? "..." : isError ? "—" : String(totalAgents)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : t("dash.pa.nodesSub", "신원 목록의 에이전트 행")}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? (failure === "refused" ? t("common.refused", "권한 없음") : t("common.errorLoad", "불러오지 못함")) : dashboardAgentCaption(t, t("dash.pa.nodesSub", "신원 목록의 활성 에이전트 행"), deletedAgentCount)}
           color="var(--color-primary)"
           icon="🌐"
         />
@@ -438,7 +458,7 @@ function PlatformAdminDashboard() {
                       exactly that claim, one line apart, for both fields. */}
                   <span>{t("dash.pa.agentsLabel", "에이전트")}: <strong>{g.member_count == null
                     ? t("common.unknownValue", "—")
-                    : agentMemberIdentities(g.members ?? [], agents).length}</strong></span>
+                    : agentMemberIdentities(g.members ?? [], liveAgents).length}</strong></span>
                   <span>{t("dash.pa.egressLabel", "전송 허용 대상")}: <strong>{g.egress_allowed?.length ?? t("common.unknownValue", "—")}</strong></span>
                 </div>
               </div>
@@ -459,6 +479,8 @@ function TenantAdminDashboard() {
   const groups = groupsRead.groups;
   const agentsRead = useDashboardList<RegistryAgent>(fetchDashboardAgents);
   const agents = agentsRead.items;
+  const liveAgents = liveDashboardAgents(agents);
+  const deletedAgentCount = deletedDashboardAgentCount(agents);
   const pendingKeysRead = useDashboardList<KeyProposal>(fetchPendingKeys);
   const pendingKeys = pendingKeysRead.items;
 
@@ -483,9 +505,9 @@ function TenantAdminDashboard() {
         />
         <KpiCard
           label={t("dash.ta.agents", "총 소속 에이전트")}
-          value={measuredListValue(agentsRead, agents.length)}
+          value={measuredListValue(agentsRead, liveAgents.length)}
           valueTestId={`tenant-agents-${dashboardListState(agentsRead)}`}
-          subValue={listReadCaption(t, agentsRead, t("dash.ta.agentsSub", "레지스트리 실데이터"))}
+          subValue={listReadCaption(t, agentsRead, dashboardAgentCaption(t, t("dash.ta.agentsSub", "활성 레지스트리 실데이터"), deletedAgentCount))}
           color="var(--color-success)"
           icon="🤖"
         />
@@ -578,7 +600,7 @@ function TenantAdminDashboard() {
                       registry, and stays unknown while either source is. */}
                   {g.member_count == null
                     ? t("common.unknownValue", "—")
-                    : measuredListValue(agentsRead, agentMemberIdentities(g.members ?? [], agents).length)} {t("dash.ta.agentsUnit", "에이전트")}
+                    : measuredListValue(agentsRead, agentMemberIdentities(g.members ?? [], liveAgents).length)} {t("dash.ta.agentsUnit", "에이전트")}
                 </span>
               </div>
             ))}
@@ -653,6 +675,8 @@ function GroupAdminDashboard() {
   const groups = groupsRead.groups;
   const agentsRead = useDashboardList<RegistryAgent>(fetchDashboardAgents);
   const agents = agentsRead.items;
+  const liveAgents = liveDashboardAgents(agents);
+  const deletedAgentCount = deletedDashboardAgentCount(agents);
   const [mailbox, setMailbox] = useState<AdminMailboxResponse | null>(null);
 
 React.useEffect(() => {
@@ -672,12 +696,16 @@ React.useEffect(() => {
         />
         <KpiCard
           label={t("dash.ga.agents", "그룹 내 에이전트")}
-          value={measuredListValue(agentsRead, agents.length)}
+          value={measuredListValue(agentsRead, liveAgents.length)}
           valueTestId={`group-agents-${dashboardListState(agentsRead)}`}
           subValue={listReadCaption(
             t,
             agentsRead,
-            agents.length > 0 ? `${agents.length} ${t("dash.ga.nodes", "개 노드 등록")}` : t("dash.ga.noAgents", "에이전트 없음"),
+            dashboardAgentCaption(
+              t,
+              liveAgents.length > 0 ? `${liveAgents.length} ${t("dash.ga.nodes", "개 활성 노드")}` : t("dash.ga.noAgents", "활성 에이전트 없음"),
+              deletedAgentCount,
+            ),
           )}
           color="var(--color-success)"
           icon="🤖"
@@ -722,7 +750,7 @@ React.useEffect(() => {
             emptyMessage={t("dash.ga.groupsEmpty", "등록된 관리 그룹이 없습니다.")}
           >
             {groups.map((item) => {
-              const memberIds = agentMemberIdentities(item.members ?? [], agents);
+              const memberIds = agentMemberIdentities(item.members ?? [], liveAgents);
               const membersKnown = item.member_count != null;
               return (
                 <div
@@ -806,6 +834,9 @@ function AgentOperatorDashboard() {
    */
   const [isLoading, setIsLoading] = useState(true);
 
+  const liveAgents = liveDashboardAgents(agents);
+  const deletedAgentCount = deletedDashboardAgentCount(agents);
+
   React.useEffect(() => {
     fetchDashboardAgents()
       .then(setAgents)
@@ -823,10 +854,10 @@ function AgentOperatorDashboard() {
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <KpiCard
-          label={t("dash.kpi.agents", "소유 에이전트")}
+          label={t("dash.kpi.agents", "에이전트")}
           valueTestId="operator-agents-count"
-          value={isLoading ? "..." : isError ? "—" : String(agents.length)}
-          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : t("dash.kpi.agentsSub", "개 등록됨")}
+          value={isLoading ? "..." : isError ? "—" : String(liveAgents.length)}
+          subValue={isLoading ? t("common.loading", "조회 중...") : isError ? t("common.errorLoad", "불러오지 못함") : dashboardAgentCaption(t, t("dash.kpi.agentsSub", "개 활성 등록"), deletedAgentCount)}
           color="var(--color-primary)"
           icon="🤖"
         />
@@ -865,7 +896,7 @@ function AgentOperatorDashboard() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {agents.length === 0 ? (
+          {liveAgents.length === 0 ? (
             <div
               data-testid={isLoading ? "operator-agents-loading" : isError ? "operator-agents-unreachable" : "operator-agents-empty"}
               style={{ padding: 20, textAlign: "center", color: "var(--color-text-muted)", fontSize: "0.82rem" }}
@@ -880,14 +911,16 @@ function AgentOperatorDashboard() {
                 t("common.loading", "조회 중...")
               ) : isError ? (
                 t("common.errorLoad", "불러오지 못함")
+              ) : deletedAgentCount > 0 ? (
+                t("dash.op.noActive", "활성 등록 에이전트가 없습니다.")
               ) : (
                 <>
-                  {t("dash.op.empty", "등록된 소유 에이전트가 없습니다.")} <Link to="/creator/register" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>{t("dash.op.register", "새 에이전트를 등록하세요")}</Link>.
+                  {t("dash.op.empty", "등록된 에이전트가 없습니다.")} <Link to="/creator/register" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>{t("dash.op.register", "새 에이전트를 등록하세요")}</Link>.
                 </>
               )}
             </div>
           ) : (
-            agents.map((agt) => (
+            liveAgents.map((agt) => (
               <div
                 key={agt.identity}
                 style={{

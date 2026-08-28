@@ -16,12 +16,26 @@ import { fetchAuditEvents } from "./audit.ts";
 const realFetch = globalThis.fetch;
 const stub = (fn: unknown) => { globalThis.fetch = fn as typeof globalThis.fetch; };
 const answer = (body: unknown) => {
-  stub(mock(async () =>
-    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })));
+  const spy = mock(async (_input: RequestInfo | URL) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+  stub(spy);
+  return spy;
 };
 afterEach(() => { globalThis.fetch = realFetch; });
 
 describe("fetchAuditEvents", () => {
+  it("sends the server's event-type and recorder-kind filters", async () => {
+    const spy = answer({ ok: true, events: [], next_cursor: null });
+    await fetchAuditEvents({ eventType: "mesh.identity.audit_read", recordedByKind: "http" });
+
+    const url = new URL(String(spy.mock.calls[0]![0]), "http://console.test");
+    expect(url.pathname).toBe("/api/v1/audit/events");
+    expect([...url.searchParams.entries()]).toEqual([
+      ["event_type", "mesh.identity.audit_read"],
+      ["recorded_by_kind", "http"],
+    ]);
+  });
+
   it("reads the message's own names first", async () => {
     answer({ events: [{ event_id: "e1", occurred_at: "t", identity: "carrier",
       payload: { message: { from: "a", to: "b", content: "hello" } } }] });

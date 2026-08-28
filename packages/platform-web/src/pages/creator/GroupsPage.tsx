@@ -20,7 +20,10 @@ interface AgentGroup {
   description: string;
   /** `null` when the route did not report one, which is not the same as none. */
   memberCount: number | null;
-  members: string[]; // agent IDs
+  members: Array<{
+    identity: string;
+    lifecycle: "live" | "deleted" | "unknown";
+  }>;
   /** `null` when the route did not send one. */
   createdAt: string | null;
 }
@@ -29,6 +32,7 @@ import { assignGroupMemberApi, fetchGroups, createGroupApi } from "@/api/groups.
 import {
   agentMemberIdentities,
   agentRegistryEntries,
+  callableAgentRegistryEntries,
   fetchAgents,
   type RegistryAgent,
 } from "@/api/agents.ts";
@@ -91,7 +95,21 @@ export function GroupsPage() {
           // `members` is a unified identity list. This page labels both the
           // count and the chips as agents, so a web user in the same policy
           // group must not appear in either place.
-          const members = agentMemberIdentities(g.members ?? [], registry);
+          const registryAgents = agentRegistryEntries(registry);
+          const registryByIdentity = new Map(
+            registryAgents.map((agent) => [agent.identity, agent] as const),
+          );
+          const members = agentMemberIdentities(g.members ?? [], registry).map((identity) => {
+            const deletedAt = registryByIdentity.get(identity)?.deleted_at;
+            return {
+              identity,
+              lifecycle: deletedAt === null
+                ? "live" as const
+                : typeof deletedAt === "string"
+                  ? "deleted" as const
+                  : "unknown" as const,
+            };
+          });
           // **`?? null`, not `=== null`.** The field is optional on the type,
           // and a route that never sent it is the same *unknown* as one that
           // sent `null` — `=== null` alone reads a missing field as a real
@@ -216,8 +234,9 @@ export function GroupsPage() {
     try {
       const registry = await fetchAgents(group.tenant);
       if (request !== assignRequest.current) return;
-      const agents = agentRegistryEntries(registry).filter(
-        (agent) => agent.tenant === group.tenant && !group.members.includes(agent.identity),
+      const agents = callableAgentRegistryEntries(registry).filter(
+        (agent) => agent.tenant === group.tenant
+          && !group.members.some((member) => member.identity === agent.identity),
       );
       setAssignCandidates({ kind: "ready", agents });
     } catch (err: unknown) {
@@ -327,9 +346,10 @@ export function GroupsPage() {
       header: t("groups.col.members", "배속 에이전트 목록"),
       render: (item: AgentGroup) => (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {item.members.map((id) => (
+          {item.members.map((member) => (
             <span
-              key={id}
+              key={member.identity}
+              data-testid={`group-member-${member.identity}`}
               style={{
                 fontSize: "0.72rem",
                 fontFamily: "var(--font-mono)",
@@ -339,7 +359,13 @@ export function GroupsPage() {
                 border: "1px solid var(--color-border)",
               }}
             >
-              {id}
+              {member.identity}
+              {member.lifecycle === "deleted" && (
+                <> · {t("agents.state.deleted", "철거됨")}</>
+              )}
+              {member.lifecycle === "unknown" && (
+                <> · {t("agents.state.unknown", "상태 미보고")}</>
+              )}
             </span>
           ))}
           {item.members.length === 0 && (

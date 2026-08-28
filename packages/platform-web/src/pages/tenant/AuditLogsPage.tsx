@@ -9,7 +9,12 @@ import {
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
 
-import { fetchAuditEvents, type AuditEventItem } from "@/api/audit.ts";
+import {
+  fetchAuditEvents,
+  type AuditEventFilters,
+  type AuditEventItem,
+  type AuditRecorderKind,
+} from "@/api/audit.ts";
 
 type Translate = (key: string, fallback?: string) => string;
 
@@ -100,13 +105,23 @@ export function AuditLogsPage() {
   /** 서버가 이름을 대면 그것을, 안 대면 `null`. 화면이 짐작하지 않는다. */
   const [missing, setMissing] = useState<string | null>(null);
   const canReadContent = hasCapability("audit.read.content");
+  const [eventTypeFilter, setEventTypeFilter] = useState("");
+  const [recorderKindFilter, setRecorderKindFilter] = useState<"" | AuditRecorderKind>("");
+  const didInitialRead = React.useRef(false);
 
-  const loadAuditEvents = () => {
+  const selectedFilters = (): AuditEventFilters => {
+    const filters: AuditEventFilters = {};
+    if (eventTypeFilter) filters.eventType = eventTypeFilter;
+    if (recorderKindFilter) filters.recordedByKind = recorderKindFilter;
+    return filters;
+  };
+
+  const loadAuditEvents = (filters: AuditEventFilters = selectedFilters()) => {
     setIsLoading(true);
     setIsError(false);
     setFailure(null);
     setExpanded(new Set());
-    fetchAuditEvents()
+    fetchAuditEvents(filters)
       .then((list) => {
         setEvents(list || []);
       })
@@ -120,7 +135,13 @@ export function AuditLogsPage() {
   };
 
   React.useEffect(() => {
-    loadAuditEvents();
+    // Development StrictMode deliberately replays mount effects. This GET is
+    // itself audit-recorded, so replaying it creates two access records a few
+    // milliseconds apart and lets the screen manufacture the noise it then
+    // displays. A ref survives that replay and still resets on a real remount.
+    if (didInitialRead.current) return;
+    didInitialRead.current = true;
+    loadAuditEvents({});
   }, []);
 
   const toggleOriginal = (id: string) => {
@@ -261,11 +282,63 @@ export function AuditLogsPage() {
         title={t("audit.title", "Audit events")}
         subtitle={t("audit.subtitle", "Each event is summarized in plain language; open the original JSON only when you need it")}
         actions={
-          <Button variant="secondary" size="sm" onClick={loadAuditEvents}>
+          <Button variant="secondary" size="sm" onClick={() => loadAuditEvents()}>
             {t("audit.refreshBtn", "↻ Refresh Audit Logs")}
           </Button>
         }
       />
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          loadAuditEvents();
+        }}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "end",
+          gap: 12,
+          padding: "12px 16px",
+          background: "var(--color-bg-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+        }}
+      >
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 230, fontSize: "0.78rem", fontWeight: 700 }}>
+          {t("audit.filter.event", "이벤트 종류")}
+          <select
+            data-testid="audit-event-type-filter"
+            value={eventTypeFilter}
+            onChange={(event) => setEventTypeFilter(event.target.value)}
+            style={{ padding: "8px 10px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", background: "#FFFFFF" }}
+          >
+            <option value="">{t("filters.eventsAny", "모든 이벤트")}</option>
+            <option value="mesh.identity.audit_read">
+              {t("audit.filter.auditReads", "감사 목록 열람 기록")}
+            </option>
+            <option value="channel.message.received">
+              {t("audit.filter.messageReceived", "메시지 수신 기록")}
+            </option>
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 190, fontSize: "0.78rem", fontWeight: 700 }}>
+          {t("audit.filter.recorder", "기록 주체")}
+          <select
+            data-testid="audit-recorder-kind-filter"
+            value={recorderKindFilter}
+            onChange={(event) => setRecorderKindFilter(event.target.value as "" | AuditRecorderKind)}
+            style={{ padding: "8px 10px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", background: "#FFFFFF" }}
+          >
+            <option value="">{t("filters.recordersAny", "모든 기록 주체")}</option>
+            <option value="hub">hub</option>
+            <option value="adapter">adapter</option>
+            <option value="http">http</option>
+          </select>
+        </label>
+        <Button type="submit" variant="secondary" size="sm" data-testid="audit-filter-apply">
+          {t("audit.filter.apply", "필터 적용")}
+        </Button>
+      </form>
 
       <div
         style={{
