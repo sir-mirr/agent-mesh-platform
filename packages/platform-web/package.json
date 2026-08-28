@@ -12,7 +12,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.33.0",
+    "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.34.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.0"
