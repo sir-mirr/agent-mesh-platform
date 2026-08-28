@@ -7165,14 +7165,34 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-08"],
   },
   {
-    id: "the-console-union-drifts-from-the-store",
+    id: "the-store-union-drifts-from-the-contract",
     defect:
-      "The console's local `TeardownAction` stopped matching `packages/store/src/teardown.ts`. It is a copy on purpose \u2014 `@agent-mesh/store` opens `bun:sqlite` and a browser bundle must not take its type graph, and `@agent-mesh/contracts` does not carry teardown yet \u2014 so nothing but a source comparison can see the two come apart. Neither module imports the other, so both halves compile; the screen then tests `action === \"not-found\"` against a value the route never sends and every teardown falls through to the failure branch.",
-    file: "packages/platform-web/src/api/agents.ts",
+      "The store's `TeardownAction` stopped matching the contract the console compiles against. The store cannot import the contract to name its own result \u2014 `packages/store` owns the transaction and must not depend on the wire package \u2014 so one fact lives in two files and nothing but a source comparison can see them come apart. Neither module imports the other, so both halves compile; the screen then tests `action === \"not-found\"` against a value the route never sends and every teardown falls through to the failure branch.",
+    file: "packages/store/src/teardown.ts",
     from: 'export type TeardownAction = "soft-deleted" | "already-deleted" | "not-found";',
     to: 'export type TeardownAction = "soft-deleted" | "already-deleted" | "missing";',
     suite: "test/teardown-union.test.ts",
-    expect: ["the console's local copy matches the store's"],
+    expect: ["the store's union matches the contract's"],
+  },
+  {
+    id: "the-console-writes-the-union-out-again",
+    defect:
+      "The console went back to declaring `TeardownAction` itself instead of re-exporting the contract's. That is the copy `v0.32.0` was published to remove, and it is invisible to the store-versus-contract comparison, which does not read this file: the local copy agrees with the contract on the day it is written and then holds the screen at whatever it said, narrowing what the console can see rather than failing.",
+    file: "packages/platform-web/src/api/agents.ts",
+    from: 'export type { TeardownAction, TeardownRefusal, TeardownResponse } from "@agent-mesh/contracts";',
+    to: 'export type TeardownAction = "soft-deleted" | "already-deleted" | "not-found";',
+    suite: "test/teardown-union.test.ts",
+    expect: ["the console takes the contract rather than restating it"],
+  },
+  {
+    id: "the-teardown-envelope-is-read-from-the-first-answer",
+    defect:
+      "The route-versus-contract comparison went back to the *first* `c.json({...})` in `teardownAs`, which is the `500` the catch answers. It reads that object's keys as the fields the route sends, so the contract's `action` and `deleted_at` are reported missing while nothing about the real answer is checked \u2014 a comparison against the wrong half of the function, which is how this check read a multi-line `log.error` as a response body once before.",
+    file: "test/teardown-union.test.ts",
+    from: "    const sent = new Set(\n      [...answers[answers.length - 1]![1]!.matchAll(/([a-z_]+):/g)].map((m) => m[1]!),\n    );",
+    to: "    const sent = new Set(\n      [...answers[0]![1]!.matchAll(/([a-z_]+):/g)].map((m) => m[1]!),\n    );",
+    suite: "test/teardown-union.test.ts",
+    expect: ["the contract expects exactly the fields the route sends"],
   },
   {
     id: "blob-upload-skips-the-grant-check",

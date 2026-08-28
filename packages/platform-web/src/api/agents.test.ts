@@ -13,7 +13,7 @@ import { setSystemTime } from "bun:test";
 import {
   agentMemberIdentities, agentRegistryEntries, fetchAgents, fetchPendingKeys, approveKeyProposal, denyKeyProposal,
   createPairingCodeApi, teardownAgentApi, lastSeen, lastSeenText, hasBeenSeen,
-  type TeardownAction,
+  type TeardownAction, type TeardownResponse,
 } from "./agents.ts";
 
 const realFetch = globalThis.fetch;
@@ -137,7 +137,11 @@ describe("teardownAgentApi", () => {
   it("preserves each teardown action instead of folding them into ok", async () => {
     const actions: TeardownAction[] = ["soft-deleted", "already-deleted", "not-found"];
     for (const action of actions) {
-      const reply = { ok: true, identity: "lane-a", action };
+      // Typed as the contract, not inferred: `ok` is the literal `true` there,
+      // because all three actions are success. An inferred `boolean` compiles
+      // against a hand-written copy and stops compiling against the contract,
+      // which is the whole reason the copy is gone.
+      const reply: TeardownResponse = { ok: true, identity: "lane-a", action };
       spyOn(reply);
       expect(await teardownAgentApi("lane-a")).toEqual(reply);
     }

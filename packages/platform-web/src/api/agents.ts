@@ -1,3 +1,5 @@
+import type { TeardownResponse } from "@agent-mesh/contracts";
+
 import { apiClient } from "./client.ts";
 
 /**
@@ -70,17 +72,25 @@ export interface PairingCodeResponse {
   ttl_seconds: number;
 }
 
-// Temporary local copy of the store result until teardown is published from
-// the contracts package. Keep the three literals byte-for-byte aligned with
-// `packages/store/src/teardown.ts`; the platform owns the cross-package guard.
-export type TeardownAction = "soft-deleted" | "already-deleted" | "not-found";
-
-export interface TeardownResponse {
-  ok: boolean;
-  identity: string;
-  action: TeardownAction;
-  deleted_at?: string | null;
-}
+/**
+ * What a teardown answers, from the contracts package rather than from here.
+ *
+ * This was a local copy under a comment saying it was temporary "until teardown
+ * is published from the contracts package". It is published — `v0.32.0` — so
+ * the copy is gone and there is nothing left to keep aligned by hand. The
+ * declaration a browser bundle can safely take was never the store's, which
+ * opens `bun:sqlite`; it is this one.
+ *
+ * Re-exported rather than merely imported: the screens already reach these
+ * through `@/api/agents.ts`, and a pointer costs nothing while a second import
+ * path would invite one of them to drift back to a hand-written shape.
+ *
+ * One difference the copy had: `ok` was `boolean` here and is `true` in the
+ * contract, because all three actions are success — a `not-found` teardown had
+ * the outcome the caller asked for. A refusal is `TeardownRefusal`, and it is a
+ * `400` or a `500`, not a `200` with `ok: false`.
+ */
+export type { TeardownAction, TeardownRefusal, TeardownResponse } from "@agent-mesh/contracts";
 
 export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
   const query = tenant === undefined ? "" : `?tenant=${encodeURIComponent(tenant)}`;

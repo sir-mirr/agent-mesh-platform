@@ -1,16 +1,24 @@
 /**
- * One fact, declared in three places that cannot see each other.
+ * One fact, declared in two places that cannot see each other.
  *
  * `teardown` answers one of three things — `soft-deleted`, `already-deleted`,
  * `not-found` — and teardown is irreversible, so which one it was is the most
  * expensive thing on that screen to get wrong.
  *
- * The store declares the union. The route passes it through. The console
- * declares its own copy, because `@agent-mesh/store` opens `bun:sqlite` and a
- * browser bundle must not take its type graph — the shared home is
- * `@agent-mesh/contracts`, which does not carry teardown yet. Until it does,
- * `fe-codex` keeps a local copy under a comment saying to keep it aligned and
- * that the platform owns the guard. This is the guard.
+ * **This used to be three places.** The store declared the union, the route
+ * passed it through, and the console kept a third copy because
+ * `@agent-mesh/store` opens `bun:sqlite` and a browser bundle must not take its
+ * type graph. That copy carried a comment saying it was temporary "until
+ * teardown is published from the contracts package". `v0.32.0` published it and
+ * `v0.32.1` corrected the route named above it, so the console imports and the
+ * comparison is down to two: the store's declaration, and the contract every
+ * other implementation reads.
+ *
+ * Two is the floor, not zero. The store's copy cannot be deleted in favour of
+ * the contract — that is the `bun:sqlite` problem in the other direction, since
+ * `packages/store` is where the transaction lives and it must not depend on the
+ * wire package to name its own result. So one fact still lives twice, and one
+ * of the two can still gain a fourth member alone.
  *
  * **Compared as strings, not as types.** TypeScript erases before anything
  * runs, so a runtime check has nothing to compare; and `verbatimModuleSyntax`
@@ -31,6 +39,15 @@ const ROOT = join(import.meta.dir, "..");
 const STORE = join(ROOT, "packages/store/src/teardown.ts");
 const CONSOLE = join(ROOT, "packages/platform-web/src/api/agents.ts");
 const ROUTE = join(ROOT, "packages/http/src/main.ts");
+/**
+ * The installed contract, not a checked-out one.
+ *
+ * Reading `node_modules` reads what the console actually compiles against. A
+ * copy of the contracts repository somewhere on this machine is not that: the
+ * pin can move without the checkout, or the checkout can move without the pin,
+ * and either way the file the bundler resolves is this one.
+ */
+const CONTRACT = join(ROOT, "node_modules/@agent-mesh/contracts/src/teardown.ts");
 
 /** The literals of a `export type <name> = "a" | "b";` declaration. */
 function union(file: string, name: string): string[] {
@@ -43,10 +60,10 @@ function union(file: string, name: string): string[] {
 }
 
 describe("the teardown outcome is the same three words everywhere", () => {
-  test("the console's local copy matches the store's, in the same order", () => {
+  test("the store's union matches the contract's, in the same order", () => {
     // Order as well as membership: the union is read left to right by a person
     // comparing the two files, and a reordered copy is a copy nobody re-checks.
-    expect(union(CONSOLE, "TeardownAction")).toEqual(union(STORE, "TeardownAction"));
+    expect(union(STORE, "TeardownAction")).toEqual(union(CONTRACT, "TeardownAction"));
   });
 
   test("and it is those three, so neither file drifted with the other", () => {
@@ -54,12 +71,30 @@ describe("the teardown outcome is the same three words everywhere", () => {
     expect(union(STORE, "TeardownAction")).toEqual(["soft-deleted", "already-deleted", "not-found"]);
   });
 
+  test("the console takes the contract rather than restating it", () => {
+    // The copy came out; this is what stops it coming back. A hand-written
+    // union here would agree with the contract on the day it was written and
+    // is the third declaration all over again — and it would be invisible to
+    // the comparison above, which does not read this file.
+    const source = readFileSync(CONSOLE, "utf8");
+    expect(/export type TeardownAction\s*=\s*"/.test(source), "the console declared its own union again").toBe(false);
+    expect(/export interface TeardownResponse\b/.test(source), "the console declared its own response again").toBe(false);
+    expect(
+      /export type \{[^}]*\bTeardownAction\b[^}]*\} from "@agent-mesh\/contracts"/.test(source),
+      "the console no longer re-exports TeardownAction from the contract",
+    ).toBe(true);
+    expect(
+      /import type \{[^}]*\bTeardownResponse\b[^}]*\} from "@agent-mesh\/contracts"/.test(source),
+      "the console no longer types its teardown call from the contract",
+    ).toBe(true);
+  });
+
   /**
    * The union can match while the envelope does not, and that is the same
    * defect one layer out: the console would read a field the route never sends.
    * `revoked` is on the store's result and deliberately absent from the wire.
    */
-  test("the console expects exactly the fields the route sends", () => {
+  test("the contract expects exactly the fields the route sends", () => {
     // Scoped to the function first: `c.json({ ok: true, ... })` appears all over
     // this file, and an unscoped pattern would read some other route's answer
     // and call it this one's.
@@ -82,12 +117,12 @@ describe("the teardown outcome is the same three words everywhere", () => {
     // Not sent, on purpose — the revoked fingerprints are the store's business.
     expect(sent.has("revoked")).toBe(false);
 
-    const iface = /export interface TeardownResponse \{([\s\S]*?)\}/.exec(readFileSync(CONSOLE, "utf8"));
-    expect(iface, "the console no longer declares TeardownResponse").not.toBeNull();
+    const iface = /export interface TeardownResponse \{([\s\S]*?)\n\}/.exec(readFileSync(CONTRACT, "utf8"));
+    expect(iface, "the contract no longer declares TeardownResponse").not.toBeNull();
     const declared = [...iface![1]!.matchAll(/^\s*([a-z_]+)\??:/gm)].map((m) => m[1]!);
     expect(declared.length).toBeGreaterThan(0);
     for (const field of declared) {
-      expect(sent.has(field), `the console declares '${field}', which the route does not send`).toBe(true);
+      expect(sent.has(field), `the contract declares '${field}', which the route does not send`).toBe(true);
     }
   });
 });
