@@ -171,6 +171,20 @@ throttling, a background process, the sleep/wake cycle the machine went through
 at 12:45, or something else — is left here rather than pursued, because the
 time it would take is time the work costs more than the answer is worth today.
 
+**A quiet-machine baseline exists now.** On 2026-08-28, five consecutive full
+`test/` runs came back 1310 pass, 0 fail, and no reaper line, on a machine with
+nothing else on it. The same suite had produced one unexplained `TypeError` in
+`mesh-mail.test.ts` earlier that night, during a stretch when three runs
+overlapped and the reaper fired three times — and a `verify` in that stretch
+took 5690 s where the re-run took 364 s.
+
+That is a baseline, not an answer. It says the failures cluster where the load
+does; it does not say load causes them, and folding it into *load did it* would
+be naming the place a symptom appeared as its cause — the mistake this
+repository made twice on the same night. What it does buy is a cheap
+discriminator: **a red that does not reproduce in five quiet runs is about this
+host until something else says otherwise.**
+
 **One mechanism is measured now, and it is not playwright's pipe.** `bun test`
 kills every subprocess it spawned when a test times out, and prints one line
 about it: `killed N dangling processes`. Measured directly on 2026-08-27, with
