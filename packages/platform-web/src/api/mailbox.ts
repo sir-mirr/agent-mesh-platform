@@ -1,3 +1,5 @@
+import type { RestMailboxResponse, RestMailboxSummary } from "@agent-mesh/contracts";
+
 import { apiClient } from "./client.ts";
 
 /**
@@ -8,13 +10,11 @@ import { apiClient } from "./client.ts";
  * and `leased_count` — four names, none of which any package on this platform
  * has ever sent. The summing below read `depth`, so it summed `undefined` and
  * produced `0`, and the dashboard drew that `0` as the queue.
+ *
+ * It is the contract's row now rather than a fourth spelling of the same four
+ * columns.
  */
-export interface MailboxSummary {
-  identity: string;
-  pending: number;
-  leased: number;
-  oldest: string | null;
-}
+export type MailboxSummary = RestMailboxSummary;
 
 export interface AdminMailboxResponse {
   mailboxes: MailboxSummary[];
@@ -29,14 +29,23 @@ export interface AdminMailboxResponse {
 }
 
 export async function fetchAdminMailbox(): Promise<AdminMailboxResponse> {
-  const data = await apiClient<any>("/api/v1/admin/mailbox");
+  const data = await apiClient<RestMailboxResponse>("/api/v1/admin/mailbox");
   return {
     mailboxes: Array.isArray(data?.mailboxes) ? data.mailboxes : [],
     // The route's own `count(*)`, not a sum taken here. Summing the rows is
     // what produced the defect — over `depth`, a column this route has never
     // emitted — and it would go quietly small the day the grouping takes a
-    // `LIMIT`. `null` when the field is absent, because a total that did not
-    // arrive is not a queue of zero.
+    // `LIMIT`.
+    //
+    // **`total_queued` is sent.** The comment here used to say it was "a name
+    // no route sends either", which was true of `depth` and never of this one:
+    // `packages/http/src/main.ts` answers `{ ok, mailboxes, total_queued }`.
+    // The sentence sat inside the explanation of the original defect and
+    // carried the error forward, and `api/telemetry.ts` repeated it.
+    //
+    // The check stays anyway, because `null` for a total that did not arrive is
+    // a different fact from a queue of zero, and a type cannot promise what
+    // arrived on a socket.
     total_queued: typeof data?.total_queued === "number" ? data.total_queued : null,
   };
 }

@@ -114,8 +114,19 @@ const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
  * Every optional field defaults to `null` here on purpose: those are the ones
  * the route genuinely omits, and each of them used to be filled in on arrival.
  */
-const row = (identity: string, over: Record<string, unknown> = {}) => ({
-  identity,
+/**
+ * A row as `GET /api/v1/agents` sends it.
+ *
+ * **`id`, not `identity`.** The route's primary key is `id`; the console
+ * renames it on arrival. This builder said `identity`, which is the name after
+ * the mapping rather than the one on the wire, so the fixtures exercised a body
+ * the server cannot produce.
+ */
+const row = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  name: id,
+  channel: "native",
+  tenant: "default",
   type: "worker",
   description: null,
   created_at: null,

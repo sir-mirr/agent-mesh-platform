@@ -85,8 +85,8 @@ let readGroups: Reply = () => json(200, { groups: [] });
 /** What a write under `/<group>/egress` does. */
 let writeEgress: Reply = () => json(200, { ok: true });
 
-const ALPHA = { group_id: "grp_alpha", name: "Alpha Team" };
-const BETA = { group_id: "grp_beta", name: "Beta Team" };
+const ALPHA = { group_id: "grp_alpha" };
+const BETA = { group_id: "grp_beta" };
 const IDS = [ALPHA.group_id, BETA.group_id];
 
 /** A body the route really sends: groups, plus the rules that were read. */
@@ -336,9 +336,9 @@ describe("what the grid says about the policy", () => {
     const row = target.parentElement;
     if (!row) throw new Error("the allowed cell is not inside a row");
     const cells = [...row.children];
-    expect(cells[0]?.textContent).toBe(ALPHA.name);
+    expect(cells[0]?.textContent).toBe(ALPHA.group_id);
     const heads = [...(matrix()?.querySelectorAll("thead th") ?? [])];
-    expect(heads[cells.indexOf(target)]?.textContent).toBe(BETA.name);
+    expect(heads[cells.indexOf(target)]?.textContent).toBe(BETA.group_id);
   });
 
   it("draws an unread policy as a complete DENY grid — TODAY's behaviour, and the known defect", async () => {
@@ -386,7 +386,7 @@ describe("a toggle moves the policy only where the server moved", () => {
     // The reverse rule was not asked for and must not move: a toggle that wrote
     // both directions would open a path the operator never granted.
     expect(verdict(BETA.group_id, ALPHA.group_id)).toBe(DENY);
-    expect(toast()).toContain(`${UPDATED}: [${ALPHA.name}] → [${BETA.name}] : ${ALLOW}`);
+    expect(toast()).toContain(`${UPDATED}: [${ALPHA.group_id}] → [${BETA.group_id}] : ${ALLOW}`);
 
     const close = toastBox()?.querySelector("button");
     if (!close) throw new Error("the egress result toast has no close control");
@@ -409,7 +409,7 @@ describe("a toggle moves the policy only where the server moved", () => {
     expect(writes[0]?.url.endsWith(`${GROUPS}/${ALPHA.group_id}/egress/${BETA.group_id}`)).toBe(true);
     expect(writes[0]?.init?.method).toBe("DELETE");
     expect(verdict(ALPHA.group_id, BETA.group_id)).toBe(DENY);
-    expect(toast()).toContain(`${UPDATED}: [${ALPHA.name}] → [${BETA.name}] : ${DENY}`);
+    expect(toast()).toContain(`${UPDATED}: [${ALPHA.group_id}] → [${BETA.group_id}] : ${DENY}`);
   });
 
   it("puts the cell back when the server refused the write", async () => {

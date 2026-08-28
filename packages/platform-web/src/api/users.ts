@@ -1,3 +1,5 @@
+import type { RestPendingAdmission, RestPendingAdmissionsResponse } from "@agent-mesh/contracts";
+
 import { apiClient } from "./client";
 
 /**
@@ -96,24 +98,29 @@ export async function setLocalUserDeactivatedApi(
  * operator standing on these screens could not see that anybody was waiting.
  * The server-rendered `/admin` page was the only surface that did.
  *
- * `D-689` moves this route to `{ users }`; `users` is read first, ahead of the
- * name in use today, so the rename lands without a window where this draws
- * nothing. The older branch comes out once the route has moved.
+ * `D-689` moved this route to `{ users }`, and the older branch is gone.
+ *
+ * **The row shape is the contract's, not a local copy.** This declared its own
+ * with three optional fields; the route sends all four, and `requested_at` is
+ * nullable rather than absent — the column is `DATETIME DEFAULT
+ * CURRENT_TIMESTAMP` with no `NOT NULL`. Optional and nullable are different
+ * claims, and a reader that treats a null as a missing key defaults it, which
+ * is how a request time gets invented.
  */
-export interface PendingAdmission {
-  github_login: string;
-  github_id?: number;
-  requested_at?: string;
-  status?: string;
-}
+export type PendingAdmission = RestPendingAdmission;
 
 export async function fetchPendingAdmissions(): Promise<PendingAdmission[]> {
-  const data = await apiClient<any>("/api/v1/admin/pending");
   // The route moved to `{ users }` in `6b2b304`, so the older branch is gone:
   // leaving it would be the alias `D-689` refused to add, arriving by the back
-  // door — a reader could not tell which name the server actually sends.
-  // `agents.ts` still carries its chain, because `keys/pending` has not moved.
-  return Array.isArray(data) ? data : data.users ?? [];
+  // door — a reader could not tell which name the server actually sends. The
+  // sentence that used to end this comment said `agents.ts` still carried its
+  // chain "because `keys/pending` has not moved"; it had, and both readers are
+  // typed now.
+  //
+  // The array check stays: a type is a claim about a correct server, not a
+  // guarantee from the network.
+  const { users } = await apiClient<RestPendingAdmissionsResponse>("/api/v1/admin/pending");
+  return Array.isArray(users) ? users : [];
 }
 
 export type AdmissionDecision = "approve" | "deny";

@@ -29,30 +29,23 @@
  * travels with the numbers.
  */
 
-export interface Metric {
-  /** `null` when it could not be read. Never a substitute. */
-  value: number | null;
-  /** Why there is no value — absent when there is one. */
-  unavailable?: string;
-}
-
-export interface BehaviourMetrics {
-  /**
-   * When the hub began counting the three it holds in memory.
-   *
-   * `null` if the hub did not answer, which also makes those three `null` —
-   * a count without its window is not a metric.
-   */
-  counting_since: string | null;
-  pending_keys: Metric;
-  pending_users: Metric;
-  oldest_pending_user_ms: Metric;
-  oldest_pending_ms: Metric;
-  signature_refusals: Metric;
-  rate_limited: Metric;
-  egress_refusals: Metric;
-  accepted: Metric;
-}
+/**
+ * One metric, from the contract rather than from here.
+ *
+ * This was declared three times — here, in the console's `api/telemetry.ts`,
+ * and implicitly in whatever a reader of `apiClient<any>` assumed. The
+ * console's copy listed **six** of the eight fields below, so `pending_users`
+ * and `oldest_pending_user_ms` arrived on the wire and were dropped by a type
+ * that could not see them. A narrower copy does not fail; it compiles, and the
+ * screen simply cannot show what the server measured.
+ *
+ * The reasoning above about why every value is nullable is the reason this
+ * shape exists, so it stays here where the values are produced. What moves to
+ * `@agent-mesh/contracts` is the *declaration*, which is the thing that has to
+ * be one.
+ */
+export type { RestMetric as Metric, RestBehaviourMetrics as BehaviourMetrics } from "@agent-mesh/contracts";
+import type { RestMetric as Metric, RestBehaviourMetrics as BehaviourMetrics } from "@agent-mesh/contracts";
 
 const unread = (why: string): Metric => ({ value: null, unavailable: why });
 

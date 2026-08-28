@@ -20,8 +20,14 @@ import type { Sources } from "./behaviour-metrics";
 export interface BehaviourDeps {
   /** The key-proposal queue, read through the same helper its route uses. */
   pendingKeys: () => { status: number; body: unknown };
-  /** The people waiting to be admitted, as `/api/v1/admin/pending` lists them. */
-  pendingApprovals: () => Array<{ requested_at?: string }>;
+  /**
+   * The people waiting to be admitted, as `/api/v1/admin/pending` lists them.
+   *
+   * `requested_at` is optional **and** nullable: the column carries a default
+   * and no `NOT NULL`, so a row can have no timestamp, and the reader below
+   * already treats a falsy one as unreadable rather than as now.
+   */
+  pendingApprovals: () => Array<{ requested_at?: string | null }>;
   openHub: () => Database;
   /** Injected so the age of a queue is a fact about the test, not about the clock. */
   now: () => number;

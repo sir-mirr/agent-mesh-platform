@@ -1,3 +1,12 @@
+import type {
+  RestAgentListResponse,
+  RestBehaviourMetrics,
+  RestBehaviourResponse,
+  RestHealthResponse,
+  RestMailboxResponse,
+  RestMetric,
+} from "@agent-mesh/contracts";
+
 import { apiClient, failureKind, refusedCapability } from "./client.ts";
 
 /**
@@ -55,20 +64,23 @@ export interface SystemTelemetry {
  * it was — refused, or unreachable — is the thing the screen has to pass on,
  * and `.catch(() => null)` threw it away.
  */
-export interface Metric {
-  value: number | null;
-  unavailable?: string;
-}
+export type Metric = RestMetric;
 
-export interface BehaviourMetrics {
-  counting_since: string | null;
-  pending_keys: Metric;
-  oldest_pending_ms: Metric;
-  signature_refusals: Metric;
-  rate_limited: Metric;
-  egress_refusals: Metric;
-  accepted: Metric;
-}
+/**
+ * **This declared six of the eight the route sends.**
+ *
+ * `pending_users` and `oldest_pending_user_ms` are on the wire — the route
+ * spreads `shapeMetrics(...)`, and `packages/http/src/behaviour-metrics.ts`
+ * names all eight — and this copy could not see either. A narrower copy does
+ * not fail: it compiles, and the two metrics arrive and are dropped, so a
+ * screen cannot show how many people are waiting to be admitted or how long the
+ * oldest has waited. Both files' prose still says "the six", which is what the
+ * count was when § D-1 chose them.
+ *
+ * Taking the contract's declaration is what makes a ninth metric a compile
+ * error here instead of a field nobody notices.
+ */
+export type BehaviourMetrics = RestBehaviourMetrics;
 
 const PANELS = [
   { key: "agents", path: "/api/v1/agents", panel: "agents", capability: "" },
@@ -79,32 +91,47 @@ const PANELS = [
 
 export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const refused: Array<{ panel: string; capability: string }> = [];
-  const results = await Promise.all(
-    PANELS.map((p) =>
-      apiClient<any>(p.path).catch((err: unknown) => {
-        // **Read the status, not the sentence.** This matched
-        // `/forbidden|capability|permission/i` against the error message, which
-        // is the thing `ApiError` exists to stop: § 11.3's refusal carries
-        // `capability` as a field, and the sibling comment in `client.ts` says
-        // so. Matching prose got it wrong in both directions — a `500` whose
-        // body happened to say "forbidden" was drawn as a capability the
-        // operator lacks, and a `403` phrased any other way ("not allowed",
-        // "insufficient scope") was drawn as the backend being down. Every
-        // other reader on this console already uses `failureKind`.
-        if (failureKind(err) === "refused") {
-          refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });
-        }
-        return null;
-      }),
-    ),
-  );
+  /**
+   * One panel's answer, or `null` with the refusal recorded.
+   *
+   * Typed per call rather than once for the whole `Promise.all`: the four
+   * panels answer four different shapes, and a single type over the array is
+   * how they were all `any`.
+   */
+  const panel = <T>(index: number): Promise<T | null> => {
+    const p = PANELS[index]!;
+    return apiClient<T>(p.path).catch((err: unknown) => {
+      // **Read the status, not the sentence.** This matched
+      // `/forbidden|capability|permission/i` against the error message, which
+      // is the thing `ApiError` exists to stop: § 11.3's refusal carries
+      // `capability` as a field, and the sibling comment in `client.ts` says
+      // so. Matching prose got it wrong in both directions — a `500` whose
+      // body happened to say "forbidden" was drawn as a capability the
+      // operator lacks, and a `403` phrased any other way ("not allowed",
+      // "insufficient scope") was drawn as the backend being down. Every
+      // other reader on this console already uses `failureKind`.
+      if (failureKind(err) === "refused") {
+        refused.push({ panel: p.panel, capability: refusedCapability(err) ?? p.capability });
+      }
+      return null;
+    });
+  };
+  const results = await Promise.all([
+    panel<RestAgentListResponse>(0),
+    panel<RestMailboxResponse>(1),
+    panel<RestHealthResponse>(2),
+    panel<RestBehaviourResponse>(3),
+  ]);
   const [agents, mailbox, health, behaviour] = results;
 
   if (results.every((r) => r === null)) {
     throw new Error("Failed to fetch telemetry from server: all endpoints unreachable");
   }
 
-  const agentList: any[] = Array.isArray(agents) ? agents : agents?.agents ?? [];
+  // The bare-array branch went — `/api/v1/agents` answers `{ agents }` — and
+  // the array check stays, because nothing about a socket is guaranteed by a
+  // type.
+  const agentList = Array.isArray(agents?.agents) ? agents.agents : [];
   // **Two tables, two questions.** `health.agent_count` counts mesh identities
   // that are alive (`agents`, `deleted_at IS NULL`); `agentList.length` counts
   // rows in this server's own chat registry. Neither contains the other — a
@@ -115,7 +142,7 @@ export async function fetchTelemetry(): Promise<SystemTelemetry> {
   const totalAgents = health?.agent_count ?? null;
   const webChannelIdentities = agents === null
     ? null
-    : agentList.filter((a: any) => a.channel === "web").length;
+    : agentList.filter((a) => a.channel === "web").length;
 
   return {
     web_channel_identities: webChannelIdentities,

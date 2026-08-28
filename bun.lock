@@ -5,7 +5,7 @@
     "": {
       "name": "agent-mesh-platform",
       "dependencies": {
-        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.32.1",
+        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.33.0",
         "@agent-mesh/store": "workspace:*",
       },
       "devDependencies": {
@@ -41,7 +41,7 @@
       "name": "@agent-mesh/platform-web",
       "version": "0.1.0",
       "dependencies": {
-        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.32.1",
+        "@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.33.0",
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
         "react-router-dom": "^7.6.0",
@@ -69,7 +69,7 @@
     },
   },
   "packages": {
-    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#6f9ab4a", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-6f9ab4a", "sha512-W+gta4AZC8HKZfrK0y68NprdtrFJ7TxaIfvxeHvfU78n4KIQ7oLNyRT1sy7wC2z3K9tEgg+YRqTsFgfM2prYHA=="],
+    "@agent-mesh/contracts": ["@agent-mesh/contracts@github:sir-mirr/agent-mesh-contracts#cbf2321", { "dependencies": { "@sinclair/typebox": "^0.34.52" } }, "sir-mirr-agent-mesh-contracts-cbf2321", "sha512-pZDy4Zngux2fmAiaJJf+tudEqncdhTuWO83HLek83/AtKW9Ekf6Mrr1fFV13RxOVVvhU8zh4H7IL2aCuqQ1kBA=="],
 
     "@agent-mesh/http": ["@agent-mesh/http@workspace:packages/http"],
 

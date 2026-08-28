@@ -1,3 +1,5 @@
+import type { RestEgressRow, RestGroupRow, RestGroupsResponse } from "@agent-mesh/contracts";
+
 import { apiClient } from "./client.ts";
 
 export interface GroupItem {
@@ -13,23 +15,30 @@ export interface GroupItem {
 }
 
 export async function fetchGroups(): Promise<GroupItem[]> {
-  const data = await apiClient<any>("/api/v1/admin/groups");
-  const list = Array.isArray(data) ? data : data.groups ?? [];
+  const data = await apiClient<RestGroupsResponse>("/api/v1/admin/groups");
+  // The bare-array branch went: this route has always answered `{ ok, tenant,
+  // groups, egress }`. The array check stays one level in, because a type is a
+  // claim about a correct server and not a guarantee from the network.
+  const list: RestGroupRow[] = Array.isArray(data?.groups) ? data.groups : [];
   // Whether the route answered with egress rules at all, kept apart from the
   // rules being empty. Without it every group on a response carrying no
   // `egress` reads as "allowed to reach nothing", which is a claim.
-  const egressKnown = Array.isArray(data.egress);
-  const egressList: any[] = egressKnown ? data.egress : [];
+  const egressKnown = Array.isArray(data?.egress);
+  const egressList: RestEgressRow[] = egressKnown ? data.egress : [];
   const tenantsInResponse = new Set(
-    list.map((g: any) => typeof g.tenant === "string" ? g.tenant : null),
+    list.map((g) => typeof g.tenant === "string" ? g.tenant : null),
   );
   // Older tenant-scoped responses did not repeat the tenant on each egress row
   // and remain unambiguous while the group response has one tenant. Once more
   // than one tenant is present, a tenant-less rule cannot be joined truthfully.
-  const egressTenantAmbiguous = egressList.some((e: any) => typeof e.tenant !== "string")
+  const egressTenantAmbiguous = egressList.some((e) => typeof e.tenant !== "string")
     && tenantsInResponse.size > 1;
-  return list.map((g: any) => {
-    const groupId = g.group_id || g.id || `grp_${g.name?.toLowerCase().replace(/\s+/g, "_")}`;
+  return list.map((g) => {
+    // `g.group_id || g.id || \`grp_${g.name?…}\`` — the last two links read
+    // names this route does not send. It answers `tenant group_id description
+    // created_at created_by members`, so the first link always won and the
+    // synthesised `grp_…` id could never be reached.
+    const groupId = g.group_id;
     const tenant = typeof g.tenant === "string" ? g.tenant : null;
     // `source_group` / `target_group` / `member_count` / `egress_allowed` were
     // the leading half of four fallbacks here and no package on this platform
@@ -38,7 +47,7 @@ export async function fetchGroups(): Promise<GroupItem[]> {
     // the receipt's digest, which fell back to a value that was some other
     // thing's hash. Left in place they read as a description of the route.
     const groupEgress = egressList
-      .filter((e: any) => {
+      .filter((e) => {
         if (e.from_group !== groupId) return false;
         const egressTenant = typeof e.tenant === "string" ? e.tenant : null;
         // A tenant is part of the group key. Older tenant-scoped responses name
@@ -46,10 +55,12 @@ export async function fetchGroups(): Promise<GroupItem[]> {
         // cannot be safely joined.
         return egressTenant === null ? !egressTenantAmbiguous : tenant === egressTenant;
       })
-      .map((e: any) => e.to_group);
+      .map((e) => e.to_group);
     return {
       id: groupId,
-      name: g.name || g.group_id,
+      // The route sends no `name`; `group_id` is the name. `g.name || g.group_id`
+      // always reached the second link.
+      name: g.group_id,
       tenant,
       description: g.description ?? null,
       member_count: Array.isArray(g.members) ? g.members.length : null,

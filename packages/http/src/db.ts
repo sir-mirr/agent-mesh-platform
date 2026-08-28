@@ -219,6 +219,21 @@ export function importLegacyRegistry(db: Database, registryPath: string = LEGACY
 
 // --- Agent registry ---
 
+/**
+ * A row of `agent_registry`, as the column definitions allow it to be.
+ *
+ * `created_at` and `updated_at` are `DATETIME DEFAULT CURRENT_TIMESTAMP` with
+ * no `NOT NULL`, so a row written with an explicit `NULL` has one and this type
+ * said it could not. Nothing in this repository writes such a row today —
+ * which is the reason the contradiction went unnoticed, not a reason it is
+ * safe: `GET /api/v1/agents` passes the column straight through, and a reader
+ * told the value is always a string is a reader that will default a missing
+ * one to now. That is `I-062`, which drew every agent as created the moment
+ * the page loaded.
+ *
+ * The DDL is the authority here. A row type that promises more than its table
+ * is a claim nobody checks.
+ */
 export type DbRegistryAgent = {
   id: string
   name: string
@@ -226,8 +241,8 @@ export type DbRegistryAgent = {
   channel: string
   type: string
   approved: number
-  created_at: string
-  updated_at: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 export function listRegistryAgents(): DbRegistryAgent[] {
@@ -457,11 +472,23 @@ export function isAllowedToMessage(githubLogin: string, role: string, targetAgen
 
 // --- Pending Approvals ---
 
+/**
+ * A row of `pending_approvals`, as its columns allow it to be.
+ *
+ * `requested_at` and `status` are declared with defaults and no `NOT NULL`, and
+ * this type said both were always present. Same shape as `DbRegistryAgent`
+ * above: the value the schema permits and the value the code promises are two
+ * different claims, and only one of them is enforced.
+ *
+ * `status` is narrowed back by the query rather than by the column —
+ * `listPendingApprovals` filters `status = 'pending'`, so a row it returns has
+ * one. That is a fact about the query and belongs there, not here.
+ */
 export type DbPendingApproval = {
   github_login: string
   github_id: number
-  requested_at: string
-  status: string
+  requested_at: string | null
+  status: string | null
 }
 
 export function createPendingApproval(githubLogin: string, githubId: number): DbPendingApproval {

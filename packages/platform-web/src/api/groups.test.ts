@@ -195,28 +195,39 @@ describe("fetchGroups", () => {
     expect(row!.tenant).toBe(null);
   });
 
-  it("prefers the route's own group_id over any other id on the row", async () => {
-    spyOn({ ok: true, groups: [{ group_id: "grp-a", id: "something-else" }], egress: [] });
+  it("keys the row on group_id, which is the only id this route sends", async () => {
+    // The second half of this used to feed `{ id: "grp-b" }` with no
+    // `group_id`, to show that `id` alone was still read. The route sends
+    // `tenant group_id description created_at created_by members` and no `id`
+    // at all, so that row is one the server cannot produce and the branch
+    // satisfying it could never run. What is worth holding is that the egress
+    // filter matches on the same key the row is drawn under — a mismatch there
+    // shows an empty policy, which reads as "reaches nothing".
+    spyOn({ ok: true, groups: [{ group_id: "grp-a" }], egress: [] });
     expect((await fetchGroups())[0]!.id).toBe("grp-a");
-    // `id` alone is still read, because the egress filter matches on whatever
-    // this resolves to and a row keyed under the wrong name silently shows an
-    // empty policy.
-    spyOn({ ok: true, groups: [{ id: "grp-b" }], egress: [{ from_group: "grp-b", to_group: "grp-c" }] });
+
+    spyOn({ ok: true, groups: [{ group_id: "grp-b" }], egress: [{ from_group: "grp-b", to_group: "grp-c" }] });
     expect((await fetchGroups())[0]!.egress_allowed).toEqual(["grp-c"]);
   });
 
-  it("takes a bare array, and reads no policy out of one", async () => {
-    // An older shape of the response, where the rows are the body. They go
-    // through the same mapper — a branch that handed the raw array back would
-    // put `group_id` and a `members` array on screens that read `id` and
-    // `member_count` — and the body carries no `egress`, so every group in it
-    // is "policy not read" rather than "reaches nothing".
-    spyOn([{ group_id: "ops", members: ["a-1"] }]);
+  it("reads no policy out of a body that carries no egress", async () => {
+    // The half worth keeping. A response with groups and no `egress` key means
+    // the rules were not read, not that they are empty — every group in it is
+    // "policy not read" rather than "reaches nothing".
+    spyOn({ ok: true, tenant: "default", groups: [{ group_id: "ops", members: ["a-1"] }] });
     const rows = await fetchGroups();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe("ops");
     expect(rows[0]!.member_count).toBe(1);
     expect(rows[0]!.egress_allowed).toBe(null);
+  });
+
+  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+    // This asked for a bare array to be mapped. The route has never sent one,
+    // so the branch could not run against the server — but a body of the wrong
+    // shape must still not take the screen down.
+    spyOn([{ group_id: "ops", members: ["a-1"] }]);
+    expect(await fetchGroups()).toEqual([]);
   });
 
   it("hands a refusal on rather than drawing a mesh with no groups", async () => {

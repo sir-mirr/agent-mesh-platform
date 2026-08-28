@@ -219,7 +219,7 @@ const AGENT_ROWS = [
   { id: "svc-alpha-2", name: "Alpha Two", description: "Alpha Two", type: "runtime", last_seen_at: null },
 ];
 const GROUP_ROWS = [
-  { group_id: "grp_alpha", name: "Alpha", members: ["svc-alpha-1", "svc-alpha-2"] },
+  { group_id: "grp_alpha", members: ["svc-alpha-1", "svc-alpha-2"] },
 ];
 
 const healthy = () => serve({
@@ -419,8 +419,8 @@ describe("empty is what the server said, and only that", () => {
     // and the canvas both read the inflated list and agree with each other.
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "grp_empty", name: "Empty", members: [] },
-        { group_id: "grp_beta", name: "Beta", members: ["svc-alpha-1"] },
+        { group_id: "grp_empty", members: [] },
+        { group_id: "grp_beta", members: ["svc-alpha-1"] },
       ] }),
       [AGENTS]: () => json(200, { agents: AGENT_ROWS }),
       [KEYS_PENDING]: () => json(200, { ok: true, keys: [] }),
@@ -436,7 +436,7 @@ describe("empty is what the server said, and only that", () => {
     expect(drawn("topology-agent")).toBe(2);
     // **`|| 1` turned a known 0 into a 1** in this exact pill. A group the
     // server described as empty says nothing else.
-    expect(clusterLabels()).toEqual(["Empty (0)", "Beta (1)"]);
+    expect(clusterLabels()).toEqual(["grp_empty (0)", "grp_beta (1)"]);
     expect(unassignedClusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
   });
 
@@ -446,7 +446,7 @@ describe("empty is what the server said, and only that", () => {
     // group members and therefore dropped the registry row without a word.
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "default", name: "Default", members: [] },
+        { group_id: "default", members: [] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         { id: "soak-claude", name: "ai-claude", description: "AI Claude", type: "ai-claude", created_at: "2026-08-22T00:00:00Z" },
@@ -461,7 +461,7 @@ describe("empty is what the server said, and only that", () => {
     expect(drawnClusters("unassigned")).toBe(1);
     expect(drawn("topology-agent")).toBe(1);
     expect(drawn("topology-gateway")).toBe(1);
-    expect(clusterLabels()).toEqual(["Default (0)"]);
+    expect(clusterLabels()).toEqual(["default (0)"]);
     expect(unassignedClusterLabels()).toEqual([`${say("topo.noGroup")} (1)`]);
     expect(screen.getByText("soak-claude")).toBeTruthy();
     // The no-group orbit is a visual container, not a second server group or
@@ -480,7 +480,7 @@ describe("empty is what the server said, and only that", () => {
     // divergent responses, not duplicate the normal server answer.
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "default", name: "Default", members: ["soak-claude"] },
+        { group_id: "default", members: ["soak-claude"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         { id: "soak-claude", name: "ai-claude", description: "AI Claude", type: "ai-claude", created_at: "2026-08-22T00:00:00Z" },
@@ -493,7 +493,7 @@ describe("empty is what the server said, and only that", () => {
     expect(drawnClusters("group")).toBe(1);
     expect(drawnClusters("unassigned")).toBe(0);
     expect(drawn("topology-agent")).toBe(1);
-    expect(clusterLabels()).toEqual(["Default (1)"]);
+    expect(clusterLabels()).toEqual(["default (1)"]);
     expect(screen.getByText("soak-claude")).toBeTruthy();
   });
 });
@@ -502,7 +502,7 @@ describe("the heading counts what is actually on the canvas", () => {
   it("does not draw or count a person that shares the unified registry and group namespace", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "default", name: "Default", members: ["admin", "svc-alpha-1"] },
+        { group_id: "default", members: ["admin", "svc-alpha-1"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
@@ -513,7 +513,7 @@ describe("the heading counts what is actually on the canvas", () => {
     await mount();
 
     expect(drawn("topology-agent")).toBe(1);
-    expect(clusterLabels()).toEqual(["Default (1)"]);
+    expect(clusterLabels()).toEqual(["default (1)"]);
     expect(subtitle()).toBe(
       say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "1"),
     );
@@ -524,7 +524,7 @@ describe("the heading counts what is actually on the canvas", () => {
   it("reports zero agents when the only registry row is a person", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "default", name: "Default", members: ["admin"] },
+        { group_id: "default", members: ["admin"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         { id: "admin", name: "admin", description: "Local account", channel: "web", type: "user" },
@@ -534,7 +534,7 @@ describe("the heading counts what is actually on the canvas", () => {
     await mount();
 
     expect(drawn("topology-agent")).toBe(0);
-    expect(clusterLabels()).toEqual(["Default (0)"]);
+    expect(clusterLabels()).toEqual(["default (0)"]);
     expect(subtitle()).toBe(
       say("topo.subtitle").replace("{groups}", "1").replace("{agents}", "0"),
     );
@@ -557,7 +557,7 @@ describe("the heading counts what is actually on the canvas", () => {
     );
     expect(hudText()).toContain(`${say("topo.hud.agents")}: 2`);
     expect(hudText()).toContain(`${say("topo.hud.gateways")}: 1`);
-    expect(clusterLabels()).toEqual(["Alpha (2)"]);
+    expect(clusterLabels()).toEqual(["grp_alpha (2)"]);
     // A drawn mesh has no reason card over it at all. Read as text rather than
     // as a node: `expect(element).toBe(null)` fails by serialising the whole
     // subtree, and on this page that hangs the reporter — a mutant that draws
@@ -569,8 +569,8 @@ describe("the heading counts what is actually on the canvas", () => {
   it("counts one agent once when two groups both claim it", async () => {
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "grp_alpha", name: "Alpha", members: ["svc-alpha-1"] },
-        { group_id: "grp_beta", name: "Beta", members: ["svc-alpha-1"] },
+        { group_id: "grp_alpha", members: ["svc-alpha-1"] },
+        { group_id: "grp_beta", members: ["svc-alpha-1"] },
       ] }),
       // Keep this fixture about duplicate membership. A second registry row
       // with no membership is now (correctly) another node in the no-group
@@ -594,7 +594,7 @@ describe("the heading counts what is actually on the canvas", () => {
     // added the pills up would read `2` here and agree with the drawing
     // everywhere else, which is how it would have shipped.
     expect(hudText()).toContain(`${say("topo.hud.agents")}: 1`);
-    expect(clusterLabels()).toEqual(["Alpha (1)", "Beta (1)"]);
+    expect(clusterLabels()).toEqual(["grp_alpha (1)", "grp_beta (1)"]);
   });
 });
 
@@ -819,7 +819,7 @@ describe("the drawer's peer list is a list of peers", () => {
     // the chips beside it are the only place it shows.
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "grp_alpha", name: "Alpha", members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"] },
+        { group_id: "grp_alpha", members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         ...AGENT_ROWS,
@@ -857,8 +857,8 @@ describe("the drawer's peer list is a list of peers", () => {
     // on a peer you can see and landing on one the canvas is still hiding.
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "grp_alpha", name: "Alpha", members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"] },
-        { group_id: "grp_beta", name: "Beta", members: ["svc-beta-1"] },
+        { group_id: "grp_alpha", members: ["svc-alpha-1", "svc-alpha-2", "svc-alpha-3"] },
+        { group_id: "grp_beta", members: ["svc-beta-1"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         ...AGENT_ROWS,
@@ -1211,8 +1211,8 @@ describe("the populated canvas controls", () => {
     }));
     serve({
       [GROUPS]: () => json(200, { groups: [
-        { group_id: "grp_alpha", name: "Alpha", members: alpha.map((agent) => agent.id) },
-        { group_id: "grp_beta", name: "Beta", members: ["beta-1"] },
+        { group_id: "grp_alpha", members: alpha.map((agent) => agent.id) },
+        { group_id: "grp_beta", members: ["beta-1"] },
       ] }),
       [AGENTS]: () => json(200, { agents: [
         ...alpha,
@@ -1225,7 +1225,7 @@ describe("the populated canvas controls", () => {
     expect(drawn("topology-cluster")).toBe(2);
     expect(drawn("topology-gateway")).toBe(2);
     expect(drawn("topology-agent")).toBe(8);
-    expect(clusterLabels()).toEqual(["Alpha (7)", "Beta (1)"]);
+    expect(clusterLabels()).toEqual(["grp_alpha (7)", "grp_beta (1)"]);
 
     const filter = document.querySelector("select") as HTMLSelectElement | null;
     if (!filter) throw new Error("the large topology has no group filter");

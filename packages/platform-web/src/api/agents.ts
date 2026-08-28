@@ -1,4 +1,8 @@
-import type { TeardownResponse } from "@agent-mesh/contracts";
+import type {
+  RestAgentListResponse,
+  RestKeyProposalsResponse,
+  TeardownResponse,
+} from "@agent-mesh/contracts";
 
 import { apiClient } from "./client.ts";
 
@@ -94,13 +98,35 @@ export type { TeardownAction, TeardownRefusal, TeardownResponse } from "@agent-m
 
 export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
   const query = tenant === undefined ? "" : `?tenant=${encodeURIComponent(tenant)}`;
-  const data = await apiClient<any>(`/api/v1/agents${query}`);
-  const list: any[] = Array.isArray(data) ? data : data.agents ?? [];
-  return list.map((a: any) => ({
-    identity: a.identity || a.id || a.name || "unknown",
-    type: a.type || a.channel || "agent",
-    tenant: typeof a.tenant === "string" ? a.tenant : null,
-    description: a.description || a.name || a.identity || null,
+  // Typed, so a field this maps has to be one the route sends. The list used
+  // to be read as `Array.isArray(data) ? data : data.agents ?? []`, and the
+  // first branch has never run: this route has always answered `{ agents }`.
+  //
+  // The array check stays, one level in. A type is a claim about a correct
+  // server and not a guarantee from the network — an old build, a proxy or an
+  // error page can still put anything here, and `undefined.map` would take the
+  // screen down. What does not stay is guessing at *names*: the shape is
+  // checked, the field names are not re-invented.
+  const { agents } = await apiClient<RestAgentListResponse>(`/api/v1/agents${query}`);
+  return (Array.isArray(agents) ? agents : []).map((a) => ({
+    // **`id`, and nothing before it.** This read `a.identity || a.id || a.name
+    // || "unknown"` — three of those four are names this route has never sent,
+    // so the chain always reached the second link, and `"unknown"` was a row
+    // the server cannot produce. The route's primary key is `id`; renaming it
+    // here is a mapping, and the mapping has one source.
+    identity: a.id,
+    // `a.type || a.channel` folded two different facts into one: `type` is what
+    // the identity *is* (`agent`, `user`, `service`) and `channel` is how it is
+    // reached (`native`, `web`). Both are `NOT NULL` in `agent_registry` with
+    // defaults, so the second link never ran — and had it run, a `web` channel
+    // would have been drawn as an agent type.
+    type: a.type,
+    tenant: a.tenant ?? null,
+    // `a.description || a.name` stays — both are sent, and `description` is the
+    // one nullable column of the two, so the fallback is a live choice about
+    // what to show rather than a guess at a field name. Only the third link
+    // went: `a.identity` is not on this row.
+    description: a.description || a.name || null,
       // **No `status`.** SPEC § 9.1 says this route deliberately has no such
       // field: whether silence means `inactive` is an operating policy, not
       // something the route decides. These three comparisons read a key the
@@ -129,18 +155,20 @@ export async function fetchAgents(tenant?: string): Promise<RegistryAgent[]> {
 }
 
 export async function fetchPendingKeys(): Promise<KeyProposal[]> {
-  const data = await apiClient<any>("/api/v1/admin/keys/pending");
-  // **Two decision queues answer with the same key.** `GET admin/pending` (people
-  // waiting to be admitted) and this one both reply `{ pending: [...] }`, one path
-  // segment apart, so a reader holding a response cannot tell which queue it is —
-  // and the guessable one answers `[]`. `D-689` splits them: this route becomes
-  // `{ keys }` and the other `{ users }`.
+  // **Two decision queues answered with the same key.** `GET admin/pending`
+  // (people waiting to be admitted) and this one both replied
+  // `{ pending: [...] }`, one path segment apart, so a reader holding a
+  // response could not tell which queue it was — and the guessable one answers
+  // `[]`. `D-689` split them: this route says `{ keys }` and the other
+  // `{ users }`.
   //
-  // The route and this reader are in different hands, so they cannot land in one
-  // commit; `keys` is read here **first**, while nothing sends it yet. When the
-  // route moves, the bell keeps working, and the older branches come out then.
-  // This is not an alias — the contract stays one name; the reader is mid-move.
-  return Array.isArray(data) ? data : data.keys ?? [];
+  // **The move is finished.** This read carried a comment saying `keys` was
+  // read here first "while nothing sends it yet"; `packages/http/src/keys-admin.ts`
+  // has sent `keys` since. A comment that describes a route as it was is the
+  // thing a reader consults when deciding whether the fallback beside it can
+  // go — so the fallbacks and the sentence come out together.
+  const { keys } = await apiClient<RestKeyProposalsResponse>("/api/v1/admin/keys/pending");
+  return Array.isArray(keys) ? keys : [];
 }
 
 export async function approveKeyProposal(fingerprint: string, reason?: string): Promise<{ ok: boolean }> {

@@ -91,15 +91,14 @@ describe("fetchAuditEvents", () => {
   });
 
   it("reports a signature as a fact, not as a sentence", async () => {
+    // The attestation arrives as an object. `audit-query.ts` does the
+    // `JSON.parse` before answering, so a string is not a shape this route
+    // sends — this fixture used to send one, and the branch reading it could
+    // not run against the server.
     answer({ events: [{ event_id: "e1", payload: {},
-      attestation: JSON.stringify({ sig: { alg: "ed25519", kid: "sha256:aa" } }) }] });
+      attestation: { sig: { alg: "ed25519", kid: "sha256:aa" } } }] });
     const [row] = await fetchAuditEvents();
     expect(row!.signature).toEqual({ signed: true, algorithm: "ed25519", keyId: "sha256:aa" });
-  });
-
-  it("takes the attestation as an object as well as a string", async () => {
-    answer({ events: [{ event_id: "e1", payload: {}, attestation: { sig: { alg: "ed25519", kid: "k" } } }] });
-    expect((await fetchAuditEvents())[0]!.signature.signed).toBe(true);
   });
 
   it("calls an unsigned row unsigned rather than unknown", async () => {
@@ -121,8 +120,10 @@ describe("fetchAuditEvents", () => {
     expect((await fetchAuditEvents())[0]!.digestMatches).toBe(false);
   });
 
-  it("takes a bare array as well as { events }", async () => {
+  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+    // This asked for a bare array to be read. The route has always answered
+    // `{ ok, events, next_cursor }`.
     answer([{ event_id: "e1", payload: {} }]);
-    expect(await fetchAuditEvents()).toHaveLength(1);
+    expect(await fetchAuditEvents()).toEqual([]);
   });
 });

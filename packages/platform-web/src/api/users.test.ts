@@ -40,9 +40,15 @@ describe("fetchPendingAdmissions", () => {
     expect((await fetchPendingAdmissions()).map((u) => u.github_login)).toEqual(["asked-to-join"]);
   });
 
-  it("takes a bare array as well", async () => {
+  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+    // This asked for a bare array to be accepted. The route has never sent one
+    // — SPEC § 9.1 and `main.ts` both answer `{ users }` — so the branch that
+    // satisfied it could not run against the server, and a test written from a
+    // reader's fallback checks that the fallback is still there rather than
+    // that the reader is right. What survives is the half that matters: a body
+    // of the wrong shape must not take the screen down.
     spyOn([{ github_login: "older-shape" }]);
-    expect((await fetchPendingAdmissions())).toHaveLength(1);
+    expect(await fetchPendingAdmissions()).toEqual([]);
   });
 
   it("draws nothing rather than guessing when the body uses the old name", async () => {

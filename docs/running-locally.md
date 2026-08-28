@@ -418,7 +418,7 @@ answering `No such file or directory` is what that looks like.
 it:
 
 ```json
-"@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.32.1"
+"@agent-mesh/contracts": "github:sir-mirr/agent-mesh-contracts#v0.33.0"
 ```
 
 It resolves today because that repository is public — checked, not assumed:
@@ -426,7 +426,7 @@ It resolves today because that repository is public — checked, not assumed:
 ```bash
 gh repo view sir-mirr/agent-mesh-contracts --json isPrivate    # false
 curl -so /dev/null -w '%{http_code}\n' \
-  https://codeload.github.com/sir-mirr/agent-mesh-contracts/tar.gz/refs/tags/v0.32.1   # 200
+  https://codeload.github.com/sir-mirr/agent-mesh-contracts/tar.gz/refs/tags/v0.33.0   # 200
 ```
 
 Which is worth writing down precisely because nothing here would say so if it

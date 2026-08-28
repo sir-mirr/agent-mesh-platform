@@ -43,7 +43,21 @@ export class ApiError extends Error {
 }
 
 
-export async function apiClient<T = any>(
+/**
+ * One request, with the answer's shape named by the caller.
+ *
+ * **The default is `unknown`, not `any`.** `any` agreed with every shape,
+ * including the ones the server does not send, so a caller could ask for a
+ * field nobody emits and get `undefined` at runtime with nothing said at build
+ * time — which is how a `status` on the agent list, a `depth` on the mailbox
+ * summary and a `pending` on the admission queue were each read for months.
+ * `unknown` makes the next caller that names no shape say what it expects
+ * before it can read anything.
+ *
+ * The nine call sites that take the default all discard the value, so this
+ * costs them nothing.
+ */
+export async function apiClient<T = unknown>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {

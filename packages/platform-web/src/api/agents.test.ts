@@ -66,7 +66,7 @@ describe("fetchAgents", () => {
   });
 
   it("leaves an absent fingerprint absent", async () => {
-    spyOn({ agents: [{ identity: "a-1" }] });
+    spyOn({ agents: [{ id: "a-1", name: "a-1", type: "agent", channel: "native" }] });
     const [row] = await fetchAgents();
     // A constant here makes every agent match the one an operator is checking
     // against, and the word `verified` in it invites skipping the check.
@@ -74,14 +74,32 @@ describe("fetchAgents", () => {
     expect(row!.tenant).toBe(null);
   });
 
-  it("falls back through the names a row might carry, and says unknown last", async () => {
-    spyOn({ agents: [{ id: "by-id" }, { name: "by-name" }, {}] });
-    expect((await fetchAgents()).map((a) => a.identity)).toEqual(["by-id", "by-name", "unknown"]);
+  /**
+   * These two replace a pair that asserted the fallbacks.
+   *
+   * One fed `[{ id }, { name }, {}]` and required `["by-id", "by-name",
+   * "unknown"]`; the other fed a bare array. Both passed, and neither row shape
+   * is one `GET /api/v1/agents` can produce — the route answers `{ agents }`
+   * and every row has an `id`, because it is the table's primary key. A test
+   * written from the reader's fallback list checks that the fallbacks are still
+   * there, which is not the same as checking the reader is right.
+   *
+   * What is worth holding is the pair of facts that survive: the name the route
+   * actually sends is the one read, and a body that is not the agreed shape
+   * draws nothing rather than throwing.
+   */
+  it("takes the row's `id` as the identity, which is the name the route sends", async () => {
+    spyOn({ agents: [{ id: "by-id", name: "By Id", type: "agent", channel: "native", tenant: "default" }] });
+    expect((await fetchAgents()).map((a) => a.identity)).toEqual(["by-id"]);
   });
 
-  it("takes a bare array as well as { agents }", async () => {
+  it("draws nothing rather than throwing when the body is not the agreed shape", async () => {
+    // A type is a claim about a correct server. An old build, a proxy or an
+    // error page can still answer anything, and `undefined.map` takes the
+    // screen down — so the shape is checked even though the name is not
+    // guessed at.
     spyOn([{ identity: "a-1" }]);
-    expect(await fetchAgents()).toHaveLength(1);
+    expect(await fetchAgents()).toEqual([]);
   });
 });
 

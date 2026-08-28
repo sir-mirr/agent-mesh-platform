@@ -7165,6 +7165,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["SC-INVENT-08"],
   },
   {
+    id: "the-agent-list-grows-a-status",
+    defect:
+      "`GET /api/v1/agents` starts sending a `status`. SPEC \u00a7 9.1 says it deliberately has none \u2014 whether five minutes of silence is `inactive` is an operating policy, and a route answering it ships a judgement dressed as a measurement. The console drew every agent as ONLINE for as long as it invented this field locally, and a server that invents it instead moves the invention one layer up rather than removing it.",
+    file: "packages/http/src/main.ts",
+    from: "    fingerprint: fingerprints.get(entry.id) ?? null,",
+    to: "    status: 'active',\n    fingerprint: fingerprints.get(entry.id) ?? null,",
+    suite: "test/console-contract.test.ts",
+    expect: ["every fixture's field names match the live answer's"],
+  },
+  {
+    id: "the-queue-total-is-renamed-depth",
+    defect:
+      "The mailbox summary answers `depth` instead of `total_queued`. `depth` is the name the console read for months against a route that has never sent it, so its \"messages queued\" tile showed `0` whether the mesh was idle or backed up \u2014 and `0` is the answer that looks calm. The name is the whole defect: nothing about the number changes.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ ok: true, mailboxes: rows, total_queued: total.n })",
+    to: "  return c.json({ ok: true, mailboxes: rows, depth: total.n })",
+    suite: "test/console-contract.test.ts",
+    expect: ["every fixture's field names match the live answer's"],
+  },
+  {
+    id: "the-admission-queue-says-pending-again",
+    defect:
+      "`GET /api/v1/admin/pending` goes back to answering `{ pending }`. D-689 split the two decision queues \u2014 people awaiting admission here, key proposals one path segment away \u2014 because both answered under the same name, so a caller holding a response could not tell which question it had asked, and the wrong one answers an honest empty array.",
+    file: "packages/http/src/main.ts",
+    from: "  return c.json({ users })",
+    to: "  return c.json({ pending: users })",
+    suite: "test/console-contract.test.ts",
+    expect: ["every fixture's field names match the live answer's"],
+  },
+  {
     id: "the-store-union-drifts-from-the-contract",
     defect:
       "The store's `TeardownAction` stopped matching the contract the console compiles against. The store cannot import the contract to name its own result \u2014 `packages/store` owns the transaction and must not depend on the wire package \u2014 so one fact lives in two files and nothing but a source comparison can see them come apart. Neither module imports the other, so both halves compile; the screen then tests `action === \"not-found\"` against a value the route never sends and every teardown falls through to the failure branch.",

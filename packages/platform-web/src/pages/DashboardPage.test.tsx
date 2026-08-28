@@ -415,8 +415,8 @@ describe("the two role panels that exist below today's browser gate", () => {
       [ME, stillOut],
       [GROUPS, answers({
         groups: [
-          { group_id: "grp_alpha", name: "Alpha", description: "Critical workers", members: [SEEN_ROW.id] },
-          { group_id: "grp_beta", name: "Beta", members: [] },
+          { group_id: "grp_alpha", description: "Critical workers", members: [SEEN_ROW.id] },
+          { group_id: "grp_beta", members: [] },
         ],
         egress: [
           { from_group: "grp_alpha", to_group: "grp_beta" },
@@ -450,7 +450,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     routes = [
       [ME, stillOut],
       [GROUPS, answers({ groups: [{
-        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+        group_id: "grp_alpha", members: [USER_ROW.id, SEEN_ROW.id],
       }] })],
       [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
       [KEYS_PENDING, answers({ keys: [] })],
@@ -485,7 +485,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     remember("TENANT_ADMIN");
     routes = [
       [ME, stillOut],
-      [GROUPS, answers({ groups: [{ group_id: "grp_alpha", name: "Alpha", members: [] }] })],
+      [GROUPS, answers({ groups: [{ group_id: "grp_alpha", members: [] }] })],
       [AGENTS, answers({ agents: [] })],
       [KEYS_PENDING, answers({ keys: [] })],
     ];
@@ -524,7 +524,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     routes = [
       [ME, stillOut],
       [GROUPS, answers({ groups: [{
-        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+        group_id: "grp_alpha", members: [USER_ROW.id, SEEN_ROW.id],
       }] })],
       [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
       [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
@@ -635,7 +635,7 @@ describe("the two role panels that exist below today's browser gate", () => {
       remember("TENANT_ADMIN");
       routes = [
         [ME, stillOut],
-        [GROUPS, answers({ groups: [{ group_id: "tenant-groups-ok", name: "Groups answered", members: [] }] })],
+        [GROUPS, answers({ groups: [{ group_id: "tenant-groups-ok", members: [] }] })],
         [AGENTS, answer],
         [KEYS_PENDING, answers({ keys: [] })],
       ];
@@ -667,7 +667,7 @@ describe("the two role panels that exist below today's browser gate", () => {
       remember("TENANT_ADMIN");
       routes = [
         [ME, stillOut],
-        [GROUPS, answers({ groups: [{ group_id: "tenant-groups-ok", name: "Groups answered", members: [] }] })],
+        [GROUPS, answers({ groups: [{ group_id: "tenant-groups-ok", members: [] }] })],
         [AGENTS, answers({ agents: [SEEN_ROW] })],
         [KEYS_PENDING, answer],
       ];
@@ -705,7 +705,7 @@ describe("the two role panels that exist below today's browser gate", () => {
       remember("GROUP_ADMIN");
       routes = [
         [ME, stillOut],
-        [GROUPS, answers({ groups: [{ group_id: "group-groups-ok", name: "Groups answered", members: [] }] })],
+        [GROUPS, answers({ groups: [{ group_id: "group-groups-ok", members: [] }] })],
         [AGENTS, answer],
         [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
       ];
@@ -730,7 +730,7 @@ describe("the two role panels that exist below today's browser gate", () => {
     remember("TENANT_ADMIN");
     routes = [
       [ME, stillOut],
-      [GROUPS, answers({ groups: [{ group_id: "tenant-alone", name: "Tenant alone", members: [] }] })],
+      [GROUPS, answers({ groups: [{ group_id: "tenant-alone", members: [] }] })],
       [AGENTS, down],
       [KEYS_PENDING, down],
     ];
@@ -739,7 +739,9 @@ describe("the two role panels that exist below today's browser gate", () => {
     // The agents and key reads failed. Neither failure answers the separate
     // groups question, so a shared `isError` must not take this row down.
     expectDashboardGroupState("tenant-groups", "present");
-    expect(screen.getByTestId("tenant-groups-present").textContent).toContain("Tenant alone");
+    // The id, because the route sends no group name — this fixture used to
+    // carry "Tenant alone" and nothing on the wire has ever had it.
+    expect(screen.getByTestId("tenant-groups-present").textContent).toContain("tenant-alone");
     expectDashboardListState("tenant-agents", "unreachable");
     expectDashboardListState("tenant-pending-keys", "unreachable");
 
@@ -748,14 +750,14 @@ describe("the two role panels that exist below today's browser gate", () => {
     remember("GROUP_ADMIN");
     routes = [
       [ME, stillOut],
-      [GROUPS, answers({ groups: [{ group_id: "group-alone", name: "Group alone", members: [] }] })],
+      [GROUPS, answers({ groups: [{ group_id: "group-alone", members: [] }] })],
       [AGENTS, down],
       [MAILBOX, down],
     ];
     await mount();
 
     expectDashboardGroupState("group-groups", "present");
-    expect(screen.getByTestId("group-groups-present").textContent).toContain("Group alone");
+    expect(screen.getByTestId("group-groups-present").textContent).toContain("group-alone");
     expectDashboardListState("group-agents", "unreachable");
   });
 });
@@ -825,7 +827,7 @@ describe("the platform panel, on an answer", () => {
       [ME, ADMIN_ME],
       [AGENTS, answers({ agents: [USER_ROW, SEEN_ROW] })],
       [GROUPS, answers({ groups: [{
-        group_id: "grp_alpha", name: "Alpha", members: [USER_ROW.id, SEEN_ROW.id],
+        group_id: "grp_alpha", members: [USER_ROW.id, SEEN_ROW.id],
       }] })],
       [HEALTH, answers({ status: "ok", agent_count: 1, uptime: 900, version: "0.2.0" })],
       [MAILBOX, answers({ mailboxes: [], total_queued: 0 })],
@@ -865,7 +867,7 @@ describe("the platform panel, on an answer", () => {
 });
 
 describe("the platform panel, on a read that did not come back", () => {
-  const TENANTS = { groups: [{ group_id: "grp_billing", name: "billing", members: ["agent-seen"] }] };
+  const TENANTS = { groups: [{ group_id: "grp_billing", members: ["agent-seen"] }] };
 
   it("names a refusal as one, and does not say there are no tenants", async () => {
     remember("PLATFORM_ADMIN");

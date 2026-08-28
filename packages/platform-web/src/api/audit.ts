@@ -1,3 +1,5 @@
+import type { RestAuditEvent, RestAuditEventsResponse } from "@agent-mesh/contracts";
+
 import { apiClient } from "./client.ts";
 
 export interface SignatureFact {
@@ -56,9 +58,10 @@ function payloadHasWithheldContent(value: unknown): boolean {
 }
 
 export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
-  const data = await apiClient<any>("/api/v1/audit/events");
-  const list = Array.isArray(data) ? data : data.events ?? [];
-  return list.map((item: any, index: number) => {
+  const data = await apiClient<RestAuditEventsResponse>("/api/v1/audit/events");
+  // The bare-array branch went — this route answers `{ ok, events, next_cursor }`.
+  const list: RestAuditEvent[] = Array.isArray(data?.events) ? data.events : [];
+  return list.map((item, index: number) => {
     const rawPayload: unknown = item.payload ?? null;
     const payload = isRecord(rawPayload) ? rawPayload : {};
     const message = isRecord(payload.message) ? payload.message : null;
@@ -68,47 +71,60 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
         ? payload.event_type
         : null;
     const isMessage = message !== null || Boolean(eventType?.includes(".message."));
+    // **The chains stop at the payload.** These read `item.sender`,
+    // `item.recipient`, `item.target` and `item.carrier` as later links, and
+    // `GET /api/v1/audit/events` sends none of the four: its rows carry
+    // `event_id schema_version event_type occurred_at correlation_id
+    // causation_event_id producer_id identity recorded_by payload
+    // payload_digest integrity attestation stored_at attachments`. A link that
+    // cannot fire still reads as a shape the server might send, and the tests
+    // never fed one either.
+    //
+    // `payload.*` reads stay: the payload is arbitrary JSON stored verbatim, so
+    // what is inside it genuinely varies.
     const sender = isMessage
-      ? stringField(message?.from, message?.sender, item.sender, item.identity, item.producer_id)
+      ? stringField(message?.from, message?.sender, item.identity, item.producer_id)
       : null;
-    const recipient = isMessage
-      ? stringField(message?.to, message?.recipient, item.recipient, item.target)
-      : null;
+    const recipient = isMessage ? stringField(message?.to, message?.recipient) : null;
     const sentBy = isMessage
       ? stringField(
         message?.sent_by,
         message?.carrier,
-        item.carrier,
         typeof item.identity === "string" && item.identity !== sender ? item.identity : null,
       )
       : null;
+    // `item.content` and `item.content_length` were the third link of each of
+    // these. Content lives in the payload; the row has no column for it.
     const content = typeof message?.content === "string"
       ? message.content
       : typeof payload.content === "string"
         ? payload.content
-        : typeof item.content === "string"
-          ? item.content
-          : null;
-    const containsContent = payloadHasContent(rawPayload) || item.content !== undefined;
-    const redacted = payloadHasWithheldContent(rawPayload)
-      || (typeof item.content === "string" && /^\[content withheld\b/i.test(item.content));
-    const measuredLength = item.content_length ?? message?.content_length ?? payload.content_length;
+        : null;
+    const containsContent = payloadHasContent(rawPayload);
+    const redacted = payloadHasWithheldContent(rawPayload);
+    const measuredLength = message?.content_length ?? payload.content_length;
     const contentLength = typeof measuredLength === "number"
       ? measuredLength
       : content === null
         ? null
         : content.length;
-    const timestamp = stringField(item.occurred_at, item.stored_at, item.timestamp, item.ts) ?? "—";
+    // `item.timestamp` and `item.ts` are not columns of this row either. The two
+    // that are — `occurred_at` (when it happened) and `stored_at` (when the
+    // store took it) — stay in that order, because the first is the fact and
+    // the second is the fallback.
+    const timestamp = stringField(item.occurred_at, item.stored_at) ?? "—";
     const identity = stringField(item.identity, payload.identity, item.producer_id);
-    const actor = stringField(payload.actor, item.actor, identity);
+    const actor = stringField(payload.actor, identity);
     const change = isRecord(payload.change) ? payload.change : {};
     
-    let attestationObj: any = null;
-    if (typeof item.attestation === "string") {
-      try { attestationObj = JSON.parse(item.attestation); } catch {}
-    } else if (typeof item.attestation === "object") {
-      attestationObj = item.attestation;
-    }
+    // The route parses `attestation` before sending it (`audit-query.ts`
+    // `JSON.parse(row.attestation)`), so it arrives as an object or `null` and
+    // never as a string. The `typeof === "string"` branch that used to be here
+    // could not run.
+    const attestationObj: Record<string, any> | null =
+      item.attestation !== null && typeof item.attestation === "object"
+        ? (item.attestation as Record<string, any>)
+        : null;
 
     const sig = attestationObj?.sig;
     const attestationAlgorithm = sig?.alg ?? null;
@@ -135,7 +151,10 @@ export async function fetchAuditEvents(): Promise<AuditEventItem[]> {
         : { signed: false, algorithm: null, keyId: null };
 
     return {
-      id: item.event_id || item.id || `event-${index + 1}`,
+      // `item.id` was the second link and is not a column; `event_id` is the
+      // primary key and is always sent. The synthesised `event-N` stays as the
+      // last resort for a row that arrived without one at all.
+      id: item.event_id || `event-${index + 1}`,
       eventType,
       timestamp,
       identity,

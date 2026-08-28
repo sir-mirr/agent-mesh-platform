@@ -291,9 +291,18 @@ const submitForm = () => {
  */
 const submitFormUnvalidated = () => { fireEvent.submit(openForm()); };
 
+/**
+ * A group as `GET /api/v1/admin/groups` sends it.
+ *
+ * **No `name`.** These fixtures carried one — "Support Group", "Billing Group"
+ * — and the route has never sent it: `groupsStore.listGroups` selects
+ * `tenant group_id description created_at created_by`, and the create route
+ * accepts only `group_id description tenant`. So on a real deployment the
+ * screen's Name column has always shown the group id, and the fixture was the
+ * only place a display name existed.
+ */
 const SUPPORT = {
   group_id: "grp_support",
-  name: "Support Group",
   tenant: "default",
   description: "front line",
   members: ["agt_alpha", "agt_beta"],
@@ -301,7 +310,6 @@ const SUPPORT = {
 };
 const BILLING = {
   group_id: "grp_billing",
-  name: "Billing Group",
   tenant: "default",
   description: "invoices",
   members: [],
@@ -440,7 +448,10 @@ describe("what a row says about a group", () => {
     // that shows one group's members under another group's name is a row where
     // every word came from the server and the row is still untrue.
     const support = cellsOf(rowFor(SUPPORT.group_id));
-    expect(support[0]).toBe(`${SUPPORT.name}${SUPPORT.group_id}`);
+    // The id twice, because the route sends no name and the first cell draws
+    // both. Written out rather than hidden behind a `name` the server does not
+    // have: the duplication is what an operator actually sees.
+    expect(support[0]).toBe(`${SUPPORT.group_id}${SUPPORT.group_id}`);
     expect(support[1]).toBe(SUPPORT.description);
     expect(support[2]).toBe(String(SUPPORT.members.length));
     expect(support[3]).toBe(SUPPORT.members.join(""));
@@ -588,7 +599,7 @@ describe("creating a group", () => {
     let reads = 0;
     readGroups = () => (reads++ === 0
       ? json(200, { groups: [] })
-      : json(200, { groups: [{ ...SUPPORT, group_id: "grp_analytics", name: "Analytics Group" }] }));
+      : json(200, { groups: [{ ...SUPPORT, group_id: "grp_analytics" }] }));
     writeGroup = () => json(200, { ok: true, group_id: "grp_analytics", created: true });
 
     await mount();
@@ -603,7 +614,11 @@ describe("creating a group", () => {
     // dialog put it there: a locally appended row survives a server that never
     // stored it, and the operator finds out on the next reload.
     expect(groupReads()).toHaveLength(2);
-    expect(cellsOf(rowFor("grp_analytics"))[0]).toContain("Analytics Group");
+    // The reread's row, drawn under the id the server stored. The operator
+    // typed "Analytics Group" into a field labelled Name, and the route stores
+    // that string as `group_id` — see the `sent` assertion above, which is the
+    // body this form posts.
+    expect(cellsOf(rowFor("grp_analytics"))[0]).toContain("grp_analytics");
     // And the dialog is gone. One left open over its own success toast reads as
     // a write that did not take, and the retry it invites is a second group.
     // Counted rather than compared as a node: a failing comparison against an
@@ -695,8 +710,8 @@ describe("assigning an agent to a group", () => {
     // to change. A dialog that always names the first row would put the agent
     // somewhere else and say nothing about it.
     const title = document.querySelector("h2")?.textContent ?? "";
-    expect(title).toBe(`${ASSIGN_TITLE} - ${BILLING.name}`);
-    expect(title).not.toContain(SUPPORT.name);
+    expect(title).toBe(`${ASSIGN_TITLE} - ${BILLING.group_id}`);
+    expect(title).not.toContain(SUPPORT.group_id);
   });
 
   it("posts the selected agent with the group tenant, then shows the server's reread", async () => {
@@ -739,7 +754,7 @@ describe("assigning an agent to a group", () => {
 
     expect(toast()).toContain(ASSIGNED);
     expect(toast()).toContain("agt_gamma");
-    expect(toast()).toContain(BILLING.name);
+    expect(toast()).toContain(BILLING.group_id);
   });
 
   it("offers only non-user agents from the selected group's tenant", async () => {
