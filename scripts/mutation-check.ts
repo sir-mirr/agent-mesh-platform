@@ -13268,6 +13268,76 @@ export const MUTATIONS: Mutation[] = [
     expect: ["asks once when React StrictMode replays the mount effect"],
   },
   {
+    id: "the-access-record-calls-the-service-the-reader",
+    defect:
+      "The person field is filled from recorded_by.identity. Every HTTP access then names agent-mesh-http as the reader, erasing the operator whose capability authorised the read.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.reader", "Reader")}: {item.identity ?? "—"}',
+    to: '{t("audit.access.reader", "Reader")}: {item.recordedByIdentity ?? "—"}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-hides-the-reading-service",
+    defect:
+      "The service field repeats the operator. A row still contains two plausible names, but no longer says which HTTP service wrote the observation independently of the person who read.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.recorder", "Reading service")}: {item.recordedByIdentity ?? "—"}',
+    to: '{t("audit.access.recorder", "Reading service")}: {item.identity ?? "—"}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-forgets-the-requested-scope",
+    defect:
+      "change.query is discarded before rendering. A list read then says only that a list was reached and loses the filters that answer what the operator actually requested.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "  const query = Object.entries(item.readQuery ?? {});",
+    to: "  const query: Array<[string, unknown]> = [];",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "my-access-records-open-themselves-by-default",
+    defect:
+      "The native disclosure is born open. The current viewer's own reads take over the trail instead of starting as the explicit, reversible 'My accesses N' group the decision requires.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '        <details\n          data-testid="audit-own-accesses"',
+    to: '        <details open\n          data-testid="audit-own-accesses"',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "my-access-records-vanish-instead-of-collapsing",
+    defect:
+      "The self-access group is filtered out of the render altogether. The quiet screen looks cleaner by recreating the unobservable read this log exists to prevent.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: "      {!isError && !isLoading && ownAccesses.length > 0 && (",
+    to: "      {false && !isError && !isLoading && ownAccesses.length > 0 && (",
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-access-record-replaces-store-time-with-event-time",
+    defect:
+      "The access row reports occurred_at where the decision requires stored_at. A delayed write then answers when the payload claimed to happen, not when the audit store actually accepted the observation.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: '{t("audit.access.storedAt", "Stored at")}: {item.storedAt}',
+    to: '{t("audit.access.storedAt", "Stored at")}: {item.timestamp}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
+    id: "the-single-access-record-drops-the-event-id",
+    defect:
+      "A single-record read is labelled only as a generic audit event. It remains visually different from a list read but no longer answers which event change.read says was reached.",
+    file: "packages/platform-web/src/pages/tenant/AuditLogsPage.tsx",
+    from: ': `${t("audit.access.one", "single audit event")}: ${item.readTarget ?? "—"}`}',
+    to: ': t("audit.access.one", "single audit event")}',
+    suite: "packages/platform-web/src/pages/tenant/AuditLogsPage.test.tsx",
+    expect: ["answers who, target, requested scope and stored time while keeping my reads collapsed"],
+  },
+  {
     id: "a-torn-down-agent-returns-to-the-group-assignment-picker",
     defect:
       "The group assignment caller switches from the callable projection back to registry history. The modal then offers a torn-down identity even though the hub will never admit or address that name again.",

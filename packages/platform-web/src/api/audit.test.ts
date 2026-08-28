@@ -87,18 +87,33 @@ describe("fetchAuditEvents", () => {
       actor: "platform-admin",
       change: { read: "list", query: {} },
     };
-    answer({ events: [{ event_id: "e1", occurred_at: "t", identity: "platform-admin", payload }] });
+    answer({ events: [{
+      event_id: "e1",
+      occurred_at: "happened",
+      stored_at: "stored",
+      identity: "platform-admin",
+      recorded_by: { kind: "http", identity: "agent-mesh-http" },
+      payload,
+    }] });
     const [row] = await fetchAuditEvents();
     expect({
       eventType: row!.eventType,
       actor: row!.actor,
       readTarget: row!.readTarget,
+      readQuery: row!.readQuery,
+      storedAt: row!.storedAt,
+      recordedByKind: row!.recordedByKind,
+      recordedByIdentity: row!.recordedByIdentity,
       rawPayload: row!.rawPayload,
       isMessage: row!.isMessage,
     }).toEqual({
       eventType: "mesh.identity.audit_read",
       actor: "platform-admin",
       readTarget: "list",
+      readQuery: {},
+      storedAt: "stored",
+      recordedByKind: "http",
+      recordedByIdentity: "agent-mesh-http",
       rawPayload: payload,
       isMessage: false,
     });

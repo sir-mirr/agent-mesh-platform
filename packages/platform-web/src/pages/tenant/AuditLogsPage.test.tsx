@@ -484,7 +484,8 @@ describe("reading it again", () => {
       return json(200, { ok: true, events, next_cursor: null });
     };
     await mount();
-    expect(logState().rows).toBe(2);
+    expect(logState().rows).toBe(1);
+    expect(screen.getByTestId("audit-own-accesses").hasAttribute("open")).toBe(false);
 
     fireEvent.change(screen.getByTestId("audit-event-type-filter"), {
       target: { value: "mesh.identity.audit_read" },
@@ -500,8 +501,8 @@ describe("reading it again", () => {
       ["event_type", "mesh.identity.audit_read"],
       ["recorded_by_kind", "http"],
     ]);
-    expect(logState().rows).toBe(1);
-    expect(summaryOf("operator-1")).toContain("read the audit list");
+    expect(logState().rows).toBe(0);
+    expect(screen.getByTestId("audit-own-accesses").textContent).toContain("read the audit list");
   });
 
   it("takes the refusal back down when a later read succeeds", async () => {
@@ -777,6 +778,88 @@ describe("message event summaries", () => {
 });
 
 describe("event-shaped audit rows", () => {
+  it("labels the Korean self-access disclosure as 내 접근 N건", async () => {
+    localStorage.setItem(LANG_KEY, "ko");
+    auditRoute = answers(200, { ok: true, events: [event({
+      event_id: "evt-own-ko",
+      event_type: "mesh.identity.audit_read",
+      identity: "operator-1",
+      recorded_by: { kind: "http", identity: "agent-mesh-http" },
+      payload: {
+        event_type: "mesh.identity.audit_read",
+        identity: "operator-1",
+        change: { read: "list", query: {} },
+      },
+    })] });
+
+    await mount();
+
+    expect(screen.getByTestId("audit-own-accesses").querySelector("summary")?.textContent)
+      .toBe("내 접근 1건");
+  });
+
+  it("answers who, target, requested scope and stored time while keeping my reads collapsed", async () => {
+    const access = (
+      eventId: string,
+      reader: string,
+      target: string,
+      query: Record<string, unknown>,
+      storedAt: string,
+    ) => event({
+      event_id: eventId,
+      event_type: "mesh.identity.audit_read",
+      occurred_at: "2026-08-25T03:04:05.000Z",
+      stored_at: storedAt,
+      identity: reader,
+      recorded_by: { kind: "http", identity: "agent-mesh-http" },
+      payload: {
+        event_type: "mesh.identity.audit_read",
+        identity: reader,
+        actor: reader,
+        change: { read: target, query },
+      },
+    });
+    auditRoute = answers(200, { ok: true, events: [
+      access("evt-own", "operator-1", "list", { event_type: "mesh.message.sent", limit: "20" },
+        "2026-08-25T03:04:08.000Z"),
+      access("evt-other", "reader-2", "evt-target-7", {}, "2026-08-25T03:04:09.000Z"),
+    ] });
+
+    await mount();
+
+    const mine = screen.getByTestId("audit-own-accesses");
+    expect(mine.hasAttribute("open")).toBe(false);
+    expect(mine.querySelector("summary")?.textContent).toBe("My accesses 1");
+    // Closed is presentation, not deletion: the access stays in the tree and
+    // becomes readable as soon as the operator opens the native disclosure.
+    const own = screen.getByTestId("audit-own-access");
+    expect(own.querySelector("[data-testid='audit-access-reader']")?.textContent)
+      .toBe("Reader: operator-1");
+    expect(own.querySelector("[data-testid='audit-access-recorder']")?.textContent)
+      .toBe("Reading service: agent-mesh-http (http)");
+    expect(own.querySelector("[data-testid='audit-access-target']")?.textContent)
+      .toBe("Reached: audit list");
+    expect(own.querySelector("[data-testid='audit-access-scope']")?.textContent)
+      .toContain("event_type = mesh.message.sent");
+    expect(own.querySelector("[data-testid='audit-access-scope']")?.textContent)
+      .toContain("limit = 20");
+    expect(own.querySelector("[data-testid='audit-access-stored-at']")?.textContent)
+      .toBe("Stored at: 2026-08-25T03:04:08.000Z");
+
+    const other = rowOf("reader-2");
+    expect(other.querySelector("[data-testid='audit-access-reader']")?.textContent)
+      .toBe("Reader: reader-2");
+    expect(other.querySelector("[data-testid='audit-access-recorder']")?.textContent)
+      .toBe("Reading service: agent-mesh-http (http)");
+    expect(other.querySelector("[data-testid='audit-access-target']")?.textContent)
+      .toBe("Reached: single audit event: evt-target-7");
+    expect(other.querySelector("[data-testid='audit-access-scope']")?.textContent)
+      .toContain("event id = evt-target-7");
+    expect(other.querySelector("[data-testid='audit-access-stored-at']")?.textContent)
+      .toBe("Stored at: 2026-08-25T03:04:09.000Z");
+    expect(other.textContent).not.toContain("2026-08-25T03:04:05.000Z");
+  });
+
   it("describes an audit read without a fake recipient and reveals its JSON only on request", async () => {
     meRoute = session([METADATA, CONTENT]);
     const payload = {
@@ -799,7 +882,7 @@ describe("event-shaped audit rows", () => {
 
     await mount();
 
-    expect(bodyText()).toContain("platform-admin read the audit list · 2026-08-25T03:04:05.000Z");
+    expect(bodyText()).toContain("platform-admin read the audit list · 2026-02-03T04:05:07.000Z");
     expect(bodyText()).not.toContain("unknown");
     expect(bodyText()).not.toContain(JSON.stringify(payload));
     expect(screen.queryByTestId("audit-raw-json")).toBe(null);

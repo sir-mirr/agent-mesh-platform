@@ -8,6 +8,7 @@ import {
 } from "@/components/index.ts";
 import { useRbac } from "@/contexts/RbacContext.tsx";
 import { useI18n } from "@/contexts/I18nContext.tsx";
+import { useAuth } from "@/contexts/AuthContext.tsx";
 
 import {
   fetchAuditEvents,
@@ -42,9 +43,10 @@ function messageAction(eventType: string | null, t: Translate): string {
  * keep their own subjects instead of fabricating a recipient.
  */
 function eventSummary(item: AuditEventItem, t: Translate): string {
-  const when = item.timestamp === "—"
+  const measuredTime = item.eventType === "mesh.identity.audit_read" ? item.storedAt : item.timestamp;
+  const when = measuredTime === "—"
     ? t("audit.event.timeMissing", "time not recorded")
-    : item.timestamp;
+    : measuredTime;
 
   if (item.eventType === "mesh.identity.audit_read") {
     const action = item.readTarget === "list"
@@ -88,13 +90,72 @@ function eventSummary(item: AuditEventItem, t: Translate): string {
   ].filter(Boolean).join(" · ");
 }
 
+function scopeValue(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * One content-read record answers four operator questions without folding the
+ * service into the person. `change.query` is drawn as labelled scope rather
+ * than raw JSON: this is what was requested, while `change.read` is what the
+ * request reached.
+ */
+function AccessEventSummary({ item, t }: { item: AuditEventItem; t: Translate }) {
+  const query = Object.entries(item.readQuery ?? {});
+  const isList = item.readTarget === "list";
+  const scope: Array<[string, unknown]> = isList
+    ? query.length > 0
+      ? query
+      : [[
+        t("audit.access.scopeAllKey", "scope"),
+        t("audit.access.scopeAll", "all audit events"),
+      ]]
+    : [[t("audit.access.eventId", "event id"), item.readTarget ?? "—"]];
+
+  return (
+    <div data-testid="audit-summary" style={{ display: "grid", gap: 5, fontSize: "0.82rem", lineHeight: 1.45 }}>
+      <strong>{eventSummary(item, t)}</strong>
+      <span data-testid="audit-access-reader">
+        {t("audit.access.reader", "Reader")}: {item.identity ?? "—"}
+      </span>
+      <span data-testid="audit-access-recorder">
+        {t("audit.access.recorder", "Reading service")}: {item.recordedByIdentity ?? "—"}
+        {item.recordedByKind ? ` (${item.recordedByKind})` : ""}
+      </span>
+      <span data-testid="audit-access-target">
+        {t("audit.access.target", "Reached")}: {isList
+          ? t("audit.access.list", "audit list")
+          : `${t("audit.access.one", "single audit event")}: ${item.readTarget ?? "—"}`}
+      </span>
+      <span
+        data-testid="audit-access-scope"
+        style={{ display: "grid", gap: 2 }}
+      >
+        <span>{t("audit.access.scope", "Requested scope")}:</span>
+        {scope.map(([key, value]) => (
+          <span key={key} style={{ paddingLeft: 12, fontFamily: "var(--font-mono)", fontSize: "0.76rem" }}>
+            {key} = {scopeValue(value)}
+          </span>
+        ))}
+      </span>
+      <span data-testid="audit-access-stored-at">
+        {t("audit.access.storedAt", "Stored at")}: {item.storedAt}
+      </span>
+    </div>
+  );
+}
+
 function prettyJson(value: unknown): string {
   const rendered = JSON.stringify(value, null, 2);
   return rendered === undefined ? "null" : rendered;
 }
 
 export function AuditLogsPage() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const { user } = useAuth();
   const { hasCapability } = useRbac();
   const [events, setEvents] = useState<AuditEventItem[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -153,15 +214,24 @@ export function AuditLogsPage() {
     });
   };
 
+  const ownAccesses = events.filter((item) =>
+    item.eventType === "mesh.identity.audit_read" && item.identity === user?.name);
+  const visibleEvents = events.filter((item) =>
+    item.eventType !== "mesh.identity.audit_read" || item.identity !== user?.name);
+
   const columns = [
     {
       key: "event",
       header: t("audit.col.event", "Event"),
       width: "48%",
       render: (item: AuditEventItem) => (
-        <span data-testid="audit-summary" style={{ fontSize: "0.86rem", lineHeight: 1.5 }}>
-          {eventSummary(item, t)}
-        </span>
+        item.eventType === "mesh.identity.audit_read"
+          ? <AccessEventSummary item={item} t={t} />
+          : (
+            <span data-testid="audit-summary" style={{ fontSize: "0.86rem", lineHeight: 1.5 }}>
+              {eventSummary(item, t)}
+            </span>
+          )
       ),
     },
     {
@@ -362,9 +432,39 @@ export function AuditLogsPage() {
         </span>
       </div>
 
+      {!isError && !isLoading && ownAccesses.length > 0 && (
+        <details
+          data-testid="audit-own-accesses"
+          style={{
+            padding: "12px 16px",
+            background: "var(--color-bg-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+          }}
+        >
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            {t("audit.access.mine", "My accesses")} {ownAccesses.length}
+            {language === "ko"
+              ? t("audit.access.count", "건")
+              : ""}
+          </summary>
+          <div style={{ display: "grid", gap: 12, paddingTop: 12 }}>
+            {ownAccesses.map((item) => (
+              <div
+                key={item.id}
+                data-testid="audit-own-access"
+                style={{ padding: 12, background: "var(--color-bg-surface-sub)", borderRadius: "var(--radius-sm)" }}
+              >
+                <AccessEventSummary item={item} t={t} />
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
       <DataTable
         columns={columns}
-        data={events}
+        data={visibleEvents}
         keyExtractor={(item) => item.id}
         isLoading={isLoading}
         isError={isError}
