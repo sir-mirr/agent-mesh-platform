@@ -492,6 +492,47 @@ decides. The services now say when they were stopped from outside, too, because
 a clean shutdown they were told to do and a clean shutdown they chose look
 identical in a log.
 
+### And a run nobody could watch is not a run that passed
+
+The reaper is one way a run stops being evidence; here is a second, found the
+same week. `await child.exited` came back `EBADF: bad file descriptor,
+epoll_ctl` inside CI's coverage job — twice on `main`, on a test about the tree
+lock, which was fine. The child had run and exited with the code the test was
+asking for. What failed was this process's ability to be told.
+
+`awaitExit` catches that errno, waits for the pid to go, and takes the code the
+runtime did record. **If there is none it throws saying the run measured
+nothing**, because a silent zero there is a green test about a question nobody
+answered — the same rule as the reaper line, one level down.
+
+### The place an error appears is not the place it comes from
+
+Worth writing down because it was got wrong here, in the obvious direction. The
+first `EBADF` arrived out of `new Response(child.stdout).text()`, so the pipe
+read was named as the cause and twenty-three call sites moved onto files. The
+next run produced the same errno one line lower, out of `child.exited`. The
+read had been where the failure *surfaced*, never what caused it.
+
+The sweep was kept, because its reasons hold independently — a file cannot be
+dropped, and the exception list is checked in both directions — but the commit
+messages stating the cause were wrong and are corrected in the code they
+describe rather than left as the next reader's evidence.
+
+### A mutation that ends green is a finding about the check, not a bad mutation
+
+The rule elsewhere in this document is *do not tune a mutation until it goes
+red*. Its other half was learned the same day: two anchors written for the pipe
+sweep passed the suite, and both were wrong in the same way — they made a check
+**always pass** rather than making it wrong. One deleted the scan's file list,
+which produced an empty offender list, indistinguishable from a clean
+repository; the other replaced the compared value with `[]`.
+
+Neither was fixed by picking a redder mutation. The first was answered by giving
+the test a denominator — *the scan read more than fifty files* — and the second
+by mutating the judgement itself instead of the assertion around it. **A
+mutation that ends green has found something: either a check with no
+denominator, or an assertion that is not where the decision is made.**
+
 ## What this does not say
 
 It does not say tests are unreliable, or that coverage is worthless. The
