@@ -28,9 +28,28 @@
  * A parent that cannot watch its child has **measured nothing** — the child ran
  * and exited correctly. `awaitExit` below says so rather than letting the
  * exception fail a test about something else.
+ *
+ * ## And a third time, in the cleanup
+ *
+ * `EBADF` came back on 2026-08-28, from `closeSync` in the `finally` — after
+ * the exit code and both files had already been read. A run that had answered
+ * its question failed on the way out of the room, and the shard went red for a
+ * tree lock that was fine, again.
+ *
+ * The descriptors were opened here and handed to `Bun.spawn`, and on Linux the
+ * runtime had closed one of them by the time this closed it. **Swallowing the
+ * `EBADF` would be the wrong repair**: a descriptor number is reused the moment
+ * it is free, so a late `close` on Linux is not a harmless no-op — it can close
+ * whatever file happened to take that number, and nothing about that failure
+ * would look like this one.
+ *
+ * So nothing is opened here at all. `Bun.file(path)` gives the child a
+ * destination and leaves the descriptor entirely in the runtime's hands, which
+ * is the only side that knows when it is done with it. The files are still
+ * read after the child exits, which was the point of using files.
  */
 
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -104,8 +123,6 @@ export async function runChild(
   const dir = mkdtempSync(join(tmpdir(), "child-said-"));
   const outPath = join(dir, "stdout");
   const errPath = join(dir, "stderr");
-  const out = openSync(outPath, "w");
-  const err = openSync(errPath, "w");
   try {
     const child = Bun.spawn([...cmd], {
       // A hook reads its turn off stdin; `"ignore"` gives it an immediate end
@@ -115,8 +132,11 @@ export async function runChild(
         : typeof options.stdin === "string"
           ? new TextEncoder().encode(options.stdin)
           : options.stdin,
-      stdout: out,
-      stderr: err,
+      // **A path, not a descriptor this process holds.** See the third section
+      // of the header: closing one we had already handed away is what went red
+      // next, and there is nothing to close if we never opened it.
+      stdout: Bun.file(outPath),
+      stderr: Bun.file(errPath),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env === undefined ? {} : { env: options.env }),
     });
@@ -125,8 +145,6 @@ export async function runChild(
     const stderr = readFileSync(errPath, "utf8");
     return { code, stdout, stderr, said: stdout + stderr };
   } finally {
-    closeSync(out);
-    closeSync(err);
     rmSync(dir, { recursive: true, force: true });
   }
 }

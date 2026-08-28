@@ -111,6 +111,34 @@ describe("the sweep off pipes", () => {
   });
 });
 
+describe("the descriptors this process holds", () => {
+  test("opens none of the child's, so there is none for it to close late", () => {
+    // The third `EBADF`, and the one that failed a run which had already
+    // answered its question: `closeSync` in the `finally`, on a descriptor the
+    // runtime had closed first. Swallowing it would be worse than the bug — a
+    // descriptor number is reused as soon as it is free, so a late close can
+    // shut whatever took that number, and that failure looks like nothing.
+    //
+    // Asserted over the source rather than by running it, because the failure
+    // is a Linux one and this suite also runs where it does not reproduce. A
+    // test that only passes on the platform without the defect is not a test.
+    const text = readFileSync(join(import.meta.dir, "child-output.ts"), "utf8");
+    const code = text
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line));
+    expect(
+      code.filter((line) => /\b(openSync|closeSync)\s*\(/.test(line)),
+      "runChild opened a descriptor again — hand Bun.file(path) to the child and let the runtime own it",
+    ).toEqual([]);
+    // The denominator: this is a source scan, and a file that stopped naming
+    // its destination at all would satisfy the emptiness above.
+    expect(
+      code.filter((line) => /Bun\.file\(/.test(line)).length,
+      "the child is no longer given a file to write into, so the scan above is about nothing",
+    ).toBe(2);
+  });
+});
+
 describe("reading a child through files", () => {
   test("carries the exit code, and both streams, unmixed", async () => {
     const said = await runChild([

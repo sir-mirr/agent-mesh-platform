@@ -768,6 +768,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["withholds the content, and gives its length"],
   },
   {
+    id: "the-child-runner-opens-a-descriptor-again",
+    defect:
+      "`runChild` went back to opening the child's output descriptors in this process. It did that for a month and CI went red a third time on `EBADF` from the `closeSync` in its own `finally` — after the exit code and both files had been read, so a run that had answered its question failed on the way out. Swallowing the error would be worse than the bug: a descriptor number is reused the moment it is free, so a late close can shut whatever took that number.",
+    file: "test/child-output.ts",
+    from: '  const outPath = join(dir, "stdout");',
+    to: '  const outPath = join(dir, "stdout"); require("node:fs").closeSync(require("node:fs").openSync(outPath, "w"));',
+    suite: "test/child-output.test.ts",
+    expect: ["runChild opened a descriptor again"],
+  },
+  {
     id: "a-hold-key-is-cut-at-its-last-colon",
     defect:
       "The hold key `overdue_hold:<id>:<slot>` stopped being split on the slot's shape and went back to cutting at the last colon — which lands inside `HH:MM:SS`. The reminder id came back with half the date attached and the slot as `00`, which `new Date` reads as the year 2000, so the screen listed plausible rows about nothing and no operator decision could reach the slot it named. Nothing threw: this is the defect that hid behind a passing route test.",
