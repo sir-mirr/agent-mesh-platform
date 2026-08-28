@@ -40,6 +40,17 @@ interface Route {
  * `‡`, `§` and `*` are footnote markers in the Auth column; they carry meaning
  * (`JWT*` is admin-only) so they are kept, and only the escaping is stripped.
  */
+/**
+ * The one regex both readings below use.
+ *
+ * It was written twice — once to parse and once, in the failure message, to
+ * say *which rows did not parse*. So narrowing the parser left the second copy
+ * matching everything, and the error promised a list of unswept routes and
+ * printed none. The nightly met exactly that: the anchor for this guard came
+ * back `no verdict`, with a message naming six missing rows and showing zero.
+ */
+const ROUTE_ROW = /^\|\s*(GET|POST|PUT|DELETE|PATCH)\s*\|\s*`([^`]+)`[^|]*\|\s*([^|]+)\|/;
+
 function routesFromSpec(): Route[] {
   const spec = readFileSync(join(REPO_ROOT, "SPEC.md"), "utf8");
   const start = spec.indexOf("### 9.1.");
@@ -52,7 +63,7 @@ function routesFromSpec(): Route[] {
     // of them. A regex that required the cell to end at the backtick dropped
     // that row silently, which is a route this stops sweeping rather than a
     // failure anyone would see.
-    const m = /^\|\s*(GET|POST|PUT|DELETE|PATCH)\s*\|\s*`([^`]+)`[^|]*\|\s*([^|]+)\|/.exec(line);
+    const m = ROUTE_ROW.exec(line);
     if (!m) continue;
     const auth = m[3]!.replace(/\\/g, "").replace(/[‡§]/g, "").trim();
     routes.push({ method: m[1]!, path: m[2]!.replace(/\s*\(SSE\)\s*/, ""), auth: auth as Auth });
@@ -72,7 +83,7 @@ function routesFromSpec(): Route[] {
   const rowish = table.split("\n").filter((line) => /^\|\s*(GET|POST|PUT|DELETE|PATCH)\b/.test(line));
   if (rowish.length === 0) throw new Error("§ 9.1's route table is gone from SPEC.md, or no longer starts its rows with a method");
   if (routes.length !== rowish.length) {
-    const missed = rowish.filter((line) => !/^\|\s*(GET|POST|PUT|DELETE|PATCH)\s*\|\s*`([^`]+)`[^|]*\|\s*([^|]+)\|/.test(line));
+    const missed = rowish.filter((line) => !ROUTE_ROW.test(line));
     throw new Error(
       `§ 9.1 has ${rowish.length} route rows and this parsed ${routes.length} — these are swept by nothing:\n${missed.join("\n")}`,
     );

@@ -10201,10 +10201,10 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "`auth-sweep` reads § 9.1's route table and sweeps what it parsed. The floor was `>= 32` over sixty-eight rows, so a regex narrowed at the path cell drops half the table, clears the floor, and every sweep below then measures a smaller § 9.1 than the one written down — a route that is never swept cannot fail a sweep, and nothing else counts them.",
     file: "test/auth-sweep.test.ts",
-    from: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
-    to: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`(\\/api[^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
+    from: "const ROUTE_ROW = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/;",
+    to: "const ROUTE_ROW = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`(\\/api[^`]+)`[^|]*\\|\\s*([^|]+)\\|/;",
     suite: "test/auth-sweep.test.ts",
-    expect: ["the § 9.1 parser and a plain row count disagree"],
+    expect: ["route rows and this parsed"],
   },
   {
     id: "a-navigation-outlives-the-test-that-started-it",
@@ -12652,8 +12652,8 @@ export const MUTATIONS: Mutation[] = [
     defect:
       "The § 9.1 row parser goes back to requiring the path cell to end at the backtick. The one row with prose after it — the SSE stream — drops out, and every auth assertion in the sweep goes on passing about the sixty-seven that remain. This is the defect that was actually here; it was invisible because the only guard was a floor of 20 against 68 rows.",
     file: "test/auth-sweep.test.ts",
-    from: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/.exec(line);",
-    to: "    const m = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`\\s*\\|\\s*([^|]+)\\|/.exec(line);",
+    from: "const ROUTE_ROW = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`[^|]*\\|\\s*([^|]+)\\|/;",
+    to: "const ROUTE_ROW = /^\\|\\s*(GET|POST|PUT|DELETE|PATCH)\\s*\\|\\s*`([^`]+)`\\s*\\|\\s*([^|]+)\\|/;",
     suite: "test/auth-sweep.test.ts",
     expect: ["are swept by nothing"],
   },
