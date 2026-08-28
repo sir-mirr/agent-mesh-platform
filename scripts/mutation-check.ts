@@ -10054,6 +10054,39 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "the-access-recorder-signs-itself-as-the-hub",
+    defect:
+      "The HTTP service records its own audit reads as `kind: \"hub\"`. The whole point of `recorded_by` (\u00a7 8.9.4) is that a hub observation is stronger evidence than a self-report, and the read log is the most self-interested writer there is \u2014 the component recording that it read is now indistinguishable from the component observing someone else. It also breaks the null rule silently, since this writer sets an id and the hub never does.",
+    file: "packages/http/src/audit-access-log.ts",
+    from: "       ) VALUES (?, 1, ?, ?, ?, NULL, NULL, ?, 'http', ?, ?, ?, NULL)`,",
+    to: "       ) VALUES (?, 1, ?, ?, ?, NULL, NULL, ?, 'hub', ?, ?, ?, NULL)`,",
+    suite: "test/audit.test.ts",
+    expect: [
+      "every kind the server writes is present, so the rule below is not read off one of them",
+      "it has exactly two members, and the second is null exactly for the hub",
+    ],
+  },
+  {
+    id: "a-hub-event-names-a-recorder",
+    defect:
+      "A hub-produced event carries `recorded_by.id` instead of null. Null is the whole distinction: the hub is not one participant among many, and giving it an id makes a hub observation read as an adapter's self-report by any consumer that branches on the presence of the field rather than on the kind.",
+    file: "packages/hub/src/rpc/audit.ts",
+    from: '        fields.from,\n        "hub",\n        null,',
+    to: '        fields.from,\n        "hub",\n        fields.from,',
+    suite: "test/audit.test.ts",
+    expect: ["it has exactly two members, and the second is null exactly for the hub"],
+  },
+  {
+    id: "the-recorder-member-is-renamed-under-its-readers",
+    defect:
+      "The wire calls the second member `identity` while every reader looks for `id`. This is the \u003fprovider= class of defect: a name changed on one side only, so the field reads as absent rather than as wrong, and a consumer sees a recorder with no id \u2014 which is exactly how a hub event is supposed to look.",
+    file: "packages/http/src/audit-query.ts",
+    from: "    recorded_by: { kind: row.recorded_by_kind, id: row.recorded_by_id },",
+    to: "    recorded_by: { kind: row.recorded_by_kind, identity: row.recorded_by_id },",
+    suite: "test/audit.test.ts",
+    expect: ["the second member is called `id` today"],
+  },
+  {
     id: "a-metric-of-zero-is-drawn-as-unmeasured",
     defect:
       "Zero is folded into the unknown. `없음` and `재본 적 없음` are the two readings this panel exists to keep apart — a mesh that refused no signature and one whose signature counter was never read look identical the moment they share a cell, and the operator acting on it cannot tell a quiet mesh from a blind one.",

@@ -666,3 +666,124 @@ describe("§ 11.0.1 — a read that cannot be recorded does not happen", () => {
     }
   }, 20_000);
 });
+
+/**
+ * What `recorded_by` says on the wire, and whether anything watches it.
+ *
+ * **The observer comes before the rename** (T-055, D-808). `recorded_by` has
+ * zero readers on the wire today: the console's `AuditEventItem` does not carry
+ * it, `packages/http/src/ui/*` does not read it, and `agent-mesh-client` has no
+ * code that touches it — counted across all three repositories. So the three
+ * mutations that would matter — the server emitting the other member name, a
+ * hub event carrying a non-null identity, the contract declaring a flat
+ * `identity: string` — could not turn anything red. A rename landed into that
+ * is a rename nothing was watching.
+ *
+ * `client-claude` reached the same rule from the other end today: its T-023
+ * criterion "every log carries a correlation id" was green on a test that
+ * planted the id it then read, so it proved a reader and not a producer. This
+ * watches the producer — the events the hub and an adapter actually write —
+ * through the route that serves them.
+ *
+ * **The invariant and the spelling are asserted apart, on purpose.** § 8.9.3
+ * will state that the second member is `null` exactly when `kind` is `"hub"`;
+ * what that member is *called* is a separate sentence, and the rename to
+ * `identity` should touch the second assertion only. A single test over both
+ * would have to be rewritten to move either.
+ */
+describe("recorded_by, on the wire", () => {
+  const read = async (): Promise<Record<string, any>[]> => {
+    const res = await fetch(`${mesh.http.url}/api/v1/audit/events?limit=200`, {
+      headers: { cookie: adminCookie },
+    });
+    expect(res.status, `the audit route refused: ${await res.clone().text()}`).toBe(200);
+    const body = (await res.json()) as { events?: Record<string, any>[] };
+    return body.events ?? [];
+  };
+
+  /**
+   * All three recorders, from the three paths that write them.
+   *
+   * **Read twice.** The third recorder is this route itself: § 11.0.1 records
+   * a content read *before* serving it, so the access event a read writes is
+   * only visible to the next one. Reading once and asserting on three kinds
+   * would pass or fail on whether some earlier test in this file happened to
+   * have read the log — which is a fact about the file's order, not about the
+   * server.
+   */
+  const seeded = async (): Promise<Record<string, any>[]> => {
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+    const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "recorded-by observer" });
+    expect(sent.error, "the hub refused the send that seeds its own event").toBeUndefined();
+    await read();
+    return await read();
+  };
+
+  test("every kind the server writes is present, so the rule below is not read off one of them", async () => {
+    // **The vacuous pass this file is written against.** An invariant about one
+    // kind versus another, asserted over a page containing only one of them,
+    // says nothing about the other — and a seeding step that quietly stopped
+    // producing one would leave it green.
+    //
+    // **`http` is the third, and finding it is why this test is first.**
+    // `packages/http/src/audit-access-log.ts` writes
+    // `recorded_by = { kind: 'http', id: 'agent-mesh-http' }` for every content
+    // read (§ 11.0.1). SPEC § 8.9.4 names only `hub`; `RecordedBy` in
+    // `@agent-mesh/contracts` says `"hub" | "adapter"`. So a third value has
+    // been on the wire the whole time, and the union D-808 was about to settle
+    // would have excluded it — a reader typed on two members meeting a third
+    // and matching neither branch.
+    const kinds = [...new Set((await seeded()).map((e) => e.recorded_by?.kind))].sort();
+    console.log(`[T-055] recorded_by kinds seen: ${kinds.join(" ") || "none"}`);
+    expect(kinds).toEqual(["adapter", "http", "hub"]); // sorted: "http" < "hub"
+  });
+
+  test("it has exactly two members, and the second is null exactly for the hub", async () => {
+    // The rule § 8.9.3 will state. Written over the member that is not `kind`
+    // rather than over its name, so the rename moves one assertion and not
+    // this one.
+    const events = await seeded();
+    const seen: Array<{ kind: string; other: unknown }> = [];
+    for (const e of events) {
+      const recordedBy = e.recorded_by as Record<string, unknown> | undefined;
+      expect(recordedBy, `event ${e.event_id} carries no recorded_by`).toBeDefined();
+      const members = Object.keys(recordedBy!).sort();
+      expect(members.length, `recorded_by has ${members.length} members: ${members.join(" ")}`).toBe(2);
+      expect(members).toContain("kind");
+      const otherKey = members.find((m) => m !== "kind")!;
+      seen.push({ kind: String(recordedBy!.kind), other: recordedBy![otherKey] });
+    }
+    expect(seen.length, "no events came back, so nothing was checked").toBeGreaterThan(1);
+
+    for (const { kind, other } of seen) {
+      // `http` names the service rather than an identity — the constant
+      // `agent-mesh-http` — so it is not null and it is not a mesh identity
+      // either. Left with the `adapter` branch here because what this rule is
+      // about is *null exactly for the hub*; what the non-null value means per
+      // kind is § 8.9.3's business, not this assertion's.
+      if (kind === "hub") {
+        // Null is the complete answer here, not a missing adapter: the hub
+        // records under its own authority and has no separate reporting
+        // identity. A reader that fills this in invents one.
+        expect(other, "a hub-recorded event named a recorder").toBeNull();
+      } else {
+        expect(typeof other, `a ${kind}-recorded event has no recorder`).toBe("string");
+        expect(String(other).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("the second member is called `id` today", async () => {
+    // **The spelling, alone.** SPEC names only `recorded_by.kind` and has never
+    // named this one, so the implementation is the whole definition — which is
+    // how `RecordedBy` in `@agent-mesh/contracts` came to say `identity` while
+    // the route sends `id`, and a reader typed from the contract reads
+    // `undefined`. D-808 settles it as `identity`; this line is the one that
+    // moves when the server does, and it is separate so that moving it does not
+    // touch the rule above.
+    const events = await seeded();
+    const members = new Set(events.flatMap((e) => Object.keys(e.recorded_by ?? {})));
+    expect([...members].sort()).toEqual(["id", "kind"]);
+    expect(events.length, "no events came back, so no member name was read").toBeGreaterThan(1);
+  });
+});
