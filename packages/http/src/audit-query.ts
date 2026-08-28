@@ -158,7 +158,7 @@ function shape(row: EventRow, blobs: unknown[], withContent: boolean): Record<st
     causation_event_id: row.causation_event_id,
     producer_id: row.producer_id,
     identity: row.identity,
-    recorded_by: { kind: row.recorded_by_kind, id: row.recorded_by_id },
+    recorded_by: { kind: row.recorded_by_kind, identity: row.recorded_by_id },
     payload,
     payload_digest: row.payload_digest,
     /**
@@ -219,7 +219,27 @@ export interface ListQuery {
    * reading the platform's SQLite, which only one of the two runners can do.
    */
   event_type?: string
-  provider?: string
+  /**
+   * The recorder's kind (§ 8.9.4) — `hub`, `adapter` or `http`.
+   *
+   * **The only way to select a hub-recorded event.** Those carry no recorder
+   * identity, so the identity filter below cannot name them at any value; the
+   * filter this replaced compared identity alone and was therefore
+   * unsatisfiable for exactly the events the trail calls its strongest
+   * evidence, handing an operator a narrowed view with the hub's own
+   * observations silently removed.
+   */
+  recorded_by_kind?: string
+  /**
+   * The recorder's identity. Selects nothing when the kind is `hub`, which is
+   * the honest answer rather than a defect: there is no identity to match.
+   *
+   * **Replaces `?provider=`, with no alias.** D-808: the old name said
+   * "producing component" and compared the recorder, which are not the same
+   * thing for an `http` access record — and an alias would have let a caller
+   * keep using a name whose meaning had moved under it.
+   */
+  recorded_by_identity?: string
   correlation_id?: string
   from?: string
   to?: string
@@ -248,16 +268,20 @@ export function listEvents(q: ListQuery, withContent: boolean): QueryResult {
     where.push('identity = ?')
     args.push(q.identity)
   }
-  // `provider` is the producing component. `recorded_by_id` carries it for
-  // adapter-reported events; hub-recorded ones have none, which is the
-  // distinction § 8.9.4 made a field rather than a prefix match.
   if (q.event_type) {
     where.push('event_type = ?')
     args.push(q.event_type)
   }
-  if (q.provider) {
+  // Two filters over one column pair, because § 8.9.4 made the distinction a
+  // field. `recorded_by_id` is null for hub-recorded events, so an identity
+  // filter can never reach them and the kind filter is how they are asked for.
+  if (q.recorded_by_kind) {
+    where.push('recorded_by_kind = ?')
+    args.push(q.recorded_by_kind)
+  }
+  if (q.recorded_by_identity) {
     where.push('recorded_by_id = ?')
-    args.push(q.provider)
+    args.push(q.recorded_by_identity)
   }
   if (q.correlation_id) {
     where.push('correlation_id = ?')

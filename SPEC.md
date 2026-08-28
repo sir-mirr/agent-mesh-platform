@@ -1357,6 +1357,34 @@ an adapter's report of its own activity; a mesh event is the hub's observation
 carrying the sender's own signature. `recorded_by` exists so that difference
 is a field rather than something inferred by prefix-matching `event_type`.
 
+##### `recorded_by`
+
+Two members, `kind` and `identity`. There are **three** kinds, and an
+implementation MUST be able to read all three: this section named only `"hub"`
+until the platform read its own route and found the third already on the wire.
+
+| `kind` | `identity` | Written when |
+|---|---|---|
+| `hub` | **`null`** | The hub records its own routing, as above. |
+| `adapter` | the appending identity | `mesh.audit.append` (§ 8.9.3) — an adapter reporting its own activity. |
+| `http` | the reading service's own name | § 11.0.1 — a record that the audit log itself was read. |
+
+`identity` MUST be `null` when `kind` is `"hub"` and MUST be a non-empty string
+otherwise. The hub records under its own authority and has no separate
+reporting identity; an implementation that fills one in invents a participant
+that does not exist.
+
+`http` is **not another adapter.** An adapter reports activity elsewhere; this
+reports *access to the record* — who read what, which is the most sensitive
+axis the trail carries. Its `identity` is the reading service, not the operator
+behind the session; the operator is the event's own `identity`. An
+implementation that folds the two kinds together cannot show an access log at
+all, and a screen with no access log reads as nobody having looked.
+
+Storage column names are not wire names. A store MAY hold this as
+`recorded_by_kind` and `recorded_by_id`; renaming a column to match the wire
+would mean rewriting audit history to correct a spelling.
+
 ### 8.11. Observed source
 
 The hub records the address each authenticated request arrived from. It is
@@ -1749,7 +1777,7 @@ unversioned legacy routes like `/auth/*`). Auth column meanings:
 | GET    | `/api/v1/attachments/:id`         | JWT ‡ | `200`   | Download attachment bytes (§ 15.3). Session **or** an `AgentMeshSig` signature; the caller must be party to a message carrying it. |
 | PUT    | `/api/v1/audit/blobs/{key}`       | Sig §  | `200`\|`201` | Machine blob upload (0.2). `key` is `<sha256>[.<ext>]` per § 15.2. |
 | GET    | `/api/v1/audit/events/{event_id}` | JWT\*  | `200`   | Single audit event (0.2). |
-| GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters: `identity`, `provider`, `correlation_id`, `from`, `to`. Default order `(stored_at, event_id)` ascending. |
+| GET    | `/api/v1/audit/events`            | JWT\*  | `200`   | Cursor-paginated audit query (0.2). Filters below. Default order `(stored_at, event_id)` ascending. |
 | GET    | `/api/v1/admin/pending`           | JWT\*  | `200`   | List users pending approval: `{ users: [{ github_login, github_id, status, requested_at }] }`. **`users`, not `pending`** — key proposals wait on `/api/v1/admin/keys/pending` and answer `{ keys }` (§ 9.2, below), so a caller asking whether anything is waiting could reach for either route, receive an honest empty array, and be reading the answer to the other question. Both said `pending` until `agent-mesh-local-pm` found the pair by counting routes that share a last segment. The shape was absent here, which is how the implementation and this table came to disagree without either being wrong — an unstated shape is filled in by whoever reads the code next. |
 | POST   | `/api/v1/admin/users`             | JWT\*  | `201`   | Admit a local account. Answers a generated password **once** — it is in this response and in no listing, read or log, and only its hash is stored. The account is created with `must_change_password`, so its first login lands on the change screen and can do nothing else until it passes. Gated on `user.admit`. |
 | POST   | `/api/v1/admin/users/{username}/password` | JWT\*  | `200`   | Issue a **new temporary password** for an existing local account and put it back behind the first-login gate (§ 9.2b). Behind `user.admit`. The value is returned once and is not readable again, as at admission. `404` when there is no such account — admission's `409` refuses because somebody is already there, this refuses because nobody is, and answering both the same way sends an operator looking for the wrong thing. Exists because admission was the only issuer and refuses an existing name, so an account whose holder forgot their password had no route at all. |
@@ -1920,6 +1948,30 @@ pending.
 Unauthorized access (valid JWT but missing scope, e.g. JWT without the
 `admin` role for a `JWT*` route) MUST return `403`.
 
+#### 9.1b. Filters on `GET /api/v1/audit/events`
+
+Named with **what each one selects**, not only what it is called. This table
+previously listed five names and no meanings, and two of them do something a
+reader would not guess from the name.
+
+| Parameter | Selects | Notes |
+|---|---|---|
+| `identity` | the event's `identity` | Whose activity the event is *about*, which for an § 11.0.1 access record is the operator who read, not the service that recorded the read. |
+| `event_type` | the event's `event_type`, exactly | One type, no prefix matching. **Required**: the conformance scenarios assert a trace through this route rather than by reading a hub's own storage, and an implementation without this filter cannot serve them. |
+| `recorded_by_kind` | `recorded_by.kind` | The **only** way to select hub-recorded events, which carry no recorder identity. |
+| `recorded_by_identity` | `recorded_by.identity` | Selects nothing when the kind is `hub`; there is no identity to match. |
+| `correlation_id` | the event's `correlation_id` | |
+| `from`, `to` | **`stored_at`**, inclusive | Not the `occurred_at` the client sent. `occurred_at` is a request field (§ 8.9.3), so a window over it would let a recorded party move its own events out of an operator's query by choosing a timestamp — the trail keeps every row and the query stops finding them, which is worse than deletion because the count stays intact. |
+| `cursor` | `(stored_at, event_id)` strictly after the cursor | The ordering key itself, not an offset. An offset shifts under concurrent appends. |
+| `limit` | page size | Default 50, maximum 200. |
+
+Filters combine with AND. An unrecognised parameter MUST be ignored rather
+than refused, and **`provider` is unrecognised**: it compared the recorder
+identity while its name said producing component, and hub-recorded events
+carry none — so it could not select them at any value, and an operator
+narrowing a trail by it lost § 8.9.4's observations with nothing said. It was
+removed rather than aliased, so an old caller gets the whole trail, which is
+visibly wrong, instead of a narrowed one that is invisibly wrong.
 
 ### 9.2c. Deactivating an account, and what it reaches
 

@@ -10054,16 +10054,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
-    id: "the-provider-filter-selects-on-the-recorder-kind",
+    id: "the-retired-filter-name-is-quietly-accepted-again",
     defect:
-      "`?provider=` compares `recorded_by_kind` instead of `recorded_by_id`. The filter still answers, and the answers are still audit events, so nothing looks broken \u2014 but an operator narrowing a trail to one adapter now gets every adapter, and `?provider=hub` starts working, which reads as the filter having been fixed rather than repointed.",
+      "`?provider=` comes back as an alias for `?recorded_by_identity=`. It looks like kindness to old callers and is the opposite: the name said \"producing component\" and now compares the recorder, which are not the same thing for a \u00a7 11.0.1 access record. A script written against the old meaning keeps returning rows and stops meaning what its author thought, which is worse than the whole trail it would otherwise get.",
+    file: "packages/http/src/audit-query.ts",
+    from: "  if (q.recorded_by_identity) {\n    where.push('recorded_by_id = ?')\n    args.push(q.recorded_by_identity)\n  }",
+    to: "  const recorder = q.recorded_by_identity ?? (q as Record<string, string>).provider\n  if (recorder) {\n    where.push('recorded_by_id = ?')\n    args.push(recorder)\n  }",
+    suite: "test/audit.test.ts",
+    expect: ["`provider` is gone, and a caller still sending it is not quietly obeyed"],
+  },
+  {
+    id: "the-only-filter-that-reaches-the-hub-is-dropped",
+    defect:
+      "The `recorded_by_kind` filter is deleted, leaving the identity one alone. That is the state D-808 was opened to end: hub-recorded events carry no recorder identity, so with only an identity filter no value selects them and an operator narrowing a trail is handed a view with \u00a7 8.9.4's observations silently removed \u2014 the strongest evidence the trail holds, absent with nothing said.",
+    file: "packages/http/src/audit-query.ts",
+    from: "  if (q.recorded_by_kind) {\n    where.push('recorded_by_kind = ?')\n    args.push(q.recorded_by_kind)\n  }\n",
+    to: "",
+    suite: "test/audit.test.ts",
+    expect: ["`recorded_by_kind` reaches all three, including the hub the identity filter cannot"],
+  },
+  {
+    id: "the-identity-filter-selects-on-the-recorder-kind",
+    defect:
+      "`?recorded_by_identity=` compares `recorded_by_kind`, so the two filters collapse onto one column. Both still answer and the answers are still audit events, so nothing looks broken \u2014 but narrowing to one adapter now returns every adapter, and `?recorded_by_identity=hub` starts working, which reads as the filter having been fixed rather than repointed.",
     file: "packages/http/src/audit-query.ts",
     from: "    where.push('recorded_by_id = ?')",
     to: "    where.push('recorded_by_kind = ?')",
     suite: "test/audit.test.ts",
     expect: [
-      "`provider` cannot reach a hub-recorded event, whatever it is given",
-      "`provider` does select the events it can reach, so the test above is not passing on an empty filter",
+      "`recorded_by_identity` cannot reach a hub-recorded event, whatever it is given",
+      "`recorded_by_identity` does select the events it can reach",
     ],
   },
   {
@@ -10122,12 +10142,12 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "the-recorder-member-is-renamed-under-its-readers",
     defect:
-      "The wire calls the second member `identity` while every reader looks for `id`. This is the \u003fprovider= class of defect: a name changed on one side only, so the field reads as absent rather than as wrong, and a consumer sees a recorder with no id \u2014 which is exactly how a hub event is supposed to look.",
+      "The wire reverts the second member to `id` while every reader looks for `identity`. This is the \u003fprovider= class of defect: a name changed on one side only, so the field reads as absent rather than as wrong, and a consumer sees a recorder with no identity \u2014 which is exactly how a hub event is supposed to look.",
     file: "packages/http/src/audit-query.ts",
-    from: "    recorded_by: { kind: row.recorded_by_kind, id: row.recorded_by_id },",
-    to: "    recorded_by: { kind: row.recorded_by_kind, identity: row.recorded_by_id },",
+    from: "    recorded_by: { kind: row.recorded_by_kind, identity: row.recorded_by_id },",
+    to: "    recorded_by: { kind: row.recorded_by_kind, id: row.recorded_by_id },",
     suite: "test/audit.test.ts",
-    expect: ["the second member is called `id` today"],
+    expect: ["the second member is called `identity`"],
   },
   {
     id: "a-metric-of-zero-is-drawn-as-unmeasured",

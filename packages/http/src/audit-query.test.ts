@@ -45,7 +45,8 @@ function stored(over: {
   identity?: string;
   eventType?: string;
   correlationId?: string;
-  provider?: string | null;
+  /** Who recorded it (§ 8.9.4). Defaults to an adapter reporting itself. */
+  recordedBy?: { kind: string; identity: string | null };
   payload?: unknown;
   digest?: string;
   attestation?: unknown;
@@ -63,8 +64,10 @@ function stored(over: {
     over.correlationId ?? uniq("corr"),
     "probe-producer",
     identity,
-    over.provider === undefined ? "adapter" : "adapter",
-    over.provider === undefined ? null : over.provider,
+    // Both arms of this used to read `"adapter"`, so no caller could store a
+    // hub- or http-recorded event and every filter test ran against one kind.
+    over.recordedBy?.kind ?? "adapter",
+    over.recordedBy === undefined ? identity : over.recordedBy.identity,
     payload,
     digest,
     over.attestation === undefined ? null : JSON.stringify(over.attestation),
@@ -195,14 +198,43 @@ describe("listing them", () => {
     expect(found.map((e) => e.event_id)).toEqual([read.eventId]);
   });
 
-  test("narrows to one correlation, and to one producing component", () => {
+  test("narrows to one correlation, and to one recorder identity", () => {
     const corr = uniq("corr");
-    const a = stored({ correlationId: corr, provider: "adapter-one" });
-    stored({ correlationId: corr, provider: "adapter-two" });
+    const a = stored({ correlationId: corr, recordedBy: { kind: "adapter", identity: "adapter-one" } });
+    stored({ correlationId: corr, recordedBy: { kind: "adapter", identity: "adapter-two" } });
 
     expect(events(listEvents({ correlation_id: corr }, true))).toHaveLength(2);
-    expect(events(listEvents({ correlation_id: corr, provider: "adapter-one" }, true))
+    expect(events(listEvents({ correlation_id: corr, recorded_by_identity: "adapter-one" }, true))
       .map((e) => e.event_id)).toEqual([a.eventId]);
+  });
+
+  test("narrows to one recorder kind, which is the only way to ask for the hub's own", () => {
+    // **What `?provider=` could not do.** It compared the recorder identity,
+    // and § 8.9.4 events carry null there — so no value of it selected a hub
+    // record, and an operator narrowing a trail lost the hub's observations
+    // without being told. The identity filter still cannot reach them, which is
+    // asserted here rather than left implied: that is why there are two filters
+    // and not a renamed one.
+    const corr = uniq("corr");
+    const hub = stored({ correlationId: corr, recordedBy: { kind: "hub", identity: null } });
+    const adapter = stored({ correlationId: corr, recordedBy: { kind: "adapter", identity: "adapter-one" } });
+    const read = stored({ correlationId: corr, recordedBy: { kind: "http", identity: "agent-mesh-http" } });
+
+    const byKind = (kind: string) =>
+      events(listEvents({ correlation_id: corr, recorded_by_kind: kind }, true)).map((e) => e.event_id);
+    expect(byKind("hub")).toEqual([hub.eventId]);
+    expect(byKind("adapter")).toEqual([adapter.eventId]);
+    expect(byKind("http")).toEqual([read.eventId]);
+
+    // No identity reaches the hub record. Tried with every value the other two
+    // rows hold, plus the word an operator would guess.
+    for (const value of ["adapter-one", "agent-mesh-http", "hub"]) {
+      expect(
+        events(listEvents({ correlation_id: corr, recorded_by_identity: value }, true))
+          .map((e) => e.event_id),
+        `recorded_by_identity=${value} reached the hub record`,
+      ).not.toContain(hub.eventId);
+    }
   });
 
   test("narrows to a window of stored time", () => {

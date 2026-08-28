@@ -775,17 +775,20 @@ describe("recorded_by, on the wire", () => {
     }
   });
 
-  test("the second member is called `id` today", async () => {
-    // **The spelling, alone.** SPEC names only `recorded_by.kind` and has never
-    // named this one, so the implementation is the whole definition — which is
-    // how `RecordedBy` in `@agent-mesh/contracts` came to say `identity` while
-    // the route sends `id`, and a reader typed from the contract reads
-    // `undefined`. D-808 settles it as `identity`; this line is the one that
-    // moves when the server does, and it is separate so that moving it does not
-    // touch the rule above.
+  test("the second member is called `identity`", async () => {
+    // **The spelling, alone**, and the line that moved when D-808 landed. SPEC
+    // named only `recorded_by.kind`, so the implementation was the whole
+    // definition of the other member — which is how `RecordedBy` in
+    // `@agent-mesh/contracts` came to say `identity` while the route sent `id`,
+    // leaving a reader typed from the contract holding `undefined`.
+    //
+    // Settled toward the contract: two documents and the declaration said
+    // `identity`, against one generation site nobody read. Kept separate from
+    // the rule above so that moving it did not touch the rule — which is what
+    // this rename was written to test.
     const events = await seeded();
     const members = new Set(events.flatMap((e) => Object.keys(e.recorded_by ?? {})));
-    expect([...members].sort()).toEqual(["id", "kind"]);
+    expect([...members].sort()).toEqual(["identity", "kind"]);
     expect(events.length, "no events came back, so no member name was read").toBeGreaterThan(1);
   });
 });
@@ -851,13 +854,13 @@ describe("what the audit filters select", () => {
     expect(has(await pageOf(`to=2020-12-31T23:59:59.999Z`)), "found in its occurred_at window").toBe(false);
   });
 
-  test("`provider` cannot reach a hub-recorded event, whatever it is given", async () => {
-    // **The trap § 9.1's one-word entry hides.** `provider` compares
-    // `recorded_by_id`, and § 8.9.4 events carry null there — so the filter is
+  test("`recorded_by_identity` cannot reach a hub-recorded event, whatever it is given", async () => {
+    // **The trap the old one-word entry hid, kept after the split.** The filter
+    // compares `recorded_by_id`, and § 8.9.4 events carry null there — so it is
     // unsatisfiable for exactly the events the audit trail calls its strongest
-    // evidence, and an operator narrowing a trail by provider is handed a view
-    // with the hub's observations silently removed. There is no value that
-    // selects them, which is why D-808 adds a filter on `kind`.
+    // evidence. That is not a defect once there is a second filter that can
+    // name them; it is a defect the moment this is the only one, which is what
+    // `?provider=` was.
     const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "filter observer" });
     expect(sent.error, "the hub refused the send that seeds its own event").toBeUndefined();
     await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
@@ -871,7 +874,7 @@ describe("what the audit filters select", () => {
     const candidates = [
       ...new Set(
         all
-          .map((e) => e.recorded_by?.id)
+          .map((e) => e.recorded_by?.identity)
           .filter((v): v is string => typeof v === "string" && v.length > 0)
           .concat(hubEvents.map((e) => String(e.identity)))
           .concat(["hub"]),
@@ -881,23 +884,63 @@ describe("what the audit filters select", () => {
 
     let reached = 0;
     for (const value of candidates) {
-      const got = await pageOf(`provider=${encodeURIComponent(value)}`);
+      const got = await pageOf(`recorded_by_identity=${encodeURIComponent(value)}`);
       reached += got.filter((e) => e.recorded_by?.kind === "hub").length;
     }
     console.log(
-      `[T-055] provider= tried ${candidates.length} values against ${hubEvents.length} hub events, reached ${reached}`,
+      `[T-055] recorded_by_identity= tried ${candidates.length} values against ${hubEvents.length} hub events, reached ${reached}`,
     );
-    expect(reached, "a provider value reached a hub event, so this filter is not what it was").toBe(0);
+    expect(reached, "an identity reached a hub event, so this filter is not what it was").toBe(0);
   });
 
-  test("`provider` does select the events it can reach, so the test above is not passing on an empty filter", async () => {
-    // The other half of the trap. A `provider` clause that matched nothing at
-    // all would satisfy the assertion above for the wrong reason, and the
-    // finding would be "the filter is broken" rather than "the filter cannot
-    // express the hub".
+  test("`recorded_by_kind` reaches all three, including the hub the identity filter cannot", async () => {
+    // The other half, and the reason the rename was a split rather than a
+    // rename. Asserted over all three kinds so that a filter matching
+    // everything looks the same as one matching the right thing only if it also
+    // returns the wrong kinds — which the second assertion catches.
+    const sent = await rpc.call("mesh.send", { to: "audit-peer", content: "kind filter" });
+    expect(sent.error, "the hub refused the send that seeds its own event").toBeUndefined();
     await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
-    const mine = await pageOf(`provider=${encodeURIComponent(IDENTITY)}`);
-    expect(mine.length, "the adapter's own events were not selected by provider").toBeGreaterThan(0);
-    expect([...new Set(mine.map((e) => e.recorded_by?.id))]).toEqual([IDENTITY]);
+    await pageOf("");
+
+    for (const kind of ["hub", "adapter", "http"]) {
+      const got = await pageOf(`recorded_by_kind=${encodeURIComponent(kind)}`);
+      expect(got.length, `recorded_by_kind=${kind} selected nothing`).toBeGreaterThan(0);
+      expect([...new Set(got.map((e) => e.recorded_by?.kind))], `recorded_by_kind=${kind} let another kind through`)
+        .toEqual([kind]);
+    }
+  });
+
+  test("`recorded_by_identity` does select the events it can reach", async () => {
+    // Without this, the unsatisfiability above is satisfied by a filter that
+    // matches nothing at all, and the finding would be "the filter is broken"
+    // rather than "the filter cannot express the hub".
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+    const mine = await pageOf(`recorded_by_identity=${encodeURIComponent(IDENTITY)}`);
+    expect(mine.length, "the adapter's own events were not selected").toBeGreaterThan(0);
+    expect([...new Set(mine.map((e) => e.recorded_by?.identity))]).toEqual([IDENTITY]);
+  });
+
+  test("`provider` is gone, and a caller still sending it is not quietly obeyed", async () => {
+    // **No alias, on purpose.** An alias keeps a name working whose meaning has
+    // moved: `provider` said "producing component" and compared the recorder,
+    // which are not the same thing for an § 11.0.1 access record. The route
+    // ignores unknown parameters rather than refusing them, so what is asserted
+    // here is that it no longer *narrows* — a caller with an old script gets the
+    // whole trail, which is visibly wrong, instead of a filtered view that is
+    // invisibly wrong.
+    await rpc.call("mesh.audit.append", event({ event_type: "channel.message.received" }));
+
+    // **Both reads bounded by the same instant.** Reading this route records
+    // that it was read (§ 11.0.1), so the trail is one event longer by the time
+    // the second query runs and two unbounded counts differ by one for a reason
+    // that has nothing to do with filtering. The window makes the two questions
+    // the same question.
+    const at = new Date().toISOString();
+    const unfiltered = await pageOf(`to=${encodeURIComponent(at)}`);
+    const withOldName = await pageOf(`to=${encodeURIComponent(at)}&provider=${encodeURIComponent(IDENTITY)}`);
+    expect(unfiltered.length, "the frozen window is empty, so nothing was compared").toBeGreaterThan(1);
+    expect(withOldName.map((e) => e.event_id), "`provider` still narrows, so the alias was not removed")
+      .toEqual(unfiltered.map((e) => e.event_id));
   });
 });
