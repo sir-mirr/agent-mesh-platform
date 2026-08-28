@@ -2218,13 +2218,26 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
       // operator has no reason to question.
       // `status` is gone from the route by decision, not omission — SPEC § 9.1 says
       // whether silence means `inactive` is an operating policy this screen does not
-      // decide. What the row carries instead is when the mesh last saw the identity,
-      // and that is a reading: these agents connected during setup, so the cell holds
-      // a time. The omitted case — no record at all — is `SC-INVENT-01`, which
-      // withholds the field rather than hoping the fixture lacks it. Asserting
-      // "never seen" here was a guess about the fixture, and it was wrong.
-      expect({ lastSeen: await page.locator("[data-testid='last-seen']").count() > 0 })
-        .toEqual({ lastSeen: true });
+      // decide. What the row carries instead is when the mesh last saw the identity.
+      //
+      // **Read off the server, not guessed at.** This asserted the cell was
+      // always present, on the reasoning that "these agents connected during
+      // setup" — and it was green for a different reason: provisioning stamped
+      // `last_seen`, so every row had a time whether or not anything had ever
+      // connected. D-809 stopped the stamp and the assertion went red, which is
+      // the check reporting that its premise was the defect.
+      //
+      // The comment above it already recorded this lesson once — "asserting
+      // 'never seen' here was a guess about the fixture, and it was wrong" — and
+      // the replacement was a guess in the other direction. So neither is
+      // asserted now: the page is compared against what `/api/v1/agents` said
+      // on this run, which is true whichever way the fixture goes.
+      const seenRows = rows.filter((a: any) => a.last_seen_at !== null && a.last_seen_at !== undefined);
+      const lastSeenCells = await page.locator("[data-testid='last-seen']").count();
+      expect(
+        { drawsASighting: lastSeenCells > 0 },
+        `the server reported ${seenRows.length} of ${rows.length} rows with a sighting`,
+      ).toEqual({ drawsASighting: seenRows.length > 0 });
       expect({ inboxUnknown: await page.locator("[data-testid='inbox-unknown']").count() > 0 })
         .toEqual({ inboxUnknown: true });
       // The words themselves are gone: nothing here claims a socket state.
