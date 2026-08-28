@@ -167,12 +167,25 @@ describe("the two registries, on one namespace", () => {
     // decision is about which of these two answers is the one an operator is
     // owed.
     const identity = `canon-torn-${Bun.randomUUIDv7().slice(0, 8)}`;
-    const created = await provision(mesh.hub, identity, "ai-claude");
+    const pair = newKeyPair();
+    const created = await provision(mesh.hub, identity, "ai-claude", null, pair.publicKey);
     expect(created.status).toBe(201);
-    const keys = (await onHub(identity)).body as { keys?: Array<{ fingerprint: string }> };
-    await approveKey(keys!.keys![0]!.fingerprint);
+    await approveKey(pair.fingerprint);
     expect([...(await listed()).keys()], "the identity was never admitted, so teardown proves nothing")
       .toContain(identity);
+
+    // **It connects first, and that is load-bearing.** Since provisioning
+    // stopped stamping, an identity that never connected has `last_seen: null`
+    // in the store — so the presence query could drop its `deleted_at IS NULL`
+    // filter and this test would not notice, because there is no sighting to
+    // leak. Tearing down an identity the mesh has actually seen is what makes
+    // "a torn-down identity reports no sighting" a claim about the filter
+    // rather than about an empty column.
+    const rpc = await connectRpc(mesh.hub, { kid: pair.fingerprint, privateKey: pair.privateKey });
+    const connected = await rpc.call("mesh.connect", { identity });
+    expect(connected.error, `connect refused: ${JSON.stringify(connected.error)}`).toBeUndefined();
+    rpc.close();
+    expect((await listed()).get(identity)!.last_seen_at, "connecting recorded no sighting").not.toBeNull();
 
     const gone = await teardown(identity);
     expect(gone.status, `teardown refused: ${await gone.clone().text()}`).toBe(200);
