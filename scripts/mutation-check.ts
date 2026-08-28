@@ -10067,6 +10067,56 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "a-decided-slot-keeps-asking-to-be-decided",
+    defect:
+      "An answered slot stays in the waiting list. The decision is recorded and the scheduler acts on it, so nothing is broken downstream \u2014 but the screen keeps showing it as a question, and an operator either decides it twice or reads the list as a backlog that never clears. D-810 \u24d4: a hold and an answered hold must be distinguishable.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "    if (decided) continue",
+    to: "",
+    suite: "test/reminder-overdue.test.ts",
+    expect: ["is still listed as waiting"],
+  },
+  {
+    id: "an-empty-approval-reference-is-accepted",
+    defect:
+      "`APPROVED:` with nothing after it passes. The prefix is the scheduler's rule and it is satisfied, so the decision records and the reminder releases \u2014 with a justification field that says nothing. D-810 kept the format free precisely so the *substance* would carry the weight; a reference with no substance is an absent answer wearing the shape of one.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "  if (approvalRef.slice(prefix.length).trim() === '') {",
+    to: "  if (false) {",
+    suite: "test/reminder-overdue.test.ts",
+    expect: ["was accepted"],
+  },
+  {
+    id: "a-decision-lands-on-a-slot-nobody-holds",
+    defect:
+      "The hold check goes, so a decision on any slot is recorded and answered `ok`. The row sits where the scheduler will never look, and the operator has been told a reminder was released when nothing was \u2014 the failure mode is a person believing a one-shot went out.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "  if (!held) {",
+    to: "  if (false) {",
+    suite: "test/reminder-overdue.test.ts",
+    expect: ["NO_SUCH_HOLD"],
+  },
+  {
+    id: "the-decision-forgets-who-made-it",
+    defect:
+      "`decided_by` is written empty. Every other field of the record survives, so the decision looks complete \u2014 and the one question an audit of it asks, *who decided this*, has no answer. \u00a7 11.0.1's precedent is the opposite: the value of a record is that a person can be asked about it.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, decidedBy)",
+    to: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, '')",
+    suite: "test/reminder-overdue.test.ts",
+    expect: ["the record does not say who decided"],
+  },
+  {
+    id: "a-fresh-deployment-cannot-ask-what-is-held",
+    defect:
+      "The absent-store guard goes, so a deployment where nothing has ever been scheduled answers `SQLITE_CANTOPEN` instead of an empty list. A 500 from the one screen whose job is to say whether anything is waiting reads as a broken console rather than a quiet mesh \u2014 and the operator learns nothing about either.",
+    file: "packages/http/src/reminder-overdue.ts",
+    from: "  if (!storeExists()) return []\n  const db = readDb()",
+    to: "  const db = readDb()",
+    suite: "test/reminder-overdue.test.ts",
+    expect: ["a fresh deployment reported something held"],
+  },
+  {
     id: "the-metadata-caller-loses-the-access-record",
     defect:
       "`stripContent` withholds `change` rather than `content`, so \u00a7 11.0.1 access records arrive empty for a caller holding only `audit.read.metadata` \u2014 which is the platform operator, the person the compliance access log exists for. The route still answers, the rows are still there, and every one of them says nothing about what was read. **Caught by the \u00a7 11 grant tests rather than by the access-log observer**, which is where planting put it: the observer asks whether the record survives for a metadata caller, and the older pair already asserts the wider rule that only `content` is withheld. Pointed at the check that actually fires, so the entry names its guard rather than the test it was written beside.",
