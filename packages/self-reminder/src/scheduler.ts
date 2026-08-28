@@ -4,6 +4,7 @@ import { nextIntervalFire, parseScheduleSpec } from "@agent-mesh/contracts";
 import { createHash } from "node:crypto";
 
 import { Database } from "bun:sqlite";
+import { migrateSchedulerState } from "@agent-mesh/store";
 import { CronExpressionParser } from "cron-parser";
 
 export type ConnectivityState = "connecting" | "registered" | "unavailable";
@@ -394,29 +395,20 @@ export class ReminderScheduler {
     this.db.prepare(`INSERT INTO audit_log (reminder_id, agent_id, scheduled_at, fired_at, delivery_status, hub_msg_id, attempt, error) VALUES (?, ?, ?, ?, ?, ?, 1, ?)`).run(reminder.id, reminder.agent_id, reminder.next_fire_at, sqliteTime(now), status, hubMsgId, error);
   }
 
+  /**
+   * **Delegated, not repeated.** These tables are declared in
+   * `@agent-mesh/store`'s `self-reminder` schema, beside `reminders` and
+   * `audit_log`, because three processes read them now — this daemon, the hub,
+   * and (D-810) an admin route. Keeping a copy here would be two DDLs for one
+   * file, which drift with nothing able to notice: `CREATE TABLE IF NOT EXISTS`
+   * is silent about a table that already exists in a different shape.
+   *
+   * Still called from the constructor. The daemon's `main.ts` migrates first,
+   * but a unit test may build a scheduler over a hand-made database, and this
+   * is what makes that work without every such test knowing the DDL.
+   */
   private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS scheduler_health (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at DATETIME NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS scheduler_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_type TEXT NOT NULL,
-        details TEXT NOT NULL,
-        created_at DATETIME NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_scheduler_events_type_time ON scheduler_events(event_type, created_at DESC);
-      CREATE TABLE IF NOT EXISTS overdue_decisions (
-        reminder_id TEXT NOT NULL,
-        scheduled_at DATETIME NOT NULL,
-        decision TEXT NOT NULL CHECK (decision IN ('replay','skip')),
-        approval_ref TEXT NOT NULL,
-        decided_at DATETIME NOT NULL,
-        PRIMARY KEY (reminder_id, scheduled_at)
-      );
-    `);
+    migrateSchedulerState(this.db);
   }
 
   private putState(key: string, value: string, now: Date): void {

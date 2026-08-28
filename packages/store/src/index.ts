@@ -22,6 +22,11 @@ export type {
 export type { MessageRow } from "./schema/hub";
 export type { AuditEventRow, AuditEventBlobRow } from "./schema/audit";
 export type { ReminderRow, ReminderStatus } from "./schema/self-reminder";
+// Named directly as well as through the namespace: `ReminderScheduler` calls
+// only this half, and a caller reaching for `selfReminderSchema.migrate` when
+// it holds a hand-built `reminders` table gets an index over a column it does
+// not have.
+export { migrateSchedulerState } from "./schema/self-reminder";
 export type { KeyEventAction, NoKeyReason, ProposeResult } from "./keys";
 export type { TeardownAction, TeardownResult } from "./teardown";
 export type { RecallableMessage, RecallOutcome } from "./outbox";

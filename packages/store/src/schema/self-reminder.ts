@@ -77,6 +77,57 @@ export function migrate(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_audit_agent_time ON audit_log (agent_id, fired_at DESC);
   `);
+  migrateSchedulerState(db);
+}
+
+/**
+ * The scheduler's own state tables (SPEC § 3.3, D-810).
+ *
+ * Exported separately because `ReminderScheduler` calls only this: its unit
+ * tests build a `reminders` table by hand, and running the full `migrate` over
+ * one would try to index a column that fixture does not have. Splitting keeps
+ * one DDL per table without making the scheduler own a schema it does not.
+ */
+export function migrateSchedulerState(db: Database): void {
+  //
+  // **Moved here for the reason the header above already gives.** These three
+  // lived in `ReminderScheduler`'s private `migrate()`, so they existed only
+  // where the daemon had run — and `reminders` and `audit_log` were moved here
+  // after exactly that shape broke the hub's reminder RPCs on a directory the
+  // daemon had not touched.
+  //
+  // D-810 puts an admin route on `agent-mesh-http` over `overdue_decisions` and
+  // the hold state, which makes it three processes reading tables one of them
+  // declared privately. A route asking "what is held?" against a daemonless
+  // directory would have got `no such table`, and a route that turned that into
+  // an empty page would report a healthy mesh — `부재≠성공` in the direction
+  // that matters least to notice and most to get wrong.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduler_health (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS scheduler_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduler_events_type_time
+      ON scheduler_events(event_type, created_at DESC);
+    -- Keyed on the slot, not the reminder: a decision is about the fire that
+    -- was missed, and a repeating id would let one decision answer for a slot
+    -- the operator never saw.
+    CREATE TABLE IF NOT EXISTS overdue_decisions (
+      reminder_id TEXT NOT NULL,
+      scheduled_at DATETIME NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('replay','skip')),
+      approval_ref TEXT NOT NULL,
+      decided_at DATETIME NOT NULL,
+      PRIMARY KEY (reminder_id, scheduled_at)
+    );
+  `);
 }
 
 export type ReminderStatus =
@@ -97,4 +148,5 @@ export interface ReminderRow {
   created_at: string;
   updated_at: string;
   created_by: string;
+
 }
