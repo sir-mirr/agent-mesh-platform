@@ -558,3 +558,52 @@ describe("the mount point", () => {
     ).toContain(target);
   });
 });
+
+/**
+ * Query parameters a document tells an operator to send.
+ *
+ * `?provider=` lived in SPEC § 9.1 for as long as the route served it, and the
+ * name outlasted the meaning: it compared the recorder identity while saying
+ * "producing component", and § 8.9.4 events carry none — so it selected none of
+ * them at any value. The route dropped it without an alias, which leaves a
+ * different risk: prose that still names it, and an operator following prose
+ * onto a parameter the server now ignores. An ignored filter does not fail. It
+ * returns the whole trail and reads as a wide search.
+ */
+describe("the filters the documents tell an operator to send", () => {
+  test("every one of them is a filter the audit route actually reads", async () => {
+    const { readFileSync } = await import("node:fs");
+
+    // The route's own declaration, which is the only definition there is: SPEC
+    // names the filters, but SPEC is what drifted, so comparing prose to prose
+    // would agree with itself.
+    const route = readFileSync(`${REPO_ROOT}packages/http/src/audit-query.ts`, "utf8");
+    const block = route.slice(route.indexOf("interface ListQuery"), route.indexOf("function parseCursor"));
+    const known = new Set([...block.matchAll(/^\s{2}(\w+)\?:/gm)].map((m) => m[1]!));
+    expect(known.size, "no filters were read off ListQuery, so nothing was compared").toBeGreaterThan(5);
+
+    const docs = ["SPEC.md", "docs/operator-functional-spec.md", "docs/architecture.md"];
+    const claimed: Array<{ file: string; param: string }> = [];
+    for (const file of docs) {
+      const body = readFileSync(`${REPO_ROOT}${file}`, "utf8");
+      // Only where the audit route is the subject. `?tenant=` on the agent list
+      // is a different route's filter and belongs to a different comparison.
+      for (const m of body.matchAll(/audit\/events[^\n`]*?\?([\w=&.]+)/g)) {
+        for (const pair of m[1]!.split("&")) {
+          const name = pair.split("=")[0]!;
+          if (name && !known.has(name)) claimed.push({ file, param: name });
+        }
+      }
+      // And the prose form: a backticked `?name=` anywhere in a paragraph that
+      // is about this route.
+      for (const m of body.matchAll(/`\?(\w+)=/g)) {
+        const name = m[1]!;
+        if (!known.has(name) && /recorded_by|provider|event_type|correlation/.test(name)) {
+          claimed.push({ file, param: name });
+        }
+      }
+    }
+
+    expect(claimed, "a document tells an operator to send a filter the route does not read").toEqual([]);
+  });
+});

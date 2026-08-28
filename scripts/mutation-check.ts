@@ -10054,6 +10054,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "a-document-sends-an-operator-to-a-retired-filter",
+    defect:
+      "The operator footnote names `?provider=`, which the route no longer reads. An ignored parameter does not fail \u2014 the route answers with the whole trail, so an operator following the document gets a wide search that looks like a narrow one. This is the same shape the parameter itself had: reachable, answering, and not selecting what its name says.",
+    file: "docs/operator-functional-spec.md",
+    from: "`?recorded_by_kind=hub`",
+    to: "`?provider=hub`",
+    suite: "test/greppable.test.ts",
+    expect: ["every one of them is a filter the audit route actually reads"],
+  },
+  {
     id: "the-retired-filter-name-is-quietly-accepted-again",
     defect:
       "`?provider=` comes back as an alias for `?recorded_by_identity=`. It looks like kindness to old callers and is the opposite: the name said \"producing component\" and now compares the recorder, which are not the same thing for a \u00a7 11.0.1 access record. A script written against the old meaning keeps returning rows and stops meaning what its author thought, which is worse than the whole trail it would otherwise get.",

@@ -54,6 +54,37 @@ graph TD
 | **F-ADM-04** | **영구 신원 Teardown 통제** | • 등록된 신원 목록 및 활성/삭제 상태 (`deleted: true/false`)<br>• 삭제된 신원의 톰스톤(Tombstone) 상태 | • 2단계 경고 모달을 통한 영구 삭제 실행 (`DELETE /api/v1/admin/agents/:identity`)<br>• 동일 신원 재등록 시도 시 `409 IDENTITY_DELETED` 에러 처리 보증 | `DELETE /api/v1/admin/agents/:identity`<br>(SPEC § 9.3 관리자 세션 필수) |
 | **F-ADM-05** | **허브 메타데이터 & 헬스체크** | • `capabilities` 메타데이터 (`surface.version: 3`)<br>• WebSocket 온라인 에이전트 수 (`online_agents`)<br>• 지원 스펙 버전 (`agent_mesh_spec: "0.2"`) | • 허브 무서명 헬스체크 및 실시간 온라인 상태 모니터링 | `GET /api/v1/capabilities`<br>`GET /health` |
 
+
+#### F-ADM-03 각주 — 진단 번들의 이벤트를 감사 이력에서 찾기
+
+운영자가 실제로 겪는 순서는 "번들을 받았다 → 이 이벤트가 허브까지 올라갔나"
+입니다. 그 두 축을 잇는 것이 `agent-mesh-client` 진단 번들의
+`outbox.eventIds` 이고, **무엇이 실려 있고 무엇이 없는지**를 알고 봐야 합니다.
+
+```
+outbox.eventIds = { pending[], deadLetter[], pendingTotal, deadLetterTotal, truncated }
+```
+
+1. **실리는 것은 `PENDING` 과 `DEAD_LETTER` 뿐입니다.** 번들이 답하는 질문은
+   *아직 못 올라간 것이 무엇인가* 입니다.
+2. **`ACKED` 된 이벤트의 id 는 번들에 없습니다.** 이미 올라갔기 때문이고,
+   그것을 찾는 곳은 감사 API 입니다 —
+   `GET /api/v1/audit/events?event_type=…&recorded_by_kind=adapter`
+   (필터가 무엇을 고르는지는 SPEC § 9.1b).
+   **번들에서 id 를 못 찾았다는 것은 "그런 이벤트가 없다" 가 아니라
+   "올라갔거나, 아래 3번" 입니다.** 두 축을 한 축으로 읽으면 정상 동작이
+   유실로 보입니다.
+3. **목록은 25개에서 잘립니다.** 옆의 `pendingTotal`·`deadLetterTotal` 과
+   `truncated` 를 같이 읽으십시오. 잘린 목록만 보면 "당신 이벤트는 여기 없다"
+   로 읽히고, 자기 id 를 못 찾은 운영자는 더 달라고 하는 대신 틀린 결론을
+   냅니다.
+
+감사 쪽에서 그 이벤트를 찾았을 때 `recorded_by.kind` 가 무엇인지도 같이
+보십시오. `adapter` 는 **레인이 스스로 보고한 것**이고, `hub` 는 **허브가
+관찰한 것**입니다(§ 8.9.4). 배달 여부를 다투는 자리에서는 뒤가 증거이고,
+그것을 부르는 유일한 필터가 `?recorded_by_kind=hub` 입니다 —
+`?recorded_by_identity=` 로는 어떤 값으로도 안 나옵니다.
+
 ---
 
 ### [B] 에이전트 운영자 (Agent Operator / Workspace)
