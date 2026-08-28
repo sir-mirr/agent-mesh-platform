@@ -993,6 +993,18 @@ describe("what an access log could be drawn from", () => {
     expect(one.recorded_by?.kind).toBe("http");
     expect(one.recorded_by?.identity, "the recording service is unnamed").toBeTruthy();
     expect(one.identity, "the operator and the service are the same value").not.toBe(one.recorded_by?.identity);
+
+    // **The record says who read it twice, and nothing compared them.** The
+    // reader is written into the `identity` column and into the payload JSON,
+    // by two arguments of the same insert. The route sends the column; a
+    // verifier recomputing the digest reads the payload. So the two can drift
+    // apart and each half looks right on its own — the second-copy shape, with
+    // the copies on either side of an integrity check that covers only one.
+    //
+    // Found by planting: a mutation that renamed the payload's reader was not
+    // caught, because everything here read the column.
+    expect(payload!.identity, "the payload names a different reader than the row").toBe(one.identity);
+    expect(payload!.actor, "the payload's actor and identity disagree").toBe(one.identity);
   });
 
   test("[T-053] the screen writes to what it reads, and here is how much", async () => {
