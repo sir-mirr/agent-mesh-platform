@@ -10221,6 +10221,16 @@ export const MUTATIONS: Mutation[] = [
     expect: ["the sighting is not ISO-8601"],
   },
   {
+    id: "the-time-conversion-erases-what-it-cannot-read",
+    defect:
+      "A timestamp the converter does not recognise comes back as `null` instead of unchanged, so a row written by something other than `datetime('now')` \u2014 the one-time `registry.json` import wrote ISO directly, and `mesh.audit.append` carries client stamps \u2014 reports *no such time* while holding one. A screen draws never-created for an agent that has a creation date, and the collapse is silent: an absence and a value nobody recognised are not the same fact.",
+    file: "packages/http/src/sqlite-time.ts",
+    from: "  if (!m) return value",
+    to: "  if (!m) return null",
+    suite: "packages/http/src/sqlite-time.test.ts",
+    expect: ["passes a value it does not understand through, rather than erasing it"],
+  },
+  {
     id: "the-time-conversion-invents-a-zone",
     defect:
       "The converter appends `Z` without the `T`, producing `2026-08-28 12:34:10Z`. Still a string, still nearly right, and parsed by nothing consistently \u2014 the failure this whole change exists to stop, reintroduced one character short of correct.",
