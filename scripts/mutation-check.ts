@@ -10054,6 +10054,36 @@ export const MUTATIONS: Mutation[] = [
     expect: ["says which sign-ins this deployment can complete"],
   },
   {
+    id: "a-torn-down-identity-keeps-its-presence",
+    defect:
+      "The presence join stops excluding soft-deleted identities, so a torn-down agent comes back carrying the timestamp it had when it was alive. \u00a7 9.3 is irreversible and the hub answers 409 for the name forever; a console row that still shows a recent sighting invites an operator to address something that can never answer.",
+    file: "packages/http/src/main.ts",
+    from: "    .prepare(`SELECT identity, last_seen, tenant FROM agents WHERE deleted_at IS NULL`)",
+    to: "    .prepare(`SELECT identity, last_seen, tenant FROM agents`)",
+    suite: "test/registry-canon.test.ts",
+    expect: ["what teardown leaves behind, in each of the two"],
+  },
+  {
+    id: "the-agent-list-joins-a-key-nobody-approved",
+    defect:
+      "The fingerprint column joins on `pending` rather than `approved`. The console then shows a fingerprint for an identity whose key no operator has accepted \u2014 the one field on this screen whose whole purpose is to say a human compared it, reporting a key that was merely proposed.",
+    file: "packages/http/src/main.ts",
+    from: "      mesh.prepare(`SELECT identity, fingerprint FROM agent_keys WHERE status = 'approved'`).all() as Array<{",
+    to: "      mesh.prepare(`SELECT identity, fingerprint FROM agent_keys WHERE status = 'pending'`).all() as Array<{",
+    suite: "test/registry-canon.test.ts",
+    expect: ["approving its key admits it, so the two agree from then on"],
+  },
+  {
+    id: "provisioning-stops-stamping-a-sighting",
+    defect:
+      "Provisioning writes `NULL` into `last_seen` instead of the current time. **This is the direction T-054 is expected to go**, and the anchor exists so the observer that pins today's behaviour is known to be watching this line rather than passing on something else \u2014 a pinned defect whose test cannot see the fix is indistinguishable from a test that pins nothing.",
+    file: "packages/hub/src/db.ts",
+    from: "export const stmtInsertAgentIfAbsent = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, datetime('now'), datetime('now'))",
+    to: "export const stmtInsertAgentIfAbsent = agentsDb.prepare(`\n  INSERT INTO agents (identity, type, description, last_seen, created_at)\n  VALUES (?, ?, ?, NULL, datetime('now'))",
+    suite: "test/registry-canon.test.ts",
+    expect: ["a never-connected identity reported no presence"],
+  },
+  {
     id: "the-spec-cites-a-scenario-that-does-not-exist",
     defect:
       "\u00a7 9.1b's reason points at a scenario id the pinned contracts do not have. A citation is what makes \"required\" checkable rather than asserted, and one that names nothing is worse than none: it reads as verified. The scenarios live behind a pinned tag, so the realistic version of this is a rename on the other side rather than a typo here.",
