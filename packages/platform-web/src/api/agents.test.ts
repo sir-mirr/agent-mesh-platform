@@ -134,16 +134,19 @@ describe("teardownAgentApi", () => {
     expect(spy.mock.calls[0]![1]!.method).toBe("DELETE");
   });
 
-  it("preserves each teardown action instead of folding them into ok", async () => {
-    const actions: TeardownAction[] = ["soft-deleted", "already-deleted", "not-found"];
-    for (const action of actions) {
-      // Typed as the contract, not inferred: `ok` is the literal `true` there,
-      // because all three actions are success. An inferred `boolean` compiles
-      // against a hand-written copy and stops compiling against the contract,
-      // which is the whole reason the copy is gone.
-      const reply: TeardownResponse = { ok: true, identity: "lane-a", action };
+  it("preserves each teardown action and each deleted_at state instead of folding them", async () => {
+    const replies: TeardownResponse[] = [
+      { ok: true, identity: "lane-a", action: "soft-deleted", deleted_at: "2026-08-28T05:00:00Z" },
+      { ok: true, identity: "lane-a", action: "already-deleted", deleted_at: null },
+      { ok: true, identity: "lane-a", action: "not-found" },
+    ];
+    const actions: TeardownAction[] = replies.map((reply) => reply.action);
+    expect(actions).toEqual(["soft-deleted", "already-deleted", "not-found"]);
+    for (const reply of replies) {
       spyOn(reply);
-      expect(await teardownAgentApi("lane-a")).toEqual(reply);
+      const received = await teardownAgentApi("lane-a");
+      expect(received).toEqual(reply);
+      expect(Object.hasOwn(received, "deleted_at")).toBe(Object.hasOwn(reply, "deleted_at"));
     }
   });
 });

@@ -7,7 +7,7 @@ import { Database } from "bun:sqlite";
 
 import { openTestDb, sessionCookie } from "./harness";
 import { chromium, type Browser } from "playwright";
-import { ALL_CAPABILITIES } from "@agent-mesh/contracts";
+import { ALL_CAPABILITIES, type TeardownAction } from "@agent-mesh/contracts";
 import { startMesh, newKeyPair, capabilityViewer, capabilityViewerName, freePort, SEED_ADMIN } from "./harness.ts";
 import { reportInconclusive, type Inconclusive } from "./inconclusive.ts";
 
@@ -1695,7 +1695,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
 
   async function assertTeardownOutcome(
     page: import("playwright").Page,
-    action: "soft-deleted" | "already-deleted" | "not-found",
+    action: TeardownAction,
     testId: string,
     sentence: string,
   ) {
@@ -1717,7 +1717,7 @@ describe("Frontend Live Render & DOM Scenarios (COVERAGE_INVENTORY.md § 3)", ()
     expect(
       { place: await place.count(), message },
       `${action} was folded into another teardown result`,
-    ).toEqual({ place: 1, message: `${sentence}: ${identity}` });
+    ).toEqual({ place: 1, message: `${sentence}: ${identity} · 삭제 시각 필드 없음` });
   }
 
   it("[SC-WRITE-18] says soft-deleted in its own result place", async () => {

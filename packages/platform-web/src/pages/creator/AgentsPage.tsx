@@ -44,12 +44,20 @@ interface AgentItem {
 }
 
 interface TeardownNotice {
-  testId: `teardown-result-${"soft-deleted" | "already-deleted" | "not-found" | "failed"}`;
+  testId: `teardown-result-${TeardownAction | "failed"}`;
   type: "success" | "info" | "warning" | "error";
   message: string;
 }
 
-import { agentRegistryEntries, fetchAgents, teardownAgentApi, lastSeen, lastSeenText } from "@/api/agents.ts";
+import {
+  agentRegistryEntries,
+  fetchAgents,
+  teardownAgentApi,
+  lastSeen,
+  lastSeenText,
+  type TeardownAction,
+  type TeardownResponse,
+} from "@/api/agents.ts";
 
 export function AgentsPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -121,6 +129,24 @@ export function AgentsPage() {
     if (!isAuthLoading) void loadAgents();
   }, [isAuthLoading, canReadMailboxDepth]);
 
+  /**
+   * Preserve the wire's three timestamp facts instead of defaulting them.
+   *
+   * An absent key is the normal `not-found` answer: there was no identity and
+   * therefore no deletion time. `null` is a different answer carried by a row,
+   * while a string is the measured time. Inventing one fallback for all three
+   * would tell an operator that a never-existing identity was deleted.
+   */
+  const teardownTimeText = (result: TeardownResponse): string => {
+    if (!Object.prototype.hasOwnProperty.call(result, "deleted_at")) {
+      return t("agents.teardown.deletedAtAbsent", "삭제 시각 필드 없음");
+    }
+    if (result.deleted_at === null) {
+      return t("agents.teardown.deletedAtNull", "삭제 시각 미기록 (null)");
+    }
+    return `${t("agents.teardown.deletedAt", "삭제 시각")}: ${result.deleted_at}`;
+  };
+
   const handleTeardownConfirm = async () => {
     if (!teardownTarget || teardownInFlight.current) return;
     teardownInFlight.current = true;
@@ -134,21 +160,21 @@ export function AgentsPage() {
           notice = {
             testId: "teardown-result-soft-deleted",
             type: "success",
-            message: `${t("agents.teardown.done", "영구 삭제 완료")}: ${targetId}`,
+            message: `${t("agents.teardown.done", "영구 삭제 완료")}: ${targetId} · ${teardownTimeText(result)}`,
           };
           break;
         case "already-deleted":
           notice = {
             testId: "teardown-result-already-deleted",
             type: "info",
-            message: `${t("agents.teardown.alreadyDeleted", "이미 삭제되어 이번 요청에서 변경 없음")}: ${targetId}`,
+            message: `${t("agents.teardown.alreadyDeleted", "이미 삭제되어 이번 요청에서 변경 없음")}: ${targetId} · ${teardownTimeText(result)}`,
           };
           break;
         case "not-found":
           notice = {
             testId: "teardown-result-not-found",
             type: "warning",
-            message: `${t("agents.teardown.notFound", "등록된 에이전트가 없어 삭제하지 않음")}: ${targetId}`,
+            message: `${t("agents.teardown.notFound", "등록된 에이전트가 없어 삭제하지 않음")}: ${targetId} · ${teardownTimeText(result)}`,
           };
           break;
         default: {

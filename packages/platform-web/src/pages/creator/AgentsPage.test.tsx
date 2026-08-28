@@ -101,6 +101,9 @@ const CANCEL = DICTIONARY.en["common.cancel"]!;
 const TORN_DOWN = DICTIONARY.en["agents.teardown.done"]!;
 const ALREADY_TORN_DOWN = DICTIONARY.en["agents.teardown.alreadyDeleted"]!;
 const NOT_FOUND = DICTIONARY.en["agents.teardown.notFound"]!;
+const DELETED_AT = DICTIONARY.en["agents.teardown.deletedAt"]!;
+const DELETED_AT_ABSENT = DICTIONARY.en["agents.teardown.deletedAtAbsent"]!;
+const DELETED_AT_NULL = DICTIONARY.en["agents.teardown.deletedAtNull"]!;
 const TEARDOWN_FAILED = DICTIONARY.en["agents.teardown.failed"]!;
 
 const json = (status: number, body: unknown) =>
@@ -755,24 +758,27 @@ describe("what an irreversible teardown destroys", () => {
 
   for (const outcome of [
     {
-      action: "soft-deleted",
+      response: { action: "soft-deleted", deleted_at: "2026-08-28T05:00:00Z" },
       testId: "teardown-result-soft-deleted",
       sentence: TORN_DOWN,
+      time: `${DELETED_AT}: 2026-08-28T05:00:00Z`,
     },
     {
-      action: "already-deleted",
+      response: { action: "already-deleted", deleted_at: null },
       testId: "teardown-result-already-deleted",
       sentence: ALREADY_TORN_DOWN,
+      time: DELETED_AT_NULL,
     },
     {
-      action: "not-found",
+      response: { action: "not-found" },
       testId: "teardown-result-not-found",
       sentence: NOT_FOUND,
+      time: DELETED_AT_ABSENT,
     },
   ] as const) {
-    it(`draws ${outcome.action} in its own named result place`, async () => {
+    it(`draws ${outcome.response.action} and its timestamp fact in their own named result place`, async () => {
       readAgents = () => json(200, { agents: [ALPHA, beta()] });
-      destroyAgent = () => json(200, { ok: true, identity: beta().id, action: outcome.action });
+      destroyAgent = () => json(200, { ok: true, identity: beta().id, ...outcome.response });
       await mount();
       openTeardownFor(beta().id);
       typeConfirmation(beta().id);
@@ -780,9 +786,9 @@ describe("what an irreversible teardown destroys", () => {
       await settle();
 
       const result = screen.getByTestId(outcome.testId);
-      expect(result.querySelectorAll("span")[1]?.textContent).toBe(`${outcome.sentence}: ${beta().id}`);
+      expect(result.querySelectorAll("span")[1]?.textContent).toBe(`${outcome.sentence}: ${beta().id} · ${outcome.time}`);
       for (const other of ["soft-deleted", "already-deleted", "not-found"]) {
-        if (other !== outcome.action) {
+        if (other !== outcome.response.action) {
           expect(screen.queryByTestId(`teardown-result-${other}`)).toBe(null);
         }
       }
