@@ -10094,7 +10094,11 @@ export const MUTATIONS: Mutation[] = [
     from: "  if (!held) {",
     to: "  if (false) {",
     suite: "test/reminder-overdue.test.ts",
-    expect: ["NO_SUCH_HOLD"],
+    // The test's own name, not the code it checks second: the status assertion
+    // fails first and prints only `expect(received).toBe(expected)`, so an
+    // entry naming `NO_SUCH_HOLD` reports "not caught" for a defect that is
+    // caught — which reads exactly like one that is not.
+    expect: ["a decision on a slot nobody is holding is refused, not recorded"],
   },
   {
     id: "the-decision-forgets-who-made-it",
@@ -10104,7 +10108,7 @@ export const MUTATIONS: Mutation[] = [
     from: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, decidedBy)",
     to: "    .run(reminderId, scheduledAt, decision, approvalRef, decidedAt, '')",
     suite: "test/reminder-overdue.test.ts",
-    expect: ["the record does not say who decided"],
+    expect: ["the persisted decision has no decider"],
   },
   {
     id: "a-fresh-deployment-cannot-ask-what-is-held",
@@ -10114,7 +10118,7 @@ export const MUTATIONS: Mutation[] = [
     from: "  if (!storeExists()) return []\n  const db = readDb()",
     to: "  const db = readDb()",
     suite: "test/reminder-overdue.test.ts",
-    expect: ["a fresh deployment reported something held"],
+    expect: ["the held list was refused"],
   },
   {
     id: "the-metadata-caller-loses-the-access-record",
