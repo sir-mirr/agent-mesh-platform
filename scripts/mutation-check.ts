@@ -13405,7 +13405,7 @@ export const MUTATIONS: Mutation[] = [
     from: "    if (!hasSubstantiveApproval(approvalRef)) {",
     to: "    if (false) {",
     suite: "packages/platform-web/src/pages/platform/ReminderOverduePage.test.tsx",
-    expect: ["blocks a blank, bare-prefix, or unprefixed approval before any POST", "Expected: 0"],
+    expect: ["blocks a blank, bare-prefix, or unprefixed approval before any POST", '"posts": 0'],
   },
   {
     id: "an-empty-approval-ref-looks-like-a-generic-write-failure",

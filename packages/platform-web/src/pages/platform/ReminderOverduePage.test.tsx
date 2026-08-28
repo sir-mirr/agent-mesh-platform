@@ -217,10 +217,13 @@ describe("recording a decision for the slot the operator saw", () => {
       fireEvent.change(input, { target: { value } });
       fireEvent.click(replay);
       await settle();
-      expect(screen.getByTestId("overdue-action-error").textContent)
-        .toContain(en("overdue.approval.required"));
+      expect({
+        value,
+        userError: screen.queryByTestId("overdue-action-error")?.textContent
+          ?.includes(en("overdue.approval.required")) ?? false,
+        posts: postCalls().length,
+      }).toEqual({ value, userError: true, posts: 0 });
     }
-    expect(postCalls()).toHaveLength(0);
   });
 
   it("posts replay with the exact listed scheduled_at and then draws the persisted record", async () => {
